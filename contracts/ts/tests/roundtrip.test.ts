@@ -9,6 +9,7 @@ const fixtureRoot = join(import.meta.dirname, "../../../tests/contract");
 const entities: [keyof Entities, string][] = [
   ["Artifact", "artifact"],
   ["Operator", "operator"],
+  ["PipelineVersion", "pipeline_version"],
 ];
 
 function fixtures(dir: string, kind: "valid" | "invalid"): [string, unknown][] {

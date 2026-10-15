@@ -107,6 +107,13 @@ export type Effects = "pure" | "nondeterministic" | "side_effecting";
  * via the `definition` "NetworkAccess".
  */
 export type NetworkAccess = "none" | "egress_allowlisted";
+/**
+ * `<node_id>.<port_name>`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortRef".
+ */
+export type PortRef = string;
 
 export interface Bundle {
   [k: string]: unknown;
@@ -144,7 +151,9 @@ export interface Artifact {
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Params".
  */
-export interface Params {}
+export interface Params {
+  [k: string]: unknown;
+}
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Error".
@@ -173,7 +182,9 @@ export interface Operator {
   /**
    * JSON Schema for this operator's params. The compiler validates node params against it.
    */
-  params_schema: {};
+  params_schema: {
+    [k: string]: unknown;
+  };
   effects: Effects;
   network: NetworkAccess;
   resources: Resources;
@@ -196,4 +207,39 @@ export interface Resources {
   memory_mb: number;
   gpu: "none" | "optional" | "required";
   timeout_seconds: number;
+}
+/**
+ * Immutable typed graph of pinned operators (arch doc §4, §5). Structural checks (at least one node, unique node ids, known ports, no cycles) belong to the Rust compiler, not this schema.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PipelineVersion".
+ */
+export interface PipelineVersion {
+  schema_version: "sprisk.pipeline_version/v1";
+  id: PipelineVersionId;
+  project_id: ProjectId;
+  /**
+   * Version this one was derived from. Absent for the first version.
+   */
+  parent_id?: string;
+  nodes: Node[];
+  edges: Edge[];
+  created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Node".
+ */
+export interface Node {
+  id: NodeId;
+  operator: OperatorRef;
+  params: Params;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Edge".
+ */
+export interface Edge {
+  from: PortRef;
+  to: PortRef;
 }

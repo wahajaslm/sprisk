@@ -59,7 +59,8 @@
     },
     "Params": {
       "type": "object",
-      "description": "Operator parameters. Validated against the operator's params_schema by the compiler, not here."
+      "description": "Operator parameters. Validated against the operator's params_schema by the compiler, not here.",
+      "additionalProperties": true
     },
     "Error": {
       "type": "object",

@@ -9,6 +9,7 @@ export type * from "./generated/contracts.ts";
 export interface Entities {
   Artifact: C.Artifact;
   Operator: C.Operator;
+  PipelineVersion: C.PipelineVersion;
 }
 
 export class ContractError extends Error {}

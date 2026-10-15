@@ -12,10 +12,11 @@ Canonical, versioned wire schemas (JSON Schema + OpenAPI). Arch doc §11.
 
 ## Schema style
 - `snake_case` fields. `PascalCase` type names. IDs are prefixed strings (`run_…`, `art_…`).
-- Closed objects: `additionalProperties: false`.
+- Closed objects: `additionalProperties: false`. Open maps (params, nested JSON Schema) must say `additionalProperties: true` explicitly, or the Python codegen forbids every key.
 - Enums for every state and kind. No free-text status fields.
 - Required by default. Optional only when absence has a meaning; document it.
 - No `const`: typify ignores it. Use a single-value `enum`.
+- No `minItems`/`maxItems`: typify ignores them. Array-size rules are structural checks for the Rust compiler.
 - Integer bounds: only `minimum: 0` (→ `u64`) or none (→ `i64`). typify ignores other bounds. Values above 2^53 lose precision in JS; avoid them in wire data.
 - Python models are strict (`StrictModel`). Validate wire input with `model_validate_json`, never coerce.
 - Keep `$defs` local to each schema until typify cross-file `$ref` support is proven.

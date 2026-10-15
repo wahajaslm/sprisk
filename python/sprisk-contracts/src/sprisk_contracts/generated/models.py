@@ -88,7 +88,7 @@ class OperatorRef(RootModel[str]):
 
 class Params(StrictModel):
     model_config = ConfigDict(
-        extra="forbid",
+        extra="allow",
     )
 
 
@@ -147,6 +147,25 @@ class Resources(StrictModel):
     timeout_seconds: Annotated[int, Field(ge=1)]
 
 
+class Node(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: NodeId
+    operator: OperatorRef
+    params: Params
+
+
+class PortRef(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="`<node_id>.<port_name>`.",
+            pattern="^[a-z][a-z0-9_]{0,62}\\.[a-z][a-z0-9_]{0,62}$",
+        ),
+    ]
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -186,6 +205,14 @@ class Port(StrictModel):
     description: str | None = None
 
 
+class Edge(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    from_: Annotated[PortRef, Field(alias="from")]
+    to: PortRef
+
+
 class Operator(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -212,3 +239,19 @@ class Operator(StrictModel):
     effects: Effects
     network: NetworkAccess
     resources: Resources
+
+
+class PipelineVersion(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.pipeline_version/v1"]
+    id: PipelineVersionId
+    project_id: ProjectId
+    parent_id: Annotated[
+        PipelineVersionId | None,
+        Field(description="Version this one was derived from. Absent for the first version."),
+    ] = None
+    nodes: list[Node]
+    edges: list[Edge]
+    created_at: Timestamp

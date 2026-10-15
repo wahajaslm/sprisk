@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "PipelineVersion": {
+      "title": "PipelineVersion",
+      "description": "Immutable typed graph of pinned operators (arch doc §4, §5). Structural checks (at least one node, unique node ids, known ports, no cycles) belong to the Rust compiler, not this schema.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "id", "project_id", "nodes", "edges", "created_at"],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.pipeline_version/v1"] },
+        "id": { "$ref": "#/$defs/PipelineVersionId" },
+        "project_id": { "$ref": "#/$defs/ProjectId" },
+        "parent_id": {
+          "$ref": "#/$defs/PipelineVersionId",
+          "description": "Version this one was derived from. Absent for the first version."
+        },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/Node" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/Edge" } },
+        "created_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "Node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operator", "params"],
+      "properties": {
+        "id": { "$ref": "#/$defs/NodeId" },
+        "operator": { "$ref": "#/$defs/OperatorRef" },
+        "params": { "$ref": "#/$defs/Params" }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "#/$defs/PortRef" },
+        "to": { "$ref": "#/$defs/PortRef" }
+      }
+    },
+    "PortRef": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,62}\\.[a-z][a-z0-9_]{0,62}$",
+      "description": "`<node_id>.<port_name>`."
+    }
+  }
+}
