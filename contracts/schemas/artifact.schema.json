@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sprisk.dev/schemas/artifact.schema.json",
+  "title": "Artifact",
+  "description": "Immutable, content-addressed output of a step attempt (arch doc §4, §10).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "project_id",
+    "producer_attempt_id",
+    "content_hash",
+    "media_type",
+    "size_bytes",
+    "uri",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "enum": ["sprisk.artifact/v1"] },
+    "id": { "$ref": "#/$defs/ArtifactId" },
+    "project_id": { "$ref": "#/$defs/ProjectId" },
+    "producer_attempt_id": { "$ref": "#/$defs/StepAttemptId" },
+    "content_hash": { "$ref": "#/$defs/ContentHash" },
+    "media_type": {
+      "type": "string",
+      "pattern": "^[a-z]+/[a-z0-9.+-]+$",
+      "description": "IANA media type of the stored bytes."
+    },
+    "schema_ref": {
+      "$ref": "#/$defs/SchemaId",
+      "description": "Declared data schema. Absent for artifacts without a tabular schema, such as model bundles."
+    },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "uri": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9+.-]*://.+$",
+      "description": "Storage location. Opaque to domain logic; resolved by the artifact store."
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "ArtifactId": { "type": "string", "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$" },
+    "ProjectId": { "type": "string", "pattern": "^prj_[0-9A-HJKMNP-TV-Z]{26}$" },
+    "StepAttemptId": { "type": "string", "pattern": "^att_[0-9A-HJKMNP-TV-Z]{26}$" },
+    "SchemaId": { "type": "string", "pattern": "^sch_[0-9A-HJKMNP-TV-Z]{26}$" },
+    "ContentHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}
