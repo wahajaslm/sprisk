@@ -25,6 +25,12 @@ enum Behave {
     Silent,
     Crash,
     BadHash,
+    /// Sends progress forever, never a heartbeat.
+    Chatter,
+    WrongPort,
+    RemoteUri,
+    /// Points its manifest at a file in another attempt's staging directory.
+    Escape,
 }
 
 /// node id -> behaviour per attempt number (1-based); missing entries succeed.
@@ -36,14 +42,20 @@ struct Log {
     leases: Vec<LeaseAttempt>,
 }
 
+#[derive(Default)]
 struct FakeWorkers {
     script: Script,
     log: Arc<Mutex<Log>>,
+    fail_spawn: bool,
+    /// Node whose lease cannot be delivered (the worker died before reading it).
+    fail_send: Option<&'static str>,
 }
 
 struct FakeWorker {
     id: WorkerId,
     script: Script,
+    fail_send: Option<&'static str>,
+    chatter: Option<String>,
     log: Arc<Mutex<Log>>,
     replies: VecDeque<Result<WorkerMessage, WorkerError>>,
 }
@@ -51,6 +63,9 @@ struct FakeWorker {
 impl Workers for FakeWorkers {
     type Worker = FakeWorker;
     async fn spawn(&mut self) -> Result<FakeWorker, WorkerError> {
+        if self.fail_spawn {
+            return Err(WorkerError::Spawn(std::io::Error::other("no python")));
+        }
         let mut log = self.log.lock().unwrap();
         log.spawned += 1;
         Ok(FakeWorker {
@@ -58,6 +73,8 @@ impl Workers for FakeWorkers {
                 .parse()
                 .unwrap(),
             script: self.script.clone(),
+            fail_send: self.fail_send.take(),
+            chatter: None,
             log: self.log.clone(),
             replies: VecDeque::new(),
         })
@@ -73,6 +90,10 @@ impl Worker for FakeWorker {
         let WorkerMessage::LeaseAttempt(lease) = message else {
             return Ok(());
         };
+        if self.fail_send == Some(lease.node_id.as_str()) {
+            self.fail_send = None;
+            return Err(WorkerError::Exited);
+        }
         let tries = {
             let mut log = self.log.lock().unwrap();
             log.leases.push(lease.clone());
@@ -87,11 +108,19 @@ impl Worker for FakeWorker {
             .get(node.as_str())
             .and_then(|b| b.get(tries - 1).copied())
             .unwrap_or(Behave::Succeed);
+        self.chatter =
+            matches!(behave, Behave::Chatter).then(|| lease.attempt_id.as_str().to_owned());
         self.replies = replies(lease, behave);
         Ok(())
     }
 
     async fn recv(&mut self) -> Result<WorkerMessage, WorkerError> {
+        if let Some(attempt) = &self.chatter {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            return msg(
+                json!({"type": "progress", "attempt_id": attempt, "completed": 1, "total": 2}),
+            );
+        }
         match self.replies.pop_front() {
             Some(reply) => reply,
             None => std::future::pending().await,
@@ -116,7 +145,8 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
         Behave::FailPermanent => [fail("permanent")].into(),
         Behave::Silent => [msg(json!({"type": "heartbeat", "attempt_id": attempt}))].into(),
         Behave::Crash => [Err(WorkerError::Exited)].into(),
-        Behave::Succeed | Behave::BadHash => {
+        Behave::Chatter => VecDeque::new(),
+        _ => {
             let staging = url::Url::parse(&lease.staging_uri)
                 .unwrap()
                 .to_file_path()
@@ -125,7 +155,13 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
             let mut out: VecDeque<_> = outputs_of(lease.operator.as_str())
                 .iter()
                 .map(|port| {
-                    let path = staging.join(port);
+                    let path = if matches!(behave, Behave::Escape) {
+                        let other = staging.parent().unwrap().join("att_other");
+                        std::fs::create_dir_all(&other).unwrap();
+                        other.join(port)
+                    } else {
+                        staging.join(port)
+                    };
                     let bytes = format!("{} {port}", lease.node_id.as_str());
                     std::fs::write(&path, &bytes).unwrap();
                     let hash = if matches!(behave, Behave::BadHash) {
@@ -133,9 +169,19 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
                     } else {
                         sha256(bytes.as_bytes())
                     };
+                    let port = if matches!(behave, Behave::WrongPort) {
+                        "extra"
+                    } else {
+                        port
+                    };
+                    let uri = if matches!(behave, Behave::RemoteUri) {
+                        format!("s3://bucket/{port}")
+                    } else {
+                        url::Url::from_file_path(&path).unwrap().to_string()
+                    };
                     msg(
                         json!({"type": "artifact_manifest", "attempt_id": attempt, "port": port,
-                               "staging_uri": url::Url::from_file_path(&path).unwrap().to_string(),
+                               "staging_uri": uri,
                                "content_hash": hash, "media_type": "application/octet-stream",
                                "size_bytes": bytes.len()}),
                     )
@@ -209,27 +255,62 @@ async fn run_with(script: Script) -> (Env, RunStatus) {
 }
 
 async fn run_with_settings(script: Script, settings: Settings) -> (Env, RunStatus) {
+    let workers = FakeWorkers {
+        script,
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(workers, settings, &[], None, "queued").await;
+    (env, status.unwrap())
+}
+
+fn short_lease() -> Settings {
+    Settings {
+        lease: std::time::Duration::from_millis(50),
+        ..Settings::default()
+    }
+}
+
+/// Runs `plan()` with earlier attempts already stored (`(node, number, state)`), optionally
+/// marking one node's operator side-effecting.
+async fn setup(
+    workers: FakeWorkers,
+    settings: Settings,
+    earlier: &[(&str, u64, &str)],
+    side_effecting: Option<&str>,
+    run_status: &str,
+) -> (Env, Result<RunStatus, sprisk_scheduler::SchedulerError>) {
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteStore::in_memory().await.unwrap();
     let run: Run = parse(
         &json!({"schema_version": "sprisk.run/v1", "id": RUN,
                 "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
                 "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-                "status": "queued", "created_at": "2026-10-16T10:00:00Z"})
+                "status": run_status, "created_at": "2026-10-16T10:00:00Z"})
         .to_string(),
     )
     .unwrap();
     store.insert_run(&run).await.unwrap();
-    let artifacts = ArtifactStore::local(dir.path()).unwrap();
-    let log = Arc::new(Mutex::new(Log::default()));
-    let workers = FakeWorkers {
-        script,
-        log: log.clone(),
-    };
-    let status = Scheduler::new(&store, &artifacts, workers, settings)
-        .run(&run.id, &plan())
-        .await
+    for (i, (node, number, state)) in earlier.iter().enumerate() {
+        let attempt: sprisk_contracts::Attempt = parse(
+            &json!({"schema_version": "sprisk.attempt/v1",
+                    "id": format!("att_01JABCDEFGHJKMNPQRSTVWXY{i:02}"),
+                    "run_id": RUN, "node_id": node, "number": number, "state": state,
+                    "created_at": "2026-10-16T10:00:00Z"})
+            .to_string(),
+        )
         .unwrap();
+        store.insert_attempt(&attempt).await.unwrap();
+    }
+    let mut plan = plan();
+    if let Some(node) = side_effecting {
+        let step = plan.steps.iter_mut().find(|s| s.node_id == node).unwrap();
+        step.operator.effects = sprisk_contracts::Effects::SideEffecting;
+    }
+    let artifacts = ArtifactStore::local(dir.path()).unwrap();
+    let log = workers.log.clone();
+    let status = Scheduler::new(&store, &artifacts, workers, settings)
+        .run(&run.id, &plan)
+        .await;
     (
         Env {
             _dir: dir,
@@ -339,11 +420,8 @@ async fn permanent_failure_fails_the_run_without_retry() {
 #[tokio::test]
 async fn silent_worker_times_out_and_a_new_worker_retries() {
     // A short lease keeps the test fast; the silent worker never answers.
-    let settings = Settings {
-        lease: std::time::Duration::from_millis(50),
-        ..Settings::default()
-    };
-    let (env, status) = run_with_settings([("model", vec![Behave::Silent])].into(), settings).await;
+    let (env, status) =
+        run_with_settings([("model", vec![Behave::Silent])].into(), short_lease()).await;
     assert_eq!(status, RunStatus::Succeeded);
     assert_eq!(
         states(&env, "model").await,
@@ -413,10 +491,7 @@ async fn attempt_left_in_flight_by_a_crashed_control_plane_times_out_and_is_retr
         .unwrap();
 
     let artifacts = ArtifactStore::local(dir.path()).unwrap();
-    let workers = FakeWorkers {
-        script: Script::new(),
-        log: Arc::default(),
-    };
+    let workers = FakeWorkers::default();
     let status = Scheduler::new(&store, &artifacts, workers, Settings::default())
         .run(&run.id, &plan())
         .await
@@ -435,4 +510,108 @@ async fn attempt_left_in_flight_by_a_crashed_control_plane_times_out_and_is_retr
         load,
         [(1, AttemptState::TimedOut), (2, AttemptState::Succeeded)]
     );
+}
+
+async fn run_status(env: &Env) -> RunStatus {
+    env.store
+        .get_run(&RUN.parse().unwrap())
+        .await
+        .unwrap()
+        .status
+}
+
+#[tokio::test]
+async fn progress_without_heartbeats_does_not_keep_the_lease() {
+    let (env, status) =
+        run_with_settings([("split", vec![Behave::Chatter])].into(), short_lease()).await;
+    assert_eq!(status, RunStatus::Succeeded);
+    assert_eq!(
+        states(&env, "split").await,
+        vec![AttemptState::TimedOut, AttemptState::Succeeded]
+    );
+}
+
+#[tokio::test]
+async fn side_effecting_step_is_not_retried_after_a_transient_failure() {
+    let workers = FakeWorkers {
+        script: [("load", vec![Behave::FailTransient])].into(),
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(workers, Settings::default(), &[], Some("load"), "queued").await;
+    assert_eq!(status.unwrap(), RunStatus::Failed);
+    assert_eq!(states(&env, "load").await, vec![AttemptState::Failed]);
+}
+
+#[tokio::test]
+async fn side_effecting_step_interrupted_by_a_crash_is_not_rerun() {
+    let earlier = [("load", 1, "running")];
+    let (env, status) = setup(
+        FakeWorkers::default(),
+        Settings::default(),
+        &earlier,
+        Some("load"),
+        "running",
+    )
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Failed);
+    assert_eq!(states(&env, "load").await, vec![AttemptState::TimedOut]);
+    assert!(env.log.lock().unwrap().leases.is_empty());
+}
+
+#[tokio::test]
+async fn rerun_at_the_attempt_cap_starts_no_new_attempt() {
+    let earlier = [
+        ("load", 1, "failed"),
+        ("load", 2, "failed"),
+        ("load", 3, "timed_out"),
+    ];
+    let (env, status) = setup(
+        FakeWorkers::default(),
+        Settings::default(),
+        &earlier,
+        None,
+        "running",
+    )
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Failed);
+    assert_eq!(states(&env, "load").await.len(), 3);
+}
+
+#[tokio::test]
+async fn worker_that_cannot_start_fails_the_run_and_leaves_no_queued_attempt() {
+    let workers = FakeWorkers {
+        fail_spawn: true,
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(workers, Settings::default(), &[], None, "queued").await;
+    assert!(status.is_err());
+    assert_eq!(run_status(&env).await, RunStatus::Failed);
+    assert!(states(&env, "load").await.is_empty());
+}
+
+#[tokio::test]
+async fn lease_that_cannot_be_delivered_fails_the_attempt_and_retries() {
+    let workers = FakeWorkers {
+        fail_send: Some("load"),
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(workers, Settings::default(), &[], None, "queued").await;
+    assert_eq!(status.unwrap(), RunStatus::Succeeded);
+    assert_eq!(
+        states(&env, "load").await,
+        vec![AttemptState::Failed, AttemptState::Succeeded]
+    );
+}
+
+#[tokio::test]
+async fn bad_manifests_fail_the_attempt_permanently() {
+    for behave in [Behave::WrongPort, Behave::RemoteUri, Behave::Escape] {
+        let (env, status) = run_with([("load", vec![behave])].into()).await;
+        assert_eq!(status, RunStatus::Failed, "{behave:?}");
+        assert_eq!(
+            states(&env, "load").await,
+            vec![AttemptState::Failed],
+            "{behave:?}"
+        );
+    }
 }

@@ -196,40 +196,64 @@ async fn extend_lease_moves_expiry_of_a_live_attempt_only() {
     assert!(matches!(err, StoreError::NotLive { .. }), "{err}");
 }
 
+async fn uploading_attempt(store: &SqliteStore, attempt: &Attempt) {
+    let worker = "wrk_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap();
+    store
+        .lease_attempt(&attempt.id, &worker, &LATER.parse().unwrap(), NOW)
+        .await
+        .unwrap();
+    for to in [AttemptState::Running, AttemptState::Uploading] {
+        store
+            .transition_attempt(&attempt.id, to, NOW)
+            .await
+            .unwrap();
+    }
+}
+
 #[tokio::test]
-async fn committed_outputs_are_found_by_attempt_and_port() {
+async fn succeeding_records_outputs_by_port_with_the_state_change() {
     let (store, _, attempt) = store_with_queued_attempt().await;
+    uploading_attempt(&store, &attempt).await;
     let mut artifact: Artifact = fixture("artifact", "parquet-with-schema.json");
     artifact.producer_attempt_id = attempt.id.clone();
 
-    store
-        .commit_output(&attempt.id, "train", &artifact)
+    let done = store
+        .succeed_attempt(
+            &attempt.id,
+            &[("train".to_owned(), artifact.clone())],
+            LATER,
+        )
         .await
         .unwrap();
 
+    assert_eq!(done.state, AttemptState::Succeeded);
     let outputs = store.outputs(&attempt.id).await.unwrap();
     assert_eq!(outputs, vec![("train".to_owned(), artifact.clone())]);
     assert_eq!(store.get_artifact(&artifact.id).await.unwrap(), artifact);
 }
 
 #[tokio::test]
-async fn committing_the_same_port_twice_is_a_conflict() {
+async fn succeeding_an_attempt_that_is_not_uploading_records_nothing() {
     let (store, _, attempt) = store_with_queued_attempt().await;
+    uploading_attempt(&store, &attempt).await;
     let artifact: Artifact = fixture("artifact", "parquet-with-schema.json");
-    let mut other = artifact.clone();
-    other.id = "art_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    let outputs = [("train".to_owned(), artifact.clone())];
     store
-        .commit_output(&attempt.id, "train", &artifact)
+        .succeed_attempt(&attempt.id, &outputs, LATER)
         .await
         .unwrap();
+    let mut other = artifact.clone();
+    other.id = "art_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
 
+    // A duplicate completion for the same attempt (at-least-once delivery).
     let err = store
-        .commit_output(&attempt.id, "train", &other)
+        .succeed_attempt(&attempt.id, &[("train".to_owned(), other.clone())], LATER)
         .await
         .unwrap_err();
 
-    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    assert!(matches!(err, StoreError::Transition(_)), "{err}");
     assert!(store.get_artifact(&other.id).await.is_err(), "rolled back");
+    assert_eq!(store.outputs(&attempt.id).await.unwrap().len(), 1);
 }
 
 #[tokio::test]

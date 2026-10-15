@@ -197,28 +197,44 @@ impl SqliteStore {
         Ok(attempt)
     }
 
-    /// Record a committed artifact and the attempt port that produced it, in one transaction.
-    pub async fn commit_output(
+    /// `uploading -> succeeded`, recording each output artifact and the port that produced it,
+    /// all in one transaction. A duplicate or late completion fails the transition and records nothing.
+    pub async fn succeed_attempt(
         &self,
-        attempt: &AttemptId,
-        port: &str,
-        artifact: &Artifact,
-    ) -> Result<(), StoreError> {
+        id: &AttemptId,
+        outputs: &[(String, Artifact)],
+        at: &str,
+    ) -> Result<Attempt, StoreError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("INSERT INTO artifacts (id, content_hash, body) VALUES (?, ?, ?)")
-            .bind(artifact.id.as_str())
-            .bind(artifact.content_hash.as_str())
-            .bind(to_json(artifact)?)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("INSERT INTO attempt_outputs (attempt_id, port, artifact_id) VALUES (?, ?, ?)")
-            .bind(attempt.as_str())
+        let mut attempt = read_attempt(&mut tx, id).await?;
+        let from = attempt.state;
+        attempt.state = transition(from, AttemptState::Succeeded)?;
+        for (port, artifact) in outputs {
+            sqlx::query("INSERT INTO artifacts (id, content_hash, body) VALUES (?, ?, ?)")
+                .bind(artifact.id.as_str())
+                .bind(artifact.content_hash.as_str())
+                .bind(to_json(artifact)?)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(
+                "INSERT INTO attempt_outputs (attempt_id, port, artifact_id) VALUES (?, ?, ?)",
+            )
+            .bind(id.as_str())
             .bind(port)
             .bind(artifact.id.as_str())
             .execute(&mut *tx)
             .await?;
+        }
+        write_attempt(&mut tx, &attempt).await?;
+        audit(
+            &mut tx,
+            at,
+            id.as_str(),
+            &format!("attempt.{from}->succeeded"),
+        )
+        .await?;
         tx.commit().await?;
-        Ok(())
+        Ok(attempt)
     }
 
     /// `(port, artifact)` pairs an attempt committed, by port name.

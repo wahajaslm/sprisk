@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tokio::time::Instant;
+
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
@@ -153,15 +155,28 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             .iter()
             .filter(|a| a.node_id.as_str() == step.node_id)
             .count() as u64;
-        // Side-effecting steps are never retried automatically (arch doc §9).
+        // Side-effecting steps get one attempt ever, even across reruns (arch doc §9).
         let cap = if step.operator.effects == Effects::SideEffecting {
-            previous + 1
+            1
         } else {
             self.settings.max_attempts
         };
-        for number in previous + 1..=cap.max(previous + 1) {
+        for number in previous + 1..=cap {
+            let worker = match self.worker.take() {
+                Some(worker) => worker,
+                None => match self.workers.spawn().await {
+                    Ok(worker) => worker,
+                    Err(e) => {
+                        self.finish(run_id, RunStatus::Failed).await?;
+                        return Err(e.into());
+                    }
+                },
+            };
             let attempt = self.new_attempt(run_id, step, number).await?;
-            match self.try_attempt(run_id, step, &attempt, done).await? {
+            match self
+                .try_attempt(run_id, step, &attempt, done, worker)
+                .await?
+            {
                 End::Succeeded => return Ok(Some(attempt.id)),
                 End::Permanent => return Ok(None),
                 End::Retryable => {}
@@ -198,50 +213,63 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         Ok(attempt)
     }
 
+    /// Lease one attempt to `worker` and follow it to the end. The worker is kept for the
+    /// next attempt only when this one succeeded; after any failure its state is unknown.
     async fn try_attempt(
         &mut self,
         run_id: &RunId,
         step: &Step,
         attempt: &Attempt,
         done: &HashMap<String, AttemptId>,
+        mut worker: W::Worker,
     ) -> Result<End, SchedulerError> {
         let id = &attempt.id;
         let lease = self.lease_message(run_id, step, id, done).await?;
-        let worker = match self.worker.take() {
-            Some(worker) => worker,
-            None => self.workers.spawn().await?,
-        };
-        let mut worker = worker;
         self.store
             .lease_attempt(id, worker.id(), &self.expiry()?, &now())
             .await?;
-        worker.send(&lease).await?;
+        if let Err(e) = worker.send(&lease).await {
+            return self
+                .lost(
+                    step,
+                    id,
+                    AttemptState::Failed,
+                    "worker_lost",
+                    &e.to_string(),
+                )
+                .await;
+        }
         self.store
             .transition_attempt(id, AttemptState::Running, &now())
             .await?;
 
+        // Only heartbeats renew the lease; other traffic does not.
+        let mut deadline = Instant::now() + self.settings.lease;
         let mut manifests: Vec<ArtifactManifest> = Vec::new();
         loop {
-            let message = match tokio::time::timeout(self.settings.lease, worker.recv()).await {
+            let message = match tokio::time::timeout_at(deadline, worker.recv()).await {
                 Err(_) => {
-                    // Dropping the worker kills it; the retry gets a fresh one.
-                    let e = error("lease_expired", "no message before the lease expired")?;
-                    self.store
-                        .fail_attempt(id, AttemptState::TimedOut, &e, &now())
-                        .await?;
-                    return Ok(self.retryable(step));
+                    let reason = "no heartbeat before the lease expired";
+                    return self
+                        .lost(step, id, AttemptState::TimedOut, "lease_expired", reason)
+                        .await;
                 }
                 Ok(Err(e)) => {
-                    let e = error("worker_lost", &e.to_string())?;
-                    self.store
-                        .fail_attempt(id, AttemptState::Failed, &e, &now())
-                        .await?;
-                    return Ok(self.retryable(step));
+                    return self
+                        .lost(
+                            step,
+                            id,
+                            AttemptState::Failed,
+                            "worker_lost",
+                            &e.to_string(),
+                        )
+                        .await;
                 }
                 Ok(Ok(message)) => message,
             };
             match message {
                 WorkerMessage::Heartbeat(m) if &m.attempt_id == id => {
+                    deadline = Instant::now() + self.settings.lease;
                     self.store.extend_lease(id, &self.expiry()?).await?;
                 }
                 WorkerMessage::Progress(m) if &m.attempt_id == id => {}
@@ -250,7 +278,6 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                     self.store
                         .fail_attempt(id, AttemptState::Failed, &m.error, &now())
                         .await?;
-                    self.worker = Some(worker);
                     return Ok(match m.failure_kind {
                         FailureKind::Transient => self.retryable(step),
                         FailureKind::Permanent => End::Permanent,
@@ -261,10 +288,10 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                         .transition_attempt(id, AttemptState::Uploading, &now())
                         .await?;
                     let end = self.commit(run_id, step, attempt, &manifests).await?;
-                    if matches!(end, End::Succeeded) {
-                        worker.send(&ack(id)?).await?;
+                    // The ack is a courtesy; a worker that cannot take it is simply not reused.
+                    if matches!(end, End::Succeeded) && worker.send(&ack(id)?).await.is_ok() {
+                        self.worker = Some(worker);
                     }
-                    self.worker = Some(worker);
                     return Ok(end);
                 }
                 other => {
@@ -273,6 +300,21 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 }
             }
         }
+    }
+
+    /// The worker went away or went silent: record why and drop it.
+    async fn lost(
+        &self,
+        step: &Step,
+        id: &AttemptId,
+        to: AttemptState,
+        code: &str,
+        reason: &str,
+    ) -> Result<End, SchedulerError> {
+        self.store
+            .fail_attempt(id, to, &error(code, reason)?, &now())
+            .await?;
+        Ok(self.retryable(step))
     }
 
     fn retryable(&self, step: &Step) -> End {
@@ -307,15 +349,18 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             return self.reject(id, &reason).await;
         }
         let project_id = self.store.get_run(run_id).await?.project_id;
+        let staging = self.artifacts.staging_dir(id.as_str())?;
+        let mut outputs = Vec::new();
         for m in manifests {
-            let Some(staged) = local_path(&m.staging_uri) else {
-                return self
-                    .reject(
-                        id,
-                        &format!("unsupported staging uri {}", m.staging_uri.as_str()),
-                    )
-                    .await;
+            let Some(staged) = local_path(m.staging_uri.as_str()) else {
+                let reason = format!("unsupported staging uri {}", m.staging_uri.as_str());
+                return self.reject(id, &reason).await;
             };
+            // Only this attempt's own staging directory; never another attempt's files.
+            if !staged.starts_with(&staging) || staged.components().any(|c| c.as_os_str() == "..") {
+                let reason = format!("{} is outside {}", staged.display(), staging.display());
+                return self.reject(id, &reason).await;
+            }
             let committed = match self.artifacts.commit(&staged, &m.content_hash).await {
                 Ok(committed) => committed,
                 Err(e) => return self.reject(id, &e.to_string()).await,
@@ -334,13 +379,10 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             if let Some(schema_ref) = &m.schema_ref {
                 artifact["schema_ref"] = json!(schema_ref);
             }
-            self.store
-                .commit_output(id, m.port.as_str(), &build("artifact", artifact)?)
-                .await?;
+            outputs.push((m.port.to_string(), build("artifact", artifact)?));
         }
-        self.store
-            .transition_attempt(id, AttemptState::Succeeded, &now())
-            .await?;
+        // Every object is promoted before any row is written (promote, then DB commit).
+        self.store.succeed_attempt(id, &outputs, &now()).await?;
         Ok(End::Succeeded)
     }
 
