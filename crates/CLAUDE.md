@@ -1,0 +1,22 @@
+# crates/ (Rust control plane)
+
+One Cargo workspace, one binary. Crates are modules, not services. Arch doc §2, §9, §11.
+
+## Rust owns
+Identity, permissions, registry resolution, graph typing, scheduling, leases, retry, cancellation, cache policy, artifact commits, run history, approval gates, API, events.
+
+## Rules
+- Wire types come from `sprisk-contracts` (generated). Never redefine them.
+- Repository traits hide SQLite vs Postgres. Domain code never names a dialect.
+- Migrations: separate per dialect, both tested.
+- Job states follow arch doc §9 exactly. Retries create new `StepAttempt` rows.
+- Completion is idempotent by attempt ID. A late worker result must never overwrite a newer success.
+- Artifact commit: worker writes to staging → verify hash/manifest → DB commit → promote. Reconcile on crash. No fake cross-store transactions.
+- Never auto-retry side-effecting nodes.
+- Cache key must include every field in arch doc §9 "Caching". Never cache nondeterministic or secret-bearing steps.
+- Workers never touch metadata tables.
+- No `unwrap()`/`expect()` outside tests. Use `thiserror` in libs, `anyhow` only in the binary.
+- Telemetry (`tracing`) is separate from scientific run records.
+
+## Checks
+`cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
