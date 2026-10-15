@@ -66,6 +66,29 @@ Simple, tested, boring, correct. The goal is code a tired engineer understands a
 - Prefer the standard library and the stack already chosen. New dependency = justify it.
 - Delete dead code. No commented-out code. No TODOs without an issue.
 
+### Use mature libraries
+
+Never hand-build what a mature, maintained library already does. Write only the sprisk-specific part (policy, verification, domain rules) on top.
+
+| Need | Rust | Python | TS |
+| --- | --- | --- | --- |
+| Object/artifact storage | `object_store` | `fsspec` | — |
+| SQL | `sqlx` | `duckdb` | — |
+| Graphs (cycles, topo order) | `petgraph` | `networkx` | `@xyflow/react` + `elkjs` |
+| IDs / time | `ulid`, `jiff` | `python-ulid`, stdlib `datetime` | `ulid` |
+| Async, IPC framing | `tokio`, `tokio-util` codecs | `asyncio` | — |
+| HTTP API | `axum`, `tower-http` | `httpx` (client) | TanStack Query |
+| CLI | `clap` | `typer` | — |
+| Errors | `thiserror` (libs), `anyhow` (bins) | exception classes | — |
+| Logging / tracing | `tracing`, OpenTelemetry | `structlog` | — |
+| Config / manifests | `serde`, `serde_yaml` | `pydantic-settings` | — |
+| Data, ML, stats | — | `polars`, `duckdb`, `pyarrow`, `scikit-learn`, `scipy`, `statsmodels`, `optuna` | — |
+| Validation | generated contracts | `pydantic` | `ajv` |
+| PII detection | — | `presidio` | — |
+| Testing | `cargo test`, `tempfile`, `proptest` | `pytest`, `hypothesis` | `vitest`, Testing Library, Playwright |
+
+A library not in this table needs a one-line justification in the commit message.
+
 ### Error handling
 
 - Fail loudly and early. Validate at boundaries (API input, worker messages, file reads, LLM output).
