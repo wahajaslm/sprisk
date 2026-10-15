@@ -12,6 +12,7 @@ const entities: [keyof Entities, string][] = [
   ["PipelineVersion", "pipeline_version"],
   ["Run", "run"],
   ["Attempt", "attempt"],
+  ["WorkerMessage", "worker_message"],
 ];
 
 function fixtures(dir: string, kind: "valid" | "invalid"): [string, unknown][] {

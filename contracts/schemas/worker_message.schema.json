@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "WorkerMessage": {
+      "title": "WorkerMessage",
+      "description": "Local worker protocol message (arch doc §11). Tagged by `type`.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Handshake"
+        },
+        {
+          "$ref": "#/$defs/LeaseAttempt"
+        },
+        {
+          "$ref": "#/$defs/Heartbeat"
+        },
+        {
+          "$ref": "#/$defs/Progress"
+        },
+        {
+          "$ref": "#/$defs/ArtifactManifest"
+        },
+        {
+          "$ref": "#/$defs/Complete"
+        },
+        {
+          "$ref": "#/$defs/Fail"
+        },
+        {
+          "$ref": "#/$defs/Cancel"
+        },
+        {
+          "$ref": "#/$defs/Acknowledge"
+        }
+      ]
+    },
+    "Handshake": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Worker → control plane, first message. Declares protocol version and operators the worker can run.",
+      "required": [
+        "type",
+        "protocol_version",
+        "worker_id",
+        "operators"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "handshake"
+          ]
+        },
+        "protocol_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.worker/v1"
+          ]
+        },
+        "worker_id": {
+          "$ref": "#/$defs/WorkerId"
+        },
+        "operators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperatorRef"
+          }
+        }
+      }
+    },
+    "LeaseAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Control plane → worker. Grants one attempt until lease_expires_at. Inputs are artifact references, never data.",
+      "required": [
+        "type",
+        "attempt_id",
+        "run_id",
+        "node_id",
+        "operator",
+        "params",
+        "inputs",
+        "lease_expires_at"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "lease_attempt"
+          ]
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/AttemptId"
+        },
+        "run_id": {
+          "$ref": "#/$defs/RunId"
+        },
+        "node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "operator": {
+          "$ref": "#/$defs/OperatorRef"
+        },
+        "params": {
+          "$ref": "#/$defs/Params"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputBinding"
+          }
+        },
+        "lease_expires_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "Heartbeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Worker → control plane. Extends the lease.",
+      "required": [
+        "type",
+        "attempt_id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "heartbeat"
+          ]
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/AttemptId"
+        }
+      }
+    },
+    "Progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Worker → control plane. Informational only; never authoritative.",
+      "required": [
+        "type",
+        "attempt_id",
+        "completed",
+        "total"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "progress"
+          ]
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/AttemptId"
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ArtifactManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Worker → control plane. One output written to staging. The control plane verifies and commits it.",
+      "required": [
+        "type",
+        "attempt_id",
+        "port",
+        "staging_uri",
+        "content_hash",
+        "media_type",
+        "size_bytes"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "artifact_manifest"
+          ]
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/AttemptId"
+        },
+        "port": {
+          "$ref": "#/$defs/PortName"
+        },
+        "staging_uri": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9+.-]*://.+$"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/ContentHash"
+        },
+        "media_type": {
+          "type": "string",
+          "pattern": "^[a-z]+/[a-z0-9.+-]+$"
+        },
+        "schema_ref": {
+          "$ref": "#/$defs/SchemaId"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Complete": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Worker → control plane. All manifests sent; attempt finished.",
+      "required": [
+        "type",
+        "attempt_id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "complete"
+          ]
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/AttemptId"
+        }
+      }
+    },
+    "Fail": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Worker → control plane. Attempt failed. failure_kind guides retry policy; side-effecting operators are never auto-retried.",
+      "required": [
+        "type",
+        "attempt_id",
+        "error",
+        "failure_kind"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "fail"
+          ]
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/AttemptId"
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        },
+        "failure_kind": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "permanent"
+          ]
+        }
+      }
+    },
+    "Cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Control plane → worker. Stop the attempt.",
+      "required": [
+        "type",
+        "attempt_id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "cancel"
+          ]
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/AttemptId"
+        }
+      }
+    },
+    "Acknowledge": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Control plane → worker. Last message for this attempt was committed.",
+      "required": [
+        "type",
+        "attempt_id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "acknowledge"
+          ]
+        },
+        "attempt_id": {
+          "$ref": "#/$defs/AttemptId"
+        }
+      }
+    },
+    "InputBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "port",
+        "artifact_id"
+      ],
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/PortName"
+        },
+        "artifact_id": {
+          "$ref": "#/$defs/ArtifactId"
+        }
+      }
+    }
+  }
+}

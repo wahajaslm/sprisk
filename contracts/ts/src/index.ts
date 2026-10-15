@@ -12,6 +12,7 @@ export interface Entities {
   PipelineVersion: C.PipelineVersion;
   Run: C.Run;
   Attempt: C.Attempt;
+  WorkerMessage: C.WorkerMessage;
 }
 
 export class ContractError extends Error {}

@@ -136,6 +136,14 @@ export type AttemptState =
   | "timed_out"
   | "skipped"
   | "cache_hit";
+/**
+ * Local worker protocol message (arch doc §11). Tagged by `type`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WorkerMessage".
+ */
+export type WorkerMessage =
+  Handshake | LeaseAttempt | Heartbeat | Progress | ArtifactManifest | Complete | Fail | Cancel | Acknowledge;
 
 export interface Bundle {
   [k: string]: unknown;
@@ -316,4 +324,120 @@ export interface Attempt {
 export interface Error1 {
   code: string;
   message: string;
+}
+/**
+ * Worker → control plane, first message. Declares protocol version and operators the worker can run.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Handshake".
+ */
+export interface Handshake {
+  type: "handshake";
+  protocol_version: "sprisk.worker/v1";
+  worker_id: WorkerId;
+  operators: OperatorRef[];
+}
+/**
+ * Control plane → worker. Grants one attempt until lease_expires_at. Inputs are artifact references, never data.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "LeaseAttempt".
+ */
+export interface LeaseAttempt {
+  type: "lease_attempt";
+  attempt_id: AttemptId;
+  run_id: RunId;
+  node_id: NodeId;
+  operator: OperatorRef;
+  params: Params;
+  inputs: InputBinding[];
+  lease_expires_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "InputBinding".
+ */
+export interface InputBinding {
+  port: PortName;
+  artifact_id: ArtifactId;
+}
+/**
+ * Worker → control plane. Extends the lease.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Heartbeat".
+ */
+export interface Heartbeat {
+  type: "heartbeat";
+  attempt_id: AttemptId;
+}
+/**
+ * Worker → control plane. Informational only; never authoritative.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Progress".
+ */
+export interface Progress {
+  type: "progress";
+  attempt_id: AttemptId;
+  completed: number;
+  total: number;
+}
+/**
+ * Worker → control plane. One output written to staging. The control plane verifies and commits it.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ArtifactManifest".
+ */
+export interface ArtifactManifest {
+  type: "artifact_manifest";
+  attempt_id: AttemptId;
+  port: PortName;
+  staging_uri: string;
+  content_hash: ContentHash;
+  media_type: string;
+  schema_ref?: SchemaId;
+  size_bytes: number;
+}
+/**
+ * Worker → control plane. All manifests sent; attempt finished.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Complete".
+ */
+export interface Complete {
+  type: "complete";
+  attempt_id: AttemptId;
+}
+/**
+ * Worker → control plane. Attempt failed. failure_kind guides retry policy; side-effecting operators are never auto-retried.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Fail".
+ */
+export interface Fail {
+  type: "fail";
+  attempt_id: AttemptId;
+  error: Error;
+  failure_kind: "transient" | "permanent";
+}
+/**
+ * Control plane → worker. Stop the attempt.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Cancel".
+ */
+export interface Cancel {
+  type: "cancel";
+  attempt_id: AttemptId;
+}
+/**
+ * Control plane → worker. Last message for this attempt was committed.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Acknowledge".
+ */
+export interface Acknowledge {
+  type: "acknowledge";
+  attempt_id: AttemptId;
 }

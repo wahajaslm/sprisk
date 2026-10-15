@@ -189,6 +189,95 @@ class AttemptState(StrEnum):
     cache_hit = "cache_hit"
 
 
+class Handshake(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["handshake"]
+    protocol_version: Literal["sprisk.worker/v1"]
+    worker_id: WorkerId
+    operators: list[OperatorRef]
+
+
+class Heartbeat(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["heartbeat"]
+    attempt_id: AttemptId
+
+
+class Progress(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["progress"]
+    attempt_id: AttemptId
+    completed: Annotated[int, Field(ge=0)]
+    total: Annotated[int, Field(ge=0)]
+
+
+class ArtifactManifest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["artifact_manifest"]
+    attempt_id: AttemptId
+    port: PortName
+    staging_uri: Annotated[str, Field(pattern="^[a-z][a-z0-9+.-]*://.+$")]
+    content_hash: ContentHash
+    media_type: Annotated[str, Field(pattern="^[a-z]+/[a-z0-9.+-]+$")]
+    schema_ref: SchemaId | None = None
+    size_bytes: Annotated[int, Field(ge=0)]
+
+
+class Complete(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["complete"]
+    attempt_id: AttemptId
+
+
+class FailureKind(StrEnum):
+    transient = "transient"
+    permanent = "permanent"
+
+
+class Fail(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["fail"]
+    attempt_id: AttemptId
+    error: Error
+    failure_kind: FailureKind
+
+
+class Cancel(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["cancel"]
+    attempt_id: AttemptId
+
+
+class Acknowledge(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["acknowledge"]
+    attempt_id: AttemptId
+
+
+class InputBinding(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    port: PortName
+    artifact_id: ArtifactId
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -269,6 +358,20 @@ class Attempt(StrictModel):
     created_at: Timestamp
 
 
+class LeaseAttempt(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["lease_attempt"]
+    attempt_id: AttemptId
+    run_id: RunId
+    node_id: NodeId
+    operator: OperatorRef
+    params: Params
+    inputs: list[InputBinding]
+    lease_expires_at: Timestamp
+
+
 class Operator(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -311,3 +414,33 @@ class PipelineVersion(StrictModel):
     nodes: list[Node]
     edges: list[Edge]
     created_at: Timestamp
+
+
+class WorkerMessage(
+    RootModel[
+        Handshake
+        | LeaseAttempt
+        | Heartbeat
+        | Progress
+        | ArtifactManifest
+        | Complete
+        | Fail
+        | Cancel
+        | Acknowledge
+    ]
+):
+    root: Annotated[
+        Handshake
+        | LeaseAttempt
+        | Heartbeat
+        | Progress
+        | ArtifactManifest
+        | Complete
+        | Fail
+        | Cancel
+        | Acknowledge,
+        Field(
+            description="Local worker protocol message (arch doc §11). Tagged by `type`.",
+            title="WorkerMessage",
+        ),
+    ]

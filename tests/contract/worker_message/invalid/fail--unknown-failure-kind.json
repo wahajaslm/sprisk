@@ -1,0 +1,9 @@
+{
+  "type": "fail",
+  "attempt_id": "att_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "error": {
+    "code": "oom",
+    "message": "Out of memory."
+  },
+  "failure_kind": "maybe"
+}

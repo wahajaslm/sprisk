@@ -1,0 +1,8 @@
+{
+  "type": "artifact_manifest",
+  "attempt_id": "att_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "port": "model",
+  "staging_uri": "file:///var/sprisk/staging/att_01/model.joblib",
+  "media_type": "application/octet-stream",
+  "size_bytes": 2048
+}

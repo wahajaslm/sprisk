@@ -1,0 +1,8 @@
+{
+  "type": "handshake",
+  "protocol_version": "sprisk.worker/v2",
+  "worker_id": "wrk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "operators": [
+    "sprisk.ml.sklearn_pipeline@1.0.0"
+  ]
+}
