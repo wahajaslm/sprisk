@@ -18,6 +18,7 @@
 | [0014](0014-ai-data-exposure-policy.md) | AI data exposure policy | Accepted |
 | [0015](0015-first-methodology-packs.md) | First methodology packs: exploration, supervised | Accepted |
 | [0016](0016-methodology-chosen-params.md) | Params chosen by methodology: column roles and ParamChoice | Proposed |
+| [0017](0017-gate-b-as-worker-attempt.md) | Gate B runs as a worker attempt | Accepted |
 
 ## Open questions (arch doc §17)
 
