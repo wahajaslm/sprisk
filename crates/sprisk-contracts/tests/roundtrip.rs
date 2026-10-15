@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, Attempt, Operator, PipelineVersion, QuestionVersion, Run, WorkerMessage,
+    Artifact, Attempt, Operator, PipelineVersion, QuestionVersion, Run, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -25,15 +25,16 @@ fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
     paths
 }
 
-fn read_json(path: &Path) -> serde_json::Value {
-    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+fn read(path: &Path) -> String {
+    fs::read_to_string(path).unwrap()
 }
 
 fn check<T: Serialize + DeserializeOwned>(entity: &str) {
     for path in fixtures(entity, "valid") {
-        let original = read_json(&path);
-        let parsed: T = serde_json::from_value(original.clone())
-            .unwrap_or_else(|e| panic!("{} should parse: {e}", path.display()));
+        let text = read(&path);
+        let original: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let parsed: T =
+            parse(&text).unwrap_or_else(|e| panic!("{} should parse: {e}", path.display()));
         let reserialized = serde_json::to_value(&parsed).unwrap();
         assert_eq!(
             reserialized,
@@ -43,9 +44,35 @@ fn check<T: Serialize + DeserializeOwned>(entity: &str) {
         );
     }
     for path in fixtures(entity, "invalid") {
-        let result = serde_json::from_value::<T>(read_json(&path));
+        let result = parse::<T>(&read(&path));
         assert!(result.is_err(), "{} should be rejected", path.display());
     }
+}
+
+const ENTITIES: &[&str] = &[
+    "artifact",
+    "attempt",
+    "operator",
+    "pipeline_version",
+    "question_version",
+    "run",
+    "worker_message",
+];
+
+#[test]
+fn every_fixture_dir_has_an_entity() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/contract");
+    let mut dirs: Vec<String> = fs::read_dir(&root)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|p| p.is_dir())
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    dirs.sort();
+    assert_eq!(
+        dirs, ENTITIES,
+        "add a #[test] and an ENTITIES entry per fixture dir"
+    );
 }
 
 #[test]

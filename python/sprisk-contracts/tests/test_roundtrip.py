@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -29,27 +30,28 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
 ]
 
 
-def cases(kind: str) -> list[tuple[type[BaseModel], Path]]:
+def cases(kind: str) -> list[Any]:
     found = []
     for model, entity in ENTITIES:
         paths = sorted((FIXTURES / entity / kind).glob("*.json"))
         assert paths, f"no fixtures in {FIXTURES / entity / kind}"
-        found += [(model, p) for p in paths]
+        found += [pytest.param(model, p, id=f"{entity}/{p.name}") for p in paths]
     return found
 
 
-def case_id(case: object) -> str:
-    return case.name if isinstance(case, Path) else ""
+def test_every_fixture_dir_has_an_entity() -> None:
+    dirs = {p.name for p in FIXTURES.iterdir() if p.is_dir()}
+    assert dirs == {entity for _, entity in ENTITIES}
 
 
-@pytest.mark.parametrize(("model", "path"), cases("valid"), ids=case_id)
+@pytest.mark.parametrize(("model", "path"), cases("valid"))
 def test_valid_fixture_round_trips(model: type[BaseModel], path: Path) -> None:
     text = path.read_text()
     parsed = model.model_validate_json(text)
-    assert parsed.model_dump(mode="json", exclude_unset=True) == json.loads(text)
+    assert parsed.model_dump(mode="json") == json.loads(text)
 
 
-@pytest.mark.parametrize(("model", "path"), cases("invalid"), ids=case_id)
+@pytest.mark.parametrize(("model", "path"), cases("invalid"))
 def test_invalid_fixture_is_rejected(model: type[BaseModel], path: Path) -> None:
     with pytest.raises(ValidationError):
         model.model_validate_json(path.read_text())

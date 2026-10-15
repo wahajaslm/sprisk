@@ -16,6 +16,14 @@ const entities: [keyof Entities, string][] = [
   ["QuestionVersion", "question_version"],
 ];
 
+it("every fixture dir has an entity", () => {
+  const dirs = readdirSync(fixtureRoot, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .sort();
+  expect(dirs).toEqual(entities.map(([, dir]) => dir).sort());
+});
+
 function fixtures(dir: string, kind: "valid" | "invalid"): [string, unknown][] {
   const path = join(fixtureRoot, dir, kind);
   const files = readdirSync(path).filter((f) => f.endsWith(".json")).sort();

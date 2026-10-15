@@ -18,6 +18,9 @@ Canonical, versioned wire schemas (JSON Schema + OpenAPI). Arch doc §11.
 - No `const`: typify ignores it. Use a single-value `enum`.
 - No `minItems`/`maxItems`: typify ignores them. Array-size rules are structural checks for the Rust compiler.
 - Integer bounds: only `minimum: 0` (→ `u64`) or none (→ `i64`). typify ignores other bounds. Values above 2^53 lose precision in JS; avoid them in wire data.
+- No `null` anywhere on the wire, including inside `params`. Optional means omitted. Always parse through the contract entry point: Rust `sprisk_contracts::parse`, Python `Model.model_validate_json`, TS `parse(entity, json)`. Never raw `serde_json`/`JSON.parse` into a contract type.
+- Patterns use `[0-9]`, never `\\d` (Python's `\\d` matches non-ASCII digits).
+- Open maps (`params`) are not number-safe in TypeScript (floats and ints above 2^53 change). Identity and cache hashes are computed only in Rust, from canonical JSON (RFC 8785).
 - Python models are strict (`StrictModel`). Validate wire input with `model_validate_json`, never coerce.
 - Keep `$defs` local to each schema until typify cross-file `$ref` support is proven.
 - Timestamps: use `$defs/Timestamp` (UTC, whole seconds, `Z`). Pattern only, no `format`, so all three languages enforce it. Hashes: `sha256:<hex>`.

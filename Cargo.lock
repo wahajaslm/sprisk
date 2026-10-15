@@ -162,6 +162,7 @@ dependencies = [
  "regress",
  "serde",
  "serde_json",
+ "thiserror",
  "typify",
 ]
 

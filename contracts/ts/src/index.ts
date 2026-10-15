@@ -30,6 +30,25 @@ export function parse<K extends keyof Entities>(entity: K, json: unknown): Entit
     | ValidateFunction<Entities[K]>
     | undefined;
   if (!validate) throw new ContractError(`Unknown entity: ${entity}`);
+  const nullAt = findNull(json, "$");
+  if (nullAt) throw new ContractError(`Invalid ${entity}: null is not allowed (at ${nullAt})`);
   if (validate(json)) return json;
   throw new ContractError(`Invalid ${entity}: ${ajv.errorsText(validate.errors)}`);
+}
+
+/** Path of the first JSON null, or undefined. Null is never valid wire data. */
+function findNull(value: unknown, path: string): string | undefined {
+  if (value === null) return path;
+  if (Array.isArray(value)) {
+    for (const [i, v] of value.entries()) {
+      const found = findNull(v, `${path}[${i}]`);
+      if (found) return found;
+    }
+  } else if (typeof value === "object" && value !== undefined) {
+    for (const [k, v] of Object.entries(value)) {
+      const found = findNull(v, `${path}.${k}`);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
