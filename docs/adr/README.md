@@ -14,6 +14,7 @@
 | [0010](0010-dockable-workbench.md) | Dockable workbench with versioned view registry and layout, separate from pipelines; Dockview preferred, FlexLayout compared | Proposed |
 | [0011](0011-pluggable-views.md) | Visualizations and code editors consume artifact/query APIs; UI never executes privileged code or copies full datasets | Proposed |
 | [0012](0012-domain-naming.md) | Consistent domain naming | Accepted |
+| [0013](0013-attempt-state-machine.md) | Attempt state machine | Accepted |
 
 ## Open questions (arch doc §17)
 
