@@ -4,6 +4,10 @@ export type ArtifactId = string;
 export type ProjectId = string;
 export type StepAttemptId = string;
 export type ContentHash = string;
+/**
+ * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
+ */
+export type Timestamp = string;
 
 /**
  * Immutable, content-addressed output of a step attempt (arch doc §4, §10).
@@ -27,5 +31,5 @@ export interface Artifact {
    * Storage location. Opaque to domain logic; resolved by the artifact store.
    */
   uri: string;
-  created_at: string;
+  created_at: Timestamp;
 }

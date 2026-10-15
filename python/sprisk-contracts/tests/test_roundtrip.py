@@ -18,12 +18,12 @@ def fixtures(kind: str) -> list[Path]:
 
 @pytest.mark.parametrize("path", fixtures("valid"), ids=lambda p: p.name)
 def test_valid_artifact_round_trips(path: Path) -> None:
-    original = json.loads(path.read_text())
-    artifact = Artifact.model_validate(original)
-    assert artifact.model_dump(mode="json", exclude_unset=True) == original
+    text = path.read_text()
+    artifact = Artifact.model_validate_json(text)
+    assert artifact.model_dump(mode="json", exclude_unset=True) == json.loads(text)
 
 
 @pytest.mark.parametrize("path", fixtures("invalid"), ids=lambda p: p.name)
 def test_invalid_artifact_is_rejected(path: Path) -> None:
     with pytest.raises(ValidationError):
-        Artifact.model_validate(json.loads(path.read_text()))
+        Artifact.model_validate_json(path.read_text())

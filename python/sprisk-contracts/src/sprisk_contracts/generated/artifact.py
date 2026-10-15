@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from typing import Annotated, Literal
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
+from pydantic import ConfigDict, Field, RootModel
+from sprisk_contracts.base import StrictModel
 
 
 class ArtifactId(RootModel[str]):
@@ -26,7 +27,17 @@ class ContentHash(RootModel[str]):
     root: Annotated[str, Field(pattern="^sha256:[0-9a-f]{64}$")]
 
 
-class Artifact(BaseModel):
+class Timestamp(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.",
+            pattern="^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$",
+        ),
+    ]
+
+
+class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -53,4 +64,4 @@ class Artifact(BaseModel):
             pattern="^[a-z][a-z0-9+.-]*://.+$",
         ),
     ]
-    created_at: AwareDatetime
+    created_at: Timestamp

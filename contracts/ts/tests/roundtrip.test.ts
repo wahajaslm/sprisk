@@ -8,7 +8,7 @@ const fixtureRoot = join(import.meta.dirname, "../../../tests/contract/artifact"
 
 function fixtures(kind: "valid" | "invalid"): [string, unknown][] {
   const dir = join(fixtureRoot, kind);
-  const files = readdirSync(dir).sort();
+  const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
   expect(files.length).toBeGreaterThan(0);
   return files.map((f) => [f, JSON.parse(readFileSync(join(dir, f), "utf8"))]);
 }

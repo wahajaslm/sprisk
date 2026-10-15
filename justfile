@@ -9,12 +9,14 @@ contracts-gen:
         --output-model-type pydantic_v2.BaseModel --extra-fields forbid --output-datetime-class AwareDatetime \
         --enum-field-as-literal one --use-annotated --field-constraints --target-python-version 3.12 \
         --disable-timestamp --formatters ruff-format \
+        --base-class sprisk_contracts.base.StrictModel \
         --custom-file-header '# Generated from contracts/schemas. Do not edit.'
     pnpm -C contracts/ts gen
 
 # Fail if generated code is stale.
 contracts-check: contracts-gen
-    git diff --exit-code -- python/sprisk-contracts/src/sprisk_contracts/generated contracts/ts/src/generated
+    test -z "$(git status --porcelain -- python/sprisk-contracts/src/sprisk_contracts/generated contracts/ts/src/generated)" \
+        || (echo "Generated code is stale or uncommitted. Commit the output of 'just contracts-gen'." && exit 1)
 
 # Round-trip every contract fixture through Rust, Python and TypeScript.
 contracts-test:

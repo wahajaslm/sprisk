@@ -14,6 +14,7 @@ fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
     let mut paths: Vec<_> = fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
         .map(|entry| entry.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
         .collect();
     paths.sort();
     assert!(!paths.is_empty(), "no fixtures in {}", dir.display());

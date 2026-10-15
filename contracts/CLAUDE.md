@@ -16,6 +16,8 @@ Canonical, versioned wire schemas (JSON Schema + OpenAPI). Arch doc §11.
 - Enums for every state and kind. No free-text status fields.
 - Required by default. Optional only when absence has a meaning; document it.
 - No `const`: typify ignores it. Use a single-value `enum`.
+- Integer bounds: only `minimum: 0` (→ `u64`) or none (→ `i64`). typify ignores other bounds. Values above 2^53 lose precision in JS; avoid them in wire data.
+- Python models are strict (`StrictModel`). Validate wire input with `model_validate_json`, never coerce.
 - Keep `$defs` local to each schema until typify cross-file `$ref` support is proven.
-- Timestamps: RFC 3339 UTC, no fractional seconds in fixtures. Hashes: `sha256:<hex>`.
+- Timestamps: use `$defs/Timestamp` (UTC, whole seconds, `Z`). Pattern only, no `format`, so all three languages enforce it. Hashes: `sha256:<hex>`.
 - Write the failing roundtrip fixture first, then the schema (TDD).
