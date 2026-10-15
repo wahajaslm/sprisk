@@ -55,7 +55,7 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 
 ## 2A. Frontend workbench architecture (revision 1.1)
 
-**Reference:** the existing `Flow Studio.html` is a *concept and interaction reference*, not an execution or data contract. Preserve its workflow-focused organization while replacing fixed CSS-grid panels with a general-purpose scientific workbench. The architectural model is closer to Blender/JupyterLab/VS Code than to a dashboard framework.
+**Reference:** the existing `sprisk Studio.html` is a *concept and interaction reference*, not an execution or data contract. Preserve its workflow-focused organization while replacing fixed CSS-grid panels with a general-purpose scientific workbench. The architectural model is closer to Blender/JupyterLab/VS Code than to a dashboard framework.
 
 ### Stack and selection status
 
@@ -301,7 +301,7 @@ H(operator_id/version, implementation_digest, environment_digest,
   relevant external-version facts, execution_context)
 ```
 
-Only trusted pure operations with adequate input snapshots can use reusprisk caches. Never cache secrets, mutable external writes, or nondeterministic steps as if fully replayable. Cache isolation and authorization must prevent cross-tenant information leakage.
+Only trusted pure operations with adequate input snapshots can use reusable caches. Never cache secrets, mutable external writes, or nondeterministic steps as if fully replayable. Cache isolation and authorization must prevent cross-tenant information leakage.
 
 **Fine-grained invalidation:** a change to a business cost assumption invalidates economic/decision descendants, not upstream model fitting, unless the objective itself changes model selection.
 
@@ -350,7 +350,7 @@ Trust boundaries: browser/user → Rust API → AI planning worker → compute w
 - Default external AI data export **off**. Explicit provider/data-class permissions, egress allowlists, redaction/summarization and traceable approval.
 - Rust and database enforce tenant/project permissions, secrets handling and execution limits. Secrets are never placed in model prompts or copied into versioned graph definitions.
 - Trusted built-in operators may run as controlled local subprocesses; this is **not a secure sandbox** for arbitrary hostile code.
-- Untrusted custom Python/plugins require stronger isolation (restricted containers/VMs, explicit mounts, dispriskd network by default, CPU/memory/time quotas). Do not launch general untrusted-code hosting before an isolation mechanism is verified for each target OS.
+- Untrusted custom Python/plugins require stronger isolation (restricted containers/VMs, explicit mounts, disabled network by default, CPU/memory/time quotas). Do not launch general untrusted-code hosting before an isolation mechanism is verified for each target OS.
 - Treat externally sourced model artifacts such as Python pickle/joblib as potentially executable code; never deserialize untrusted models in privileged processes.
 - Production effects (contact customers, mutate CRM, invoke paid services, delete data, release models) are distinct authorized operations with approvals and idempotency keys.
 - Enforce artifact encryption/access and retention/deletion policies; immutable hashes do not justify indefinite storage of personal data.

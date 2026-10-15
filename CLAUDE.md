@@ -1,8 +1,8 @@
 # sprisk
 
 Local-first, AI-native platform for scientific data investigation.
-Source of truth: [sable-system-architecture-v1.md](sable-system-architecture-v1.md). Read the relevant section before designing anything.
-`Flow Studio.html` is a UI concept reference only. It is not a contract.
+Source of truth: [sprisk-system-architecture-v1.md](sprisk-system-architecture-v1.md). Read the relevant section before designing anything.
+`sprisk Studio.html` is a UI concept reference only. It is not a contract.
 
 ## Status
 
