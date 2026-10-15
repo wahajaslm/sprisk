@@ -2,7 +2,7 @@
 
 Open-source, local-first, AI-native platform for data science, ML, experimentation and decision intelligence.
 
-**Status:** architecture baseline. No implementation yet. Current milestone: M0 (contract freeze).
+**Status:** M0 (contract freeze) done. Current milestone: M1 (non-AI vertical slice).
 
 ## Start here
 

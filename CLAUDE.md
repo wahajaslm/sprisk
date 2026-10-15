@@ -6,7 +6,7 @@ Source of truth: [docs/architecture/system-architecture.md](docs/architecture/sy
 
 ## Status
 
-Greenfield. Current milestone: **M0 — contract freeze** (arch doc §16).
+Current milestone: **M1 — non-AI vertical slice** (arch doc §16). M0 closed 2026-10-15; open item: worker credentials field in `LeaseAttempt`.
 Do not build ahead of the current milestone without asking.
 
 ## Layout (arch doc §14)

@@ -4,6 +4,7 @@
 | --- | --- |
 | [architecture/](architecture/system-architecture.md) | System architecture baseline. The source of truth. |
 | [adr/](adr/README.md) | Architecture decision records, one per decision. |
+| [research/](research/) | Research notes behind decisions, with sources. |
 | [design/](design/sprisk-studio.html) | sprisk Studio UI concept. Reference only, not a contract. |
 
 ## Rules

@@ -15,6 +15,8 @@
 | [0011](0011-pluggable-views.md) | Visualizations and code editors consume artifact/query APIs; UI never executes privileged code or copies full datasets | Proposed |
 | [0012](0012-domain-naming.md) | Consistent domain naming | Accepted |
 | [0013](0013-attempt-state-machine.md) | Attempt state machine | Accepted |
+| [0014](0014-ai-data-exposure-policy.md) | AI data exposure policy | Accepted |
+| [0015](0015-first-methodology-packs.md) | First methodology packs: exploration, supervised | Accepted |
 
 ## Open questions (arch doc §17)
 
