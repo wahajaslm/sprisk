@@ -26,10 +26,21 @@ The AI planner needs context about the data. Every piece of context sent to an e
 1. **Local model is the default.** No external provider is configured on install.
 2. **External providers are opt-in per project**, and only providers with a zero-retention agreement on record.
 3. **Text top-values are never in profiles sent to an AI.** That is where names and emails leak.
-4. **One outbound gate.** Every message to any model passes one function in the planner process: level check → PII scan (redact or block) → audit log → send. No other code path can reach a provider.
+4. **One outbound gate.** Every message to any model passes one function in the planner process: level check → privacy transforms → PII scan (redact or block) → audit log → send. No other code path can reach a provider.
 5. **Audit log.** Every outbound message is logged locally: time, project, provider, model, exposure level, redactions, the exact text sent. Viewable by the user.
 6. **Secrets never** enter prompts, at any level.
-7. **Dataset text is untrusted.** It goes in the user/data part of a prompt, never the system prompt, and never changes tool permissions.
+7. **Privacy transforms are registered operators** (`sprisk.privacy.*`), not gate-only code. The gate runs them; users and the AI can also put them in pipelines (e.g. pseudonymize before export). Mapping tables (token → real value) are artifacts that never leave the machine.
+
+   | Operator | Does |
+   | --- | --- |
+   | `pseudonymize` | Replace values with stable tokens (`EMAIL_17`) |
+   | `alias_columns` | Rename columns; per column: real name, alias, or alias + user description |
+   | `generalize` | Bin numbers, coarsen dates and locations |
+   | `suppress_rare` | Replace categories seen fewer than k times with `other` |
+   | `noisy_profile` | Profile with calibrated noise on counts and means |
+   | `synthesize_sample` | Fake rows matching the profile, used instead of real rows at level 3 |
+
+8. **Dataset text is untrusted.** It goes in the user/data part of a prompt, never the system prompt, and never changes tool permissions.
 
 ## Alternatives considered
 
@@ -41,6 +52,8 @@ The AI planner needs context about the data. Every piece of context sent to an e
 - M2 needs a working local model runtime (e.g. Ollama) before AI planning works out of the box.
 - Planning quality on local models may be lower. Users can opt into external providers knowingly.
 - Contracts needed in M2: `ExposureLevel`, provider policy, audit record.
+- A `privacy` operator pack. `pseudonymize` and `suppress_rare` are needed by M2; the rest can follow.
+- Transforms reduce risk; they do not make data anonymous (combinations of columns can re-identify people). Consent and audit stay required.
 
 ## Validation
 
