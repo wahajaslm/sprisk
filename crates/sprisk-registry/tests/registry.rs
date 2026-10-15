@@ -114,3 +114,11 @@ fn malformed_yaml_names_the_file() {
     assert!(matches!(err, RegistryError::Yaml { .. }), "{err}");
     assert!(err.to_string().contains("bad/manifest.yaml"), "{err}");
 }
+
+#[test]
+fn every_core_plugin_manifest_is_valid() {
+    let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+    let registry = Registry::load_dir(&plugins).unwrap();
+    assert_eq!(registry.len(), 7);
+    assert!(registry.get("sprisk.ml.linear_model@1.0.0").is_some());
+}

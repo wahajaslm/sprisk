@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.validation.random_split@1.0.0
+capability_class: transform
+description: Shuffle rows with a fixed seed into train and test.
+entrypoint: sprisk_workers.ops.split:random_split
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: train, kind: table }, { name: test, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [test_fraction, seed]
+  properties:
+    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1 }
+    seed: { type: integer, minimum: 0 }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

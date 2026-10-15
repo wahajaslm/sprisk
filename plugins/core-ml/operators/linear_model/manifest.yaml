@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.ml.linear_model@1.0.0
+capability_class: estimator
+description: Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.
+entrypoint: sprisk_workers.ops.model:linear_model
+inputs: [{ name: train, kind: table }]
+outputs: [{ name: model, kind: model }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [target, task]
+  properties:
+    target: { type: string, minLength: 1 }
+    task: { type: string, enum: [classification, regression] }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
