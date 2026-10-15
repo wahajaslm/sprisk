@@ -7,7 +7,7 @@ import networkx as nx
 from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
 from sprisk_contracts.generated.models import CapabilityClass, PortKind, Verdict
 
-CHECK = "supervised.holdout_sealed@1.0.0"
+CHECK = "supervised.split_leakage@1.0.0"
 
 # Vertices: node ids and their output ports ("node.port").
 type PortGraph = nx.DiGraph[Any]
@@ -30,7 +30,7 @@ class CheckInputError(ValueError):
     """The pipeline is not one Gate A would accept, so the rule cannot run."""
 
 
-def holdout_sealed(
+def split_leakage(
     pipeline: PipelineVersion, operators: Mapping[str, Operator], check_id: str, now: str
 ) -> MethodologyCheck:
     """FAIL when a holdout is used to fit or to choose between models (ADR-0015, §15.11).

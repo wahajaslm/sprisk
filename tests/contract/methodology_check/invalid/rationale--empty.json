@@ -2,7 +2,7 @@
   "schema_version": "sprisk.methodology_check/v1",
   "id": "mck_01JABCDEFGHJKMNPQRSTVWXYZ0",
   "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-  "check": "supervised.holdout_sealed@1.0.0",
+  "check": "supervised.split_leakage@1.0.0",
   "verdict": "fail",
   "rationale": "",
   "cited_nodes": [

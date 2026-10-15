@@ -2,7 +2,7 @@
   "schema_version": "sprisk.methodology_check/v1",
   "id": "mck_01JABCDEFGHJKMNPQRSTVWXYZ0",
   "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-  "check": "supervised.holdout_sealed@1.0.0",
+  "check": "supervised.split_leakage@1.0.0",
   "verdict": "fail",
   "rationale": "Test table split.test scores 2 non-baseline models (eval_a, eval_b); choosing between them uses the holdout.",
   "cited_nodes": ["split", "eval_a", "eval_b"],

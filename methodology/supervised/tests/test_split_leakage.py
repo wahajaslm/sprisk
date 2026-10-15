@@ -6,7 +6,7 @@ import yaml
 
 from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
 from sprisk_contracts.generated.models import Verdict
-from sprisk_supervised.holdout_sealed import CheckInputError, holdout_sealed
+from sprisk_supervised.split_leakage import CheckInputError, split_leakage
 
 PLUGINS = Path(__file__).parents[3] / "plugins"
 CHECK_ID = "mck_01JABCDEFGHJKMNPQRSTVWXYZ0"
@@ -96,7 +96,7 @@ def compare(models: dict[str, str]) -> PipelineVersion:
 
 
 def check(p: PipelineVersion) -> MethodologyCheck:
-    result = holdout_sealed(p, operators(), CHECK_ID, NOW)
+    result = split_leakage(p, operators(), CHECK_ID, NOW)
     return MethodologyCheck.model_validate_json(result.model_dump_json(by_alias=True))
 
 
@@ -105,7 +105,7 @@ def test_baseline_plus_one_model_passes() -> None:
     assert result.verdict == Verdict.pass_
     assert [n.root for n in result.cited_nodes] == ["eval_dummy", "eval_linear", "split"]
     assert result.limitations is not None
-    assert result.check.root == "supervised.holdout_sealed@1.0.0"
+    assert result.check.root == "supervised.split_leakage@1.0.0"
 
 
 def test_two_models_on_one_test_table_fail_and_cite_them() -> None:
@@ -214,14 +214,14 @@ def test_evaluator_with_two_table_inputs_is_an_input_error() -> None:
     nodes["eval_linear"] = TWO_TABLE_EVAL
     edges.append(("split.train", "eval_linear.other"))
     with pytest.raises(CheckInputError, match="eval_linear"):
-        holdout_sealed(pipeline(nodes, edges), operators(), CHECK_ID, NOW)
+        split_leakage(pipeline(nodes, edges), operators(), CHECK_ID, NOW)
 
 
 def test_unknown_operator_is_an_input_error() -> None:
     with pytest.raises(CheckInputError, match="sprisk.test.missing@1.0.0"):
-        holdout_sealed(pipeline({"x": "sprisk.test.missing@1.0.0"}, []), operators(), CHECK_ID, NOW)
+        split_leakage(pipeline({"x": "sprisk.test.missing@1.0.0"}, []), operators(), CHECK_ID, NOW)
 
 
 def test_unconnected_evaluator_input_is_an_input_error() -> None:
     with pytest.raises(CheckInputError, match="e.test"):
-        holdout_sealed(pipeline({"e": EVAL}, []), operators(), CHECK_ID, NOW)
+        split_leakage(pipeline({"e": EVAL}, []), operators(), CHECK_ID, NOW)
