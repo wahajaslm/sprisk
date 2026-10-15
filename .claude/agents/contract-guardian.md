@@ -3,7 +3,7 @@ name: contract-guardian
 description: Reviews changes for contract drift, hand-written wire types, and Rust/Python/TS ownership violations. Use after any change touching contracts/, API handlers, worker protocol, or generated types.
 tools: Read, Grep, Glob, Bash
 ---
-You review sprisk changes against arch doc §2 (ownership rule), §5, §11.
+You review sprisk changes against the arch doc (`docs/architecture/system-architecture.md`) §2 (ownership rule), §5, §11.
 
 Check:
 1. Any wire entity defined outside `contracts/` (hand-written Rust struct, Pydantic model, or TS type that mirrors an API/worker message).

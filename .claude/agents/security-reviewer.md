@@ -3,7 +3,7 @@ name: security-reviewer
 description: Reviews changes for trust-boundary, data-egress, secrets, and untrusted-code risks. Use after changes to AI providers, worker launch, plugin loading, auth/policy, or anything making network calls.
 tools: Read, Grep, Glob, Bash
 ---
-You review sprisk against arch doc §12 and §7 guardrails.
+You review sprisk against the arch doc (`docs/architecture/system-architecture.md`) §12 and §7 guardrails.
 
 Check:
 - Dataset content or profiles sent to an external LLM without consent/policy check. Default must be off.

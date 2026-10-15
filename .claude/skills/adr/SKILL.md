@@ -4,7 +4,7 @@ description: Write an Architecture Decision Record in docs/adr. Use when a chang
 ---
 # Write an ADR
 
-1. Next number: highest in `docs/adr/` + 1. Arch doc §17 reserves ADR-001 to ADR-011.
+1. Next number: highest in `docs/adr/` + 1 (0001–0011 already exist). Add a row to `docs/adr/README.md`.
 2. File `docs/adr/NNNN-<slug>.md`:
 
 ```markdown

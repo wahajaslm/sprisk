@@ -1,8 +1,8 @@
 # sprisk
 
 Local-first, AI-native platform for scientific data investigation.
-Source of truth: [sprisk-system-architecture-v1.md](sprisk-system-architecture-v1.md). Read the relevant section before designing anything.
-`sprisk Studio.html` is a UI concept reference only. It is not a contract.
+Source of truth: [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) ("arch doc"). Read the relevant section before designing anything.
+[docs/design/sprisk-studio.html](docs/design/sprisk-studio.html) is a UI concept reference only. It is not a contract.
 
 ## Status
 
@@ -19,7 +19,7 @@ Do not build ahead of the current milestone without asking.
 | `apps/web/` | React + TS + Vite | Presentation only. Dockable workbench. |
 | `plugins/`, `methodology/` | Python + manifests | Capability packages and methodology packs. |
 | `tests/`, `benchmarks/` | mixed | Contract, integration, scientific, AI-eval, security tests. |
-| `docs/adr/` | Markdown | Architecture decision records. |
+| `docs/` | Markdown | Architecture, ADRs, design references. Index: `docs/README.md`. |
 
 Each area has its own `CLAUDE.md` with local rules.
 

@@ -55,7 +55,7 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 
 ## 2A. Frontend workbench architecture (revision 1.1)
 
-**Reference:** the existing `sprisk Studio.html` is a *concept and interaction reference*, not an execution or data contract. Preserve its workflow-focused organization while replacing fixed CSS-grid panels with a general-purpose scientific workbench. The architectural model is closer to Blender/JupyterLab/VS Code than to a dashboard framework.
+**Reference:** the existing `sprisk-studio.html` is a *concept and interaction reference*, not an execution or data contract. Preserve its workflow-focused organization while replacing fixed CSS-grid panels with a general-purpose scientific workbench. The architectural model is closer to Blender/JupyterLab/VS Code than to a dashboard framework.
 
 ### Stack and selection status
 
