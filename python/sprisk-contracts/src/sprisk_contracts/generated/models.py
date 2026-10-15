@@ -166,6 +166,44 @@ class PortRef(RootModel[str]):
     ]
 
 
+class Origin(StrEnum):
+    explicit = "explicit"
+    inferred = "inferred"
+    measured = "measured"
+    confirmed = "confirmed"
+
+
+class Fact(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[str, Field(min_length=1)]
+    origin: Origin
+
+
+class TaskType(StrEnum):
+    exploration = "exploration"
+    classification = "classification"
+    regression = "regression"
+    undetermined = "undetermined"
+
+
+class Blocks(StrEnum):
+    planning = "planning"
+    execution = "execution"
+    release = "release"
+
+
+class Unknown(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    question: Annotated[str, Field(min_length=1)]
+    blocks: Annotated[
+        Blocks, Field(description="Earliest stage this unknown must be resolved before.")
+    ]
+
+
 class RunStatus(StrEnum):
     queued = "queued"
     running = "running"
@@ -325,6 +363,14 @@ class Edge(StrictModel):
     to: PortRef
 
 
+class TaskFact(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: TaskType
+    origin: Origin
+
+
 class Run(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -413,6 +459,31 @@ class PipelineVersion(StrictModel):
     ] = None
     nodes: list[Node]
     edges: list[Edge]
+    created_at: Timestamp
+
+
+class QuestionVersion(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.question_version/v1"]
+    id: QuestionVersionId
+    investigation_id: InvestigationId
+    parent_id: Annotated[
+        QuestionVersionId | None,
+        Field(description="Version this one revises. Absent for the first version."),
+    ] = None
+    objective: Fact
+    task: TaskFact
+    target: Annotated[
+        Fact | None,
+        Field(description="Target column. Absent when there is no legitimate supervised target."),
+    ] = None
+    unit_of_analysis: Fact | None = None
+    time_column: Fact | None = None
+    assumptions: list[Fact]
+    unknowns: list[Unknown]
+    acceptance_criteria: list[Fact]
     created_at: Timestamp
 
 

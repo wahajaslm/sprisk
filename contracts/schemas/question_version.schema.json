@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "QuestionVersion": {
+      "title": "QuestionVersion",
+      "description": "Immutable formal statement of what an investigation asks (arch doc §4, §7). Every field records its origin. An absent target means no supervised target exists; never invent one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "investigation_id",
+        "objective",
+        "task",
+        "assumptions",
+        "unknowns",
+        "acceptance_criteria",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.question_version/v1"] },
+        "id": { "$ref": "#/$defs/QuestionVersionId" },
+        "investigation_id": { "$ref": "#/$defs/InvestigationId" },
+        "parent_id": {
+          "$ref": "#/$defs/QuestionVersionId",
+          "description": "Version this one revises. Absent for the first version."
+        },
+        "objective": { "$ref": "#/$defs/Fact" },
+        "task": { "$ref": "#/$defs/TaskFact" },
+        "target": { "$ref": "#/$defs/Fact", "description": "Target column. Absent when there is no legitimate supervised target." },
+        "unit_of_analysis": { "$ref": "#/$defs/Fact" },
+        "time_column": { "$ref": "#/$defs/Fact" },
+        "assumptions": { "type": "array", "items": { "$ref": "#/$defs/Fact" } },
+        "unknowns": { "type": "array", "items": { "$ref": "#/$defs/Unknown" } },
+        "acceptance_criteria": { "type": "array", "items": { "$ref": "#/$defs/Fact" } },
+        "created_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "Origin": {
+      "type": "string",
+      "enum": ["explicit", "inferred", "measured", "confirmed"],
+      "description": "explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value."
+    },
+    "Fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "origin"],
+      "properties": {
+        "value": { "type": "string", "minLength": 1 },
+        "origin": { "$ref": "#/$defs/Origin" }
+      }
+    },
+    "TaskFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "origin"],
+      "properties": {
+        "value": { "$ref": "#/$defs/TaskType" },
+        "origin": { "$ref": "#/$defs/Origin" }
+      }
+    },
+    "TaskType": {
+      "type": "string",
+      "enum": ["exploration", "classification", "regression", "undetermined"]
+    },
+    "Unknown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "blocks"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1 },
+        "blocks": {
+          "type": "string",
+          "enum": ["planning", "execution", "release"],
+          "description": "Earliest stage this unknown must be resolved before."
+        }
+      }
+    }
+  }
+}

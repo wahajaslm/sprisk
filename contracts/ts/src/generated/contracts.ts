@@ -115,6 +115,18 @@ export type NetworkAccess = "none" | "egress_allowlisted";
  */
 export type PortRef = string;
 /**
+ * explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Origin".
+ */
+export type Origin = "explicit" | "inferred" | "measured" | "confirmed";
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TaskType".
+ */
+export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RunStatus".
  */
@@ -272,6 +284,64 @@ export interface Node {
 export interface Edge {
   from: PortRef;
   to: PortRef;
+}
+/**
+ * Immutable formal statement of what an investigation asks (arch doc §4, §7). Every field records its origin. An absent target means no supervised target exists; never invent one.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "QuestionVersion".
+ */
+export interface QuestionVersion {
+  schema_version: "sprisk.question_version/v1";
+  id: QuestionVersionId;
+  investigation_id: InvestigationId;
+  /**
+   * Version this one revises. Absent for the first version.
+   */
+  parent_id?: string;
+  objective: Fact;
+  task: TaskFact;
+  target?: Fact1;
+  unit_of_analysis?: Fact;
+  time_column?: Fact;
+  assumptions: Fact[];
+  unknowns: Unknown[];
+  acceptance_criteria: Fact[];
+  created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Fact".
+ */
+export interface Fact {
+  value: string;
+  origin: Origin;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TaskFact".
+ */
+export interface TaskFact {
+  value: TaskType;
+  origin: Origin;
+}
+/**
+ * Target column. Absent when there is no legitimate supervised target.
+ */
+export interface Fact1 {
+  value: string;
+  origin: Origin;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Unknown".
+ */
+export interface Unknown {
+  question: string;
+  /**
+   * Earliest stage this unknown must be resolved before.
+   */
+  blocks: "planning" | "execution" | "release";
 }
 /**
  * One execution of a pipeline version against its inputs (arch doc §4, §9). Status is the transactionally maintained current state; history lives in attempts and audit events.

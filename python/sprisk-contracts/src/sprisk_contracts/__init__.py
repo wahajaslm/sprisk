@@ -6,7 +6,8 @@ from sprisk_contracts.generated.models import (
     Operator,
     PipelineVersion,
     Run,
+    QuestionVersion,
     WorkerMessage,
 )
 
-__all__ = ["Artifact", "Attempt", "Operator", "PipelineVersion", "Run", "WorkerMessage"]
+__all__ = ["Artifact", "Attempt", "Operator", "PipelineVersion", "QuestionVersion", "Run", "WorkerMessage"]

@@ -13,6 +13,7 @@ export interface Entities {
   Run: C.Run;
   Attempt: C.Attempt;
   WorkerMessage: C.WorkerMessage;
+  QuestionVersion: C.QuestionVersion;
 }
 
 export class ContractError extends Error {}

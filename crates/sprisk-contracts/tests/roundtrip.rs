@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use sprisk_contracts::{Artifact, Attempt, Operator, PipelineVersion, Run, WorkerMessage};
+use sprisk_contracts::{Artifact, Attempt, Operator, PipelineVersion, QuestionVersion, Run, WorkerMessage};
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -74,4 +74,9 @@ fn attempt() {
 #[test]
 fn worker_message() {
     check::<WorkerMessage>("worker_message");
+}
+
+#[test]
+fn question_version() {
+    check::<QuestionVersion>("question_version");
 }
