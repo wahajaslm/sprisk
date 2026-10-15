@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Operator": {
+      "title": "Operator",
+      "description": "Registered, versioned capability that a pipeline node runs (arch doc §5, §6).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "capability_class",
+        "entrypoint",
+        "inputs",
+        "outputs",
+        "params_schema",
+        "effects",
+        "network",
+        "resources"
+      ],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.operator/v1"] },
+        "id": { "$ref": "#/$defs/OperatorRef" },
+        "capability_class": { "$ref": "#/$defs/CapabilityClass" },
+        "description": { "type": "string" },
+        "entrypoint": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*:[a-z_][a-z0-9_]*$",
+          "description": "Python `module:function` the worker calls."
+        },
+        "inputs": { "type": "array", "items": { "$ref": "#/$defs/Port" } },
+        "outputs": { "type": "array", "items": { "$ref": "#/$defs/Port" } },
+        "params_schema": {
+          "type": "object",
+          "description": "JSON Schema for this operator's params. The compiler validates node params against it."
+        },
+        "effects": { "$ref": "#/$defs/Effects" },
+        "network": { "$ref": "#/$defs/NetworkAccess" },
+        "resources": { "$ref": "#/$defs/Resources" }
+      }
+    },
+    "CapabilityClass": {
+      "type": "string",
+      "enum": [
+        "source",
+        "transform",
+        "analyzer",
+        "estimator",
+        "evaluator",
+        "optimizer",
+        "decision_evaluator",
+        "sink",
+        "custom_code"
+      ]
+    },
+    "Port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind"],
+      "properties": {
+        "name": { "$ref": "#/$defs/PortName" },
+        "kind": { "$ref": "#/$defs/PortKind" },
+        "description": { "type": "string" }
+      }
+    },
+    "PortKind": {
+      "type": "string",
+      "enum": ["table", "model", "metrics", "diagnostics", "report"]
+    },
+    "Effects": {
+      "type": "string",
+      "enum": ["pure", "nondeterministic", "side_effecting"],
+      "description": "pure: same inputs give same outputs, cacheable. nondeterministic: not replayable. side_effecting: changes the outside world; never auto-retried."
+    },
+    "NetworkAccess": {
+      "type": "string",
+      "enum": ["none", "egress_allowlisted"]
+    },
+    "Resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu_cores", "memory_mb", "gpu", "timeout_seconds"],
+      "properties": {
+        "cpu_cores": { "type": "integer", "minimum": 1 },
+        "memory_mb": { "type": "integer", "minimum": 1 },
+        "gpu": { "type": "string", "enum": ["none", "optional", "required"] },
+        "timeout_seconds": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

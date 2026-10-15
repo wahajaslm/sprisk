@@ -1,0 +1,32 @@
+{
+  "schema_version": "sprisk.operator/v1",
+  "id": "acme.io.csv_source@0.1.0",
+  "capability_class": "source",
+  "entrypoint": "acme_ops.csv:load",
+  "inputs": [],
+  "outputs": [
+    {
+      "name": "data",
+      "kind": "table"
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "required": [
+      "time_column"
+    ],
+    "properties": {
+      "time_column": {
+        "type": "string"
+      }
+    }
+  },
+  "effects": "nondeterministic",
+  "network": "none",
+  "resources": {
+    "cpu_cores": 1,
+    "memory_mb": 2048,
+    "gpu": "none",
+    "timeout_seconds": 600
+  }
+}

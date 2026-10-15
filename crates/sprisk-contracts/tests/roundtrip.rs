@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use sprisk_contracts::Artifact;
+use sprisk_contracts::{Artifact, Operator};
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -49,4 +49,9 @@ fn check<T: Serialize + DeserializeOwned>(entity: &str) {
 #[test]
 fn artifact() {
     check::<Artifact>("artifact");
+}
+
+#[test]
+fn operator() {
+    check::<Operator>("operator");
 }

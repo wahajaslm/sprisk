@@ -8,6 +8,7 @@ export type * from "./generated/contracts.ts";
 /** Entities that can be parsed from wire JSON. Add one line per new top-level entity. */
 export interface Entities {
   Artifact: C.Artifact;
+  Operator: C.Operator;
 }
 
 export class ContractError extends Error {}

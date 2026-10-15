@@ -6,7 +6,10 @@ import { type Entities, parse } from "../src/index.ts";
 
 const fixtureRoot = join(import.meta.dirname, "../../../tests/contract");
 
-const entities: [keyof Entities, string][] = [["Artifact", "artifact"]];
+const entities: [keyof Entities, string][] = [
+  ["Artifact", "artifact"],
+  ["Operator", "operator"],
+];
 
 function fixtures(dir: string, kind: "valid" | "invalid"): [string, unknown][] {
   const path = join(fixtureRoot, dir, kind);
