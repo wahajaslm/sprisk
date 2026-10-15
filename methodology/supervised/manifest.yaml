@@ -1,0 +1,12 @@
+# Gate B entrypoint (ADR-0017). Loaded by the worker only, never by the pipeline registry.
+schema_version: sprisk.operator/v1
+id: sprisk.methodology.supervised@1.0.0
+capability_class: analyzer
+description: Run every Supervised pack rule against a pipeline version.
+entrypoint: sprisk_supervised.pack:run
+inputs: [{ name: pipeline, kind: report }, { name: operators, kind: report }]
+outputs: [{ name: checks, kind: report }]
+params_schema: { type: object, additionalProperties: false }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }

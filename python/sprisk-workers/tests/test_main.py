@@ -38,6 +38,29 @@ def test_process_runs_a_leased_source_attempt(tmp_path: Path) -> None:
     assert pl.read_parquet(tmp_path / "staging" / "data.parquet")["a"].to_list() == [1, 2]
 
 
+def test_handshake_lists_operators_from_every_root() -> None:
+    methodology = Path(__file__).parents[3] / "methodology"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sprisk_workers",
+            "--plugins-root",
+            str(PLUGINS),
+            "--plugins-root",
+            str(methodology),
+        ],
+        input="",
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    operators = json.loads(proc.stdout.splitlines()[0])["operators"]
+    assert "sprisk.methodology.supervised@1.0.0" in operators
+    assert "sprisk.io.file_source@1.0.0" in operators
+
+
 def test_invalid_inbound_message_exits_nonzero() -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sprisk_workers", "--plugins-root", str(PLUGINS)],

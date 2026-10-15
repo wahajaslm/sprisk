@@ -68,3 +68,10 @@ def test_invalid_manifest_is_an_error(tmp_path: Path) -> None:
     write(tmp_path, "NOT VALID")
     with pytest.raises(ManifestError, match="manifest.yaml"):
         load_operators(tmp_path)
+
+
+def test_same_operator_in_two_roots_is_an_error(tmp_path: Path) -> None:
+    write(tmp_path / "a", "sprisk_validation.temporal_split:temporal_split")
+    write(tmp_path / "b", "sprisk_validation.temporal_split:temporal_split")
+    with pytest.raises(ManifestError, match="declared twice"):
+        load_operators(tmp_path / "a", tmp_path / "b")

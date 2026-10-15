@@ -15,12 +15,19 @@ TRUSTED_PACKAGES = (
     "sprisk_profile",
     "sprisk_validation",
     "sprisk_ml",
+    "sprisk_supervised",
 )
 
 
-def load_operators(root: Path) -> dict[str, LoadedOperator]:
-    """Map each operator ref under `root` to the function its manifest names."""
-    return dict(_load(path) for path in sorted(root.rglob("manifest.yaml")))
+def load_operators(*roots: Path) -> dict[str, LoadedOperator]:
+    """Map each operator ref under `roots` to the function its manifest names."""
+    loaded: dict[str, LoadedOperator] = {}
+    for path in sorted(p for root in roots for p in root.rglob("manifest.yaml")):
+        ref, operator = _load(path)
+        if ref in loaded:
+            raise ManifestError(f"{path}: operator {ref} is declared twice")
+        loaded[ref] = operator
+    return loaded
 
 
 def _load(path: Path) -> tuple[str, LoadedOperator]:

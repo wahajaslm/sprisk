@@ -13,11 +13,11 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def main(
-    plugins_root: Annotated[Path, typer.Option(exists=True, file_okay=False)],
+    plugins_root: Annotated[list[Path], typer.Option(exists=True, file_okay=False)],
     heartbeat_seconds: Annotated[float, typer.Option(min=0.01)] = 5.0,
 ) -> None:
     """Speak the worker protocol over stdio until stdin closes."""
-    serve(sys.stdin, sys.stdout, f"wrk_{ULID()}", load_operators(plugins_root), heartbeat_seconds)
+    serve(sys.stdin, sys.stdout, f"wrk_{ULID()}", load_operators(*plugins_root), heartbeat_seconds)
 
 
 if __name__ == "__main__":
