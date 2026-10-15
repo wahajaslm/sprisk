@@ -1,0 +1,32 @@
+[package]
+name = "sprisk-scheduler"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
+jiff = "0.2"
+serde = "1.0.229"
+serde_json = "1.0.154"
+sprisk-artifacts = { path = "../sprisk-artifacts" }
+sprisk-contracts = { path = "../sprisk-contracts" }
+sprisk-graph = { path = "../sprisk-graph" }
+sprisk-store = { path = "../sprisk-store" }
+thiserror = "2.0.21"
+tokio = { version = "1.53.3", features = ["io-util", "process", "time"] }
+tokio-util = { version = "0.7.20", features = ["codec"] }
+tracing = "0.1"
+ulid = "1"
+url = "2.5.8"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+sprisk-registry = { path = "../sprisk-registry" }
+tempfile = "3.27.0"
+tokio = { version = "1.53.3", features = ["macros", "rt"] }
+sha2 = "0.10"
+url = "2.5.8"
