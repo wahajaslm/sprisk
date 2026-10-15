@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/sprisk-contracts", "crates/sprisk-core"]
+members = ["crates/sprisk-artifacts", "crates/sprisk-contracts", "crates/sprisk-core"]
 
 [workspace.package]
 edition = "2024"
