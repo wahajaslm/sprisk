@@ -13,6 +13,7 @@ members = [
     "sprisk-io",
     "sprisk-ml",
     "sprisk-profile",
+    "sprisk-supervised",
     "sprisk-validation",
     "sprisk-workers",
 ]
@@ -1444,6 +1445,29 @@ dependencies = [
 requires-dist = [
     { name = "duckdb", specifier = ">=1.1" },
     { name = "sprisk-workers", editable = "python/sprisk-workers" },
+]
+
+[[package]]
+name = "sprisk-supervised"
+version = "0.1.0"
+source = { editable = "methodology/supervised" }
+dependencies = [
+    { name = "sprisk-contracts" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pyyaml" },
+    { name = "types-pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "sprisk-contracts", editable = "python/sprisk-contracts" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pyyaml", specifier = ">=6" },
+    { name = "types-pyyaml" },
 ]
 
 [[package]]

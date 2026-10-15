@@ -30,13 +30,14 @@ check:
     cargo fmt --all --check
     cargo clippy -q --workspace --all-targets -- -D warnings
     cargo test -q --workspace
-    uv run ruff format --check python plugins
-    uv run ruff check python plugins
+    uv run ruff format --check python plugins methodology
+    uv run ruff check python plugins methodology
     uv run mypy python/sprisk-contracts/src python/sprisk-contracts/tests
     uv run mypy python/sprisk-workers/src
     uv run mypy python/sprisk-workers/tests
     uv run mypy plugins
-    uv run pytest -q python plugins
+    uv run mypy methodology
+    uv run pytest -q python plugins methodology
     pnpm -C contracts/ts typecheck
     pnpm -C contracts/ts test
     just contracts-check
