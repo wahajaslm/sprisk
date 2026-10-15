@@ -136,18 +136,13 @@ Comments explain **why**, never what.
 
 ## Commands
 
-These will exist once scaffolded. Update this block when they change.
-
 ```bash
-# Rust
-cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
-# Python
-uv run ruff format && uv run ruff check && uv run mypy python && uv run pytest
-# Web
-pnpm -C apps/web lint && pnpm -C apps/web typecheck && pnpm -C apps/web test
-# Contracts
-just contracts-gen && just contracts-test   # regenerate types + cross-language roundtrip
+just check            # fmt, lint, types, tests for Rust, Python, TS + stale-codegen check
+just contracts-gen    # regenerate Python + TS types (Rust generates at build time)
+just contracts-test   # round-trip every fixture through all three languages
 ```
+
+Single area: `cargo test -p <crate>`, `uv run pytest python/<pkg>`, `pnpm -C <pkg> test`.
 
 ## Review agents
 

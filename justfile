@@ -1,0 +1,36 @@
+# Run `just` to list recipes.
+default:
+    @just --list
+
+# Regenerate Python and TypeScript types from contracts/schemas (Rust generates at build time).
+contracts-gen:
+    uv run datamodel-codegen --input contracts/schemas/artifact.schema.json --input-file-type jsonschema \
+        --output python/sprisk-contracts/src/sprisk_contracts/generated/artifact.py \
+        --output-model-type pydantic_v2.BaseModel --extra-fields forbid --output-datetime-class AwareDatetime \
+        --enum-field-as-literal one --use-annotated --field-constraints --target-python-version 3.12 \
+        --disable-timestamp --formatters ruff-format \
+        --custom-file-header '# Generated from contracts/schemas. Do not edit.'
+    pnpm -C contracts/ts gen
+
+# Fail if generated code is stale.
+contracts-check: contracts-gen
+    git diff --exit-code -- python/sprisk-contracts/src/sprisk_contracts/generated contracts/ts/src/generated
+
+# Round-trip every contract fixture through Rust, Python and TypeScript.
+contracts-test:
+    cargo test -q -p sprisk-contracts
+    uv run pytest -q python/sprisk-contracts
+    pnpm -C contracts/ts test
+
+# Format, lint, typecheck and test everything.
+check:
+    cargo fmt --all --check
+    cargo clippy -q --workspace --all-targets -- -D warnings
+    cargo test -q --workspace
+    uv run ruff format --check python
+    uv run ruff check python
+    uv run mypy python/sprisk-contracts/src python/sprisk-contracts/tests
+    uv run pytest -q python
+    pnpm -C contracts/ts typecheck
+    pnpm -C contracts/ts test
+    just contracts-check
