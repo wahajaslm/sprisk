@@ -19,3 +19,5 @@ If clean, say "Clean." and nothing else.
 Also flag:
 6. **Modularity:** dependency pointing outward (e.g. core importing api/db), reaching into another module's internals, an interface added at a seam not listed in root `CLAUDE.md`.
 7. **Scalability:** unbounded loads (full table/dataset into memory), in-process state that breaks with two API replicas, missing timeouts, N+1 queries, non-idempotent retryable work.
+8. **Consistency:** a new way of doing something the codebase already does (errors, logging, config, IDs, fixtures), or names that differ from arch doc §4 entities. Grep for the existing pattern and cite it.
+9. **Reuse:** new code duplicating an existing function, component, hook or fixture. Cite the existing one. A third copy of anything that should now be extracted.

@@ -6,6 +6,7 @@ description: Build a feature or fix a bug with strict red-green-refactor TDD. Us
 
 Keep the code simple. Follow "How we write code" in root `CLAUDE.md`.
 
+0. **Look first.** Grep for existing code, patterns and fixtures that already do part of this. Reuse them and match their style.
 1. **List behaviors.** Write the small behaviors needed as a short checklist. Include failure cases. Keep it to what was asked.
 2. **For each behavior:**
    1. Write one failing test. Run it. Confirm it fails for the expected reason (not a typo or import error).

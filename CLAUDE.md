@@ -75,6 +75,25 @@ Simple, tested, boring, correct. The goal is code a tired engineer understands a
 - Make illegal states unrepresentable: enums over strings and bools, newtypes for IDs.
 - Operations that can be retried must be idempotent.
 
+### Consistency
+
+- **Search before you write.** Find how the codebase already does it and do it the same way. Copy the nearest good example.
+- **One way to do each thing.** One error type pattern, one logging style, one config loader, one ID format, one test fixture style per language. Do not add a second.
+- Same names for the same concept everywhere: Rust, Python, TS, schemas, DB, UI. Use the arch doc §4 entity names exactly.
+- If an existing pattern is wrong, fix it everywhere in a separate commit. Do not fork it.
+
+### Reuse
+
+- Reuse before writing. Check the shared places first:
+  - Wire types: `contracts/` (generated).
+  - Rust domain types and traits: `sprisk-core`.
+  - Python shared code: `sprisk-workers` common modules (until a shared package is justified).
+  - UI primitives: `apps/web/src/components/ui`. Hooks: `apps/web/src/hooks`. API client: `apps/web/src/api`.
+  - Test fixtures and builders: each area's `tests/fixtures`.
+- Extract to a shared place on the third copy. Then replace all three copies.
+- Shared code is small, well-named and fully tested. No `utils`, `helpers` or `common` dumping grounds; name the module after what it does.
+- Reuse libraries already in the stack before adding new ones.
+
 ### Modularity
 
 - Each module has one job and a small public API. Everything else is private.
