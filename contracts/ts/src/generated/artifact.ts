@@ -2,7 +2,7 @@
 
 export type ArtifactId = string;
 export type ProjectId = string;
-export type StepAttemptId = string;
+export type AttemptId = string;
 export type ContentHash = string;
 /**
  * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
@@ -16,7 +16,7 @@ export interface Artifact {
   schema_version: "sprisk.artifact/v1";
   id: ArtifactId;
   project_id: ProjectId;
-  producer_attempt_id: StepAttemptId;
+  producer_attempt_id: AttemptId;
   content_hash: ContentHash;
   /**
    * IANA media type of the stored bytes.

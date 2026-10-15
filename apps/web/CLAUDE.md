@@ -7,7 +7,7 @@ dockview-react (behind an adapter), @xyflow/react, Radix + shadcn patterns, AG G
 
 ## Rules
 - `strict` TypeScript. No `any`. API types come from `src/generated` (from `contracts/`).
-- The canvas edits a projection of `PipelineSpec`. Saving creates a new `PipelineRevision` via the API. The UI never compiles or validates graphs authoritatively.
+- The canvas edits a projection of `Pipeline`. Saving creates a new `PipelineVersion` via the API. The UI never compiles or validates graphs authoritatively.
 - Docking library stays behind `src/workbench/dock-adapter`. No direct dockview imports elsewhere.
 - View types register in the View Registry. They are separate from backend operators.
 - Closing/moving a dock never mutates scientific objects. Layout state is UI preference only, versioned separately.

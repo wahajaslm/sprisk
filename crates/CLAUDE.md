@@ -9,7 +9,7 @@ Identity, permissions, registry resolution, graph typing, scheduling, leases, re
 - Wire types come from `sprisk-contracts` (generated). Never redefine them.
 - Repository traits hide SQLite vs Postgres. Domain code never names a dialect.
 - Migrations: separate per dialect, both tested.
-- Job states follow arch doc §9 exactly. Retries create new `StepAttempt` rows.
+- Job states follow arch doc §9 exactly. Retries create new `Attempt` rows.
 - Completion is idempotent by attempt ID. A late worker result must never overwrite a newer success.
 - Artifact commit: worker writes to staging → verify hash/manifest → DB commit → promote. Reconcile on crash. No fake cross-store transactions.
 - Never auto-retry side-effecting nodes.

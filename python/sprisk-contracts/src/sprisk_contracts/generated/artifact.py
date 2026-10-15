@@ -15,7 +15,7 @@ class ProjectId(RootModel[str]):
     root: Annotated[str, Field(pattern="^prj_[0-9A-HJKMNP-TV-Z]{26}$")]
 
 
-class StepAttemptId(RootModel[str]):
+class AttemptId(RootModel[str]):
     root: Annotated[str, Field(pattern="^att_[0-9A-HJKMNP-TV-Z]{26}$")]
 
 
@@ -44,7 +44,7 @@ class Artifact(StrictModel):
     schema_version: Literal["sprisk.artifact/v1"]
     id: ArtifactId
     project_id: ProjectId
-    producer_attempt_id: StepAttemptId
+    producer_attempt_id: AttemptId
     content_hash: ContentHash
     media_type: Annotated[
         str,

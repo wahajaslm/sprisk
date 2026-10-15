@@ -1,8 +1,8 @@
 # sprisk — System Architecture & Design Baseline
 
-**Status:** Proposed architecture baseline, revision 1.1 (not an implementation claim)  
+**Status:** Proposed architecture baseline, revision 1.2 (not an implementation claim)  
 **Date:** 15 October 2026  
-**Revision note:** Added frontend workbench architecture, docking/view registry, scientific visualization and UI acceptance gates after review.  
+**Revision note:** 1.1 added the frontend workbench. 1.2 renamed domain entities for consistency (ADR-0012).  
 **Scope:** Open-source, local-first, AI-native data-science, ML, experimentation, and decision-intelligence platform.  
 **Design target:** One complete investigation from a natural-language goal to an executable, validated, reproducible result, with a path to collaborative hosting.
 
@@ -27,7 +27,7 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 | --- | --- | --- |
 | Web application | React + TypeScript + Vite | Presentation only; no authoritative computation or methodology rules. |
 | Dockable workbench | `dockview-react` (preferred; validate against `flexlayout-react`) | Split/tab/floating/popout analytical views, persisted layouts; keep docking implementation behind an adapter. |
-| Workflow canvas | `@xyflow/react` (React Flow) + ELK.js as needed | Editable typed graph projection; backend `PipelineSpec` remains authoritative. |
+| Workflow canvas | `@xyflow/react` (React Flow) + ELK.js as needed | Editable typed graph projection; backend `Pipeline` remains authoritative. |
 | UI primitives | Radix UI + shadcn/ui patterns | Accessible controls and customizable design tokens; avoid coupling to a dashboard template. |
 | Data grid and exploration | AG Grid Community; optional FINOS Perspective | Virtualized data browsing; cross-filter/pivot only where needed and license-compatible. |
 | Charts and code | Apache ECharts + Plotly.js adapter; Monaco Editor | Pluggable analytical visualizations and code editing; avoid rendering entire datasets in the browser. |
@@ -62,7 +62,7 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 | Concern | Recommended choice | Decision status / constraint |
 | --- | --- | --- |
 | Docking and window groups | `dockview-react` | **Preferred**, subject to an end-to-end proof of concept. Compare against MIT-licensed `flexlayout-react`, including keyboard accessibility, popout behavior, nested resizing, license features, and chart/graph lifecycle. |
-| Executable workflow editor | `@xyflow/react` with custom node and edge components | **Chosen direction**. React graph is a view/editor of canonical `PipelineSpec`; it is not the engine, compiler or registry. |
+| Executable workflow editor | `@xyflow/react` with custom node and edge components | **Chosen direction**. React graph is a view/editor of canonical `Pipeline`; it is not the engine, compiler or registry. |
 | Automatic graph layout | ELK.js | Optional for AI-generated workflows, with manual layouts retained independently from pipeline graph structure. |
 | Components / styling | Radix UI primitives, shadcn/ui patterns, tokenized design system | **Chosen direction**; no bundled dashboard theme or AI-specific visual styling requirements. |
 | Tables and analytics | AG Grid Community; FINOS Perspective where useful | Community license baseline, advanced grid/pivot capabilities reviewed before implementation. Do not assume AG Grid Enterprise features are free. |
@@ -77,13 +77,13 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 
 The **Workbench View Registry** is independent of the **Operator/Capability Registry**:
 
-- `ViewTypeDefinition`: stable view type ID, renderer, accepted artifact/context kinds, available actions and serialization version; e.g. `workflow`, `dataset`, `distribution`, `correlation`, `experiment-comparison`, `model-diagnostics`, `evidence`, `code`, `notebook`, `ai-investigation`, `question-brief`, `outcomes`, `logs`.
+- `ViewType`: stable view type ID, renderer, accepted artifact/context kinds, available actions and serialization version; e.g. `workflow`, `dataset`, `distribution`, `correlation`, `experiment-comparison`, `model-diagnostics`, `evidence`, `code`, `notebook`, `ai-investigation`, `question-brief`, `outcomes`, `logs`.
 - `ViewInstance`: unique instance ID, type, title, context references (`project_id`, `investigation_id`, and optional `node_id`, `artifact_id`, `run_id`, `experiment_id`), user-controlled settings and `follow_selection` versus `pinned` mode.
 - `WorkspaceLayout`: separately versioned UI-only dock topology and geometry (groups, tabs, pane sizes, active view), saved as a per-user/per-project preference; layout migration is independent of scientific schema migrations.
 - `WorkbenchContext`: current project, active investigation, selected node/artifact/run and synchronized filters. Events are typed; a view can follow selection, pin a snapshot, or compare two references side-by-side.
-- `VisualizationSpec`: view configuration (chart type, metric/field references, transforms, selection/filter settings, provenance reference) consumed by pluggable renderers. This is not a raw dataframe or arbitrary chart execution script.
+- `Visualization`: view configuration (chart type, metric/field references, transforms, selection/filter settings, provenance reference) consumed by pluggable renderers. This is not a raw dataframe or arbitrary chart execution script.
 
-**Hard separation:** closing, moving or duplicating a dock never modifies/deletes an analytical node, model, dataset, experiment or evidence record. Conversely, editing an actual pipeline is an explicit mutation resulting in a new `PipelineRevision`, regardless of which dock initiates it. Layout state is not scientific provenance.
+**Hard separation:** closing, moving or duplicating a dock never modifies/deletes an analytical node, model, dataset, experiment or evidence record. Conversely, editing an actual pipeline is an explicit mutation resulting in a new `PipelineVersion`, regardless of which dock initiates it. Layout state is not scientific provenance.
 
 ### Architecture and data flow
 
@@ -141,19 +141,21 @@ flowchart TB
   OUT -. feedback .-> P
 ```
 
-Initial deployments: (1) one Rust binary plus managed, trusted Python worker processes and local filesystem/SQLite; (2) hosted form with Postgres, S3-compatible storage, worker isolation and durable job coordination. These are deployment profiles, **not two codebases**. Python planner and compute processes may share a packaged environment at first but must have different credentials and permissions.
+Initial deployments: (1) one Rust binary plus managed, trusted Python worker processes and local filesystem/SQLite; (2) hosted form with Postgres, S3-compatible storage, worker isolation and durable attempt coordination. These are deployment profiles, **not two codebases**. Python planner and compute processes may share a packaged environment at first but must have different credentials and permissions.
 
 ## 4. Domain model (source of truth)
+
+**Naming rules (ADR-0012):** entities are plain nouns. An immutable snapshot of an entity is `<Entity>Version`. Never add `Spec`, `Definition` or `Info`. A run executes a pipeline version; each node becomes a `Step`; each try of a step is an `Attempt`. The word "job" is not a domain term.
 
 | Entity | Meaning | Mutable? |
 | --- | --- | --- |
 | `Project` | Organizes resources, access policy and investigations. | Mutable settings, versioned policy. |
-| `Investigation` | The overarching inquiry, including analyses without decisions. | Mutable pointer to current revisions. |
-| `QuestionSpec` | Formal objective, task, data facts, assumptions, unknowns, acceptance criteria. | Immutable revisions. |
+| `Investigation` | The overarching inquiry, including analyses without decisions. | Mutable pointer to current versions. |
+| `Question` / `QuestionVersion` | Formal objective, task, data facts, assumptions, unknowns, acceptance criteria. | Immutable versions. |
 | `Dataset` / `DatasetVersion` | Data identity; frozen snapshot or external versioned reference. | Version immutable. |
-| `OperatorDefinition` | Registry metadata, interface, permissions and implementation version. | Immutable version. |
-| `PipelineRevision` | Compilable typed graph using pinned operator versions. | Immutable. |
-| `ExecutionRun` / `StepAttempt` | An execution of a specific graph against inputs; attempts and statuses. | Append-only history plus transactionally maintained current status. |
+| `Operator` | Registry metadata, interface, permissions and implementation version. | Immutable version. |
+| `PipelineVersion` | Compilable typed graph using pinned operator versions. | Immutable. |
+| `Run` / `Step` / `Attempt` | A run executes one pipeline version against inputs. Each node is a step; each try of a step is an attempt. | Append-only history plus transactionally maintained current status. |
 | `Artifact` | Content-addressed output with declared schema and source. | Immutable bytes and metadata. |
 | `ExperimentStudy` / `Trial` | Evaluation protocol, search space, candidate configurations, results. | Study state mutable; trial records immutable at completion. |
 | `MethodologyCheck` | Rule verdict, version, rationale, observed evidence and limitations. | Immutable per check execution. |
@@ -165,11 +167,11 @@ Initial deployments: (1) one Rust binary plus managed, trusted Python worker pro
 
 Three linked graphs:
 
-- **Execution DAG:** operators → dependencies → outputs. Must be acyclic for one execution revision.
+- **Execution DAG:** operators → dependencies → outputs. Must be acyclic for one pipeline version.
 - **Evidence graph:** finding/claim ↔ supporting/contradicting records ↔ experiment/artifact, including uncertainty.
 - **Decision graph:** objectives, alternatives, assumptions, constraints, approvals, releases and measured outcomes.
 
-Never force reasoning feedback loops into the execution DAG. An `Evaluate → revise features` loop creates a new graph revision/trial, linked by provenance.
+Never force reasoning feedback loops into the execution DAG. An `Evaluate → revise features` loop creates a new pipeline version/trial, linked by provenance.
 
 ## 5. Typed operator and pipeline intermediate representation
 
@@ -183,11 +185,11 @@ Every human, script, or agent selects from a shared registry. An operator declar
 - Capability class: source, transform, analyzer, estimator, evaluator, optimizer, decision evaluator, sink, custom code.
 - Provenance/diagnostics emitted by the worker.
 
-Illustrative `PipelineSpec` fragment:
+Illustrative `Pipeline` fragment:
 
 ```yaml
 schema_version: sprisk.pipeline/v1
-revision_id: pr_010
+version_id: plv_010
 nodes:
   - id: ingest
     operator: sprisk.source.parquet@1.0.0
@@ -211,7 +213,7 @@ edges:
   - { from: split.validation, to: evaluate.validation_data }
 ```
 
-The above is **illustrative**, not a complete leakage-safe protocol: model selection evaluates on validation folds/data, never a repeatedly consulted final test set. A production `ExperimentSpec` must represent folds, train/test role constraints, target-horizon availability, model-selection access, and test-set sealing. For cross-validation, the fitted preprocessing and feature selection are performed separately **inside each training fold**, not globally beforehand.
+The above is **illustrative**, not a complete leakage-safe protocol: model selection evaluates on validation folds/data, never a repeatedly consulted final test set. A production `ExperimentStudy` protocol must represent folds, train/test role constraints, target-horizon availability, model-selection access, and test-set sealing. For cross-validation, the fitted preprocessing and feature selection are performed separately **inside each training fold**, not globally beforehand.
 
 The Rust compiler handles schema validation, registry resolution, typed-port compatibility, graph cycles, permissions, resource feasibility and version pinning. Python methodology validators handle model-specific and domain-dependent correctness; some risks are intrinsically not machine-decidable and require explicit acknowledgment.
 
@@ -237,7 +239,7 @@ The first release should support exploratory analysis, classification and regres
 
 ### Logical components (not independent services)
 
-1. **Intent interpreter:** turns a user goal into structured `QuestionSpec`; every field carries `origin = explicit | inferred | measured | confirmed`, with unresolved fields indicated.
+1. **Intent interpreter:** turns a user goal into structured `Question` / `QuestionVersion`; every field carries `origin = explicit | inferred | measured | confirmed`, with unresolved fields indicated.
 2. **Context retriever:** obtains authorized schema/profile summaries, capability manifests, resource budgets and prior experiment records. Never sends raw data externally without explicit permission; profile metadata can also be sensitive.
 3. **Methodology planner:** chooses a strategy based on task semantics, evidence requirements, evaluation design, constraints and available capabilities. Deterministic rules are authoritative where formalizable.
 4. **Pipeline synthesizer:** produces a versioned, typed `PipelineProposal`; never arbitrary executable text as the default path.
@@ -256,9 +258,9 @@ GOAL_RECEIVED
   → (next bounded iteration) → REPORT
 ```
 
-**Guardrails:** maximum wall time, trials, compute, token spend, dataset access, local/external provider policy, plan-repair attempts and experiment-revision depth. AI cannot elevate privileges or change the protected final holdout to improve results. Deployments, communications and destructive operations require separate approval even if investigation autonomy is enabled.
+**Guardrails:** maximum wall time, trials, compute, token spend, dataset access, local/external provider policy, plan-repair attempts and experiment-version depth. AI cannot elevate privileges or change the protected final holdout to improve results. Deployments, communications and destructive operations require separate approval even if investigation autonomy is enabled.
 
-Three autonomy modes: `assist` (proposals), `execute_approved` (can run approved plan within budget), `bounded_autonomous` (may propose/run permitted experimental revisions but not production side effects). All use the same graph compiler.
+Three autonomy modes: `assist` (proposals), `execute_approved` (can run approved plan within budget), `bounded_autonomous` (may propose/run permitted experimental versions but not production side effects). All use the same graph compiler.
 
 ## 8. Methodology and scientific validity
 
@@ -274,22 +276,22 @@ Pipelines are not uniformly deterministic: record environment digest, package ve
 
 ## 9. Execution runtime, transactions and caching
 
-### Job state
+### Attempt state
 
-`CREATED → VALIDATED → QUEUED → LEASED → RUNNING → UPLOADING → SUCCEEDED`, with `FAILED`, `CANCELLED`, `TIMED_OUT`, `SKIPPED`, and `CACHE_HIT` outcomes. Retries are new `StepAttempt` records (not silent replacement of old attempts).
+`CREATED → VALIDATED → QUEUED → LEASED → RUNNING → UPLOADING → SUCCEEDED`, with `FAILED`, `CANCELLED`, `TIMED_OUT`, `SKIPPED`, and `CACHE_HIT` outcomes. Retries are new `Attempt` records (not silent replacement of old attempts).
 
 ### Local lifecycle
 
-1. API persists frozen `PipelineRevision` and authorized `ExecutionRun`.
+1. API persists frozen `PipelineVersion` and authorized `Run`.
 2. Compiler resolves a pinned execution plan; scheduler persists runnable steps.
-3. Scheduler atomically leases ready jobs to a worker with lease expiry, heartbeat and per-attempt identity.
+3. Scheduler atomically leases ready attempts to a worker with lease expiry, heartbeat and per-attempt identity.
 4. Worker receives minimal authorized input artifact references + bounded credentials; processes data in its environment.
 5. Worker writes immutable output bytes to **staging** and reports hashes/manifest/diagnostics.
 6. Control plane verifies manifests and atomically commits artifact references, step state and append-only audit events in metadata. Physical object promotion and DB commit use recovery-safe staging/reconciliation (not an imaginary cross-store transaction).
 7. Downstream dependent nodes become ready; event subscribers receive progress, but the database remains authoritative.
 8. Lease expiry triggers retry/reconciliation; late worker results cannot overwrite a newer successful attempt.
 
-**Delivery is at-least-once; completion is idempotent by attempt identity and commit checks.** Side-effecting nodes are never automatically retried without idempotency and approval policy. SQLite local is sufficient for a small scheduler; later Postgres + distributed leases/queue can retain the same job semantics.
+**Delivery is at-least-once; completion is idempotent by attempt identity and commit checks.** Side-effecting nodes are never automatically retried without idempotency and approval policy. SQLite local is sufficient for a small scheduler; later Postgres + distributed leases/queue can retain the same attempt semantics.
 
 ### Caching
 
@@ -307,7 +309,7 @@ Only trusted pure operations with adequate input snapshots can use reusable cach
 
 ## 10. Storage model and external data
 
-**Metadata database:** investigations, schemas, revisions, runs, attempts, registry versions, evidence relationships, policies and audit events. Use relational tables, indexed reference edges and JSON for bounded extensions. No graph DB initially. An append-only audit log is not synonymous with full event sourcing.
+**Metadata database:** investigations, schemas, versions, runs, steps, attempts, registry versions, evidence relationships, policies and audit events. Use relational tables, indexed reference edges and JSON for bounded extensions. No graph DB initially. An append-only audit log is not synonymous with full event sourcing.
 
 **Artifact store:** versioned Parquet datasets, Arrow intermediates when useful, model bundles, plots/diagnostics, report exports, evaluation output, and immutable frozen manifests. Metadata stores URI, content hash, schema, bytes, owner/tenant, producer attempt and allowed retention.
 
@@ -339,7 +341,7 @@ GET    /v1/investigations/{id}/evidence
 GET    /v1/investigations/{id}/brief
 ```
 
-A local worker protocol needs at least `Handshake(version, capabilities)`, `LeaseJob`, `Heartbeat`, `Progress`, `ArtifactManifest`, `Complete`, `Fail`, `Cancel`, and `Acknowledge`. Use bounded structured messages over stdio IPC or local sockets. Workers must not modify Rust's metadata tables directly; artifact writes are mediated by scoped access and commit validation.
+A local worker protocol needs at least `Handshake(version, capabilities)`, `LeaseAttempt`, `Heartbeat`, `Progress`, `ArtifactManifest`, `Complete`, `Fail`, `Cancel`, and `Acknowledge`. Use bounded structured messages over stdio IPC or local sockets. Workers must not modify Rust's metadata tables directly; artifact writes are mediated by scoped access and commit validation.
 
 **Important distinction:** the AI planner's tool interface uses the **same API/core capabilities** as an expert CLI or SDK. No shadow execution logic or private route for an agent.
 
@@ -365,7 +367,7 @@ Trust boundaries: browser/user → Rust API → AI planning worker → compute w
 | Artifacts | Local filesystem | S3-compatible object storage |
 | Identity | Local access controls | OIDC, organizations, roles, scoped dataset permission |
 | Events | DB-backed event stream | Durable coordination with outbox delivery |
-| Secrets | OS-integrated storage where feasible | Managed secret store, per-job scoped credentials |
+| Secrets | OS-integrated storage where feasible | Managed secret store, per-attempt scoped credentials |
 | AI | Local models or explicit BYO external key | Tenant-configured provider policy and usage budgets |
 | Desktop | Browser localhost first | Optional Tauri packaging after Python runtime distribution works |
 
@@ -451,7 +453,7 @@ Acceptance tests (must be automated):
 
 **M3 — Experiment and scientific integrity:** reproducible validation protocol, checks, three+ candidate methods, Optuna/bounded trials, holdout discipline, diagnostic artifacts. Exit: deliberately invalid benchmarking tasks are caught.
 
-**M4 — AI revision and evidence:** agent reviews measured results, proposes new frozen revisions, reruns impacted nodes, records assumptions/findings and exports an Investigation Brief. Exit: autonomous loop respects time/token/compute caps and evidence claims are traceable.
+**M4 — AI iteration and evidence:** agent reviews measured results, proposes new frozen pipeline versions, reruns impacted nodes, records assumptions/findings and exports an Investigation Brief. Exit: autonomous loop respects time/token/compute caps and evidence claims are traceable.
 
 **M5 — Open-source public engineering:** CLI/SDK, documented local install, plugin SDK contract tests, reproducibility bundle, security packaging and benchmark fixtures. Exit: external developer can execute, inspect and extend a full investigation without maintainer help.
 
@@ -462,7 +464,7 @@ Acceptance tests (must be automated):
 **Proposed to accept now (architecture baseline):**
 
 - ADR-001: Rust modular monolith control plane + separate Python AI and compute workers.
-- ADR-002: Typed, versioned `PipelineSpec` and registered operator contracts; no prompt-to-raw-code as the default execution path.
+- ADR-002: Typed, versioned `Pipeline` and registered operator contracts; no prompt-to-raw-code as the default execution path.
 - ADR-003: Three linked domains: execution DAG, evidence graph, decision graph.
 - ADR-004: SQLite/filesystem for local; PostgreSQL/S3-compatible interfaces for hosted, with shared domain and execution contracts.
 - ADR-005: Append-only run/audit history plus transactionally maintained operational state; **not** full event sourcing.
@@ -470,7 +472,7 @@ Acceptance tests (must be automated):
 - ADR-007: AI is first-class and autonomous only within bounded planning/execution budgets; external AI transfer off by default.
 - ADR-008: One experiment protocol and artifact registry shared by manual, programmatic and AI workflows.
 - ADR-009: Cloud capability achieved via adapters and worker isolation, not an initial microservice rewrite.
-- ADR-010: Dockable workbench with a separate versioned `WorkbenchViewRegistry`/`WorkspaceLayout`, independent of pipeline revisions and the scientific artifact store; Dockview preferred, FlexLayout comparison required.
+- ADR-010: Dockable workbench with a separate versioned `ViewRegistry`/`WorkspaceLayout`, independent of pipeline versions and the scientific artifact store; Dockview preferred, FlexLayout comparison required.
 - ADR-011: Scientific visualizations and code editors are pluggable consumers of artifact/query APIs; UI cannot independently execute privileged code or copy entire datasets by default.
 
 **Explicitly unresolved (must be validated, not prematurely frozen):**

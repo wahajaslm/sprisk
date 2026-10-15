@@ -1,4 +1,4 @@
-# ADR-0002: Typed, versioned PipelineSpec and registered operator contracts; no prompt-to-raw-code execution by default
+# ADR-0002: Typed, versioned Pipeline and registered operator contracts; no prompt-to-raw-code execution by default
 
 Status: Proposed
 Date: 2026-10-15
@@ -6,7 +6,7 @@ Arch doc sections: §5, §7
 
 ## Decision
 
-Typed, versioned PipelineSpec and registered operator contracts; no prompt-to-raw-code execution by default.
+Typed, versioned Pipeline and registered operator contracts; no prompt-to-raw-code execution by default.
 
 ## Context and consequences
 
