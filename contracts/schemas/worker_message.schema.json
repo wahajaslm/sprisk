@@ -80,6 +80,7 @@
         "operator",
         "params",
         "inputs",
+        "staging_uri",
         "lease_expires_at"
       ],
       "properties": {
@@ -109,6 +110,11 @@
           "items": {
             "$ref": "#/$defs/InputBinding"
           }
+        },
+        "staging_uri": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9+.-]*://.+$",
+          "description": "Only location the worker may write outputs to. Scoped to this attempt."
         },
         "lease_expires_at": {
           "$ref": "#/$defs/Timestamp"
@@ -308,7 +314,9 @@
       "additionalProperties": false,
       "required": [
         "port",
-        "artifact_id"
+        "artifact_id",
+        "uri",
+        "content_hash"
       ],
       "properties": {
         "port": {
@@ -316,8 +324,16 @@
         },
         "artifact_id": {
           "$ref": "#/$defs/ArtifactId"
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9+.-]*://.+$"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/ContentHash"
         }
-      }
+      },
+      "description": "Committed input artifact, resolved by the control plane. Read-only. The worker verifies content_hash before use."
     }
   }
 }

@@ -421,15 +421,23 @@ export interface LeaseAttempt {
   operator: OperatorRef;
   params: Params;
   inputs: InputBinding[];
+  /**
+   * Only location the worker may write outputs to. Scoped to this attempt.
+   */
+  staging_uri: string;
   lease_expires_at: Timestamp;
 }
 /**
+ * Committed input artifact, resolved by the control plane. Read-only. The worker verifies content_hash before use.
+ *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "InputBinding".
  */
 export interface InputBinding {
   port: PortName;
   artifact_id: ArtifactId;
+  uri: string;
+  content_hash: ContentHash;
 }
 /**
  * Worker → control plane. Extends the lease.

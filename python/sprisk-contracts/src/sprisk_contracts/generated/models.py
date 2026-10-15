@@ -314,6 +314,8 @@ class InputBinding(StrictModel):
     )
     port: PortName
     artifact_id: ArtifactId
+    uri: Annotated[str, Field(pattern="^[a-z][a-z0-9+.-]*://.+$")]
+    content_hash: ContentHash
 
 
 class Artifact(StrictModel):
@@ -415,6 +417,13 @@ class LeaseAttempt(StrictModel):
     operator: OperatorRef
     params: Params
     inputs: list[InputBinding]
+    staging_uri: Annotated[
+        str,
+        Field(
+            description="Only location the worker may write outputs to. Scoped to this attempt.",
+            pattern="^[a-z][a-z0-9+.-]*://.+$",
+        ),
+    ]
     lease_expires_at: Timestamp
 
 

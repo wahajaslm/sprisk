@@ -1,0 +1,20 @@
+{
+  "type": "lease_attempt",
+  "attempt_id": "att_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "node_id": "train",
+  "operator": "sprisk.ml.sklearn_pipeline@1.0.0",
+  "params": {
+    "estimator": "logistic_regression"
+  },
+  "inputs": [
+    {
+      "port": "training_data",
+      "artifact_id": "art_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "uri": "file:///var/sprisk/artifacts/sha256/ab/abcd",
+      "content_hash": "md5:abc"
+    }
+  ],
+  "staging_uri": "file:///var/sprisk/staging/att_01JABCDEFGHJKMNPQRSTVWXYZ0/",
+  "lease_expires_at": "2026-10-15T10:01:00Z"
+}
