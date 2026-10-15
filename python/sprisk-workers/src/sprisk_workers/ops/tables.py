@@ -12,8 +12,3 @@ def read_table(path: Path, required: Iterable[str] = ()) -> pl.DataFrame:
     if missing:
         raise OperatorError("missing_column", f"{path.name}: missing columns {missing}")
     return df
-
-
-def write_table(df: pl.DataFrame, path: Path) -> Path:
-    df.write_parquet(path)
-    return path

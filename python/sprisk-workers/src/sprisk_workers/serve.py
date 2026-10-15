@@ -7,6 +7,7 @@ from typing import Any, TextIO
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
+from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
 
 from sprisk_contracts import WorkerMessage
@@ -32,6 +33,7 @@ OperatorFn = Callable[[Mapping[str, Any], Mapping[str, Path], Path], list[Output
 class LoadedOperator:
     run: OperatorFn
     output_ports: frozenset[str]
+    params_schema: Mapping[str, Any]
 
 
 class _Failure(Exception):
@@ -114,14 +116,13 @@ def _run_attempt(
     try:
         manifests = _execute(lease, operators)
     except _Failure as f:
-        stop.set()
-        beater.join()
         sender.send(
             Fail(type="fail", attempt_id=attempt_id, error=f.fail_error, failure_kind=f.kind)
         )
         return
-    stop.set()
-    beater.join()
+    finally:
+        stop.set()
+        beater.join()
     for manifest in manifests:
         sender.send(manifest)
     sender.send(Complete(type="complete", attempt_id=attempt_id))
@@ -136,7 +137,9 @@ def _execute(
             "unknown_operator", f"worker cannot run {lease.operator.root}", FailureKind.permanent
         )
     staging = _local_path(lease.staging_uri)
+    # Params are an open map on the wire; every key lands in model_extra.
     params = lease.params.model_extra or {}
+    _check_params(lease.operator.root, params, operator.params_schema)
     try:
         inputs = {b.port.root: _verified_input(b.uri, b.content_hash.root) for b in lease.inputs}
         staging.mkdir(parents=True, exist_ok=True)
@@ -148,6 +151,13 @@ def _execute(
         raise _Failure(
             "io_error", f"attempt {lease.attempt_id.root}: {e}", FailureKind.transient
         ) from e
+
+
+def _check_params(operator: str, params: Mapping[str, Any], schema: Mapping[str, Any]) -> None:
+    # Rust validates params at compile time; the worker checks again at its own boundary.
+    errors = sorted(e.message for e in Draft202012Validator(schema).iter_errors(params))
+    if errors:
+        raise _Failure("invalid_params", f"{operator}: {'; '.join(errors)}", FailureKind.permanent)
 
 
 def _local_path(uri: str) -> Path:

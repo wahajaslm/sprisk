@@ -17,13 +17,25 @@ from sprisk_workers.serve import LoadedOperator, serve
 WORKER_ID = "wrk_01JABCDEFGHJKMNPQRSTVWXYZ0"
 ATTEMPT_ID = "att_01JABCDEFGHJKMNPQRSTVWXYZ0"
 OP = "sprisk.test.echo@1.0.0"
+SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["text"],
+    "properties": {"text": {"type": "string"}},
+}
 
 
 def sha256(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-def lease(tmp_path: Path, inputs: list[dict[str, str]] | None = None, op: str = OP) -> str:
+def lease(
+    tmp_path: Path,
+    inputs: list[dict[str, str]] | None = None,
+    op: str = OP,
+    params: dict[str, object] | None = None,
+    staging_uri: str | None = None,
+) -> str:
     return json.dumps(
         {
             "type": "lease_attempt",
@@ -31,9 +43,9 @@ def lease(tmp_path: Path, inputs: list[dict[str, str]] | None = None, op: str = 
             "run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ0",
             "node_id": "echo",
             "operator": op,
-            "params": {"text": "hi"},
+            "params": {"text": "hi"} if params is None else params,
             "inputs": inputs or [],
-            "staging_uri": (tmp_path / "staging").as_uri() + "/",
+            "staging_uri": staging_uri or (tmp_path / "staging").as_uri() + "/",
             "lease_expires_at": "2026-10-15T10:01:00Z",
         }
     )
@@ -50,7 +62,7 @@ def run(
     stdin_lines: list[str], fn: Any = echo, heartbeat_seconds: float = 60.0
 ) -> list[dict[str, Any]]:
     stdout = io.StringIO()
-    ops = {OP: LoadedOperator(run=fn, output_ports=frozenset({"out"}))}
+    ops = {OP: LoadedOperator(run=fn, output_ports=frozenset({"out"}), params_schema=SCHEMA)}
     serve(io.StringIO("\n".join(stdin_lines) + "\n"), stdout, WORKER_ID, ops, heartbeat_seconds)
     return [json.loads(line) for line in stdout.getvalue().splitlines()]
 
@@ -123,6 +135,20 @@ def test_missing_input_file_fails_transiently(tmp_path: Path) -> None:
     assert sent[-1]["error"]["code"] == "io_error"
 
 
+@pytest.mark.parametrize("params", [{}, {"text": 1}, {"text": "hi", "extra": True}])
+def test_params_not_matching_schema_fail_permanently(
+    tmp_path: Path, params: dict[str, object]
+) -> None:
+    sent = run([lease(tmp_path, params=params)])
+    assert sent[-1]["failure_kind"] == "permanent"
+    assert sent[-1]["error"]["code"] == "invalid_params"
+
+
+def test_non_file_staging_uri_fails_permanently(tmp_path: Path) -> None:
+    sent = run([lease(tmp_path, staging_uri="s3://bucket/staging/")])
+    assert sent[-1]["error"]["code"] == "unsupported_uri"
+
+
 def test_unknown_operator_fails_permanently(tmp_path: Path) -> None:
     sent = run([lease(tmp_path, op="sprisk.test.missing@1.0.0")])
     assert sent[-1]["failure_kind"] == "permanent"
@@ -177,7 +203,7 @@ def test_heartbeats_while_operator_runs(tmp_path: Path) -> None:
         assert beat_seen.wait(timeout=5)
         return echo(params, inputs, out_dir)
 
-    ops = {OP: LoadedOperator(run=slow, output_ports=frozenset({"out"}))}
+    ops = {OP: LoadedOperator(run=slow, output_ports=frozenset({"out"}), params_schema=SCHEMA)}
     serve(io.StringIO(lease(tmp_path) + "\n"), Watch(), WORKER_ID, ops, heartbeat_seconds=0.01)
     types = [json.loads(line)["type"] for line in stdout.getvalue().splitlines()]
     assert "heartbeat" in types

@@ -42,6 +42,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
     split = ops["sprisk.validation.temporal_split@1.0.0"]
     assert split.run is temporal_split
     assert split.output_ports == {"train", "test"}
+    assert split.params_schema["required"] == ["time_column", "test_fraction"]
 
 
 def test_entrypoint_outside_core_ops_is_refused(tmp_path: Path) -> None:
@@ -54,6 +55,12 @@ def test_entrypoint_outside_core_ops_is_refused(tmp_path: Path) -> None:
 def test_missing_entrypoint_function_is_an_error(tmp_path: Path) -> None:
     write(tmp_path, "sprisk_workers.ops.split:nope")
     with pytest.raises(ManifestError, match="nope"):
+        load_operators(tmp_path)
+
+
+def test_unimportable_entrypoint_module_is_an_error(tmp_path: Path) -> None:
+    write(tmp_path, "sprisk_workers.ops.nope:f")
+    with pytest.raises(ManifestError, match="cannot import"):
         load_operators(tmp_path)
 
 

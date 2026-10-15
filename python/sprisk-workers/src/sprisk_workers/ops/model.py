@@ -38,11 +38,13 @@ def _fit(
     estimator: BaseEstimator, params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
 ) -> list[Output]:
     """Fit preprocessing and estimator together, on the training table only."""
-    target = params["target"]
-    train = read_table(inputs["train"], [target])
+    target, columns = params["target"], params["features"]
+    if target in columns:
+        raise OperatorError("target_in_features", f"target {target!r} is listed as a feature")
+    train = read_table(inputs["train"], [target, *columns])
     if train[target].null_count():
         raise OperatorError("null_target", f"{target} has {train[target].null_count()} nulls")
-    features = train.drop(target)
+    features = train.select(columns)
     model = Pipeline([("preprocess", _preprocessor(features)), ("estimator", estimator)])
     model.fit(features, train[target].to_numpy())
     path = out_dir / "model.skops"

@@ -3,22 +3,18 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
-from sklearn.model_selection import train_test_split
 
 from sprisk_workers.errors import OperatorError
-from sprisk_workers.ops.tables import read_table, write_table
+from sprisk_workers.ops.tables import read_table
 from sprisk_workers.output import PARQUET, Output
 
 
 def random_split(
     params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
 ) -> list[Output]:
-    df = read_table(inputs["data"]).with_row_index("_row")
-    train_rows, _ = train_test_split(
-        df["_row"].to_numpy(), test_size=params["test_fraction"], random_state=params["seed"]
-    )
-    is_train = pl.col("_row").is_in(train_rows.tolist())
-    return _write(df.filter(is_train).drop("_row"), df.filter(~is_train).drop("_row"), out_dir)
+    df = read_table(inputs["data"]).sample(fraction=1.0, shuffle=True, seed=params["seed"])
+    n_test = round(df.height * params["test_fraction"])
+    return _write(df.slice(n_test), df.head(n_test), out_dir)
 
 
 def temporal_split(
@@ -39,7 +35,9 @@ def _write(train: pl.DataFrame, test: pl.DataFrame, out_dir: Path) -> list[Outpu
         raise OperatorError(
             "empty_split", f"split gave {train.height} train and {test.height} test rows"
         )
-    return [
-        Output("train", write_table(train, out_dir / "train.parquet"), PARQUET),
-        Output("test", write_table(test, out_dir / "test.parquet"), PARQUET),
-    ]
+    outputs = []
+    for port, df in (("train", train), ("test", test)):
+        path = out_dir / f"{port}.parquet"
+        df.write_parquet(path)
+        outputs.append(Output(port, path, PARQUET))
+    return outputs

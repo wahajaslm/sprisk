@@ -8,9 +8,10 @@ outputs: [{ name: model, kind: model }]
 params_schema:
   type: object
   additionalProperties: false
-  required: [target, task]
+  required: [target, features, task]
   properties:
     target: { type: string, minLength: 1 }
+    features: { type: array, items: { type: string, minLength: 1 }, uniqueItems: true }
     task: { type: string, enum: [classification, regression] }
 effects: pure
 network: none

@@ -60,3 +60,12 @@ def test_temporal_split_rejects_bad_data(
     with pytest.raises(OperatorError) as e:
         split(temporal_split, params, write_parquet, out_dir, df)
     assert e.value.code == code
+
+
+def test_random_split_that_leaves_test_empty_is_an_error(
+    write_parquet: WriteParquet, out_dir: Path
+) -> None:
+    params: dict[str, object] = {"test_fraction": 0.1, "seed": 1}
+    with pytest.raises(OperatorError) as e:
+        split(random_split, params, write_parquet, out_dir, pl.DataFrame({"id": [1]}))
+    assert e.value.code == "empty_split"
