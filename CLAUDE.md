@@ -81,9 +81,10 @@ Never hand-build what a mature, maintained library already does. Write only the 
 | CLI | `clap` | `typer` | — |
 | Errors | `thiserror` (libs), `anyhow` (bins) | exception classes | — |
 | Logging / tracing | `tracing`, OpenTelemetry | `structlog` | — |
-| Config / manifests | `serde`, `serde_yaml` | `pydantic-settings` | — |
+| Config / manifests | `serde`, `yaml_serde` (YAML Org fork; `serde_yaml` is archived) | `pydantic-settings` | — |
 | Data, ML, stats | — | `polars`, `duckdb`, `pyarrow`, `scikit-learn`, `scipy`, `statsmodels`, `optuna` | — |
-| Validation | generated contracts | `pydantic` | `ajv` |
+| Validation | generated contracts, `jsonschema` (for operator `params_schema`) | `pydantic` | `ajv` |
+| Filesystem walking | `walkdir` | `pathlib` | — |
 | PII detection | — | `presidio` | — |
 | Testing | `cargo test`, `tempfile`, `proptest` | `pytest`, `hypothesis` | `vitest`, Testing Library, Playwright |
 
