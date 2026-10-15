@@ -7,7 +7,7 @@ Identity, permissions, registry resolution, graph typing, scheduling, leases, re
 
 ## Rules
 - Wire types come from `sprisk-contracts` (generated). Never redefine them.
-- Repository traits hide SQLite vs Postgres. Domain code never names a dialect.
+- Metadata lives in `sprisk-store` (concrete SQLite today). Extract a repository trait when Postgres lands, not before. Domain code never names a dialect.
 - Migrations: separate per dialect, both tested.
 - Attempt states change only via `sprisk_core::attempt::transition` (ADR-0013). Retries create new `Attempt` rows.
 - Completion is idempotent by attempt ID. A late worker result must never overwrite a newer success.
@@ -37,6 +37,7 @@ Identity, permissions, registry resolution, graph typing, scheduling, leases, re
 
 ## Crate dependency direction
 ```
+sprisk-api ─→ sprisk-store ─→ sprisk-core
 sprisk-api ─→ sprisk-runtime ─→ sprisk-scheduler ─→ sprisk-graph ─→ sprisk-registry ─→ sprisk-core
                      │                  └──────────→ sprisk-policy ──────────────────→ sprisk-core
                      └─→ sprisk-artifacts ───────────────────────────────────────────→ sprisk-core

@@ -3,7 +3,10 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-typify::import_types!(schema = "../../contracts/bundle.schema.json");
+typify::import_types!(
+    schema = "../../contracts/bundle.schema.json",
+    derives = [PartialEq],
+);
 
 #[derive(Debug, thiserror::Error)]
 pub enum ContractError {
