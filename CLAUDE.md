@@ -6,7 +6,7 @@ Source of truth: [docs/architecture/system-architecture.md](docs/architecture/sy
 
 ## Status
 
-Current milestone: **M1 — non-AI vertical slice** (arch doc §16). M0 closed 2026-10-15; open item: worker credentials field in `LeaseAttempt`.
+Current milestone: **M1 — non-AI vertical slice** (arch doc §16). M0 closed 2026-10-15. Scoped worker access (`staging_uri`, input URIs) added to `LeaseAttempt` 2026-10-16.
 Do not build ahead of the current milestone without asking.
 
 ## Layout (arch doc §14)
