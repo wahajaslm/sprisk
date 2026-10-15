@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError
 from sprisk_contracts import (
     Artifact,
     Attempt,
+    MethodologyCheck,
     Operator,
     PipelineVersion,
     QuestionVersion,
@@ -27,6 +28,7 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (Attempt, "attempt"),
     (WorkerMessage, "worker_message"),
     (QuestionVersion, "question_version"),
+    (MethodologyCheck, "methodology_check"),
 ]
 
 

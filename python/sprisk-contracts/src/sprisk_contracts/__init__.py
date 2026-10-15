@@ -3,6 +3,7 @@
 from sprisk_contracts.generated.models import (
     Artifact,
     Attempt,
+    MethodologyCheck,
     Operator,
     PipelineVersion,
     QuestionVersion,
@@ -13,6 +14,7 @@ from sprisk_contracts.generated.models import (
 __all__ = [
     "Artifact",
     "Attempt",
+    "MethodologyCheck",
     "Operator",
     "PipelineVersion",
     "QuestionVersion",

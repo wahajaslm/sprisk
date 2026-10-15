@@ -14,6 +14,7 @@ export interface Entities {
   Attempt: C.Attempt;
   WorkerMessage: C.WorkerMessage;
   QuestionVersion: C.QuestionVersion;
+  MethodologyCheck: C.MethodologyCheck;
 }
 
 export class ContractError extends Error {}

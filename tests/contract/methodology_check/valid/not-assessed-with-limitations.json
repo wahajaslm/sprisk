@@ -1,0 +1,11 @@
+{
+  "schema_version": "sprisk.methodology_check/v1",
+  "id": "mck_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "check": "supervised.holdout_sealed@1.0.0",
+  "verdict": "not_assessed",
+  "rationale": "No evaluator nodes.",
+  "cited_nodes": [],
+  "limitations": "Only evaluator nodes in this pipeline version are inspected.",
+  "created_at": "2026-10-16T10:00:00Z"
+}

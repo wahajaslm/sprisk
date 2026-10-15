@@ -100,6 +100,27 @@ class Error(StrictModel):
     message: Annotated[str, Field(min_length=1)]
 
 
+class MethodologyCheckId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^mck_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
+class CheckRef(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="Pinned rule: <pack>.<rule>@<semver>.",
+            pattern="^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+        ),
+    ]
+
+
+class Verdict(StrEnum):
+    pass_ = "pass"
+    fail = "fail"
+    warning = "warning"
+    not_assessed = "not_assessed"
+
+
 class CapabilityClass(StrEnum):
     source = "source"
     transform = "transform"
@@ -345,6 +366,32 @@ class Artifact(StrictModel):
             pattern="^[a-z][a-z0-9+.-]*://.+$",
         ),
     ]
+    created_at: Timestamp
+
+
+class MethodologyCheck(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.methodology_check/v1"]
+    id: MethodologyCheckId
+    pipeline_version_id: PipelineVersionId
+    check: CheckRef
+    verdict: Verdict
+    rationale: Annotated[str, Field(min_length=1)]
+    cited_nodes: Annotated[
+        list[NodeId],
+        Field(
+            description="Nodes the verdict is about. Empty when the rule found nothing to inspect."
+        ),
+    ]
+    limitations: Annotated[
+        str | None,
+        Field(
+            description="What the rule could not assess. Omitted when there is nothing to say.",
+            min_length=1,
+        ),
+    ] = None
     created_at: Timestamp
 
 

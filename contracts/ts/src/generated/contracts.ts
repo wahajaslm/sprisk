@@ -78,6 +78,23 @@ export type PortName = string;
 export type OperatorRef = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyCheckId".
+ */
+export type MethodologyCheckId = string;
+/**
+ * Pinned rule: <pack>.<rule>@<semver>.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CheckRef".
+ */
+export type CheckRef = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Verdict".
+ */
+export type Verdict = "pass" | "fail" | "warning" | "not_assessed";
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "CapabilityClass".
  */
 export type CapabilityClass =
@@ -203,6 +220,29 @@ export interface Params {
 export interface Error {
   code: string;
   message: string;
+}
+/**
+ * Result of one Gate B methodology rule on one pipeline version (arch doc §4, §8). Immutable; re-checking creates a new record.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyCheck".
+ */
+export interface MethodologyCheck {
+  schema_version: "sprisk.methodology_check/v1";
+  id: MethodologyCheckId;
+  pipeline_version_id: PipelineVersionId;
+  check: CheckRef;
+  verdict: Verdict;
+  rationale: string;
+  /**
+   * Nodes the verdict is about. Empty when the rule found nothing to inspect.
+   */
+  cited_nodes: NodeId[];
+  /**
+   * What the rule could not assess. Omitted when there is nothing to say.
+   */
+  limitations?: string;
+  created_at: Timestamp;
 }
 /**
  * Registered, versioned capability that a pipeline node runs (arch doc §5, §6).
