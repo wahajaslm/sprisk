@@ -6,7 +6,15 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from sprisk_contracts import Artifact, Attempt, Operator, PipelineVersion, QuestionVersion, Run, WorkerMessage
+from sprisk_contracts import (
+    Artifact,
+    Attempt,
+    Operator,
+    PipelineVersion,
+    QuestionVersion,
+    Run,
+    WorkerMessage,
+)
 
 FIXTURES = Path(__file__).parents[3] / "tests" / "contract"
 
