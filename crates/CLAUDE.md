@@ -20,3 +20,17 @@ Identity, permissions, registry resolution, graph typing, scheduling, leases, re
 
 ## Checks
 `cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
+
+## Code style
+- Errors: one `thiserror` enum per crate. Variants carry context (IDs, paths). Use `?`. Map to HTTP status in `sprisk-api` only.
+- Newtypes for IDs (`RunId(Uuid)`), enums for states. No stringly-typed state.
+- Plain structs and functions first. Traits only at real seams: repositories, artifact store, worker transport.
+- No `async` in pure logic. Graph compile, cache keys, state transitions are sync and pure.
+- Avoid `Arc<Mutex<_>>` sprawl. Own data; pass references.
+- No `unsafe`. No custom macros.
+
+## Tests
+- Unit tests in the same file (`#[cfg(test)] mod tests`). Integration tests in `crates/<crate>/tests/`.
+- Repositories tested against in-memory SQLite. Postgres tests behind a feature flag in CI.
+- State machine: test every allowed and every forbidden transition.
+- Test crash recovery: kill between staging and commit, then reconcile.

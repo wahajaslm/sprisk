@@ -21,3 +21,18 @@ Profiling, transforms, feature engineering, ML/stats, experiment strategy, metho
 
 ## Checks
 `uv run ruff format && uv run ruff check && uv run mypy python && uv run pytest`
+
+## Code style
+- Type hints on every signature. Frozen `dataclass` or Pydantic for data. No dicts as hidden structs.
+- Functions over classes. A class only when it holds real state.
+- Errors: a small exception hierarchy per package (`SpriskError` → specific). Raise with context. Never bare `except:` or `except Exception: pass`.
+- Validate LLM output with Pydantic strictly. Invalid → typed error → bounded repair. Never coerce silently.
+- No global state. No import-time side effects.
+- Use Polars/DuckDB/sklearn directly. No wrapper layers over them.
+
+## Tests
+- `pytest`. Tests in `python/<pkg>/tests/`, mirroring the source layout.
+- Tiny inline fixtures or files in `tests/fixtures/`. Fixed seeds.
+- Methodology validators: one test that passes clean data, one that catches each leak/split error.
+- LLM code: test against recorded fake responses. Never call a real provider in tests.
+- Use `hypothesis` for parsers and schema validation where it finds edge cases cheaply.

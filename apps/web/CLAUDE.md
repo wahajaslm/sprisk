@@ -20,3 +20,16 @@ dockview-react (behind an adapter), @xyflow/react, Radix + shadcn patterns, AG G
 
 ## Checks
 `pnpm lint && pnpm typecheck && pnpm test`
+
+## Code style
+- Function components and hooks. No class components.
+- Server data only via TanStack Query hooks. UI state in Zustand. Never mix them.
+- Handle every query state: loading, error, empty. Show errors; never hide them.
+- Discriminated unions over boolean flags.
+- Keep components small. Extract a hook when logic outgrows the JSX.
+- No premature `useMemo`/`useCallback`. Add them when a profile shows the need.
+
+## Tests
+- Vitest + Testing Library. Test what the user sees and does, not implementation.
+- Mock the API at the network edge (MSW). Not inside components.
+- Playwright for the docking proof-of-concept gate (arch §2A).

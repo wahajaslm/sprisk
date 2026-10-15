@@ -9,3 +9,11 @@ Canonical, versioned wire schemas (JSON Schema + OpenAPI). Arch doc §11.
 - Datasets never go inside JSON messages. Use artifact references (Arrow IPC / Parquet).
 - Fields set by AI carry `origin: explicit | inferred | measured | confirmed` where the arch doc requires it.
 - Use `/new-contract` to add an entity.
+
+## Schema style
+- `snake_case` fields. `PascalCase` type names. IDs are prefixed strings (`run_…`, `art_…`).
+- Closed objects: `additionalProperties: false`.
+- Enums for every state and kind. No free-text status fields.
+- Required by default. Optional only when absence has a meaning; document it.
+- Timestamps: RFC 3339 UTC. Hashes: `sha256:<hex>`.
+- Write the failing roundtrip fixture first, then the schema (TDD).
