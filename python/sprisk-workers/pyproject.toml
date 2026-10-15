@@ -1,0 +1,28 @@
+[project]
+name = "sprisk-workers"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "sprisk-contracts",
+    "polars>=1.10",
+    "duckdb>=1.1",
+    "pyarrow>=17",
+    "scikit-learn>=1.5",
+    "skops>=0.10",
+    "pyyaml>=6",
+    "python-ulid>=3",
+    "typer>=0.12",
+]
+
+[project.scripts]
+sprisk-worker = "sprisk_workers.__main__:app"
+
+[dependency-groups]
+dev = ["pytest>=8", "mypy>=1.13", "ruff>=0.8", "types-pyyaml"]
+
+[tool.uv.sources]
+sprisk-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["python/sprisk-contracts"]
+members = ["python/sprisk-contracts", "python/sprisk-workers"]
 
 [tool.ruff]
 line-length = 100
@@ -15,3 +15,8 @@ python_version = "3.12"
 
 [tool.ruff.lint.isort]
 known-first-party = ["sprisk_*"]
+
+# scikit-learn and skops ship no type information.
+[[tool.mypy.overrides]]
+module = ["sklearn.*", "skops.*"]
+ignore_missing_imports = true

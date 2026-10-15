@@ -33,6 +33,8 @@ check:
     uv run ruff format --check python
     uv run ruff check python
     uv run mypy python/sprisk-contracts/src python/sprisk-contracts/tests
+    uv run mypy python/sprisk-workers/src
+    uv run mypy python/sprisk-workers/tests
     uv run pytest -q python
     pnpm -C contracts/ts typecheck
     pnpm -C contracts/ts test
