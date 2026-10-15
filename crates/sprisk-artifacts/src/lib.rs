@@ -1,13 +1,17 @@
-//! Local content-addressed artifact store: workers write to staging, the control plane verifies and commits.
+//! Content-addressed artifact store on `object_store` (local disk now, S3 later).
 //!
-//! Layout under the root: `staging/<attempt>/<port>` and `objects/<hex[..2]>/<hex>`.
-//! Commit is a rename within one filesystem, so an object is either fully present or absent.
+//! Workers write outputs to a local staging directory. `commit` streams a staged file once,
+//! hashing and uploading together, and keeps it only if the hash matches the worker's claim.
 
-use std::fs::{self, File};
-use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use bytes::Bytes;
+use object_store::local::LocalFileSystem;
+use object_store::path::Path as ObjectPath;
+use object_store::{ObjectStore, ObjectStoreExt, WriteMultipart};
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -29,8 +33,10 @@ pub enum StoreError {
     Io {
         action: &'static str,
         path: PathBuf,
-        source: io::Error,
+        source: std::io::Error,
     },
+    #[error("object store: {0}")]
+    Object(#[from] object_store::Error),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,21 +46,27 @@ pub struct Committed {
     pub uri: String,
 }
 
-pub struct FsStore {
+pub struct ArtifactStore {
     staging: PathBuf,
-    objects: PathBuf,
+    objects: Arc<dyn ObjectStore>,
+    uri_prefix: String,
 }
 
-impl FsStore {
-    pub fn new(root: &Path) -> Result<Self, StoreError> {
+const CHUNK: usize = 8 * 1024 * 1024;
+
+impl ArtifactStore {
+    /// Staging and objects both under `root` on local disk.
+    pub fn local(root: &Path) -> Result<Self, StoreError> {
         let staging = root.join("staging");
         let objects = root.join("objects");
         for dir in [&staging, &objects] {
-            fs::create_dir_all(dir).map_err(io_err("create", dir))?;
+            std::fs::create_dir_all(dir).map_err(io_err("create", dir))?;
         }
+        let objects = canonical(&objects)?;
         Ok(Self {
             staging: canonical(&staging)?,
-            objects: canonical(&objects)?,
+            objects: Arc::new(LocalFileSystem::new_with_prefix(&objects)?),
+            uri_prefix: format!("file://{}", objects.display()),
         })
     }
 
@@ -63,48 +75,89 @@ impl FsStore {
         Ok(self.staging.join(safe(attempt_id)?).join(safe(port)?))
     }
 
-    /// Verify the staged file's hash, then move it into the store.
-    /// Committing content that is already stored succeeds and discards the staged copy.
-    pub fn commit(&self, staged: &Path, expected_hash: &str) -> Result<Committed, StoreError> {
+    /// Verify the staged file's hash while uploading it, then remove the staged copy.
+    /// Committing content that is already stored succeeds without uploading again.
+    pub async fn commit(
+        &self,
+        staged: &Path,
+        expected_hash: &str,
+    ) -> Result<Committed, StoreError> {
         let hex = parse_hash(expected_hash)?;
         let staged = canonical(staged)?;
         if !staged.starts_with(&self.staging) {
             return Err(StoreError::OutsideStaging(staged));
         }
-        let (actual, size_bytes) = hash_file(&staged)?;
-        if actual != hex {
+        let key = object_key(hex);
+        let size_bytes = match self.objects.head(&key).await {
+            Ok(meta) => meta.size,
+            Err(object_store::Error::NotFound { .. }) => {
+                self.upload_verified(&staged, &key, hex, expected_hash)
+                    .await?
+            }
+            Err(e) => return Err(e.into()),
+        };
+        tokio::fs::remove_file(&staged)
+            .await
+            .map_err(io_err("remove", &staged))?;
+        Ok(Committed {
+            content_hash: expected_hash.to_owned(),
+            size_bytes,
+            uri: format!("{}/{key}", self.uri_prefix),
+        })
+    }
+
+    pub async fn get(&self, content_hash: &str) -> Result<Bytes, StoreError> {
+        let key = object_key(parse_hash(content_hash)?);
+        match self.objects.get(&key).await {
+            Ok(result) => Ok(result.bytes().await?),
+            Err(object_store::Error::NotFound { .. }) => {
+                Err(StoreError::NotFound(content_hash.to_owned()))
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Streams `staged` to `key`, hashing as it goes. Aborts the upload on mismatch,
+    /// so a wrong or tampered file never becomes visible.
+    async fn upload_verified(
+        &self,
+        staged: &Path,
+        key: &ObjectPath,
+        expected_hex: &str,
+        expected_hash: &str,
+    ) -> Result<u64, StoreError> {
+        let mut file = tokio::fs::File::open(staged)
+            .await
+            .map_err(io_err("open", staged))?;
+        let mut upload = WriteMultipart::new(self.objects.put_multipart(key).await?);
+        let mut hasher = Sha256::new();
+        let mut size = 0u64;
+        let mut buf = vec![0u8; CHUNK];
+        loop {
+            let n = file.read(&mut buf).await.map_err(io_err("read", staged))?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+            upload.write(&buf[..n]);
+            size += n as u64;
+        }
+        let actual = hex::encode(hasher.finalize());
+        if actual != expected_hex {
+            upload.abort().await?;
             return Err(StoreError::HashMismatch {
-                path: staged,
+                path: staged.to_owned(),
                 expected: expected_hash.to_owned(),
                 actual: format!("sha256:{actual}"),
             });
         }
-        let target = self.object_path(hex);
-        if target.exists() {
-            fs::remove_file(&staged).map_err(io_err("remove", &staged))?;
-        } else {
-            let parent = self.objects.join(&hex[..2]);
-            fs::create_dir_all(&parent).map_err(io_err("create", &parent))?;
-            fs::rename(&staged, &target).map_err(io_err("move", &staged))?;
-        }
-        Ok(Committed {
-            content_hash: expected_hash.to_owned(),
-            size_bytes,
-            uri: format!("file://{}", target.display()),
-        })
+        upload.finish().await?;
+        Ok(size)
     }
+}
 
-    pub fn open(&self, content_hash: &str) -> Result<File, StoreError> {
-        let path = self.object_path(parse_hash(content_hash)?);
-        File::open(&path).map_err(|e| match e.kind() {
-            io::ErrorKind::NotFound => StoreError::NotFound(content_hash.to_owned()),
-            _ => io_err("open", &path)(e),
-        })
-    }
-
-    fn object_path(&self, hex: &str) -> PathBuf {
-        self.objects.join(&hex[..2]).join(hex)
-    }
+fn object_key(hex: &str) -> ObjectPath {
+    ObjectPath::from(format!("{}/{hex}", &hex[..2]))
 }
 
 fn safe(name: &str) -> Result<&str, StoreError> {
@@ -128,27 +181,11 @@ fn parse_hash(hash: &str) -> Result<&str, StoreError> {
     }
 }
 
-fn hash_file(path: &Path) -> Result<(String, u64), StoreError> {
-    let mut file = File::open(path).map_err(io_err("open", path))?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 64 * 1024];
-    let mut size = 0u64;
-    loop {
-        let n = file.read(&mut buf).map_err(io_err("read", path))?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-        size += n as u64;
-    }
-    Ok((hex::encode(hasher.finalize()), size))
-}
-
 fn canonical(path: &Path) -> Result<PathBuf, StoreError> {
     path.canonicalize().map_err(io_err("resolve", path))
 }
 
-fn io_err(action: &'static str, path: &Path) -> impl FnOnce(io::Error) -> StoreError {
+fn io_err(action: &'static str, path: &Path) -> impl FnOnce(std::io::Error) -> StoreError {
     let path = path.to_owned();
     move |source| StoreError::Io {
         action,
