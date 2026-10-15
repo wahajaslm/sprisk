@@ -2,24 +2,25 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseArtifact } from "../src/index.ts";
+import { type Entities, parse } from "../src/index.ts";
 
-const fixtureRoot = join(import.meta.dirname, "../../../tests/contract/artifact");
+const fixtureRoot = join(import.meta.dirname, "../../../tests/contract");
 
-function fixtures(kind: "valid" | "invalid"): [string, unknown][] {
-  const dir = join(fixtureRoot, kind);
-  const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+const entities: [keyof Entities, string][] = [["Artifact", "artifact"]];
+
+function fixtures(dir: string, kind: "valid" | "invalid"): [string, unknown][] {
+  const path = join(fixtureRoot, dir, kind);
+  const files = readdirSync(path).filter((f) => f.endsWith(".json")).sort();
   expect(files.length).toBeGreaterThan(0);
-  return files.map((f) => [f, JSON.parse(readFileSync(join(dir, f), "utf8"))]);
+  return files.map((f) => [f, JSON.parse(readFileSync(join(path, f), "utf8"))]);
 }
 
-describe("Artifact contract", () => {
-  it.each(fixtures("valid"))("accepts and round-trips %s", (_name, json) => {
-    const artifact = parseArtifact(json);
-    expect(JSON.parse(JSON.stringify(artifact))).toEqual(json);
+describe.each(entities)("%s contract", (entity, dir) => {
+  it.each(fixtures(dir, "valid"))("accepts and round-trips %s", (_name, json) => {
+    expect(JSON.parse(JSON.stringify(parse(entity, json)))).toEqual(json);
   });
 
-  it.each(fixtures("invalid"))("rejects %s", (_name, json) => {
-    expect(() => parseArtifact(json)).toThrow(/Invalid Artifact/);
+  it.each(fixtures(dir, "invalid"))("rejects %s", (_name, json) => {
+    expect(() => parse(entity, json)).toThrow(`Invalid ${entity}`);
   });
 });

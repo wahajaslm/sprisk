@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Shared definitions. Referenced as #/$defs/<Name> from any schema file.",
+  "$defs": {
+    "ProjectId": {
+      "type": "string",
+      "pattern": "^prj_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "AttemptId": {
+      "type": "string",
+      "pattern": "^att_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "SchemaId": {
+      "type": "string",
+      "pattern": "^sch_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "ContentHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\dZ$",
+      "description": "UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set."
+    }
+  }
+}

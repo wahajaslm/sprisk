@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "gen": "json2ts -i ../schemas/artifact.schema.json -o src/generated/artifact.ts --additionalProperties false --bannerComment '/* Generated from contracts/schemas. Do not edit. */'",
+    "gen": "json2ts -i ../bundle.schema.json -o src/generated/contracts.ts --unreachableDefinitions --additionalProperties false --bannerComment '/* Generated from contracts/schemas. Do not edit. */'",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

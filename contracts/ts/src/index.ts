@@ -1,9 +1,14 @@
-import { Ajv2020 } from "ajv/dist/2020.js";
+import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
-import artifactSchema from "../../schemas/artifact.schema.json" with { type: "json" };
-import type { Artifact } from "./generated/artifact.ts";
+import bundle from "../../bundle.schema.json" with { type: "json" };
+import type * as C from "./generated/contracts.ts";
 
-export type { Artifact } from "./generated/artifact.ts";
+export type * from "./generated/contracts.ts";
+
+/** Entities that can be parsed from wire JSON. Add one line per new top-level entity. */
+export interface Entities {
+  Artifact: C.Artifact;
+}
 
 export class ContractError extends Error {}
 
@@ -11,9 +16,14 @@ export class ContractError extends Error {}
 const addFormats = addFormatsModule.default;
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
-const validateArtifact = ajv.compile<Artifact>(artifactSchema);
+ajv.addSchema(bundle);
 
-export function parseArtifact(json: unknown): Artifact {
-  if (validateArtifact(json)) return json;
-  throw new ContractError(`Invalid Artifact: ${ajv.errorsText(validateArtifact.errors)}`);
+export function parse<K extends keyof Entities>(entity: K, json: unknown): Entities[K] {
+  // getSchema returns an untyped validator; the bundle guarantees $defs/<entity> matches Entities[K].
+  const validate = ajv.getSchema(`${bundle.$id}#/$defs/${entity}`) as
+    | ValidateFunction<Entities[K]>
+    | undefined;
+  if (!validate) throw new ContractError(`Unknown entity: ${entity}`);
+  if (validate(json)) return json;
+  throw new ContractError(`Invalid ${entity}: ${ajv.errorsText(validate.errors)}`);
 }

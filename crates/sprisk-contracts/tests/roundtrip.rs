@@ -4,6 +4,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use sprisk_contracts::Artifact;
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -25,11 +27,10 @@ fn read_json(path: &Path) -> serde_json::Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
-#[test]
-fn valid_artifacts_round_trip() {
-    for path in fixtures("artifact", "valid") {
+fn check<T: Serialize + DeserializeOwned>(entity: &str) {
+    for path in fixtures(entity, "valid") {
         let original = read_json(&path);
-        let parsed: Artifact = serde_json::from_value(original.clone())
+        let parsed: T = serde_json::from_value(original.clone())
             .unwrap_or_else(|e| panic!("{} should parse: {e}", path.display()));
         let reserialized = serde_json::to_value(&parsed).unwrap();
         assert_eq!(
@@ -39,12 +40,13 @@ fn valid_artifacts_round_trip() {
             path.display()
         );
     }
+    for path in fixtures(entity, "invalid") {
+        let result = serde_json::from_value::<T>(read_json(&path));
+        assert!(result.is_err(), "{} should be rejected", path.display());
+    }
 }
 
 #[test]
-fn invalid_artifacts_are_rejected() {
-    for path in fixtures("artifact", "invalid") {
-        let result = serde_json::from_value::<Artifact>(read_json(&path));
-        assert!(result.is_err(), "{} should be rejected", path.display());
-    }
+fn artifact() {
+    check::<Artifact>("artifact");
 }

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from pydantic import ConfigDict, Field, RootModel
 from sprisk_contracts.base import StrictModel
+
+
+class Bundle(RootModel[Any]):
+    root: Annotated[Any, Field(title="Bundle")]
 
 
 class ArtifactId(RootModel[str]):

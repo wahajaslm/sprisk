@@ -2,11 +2,12 @@
 default:
     @just --list
 
-# Regenerate Python and TypeScript types from contracts/schemas (Rust generates at build time).
+# Bundle schemas, then regenerate Python and TypeScript types (Rust generates at build time).
 contracts-gen:
-    uv run datamodel-codegen --input contracts/schemas/artifact.schema.json --input-file-type jsonschema \
-        --output python/sprisk-contracts/src/sprisk_contracts/generated/artifact.py \
-        --output-model-type pydantic_v2.BaseModel --extra-fields forbid --output-datetime-class AwareDatetime \
+    uv run python contracts/tools/bundle.py
+    uv run datamodel-codegen --input contracts/bundle.schema.json --input-file-type jsonschema \
+        --output python/sprisk-contracts/src/sprisk_contracts/generated/models.py \
+        --output-model-type pydantic_v2.BaseModel --extra-fields forbid \
         --enum-field-as-literal one --use-annotated --field-constraints --target-python-version 3.12 \
         --disable-timestamp --formatters ruff-format \
         --base-class sprisk_contracts.base.StrictModel \
@@ -15,7 +16,7 @@ contracts-gen:
 
 # Fail if generated code is stale.
 contracts-check: contracts-gen
-    test -z "$(git status --porcelain -- python/sprisk-contracts/src/sprisk_contracts/generated contracts/ts/src/generated)" \
+    test -z "$(git status --porcelain -- contracts/bundle.schema.json python/sprisk-contracts/src/sprisk_contracts/generated contracts/ts/src/generated)" \
         || (echo "Generated code is stale or uncommitted. Commit the output of 'just contracts-gen'." && exit 1)
 
 # Round-trip every contract fixture through Rust, Python and TypeScript.
