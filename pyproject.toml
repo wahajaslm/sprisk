@@ -12,3 +12,6 @@ select = ["E", "F", "I", "B", "UP", "SIM", "BLE", "RET"]
 [tool.mypy]
 strict = true
 python_version = "3.12"
+
+[tool.ruff.lint.isort]
+known-first-party = ["sprisk_*"]
