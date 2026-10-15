@@ -10,6 +10,8 @@ export interface Entities {
   Artifact: C.Artifact;
   Operator: C.Operator;
   PipelineVersion: C.PipelineVersion;
+  Run: C.Run;
+  Attempt: C.Attempt;
 }
 
 export class ContractError extends Error {}

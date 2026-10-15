@@ -1,5 +1,5 @@
 """Wire types generated from `contracts/schemas`. Do not hand-write wire types here."""
 
-from sprisk_contracts.generated.models import Artifact, Operator, PipelineVersion
+from sprisk_contracts.generated.models import Artifact, Attempt, Operator, PipelineVersion, Run
 
-__all__ = ["Artifact", "Operator", "PipelineVersion"]
+__all__ = ["Artifact", "Attempt", "Operator", "PipelineVersion", "Run"]

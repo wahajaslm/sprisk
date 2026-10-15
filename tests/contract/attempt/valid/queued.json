@@ -1,0 +1,9 @@
+{
+  "schema_version": "sprisk.attempt/v1",
+  "id": "att_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "node_id": "train",
+  "number": 1,
+  "state": "queued",
+  "created_at": "2026-10-15T10:00:00Z"
+}

@@ -388,6 +388,129 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]{0,62}\\.[a-z][a-z0-9_]{0,62}$",
       "description": "`<node_id>.<port_name>`."
+    },
+    "Run": {
+      "title": "Run",
+      "description": "One execution of a pipeline version against its inputs (arch doc §4, §9). Status is the transactionally maintained current state; history lives in attempts and audit events.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "project_id",
+        "pipeline_version_id",
+        "status",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.run/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/RunId"
+        },
+        "project_id": {
+          "$ref": "#/$defs/ProjectId"
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "finished_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "Set once the run reaches a terminal status."
+        }
+      }
+    },
+    "RunStatus": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "Attempt": {
+      "title": "Attempt",
+      "description": "One try of one step (a node in a run). Retries create a new attempt with the next number; old attempts are never replaced (arch doc §9).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "run_id",
+        "node_id",
+        "number",
+        "state",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.attempt/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/AttemptId"
+        },
+        "run_id": {
+          "$ref": "#/$defs/RunId"
+        },
+        "node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1 for the first try of this step."
+        },
+        "state": {
+          "$ref": "#/$defs/AttemptState"
+        },
+        "worker_id": {
+          "$ref": "#/$defs/WorkerId",
+          "description": "Set once leased."
+        },
+        "lease_expires_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "Set while leased."
+        },
+        "error": {
+          "$ref": "#/$defs/Error",
+          "description": "Set when state is failed or timed_out."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "AttemptState": {
+      "type": "string",
+      "enum": [
+        "created",
+        "validated",
+        "queued",
+        "leased",
+        "running",
+        "uploading",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "timed_out",
+        "skipped",
+        "cache_hit"
+      ]
     }
   }
 }

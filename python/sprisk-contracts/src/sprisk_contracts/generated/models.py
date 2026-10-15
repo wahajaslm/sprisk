@@ -166,6 +166,29 @@ class PortRef(RootModel[str]):
     ]
 
 
+class RunStatus(StrEnum):
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class AttemptState(StrEnum):
+    created = "created"
+    validated = "validated"
+    queued = "queued"
+    leased = "leased"
+    running = "running"
+    uploading = "uploading"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancelled = "cancelled"
+    timed_out = "timed_out"
+    skipped = "skipped"
+    cache_hit = "cache_hit"
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -211,6 +234,39 @@ class Edge(StrictModel):
     )
     from_: Annotated[PortRef, Field(alias="from")]
     to: PortRef
+
+
+class Run(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.run/v1"]
+    id: RunId
+    project_id: ProjectId
+    pipeline_version_id: PipelineVersionId
+    status: RunStatus
+    created_at: Timestamp
+    finished_at: Annotated[
+        Timestamp | None, Field(description="Set once the run reaches a terminal status.")
+    ] = None
+
+
+class Attempt(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.attempt/v1"]
+    id: AttemptId
+    run_id: RunId
+    node_id: NodeId
+    number: Annotated[int, Field(description="1 for the first try of this step.", ge=1)]
+    state: AttemptState
+    worker_id: Annotated[WorkerId | None, Field(description="Set once leased.")] = None
+    lease_expires_at: Annotated[Timestamp | None, Field(description="Set while leased.")] = None
+    error: Annotated[Error | None, Field(description="Set when state is failed or timed_out.")] = (
+        None
+    )
+    created_at: Timestamp
 
 
 class Operator(StrictModel):

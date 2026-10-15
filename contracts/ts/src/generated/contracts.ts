@@ -114,6 +114,28 @@ export type NetworkAccess = "none" | "egress_allowlisted";
  * via the `definition` "PortRef".
  */
 export type PortRef = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RunStatus".
+ */
+export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "AttemptState".
+ */
+export type AttemptState =
+  | "created"
+  | "validated"
+  | "queued"
+  | "leased"
+  | "running"
+  | "uploading"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
+  | "skipped"
+  | "cache_hit";
 
 export interface Bundle {
   [k: string]: unknown;
@@ -242,4 +264,56 @@ export interface Node {
 export interface Edge {
   from: PortRef;
   to: PortRef;
+}
+/**
+ * One execution of a pipeline version against its inputs (arch doc §4, §9). Status is the transactionally maintained current state; history lives in attempts and audit events.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Run".
+ */
+export interface Run {
+  schema_version: "sprisk.run/v1";
+  id: RunId;
+  project_id: ProjectId;
+  pipeline_version_id: PipelineVersionId;
+  status: RunStatus;
+  created_at: Timestamp;
+  /**
+   * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
+   */
+  finished_at?: string;
+}
+/**
+ * One try of one step (a node in a run). Retries create a new attempt with the next number; old attempts are never replaced (arch doc §9).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Attempt".
+ */
+export interface Attempt {
+  schema_version: "sprisk.attempt/v1";
+  id: AttemptId;
+  run_id: RunId;
+  node_id: NodeId;
+  /**
+   * 1 for the first try of this step.
+   */
+  number: number;
+  state: AttemptState;
+  /**
+   * Set once leased.
+   */
+  worker_id?: string;
+  /**
+   * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
+   */
+  lease_expires_at?: string;
+  error?: Error1;
+  created_at: Timestamp;
+}
+/**
+ * Set when state is failed or timed_out.
+ */
+export interface Error1 {
+  code: string;
+  message: string;
 }

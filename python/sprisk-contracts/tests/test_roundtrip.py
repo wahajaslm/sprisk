@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from sprisk_contracts import Artifact, Operator, PipelineVersion
+from sprisk_contracts import Artifact, Attempt, Operator, PipelineVersion, Run
 from sprisk_contracts.base import StrictModel
 
 FIXTURES = Path(__file__).parents[3] / "tests" / "contract"
@@ -15,6 +15,8 @@ ENTITIES: list[tuple[type[StrictModel], str]] = [
     (Artifact, "artifact"),
     (Operator, "operator"),
     (PipelineVersion, "pipeline_version"),
+    (Run, "run"),
+    (Attempt, "attempt"),
 ]
 
 
