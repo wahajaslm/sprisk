@@ -5,8 +5,8 @@ from sprisk_contracts.generated.models import (
     Attempt,
     Operator,
     PipelineVersion,
-    Run,
     QuestionVersion,
+    Run,
     WorkerMessage,
 )
 
