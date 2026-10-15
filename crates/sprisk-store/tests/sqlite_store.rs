@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
-use sprisk_contracts::{Artifact, Attempt, AttemptState, Run, parse};
+use sprisk_contracts::{Artifact, Attempt, AttemptState, Run, RunStatus, parse};
 use sprisk_store::{SqliteStore, StoreError};
 
 const NOW: &str = "2026-10-15T10:00:30Z";
@@ -124,4 +124,143 @@ async fn artifact_round_trips() {
     let artifact: Artifact = fixture("artifact", "parquet-with-schema.json");
     store.insert_artifact(&artifact).await.unwrap();
     assert_eq!(store.get_artifact(&artifact.id).await.unwrap(), artifact);
+}
+
+const LATER: &str = "2026-10-15T10:01:30Z";
+
+async fn store_with_queued_attempt() -> (SqliteStore, Run, Attempt) {
+    let (store, run) = store_with_run().await;
+    let attempt: Attempt = fixture("attempt", "queued.json");
+    store.insert_attempt(&attempt).await.unwrap();
+    (store, run, attempt)
+}
+
+#[tokio::test]
+async fn lease_sets_worker_and_expiry_with_the_state_change() {
+    let (store, _, attempt) = store_with_queued_attempt().await;
+    let worker = "wrk_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap();
+    let expires = LATER.parse().unwrap();
+
+    let leased = store
+        .lease_attempt(&attempt.id, &worker, &expires, NOW)
+        .await
+        .unwrap();
+
+    assert_eq!(leased.state, AttemptState::Leased);
+    assert_eq!(leased.worker_id, Some(worker));
+    assert_eq!(leased.lease_expires_at, Some(expires));
+    assert_eq!(
+        store.list_attempts(&attempt.run_id).await.unwrap(),
+        vec![leased]
+    );
+}
+
+#[tokio::test]
+async fn lease_of_an_attempt_that_is_not_queued_is_rejected() {
+    let (store, _, attempt) = store_with_queued_attempt().await;
+    let worker = "wrk_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap();
+    store
+        .transition_attempt(&attempt.id, AttemptState::Cancelled, NOW)
+        .await
+        .unwrap();
+
+    let err = store
+        .lease_attempt(&attempt.id, &worker, &LATER.parse().unwrap(), NOW)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, StoreError::Transition(_)), "{err}");
+}
+
+#[tokio::test]
+async fn extend_lease_moves_expiry_of_a_live_attempt_only() {
+    let (store, _, attempt) = store_with_queued_attempt().await;
+    let worker = "wrk_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap();
+    store
+        .lease_attempt(&attempt.id, &worker, &LATER.parse().unwrap(), NOW)
+        .await
+        .unwrap();
+    let much_later = "2026-10-15T10:05:00Z".parse().unwrap();
+
+    let extended = store.extend_lease(&attempt.id, &much_later).await.unwrap();
+    assert_eq!(extended.lease_expires_at, Some(much_later.clone()));
+
+    store
+        .transition_attempt(&attempt.id, AttemptState::TimedOut, NOW)
+        .await
+        .unwrap();
+    let err = store
+        .extend_lease(&attempt.id, &much_later)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::NotLive { .. }), "{err}");
+}
+
+#[tokio::test]
+async fn committed_outputs_are_found_by_attempt_and_port() {
+    let (store, _, attempt) = store_with_queued_attempt().await;
+    let mut artifact: Artifact = fixture("artifact", "parquet-with-schema.json");
+    artifact.producer_attempt_id = attempt.id.clone();
+
+    store
+        .commit_output(&attempt.id, "train", &artifact)
+        .await
+        .unwrap();
+
+    let outputs = store.outputs(&attempt.id).await.unwrap();
+    assert_eq!(outputs, vec![("train".to_owned(), artifact.clone())]);
+    assert_eq!(store.get_artifact(&artifact.id).await.unwrap(), artifact);
+}
+
+#[tokio::test]
+async fn committing_the_same_port_twice_is_a_conflict() {
+    let (store, _, attempt) = store_with_queued_attempt().await;
+    let artifact: Artifact = fixture("artifact", "parquet-with-schema.json");
+    let mut other = artifact.clone();
+    other.id = "art_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    store
+        .commit_output(&attempt.id, "train", &artifact)
+        .await
+        .unwrap();
+
+    let err = store
+        .commit_output(&attempt.id, "train", &other)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    assert!(store.get_artifact(&other.id).await.is_err(), "rolled back");
+}
+
+#[tokio::test]
+async fn run_status_change_is_audited_and_terminal_sets_finished_at() {
+    let (store, run) = store_with_run().await;
+
+    let done = store
+        .set_run_status(&run.id, RunStatus::Succeeded, LATER)
+        .await
+        .unwrap();
+
+    assert_eq!(done.status, RunStatus::Succeeded);
+    assert_eq!(done.finished_at, Some(LATER.parse().unwrap()));
+    assert_eq!(
+        store.audit_events(run.id.as_str()).await.unwrap(),
+        vec![(LATER.to_owned(), "run.running->succeeded".to_owned())]
+    );
+}
+
+#[tokio::test]
+async fn finished_run_status_never_changes() {
+    let (store, run) = store_with_run().await;
+    store
+        .set_run_status(&run.id, RunStatus::Failed, LATER)
+        .await
+        .unwrap();
+
+    let err = store
+        .set_run_status(&run.id, RunStatus::Succeeded, LATER)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, StoreError::RunFinished { .. }), "{err}");
 }
