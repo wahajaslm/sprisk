@@ -9,7 +9,7 @@ const SPLIT: &str = r#"
 schema_version: sprisk.operator/v1
 id: sprisk.validation.temporal_split@1.0.0
 capability_class: transform
-entrypoint: sprisk_workers.ops.split:temporal_split
+entrypoint: sprisk_validation.temporal_split:temporal_split
 inputs: [{ name: data, kind: table }]
 outputs: [{ name: train, kind: table }, { name: validation, kind: table }]
 params_schema: { type: object }

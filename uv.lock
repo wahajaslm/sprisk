@@ -10,6 +10,10 @@ resolution-markers = [
 [manifest]
 members = [
     "sprisk-contracts",
+    "sprisk-io",
+    "sprisk-ml",
+    "sprisk-profile",
+    "sprisk-validation",
     "sprisk-workers",
 ]
 
@@ -1392,18 +1396,80 @@ dev = [
 ]
 
 [[package]]
+name = "sprisk-io"
+version = "0.1.0"
+source = { editable = "plugins/io" }
+dependencies = [
+    { name = "polars" },
+    { name = "sprisk-workers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "polars", specifier = ">=1.10" },
+    { name = "sprisk-workers", editable = "python/sprisk-workers" },
+]
+
+[[package]]
+name = "sprisk-ml"
+version = "0.1.0"
+source = { editable = "plugins/ml" }
+dependencies = [
+    { name = "polars" },
+    { name = "pyarrow" },
+    { name = "scikit-learn" },
+    { name = "skops" },
+    { name = "sprisk-workers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "polars", specifier = ">=1.10" },
+    { name = "pyarrow", specifier = ">=17" },
+    { name = "scikit-learn", specifier = ">=1.5" },
+    { name = "skops", specifier = ">=0.10" },
+    { name = "sprisk-workers", editable = "python/sprisk-workers" },
+]
+
+[[package]]
+name = "sprisk-profile"
+version = "0.1.0"
+source = { editable = "plugins/profile" }
+dependencies = [
+    { name = "duckdb" },
+    { name = "sprisk-workers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "duckdb", specifier = ">=1.1" },
+    { name = "sprisk-workers", editable = "python/sprisk-workers" },
+]
+
+[[package]]
+name = "sprisk-validation"
+version = "0.1.0"
+source = { editable = "plugins/validation" }
+dependencies = [
+    { name = "polars" },
+    { name = "sprisk-workers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "polars", specifier = ">=1.10" },
+    { name = "sprisk-workers", editable = "python/sprisk-workers" },
+]
+
+[[package]]
 name = "sprisk-workers"
 version = "0.1.0"
 source = { editable = "python/sprisk-workers" }
 dependencies = [
-    { name = "duckdb" },
     { name = "jsonschema" },
     { name = "polars" },
-    { name = "pyarrow" },
     { name = "python-ulid" },
     { name = "pyyaml" },
-    { name = "scikit-learn" },
-    { name = "skops" },
     { name = "sprisk-contracts" },
     { name = "typer" },
 ]
@@ -1419,14 +1485,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "duckdb", specifier = ">=1.1" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "polars", specifier = ">=1.10" },
-    { name = "pyarrow", specifier = ">=17" },
     { name = "python-ulid", specifier = ">=3" },
     { name = "pyyaml", specifier = ">=6" },
-    { name = "scikit-learn", specifier = ">=1.5" },
-    { name = "skops", specifier = ">=0.10" },
     { name = "sprisk-contracts", editable = "python/sprisk-contracts" },
     { name = "typer", specifier = ">=0.12" },
 ]

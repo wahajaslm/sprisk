@@ -1,0 +1,11 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.summarize@1.0.0
+capability_class: analyzer
+description: Per-column summary statistics (type, nulls, distinct, range, quartiles).
+entrypoint: sprisk_profile.summarize:summarize
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: profile, kind: diagnostics }]
+params_schema: { type: object, additionalProperties: false }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

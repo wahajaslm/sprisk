@@ -5,10 +5,6 @@ requires-python = ">=3.12"
 dependencies = [
     "sprisk-contracts",
     "polars>=1.10",
-    "duckdb>=1.1",
-    "pyarrow>=17",
-    "scikit-learn>=1.5",
-    "skops>=0.10",
     "pyyaml>=6",
     "jsonschema>=4.23",
     "python-ulid>=3",

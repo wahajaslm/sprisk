@@ -1,0 +1,12 @@
+[project]
+name = "sprisk-ml"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["sprisk-workers", "polars>=1.10", "pyarrow>=17", "scikit-learn>=1.5", "skops>=0.10"]
+
+[tool.uv.sources]
+sprisk-workers = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

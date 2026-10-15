@@ -14,7 +14,7 @@ Follow arch doc §5 and §6. Ask for the operator ID and capability class if not
    - Resources, network/sandbox permissions.
    - Purity, side effects, nondeterminism, cache eligibility.
    - Preconditions and methodology checks.
-2. Implementation in Python. Use existing libraries. No new numerics.
+2. Implementation in the same pack: `plugins/<pack>/src/sprisk_<pack>/` (pack names use `_`, e.g. `sprisk_ml`), tests in `plugins/<pack>/tests/`. New packs must be added to `TRUSTED_PACKAGES` in `sprisk_workers/manifests.py`. Use existing libraries. No new numerics.
 3. Contract test: manifest validates; ports match schema; outputs carry provenance.
 4. Behavior test on a small fixture. If stateful, test fit-in-fold behavior.
 5. Confirm the Rust compiler needs **no change** (acceptance test §15.1).

@@ -1,0 +1,18 @@
+schema_version: sprisk.operator/v1
+id: sprisk.io.file_source@1.0.0
+capability_class: source
+description: Read a local CSV or Parquet file into a Parquet table.
+entrypoint: sprisk_io.file_source:file_source
+inputs: []
+outputs: [{ name: data, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [path, format]
+  properties:
+    path: { type: string, minLength: 1 }
+    format: { type: string, enum: [csv, parquet] }
+# The file can change between runs, so the output is not cacheable.
+effects: nondeterministic
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

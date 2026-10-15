@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
+from sprisk_validation.temporal_split import temporal_split
 from sprisk_workers.errors import ManifestError
 from sprisk_workers.manifests import load_operators
-from sprisk_workers.ops.split import temporal_split
 
 PLUGINS = Path(__file__).parents[3] / "plugins"
 
@@ -53,13 +53,13 @@ def test_entrypoint_outside_core_ops_is_refused(tmp_path: Path) -> None:
 
 
 def test_missing_entrypoint_function_is_an_error(tmp_path: Path) -> None:
-    write(tmp_path, "sprisk_workers.ops.split:nope")
+    write(tmp_path, "sprisk_validation.temporal_split:nope")
     with pytest.raises(ManifestError, match="nope"):
         load_operators(tmp_path)
 
 
 def test_unimportable_entrypoint_module_is_an_error(tmp_path: Path) -> None:
-    write(tmp_path, "sprisk_workers.ops.nope:f")
+    write(tmp_path, "sprisk_ml.nope:f")
     with pytest.raises(ManifestError, match="cannot import"):
         load_operators(tmp_path)
 

@@ -9,8 +9,13 @@ from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError
 from sprisk_workers.serve import LoadedOperator
 
-# Only first-party operators run until plugin isolation exists (arch doc §12).
-TRUSTED_PACKAGE = "sprisk_workers.ops."
+# Only first-party packs run until plugin isolation exists (arch doc §12).
+TRUSTED_PACKAGES = (
+    "sprisk_io",
+    "sprisk_profile",
+    "sprisk_validation",
+    "sprisk_ml",
+)
 
 
 def load_operators(root: Path) -> dict[str, LoadedOperator]:
@@ -24,9 +29,9 @@ def _load(path: Path) -> tuple[str, LoadedOperator]:
     except (yaml.YAMLError, ValidationError) as e:
         raise ManifestError(f"{path}: {e}") from e
     entrypoint = operator.entrypoint
-    if not entrypoint.startswith(TRUSTED_PACKAGE):
-        raise ManifestError(f"{path}: entrypoint {entrypoint} is outside {TRUSTED_PACKAGE}")
     module_name, function_name = entrypoint.split(":")
+    if module_name.split(".")[0] not in TRUSTED_PACKAGES:
+        raise ManifestError(f"{path}: entrypoint {entrypoint} is not in a trusted core pack")
     try:
         module = importlib.import_module(module_name)
     except ImportError as e:

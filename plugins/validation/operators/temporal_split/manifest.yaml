@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.validation.temporal_split@1.0.0
+capability_class: transform
+description: Split by time. Every train row is strictly earlier than every test row.
+entrypoint: sprisk_validation.temporal_split:temporal_split
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: train, kind: table }, { name: test, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [time_column, test_fraction]
+  properties:
+    time_column: { type: string, minLength: 1 }
+    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1 }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
