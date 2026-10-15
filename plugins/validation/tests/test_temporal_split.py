@@ -2,7 +2,8 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from conftest import WriteParquet, run_split
+from conftest import WriteParquet
+from split_runs import run_split
 
 from sprisk_validation.temporal_split import temporal_split
 from sprisk_workers.errors import OperatorError

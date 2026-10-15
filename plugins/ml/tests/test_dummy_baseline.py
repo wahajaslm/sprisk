@@ -2,7 +2,8 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from conftest import CLF, WriteParquet, fit_and_score
+from conftest import WriteParquet
+from model_runs import CLF, fit_and_score
 
 from sprisk_ml.dummy_baseline import dummy_baseline
 from sprisk_ml.linear_model import linear_model

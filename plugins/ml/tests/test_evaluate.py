@@ -4,7 +4,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 import skops.io
-from conftest import CLF, WriteParquet, fit, fit_and_score, score, with_null_target
+from conftest import WriteParquet
+from model_runs import CLF, fit, fit_and_score, score, with_null_target
 
 from sprisk_ml.linear_model import linear_model
 from sprisk_workers.errors import OperatorError

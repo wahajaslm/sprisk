@@ -1,10 +1,12 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
-from sprisk_supervised.holdout_sealed import holdout_sealed
+from sprisk_contracts.generated.models import Verdict
+from sprisk_supervised.holdout_sealed import CheckInputError, holdout_sealed
 
 PLUGINS = Path(__file__).parents[3] / "plugins"
 CHECK_ID = "mck_01JABCDEFGHJKMNPQRSTVWXYZ0"
@@ -17,8 +19,46 @@ LINEAR = "sprisk.ml.linear_model@1.0.0"
 EVAL = "sprisk.ml.evaluate@1.0.0"
 
 
+# Test-only operators for pipeline shapes the core packs cannot build yet.
+SCALE = "sprisk.test.scale@1.0.0"
+ENSEMBLE = "sprisk.test.ensemble@1.0.0"
+TWO_TABLE_EVAL = "sprisk.test.two_table_eval@1.0.0"
+
+
+def fake(
+    op_id: str, cls: str, inputs: list[tuple[str, str]], outputs: list[tuple[str, str]]
+) -> Operator:
+    return Operator.model_validate_json(
+        json.dumps(
+            {
+                "schema_version": "sprisk.operator/v1",
+                "id": op_id,
+                "capability_class": cls,
+                "entrypoint": "fake.mod:fn",
+                "inputs": [{"name": n, "kind": k} for n, k in inputs],
+                "outputs": [{"name": n, "kind": k} for n, k in outputs],
+                "params_schema": {},
+                "effects": "pure",
+                "network": "none",
+                "resources": {"cpu_cores": 1, "memory_mb": 1, "gpu": "none", "timeout_seconds": 1},
+            }
+        )
+    )
+
+
 def operators() -> dict[str, Operator]:
-    ops = {}
+    ops = {
+        SCALE: fake(SCALE, "transform", [("data", "table")], [("data", "table")]),
+        ENSEMBLE: fake(
+            ENSEMBLE, "estimator", [("a", "model"), ("b", "model")], [("model", "model")]
+        ),
+        TWO_TABLE_EVAL: fake(
+            TWO_TABLE_EVAL,
+            "evaluator",
+            [("model", "model"), ("test", "table"), ("other", "table")],
+            [("metrics", "metrics")],
+        ),
+    }
     for path in PLUGINS.rglob("manifest.yaml"):
         op = Operator.model_validate_json(json.dumps(yaml.safe_load(path.read_text())))
         ops[op.id.root] = op
@@ -57,19 +97,20 @@ def compare(models: dict[str, str]) -> PipelineVersion:
 
 def check(p: PipelineVersion) -> MethodologyCheck:
     result = holdout_sealed(p, operators(), CHECK_ID, NOW)
-    # The result is a valid wire record.
     return MethodologyCheck.model_validate_json(result.model_dump_json(by_alias=True))
 
 
 def test_baseline_plus_one_model_passes() -> None:
     result = check(compare({"dummy": DUMMY, "linear": LINEAR}))
-    assert result.verdict == "pass"
+    assert result.verdict == Verdict.pass_
+    assert [n.root for n in result.cited_nodes] == ["eval_dummy", "eval_linear", "split"]
+    assert result.limitations is not None
     assert result.check.root == "supervised.holdout_sealed@1.0.0"
 
 
 def test_two_models_on_one_test_table_fail_and_cite_them() -> None:
     result = check(compare({"dummy": DUMMY, "lin_a": LINEAR, "lin_b": LINEAR}))
-    assert result.verdict == "fail"
+    assert result.verdict == Verdict.fail
     assert [n.root for n in result.cited_nodes] == ["eval_lin_a", "eval_lin_b", "split"]
     assert "split.test" in result.rationale
 
@@ -96,7 +137,7 @@ def test_two_models_on_separate_test_tables_pass() -> None:
             ("s2.test", "eb.test"),
         ],
     )
-    assert check(p).verdict == "pass"
+    assert check(p).verdict == Verdict.pass_
 
 
 def test_same_model_scored_twice_on_one_table_passes() -> None:
@@ -106,10 +147,81 @@ def test_same_model_scored_twice_on_one_table_passes() -> None:
         [(e.from_.root, e.to.root) for e in p.edges]
         + [("linear.model", "eval_again.model"), ("split.test", "eval_again.test")],
     )
-    assert check(p2).verdict == "pass"
+    assert check(p2).verdict == Verdict.pass_
 
 
 def test_no_evaluator_is_not_assessed() -> None:
     result = check(pipeline({"load": SOURCE}, []))
-    assert result.verdict == "not_assessed"
+    assert result.verdict == Verdict.not_assessed
     assert result.cited_nodes == []
+
+
+def nodes_edges(p: PipelineVersion) -> tuple[dict[str, str], list[tuple[str, str]]]:
+    return {n.id.root: n.operator.root for n in p.nodes}, [
+        (e.from_.root, e.to.root) for e in p.edges
+    ]
+
+
+def test_per_model_transforms_do_not_hide_the_test_table() -> None:
+    nodes = {"load": SOURCE, "split": SPLIT, "a": LINEAR, "b": LINEAR, "ea": EVAL, "eb": EVAL}
+    nodes |= {"scale_a": SCALE, "scale_b": SCALE}
+    edges = [
+        ("load.data", "split.data"),
+        ("split.train", "a.train"),
+        ("split.train", "b.train"),
+        ("split.test", "scale_a.data"),
+        ("split.test", "scale_b.data"),
+        ("a.model", "ea.model"),
+        ("b.model", "eb.model"),
+        ("scale_a.data", "ea.test"),
+        ("scale_b.data", "eb.test"),
+    ]
+    result = check(pipeline(nodes, edges))
+    assert result.verdict == Verdict.fail
+    assert "split.test" in result.rationale
+
+
+def test_model_fit_on_the_test_table_fails() -> None:
+    nodes = {"load": SOURCE, "split": SPLIT, "cheat": LINEAR}
+    edges = [("load.data", "split.data"), ("split.test", "cheat.train")]
+    result = check(pipeline(nodes, edges))
+    assert result.verdict == Verdict.fail
+    assert [n.root for n in result.cited_nodes] == ["cheat", "split"]
+
+
+def test_estimator_wrapping_two_models_counts_as_one_candidate() -> None:
+    nodes = {"load": SOURCE, "split": SPLIT, "a": LINEAR, "b": LINEAR, "ens": ENSEMBLE, "e": EVAL}
+    edges = [
+        ("load.data", "split.data"),
+        ("split.train", "a.train"),
+        ("split.train", "b.train"),
+        ("a.model", "ens.a"),
+        ("b.model", "ens.b"),
+        ("ens.model", "e.model"),
+        ("split.test", "e.test"),
+    ]
+    assert check(pipeline(nodes, edges)).verdict == Verdict.pass_
+
+
+def test_scoring_models_on_the_train_table_is_not_a_holdout_issue() -> None:
+    nodes, edges = nodes_edges(compare({"lin_a": LINEAR, "lin_b": LINEAR}))
+    edges = [(a, b) if a != "split.test" else ("split.train", b) for a, b in edges]
+    assert check(pipeline(nodes, edges)).verdict == Verdict.pass_
+
+
+def test_evaluator_with_two_table_inputs_is_an_input_error() -> None:
+    nodes, edges = nodes_edges(compare({"linear": LINEAR}))
+    nodes["eval_linear"] = TWO_TABLE_EVAL
+    edges.append(("split.train", "eval_linear.other"))
+    with pytest.raises(CheckInputError, match="eval_linear"):
+        holdout_sealed(pipeline(nodes, edges), operators(), CHECK_ID, NOW)
+
+
+def test_unknown_operator_is_an_input_error() -> None:
+    with pytest.raises(CheckInputError, match="sprisk.test.missing@1.0.0"):
+        holdout_sealed(pipeline({"x": "sprisk.test.missing@1.0.0"}, []), operators(), CHECK_ID, NOW)
+
+
+def test_unconnected_evaluator_input_is_an_input_error() -> None:
+    with pytest.raises(CheckInputError, match="e.test"):
+        holdout_sealed(pipeline({"e": EVAL}, []), operators(), CHECK_ID, NOW)
