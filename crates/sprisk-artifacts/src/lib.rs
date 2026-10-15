@@ -70,9 +70,9 @@ impl ArtifactStore {
         })
     }
 
-    /// Where a worker writes one output. The caller creates the parent directory.
-    pub fn staging_path(&self, attempt_id: &str, port: &str) -> Result<PathBuf, StoreError> {
-        Ok(self.staging.join(safe(attempt_id)?).join(safe(port)?))
+    /// The only directory one attempt's worker may write outputs to. The caller creates it.
+    pub fn staging_dir(&self, attempt_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self.staging.join(safe(attempt_id)?))
     }
 
     /// Verify the staged file's hash while uploading it, then remove the staged copy.

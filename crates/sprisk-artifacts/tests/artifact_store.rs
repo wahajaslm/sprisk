@@ -13,8 +13,9 @@ fn store() -> (tempfile::TempDir, ArtifactStore) {
 }
 
 fn stage(store: &ArtifactStore, bytes: &[u8]) -> std::path::PathBuf {
-    let path = store.staging_path("att_1", "model").unwrap();
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let dir = store.staging_dir("att_1").unwrap();
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("model.skops");
     fs::write(&path, bytes).unwrap();
     path
 }
@@ -74,20 +75,12 @@ async fn commit_rejects_file_outside_staging() {
 }
 
 #[tokio::test]
-async fn staging_path_rejects_unsafe_segments() {
+async fn staging_dir_rejects_unsafe_attempt_ids() {
     let (_dir, store) = store();
-    for (attempt, port) in [
-        ("../etc", "model"),
-        ("att_1", "a/b"),
-        ("", "model"),
-        ("att_1", ".."),
-    ] {
+    for attempt in ["../etc", "a/b", "", ".."] {
         assert!(
-            matches!(
-                store.staging_path(attempt, port),
-                Err(StoreError::UnsafeName(_))
-            ),
-            "{attempt:?}/{port:?}"
+            matches!(store.staging_dir(attempt), Err(StoreError::UnsafeName(_))),
+            "{attempt:?}"
         );
     }
 }

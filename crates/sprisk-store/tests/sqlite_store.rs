@@ -264,3 +264,24 @@ async fn finished_run_status_never_changes() {
 
     assert!(matches!(err, StoreError::RunFinished { .. }), "{err}");
 }
+
+#[tokio::test]
+async fn failing_an_attempt_records_its_error() {
+    let (store, _, attempt) = store_with_queued_attempt().await;
+    let error: sprisk_contracts::Error =
+        parse(r#"{"code": "lease_expired", "message": "no heartbeat for 30s"}"#).unwrap();
+
+    let worker = "wrk_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap();
+    store
+        .lease_attempt(&attempt.id, &worker, &LATER.parse().unwrap(), NOW)
+        .await
+        .unwrap();
+
+    let failed = store
+        .fail_attempt(&attempt.id, AttemptState::TimedOut, &error, LATER)
+        .await
+        .unwrap();
+
+    assert_eq!(failed.state, AttemptState::TimedOut);
+    assert_eq!(failed.error, Some(error));
+}

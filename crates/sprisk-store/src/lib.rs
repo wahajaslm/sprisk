@@ -129,6 +129,18 @@ impl SqliteStore {
         self.change_attempt(id, to, at, |_| {}).await
     }
 
+    /// Move to `failed` or `timed_out` and record why.
+    pub async fn fail_attempt(
+        &self,
+        id: &AttemptId,
+        to: AttemptState,
+        error: &sprisk_contracts::Error,
+        at: &str,
+    ) -> Result<Attempt, StoreError> {
+        self.change_attempt(id, to, at, |a| a.error = Some(error.clone()))
+            .await
+    }
+
     /// `queued -> leased`, recording which worker holds it and until when.
     pub async fn lease_attempt(
         &self,
