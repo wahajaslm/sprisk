@@ -75,6 +75,26 @@ Simple, tested, boring, correct. The goal is code a tired engineer understands a
 - Make illegal states unrepresentable: enums over strings and bools, newtypes for IDs.
 - Operations that can be retried must be idempotent.
 
+### Modularity
+
+- Each module has one job and a small public API. Everything else is private.
+- Dependencies point inward: `api → runtime/scheduler → graph/registry/policy → core`. `core` depends on nothing internal. No cycles.
+- Modules talk through their public API and contract types. Never reach into another module's internals or tables.
+- Swap points exist only at the real seams named in the arch doc: metadata repository, artifact store, worker transport, AI provider, docking adapter, chart renderer. Nothing else gets an interface "just in case".
+- New capability = new plugin package (manifest + code + tests). It must not require edits to the compiler or scheduler (arch §15.1).
+
+### Scalability
+
+Local-first today, hosted later, same code (arch §13). Build so that scaling is a deployment change, not a rewrite:
+
+- **Stateless API.** No in-process caches or session state that would break with two replicas. The database is the truth.
+- **Bounded memory.** Stream or paginate anything that grows with data: rows, events, artifacts, run lists. No unbounded `Vec`/list/`SELECT *`.
+- **Data stays put.** Move artifact references, not dataframes. Push filters and aggregates to DuckDB/Polars.
+- **Idempotent, lease-based work.** Every job can be retried, duplicated or resumed safely.
+- **Timeouts and limits on every external call** and every worker job.
+- **No N+1 queries.** Batch reads. Index what you filter on.
+- Measure before optimizing. A benchmark or profile justifies complexity, not a guess.
+
 ### Not wanted (AI slop)
 
 - Wrappers that only forward calls. Managers, factories, registries nobody needs.

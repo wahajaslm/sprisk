@@ -34,3 +34,14 @@ Identity, permissions, registry resolution, graph typing, scheduling, leases, re
 - Repositories tested against in-memory SQLite. Postgres tests behind a feature flag in CI.
 - State machine: test every allowed and every forbidden transition.
 - Test crash recovery: kill between staging and commit, then reconcile.
+
+## Crate dependency direction
+```
+sprisk-api ─→ sprisk-runtime ─→ sprisk-scheduler ─→ sprisk-graph ─→ sprisk-registry ─→ sprisk-core
+                     │                  └──────────→ sprisk-policy ──────────────────→ sprisk-core
+                     └─→ sprisk-artifacts ───────────────────────────────────────────→ sprisk-core
+all crates may use sprisk-contracts
+```
+- Never add an edge that points the other way. Check with `cargo tree -e normal -p <crate>`.
+- `sprisk-core` holds domain types and repository traits. No I/O, no Axum, no SQLx.
+- Adapters (SQLite, Postgres, filesystem, S3) implement core traits in their own modules.

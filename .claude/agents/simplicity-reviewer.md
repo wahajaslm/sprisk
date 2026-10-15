@@ -15,3 +15,7 @@ Flag:
 For each finding: file:line, problem, the simpler version (show it in a few lines).
 Only flag what you would block in review. No style nitpicks a formatter handles.
 If clean, say "Clean." and nothing else.
+
+Also flag:
+6. **Modularity:** dependency pointing outward (e.g. core importing api/db), reaching into another module's internals, an interface added at a seam not listed in root `CLAUDE.md`.
+7. **Scalability:** unbounded loads (full table/dataset into memory), in-process state that breaks with two API replicas, missing timeouts, N+1 queries, non-idempotent retryable work.
