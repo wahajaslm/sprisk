@@ -29,3 +29,12 @@ it("font sizes come from the type scale tokens", () => {
   );
   expect(raw).toEqual([]);
 });
+
+it("font weights are 300, 400 or 500 only", () => {
+  const off = Object.entries(styles).flatMap(([path, css]) =>
+    [...css.matchAll(/font-weight:\s*(\d+)|font:\s*(\d{3})\s/g)]
+      .filter((m) => !["300", "400", "500"].includes(m[1] ?? m[2] ?? ""))
+      .map((m) => `${path}: ${m[0]}`),
+  );
+  expect(off).toEqual([]);
+});
