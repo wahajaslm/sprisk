@@ -217,6 +217,15 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
+  it("links steps of one stage top to bottom, and stages side to side", async () => {
+    const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const { edges } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), new Map());
+    const edge = (from: string, to: string) => edges.find((e) => e.source === from && e.target === to)!;
+    expect(edge("load", "profile")).toMatchObject({ sourceHandle: "down", targetHandle: "top" });
+    expect(edge("load", "split")).toMatchObject({ sourceHandle: "out", targetHandle: "in" });
+  });
+
   it("shows a heading with the step count above each stage", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);

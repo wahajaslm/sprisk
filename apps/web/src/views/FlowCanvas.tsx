@@ -145,9 +145,14 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
         )}
       </span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
+      <Handle id="top" type="target" position={Position.Top} isConnectable={false} />
+      <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} />
     </button>
   );
 }
+
+/** Width of the round icon in Compact (.round-icon). */
+const ROUND_ICON = 44;
 
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
@@ -181,6 +186,9 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       </span>
       {/* The node is as wide as its label, so outgoing lines start right after the text. */}
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
+      {/* Within a stage, lines run down from icon to icon. */}
+      <Handle id="top" type="target" position={Position.Top} isConnectable={false} style={{ left: ROUND_ICON / 2 }} />
+      <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} style={{ left: ROUND_ICON / 2 }} />
     </button>
   );
 }
@@ -268,13 +276,14 @@ export function flowGraph(
   const edges: Edge[] = pipeline.edges.map((e) => {
     const source = e.from.split(".")[0] ?? e.from;
     const target = e.to.split(".")[0] ?? e.to;
+    const sameStage = groupOf.has(source) && groupOf.get(source) === groupOf.get(target);
     return {
       id: `${e.from}->${e.to}`,
       type: "flow",
       source,
       target,
-      sourceHandle: "out",
-      targetHandle: "in",
+      sourceHandle: sameStage ? "down" : "out",
+      targetHandle: sameStage ? "top" : "in",
       data: { active: selectedId !== undefined && (source === selectedId || target === selectedId) },
     };
   });
