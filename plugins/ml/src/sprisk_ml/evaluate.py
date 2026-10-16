@@ -26,6 +26,10 @@ def evaluate(model: Pipeline, test: pl.DataFrame, target: str, task: str) -> dic
         result["accuracy"] = float(metrics.accuracy_score(y_true, y_pred))
         result["balanced_accuracy"] = float(metrics.balanced_accuracy_score(y_true, y_pred))
         result["f1_macro"] = float(metrics.f1_score(y_true, y_pred, average="macro"))
+        labels = sorted(set(y_true.tolist()) | set(y_pred.tolist()))
+        matrix = metrics.confusion_matrix(y_true, y_pred, labels=labels)
+        # Rows are the true class, columns the predicted class.
+        result["confusion"] = {"labels": [str(v) for v in labels], "matrix": matrix.tolist()}
     else:
         result["rmse"] = float(metrics.root_mean_squared_error(y_true, y_pred))
         result["mae"] = float(metrics.mean_absolute_error(y_true, y_pred))

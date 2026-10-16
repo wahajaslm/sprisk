@@ -1,0 +1,16 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.select_columns@1.0.0
+capability_class: transform
+description: Keep only the named columns, in that order.
+entrypoint: sprisk_clean.columns:select_columns
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: data, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [columns]
+  properties:
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns to keep, in order." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }

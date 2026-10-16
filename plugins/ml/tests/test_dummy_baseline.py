@@ -25,4 +25,5 @@ def test_logistic_beats_dummy_on_separable_data(clf_frame: pl.DataFrame) -> None
         "accuracy",
         "balanced_accuracy",
         "f1_macro",
+        "confusion",
     }

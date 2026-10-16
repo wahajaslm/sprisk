@@ -6,6 +6,7 @@ import polars.selectors as cs
 from sklearn.base import BaseEstimator
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier, DummyRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
@@ -28,6 +29,19 @@ def linear_model(train: pl.DataFrame, target: str, features: list[str], task: st
         LogisticRegression(max_iter=1000) if task == "classification" else LinearRegression()
     )
     return fit(estimator, train, target, features)
+
+
+def random_forest(
+    train: pl.DataFrame,
+    target: str,
+    features: list[str],
+    task: str,
+    n_estimators: int = 200,
+    seed: int = 0,
+) -> Pipeline:
+    """A forest of decision trees; captures interactions a linear model misses."""
+    forest = RandomForestClassifier if task == "classification" else RandomForestRegressor
+    return fit(forest(n_estimators=n_estimators, random_state=seed), train, target, features)
 
 
 def fit(

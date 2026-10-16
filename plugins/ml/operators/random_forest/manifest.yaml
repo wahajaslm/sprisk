@@ -1,0 +1,20 @@
+schema_version: sprisk.operator/v1
+id: sprisk.ml.random_forest@1.0.0
+capability_class: estimator
+description: Random forest (classification or regression) with imputation and one-hot encoding fit on train only.
+entrypoint: sprisk_ml.models:random_forest
+inputs: [{ name: train, kind: table }]
+outputs: [{ name: model, kind: model }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [target, features, task]
+  properties:
+    target: { type: string, minLength: 1, description: "Column to predict." }
+    features: { type: array, items: { type: string, minLength: 1 }, uniqueItems: true, description: "Columns used as inputs." }
+    task: { type: string, enum: [classification, regression], description: "Predict a class or a number." }
+    n_estimators: { type: integer, minimum: 10, maximum: 2000, default: 200, description: "Number of trees." }
+    seed: { type: integer, minimum: 0, default: 0, description: "Fixes the trees so runs repeat." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

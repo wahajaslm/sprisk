@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.ml.feature_importance@1.0.0
+capability_class: evaluator
+description: How much the score drops when each feature is shuffled in the test rows (permutation importance). Predictive importance for this model only, not causal; correlated features share or mask importance. A report only; never use it to choose features or models.
+entrypoint: sprisk_ml.importance:feature_importance
+inputs: [{ name: model, kind: model }, { name: test, kind: table }]
+outputs: [{ name: importance, kind: diagnostics }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [target]
+  properties:
+    target: { type: string, minLength: 1, description: "Column with the true values in the test table." }
+    seed: { type: integer, minimum: 0, default: 0, description: "Fixes the shuffles so runs repeat." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

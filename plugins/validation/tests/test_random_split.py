@@ -21,3 +21,16 @@ def test_random_split_is_reproducible_by_seed() -> None:
 def test_random_split_that_leaves_test_empty_is_an_error() -> None:
     with pytest.raises(ValueError, match="1 train and 0 test rows"):
         random_split(pl.DataFrame({"id": [1]}), test_fraction=0.1, seed=1)
+
+
+def test_stratified_split_keeps_each_class_share_in_test() -> None:
+    data = pl.DataFrame({"id": list(range(100)), "y": ["a"] * 80 + ["b"] * 20})
+    test = random_split(data, test_fraction=0.25, seed=3, stratify="y")["test"]
+    counts = dict(test.group_by("y").len().iter_rows())
+    assert counts == {"a": 20, "b": 5}
+
+
+def test_stratify_on_a_column_with_missing_values_is_an_error() -> None:
+    data = pl.DataFrame({"id": [1, 2, 3, 4], "y": ["a", None, "a", "b"]})
+    with pytest.raises(ValueError, match="y has 1 missing"):
+        random_split(data, test_fraction=0.5, seed=1, stratify="y")

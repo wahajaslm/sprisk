@@ -12,6 +12,7 @@ params_schema:
   properties:
     test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Share of rows held out for testing." }
     seed: { type: integer, minimum: 0, description: "Fixes the shuffle so runs repeat." }
+    stratify: { type: string, minLength: 1, description: "Keep each class of this column at the same share in train and test. Use the target for classification." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

@@ -57,3 +57,11 @@ def test_missing_target_in_train_is_an_error(clf_frame: pl.DataFrame) -> None:
 
 def with_missing_target(df: pl.DataFrame) -> pl.DataFrame:
     return df.with_columns(pl.when(pl.col("x") == 3).then(None).otherwise(pl.col("y")).alias("y"))
+
+
+def test_random_forest_fits_and_scores(clf_frame: pl.DataFrame) -> None:
+    from sprisk_ml.models import random_forest
+
+    model = random_forest(clf_frame[::2], **CLF, n_estimators=50, seed=0)
+    m = evaluate(model, clf_frame[1::2], target="y", task="classification")
+    assert m["estimator"] == "RandomForestClassifier" and m["accuracy"] > 0.8

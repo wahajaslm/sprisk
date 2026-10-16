@@ -24,6 +24,7 @@ Remove an item when it is done; link the commit or ADR.
 | Mark holdout ports in manifests instead of a pack setting | methodology review | with ADR-0016 |
 | Declare "fits on train" in the operator manifest (`fit_input`) instead of the `FITTING_TRANSFORMS` pack list, so new plugin transforms are checked without editing the rule (§15.1) | methodology review | with ADR-0016 |
 | Rule `target_untouched`: cleaning transforms must not include the target column | methodology review | M3 |
+| Rule `report_only`: no step that chooses features or models may read a `feature_importance` (or other test-set report) output | methodology review | M3 |
 | Per-project pack settings (thresholds, severity, applicability) — needs an ADR | design discussion | M3 |
 | Acknowledged FAIL recorded as an `Assumption`; per-rule "override permitted" | ADR-0015, ADR-0017 | M3 |
 | Custom project-scoped packs (untrusted) | design discussion | M5 |
