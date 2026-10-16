@@ -10,18 +10,25 @@ Arch doc sections: §5 (typed pipeline IR), §9 (runs, caching), §11 (contracts
 - marimo's rules belong to its notebook runtime (one shared namespace, one definition per name). sprisk steps run isolated, in workers, from artifacts.
 
 ## Decision
-- **A code step's ports are its variable names.** Inputs: names it reads that no line in it defines. Outputs: names it defines that another step reads. Stored in the node's params; the Rust compiler reads them as the step's ports (new operator version `sprisk.code.python@2`).
-- **The analyzer suggests; the person confirms.** The worker's discovery (stdlib `ast`, rule 2) proposes edges `A.df → B.df` as `inferred`. Confirmed edges are ordinary edges in the `PipelineVersion`. Nothing is resolved by name at run time. The graph on screen is the graph that runs (rule 5).
-- **Only saveable values cross a step.** A table, model, figure or JSON value crosses as an artifact (ADR-0022 port kinds). Anything else (an open file, a custom object) cannot be an output; the analyzer says why.
-- **Conflicts are not guessed.** A name defined by two upstream steps is ambiguous: the person picks one, or the compile fails (`ambiguous_input`).
-- **Mutation is safe but flagged.** Each step loads its own copy of its inputs, so `df.dropna(inplace=True)` cannot change another step's data. A step that mutates an input but does not output it gets a Checks warning: the change stops at that step.
-- **Invalidation is ADR-0026.** An edit runs from the edited step onwards; unchanged upstream steps are reused.
-- **No marimo dependency.** Its analyzer is tied to its runtime. We use marimo's documented scoping rules (comprehensions, `global`, `del`, function bodies) as test cases for our own analyzer.
-- **Session mode stays out.** A shared live kernel (Node Framework §8.3) needs its own ADR.
+- **A code step's ports are its variable names.** New operator `sprisk.code.python@2.0.0`. Its params list `inputs` and `outputs` by name. A params-schema marker (`x-sprisk-ports: input | output`) tells the Rust compiler to add them as table ports, so edges, kinds, caching and history work as for any step.
+- **Splitting cells is Python, never running them.** `POST /code/split` takes cells and returns steps and links. The API starts a short Python process (`python -m sprisk_code.cells`, 10 s limit) that only parses the code with stdlib `ast` and `symtable` (rule 2). Nothing is executed; the process is the boundary for hostile input.
+- **Reading a cell, in notebook order:**
+  - a name a cell reads before it sets it comes from the latest earlier cell that sets it;
+  - an import is copied into the cell that uses it (`import pandas as pd`);
+  - a top-level literal is copied too (`min_age = 18`), so it can be exposed as a setting there;
+  - a function or class used by a later cell, or a name that is not a valid port name (`X_train`), keeps the cells from definer to user together in one step;
+  - anything else becomes a link: an output on the earlier step, an input on the later one.
+- **The person confirms.** The UI shows the steps, links and notes before it creates the flow. Links are ordinary edges in the `PipelineVersion`. Nothing is resolved by name at run time (rule 5).
+- **Tables cross steps; they keep their library.** A polars or pandas DataFrame crosses as Parquet. A code step gets each input table back as the library that wrote it (pandas metadata in the file). Built-in steps always get polars.
+- **Any other value fails the step clearly**: the message names the variable, its type and the fix (keep those cells in one step).
+- **Notebook files.** `.ipynb` code cells and the `# %%` cell format are read in the browser (plain JSON and text) and sent as cells. IPython magics (`%`, `!`) become comments.
+- **Effects: nondeterministic** (like a source): reused within an edit (ADR-0026), re-run by Run graph.
+- **No marimo dependency.** Its analyzer is tied to its runtime. marimo's scoping cases (comprehensions, functions, `global`, `del`) are our test cases.
+- **Later, each with its own change:** models and JSON values crossing steps (kind from a first run), mutation warnings in Checks, session mode (Node Framework §8.3).
 
 ## First slice
-- Paste three cells. sprisk makes three code steps and suggests two edges.
-- Confirm, run, explore each step's variables (ADR-0030), expose one parameter, edit it: only that step and the steps after it run.
+- Paste three cells, or open a notebook. sprisk shows three steps and two links; Create flow.
+- Run, explore each step's variables (ADR-0030), expose one setting, edit it: that step and the ones after it run.
 
 ## Alternatives considered
 - **Adopt marimo as the runtime.** Rejected: one shared namespace cannot be scheduled, cached or retried per step.
@@ -32,9 +39,13 @@ Arch doc sections: §5 (typed pipeline IR), §9 (runs, caching), §11 (contracts
 - Good: notebook cells move into sprisk with no rewriting and no sprisk imports.
 - Good: every link is visible, versioned and checked by methodology rules like any edge.
 - Bad: compiler change: a code step's ports come from params, not only the manifest.
-- Bad: values that cannot be saved cannot cross a step. Users must keep that work inside one step.
+- Bad: only tables cross steps in this slice. Other values make the step fail with a clear message.
+- Bad: a new API → Python call (a short process). Bounded by a time limit and input size.
+- Bad: pandas becomes a dependency of the code pack: notebooks use it.
 
 ## Validation
 - Analyzer tests: defines/reads for assignments, augmented assignment, comprehensions, functions, `global`, `del`, imports.
-- Compiler tests: ports from params; `ambiguous_input`; an unsaveable output is rejected.
+- Compiler tests: ports from params; an edge to an undeclared name is `not_an_input`.
+- Worker tests: tables in and out by name; pandas stays pandas; a non-table output fails with its name and type.
+- API test: `POST /code/split` returns steps and links; a slow or broken analyzer is an error, not a hang.
 - End-to-end: the first slice above, on the penguins flow.
