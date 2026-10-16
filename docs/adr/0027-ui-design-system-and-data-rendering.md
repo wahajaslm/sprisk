@@ -13,7 +13,7 @@ Arch doc sections: §2A, §13
 ## Decision
 
 ### 1. Tokens (in `cockpit.css` `:root`, nothing else)
-- Type scale, five sizes: `--text-xs` 11px, `--text-sm` 12px, `--text-md` 13px, `--text-lg` 16px, `--text-xl` 20px.
+- Type scale, five sizes: `--text-xs` 11px, `--text-sm` 12px, `--text-md` 14px, `--text-lg` 20px, `--text-xl` 24px. Canvas step names use `md`, stage names `lg`, big metric numbers `xl`.
 - Weights: 300 for large titles, 400 for body, 500 for emphasis. No other weights.
 - Spacing on a 4px grid: `--space-1` 4px up to `--space-8` 32px.
 - Colours stay as they are. A new colour needs a new token.

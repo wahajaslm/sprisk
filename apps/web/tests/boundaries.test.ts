@@ -19,3 +19,13 @@ it("src/api reads no UI store", () => {
     .map(([path]) => path);
   expect(offenders).toEqual([]);
 });
+
+const styles = import.meta.glob<string>("../src/**/*.css", { query: "?raw", import: "default", eager: true });
+
+it("font sizes come from the type scale tokens", () => {
+  expect(Object.keys(styles).length).toBeGreaterThan(0);
+  const raw = Object.entries(styles).flatMap(([path, css]) =>
+    [...css.matchAll(/font(?:-size)?:[^;]*?\b\d+(?:\.\d+)?px/g)].map((m) => `${path}: ${m[0]}`),
+  );
+  expect(raw).toEqual([]);
+});
