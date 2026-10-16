@@ -47,6 +47,7 @@ def confusion_figure(labels: list[str], matrix: list[list[int]]) -> go.Figure:
         x=labels,
         y=labels,
         colorscale="Greys",
+        reversescale=True,
         text=matrix,
         texttemplate="%{text}",
         showscale=False,
