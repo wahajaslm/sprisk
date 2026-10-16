@@ -6,7 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-jsonschema = "0.58.6"
+# No remote or file $ref resolution: Gate A must never leave the process.
+jsonschema = { version = "0.58.6", default-features = false, features = ["idna"] }
 petgraph = "0.8.3"
 serde_json = "1.0.154"
 sprisk-contracts = { path = "../sprisk-contracts" }

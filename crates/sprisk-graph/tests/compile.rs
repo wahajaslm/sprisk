@@ -268,3 +268,37 @@ fn unknown_operator_is_reported_once_not_as_broken_edges() {
         "{errs:?}"
     );
 }
+
+#[test]
+fn params_schema_cannot_reach_outside_itself() {
+    // Gate A never touches the network or the filesystem to resolve a schema.
+    // The file is a valid schema, so only disabled resolution makes this fail.
+    let dir = tempfile::tempdir().unwrap();
+    let schema = dir.path().join("schema.json");
+    fs::write(&schema, r#"{"type": "object"}"#).unwrap();
+    let file_ref = format!("file://{}", schema.display());
+    for reference in [file_ref.as_str(), "http://127.0.0.1:9/schema.json"] {
+        let op = operator(
+            "sprisk.test.remote@1.0.0",
+            &[],
+            &[("data", "table")],
+            json!({ "$ref": reference }),
+        );
+        let ops = tempfile::tempdir().unwrap();
+        let path = ops.path().join("op/manifest.yaml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, op.to_string()).unwrap();
+        let registry = Registry::load_dir(ops.path()).unwrap();
+
+        let errs = compile(
+            &pipeline(json!([node("a", "sprisk.test.remote@1.0.0")]), json!([])),
+            &registry,
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(errs.as_slice(), [CompileError::InvalidParamsSchema { .. }]),
+            "{reference}: {errs:?}"
+        );
+    }
+}
