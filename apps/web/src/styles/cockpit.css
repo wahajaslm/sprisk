@@ -513,6 +513,8 @@ p { margin: 0; }
 /* Figures a step drew in Python (ADR-0024). */
 .figures { display: grid; gap: 18px; }
 .figures.grid { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+.step-charts { display: grid; gap: 18px; margin-top: 18px; }
+.chart-block { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .view-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); }
 .view-controls label { display: flex; align-items: center; gap: 6px; }
 .view-controls select { height: 26px; max-width: 220px; border: 1px solid var(--line-strong); background: var(--canvas); color: var(--ink); font: 12px var(--sans); }

@@ -13,15 +13,18 @@ export function FiguresTab({
   ports,
   controls,
   failure,
+  charts,
 }: {
   attempt: Attempt | undefined;
   ports: string[];
   controls?: ReactNode;
   /** Why the latest run of this step failed, if it did. */
   failure?: string | undefined;
+  /** Charts of this step's tables (they live here, not on the canvas). */
+  charts?: ReactNode;
 }) {
   const { layout, setLayout } = useResultLayout();
-  if (ports.length === 0) return <p className="muted">This step draws no figures. Add a chart from the table above it in Data.</p>;
+  if (ports.length === 0 && !charts) return <p className="muted">This step draws no figures.</p>;
   return (
     <>
       <div className="result-bar">
@@ -32,18 +35,19 @@ export function FiguresTab({
       {failure ? (
         <p role="alert" className="error">This step failed: {failure}</p>
       ) : (
-        !attempt && <p className="muted">Not run yet. Run the flow to draw.</p>
+        !attempt && ports.length > 0 && <p className="muted">Not run yet. Run the flow to draw.</p>
       )}
       <section className={`figures ${layout}`} aria-label="Figures">
         {ports.map((port) => (
           <FigurePort key={port} attempt={attempt} port={port} />
         ))}
       </section>
+      {charts}
     </>
   );
 }
 
-function FigurePort({ attempt, port }: { attempt: Attempt | undefined; port: string }) {
+export function FigurePort({ attempt, port }: { attempt: Attempt | undefined; port: string }) {
   const set = useFigureSet(attempt, port);
   if (set.status === "none") return attempt ? <p className="muted">{set.reason}</p> : null;
   if (set.status === "loading") return <p className="muted">Loading figures…</p>;

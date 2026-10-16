@@ -27,7 +27,7 @@ import { type RunChecks, useRunChecks } from "../api/checks.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
-import { addCodeStep } from "../flow/edit.ts";
+import { addCodeStep, withoutCharts } from "../flow/edit.ts";
 import { flowPositions, GROUP_HEAD, type Group, type Point } from "../flow/layout.ts";
 import { kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
@@ -328,12 +328,14 @@ export function FlowCanvas() {
   const level = useCanvasDetail((s) => s.level);
   const checks = useRunChecks(latestByNode(attempts.data ?? []).get(GATE_NODE));
 
-  const pipelineNow = versions.data?.find((v) => v.id === pipelineVersionId);
+  // Chart steps are views inside the step they draw, never canvas steps.
+  const found = versions.data?.find((v) => v.id === pipelineVersionId);
+  const pipelineNow = found && withoutCharts(found);
   const positions = usePositions(pipelineNow, level, new Map((operators.data ?? []).map((op) => [op.id, op])));
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
   if (versions.isPending || operators.isPending) return <p className="muted pad">Loading flow…</p>;
-  const pipeline = versions.data.find((v) => v.id === pipelineVersionId);
+  const pipeline = pipelineNow;
   if (!pipeline) return <p className="muted pad">No flow yet. Submit one with <code>sprisk run</code>.</p>;
 
   const byRef = new Map(operators.data.map((op) => [op.id, op]));

@@ -3,12 +3,19 @@ import type { Operator, PipelineVersion, TableColumn } from "@sprisk/contracts";
 import { type Field, isViewSetting, settingsOf } from "./ParametersTab.tsx";
 import { useRunEdit } from "./useRunEdit.ts";
 
-type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator | undefined; columns: TableColumn[] };
+type Props = {
+  pipeline: PipelineVersion;
+  nodeId: string;
+  operator: Operator | undefined;
+  columns: TableColumn[];
+  /** The step to keep selected after a redraw (a chart's own step is never shown). */
+  showNode?: string;
+};
 
 /** A step's view settings (kind, x, y) as dropdowns above its figures. A change runs the step
  * again as a new version, so the figure stays what Python drew (ADR-0024). */
-export function ViewControls({ pipeline, nodeId, operator, columns }: Props) {
-  const edit = useRunEdit(pipeline, nodeId);
+export function ViewControls({ pipeline, nodeId, operator, columns, showNode }: Props) {
+  const edit = useRunEdit(pipeline, nodeId, showNode);
   const params = pipeline.nodes.find((n) => n.id === nodeId)?.params ?? {};
   const fields = operator ? settingsOf(operator.params_schema).filter(isViewSetting) : [];
   if (fields.length === 0) return null;

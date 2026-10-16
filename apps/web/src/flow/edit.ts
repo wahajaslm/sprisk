@@ -51,6 +51,31 @@ export function addChartStep(base: PipelineVersion, node: string, port: string, 
   return { version, nodeId };
 }
 
+/** Chart steps that draw this step's tables. They are views of it: shown in its
+ * Visualizations, never as canvas steps. */
+export const chartsOf = (pipeline: PipelineVersion, nodeId: string) =>
+  pipeline.nodes.filter(
+    (n) => isChartOperator(n.operator) && pipeline.edges.some((e) => e.to === `${n.id}.data` && e.from.split(".")[0] === nodeId),
+  );
+
+/** The flow as the canvas draws it: chart steps left out (they live inside their step). */
+export function withoutCharts(pipeline: PipelineVersion): PipelineVersion {
+  const charts = new Set(pipeline.nodes.filter((n) => isChartOperator(n.operator)).map((n) => n.id));
+  return {
+    ...pipeline,
+    nodes: pipeline.nodes.filter((n) => !charts.has(n.id)),
+    edges: pipeline.edges.filter((e) => !charts.has(e.to.split(".")[0] ?? "")),
+  };
+}
+
+/** A new version without this step and the edges into it. Only for steps nothing reads. */
+export function removeStep(base: PipelineVersion, nodeId: string): PipelineVersion {
+  return nextVersion(base, {
+    nodes: base.nodes.filter((n) => n.id !== nodeId),
+    edges: base.edges.filter((e) => e.to.split(".")[0] !== nodeId),
+  });
+}
+
 /** A new version where one step runs with `params`; everything else is unchanged. */
 export function setParams(base: PipelineVersion, nodeId: string, params: Record<string, unknown>): PipelineVersion {
   return nextVersion(base, {

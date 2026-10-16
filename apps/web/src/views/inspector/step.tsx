@@ -5,7 +5,7 @@ import { useCodeDisplay, useCodeInterface, useConsole } from "../../api/code.ts"
 import { useNodeHistory } from "../../api/history.ts";
 import { useOperators, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun, useTablePage } from "../../api/hooks.ts";
 import { PARQUET } from "../../api/media.ts";
-import { addChartStep, addCodeStep, type ChartSpec, isCodeOperator } from "../../flow/edit.ts";
+import { addChartStep, addCodeStep, type ChartSpec, chartsOf, isCodeOperator } from "../../flow/edit.ts";
 import { useWorkbench } from "../../workbench/workbench.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { roleOf, shortName } from "../../flow/stages.ts";
@@ -15,6 +15,7 @@ import { useSelection } from "../../workbench/selection.ts";
 import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
 import { FiguresTab } from "./FiguresTab.tsx";
+import { StepCharts } from "./StepCharts.tsx";
 import { ViewControls } from "./ViewControls.tsx";
 import { ChecksTab, concerns } from "./ChecksTab.tsx";
 import { CodeData } from "./CodeData.tsx";
@@ -71,8 +72,9 @@ export function useStep() {
       ? (port: string, spec: ChartSpec) => {
           const { version, nodeId: chartNode } = addChartStep(pipeline, nodeId, port, spec);
           saveAndRun.mutate(version, {
+            // The chart lives inside this step: stay on it and show its Visualizations.
             onSuccess: (r) => {
-              showRun(version.id, r.id, chartNode);
+              showRun(version.id, r.id, nodeId);
               dock?.showTab("visuals");
             },
           });
@@ -84,8 +86,10 @@ export function useStep() {
   const sourceOutputs = useOutputs(producer && hasOutputs(producer) ? producer.id : undefined);
   const sourceTable = sourceOutputs.data?.find((o) => o.port === source[1] && o.artifact.media_type === PARQUET)?.artifact.id;
   const inputColumns = useTablePage(sourceTable, 0, 1).data?.columns ?? [];
+  const operatorsById = new Map((operators.data ?? []).map((o) => [o.id, o]));
   return {
     runId,
+    operatorsById,
     inputColumns,
     addChart,
     figurePorts,
@@ -109,7 +113,7 @@ export function useStep() {
     previous: shownAt >= 0 ? history.slice(shownAt + 1).find((h) => h.metrics)?.metrics : undefined,
     metric: HEADLINE.find((m) => history.some((h) => h.metrics?.[m] !== undefined)),
     concernCount: nodeId ? concerns(checks, nodeId) : 0,
-    visuals: isCode ? visualCount(display) : done ? figurePorts.length : 0,
+    visuals: isCode ? visualCount(display) : (done ? figurePorts.length : 0) + (pipeline && nodeId ? chartsOf(pipeline, nodeId).length : 0),
     printed,
     problems: consoleProblems(printed, mine),
   };
@@ -207,6 +211,11 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
           ports={step.figurePorts}
           failure={step.latest?.state === "failed" ? step.latest.error?.message : undefined}
           controls={pipeline && <ViewControls pipeline={pipeline} nodeId={nodeId} operator={operator} columns={step.inputColumns} />}
+          charts={
+            pipeline && (
+              <StepCharts pipeline={pipeline} nodeId={nodeId} attempt={done} attempts={step.all} operators={step.operatorsById} addChart={step.addChart} />
+            )
+          }
         />
       );
     case "console":

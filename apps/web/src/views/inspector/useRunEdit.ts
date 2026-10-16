@@ -6,12 +6,13 @@ import { useSelection } from "../../workbench/selection.ts";
 
 /** Save a step with new params as a new version, run it, and keep showing that step.
  * Rust compiles and checks the version; its errors come back on `error` (rule 3). */
-export function useRunEdit(pipeline: PipelineVersion, nodeId: string) {
+/** Run `nodeId` with new params as a new version, then show `showNode` (default: that step). */
+export function useRunEdit(pipeline: PipelineVersion, nodeId: string, showNode: string = nodeId) {
   const saveAndRun = useSaveAndRun();
   const showRun = useSelection((s) => s.showRun);
   const run = (params: Record<string, unknown>) => {
     const version = setParams(pipeline, nodeId, params);
-    saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
+    saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, showNode) });
   };
   return { run, pending: saveAndRun.isPending, error: saveAndRun.isError ? saveAndRun.error.message : undefined };
 }

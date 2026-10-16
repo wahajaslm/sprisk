@@ -291,3 +291,58 @@ describe("Console for every step (ADR-0025)", () => {
     expect(screen.queryByRole("tab", { name: "console" })).toBeNull();
   });
 });
+
+describe("charts live inside the step they draw", () => {
+  async function loadWithChart() {
+    const { http, HttpResponse } = await import("msw");
+    const { server } = await import("./server.ts");
+    const { attempts, pipeline, run, scoreOutputs } = await import("./fixtures.ts");
+    const withChart = {
+      ...pipeline,
+      nodes: [...pipeline.nodes, { id: "chart_1", operator: "sprisk.profile.chart@1.0.0", params: { kind: "histogram", x: "sepal_length" } }],
+      edges: [...pipeline.edges, { from: "load.data", to: "chart_1.data" }],
+    };
+    const chartAttempt = { ...attempts[1]!, id: "att_01JABCDEFGHJKMNPQRSTVWXY77", node_id: "chart_1" };
+    const output = { port: "chart", artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY77", size_bytes: 200 } };
+    const figures = { items: [{ library: "plotly", format: "plotly_json", title: "histogram of sepal_length", content: '{"data": [], "layout": {}}' }] };
+    const posted: { nodes: { id: string }[] }[] = [];
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([withChart])),
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, chartAttempt])),
+      http.get(`/api/attempts/${chartAttempt.id}/outputs`, () => HttpResponse.json([output])),
+      http.get(`/api/artifacts/${output.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(figures))),
+      http.post("/api/pipeline_versions", async ({ request }) => {
+        const body = (await request.json()) as (typeof posted)[number];
+        posted.push(body);
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.post("/api/runs", () => HttpResponse.json({ ...run, status: "queued" }, { status: 202 })),
+    );
+    return posted;
+  }
+
+  it("the canvas has no chart step", async () => {
+    const { FlowCanvas } = await import("../src/views/FlowCanvas.tsx");
+    await loadWithChart();
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    await screen.findByRole("button", { name: /^load/ });
+    expect(screen.queryByRole("button", { name: /^chart_1/ })).toBeNull();
+  });
+
+  it("the step's Visualizations show its chart with the chart's choices, and can remove it", async () => {
+    const posted = await loadWithChart();
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
+        <StepTab />
+      </ViewInstance>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    const chart = await screen.findByRole("region", { name: "Chart chart_1" });
+    expect(await within(chart).findByRole("img", { name: "histogram of sepal_length" })).toBeInTheDocument();
+    expect(within(chart).getByRole("combobox", { name: "kind" })).toHaveValue("histogram");
+    await userEvent.click(within(chart).getByRole("button", { name: "Remove chart chart_1" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.nodes.some((n) => n.id === "chart_1")).toBe(false);
+  });
+});
