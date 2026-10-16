@@ -54,9 +54,9 @@ export const shownTables = (display: Read<CodeDisplay>): DisplayItem[] =>
 export function ShownTable({ item, index }: { item: DisplayItem; index: number }) {
   if (!item.table) return <p role="alert" className="error">Shown table {index + 1} has no content.</p>;
   return (
-    <div>
+    <div className="peek">
+      <div className="peek-head">{`${item.table.rows.length} of ${item.table.total_rows} rows`}</div>
       <RowsTable page={item.table} label={`shown table ${index + 1}`} />
-      <div className="peek-foot">{`${item.table.rows.length} of ${item.table.total_rows} rows`}</div>
     </div>
   );
 }

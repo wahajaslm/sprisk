@@ -357,7 +357,8 @@ describe("peek at a table output", () => {
     server.use(http.get("/api/artifacts/:id/rows", () => HttpResponse.json({ ...tablePage(0, 50), total_columns: 340 })));
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
-    expect(await screen.findByText(/first 2 of 340 columns/)).toBeInTheDocument();
+    expect(await screen.findByText("· first 2 shown")).toBeInTheDocument();
+    expect(screen.getByText("· 340 columns")).toBeInTheDocument();
   });
 
   it("shows why rows could not be read", async () => {

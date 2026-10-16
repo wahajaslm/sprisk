@@ -47,7 +47,6 @@ export function DataTab({ attempt, operator, capability, previous, explore, show
       label: `shown ${i + 1}`,
       body: (
         <section className="output" aria-label={`Shown table ${i + 1}`}>
-          <p className="output-title">Shown table {i + 1}</p>
           <ShownTable item={item} index={i} />
         </section>
       ),
@@ -69,7 +68,7 @@ type Part = { key: string; label: string; body: ReactNode };
 function SubTabs({ parts }: { parts: Part[] }) {
   return (
     <Tabs.Root defaultValue={parts[0]!.key} className="sub-tabs">
-      <Tabs.List className="detail-switch small" aria-label="Outputs">
+      <Tabs.List className="strip-tabs" aria-label="Outputs">
         {parts.map((p) => (
           <Tabs.Trigger key={p.key} value={p.key}>
             {p.label}
@@ -113,17 +112,29 @@ function Output({ output, view, previous, explore }: { output: AttemptOutput; vi
   const a = output.artifact;
   return (
     <section className="output" aria-label={TITLE[view](output.port)}>
+      {view === "table" ? (
+        <TablePeek
+          artifactId={a.id}
+          port={output.port}
+          actions={
+            <>
+              {technical && <span className="tech">{a.content_hash.slice(0, 19)}… · {a.id}</span>}
+              {explore && (
+                <button type="button" className="page-btn" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)}>
+                  Explore in code
+                </button>
+              )}
+            </>
+          }
+        />
+      ) : (
+      <>
       <div className="output-head">
         <p className="output-title">{TITLE[view](output.port)}</p>
         {technical && (
           <p className="tech">
             {a.media_type} · {a.size_bytes} bytes · {a.content_hash.slice(0, 19)}… · {a.id}
           </p>
-        )}
-        {view === "table" && explore && (
-          <button type="button" className="page-btn" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)}>
-            Explore in code
-          </button>
         )}
       </div>
       {isJson && !small ? (
@@ -136,12 +147,12 @@ function Output({ output, view, previous, explore }: { output: AttemptOutput; vi
         <pre className="code">{prettyJson(text.data)}</pre>
       ) : view === "profile" ? (
         <ColumnProfile artifactId={a.id} />
-      ) : view === "table" ? (
-        <TablePeek artifactId={a.id} port={output.port} />
       ) : view === "model" ? (
         <p className="muted">A fitted scikit-learn model, saved for the steps that use it.</p>
       ) : (
         <p className="muted">Saved output. Turn on technical details to see its type and hash.</p>
+      )}
+      </>
       )}
     </section>
   );

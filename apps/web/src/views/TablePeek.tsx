@@ -1,7 +1,7 @@
 import type { TablePage } from "@sprisk/contracts";
 import { useQueries } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef } from "react";
+import { type ReactNode, useRef } from "react";
 
 import { tablePageQuery, useTablePage } from "../api/hooks.ts";
 import { isText } from "./RowsTable.tsx";
@@ -11,18 +11,21 @@ const ROW_HEIGHT = 26;
 
 /** A whole table artifact, scrolled like any table. Only the pages under the visible rows are
  * fetched and drawn, so the browser never holds the table (rule 9). */
-export function TablePeek({ artifactId, port }: { artifactId: string; port: string }) {
+export function TablePeek({ artifactId, port, actions }: { artifactId: string; port: string; actions?: ReactNode }) {
   const first = useTablePage(artifactId, 0, PAGE_ROWS);
   if (first.isPending) return <p className="muted">Loading rows…</p>;
   if (first.isError) return <p role="alert" className="error">{first.error.message}</p>;
   const { columns, total_rows, total_columns } = first.data;
   return (
     <div className="peek">
-      <ScrollRows artifactId={artifactId} label={`${port} rows`} head={first.data} />
-      <div className="peek-foot">
+      <div className="peek-head">
         <span>{total_rows} rows</span>
-        {total_columns > columns.length && <span>· first {columns.length} of {total_columns} columns</span>}
+        <span>· {total_columns} columns</span>
+        {total_columns > columns.length && <span>· first {columns.length} shown</span>}
+        <span className="spacer" />
+        {actions}
       </div>
+      <ScrollRows artifactId={artifactId} label={`${port} rows`} head={first.data} />
     </div>
   );
 }
