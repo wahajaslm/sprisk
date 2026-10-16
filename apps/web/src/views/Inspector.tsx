@@ -7,7 +7,7 @@ import { MAX_INLINE_BYTES, PARQUET } from "../api/media.ts";
 import { GATE_NODE, latestByNode } from "../flow/latest.ts";
 import { useViewInstance, useViewSelection } from "../workbench/instance.tsx";
 import { PinIcon } from "./Icons.tsx";
-import { addCodeStep, CODE_OPERATOR } from "../flow/edit.ts";
+import { addCodeStep, isCodeOperator } from "../flow/edit.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { CodeEditor } from "./CodeEditor.tsx";
 import { CodeOutput } from "./CodeOutput.tsx";
@@ -76,7 +76,7 @@ export function Inspector() {
         </p>
       </Tabs.Content>
       <Tabs.Content value="code" className="pane single">
-        {pipeline && node?.operator === CODE_OPERATOR && typeof node.params.source === "string" ? (
+        {pipeline && node && isCodeOperator(node.operator) && typeof node.params.source === "string" ? (
           <CodeEditor key={`${pipeline.id}/${node.id}`} pipeline={pipeline} nodeId={node.id} source={node.params.source} />
         ) : (
           <>
@@ -134,7 +134,7 @@ function Outputs({ attempt, operator, explore }: { attempt: Attempt | undefined;
 type OutputView = "code" | "profile" | "table" | "json" | "other";
 
 function viewOf(output: AttemptOutput, operator: string | undefined): OutputView {
-  if (operator === CODE_OPERATOR && output.port === "display") return "code";
+  if (isCodeOperator(operator) && output.port === "display") return "code";
   if (isProfileOperator(operator) && output.port === "profile") return "profile";
   if (output.artifact.media_type === PARQUET) return "table";
   if (output.artifact.media_type === "application/json") return "json";

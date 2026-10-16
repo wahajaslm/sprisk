@@ -1,10 +1,12 @@
 import type { PipelineVersion } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
-export const CODE_OPERATOR = "sprisk.code.python@1.0.0";
+export const CODE_OPERATOR = "sprisk.code.python@1.1.0";
+export const isCodeOperator = (ref: string | undefined) => ref?.startsWith("sprisk.code.python@") === true;
 
 const STARTER = `# \`data\` is the input table as a polars DataFrame (\`pl\` is polars).
 # Printed text, the last line's value and matplotlib figures are shown.
+# sprisk.output(df) passes a table on to the next step (otherwise \`data\` passes on unchanged).
 data.describe()
 `;
 

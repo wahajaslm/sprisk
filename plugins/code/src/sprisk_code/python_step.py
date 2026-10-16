@@ -3,9 +3,11 @@ import base64
 import contextlib
 import io
 import json
+import shutil
 import traceback
 from collections.abc import Mapping
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import matplotlib
@@ -13,7 +15,7 @@ import polars as pl
 
 from sprisk_contracts import CodeDisplay
 from sprisk_workers.errors import OperatorError
-from sprisk_workers.output import JSON, Output
+from sprisk_workers.output import JSON, PARQUET, Output
 
 matplotlib.use("Agg")  # no display in a worker
 import matplotlib.pyplot as plt  # noqa: E402
@@ -31,11 +33,37 @@ def python_step(
     params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
 ) -> list[Output]:
     """Run the user's code on the input table and record what it shows (ADR-0020)."""
-    source: str = params["source"]
+    display, _ = _run(params["source"], inputs["data"], out_dir)
+    return [display]
+
+
+def python_step_with_output(
+    params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
+) -> list[Output]:
+    """As `python_step`, plus a `data` output: the table passed to `sprisk.output`, or the
+    input unchanged when the code passes nothing on."""
+    display, result = _run(params["source"], inputs["data"], out_dir)
+    path = out_dir / "data.parquet"
+    if result is None:
+        shutil.copyfile(inputs["data"], path)  # same bytes, same hash: stored once
+    else:
+        result.write_parquet(path)
+    return [Output(port="data", path=path, media_type=PARQUET), display]
+
+
+def _run(source: str, data: Path, out_dir: Path) -> tuple[Output, pl.DataFrame | None]:
+    passed: list[pl.DataFrame] = []
+
+    def output(df: object) -> None:
+        if not isinstance(df, pl.DataFrame):
+            raise TypeError(f"sprisk.output takes a polars DataFrame, got {type(df).__name__}")
+        passed[:] = [df]
+
     namespace: dict[str, Any] = {
         "__name__": "__sprisk_code__",
-        "data": pl.read_parquet(inputs["data"]),
+        "data": pl.read_parquet(data),
         "pl": pl,
+        "sprisk": SimpleNamespace(output=output),
     }
     stdout = io.StringIO()
     plt.close("all")
@@ -56,7 +84,7 @@ def python_step(
     path = out_dir / "display.json"
     display = CodeDisplay.model_validate_json(json.dumps({"items": items}))
     path.write_text(display.model_dump_json(exclude_none=True))
-    return [Output(port="display", path=path, media_type=JSON)]
+    return Output(port="display", path=path, media_type=JSON), (passed[0] if passed else None)
 
 
 def _split_last_expression(source: str) -> tuple[ast.Module, ast.Expression | None]:

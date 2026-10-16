@@ -356,7 +356,7 @@ describe("code steps (ADR-0020)", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Explore data in code" }));
     await waitFor(() => expect(posted.runs).toHaveLength(1));
     const version = posted.versions[0] as typeof pipeline;
-    expect(version.nodes.at(-1)).toMatchObject({ id: "code_1", operator: "sprisk.code.python@1.0.0" });
+    expect(version.nodes.at(-1)).toMatchObject({ id: "code_1", operator: "sprisk.code.python@1.1.0" });
     expect(version.edges.at(-1)).toEqual({ from: "load.data", to: "code_1.data" });
     expect(posted.runs[0]).toEqual({ pipeline_version_id: version.id });
     expect(useSelection.getState()).toMatchObject({ pipelineVersionId: version.id, runId: "run_01JABCDEFGHJKMNPQRSTVWXYZ9", nodeId: "code_1" });

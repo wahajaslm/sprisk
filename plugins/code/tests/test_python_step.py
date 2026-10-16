@@ -5,7 +5,7 @@ import polars as pl
 import pytest
 from conftest import WriteParquet
 
-from sprisk_code.python_step import MAX_TABLE_ROWS, python_step
+from sprisk_code.python_step import MAX_TABLE_ROWS, python_step, python_step_with_output
 from sprisk_contracts import CodeDisplay
 from sprisk_workers.errors import OperatorError
 
@@ -84,3 +84,32 @@ def test_huge_figure_is_replaced_by_a_note(
     )
     [note] = run(write_parquet, clf_frame, out_dir, source).items
     assert note.kind == "text" and note.text is not None and "not shown" in note.text
+
+
+def test_output_becomes_the_data_port(write_parquet: WriteParquet, out_dir: Path) -> None:
+    df = pl.DataFrame({"x": [1.0, 2.0, 3.0]})
+    source = "sprisk.output(data.with_columns(y=pl.col('x') * 2))"
+    outputs = python_step_with_output({"source": source}, {"data": write_parquet("d", df)}, out_dir)
+    data = next(o for o in outputs if o.port == "data")
+    assert data.media_type == "application/vnd.apache.parquet"
+    assert pl.read_parquet(data.path)["y"].to_list() == [2.0, 4.0, 6.0]
+    assert {o.port for o in outputs} == {"data", "display"}
+
+
+def test_without_output_the_input_passes_through_unchanged(
+    write_parquet: WriteParquet, out_dir: Path
+) -> None:
+    src = write_parquet("d", pl.DataFrame({"x": [1, 2]}))
+    outputs = python_step_with_output({"source": "data.height"}, {"data": src}, out_dir)
+    data = next(o for o in outputs if o.port == "data")
+    assert data.path.read_bytes() == src.read_bytes()
+
+
+def test_output_must_be_a_polars_dataframe(
+    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
+) -> None:
+    with pytest.raises(OperatorError) as e:
+        python_step_with_output(
+            {"source": "sprisk.output([1, 2])"}, {"data": write_parquet("d", clf_frame)}, out_dir
+        )
+    assert e.value.code == "code_error" and "polars DataFrame" in e.value.message

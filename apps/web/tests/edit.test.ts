@@ -21,6 +21,12 @@ describe("flow edits create a new pipeline version", () => {
     expect(addCodeStep(first, "split", "train").nodeId).toBe("code_2");
   });
 
+  it("chains a code step onto another code step's output", () => {
+    const first = addCodeStep(pipeline, "load", "data");
+    const second = addCodeStep(first.version, first.nodeId, "data");
+    expect(second.version.edges.at(-1)).toEqual({ from: "code_1.data", to: "code_2.data" });
+  });
+
   it("changes only the code step's source", () => {
     const { version, nodeId } = addCodeStep(pipeline, "load", "data");
     const edited = setCodeSource(version, nodeId, "data.height");

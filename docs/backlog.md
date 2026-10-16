@@ -47,3 +47,4 @@ Remove an item when it is done; link the commit or ADR.
 | Ports do not declare their table shape, so the UI finds the profile output by operator id; add a declared output schema | simplicity review | with ADR-0019 evidence contracts |
 | Code steps: approval gate so AI-proposed code never runs without the user's explicit run, plus a §15 security test | security review (ADR-0020) | before the M2 planner ships |
 | Code steps: run user code in a separate sandbox process (no network, read-only inputs, no lease credentials); `network: none` is declared, not enforced | security review (ADR-0020) | before hosted (M5) |
+| Flaky e2e: `worker_killed_mid_run_is_replaced…` can finish before the kill lands (0 lost attempts); make the kill wait on a known-running attempt | seen 2026-10-16 | next test pass |
