@@ -214,8 +214,10 @@ export function flowGraph(
     type: "stage",
     position: { x: g.x, y: g.y },
     width: g.width,
-    height: 24,
-    draggable: false,
+    height: g.height,
+    // The heading is the handle: dragging it moves every step of the group (React Flow sub-flow).
+    draggable: true,
+    dragHandle: ".stage-head",
     selectable: false,
     zIndex: -1,
     data: {
@@ -224,14 +226,18 @@ export function flowGraph(
       active: g.id === selectedGroup,
     },
   }));
+  const groupOf = stageGroups(pipeline, operators);
+  const boxes = new Map(groups.map((g) => [g.id, g]));
   const steps: Node[] = pipeline.nodes.map((node) => {
     const id = node.id;
+    const box = boxes.get(groupOf.get(id) ?? "");
+    const point = at.get(id) ?? { x: 0, y: 0 };
     const op = operators.get(node.operator);
     const { width, height } = sizeOf(level, id, op ? roleOf(op) : "Step");
     return {
       id,
       type: "step",
-      position: at.get(id) ?? { x: 0, y: 0 },
+      ...(box ? { parentId: `stage:${box.id}`, position: { x: point.x - box.x, y: point.y - box.y } } : { position: point }),
       width,
       height,
       data: {

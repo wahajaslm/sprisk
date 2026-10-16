@@ -177,6 +177,18 @@ describe("flow canvas", () => {
     expect(groups.get("split")?.startsWith("Split")).toBe(true);
   });
 
+  it("puts each grouped step inside its stage, so dragging the heading moves the group", async () => {
+    const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const at = new Map([["split", { x: 110, y: 50 }]]);
+    const groups = [{ id: "Split#split", count: 1, x: 100, y: 20, width: 200, height: 90 }];
+    const { nodes } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), at, groups);
+    const stage = nodes.find((n) => n.id === "stage:Split#split")!;
+    const split = nodes.find((n) => n.id === "split")!;
+    expect(stage).toMatchObject({ draggable: true, dragHandle: ".stage-head", height: 90 });
+    expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
+  });
+
   it("shows a heading with the step count above each stage", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);

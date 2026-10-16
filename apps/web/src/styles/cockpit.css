@@ -497,7 +497,10 @@ p { margin: 0; }
 /* Labels stay quiet; only the selected step is bright. */
 
 /* Stage heading above its steps on the canvas; no box (design reference). */
-.stage-head { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 400; color: var(--quiet); pointer-events: none; white-space: nowrap; }
+/* The group box is invisible and lets clicks through; only its heading is grabbed. */
+.react-flow__node-stage { pointer-events: none; }
+.stage-head { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 2px 4px; font-size: 12px; font-weight: 400; color: var(--quiet); pointer-events: all; cursor: grab; white-space: nowrap; }
+.stage-head:hover { color: var(--ink); }
 .stage-head .stage-count { padding: 0 5px; background: var(--wash); font: 10px var(--mono); color: var(--faint); }
 .stage-head.active { color: var(--ink); }
 
