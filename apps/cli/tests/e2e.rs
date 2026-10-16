@@ -11,8 +11,9 @@ use sprisk_cli::{Client, ServeConfig, pipeline_from_yaml, serve_on};
 use sprisk_contracts::{AttemptState, RunStatus};
 
 const NOW: &str = "2026-10-16T10:00:00Z";
-const NODES: [&str; 8] = [
+const NODES: [&str; 9] = [
     "baseline",
+    "distributions",
     "gate_b",
     "load",
     "model",

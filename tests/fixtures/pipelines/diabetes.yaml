@@ -3,6 +3,7 @@
 nodes:
   - { id: load, operator: sprisk.io.file_source@1.0.0, params: { path: $DATASETS/diabetes.csv, format: csv } }
   - { id: profile, operator: sprisk.profile.summarize@1.0.0, params: {} }
+  - { id: distributions, operator: sprisk.profile.distributions@1.0.0, params: {} }
   - { id: split, operator: sprisk.validation.random_split@1.0.0, params: { test_fraction: 0.25, seed: 42 } }
   - { id: baseline, operator: sprisk.ml.dummy_baseline@1.0.0, params: { target: progression, features: [age, sex, bmi, bp, s1, s2, s3, s4, s5, s6], task: regression } }
   - { id: model, operator: sprisk.ml.linear_model@1.0.0, params: { target: progression, features: [age, sex, bmi, bp, s1, s2, s3, s4, s5, s6], task: regression } }
@@ -10,6 +11,7 @@ nodes:
   - { id: score_model, operator: sprisk.ml.evaluate@1.0.0, params: { target: progression, task: regression } }
 edges:
   - { from: load.data, to: profile.data }
+  - { from: load.data, to: distributions.data }
   - { from: load.data, to: split.data }
   - { from: split.train, to: baseline.train }
   - { from: split.train, to: model.train }
