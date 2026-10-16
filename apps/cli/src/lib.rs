@@ -79,6 +79,28 @@ pub async fn serve_on(
         .get("sprisk.methodology.supervised@1.0.0")
         .context("methodology root has no Supervised pack entrypoint")?
         .clone();
+    let worker_command = vec![
+        config.python.display().to_string(),
+        "-m".into(),
+        "sprisk_workers".into(),
+        "--plugins-root".into(),
+        config.plugins.display().to_string(),
+        "--plugins-root".into(),
+        config.methodology.display().to_string(),
+    ];
+    // Start one worker now, so the first run does not wait for Python to load (ADR-0026).
+    let idle_worker = sprisk_scheduler::IdleWorker::default();
+    let mut warm = sprisk_scheduler::ProcessWorkers {
+        command: worker_command.clone(),
+        idle: idle_worker.clone(),
+    };
+    tokio::spawn(async move {
+        use sprisk_scheduler::Workers;
+        match warm.spawn().await {
+            Ok(worker) => warm.release(worker),
+            Err(e) => eprintln!("could not start a worker ahead of the first run: {e}"),
+        }
+    });
     let state = sprisk_api::AppState {
         store: Arc::new(sprisk_store::SqliteStore::open(&config.data_dir.join("sprisk.db")).await?),
         artifacts: Arc::new(sprisk_artifacts::ArtifactStore::local(
@@ -86,15 +108,8 @@ pub async fn serve_on(
         )?),
         registry: Arc::new(sprisk_registry::Registry::load_dir(&config.plugins)?),
         gate: Some(gate),
-        worker_command: vec![
-            config.python.display().to_string(),
-            "-m".into(),
-            "sprisk_workers".into(),
-            "--plugins-root".into(),
-            config.plugins.display().to_string(),
-            "--plugins-root".into(),
-            config.methodology.display().to_string(),
-        ],
+        worker_command,
+        idle_worker,
         settings: sprisk_scheduler::Settings::default(),
         data_roots: config
             .data_roots
@@ -158,6 +173,7 @@ impl Client {
         }
         let request = CreateRun {
             pipeline_version_id: pipeline.id.clone(),
+            reuse_run_id: None,
         };
         let response = self
             .http

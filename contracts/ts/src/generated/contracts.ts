@@ -185,6 +185,10 @@ export interface Bundle {
  */
 export interface CreateRun {
   pipeline_version_id: PipelineVersionId;
+  /**
+   * Reuse this run's results for every step whose definition is unchanged; run the rest (ADR-0026). Omitted: run from the start.
+   */
+  reuse_run_id?: string;
 }
 /**
  * One committed output of an attempt: the port that produced it and the artifact.
@@ -628,6 +632,10 @@ export interface Run {
   project_id: ProjectId;
   pipeline_version_id: PipelineVersionId;
   status: RunStatus;
+  /**
+   * The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start.
+   */
+  reuse_run_id?: string;
   created_at: Timestamp;
   /**
    * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.

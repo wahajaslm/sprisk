@@ -29,6 +29,8 @@ pub struct AppState {
     pub gate: Option<Operator>,
     /// Command that starts one Python worker.
     pub worker_command: Vec<String>,
+    /// A started worker kept between runs, so an edit does not wait for one to start.
+    pub idle_worker: sprisk_scheduler::IdleWorker,
     pub settings: Settings,
     /// Canonical directories local-path params may point into. Nothing else is readable.
     pub data_roots: Vec<std::path::PathBuf>,
@@ -320,19 +322,30 @@ async fn create_run(
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     // Checked again: the files or the configured roots may have changed since submit.
     check_local_paths(&plan, &state.data_roots)?;
+    // An edit reuses the run on screen up to the edited step (ADR-0026); it must exist and
+    // belong to the same project, or its results are not ours to reuse.
+    if let Some(reuse) = &request.reuse_run_id {
+        let earlier = state.store.get_run(reuse).await?;
+        if earlier.project_id != pipeline.project_id {
+            return Err(ApiError::Forbidden(format!(
+                "run {} is in another project",
+                reuse.as_str()
+            )));
+        }
+    }
     let now = sprisk_core::time::now();
-    let run: Run = parse(
-        &json!({
-            "schema_version": "sprisk.run/v1",
-            "id": format!("run_{}", ulid::Ulid::new()),
-            "project_id": pipeline.project_id,
-            "pipeline_version_id": pipeline.id,
-            "status": "queued",
-            "created_at": now,
-        })
-        .to_string(),
-    )
-    .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut doc = json!({
+        "schema_version": "sprisk.run/v1",
+        "id": format!("run_{}", ulid::Ulid::new()),
+        "project_id": pipeline.project_id,
+        "pipeline_version_id": pipeline.id,
+        "status": "queued",
+        "created_at": now,
+    });
+    if let Some(reuse) = &request.reuse_run_id {
+        doc["reuse_run_id"] = json!(reuse);
+    }
+    let run: Run = parse(&doc.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?;
     state.store.insert_run(&run).await?;
 
     // Local mode runs in this process; the database stays the truth, so a restart
@@ -341,6 +354,7 @@ async fn create_run(
     tokio::spawn(async move {
         let workers = ProcessWorkers {
             command: state.worker_command.clone(),
+            idle: state.idle_worker.clone(),
         };
         let mut scheduler = Scheduler::new(
             &state.store,
@@ -350,6 +364,9 @@ async fn create_run(
         );
         if let Some(gate) = state.gate.clone() {
             scheduler = scheduler.with_gate(gate);
+        }
+        if let Some(reuse) = request.reuse_run_id {
+            scheduler = scheduler.reusing(reuse);
         }
         if let Err(e) = scheduler.run(&run_id, &pipeline, &plan).await {
             tracing::error!(run = run_id.as_str(), error = %e, "run stopped");

@@ -55,6 +55,7 @@ async fn gate_and_source_step_run_in_the_python_worker() {
     store.insert_run(&run).await.unwrap();
     let artifacts = ArtifactStore::local(&dir.path().join("store")).unwrap();
     let workers = ProcessWorkers {
+        idle: Default::default(),
         command: vec![
             python.display().to_string(),
             "-m".into(),

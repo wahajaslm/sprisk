@@ -336,6 +336,41 @@ impl SqliteStore {
         .transpose()
     }
 
+    /// Remember which step definition a finished attempt ran, so a later run that starts from
+    /// an edit can reuse it (ADR-0026). Recording the same attempt twice keeps the first key.
+    pub async fn record_step_key(&self, attempt: &AttemptId, key: &str) -> Result<(), StoreError> {
+        sqlx::query("INSERT OR IGNORE INTO step_keys (attempt_id, step_key) VALUES (?, ?)")
+            .bind(attempt.as_str())
+            .bind(key)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// The finished attempt of `node` in `run` that ran this step definition, if any.
+    pub async fn reusable_attempt(
+        &self,
+        run: &RunId,
+        node: &str,
+        key: &str,
+    ) -> Result<Option<AttemptId>, StoreError> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT a.id FROM attempts a JOIN step_keys k ON k.attempt_id = a.id \
+             WHERE a.run_id = ? AND a.node_id = ? AND k.step_key = ? \
+             AND a.state IN ('succeeded', 'cache_hit') ORDER BY a.number DESC LIMIT 1",
+        )
+        .bind(run.as_str())
+        .bind(node)
+        .bind(key)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(|(id,)| {
+            id.parse()
+                .map_err(|_| StoreError::BadCacheEntry(id.clone()))
+        })
+        .transpose()
+    }
+
     /// `validated -> cache_hit`: the attempt reuses `source`'s outputs instead of running.
     /// One transaction; a wrong state records nothing.
     pub async fn hit_cache(

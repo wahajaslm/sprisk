@@ -1,4 +1,5 @@
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 
 use futures_util::StreamExt;
 use sprisk_contracts::{WorkerId, WorkerMessage, parse};
@@ -11,15 +12,20 @@ use crate::worker::{Worker, WorkerError, Workers};
 /// Bounds memory per message; datasets never travel in messages.
 const MAX_LINE_BYTES: usize = 1 << 20;
 
-/// Spawns `command` (e.g. `python -m sprisk_workers --plugins-root plugins`) per worker.
+/// One started worker kept between runs, shared by every run of this process (ADR-0026).
+pub type IdleWorker = Arc<Mutex<Option<ProcessWorker>>>;
+
+/// Spawns `command` (e.g. `python -m sprisk_workers --plugins-root plugins`) per worker, or
+/// reuses the idle one: a worker loads every plugin when it starts, which takes a second.
 pub struct ProcessWorkers {
     pub command: Vec<String>,
+    pub idle: IdleWorker,
 }
 
 pub struct ProcessWorker {
     id: WorkerId,
     // Held so the process is killed when the worker is dropped.
-    _child: Child,
+    child: Child,
     stdin: ChildStdin,
     stdout: FramedRead<ChildStdout, LinesCodec>,
 }
@@ -27,7 +33,29 @@ pub struct ProcessWorker {
 impl Workers for ProcessWorkers {
     type Worker = ProcessWorker;
 
+    fn release(&mut self, mut worker: ProcessWorker) {
+        if !matches!(worker.child.try_wait(), Ok(None)) {
+            return;
+        }
+        if let Ok(mut idle) = self.idle.lock()
+            && idle.is_none()
+        {
+            *idle = Some(worker);
+        }
+    }
+
     async fn spawn(&mut self) -> Result<ProcessWorker, WorkerError> {
+        let kept = self
+            .idle
+            .lock()
+            .map_err(|_| WorkerError::Protocol("idle worker lock poisoned".into()))?
+            .take();
+        if let Some(mut worker) = kept {
+            // Reuse it only while its process is still alive.
+            if matches!(worker.child.try_wait(), Ok(None)) {
+                return Ok(worker);
+            }
+        }
         let (program, args) = self
             .command
             .split_first()
@@ -54,7 +82,7 @@ impl Workers for ProcessWorkers {
         };
         Ok(ProcessWorker {
             id,
-            _child: child,
+            child,
             stdin,
             stdout,
         })

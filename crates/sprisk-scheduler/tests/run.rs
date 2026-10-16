@@ -43,6 +43,7 @@ type Script = HashMap<&'static str, Vec<Behave>>;
 #[derive(Default)]
 struct Log {
     spawned: usize,
+    released: usize,
     leases: Vec<LeaseAttempt>,
 }
 
@@ -82,6 +83,10 @@ impl Workers for FakeWorkers {
             log: self.log.clone(),
             replies: VecDeque::new(),
         })
+    }
+
+    fn release(&mut self, _worker: FakeWorker) {
+        self.log.lock().unwrap().released += 1;
     }
 }
 
@@ -777,6 +782,19 @@ async fn rerun(change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
 }
 
 async fn rerun_in(project: &str, change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
+    rerun_with(project, false, change).await
+}
+
+/// A second run after an edit, reusing the first run's results (ADR-0026).
+async fn rerun_reusing(change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
+    rerun_with("prj_01JABCDEFGHJKMNPQRSTVWXYZ0", true, change).await
+}
+
+async fn rerun_with(
+    project: &str,
+    reuse: bool,
+    change: impl FnOnce(&mut Plan),
+) -> (Env, Vec<String>) {
     let (env, status) = run_with(Script::new()).await;
     assert_eq!(status, RunStatus::Succeeded);
     let run: Run = parse(
@@ -795,10 +813,11 @@ async fn rerun_in(project: &str, change: impl FnOnce(&mut Plan)) -> (Env, Vec<St
         log: env.log.clone(),
         ..FakeWorkers::default()
     };
-    let status = Scheduler::new(&env.store, &env.artifacts, workers, Settings::default())
-        .run(&run.id, &pipeline(), &plan)
-        .await
-        .unwrap();
+    let mut scheduler = Scheduler::new(&env.store, &env.artifacts, workers, Settings::default());
+    if reuse {
+        scheduler = scheduler.reusing(RUN.parse().unwrap());
+    }
+    let status = scheduler.run(&run.id, &pipeline(), &plan).await.unwrap();
     assert_eq!(status, RunStatus::Succeeded);
     let leased = env.log.lock().unwrap().leases[first_leases..]
         .iter()
@@ -871,6 +890,59 @@ async fn changing_one_step_reruns_it_and_its_dependents_only() {
         states_in(&env, RUN2, "split").await,
         [AttemptState::CacheHit]
     );
+}
+
+#[tokio::test]
+async fn a_finished_run_hands_its_worker_back_for_the_next_run() {
+    let (env, status) = run_with(Script::new()).await;
+    assert_eq!(status, RunStatus::Succeeded);
+    let log = env.log.lock().unwrap();
+    assert_eq!((log.spawned, log.released), (1, 1));
+}
+
+#[tokio::test]
+async fn a_worker_that_reported_a_failure_is_kept_for_the_next_run() {
+    let (env, status) = run_with([("split", vec![Behave::FailPermanent])].into()).await;
+    assert_eq!(status, RunStatus::Failed);
+    let log = env.log.lock().unwrap();
+    assert_eq!(
+        (log.spawned, log.released),
+        (1, 1),
+        "it answered, so it is healthy"
+    );
+}
+
+#[tokio::test]
+async fn an_edit_reuses_the_earlier_run_up_to_the_edited_step() {
+    let (env, leased) = rerun_reusing(|plan| {
+        let model = plan
+            .steps
+            .iter_mut()
+            .find(|s| s.node_id == "model")
+            .unwrap();
+        model.params.insert("features".into(), json!(["x", "z"]));
+    })
+    .await;
+
+    assert_eq!(leased, ["model", "score"], "the source is not read again");
+    assert_eq!(
+        states_in(&env, RUN2, "load").await,
+        [AttemptState::CacheHit]
+    );
+}
+
+#[tokio::test]
+async fn reuse_never_replays_a_side_effecting_step() {
+    let (_, leased) = rerun_reusing(|plan| {
+        let split = plan
+            .steps
+            .iter_mut()
+            .find(|s| s.node_id == "split")
+            .unwrap();
+        split.operator.effects = sprisk_contracts::Effects::SideEffecting;
+    })
+    .await;
+    assert!(leased.contains(&"split".to_owned()), "{leased:?}");
 }
 
 #[tokio::test]

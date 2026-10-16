@@ -85,6 +85,7 @@ pub struct Scheduler<'a, W: Workers> {
     settings: Settings,
     gate: Option<Operator>,
     worker: Option<W::Worker>,
+    reuse: Option<RunId>,
 }
 
 impl<'a, W: Workers> Scheduler<'a, W> {
@@ -101,7 +102,15 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             settings,
             gate: None,
             worker: None,
+            reuse: None,
         }
+    }
+
+    /// Reuse `run`'s result for every step whose definition is unchanged (ADR-0026): an edit
+    /// runs from the edited step onwards.
+    pub fn reusing(mut self, run: RunId) -> Self {
+        self.reuse = Some(run);
+        self
     }
 
     /// Run this methodology pack entrypoint as Gate B before the first step (ADR-0017).
@@ -120,6 +129,9 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         plan: &Plan,
     ) -> Result<RunStatus, SchedulerError> {
         let result = self.drive(run_id, pipeline, plan).await;
+        if let Some(worker) = self.worker.take() {
+            self.workers.release(worker);
+        }
         if result.is_err() {
             match self
                 .store
@@ -266,8 +278,10 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         } else {
             self.settings.max_attempts
         };
+        // The step's definition key: always known for upstream steps; only pure steps share it
+        // through the global cache, but any step can reuse an edited run's result (ADR-0026).
         let key = match inputs {
-            Inputs::Upstream if cacheable(step) => {
+            Inputs::Upstream if step.operator.effects != Effects::SideEffecting => {
                 let hashes: Vec<(String, String)> = self
                     .resolve_inputs(step, done)
                     .await?
@@ -279,14 +293,23 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             }
             _ => None,
         };
-        if let Some(source) = match &key {
-            Some(key) => self.store.cached_attempt(key).await?,
-            None => None,
-        } {
-            return Ok(Some(
-                self.cache_hit(run_id, step, previous + 1, &source).await?,
-            ));
+        let source = match (&key, &self.reuse) {
+            (Some(key), _) if cacheable(step) => self.store.cached_attempt(key).await?,
+            (Some(key), Some(reuse)) => {
+                self.store
+                    .reusable_attempt(reuse, &step.node_id, key)
+                    .await?
+            }
+            _ => None,
+        };
+        if let Some(source) = source {
+            let attempt = self.cache_hit(run_id, step, previous + 1, &source).await?;
+            if let Some(key) = &key {
+                self.store.record_step_key(&attempt, key).await?;
+            }
+            return Ok(Some(attempt));
         }
+        let shared_key = key.as_deref().filter(|_| cacheable(step));
         for number in previous + 1..=cap {
             let worker = match self.worker.take() {
                 Some(worker) => worker,
@@ -297,10 +320,15 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             };
             let attempt = self.new_attempt(run_id, step, number).await?;
             match self
-                .try_attempt(step, &attempt, done, inputs, key.as_deref(), worker)
+                .try_attempt(step, &attempt, done, inputs, shared_key, worker)
                 .await?
             {
-                End::Succeeded => return Ok(Some(attempt.id)),
+                End::Succeeded => {
+                    if let Some(key) = &key {
+                        self.store.record_step_key(&attempt.id, key).await?;
+                    }
+                    return Ok(Some(attempt.id));
+                }
                 End::Permanent => return Ok(None),
                 End::Retryable => {}
             }
@@ -431,6 +459,8 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                     self.store
                         .fail_attempt(id, AttemptState::Failed, &m.error, &now())
                         .await?;
+                    // It reported the failure itself, so it is healthy: keep it.
+                    self.worker = Some(worker);
                     return Ok(match m.failure_kind {
                         FailureKind::Transient => self.retryable(step),
                         FailureKind::Permanent => End::Permanent,

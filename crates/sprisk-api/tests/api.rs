@@ -55,6 +55,7 @@ async fn api_with_python(python: PathBuf) -> Api {
             root.join("methodology").display().to_string(),
         ],
         settings: Settings::default(),
+        idle_worker: Default::default(),
         data_roots: vec![dir.path().canonicalize().unwrap()],
     };
     Api {
@@ -485,4 +486,35 @@ async fn source_of_an_unknown_operator_is_not_found() {
     let api = api().await;
     let (status, body) = call(&api.app, "GET", "/operators/acme.io.csv@0.1.0/source", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_can_reuse_an_earlier_run_which_must_exist() {
+    let api = api().await;
+    let (_, version) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    let id = version["id"].clone();
+    let missing =
+        json!({"pipeline_version_id": id, "reuse_run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ9"});
+    assert_eq!(
+        call(&api.app, "POST", "/runs", Some(missing)).await.0,
+        StatusCode::NOT_FOUND
+    );
+
+    let (_, first) = call(
+        &api.app,
+        "POST",
+        "/runs",
+        Some(json!({"pipeline_version_id": id})),
+    )
+    .await;
+    let again = json!({"pipeline_version_id": id, "reuse_run_id": first["id"]});
+    let (status, second) = call(&api.app, "POST", "/runs", Some(again)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{second}");
+    assert_eq!(second["reuse_run_id"], first["id"]);
 }

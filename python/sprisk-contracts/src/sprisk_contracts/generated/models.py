@@ -415,6 +415,12 @@ class CreateRun(StrictModel):
         extra="forbid",
     )
     pipeline_version_id: PipelineVersionId
+    reuse_run_id: Annotated[
+        RunId | None,
+        Field(
+            description="Reuse this run's results for every step whose definition is unchanged; run the rest (ADR-0026). Omitted: run from the start."
+        ),
+    ] = None
 
 
 class Problem(StrictModel):
@@ -619,6 +625,12 @@ class Run(StrictModel):
     project_id: ProjectId
     pipeline_version_id: PipelineVersionId
     status: RunStatus
+    reuse_run_id: Annotated[
+        RunId | None,
+        Field(
+            description="The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start."
+        ),
+    ] = None
     created_at: Timestamp
     finished_at: Annotated[
         Timestamp | None, Field(description="Set once the run reaches a terminal status.")

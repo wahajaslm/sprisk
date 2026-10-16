@@ -15,6 +15,10 @@
       "properties": {
         "pipeline_version_id": {
           "$ref": "#/$defs/PipelineVersionId"
+        },
+        "reuse_run_id": {
+          "$ref": "#/$defs/RunId",
+          "description": "Reuse this run's results for every step whose definition is unchanged; run the rest (ADR-0026). Omitted: run from the start."
         }
       }
     },
@@ -1067,6 +1071,10 @@
         },
         "status": {
           "$ref": "#/$defs/RunStatus"
+        },
+        "reuse_run_id": {
+          "$ref": "#/$defs/RunId",
+          "description": "The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start."
         },
         "created_at": {
           "$ref": "#/$defs/Timestamp"

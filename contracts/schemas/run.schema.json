@@ -13,6 +13,7 @@
         "project_id": { "$ref": "#/$defs/ProjectId" },
         "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
         "status": { "$ref": "#/$defs/RunStatus" },
+        "reuse_run_id": { "$ref": "#/$defs/RunId", "description": "The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start." },
         "created_at": { "$ref": "#/$defs/Timestamp" },
         "finished_at": {
           "$ref": "#/$defs/Timestamp",

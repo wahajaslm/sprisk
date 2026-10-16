@@ -87,6 +87,7 @@ describe("top bar", () => {
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
     await userEvent.click(screen.getByRole("button", { name: /Run graph/ }));
+    // Run graph runs from the start: nothing reused.
     await waitFor(() => expect(posted).toEqual({ pipeline_version_id: PV }));
   });
 
@@ -566,7 +567,8 @@ describe("code steps (ADR-0020)", () => {
     const version = posted.versions[0] as typeof pipeline;
     expect(version.nodes.at(-1)).toMatchObject({ id: "code_1", operator: "sprisk.code.python@1.2.0" });
     expect(version.edges.at(-1)).toEqual({ from: "load.data", to: "code_1.data" });
-    expect(posted.runs[0]).toEqual({ pipeline_version_id: version.id });
+    // An edit runs from the edited step onwards, reusing the run on screen (ADR-0026).
+    expect(posted.runs[0]).toEqual({ pipeline_version_id: version.id, reuse_run_id: RUN });
     expect(useSelection.getState()).toMatchObject({ pipelineVersionId: version.id, runId: "run_01JABCDEFGHJKMNPQRSTVWXYZ9", nodeId: "code_1" });
   });
 

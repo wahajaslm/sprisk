@@ -28,4 +28,9 @@ pub trait Worker: Send {
 pub trait Workers {
     type Worker: Worker;
     fn spawn(&mut self) -> impl Future<Output = Result<Self::Worker, WorkerError>> + Send;
+    /// A healthy worker a finished run no longer needs. Keeping it saves the next run the
+    /// worker's start-up (ADR-0026); by default it is stopped.
+    fn release(&mut self, worker: Self::Worker) {
+        drop(worker);
+    }
 }

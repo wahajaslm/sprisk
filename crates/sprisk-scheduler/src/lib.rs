@@ -7,6 +7,6 @@ mod run;
 mod worker;
 
 pub use next::{Next, next_step};
-pub use process::ProcessWorkers;
+pub use process::{IdleWorker, ProcessWorkers};
 pub use run::{GATE_NODE, Scheduler, SchedulerError, Settings};
 pub use worker::{Worker, WorkerError, Workers};

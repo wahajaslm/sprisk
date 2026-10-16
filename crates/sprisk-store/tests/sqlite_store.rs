@@ -493,3 +493,28 @@ async fn cache_hit_needs_a_validated_attempt_and_records_nothing_otherwise() {
     assert!(store.hit_cache(&hit.id, &source.id, LATER).await.is_err());
     assert!(store.outputs(&hit.id).await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_run_s_result_for_a_step_is_found_by_its_definition_key() {
+    let (store, attempt, _) = cached_success().await;
+    store.record_step_key(&attempt.id, KEY).await.unwrap();
+    let run = attempt.run_id.clone();
+    let node = attempt.node_id.as_str();
+
+    assert_eq!(
+        store.reusable_attempt(&run, node, KEY).await.unwrap(),
+        Some(attempt.id.clone())
+    );
+    let other = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    assert_eq!(
+        store.reusable_attempt(&run, node, other).await.unwrap(),
+        None
+    );
+    assert_eq!(
+        store
+            .reusable_attempt(&run, "elsewhere", KEY)
+            .await
+            .unwrap(),
+        None
+    );
+}
