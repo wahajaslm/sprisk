@@ -493,3 +493,8 @@ p { margin: 0; }
 .found-value { display: flex; gap: 10px; align-items: baseline; font-size: 12px; }
 
 /* Labels stay quiet; only the selected step is bright. */
+
+/* Stage heading above its steps on the canvas; no box (design reference). */
+.stage-head { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 400; color: var(--quiet); pointer-events: none; white-space: nowrap; }
+.stage-head .stage-count { padding: 0 5px; background: var(--wash); font: 10px var(--mono); color: var(--faint); }
+.stage-head.active { color: var(--ink); }

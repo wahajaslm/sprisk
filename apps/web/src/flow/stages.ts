@@ -1,4 +1,4 @@
-import type { Operator } from "@sprisk/contracts";
+import type { Operator, PipelineVersion } from "@sprisk/contracts";
 
 /** Presentation grouping only (rule 9: layout is not provenance). */
 export const STAGES = ["Explore", "Split", "Clean", "Model", "Evaluate", "Unknown"] as const;
@@ -51,6 +51,37 @@ const ROLE: Record<Operator["capability_class"], string> = {
 
 /** What a step is for, in plain words: "Transform", "Model". Code steps say "Code". */
 export const roleOf = (operator: Operator) => (operator.id.startsWith("sprisk.code.") ? "Code" : ROLE[operator.capability_class]);
+
+/** Heading groups on the canvas: steps of one stage share a heading only where they sit
+ * together in the flow (one reads the other, or both read the same step). Otherwise the
+ * heading would pull them together and bend lines backwards. Keys look like "Clean#impute";
+ * the part before "#" is the stage shown. */
+export function stageGroups(pipeline: PipelineVersion, operators: Map<string, Operator>): Map<string, string> {
+  const stage = new Map(pipeline.nodes.map((n) => [n.id, operators.get(n.operator)]));
+  const stageName = (id: string) => {
+    const op = stage.get(id);
+    return op ? stageOf(op) : undefined;
+  };
+  const parent = new Map(pipeline.nodes.map((n) => [n.id, n.id]));
+  const find = (id: string): string => {
+    const p = parent.get(id) ?? id;
+    return p === id ? id : find(p);
+  };
+  const join = (a: string, b: string) => {
+    if (stageName(a) !== undefined && stageName(a) === stageName(b)) parent.set(find(a), find(b));
+  };
+  const node = (end: string) => end.split(".")[0] ?? end;
+  for (const e of pipeline.edges) join(node(e.from), node(e.to));
+  const readers = new Map<string, string[]>();
+  for (const e of pipeline.edges) readers.set(node(e.from), [...(readers.get(node(e.from)) ?? []), node(e.to)]);
+  for (const siblings of readers.values()) for (const a of siblings) for (const b of siblings) join(a, b);
+  const groups = new Map<string, string>();
+  for (const n of pipeline.nodes) {
+    const name = stageName(n.id);
+    if (name !== undefined) groups.set(n.id, `${name}#${find(n.id)}`);
+  }
+  return groups;
+}
 
 /** "sprisk.clean.impute@1.0.0" → "impute". */
 export const shortName = (ref: string) => ref.split("@")[0]?.split(".").at(-1) ?? ref;

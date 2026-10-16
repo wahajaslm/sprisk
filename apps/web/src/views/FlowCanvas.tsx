@@ -27,8 +27,8 @@ import { GATE_NODE, hasOutputs, latestByNode } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { addCodeStep } from "../flow/edit.ts";
-import { flowPositions, type Point } from "../flow/layout.ts";
-import { kindOf, type NodeKind, roleOf, shortName } from "../flow/stages.ts";
+import { flowPositions, type Group, type Point } from "../flow/layout.ts";
+import { kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -54,6 +54,18 @@ type StepData = {
   level: DetailLevel;
   selected: boolean;
 };
+type StageData = { name: string; count: number; active: boolean };
+
+/** A stage's heading above its steps; no box around them (design reference). */
+function StageHead({ data }: NodeProps<Node<StageData>>) {
+  return (
+    <h3 className={`stage-head${data.active ? " active" : ""}`}>
+      {data.name}
+      <span className="stage-count">{data.count}</span>
+    </h3>
+  );
+}
+
 /** An edge into or out of the selected step is drawn brighter. */
 type FlowEdgeData = { active: boolean };
 
@@ -172,7 +184,7 @@ function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
   return <BaseEdge id={id} path={path} className={`flow-edge${data?.active ? " active" : ""}`} />;
 }
 
-const nodeTypes = { step: StepNode };
+const nodeTypes = { step: StepNode, stage: StageHead };
 const edgeTypes = { flow: FlowEdge };
 
 const LABEL_MAX = 128;
@@ -194,8 +206,25 @@ export function flowGraph(
   level: DetailLevel,
   concerns: Map<string, number>,
   at: Map<string, Point>,
+  groups: Group[] = [],
 ): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = pipeline.nodes.map((node) => {
+  const selectedGroup = selectedId ? stageGroups(pipeline, operators).get(selectedId) : undefined;
+  const heads: Node[] = groups.map((g) => ({
+    id: `stage:${g.id}`,
+    type: "stage",
+    position: { x: g.x, y: g.y },
+    width: g.width,
+    height: 24,
+    draggable: false,
+    selectable: false,
+    zIndex: -1,
+    data: {
+      name: g.id.split("#")[0] ?? g.id,
+      count: g.count,
+      active: g.id === selectedGroup,
+    },
+  }));
+  const steps: Node[] = pipeline.nodes.map((node) => {
     const id = node.id;
     const op = operators.get(node.operator);
     const { width, height } = sizeOf(level, id, op ? roleOf(op) : "Step");
@@ -223,6 +252,7 @@ export function flowGraph(
       },
     };
   });
+  const nodes = [...heads, ...steps];
   const edges: Edge[] = pipeline.edges.map((e) => {
     const source = e.from.split(".")[0] ?? e.from;
     const target = e.to.split(".")[0] ?? e.to;
@@ -243,16 +273,21 @@ export function flowGraph(
 function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel, operators: Map<string, Operator>) {
   // Sizes depend on each step's role, so lay out again once the operators are known.
   const key = pipeline ? `${pipeline.id}/${level}/${operators.size}` : "";
-  const [result, setResult] = useState<{ key: string; at?: Map<string, Point>; error?: string }>();
+  const [result, setResult] = useState<{ key: string; at?: Map<string, Point>; groups?: Group[]; error?: string }>();
   useEffect(() => {
     if (!pipeline) return;
     let live = true;
     const roleById = new Map(pipeline.nodes.map((n) => [n.id, operators.get(n.operator)]));
-    flowPositions(pipeline, (id) => {
-      const op = roleById.get(id);
-      return sizeOf(level, id, op ? roleOf(op) : "Step");
-    }).then(
-      (at) => live && setResult({ key, at }),
+    const groups = stageGroups(pipeline, operators);
+    flowPositions(
+      pipeline,
+      (id) => {
+        const op = roleById.get(id);
+        return sizeOf(level, id, op ? roleOf(op) : "Step");
+      },
+      (id) => groups.get(id),
+    ).then(
+      ({ nodes: at, groups }) => live && setResult({ key, at, groups }),
       (e: unknown) => live && setResult({ key, error: e instanceof Error ? e.message : String(e) }),
     );
     return () => {
@@ -284,7 +319,7 @@ export function FlowCanvas() {
   const latest = latestByNode(attempts.data ?? []);
   if (positions?.error) return <p role="alert" className="error pad">Could not lay out the flow: {positions.error}</p>;
   if (!positions?.at) return <p className="muted pad">Laying out the flow…</p>;
-  const computed = flowGraph(pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at);
+  const computed = flowGraph(pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups);
   return (
     <div className="flow" aria-label="Flow canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}

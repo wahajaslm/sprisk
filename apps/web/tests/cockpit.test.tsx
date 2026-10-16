@@ -147,11 +147,41 @@ describe("flow canvas", () => {
 
   it("places each step to the right of the steps it reads", async () => {
     const { flowPositions } = await import("../src/flow/layout.ts");
-    const at = await flowPositions(pipeline, () => ({ width: 168, height: 44 }));
+    const { nodes: at } = await flowPositions(pipeline, () => ({ width: 168, height: 44 }), () => undefined);
     const x = (id: string) => at.get(id)!.x;
     expect(x("load")).toBeLessThan(x("split"));
     expect(x("split")).toBeLessThan(x("model"));
     expect(x("model")).toBeLessThan(x("score"));
+  });
+
+  it("keeps a stage's steps together under its heading, with no box", async () => {
+    const { flowPositions } = await import("../src/flow/layout.ts");
+    const stage = (id: string) => (id === "model" || id === "score" ? "Model" : undefined);
+    const { nodes: at, groups } = await flowPositions(pipeline, () => ({ width: 168, height: 44 }), stage);
+    const [group] = groups;
+    expect(group).toMatchObject({ id: "Model", count: 2 });
+    for (const id of ["model", "score"]) {
+      expect(at.get(id)!.x).toBeGreaterThanOrEqual(group!.x);
+      expect(at.get(id)!.y).toBeGreaterThan(group!.y);
+    }
+  });
+
+  it("groups steps of one stage only where they sit together in the flow", async () => {
+    const { stageGroups } = await import("../src/flow/stages.ts");
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const groups = stageGroups(pipeline, byRef);
+    // load → profile and split: profile (Explore) reads load (Explore), so they share a heading.
+    expect(groups.get("profile")).toBe(groups.get("load"));
+    // split is the only Split step; impute (Clean) is apart from the Explore steps.
+    expect(groups.get("split")).not.toBe(groups.get("impute"));
+    expect(groups.get("split")?.startsWith("Split")).toBe(true);
+  });
+
+  it("shows a heading with the step count above each stage", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    const heading = await screen.findByRole("heading", { name: /Split/ });
+    expect(heading).toHaveTextContent(/Split\s*1/);
   });
 
   it("right-click on a step opens its actions", async () => {
