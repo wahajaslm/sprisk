@@ -17,6 +17,7 @@ Arch doc sections: §2A, §13
 - Weights: 300 for large titles, 400 for body, 500 for emphasis. No other weights.
 - Spacing on a 4px grid: `--space-1` 4px up to `--space-8` 32px.
 - Colours stay as they are. A new colour needs a new token.
+- Existing token names (`--sans`, `--mono`, `--soft`, `--line` and the rest) do not change. The Plotly renderer reads them at runtime.
 
 ### 2. Primitives in `src/components/ui`
 - `PanelHeader`, `ListRow`, `SectionLabel`, `StatTile`, `QueryState` (loading, error, empty).
@@ -31,14 +32,16 @@ Arch doc sections: §2A, §13
 | List (runs, versions, events) | `VirtualList`, server pages | 200 per page |
 | Metric | `StatTile` | — |
 | Figure (ADR-0024) | figure renderer | 8 MB |
-| Code display, console | Monaco, read-only | 4 MB |
+| Code display | Monaco, read-only | 4 MB |
+| Console output (ADR-0025) | Monaco, read-only | 1 MB |
 | Anything else | size and hash only | never fetched |
 
 A new kind of data needs a row in this table first.
 
 ### 4. Hard limits, enforced in three places
-- **Server:** `/artifacts/{id}/content` refuses anything over a byte cap unless the request is a download. Lists keep the 1..=200 page limit.
+- **Server:** `/artifacts/{id}/content` refuses anything over 8 MB (the largest renderer cap above) unless the request is a download. Lists keep the 1..=200 page limit.
 - **API client:** `src/api` is the only place that calls `fetch`. It has no function that returns an unpaged list or uncapped content.
+- `src/api` does not read UI stores (Zustand). Callers pass in what it needs, such as the selected run id.
 - **Lint:** forbid `fetch` outside `src/api`, and `.map` that renders over a server list outside `VirtualList`.
 
 ### 5. Canvas
