@@ -116,3 +116,43 @@ def test_the_api_runs_it_as_a_process_over_stdio() -> None:
     )
     split = CodeSplit.model_validate_json(done.stdout)
     assert links(split) == [(0, 1, "df")]
+
+
+def test_valid_python_that_symtable_or_literals_reject_does_not_crash() -> None:
+    split = split_cells(["x = {[1]: 2}", "def f():\n    nonlocal q\n"])
+    assert len(split.steps) == 2
+    assert any("does not parse" in n.message for n in split.notes)
+
+
+def test_names_used_in_decorators_are_read() -> None:
+    split = split_cells(["import functools", "@functools.cache\ndef f():\n    return 1\nv = f()"])
+    assert split.steps[0].source.startswith("import functools\n")
+
+
+def test_a_list_or_dict_literal_keeps_its_cells_together() -> None:
+    split = split_cells(["cols = ['a']\ncols.append('b')", "raw = load()", "picked = raw[cols]"])
+    [step] = split.steps
+    assert [c.root for c in step.cells] == [0, 1, 2]
+
+
+def test_a_cell_that_changes_a_table_in_place_passes_the_changed_table_on() -> None:
+    split = split_cells(["df = load()", "df['a'] = 1", "df.dropna(inplace=True)", "n = len(df)"])
+    assert links(split) == [(0, 1, "df"), (1, 2, "df"), (2, 3, "df")]
+
+
+def test_augmented_assignment_reads_the_name_first() -> None:
+    split = split_cells(["total = load()", "total += extra()"])
+    assert links(split) == [(0, 1, "total")]
+
+
+def test_a_global_used_in_a_function_is_read() -> None:
+    split = split_cells(
+        ["rate = load()", "def scale(v):\n    global rate\n    return v * rate\nout = scale(2)"]
+    )
+    assert links(split) == [(0, 1, "rate")]
+
+
+def test_a_deleted_name_is_not_passed_on() -> None:
+    split = split_cells(["df = load()", "del df", "n = len(df)"])
+    assert links(split) == []
+    assert any("reads df, which no earlier cell sets" in n.message for n in split.notes)

@@ -25,6 +25,6 @@ params_schema:
       description: Variables later steps read, passed on by name.
       items: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$" }
       x-sprisk-ports: output
-effects: nondeterministic
+effects: side_effecting
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

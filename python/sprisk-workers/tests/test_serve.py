@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from sprisk_contracts import Operator
 from sprisk_workers.errors import OperatorError, ProtocolError
 from sprisk_workers.output import Output
 from sprisk_workers.serve import LoadedOperator, serve
@@ -278,9 +279,32 @@ def test_outputs_named_in_params_are_declared(tmp_path: Path) -> None:
         path.write_text("x")
         return [Output(port="df", path=path, media_type="application/vnd.apache.parquet")]
 
-    schema = {"type": "object", "properties": {"outputs": {"x-sprisk-ports": "output"}}}
+    manifest = Operator.model_validate_json(
+        json.dumps(
+            {
+                "schema_version": "sprisk.operator/v1",
+                "id": OP,
+                "capability_class": "transform",
+                "entrypoint": "sprisk_x.op:op",
+                "inputs": [],
+                "outputs": [],
+                "params_schema": {
+                    "type": "object",
+                    "properties": {"outputs": {"type": "array", "x-sprisk-ports": "output"}},
+                },
+                "effects": "pure",
+                "network": "none",
+                "resources": {
+                    "cpu_cores": 1,
+                    "memory_mb": 64,
+                    "gpu": "none",
+                    "timeout_seconds": 60,
+                },
+            }
+        )
+    )
     operator = LoadedOperator(
-        run=named, output_ports=frozenset(), params_schema=schema, named_outputs="outputs"
+        run=named, output_ports=frozenset(), params_schema=manifest.params_schema, operator=manifest
     )
     stdout = io.StringIO()
     line = lease(tmp_path, params={"outputs": ["df"]})

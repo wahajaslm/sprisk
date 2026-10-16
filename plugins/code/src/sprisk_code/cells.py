@@ -16,9 +16,12 @@ import sys
 from dataclasses import dataclass, field
 from typing import Literal
 
+from sprisk_code.discovery import scalar_literal
 from sprisk_contracts import CodeSplit, CodeSplitRequest
 
-Kind = Literal["import", "literal", "function", "value"]
+# import, literal: copied into the reader. function, container: keep definer and reader
+# together. value: a link, passed on as a table.
+Kind = Literal["import", "literal", "function", "container", "value"]
 
 PORT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 # Ports every code step already has, and names the step runner provides.
@@ -38,6 +41,7 @@ class _Code:
     source: str
     reads: list[str] = field(default_factory=list)
     sets: dict[str, tuple[Kind, ast.stmt]] = field(default_factory=dict)
+    deleted: set[str] = field(default_factory=set)
     only_imports: bool = False
     error: str | None = None
 
@@ -47,13 +51,13 @@ def split_cells(cells: list[str]) -> CodeSplit:
     groups = [[i] for i, _ in kept]
     sources = dict(kept)
     notes: list[_Note] = []
-    while True:
-        codes = [_read("\n\n".join(sources[i] for i in g)) for g in groups]
-        merge = _first_merge(groups, codes)
-        if merge is None:
-            break
+    codes = [_read(sources[i]) for i, _ in kept]
+    while (merge := _first_merge(groups, codes)) is not None:
         start, end, message, cell = merge
-        groups[start : end + 1] = [[i for g in groups[start : end + 1] for i in g]]
+        merged = [i for g in groups[start : end + 1] for i in g]
+        groups[start : end + 1] = [merged]
+        # Only the merged group changed; the rest keep what was read.
+        codes[start : end + 1] = [_read("\n\n".join(sources[i] for i in merged))]
         notes.append((cell, message))
     return _steps(groups, codes, notes)
 
@@ -68,28 +72,73 @@ def _read(source: str) -> _Code:
     code = _Code(source)
     try:
         module = ast.parse(source)
-    except SyntaxError as e:
-        code.error = f"line {e.lineno}: {e.msg}"
-        return code
+        for stmt in module.body:
+            _add(code, stmt)
+    # Valid Python that symtable or the parser still rejects (`nonlocal` at top level, very
+    # deep nesting) is noted for the person, never a failed request.
+    except (SyntaxError, RecursionError, MemoryError) as e:
+        line = getattr(e, "lineno", None)
+        where = f"line {line}: " if line else ""
+        return _Code(source, error=f"{where}{getattr(e, 'msg', None) or type(e).__name__}")
     code.only_imports = bool(module.body) and all(
         isinstance(s, ast.Import | ast.ImportFrom) for s in module.body
     )
-    for stmt in module.body:
-        reads, sets = _statement(source, stmt)
-        code.reads += [n for n in reads if n not in code.sets and n not in code.reads]
-        for name in sets:
-            code.sets[name] = (_kind(stmt), stmt)
     return code
 
 
-def _statement(source: str, stmt: ast.stmt) -> tuple[list[str], list[str]]:
+def _add(code: _Code, stmt: ast.stmt) -> None:
+    reads, sets = _statement(stmt)
+    code.reads += [
+        n for n in reads if n not in code.sets and n not in code.deleted and n not in code.reads
+    ]
+    if isinstance(stmt, ast.Delete):
+        for name in (t.id for t in stmt.targets if isinstance(t, ast.Name)):
+            code.sets.pop(name, None)
+            code.deleted.add(name)
+        sets = [n for n in sets if n not in code.deleted]
+    kind = _kind(stmt)
+    for name in sets:
+        code.sets[name] = (kind, stmt)
+        code.deleted.discard(name)
+    # A table changed in place (`df["a"] = 1`, `inplace=True`) is passed on changed.
+    for name in _changed_in_place(stmt) - set(sets):
+        code.sets[name] = ("value", stmt)
+
+
+def _changed_in_place(stmt: ast.stmt) -> set[str]:
+    changed = set()
+    for node in ast.walk(stmt):
+        if isinstance(node, ast.Subscript | ast.Attribute) and isinstance(
+            node.ctx, ast.Store | ast.Del
+        ):
+            base = _base_name(node)
+        elif isinstance(node, ast.Call) and any(
+            k.arg == "inplace" and isinstance(k.value, ast.Constant) and k.value.value is True
+            for k in node.keywords
+        ):
+            base = _base_name(node.func)
+        else:
+            continue
+        if base is not None:
+            changed.add(base)
+    return changed
+
+
+def _base_name(node: ast.expr) -> str | None:
+    while isinstance(node, ast.Subscript | ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _statement(stmt: ast.stmt) -> tuple[list[str], list[str]]:
     """Names a top-level statement reads before it sets them, in order, and the names it sets.
-    symtable decides scope; source position decides order."""
-    text = ast.get_source_segment(source, stmt) or ast.unparse(stmt)
-    table = symtable.symtable(text, "<cell>", "exec")
+    symtable decides scope; source position decides order. Unparsed, so decorators count."""
+    table = symtable.symtable(ast.unparse(stmt), "<cell>", "exec")
     module = {s.get_name(): s for s in table.get_symbols()}
     sets = [n for n, s in module.items() if s.is_assigned() or s.is_imported()]
     globals_read = {n for n, s in module.items() if s.is_referenced()} | _globals_in(table)
+    if isinstance(stmt, ast.AugAssign) and isinstance(stmt.target, ast.Name):
+        globals_read.add(stmt.target.id)  # `total += 1` reads total first
     if isinstance(stmt, ast.Assign | ast.AugAssign | ast.AnnAssign) and stmt.value is not None:
         # The value is evaluated before the target is set: `df = df.dropna()` reads df.
         first = ast.Module(body=[ast.Expr(stmt.value)], type_ignores=[])
@@ -137,21 +186,25 @@ def _kind(stmt: ast.stmt) -> Kind:
         return "import"
     if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
         return "function"
-    if (
-        isinstance(stmt, ast.Assign)
-        and len(stmt.targets) == 1
-        and isinstance(stmt.targets[0], ast.Name)
-    ):
-        try:
-            ast.literal_eval(stmt.value)
-        except ValueError:
-            return "value"
+    if not isinstance(stmt, ast.Assign):
+        return "value"
+    one_name = len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name)
+    if one_name and scalar_literal(stmt.value) is not None:
         return "literal"
+    if isinstance(stmt.value, ast.List | ast.Dict | ast.Set | ast.Tuple):
+        # Not a table, and a later line may change it, so a copy could be stale.
+        return "container"
     return "value"
 
 
 def _definer(codes: list[_Code], reader: int, name: str) -> int | None:
-    return next((i for i in range(reader - 1, -1, -1) if name in codes[i].sets), None)
+    """The latest earlier step that sets `name`, unless one deleted it since."""
+    for i in range(reader - 1, -1, -1):
+        if name in codes[i].sets:
+            return i
+        if name in codes[i].deleted:
+            return None
+    return None
 
 
 def _first_merge(groups: list[list[int]], codes: list[_Code]) -> tuple[int, int, str, int] | None:
@@ -164,6 +217,8 @@ def _first_merge(groups: list[list[int]], codes: list[_Code]) -> tuple[int, int,
             kind = codes[i].sets[name][0]
             if kind == "function":
                 why = f"{name} is a function or class from cell {groups[i][0] + 1}"
+            elif kind == "container":
+                why = f"{name} is a list, dict, set or tuple from cell {groups[i][0] + 1}"
             elif kind == "value" and (not PORT_NAME.match(name) or name in RESERVED):
                 why = f"{name} cannot be passed between steps ({NAME_RULE})"
             else:

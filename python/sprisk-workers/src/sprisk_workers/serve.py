@@ -36,8 +36,6 @@ class LoadedOperator:
     params_schema: Mapping[str, Any]
     # The manifest, so a step's own code can be checked and called like the built-in (ADR-0028).
     operator: Operator | None = None
-    # The params key listing more output ports by name (ADR-0031).
-    named_outputs: str | None = None
 
 
 class _Failure(Exception):
@@ -148,7 +146,7 @@ def _execute(
         inputs = {b.port.root: _verified_input(b.uri, b.content_hash.root) for b in lease.inputs}
         staging.mkdir(parents=True, exist_ok=True)
         outputs = _runner(lease, operator)(params, inputs, staging)
-        declared = operator.output_ports | _named(params, operator.named_outputs)
+        declared = operator.output_ports | _named_outputs(operator, params)
         return [_manifest(lease.attempt_id.root, o, staging, declared) for o in outputs]
     except OperatorError as e:
         raise _Failure(e.code, e.message, FailureKind.permanent) from e
@@ -212,9 +210,12 @@ def _verified_input(uri: str, expected: str) -> Path:
     return path
 
 
-def _named(params: Mapping[str, Any], key: str | None) -> frozenset[str]:
-    names = params.get(key) if key is not None else None
-    return frozenset(n for n in names or [] if isinstance(n, str))
+def _named_outputs(operator: LoadedOperator, params: Mapping[str, Any]) -> frozenset[str]:
+    if operator.operator is None:
+        return frozenset()
+    from sprisk_workers.plain import named_port_names  # plain imports this module
+
+    return frozenset(named_port_names(operator.operator, params, "output"))
 
 
 def _manifest(

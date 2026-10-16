@@ -50,14 +50,14 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
 
     def run(params: Mapping[str, Any], paths: Mapping[str, Path], out_dir: Path) -> list[Output]:
         values = {port: _read(paths[port], kind) for port, kind in inputs.items()}
-        expected = dict(outputs)
-        if named_out is not None:
-            expected |= {name: "table" for name in params.get(named_out) or []}
+        named = named_port_names(operator, params, "output")
+        expected = dict(outputs) | {name: "table" for name in named}
         try:
             arguments = {k: Path(v) if k in files else v for k, v in params.items()}
             if named_in is not None:
                 arguments[named_in] = {
-                    n: _read_as_written(paths[n]) for n in params.get(named_in) or []
+                    n: _read_as_written(paths[n])
+                    for n in named_port_names(operator, params, "input")
                 }
             with _console() as printed:
                 result = fn(**values, **arguments)
@@ -93,6 +93,13 @@ def named_ports(operator: Operator, side: str) -> str | None:
         ),
         None,
     )
+
+
+def named_port_names(operator: Operator, params: Mapping[str, Any], side: str) -> list[str]:
+    """The port names a step's params list on `side` (ADR-0031). Params are schema-checked
+    before a step runs, so they are a list of names."""
+    key = named_ports(operator, side)
+    return list(params.get(key) or []) if key is not None else []
 
 
 def _check_signature(

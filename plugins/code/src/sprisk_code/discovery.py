@@ -20,12 +20,12 @@ class Parameter:
     default_text: str
 
 
-def _literal(node: ast.expr) -> object | None:
+def scalar_literal(node: ast.expr) -> object | None:
     """The constant a node spells, including a negative number; None when it is not one."""
     if isinstance(node, ast.Constant) and isinstance(node.value, bool | int | float | str):
         return node.value
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
-        inner = _literal(node.operand)
+        inner = scalar_literal(node.operand)
         if isinstance(inner, int | float) and not isinstance(inner, bool):
             return -inner
     return None
@@ -59,7 +59,7 @@ def _candidates(module: ast.Module) -> dict[str, ast.Assign]:
             and len(stmt.targets) == 1
             and isinstance(stmt.targets[0], ast.Name)
             and counts[stmt.targets[0].id] == 1
-            and _literal(stmt.value) is not None
+            and scalar_literal(stmt.value) is not None
         ):
             found[stmt.targets[0].id] = stmt
     return found
@@ -96,7 +96,7 @@ def file_reads(source: str) -> list[FileRead]:
     """Files the code reads (ADR-0025): a reader called with a literal path, or with a name
     that a top-level literal sets. These are inputs, never parameters."""
     module = ast.parse(source)
-    literals = {name: _literal(stmt.value) for name, stmt in _candidates(module).items()}
+    literals = {name: scalar_literal(stmt.value) for name, stmt in _candidates(module).items()}
     found = []
     for node in ast.walk(module):
         if not isinstance(node, ast.Call) or not node.args:
@@ -107,7 +107,7 @@ def file_reads(source: str) -> list[FileRead]:
         if reader not in READERS:
             continue
         arg = node.args[0]
-        path = _literal(arg) if not isinstance(arg, ast.Name) else literals.get(arg.id)
+        path = scalar_literal(arg) if not isinstance(arg, ast.Name) else literals.get(arg.id)
         if isinstance(path, str):
             found.append(FileRead(path, reader, node.lineno))
     return sorted(found, key=lambda f: f.line)
@@ -132,7 +132,7 @@ def literal_parameters(source: str) -> list[Parameter]:
     module = ast.parse(source)
     files = _path_names(module)
     return [
-        Parameter(name, stmt.lineno, _type_of(_literal(stmt.value)), ast.unparse(stmt.value))
+        Parameter(name, stmt.lineno, _type_of(scalar_literal(stmt.value)), ast.unparse(stmt.value))
         for name, stmt in _candidates(module).items()
         if name not in files
     ]
@@ -183,7 +183,7 @@ def bind(source: str, values: dict[str, Any]) -> ast.Module:
                 "unknown_parameter",
                 f"{name} is not a top-level literal assignment in this code, so it cannot be set",
             )
-        expected = _type_of(_literal(stmt.value))
+        expected = _type_of(scalar_literal(stmt.value))
         if not isinstance(value, bool | int | float | str):
             raise OperatorError("invalid_parameter", f"{name} expects a {expected}, got {value!r}")
         if _type_of(value) != expected and not (
