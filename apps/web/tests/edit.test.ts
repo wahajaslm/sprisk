@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addCodeStep, CODE_OPERATOR, setCodeSource, setNodeCode, setParams } from "../src/flow/edit.ts";
+import { addCodeStep, CODE_OPERATOR, readersOf, removeStep, setCodeSource, setNodeCode, setParams } from "../src/flow/edit.ts";
 import { settingChanges } from "../src/flow/diff.ts";
 import { flows } from "../src/flow/flows.ts";
 import { pipeline } from "./fixtures.ts";
@@ -21,6 +21,15 @@ describe("flow edits create a new pipeline version", () => {
 
 
 
+
+  it("removes a step and the edges into it as a new version; readers are listed", () => {
+    expect(readersOf(pipeline, "load").sort()).toEqual(["profile", "split"]);
+    expect(readersOf(pipeline, "profile")).toEqual([]);
+    const removed = removeStep(pipeline, "profile");
+    expect(removed.parent_id).toBe(pipeline.id);
+    expect(removed.nodes.some((n) => n.id === "profile")).toBe(false);
+    expect(removed.edges).toEqual(pipeline.edges.filter((e) => !e.to.startsWith("profile.")));
+  });
 
   it("gives a step its own code, and takes it away again (ADR-0028)", () => {
     const edited = setNodeCode(pipeline, "split", { source: "def f(data):\n    return data\n", function: "f" });

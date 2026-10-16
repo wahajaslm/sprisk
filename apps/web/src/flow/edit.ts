@@ -33,6 +33,18 @@ export function addCodeStep(base: PipelineVersion, node: string, port: string) {
   return { version, nodeId };
 }
 
+/** Steps that read any output of `nodeId`. A step they read cannot be removed. */
+export const readersOf = (pipeline: PipelineVersion, nodeId: string) =>
+  pipeline.edges.filter((e) => e.from.split(".")[0] === nodeId).map((e) => e.to.split(".")[0] ?? "");
+
+/** A new version without this step and the edges into it. Only for steps nothing reads. */
+export function removeStep(base: PipelineVersion, nodeId: string): PipelineVersion {
+  return nextVersion(base, {
+    nodes: base.nodes.filter((n) => n.id !== nodeId),
+    edges: base.edges.filter((e) => e.to.split(".")[0] !== nodeId),
+  });
+}
+
 /** A new version where a step runs its own code, or (undefined) its operator's again
  * (ADR-0028). */
 export function setNodeCode(base: PipelineVersion, nodeId: string, code: NodeCode | undefined): PipelineVersion {

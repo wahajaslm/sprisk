@@ -28,7 +28,7 @@ import { type RunChecks, useRunChecks } from "../api/checks.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
-import { addCodeStep } from "../flow/edit.ts";
+import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
 import { flowPositions, GROUP_HEAD, type Group, type Point } from "../flow/layout.ts";
 import { kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
@@ -515,6 +515,7 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
   if (!at) return saveAndRun.isError ? <p role="alert" className="error canvas-error">{saveAndRun.error.message}</p> : null;
   const node = pipeline.nodes.find((n) => n.id === at.nodeId);
   const tablePort = node ? operators.get(node.operator)?.outputs.find((o) => o.kind === "table")?.name : undefined;
+  const readers = readersOf(pipeline, at.nodeId);
   const close = () => set(undefined);
   const act = (fn: () => void) => () => {
     fn();
@@ -554,6 +555,18 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
         <hr />
         <button type="button" role="menuitem" onClick={act(() => void navigator.clipboard.writeText(at.nodeId))}>
           Copy step id
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          disabled={saveAndRun.isPending || readers.length > 0}
+          title={readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : undefined}
+          onClick={act(() => {
+            const version = removeStep(pipeline, at.nodeId);
+            saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id) });
+          })}
+        >
+          Remove step
         </button>
       </div>
     </div>,

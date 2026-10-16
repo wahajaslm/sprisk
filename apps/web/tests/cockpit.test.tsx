@@ -257,6 +257,31 @@ describe("flow canvas", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  it("right-click removes a step nothing reads, as a new version; a step others read stays", async () => {
+    const posted: { parent_id?: string; nodes: { id: string }[]; edges: { to: string }[] }[] = [];
+    server.use(
+      http.post("/api/pipeline_versions", async ({ request }) => {
+        const body = (await request.json()) as (typeof posted)[number];
+        posted.push(body);
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.post("/api/runs", () => HttpResponse.json({ ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ8" }, { status: 202 })),
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /^split/ }));
+    expect(screen.getByRole("menuitem", { name: "Remove step" })).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^profile/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Remove step" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.parent_id).toBe(PV);
+    expect(posted[0]!.nodes.some((n) => n.id === "profile")).toBe(false);
+    expect(posted[0]!.edges.some((e) => e.to.startsWith("profile."))).toBe(false);
+  });
+
   it("selecting a node opens it in the inspector", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);

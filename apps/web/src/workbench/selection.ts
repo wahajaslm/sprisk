@@ -17,7 +17,7 @@ type Selection = {
   compare: string[];
   setCompare: (runIds: string[]) => void;
   /** Jump to a step of a run, e.g. right after saving a new version and starting it. */
-  showRun: (pipelineVersionId: string, runId: string, nodeId: string) => void;
+  showRun: (pipelineVersionId: string, runId: string, nodeId?: string) => void;
 };
 
 export const useSelection = create<Selection>((set) => ({
