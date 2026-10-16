@@ -1,6 +1,6 @@
 import type { TablePage } from "@sprisk/contracts";
 
-const isText = (dataType: string) => /Utf8|String|Dictionary|Categorical/.test(dataType);
+export const isText = (dataType: string) => /Utf8|String|Dictionary|Categorical/.test(dataType);
 
 /** One page of rows as a table. Missing cells are marked, not left blank. */
 export function RowsTable({ page, label }: { page: TablePage; label: string }) {

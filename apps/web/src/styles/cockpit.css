@@ -237,7 +237,7 @@ p { margin: 0; }
 
 /* ── Table peek (paged rows of a table artifact) ─────── */
 .peek { display: grid; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--canvas); }
-.peek-scroll { overflow: auto; max-height: 320px; }
+.peek-scroll { overflow: auto; max-height: min(70vh, 640px); }
 .peek-table { border-collapse: collapse; width: max-content; min-width: 100%; font: 11px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
 .peek-table th, .peek-table td { padding: 5px 12px; border-bottom: 1px solid var(--line-soft); text-align: right; white-space: nowrap; color: var(--soft); }
 .peek-table th { position: sticky; top: 0; background: var(--panel); color: var(--ink); font-weight: 500; text-align: right; }

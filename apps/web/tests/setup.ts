@@ -22,6 +22,9 @@ class DOMMatrixStub {
   m22 = 1;
 }
 Object.assign(globalThis, { DOMMatrixReadOnly: DOMMatrixStub });
+// Virtualized tables measure their scroll box; jsdom lays nothing out, so give every box a panel size.
+Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 400 });
+Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 800 });
 
 // Monaco needs a real browser (workers, layout). Tests drive a plain textbox with the same
 // contract; the real editor is checked in the browser.

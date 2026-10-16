@@ -273,7 +273,7 @@ describe("peek at a table output", () => {
     const table = await screen.findByRole("table", { name: "data rows" });
     expect(within(table).getByRole("columnheader", { name: /sepal_length\s*Float64/ })).toBeInTheDocument();
     expect(within(table).getByRole("row", { name: /^1 0.5 setosa/ })).toBeInTheDocument();
-    expect(screen.getByText("Rows 1–50 of 120")).toBeInTheDocument();
+    expect(screen.getByText("120 rows")).toBeInTheDocument();
   });
 
   it("marks a missing cell instead of showing it blank", async () => {
@@ -283,7 +283,7 @@ describe("peek at a table output", () => {
     expect(within(within(table).getByRole("row", { name: /^4 / })).getByLabelText("missing")).toBeInTheDocument();
   });
 
-  it("pages forward and back without loading the whole table", async () => {
+  it("scrolls through the whole table, loading only the rows in view", async () => {
     const offsets: string[] = [];
     server.use(
       http.get("/api/artifacts/:id/content", ({ params }) => {
@@ -293,18 +293,20 @@ describe("peek at a table output", () => {
       http.get("/api/artifacts/:id/rows", ({ request }) => {
         const url = new URL(request.url);
         offsets.push(`${url.searchParams.get("offset")}/${url.searchParams.get("limit")}`);
-        return HttpResponse.json(tablePage(Number(url.searchParams.get("offset")), 50));
+        return HttpResponse.json(tablePage(Number(url.searchParams.get("offset")), Number(url.searchParams.get("limit"))));
       }),
     );
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
-    await screen.findByText("Rows 1–50 of 120");
-    expect(screen.getByRole("button", { name: "Previous rows" })).toBeDisabled();
-    await userEvent.click(screen.getByRole("button", { name: "Next rows" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Next rows" }));
-    expect(await screen.findByText("Rows 101–120 of 120")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Next rows" })).toBeDisabled();
-    expect(offsets).toEqual(["0/50", "50/50", "100/50"]);
+    const table = await screen.findByRole("table", { name: "data rows" });
+    expect(screen.getByText("120 rows")).toBeInTheDocument();
+    expect(within(table).getByText("0.5")).toBeInTheDocument();
+    expect(within(table).queryByText("110.5")).toBeNull();
+    const scroller = table.closest(".peek-scroll")!;
+    scroller.scrollTop = 105 * 26;
+    fireEvent.scroll(scroller);
+    expect(await within(table).findByText("110.5")).toBeInTheDocument();
+    expect(offsets).toEqual(["0/100", "100/100"]);
   });
 
   it("says when a wide table shows only its first columns", async () => {
