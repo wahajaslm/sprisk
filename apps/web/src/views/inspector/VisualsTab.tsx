@@ -1,8 +1,9 @@
 import type { CodeDisplay, DisplayItem } from "@sprisk/contracts";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import type { Read } from "../../api/code.ts";
 import { type ResultLayout, useResultLayout } from "../../workbench/detail.ts";
+import { useEscape } from "../../hooks/useEscape.ts";
 import { RowsTable } from "../RowsTable.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 
@@ -85,13 +86,7 @@ export function LayoutSwitch({ layout, setLayout }: { layout: ResultLayout; setL
 
 /** One figure, large, over everything. Escape or a click outside closes it. */
 function Enlarged({ label, src, onClose }: { label: string; src: string; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
   return (
     <div className="lightbox" role="dialog" aria-modal="true" aria-label={label} onClick={onClose}>
       <figure onClick={(e) => e.stopPropagation()}>

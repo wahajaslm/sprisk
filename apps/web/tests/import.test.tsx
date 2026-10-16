@@ -40,7 +40,7 @@ function withApi() {
 }
 
 describe("import a notebook (ADR-0031)", () => {
-  it("reads pasted cells, shows the steps and links, then creates and runs the flow", async () => {
+  it("reads pasted cells, shows the steps, links and code, then creates the flow without running it", async () => {
     const sent = withApi();
     const onClose = vi.fn();
     renderWithApi(<ImportNotebook onClose={onClose} />);
@@ -52,14 +52,16 @@ describe("import a notebook (ADR-0031)", () => {
     expect(within(steps).getAllByRole("listitem")[1]).toHaveTextContent("reads df from step 1");
     expect(within(steps).getAllByRole("listitem")[0]).toHaveTextContent("passes on df");
     expect(screen.getByText("cell 1 reads load, which no earlier cell sets")).toBeInTheDocument();
+    expect(within(steps).getByText("n = len(df)")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Create flow" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     const [version] = sent.versions;
     expect(version?.nodes.map((n) => n.id)).toEqual(["cell_1", "cell_2"]);
     expect(version?.edges).toEqual([{ from: "cell_1.df", to: "cell_2.df" }]);
-    expect(sent.runs).toEqual([{ pipeline_version_id: expect.stringMatching(/^plv_/) }]);
-    expect(useSelection.getState()).toMatchObject({ runId: "run_01JABCDEFGHJKMNPQRSTVWXYZ9", nodeId: "cell_1" });
+    // Someone else's notebook runs only when the person presses Run graph.
+    expect(sent.runs).toEqual([]);
+    expect(useSelection.getState()).toMatchObject({ pipelineVersionId: (version as unknown as { id: string }).id, runId: undefined });
   });
 
   it("reads the code cells of a .ipynb file", async () => {
@@ -78,6 +80,18 @@ describe("import a notebook (ADR-0031)", () => {
     await userEvent.upload(screen.getByLabelText("Notebook file"), new File(["{}"], "bad.ipynb"));
     await userEvent.click(screen.getByRole("button", { name: "Read cells" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("bad.ipynb is not a Jupyter notebook: it has no cells");
+  });
+
+  it("shows why the cells could not be read", async () => {
+    server.use(
+      http.post("/api/code/split", () =>
+        HttpResponse.json({ errors: [{ code: "split_timeout", message: "reading the cells took longer than 10s" }] }, { status: 422 }),
+      ),
+    );
+    renderWithApi(<ImportNotebook onClose={() => {}} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Cells" }), "a = 1");
+    await userEvent.click(screen.getByRole("button", { name: "Read cells" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("reading the cells took longer than 10s");
   });
 
   it("opens from the flow menu", async () => {

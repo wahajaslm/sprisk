@@ -92,6 +92,19 @@ export function useStartRun() {
 
 /** Save an edited flow as a new pipeline version, then run it. Rust compiles and checks
  * the version; the UI never does (rule 3). */
+/** Save a new version without running it: a flow made from someone's notebook runs only when
+ * the person presses Run graph (ADR-0031). */
+export function useSavePipelineVersion() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (version: PipelineVersion) => postOne("PipelineVersion", "/pipeline_versions", version),
+    onSuccess: (saved) => {
+      client.setQueryData<PipelineVersion[]>(["pipeline_versions"], (list) => [saved, ...(list ?? [])]);
+      void client.invalidateQueries({ queryKey: ["pipeline_versions"] });
+    },
+  });
+}
+
 /** Save an edited version and run it from the edited step onwards: every unchanged step
  * reuses `onScreen`, the run being looked at (ADR-0026). Run graph (useStartRun) runs from
  * the start. */

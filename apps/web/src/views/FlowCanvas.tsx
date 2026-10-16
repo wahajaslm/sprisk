@@ -37,6 +37,7 @@ import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
 import { KindIcon, KindMark } from "./Icons.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
+import { useEscape } from "../hooks/useEscape.ts";
 
 
 type StepData = {
@@ -508,12 +509,9 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
   const saveAndRun = useSaveAndRun(useSelection((s) => s.runId));
   const first = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (!at) return;
-    first.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && set(undefined);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [at, set]);
+    if (at) first.current?.focus();
+  }, [at]);
+  useEscape(() => set(undefined), at !== undefined);
   if (!at) return saveAndRun.isError ? <p role="alert" className="error canvas-error">{saveAndRun.error.message}</p> : null;
   const node = pipeline.nodes.find((n) => n.id === at.nodeId);
   const tablePort = node ? operators.get(node.operator)?.outputs.find((o) => o.kind === "table")?.name : undefined;
