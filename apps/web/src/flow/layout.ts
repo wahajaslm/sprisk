@@ -9,7 +9,7 @@ export type Point = { x: number; y: number };
 export type Group = { id: string; count: number } & Point & Size;
 
 /** Room above a group's steps for its heading. */
-export const GROUP_HEAD = 30;
+export const GROUP_HEAD = 44;
 
 const LAYERED = {
   "elk.algorithm": "layered",
