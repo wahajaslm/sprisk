@@ -3,7 +3,7 @@
 :root {
   color-scheme: dark;
   --ground: #101010;
-  --canvas: #131313;
+  --canvas: #0c0c0c;
   --panel: #171717;
   --node: #1f1f1f;
   --node-hover: #282828;
@@ -305,7 +305,7 @@ p { margin: 0; }
 .figure { max-width: 100%; border-radius: 0; background: var(--white); }
 
 /* ── Canvas cards (Summary / Detail levels) ─────────── */
-.flow-card { display: grid; grid-template-rows: auto 1fr auto; padding: 0; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 0; background: var(--node); text-align: left; overflow: hidden; transition: background 0.15s, border-color 0.15s; }
+.flow-card { display: grid; grid-template-rows: auto 1fr auto; padding: 0; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0; background: var(--node); text-align: left; overflow: hidden; transition: background 0.15s, border-color 0.15s; }
 .flow-card:hover { background: var(--node-hover); }
 .flow-card.selected { background: var(--node-selected); border-color: rgba(255, 255, 255, 0.16); }
 .flow-card.bad { border-color: rgba(255, 92, 92, 0.35); }
