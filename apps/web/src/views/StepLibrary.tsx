@@ -3,11 +3,18 @@ import { useState } from "react";
 
 import { useOperators } from "../api/hooks.ts";
 import { kindOf, newestVersions, STAGES, stageOf, stepTitle } from "../flow/stages.ts";
-import { KindIcon, SearchIcon } from "./Icons.tsx";
+import { Chevron, KindMark, SearchIcon } from "./Icons.tsx";
 
 export function StepLibrary() {
   const operators = useOperators();
   const [query, setQuery] = useState("");
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (stage: string) =>
+    setFolded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(stage)) next.add(stage);
+      return next;
+    });
   const needle = query.trim().toLowerCase();
   return (
     <div className="library">
@@ -34,15 +41,19 @@ export function StepLibrary() {
               (op) => stageOf(op) === stage && (needle === "" || `${op.id} ${stepTitle(op.id)}`.toLowerCase().includes(needle)),
             );
             if (inStage.length === 0) return null;
+            const open = !folded.has(stage);
             return (
               <section key={stage} aria-label={stage} className="stage-group">
                 <h3 className="stage-heading">
-                  {stage}
-                  <span className="stage-count">{inStage.length}</span>
+                  <button type="button" aria-expanded={open} onClick={() => toggle(stage)}>
+                    <span className="stage-chevron">
+                      <Chevron />
+                    </span>
+                    {stage}
+                    <span className="stage-count">{inStage.length}</span>
+                  </button>
                 </h3>
-                {inStage.map((op) => (
-                  <StepItem key={op.id} operator={op} />
-                ))}
+                {open && inStage.map((op) => <StepItem key={op.id} operator={op} />)}
               </section>
             );
           })}
@@ -54,14 +65,9 @@ export function StepLibrary() {
 function StepItem({ operator }: { operator: Operator }) {
   const kind = kindOf(operator);
   return (
-    <div className="step-item" title={`${operator.id}: ${operator.description ?? ""}`}>
-      <span className={`step-icon kind-${kind}`}>
-        <KindIcon kind={kind} size={13} />
-      </span>
-      <span className="step-text">
-        <span className="step-name">{stepTitle(operator.id)}</span>
-        <span className="step-desc">{operator.description}</span>
-      </span>
+    <div className="step-item" title={operator.description ? `${operator.description}\n${operator.id}` : operator.id}>
+      <KindMark kind={kind} />
+      <span className="step-name">{stepTitle(operator.id)}</span>
     </div>
   );
 }

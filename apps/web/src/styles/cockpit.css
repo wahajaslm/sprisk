@@ -161,16 +161,17 @@ p { margin: 0; }
 .library-search { padding: 8px; border-bottom: 1px solid var(--line-soft); }
 .search { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; color: var(--muted); }
 .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 12px; }
-.library-list { flex: 1; overflow: auto; padding: 0 0 12px; display: flex; flex-direction: column; }
-.stage-group { display: flex; flex-direction: column; }
-.stage-heading { display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 14px 12px 4px; font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
-.stage-count { color: var(--ghost); }
-.step-item { display: flex; align-items: flex-start; gap: 8px; padding: 5px 12px; cursor: default; }
+.library-list { flex: 1; overflow: auto; padding: 4px 0 12px; }
+.stage-heading { margin: 0; }
+.stage-heading button { width: 100%; height: 24px; display: flex; align-items: center; gap: 4px; padding: 0 10px 0 6px; border: 0; border-radius: 0; background: transparent; color: var(--soft); font-size: 12px; font-weight: 500; text-align: left; }
+.stage-heading button:hover { background: var(--wash); }
+.stage-chevron { width: 14px; display: grid; place-items: center; color: var(--faint); transition: transform 0.1s; }
+.stage-heading button[aria-expanded="false"] .stage-chevron { transform: rotate(-90deg); }
+.stage-count { margin-left: auto; font: 10px var(--mono); color: var(--ghost); }
+.step-item { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 24px; cursor: default; }
 .step-item:hover { background: var(--wash); }
-.library .step-icon { flex-shrink: 0; display: grid; place-items: center; width: 16px; height: 16px; margin-top: 1px; background: transparent; }
-.step-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.step-name { font-size: 12.5px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.step-desc { font-size: 11px; line-height: 1.35; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-name { flex: 1; min-width: 0; font-size: 12px; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-item:hover .step-name { color: var(--ink); }
 
 /* Kind tiles: tint per Studio KIND table */
 .icon-tile { width: 32px; height: 32px; border-radius: 0; flex-shrink: 0; display: grid; place-items: center; }

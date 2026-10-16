@@ -111,11 +111,23 @@ describe("step library", () => {
     expect(within(screen.getByRole("region", { name: "Model" })).getByText("Linear model")).toBeInTheDocument();
   });
 
-  it("shows each step's description under its name", async () => {
+  it("shows a step's description on hover only, so each row stays one line", async () => {
     const described = { ...operators[0]!, description: "Read a local CSV file." };
     server.use(http.get("/api/operators", () => HttpResponse.json([described])));
     renderWithApi(<StepLibrary />);
-    expect(await screen.findByText("Read a local CSV file.")).toBeInTheDocument();
+    expect(await screen.findByTitle(/Read a local CSV file\./)).toBeInTheDocument();
+    expect(screen.queryByText("Read a local CSV file.")).toBeNull();
+  });
+
+  it("folds a stage away when its heading is clicked", async () => {
+    renderWithApi(<StepLibrary />);
+    const clean = await screen.findByRole("region", { name: "Clean" });
+    const heading = within(clean).getByRole("button", { name: /Clean/ });
+    await userEvent.click(heading);
+    expect(heading).toHaveAttribute("aria-expanded", "false");
+    expect(within(clean).queryByText("Impute")).toBeNull();
+    await userEvent.click(heading);
+    expect(within(clean).getByText("Impute")).toBeInTheDocument();
   });
 
   it("lists only the newest version of an operator", async () => {
