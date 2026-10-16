@@ -324,3 +324,20 @@ async fn pipeline_version_round_trips_and_is_never_replaced() {
     let err = store.insert_pipeline_version(&pipeline).await.unwrap_err();
     assert!(matches!(err, StoreError::Conflict(_)), "{err}");
 }
+
+#[tokio::test]
+async fn file_database_is_created_and_keeps_data_across_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sprisk.db");
+    let run: Run = fixture("run", "running.json");
+    SqliteStore::open(&path)
+        .await
+        .unwrap()
+        .insert_run(&run)
+        .await
+        .unwrap();
+
+    let reopened = SqliteStore::open(&path).await.unwrap();
+
+    assert_eq!(reopened.get_run(&run.id).await.unwrap(), run);
+}

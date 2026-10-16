@@ -55,6 +55,15 @@ impl SqliteStore {
         Ok(Self { pool })
     }
 
+    /// The local database file, created if missing. WAL lets readers run during a write.
+    pub async fn open(path: &std::path::Path) -> Result<Self, StoreError> {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+        Self::connect(options).await
+    }
+
     /// One connection: an in-memory database is private to its connection.
     pub async fn in_memory() -> Result<Self, StoreError> {
         let options = SqliteConnectOptions::new()

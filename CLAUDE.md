@@ -162,6 +162,8 @@ Comments explain **why**, never what.
 
 ```bash
 just check            # fmt, lint, types, tests for Rust, Python, TS + stale-codegen check
+cargo run -p sprisk-cli -- serve          # local API on 127.0.0.1:7420 (data in .sprisk/)
+cargo run -p sprisk-cli -- run p.yaml     # submit, run and print a pipeline
 just contracts-gen    # regenerate Python + TS types (Rust generates at build time)
 just contracts-test   # round-trip every fixture through all three languages
 ```
