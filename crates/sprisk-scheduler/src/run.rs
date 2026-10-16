@@ -18,6 +18,8 @@ use crate::cache::{cache_key, cacheable};
 use crate::next::{Next, next_step};
 use crate::worker::{Worker, WorkerError, Workers};
 
+/// Reserved output every step may write: what it printed and warned (ADR-0025).
+pub const CONSOLE_PORT: &str = "console";
 #[derive(Debug, Clone)]
 pub struct Settings {
     /// A worker that sends nothing for this long loses its lease.
@@ -496,7 +498,12 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             .map(|p| p.name.to_string())
             .collect();
         declared.sort();
-        let mut sent: Vec<String> = manifests.iter().map(|m| m.port.to_string()).collect();
+        // Any step may also send what it printed (ADR-0025); every other port must be declared.
+        let mut sent: Vec<String> = manifests
+            .iter()
+            .map(|m| m.port.to_string())
+            .filter(|p| p != CONSOLE_PORT)
+            .collect();
         sent.sort();
         if declared != sent {
             let reason = format!("outputs {sent:?} do not match declared ports {declared:?}");

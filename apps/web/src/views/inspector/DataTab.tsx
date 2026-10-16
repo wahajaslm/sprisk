@@ -28,18 +28,23 @@ type Props = {
   previous: Record<string, number> | undefined;
   explore: Explore;
   addChart: AddChart;
+  /** Ports that carry figures: shown in Visualizations, never as data (ADR-0025). */
+  figurePorts: string[];
   /** Tables a code step showed; they count as data even when it passes nothing on. */
   shown: DisplayItem[];
 };
 
 /** What the step produces, drawn for people: tables, metrics, the model. Code steps also
  * choose what they pass on and list the other values they hold. */
-export function DataTab({ attempt, operator, capability, previous, explore, addChart, shown, children }: Props & { children?: ReactNode }) {
+export function DataTab({ attempt, operator, capability, previous, explore, addChart, figurePorts, shown, children }: Props & { children?: ReactNode }) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
   if (outputs.isPending) return <p className="muted">Loading…</p>;
   if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
-  const data = outputs.data.filter((o) => !(isCodeOperator(operator) && REPORT_PORTS.includes(o.port)));
+  // Console output is shown in Console, for every step (ADR-0025).
+  const data = outputs.data.filter(
+    (o) => o.port !== "console" && !figurePorts.includes(o.port) && !(isCodeOperator(operator) && REPORT_PORTS.includes(o.port)),
+  );
   const parts: Part[] = [
     ...data.map((o) => ({
       key: o.port,

@@ -3,19 +3,17 @@ import type { Attempt, CodeDisplay } from "@sprisk/contracts";
 import type { Read } from "../../api/code.ts";
 
 /** What happened while the step ran: printed text, warnings, errors, and each attempt. */
-export function ConsoleTab({ display, attempts, isCode }: { display: Read<CodeDisplay>; attempts: Attempt[]; isCode: boolean }) {
+export function ConsoleTab({ display, attempts }: { display: Read<CodeDisplay>; attempts: Attempt[] }) {
   const texts = display.status === "ready" ? display.value.items.filter((i) => i.kind === "text") : [];
   const failed = attempts.filter((a) => a.error);
   return (
     <div className="console">
-      {!isCode ? (
-        <p className="muted">Built-in steps print nothing. Their attempts and errors are below.</p>
-      ) : display.status === "error" ? (
+      {display.status === "error" ? (
         <p role="alert" className="error">{display.message}</p>
       ) : display.status === "loading" ? (
         <p className="muted">Loading…</p>
       ) : texts.length === 0 ? (
-        <p className="muted">{display.status === "none" ? display.reason : "The code printed nothing."}</p>
+        <p className="muted">{attempts.length === 0 ? "Not run yet." : "Nothing printed."}</p>
       ) : (
         <section className="console-text" aria-label="Printed output">
           {texts.map((t, i) => {

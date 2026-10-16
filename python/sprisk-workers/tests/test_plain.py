@@ -303,3 +303,32 @@ def test_a_marked_local_path_must_be_typed_as_a_path() -> None:
 
     with pytest.raises(ManifestError, match="path.*pathlib.Path"):
         adapt(op, SOURCE)
+
+
+def test_what_a_step_prints_and_warns_becomes_its_console(tmp_path: Path) -> None:
+    import warnings
+
+    def op(data: pl.DataFrame, factor: float) -> pl.DataFrame:
+        print("scaling", data.height, "rows")
+        warnings.warn("factor is large", UserWarning, stacklevel=1)
+        return data
+
+    outputs = {
+        o.port: o
+        for o in adapt(op, ONE_TABLE)(
+            {"factor": 9}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+        )
+    }
+    items = json.loads(outputs["console"].path.read_text())["items"]
+    assert [(i["channel"], i["text"]) for i in items][0] == ("stdout", "scaling 1 rows\n")
+    assert items[1]["channel"] == "stderr" and "factor is large" in items[1]["text"]
+
+
+def test_a_quiet_step_has_no_console(tmp_path: Path) -> None:
+    def op(data: pl.DataFrame, factor: float) -> pl.DataFrame:
+        return data
+
+    outputs = adapt(op, ONE_TABLE)(
+        {"factor": 1}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+    )
+    assert [o.port for o in outputs] == ["data"]

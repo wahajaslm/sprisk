@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { useRunChecks } from "../../api/checks.ts";
-import { useCodeDisplay, useCodeInterface } from "../../api/code.ts";
+import { useCodeDisplay, useCodeInterface, useConsole } from "../../api/code.ts";
 import { useNodeHistory } from "../../api/history.ts";
 import { useOperators, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun, useTablePage } from "../../api/hooks.ts";
 import { PARQUET } from "../../api/media.ts";
@@ -51,6 +51,9 @@ export function useStep() {
   const done = hasOutputs(latest) ? latest : undefined;
   const isCode = isCodeOperator(node?.operator);
   const display = useCodeDisplay(isCode ? done : undefined);
+  // Code steps keep their ordered display; every other step's prints come from `console`.
+  const consoleOut = useConsole(isCode ? undefined : done);
+  const printed = isCode ? display : consoleOut;
   const found = useCodeInterface(isCode ? done : undefined);
   const shownAt = history.findIndex((h) => h.run.id === runId);
   const explore =
@@ -107,7 +110,8 @@ export function useStep() {
     metric: HEADLINE.find((m) => history.some((h) => h.metrics?.[m] !== undefined)),
     concernCount: nodeId ? concerns(checks, nodeId) : 0,
     visuals: isCode ? visualCount(display) : done ? figurePorts.length : 0,
-    problems: consoleProblems(display, mine),
+    printed,
+    problems: consoleProblems(printed, mine),
   };
 }
 
@@ -189,7 +193,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       return (
         <>
           {step.saveAndRun.isError && <p role="alert" className="error">{step.saveAndRun.error.message}</p>}
-          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} addChart={step.addChart} shown={shownTables(display)}>
+          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} addChart={step.addChart} figurePorts={step.figurePorts} shown={shownTables(display)}>
             {isCode && pipeline && node && <CodeData pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} />}
           </DataTab>
         </>
@@ -206,7 +210,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
         />
       );
     case "console":
-      return <ConsoleTab display={display} attempts={step.mine} isCode={isCode} />;
+      return <ConsoleTab display={step.printed} attempts={step.mine} />;
     case "inputs":
       return pipeline && <InputsTab pipeline={pipeline} nodeId={nodeId} operator={operator} attempts={step.all} found={found} />;
     case "parameters":

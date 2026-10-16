@@ -5,6 +5,9 @@ PARQUET = "application/vnd.apache.parquet"
 JSON = "application/json"
 SKOPS = "application/vnd.skops"
 
+# Every step may also write this: what it printed and warned (ADR-0025).
+CONSOLE_PORT = "console"
+
 
 @dataclass(frozen=True)
 class Output:

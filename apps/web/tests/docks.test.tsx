@@ -183,7 +183,7 @@ describe("Visualizations show what Python drew (ADR-0024)", () => {
     );
     return posted;
   }
-  const show = (tab: "visuals" | "parameters") =>
+  const show = (tab: "visuals" | "parameters" | "data") =>
     renderWithApi(
       <ViewInstance pin={undefined} setPin={undefined} tab={tab}>
         <StepTab />
@@ -210,6 +210,13 @@ describe("Visualizations show what Python drew (ADR-0024)", () => {
     await userEvent.selectOptions(kind, "box");
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]!.nodes.find((n) => n.id === "chart_1")?.params).toEqual({ kind: "box", x: "sepal_length", bins: 10 });
+  });
+
+  it("figures are never shown as data", async () => {
+    await chartStep([plotly("one")]);
+    show("data");
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "chart_1" });
+    expect(await screen.findByText("This step produces no data.")).toBeInTheDocument();
   });
 
   it("Parameters keeps only settings that are not about the view", async () => {
@@ -251,5 +258,36 @@ describe("the code decides the tabs (ADR-0025)", () => {
     const settings = await screen.findByRole("region", { name: "Settings" });
     expect(within(settings).queryByRole("textbox", { name: "path" })).toBeNull();
     expect(within(settings).getByRole("combobox", { name: "format" })).toBeInTheDocument();
+  });
+});
+
+describe("Console for every step (ADR-0025)", () => {
+  it("shows what a built-in step printed and warned, and keeps it out of Data", async () => {
+    const { http, HttpResponse } = await import("msw");
+    const { server } = await import("./server.ts");
+    const { attempts, loadOutputs, scoreOutputs } = await import("./fixtures.ts");
+    const load = attempts.filter((a) => a.node_id === "load").at(-1)!;
+    const consoleOut = { port: "console", artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXC01", size_bytes: 100 } };
+    const printed = { items: [{ kind: "text", channel: "stdout", text: "read 120 rows\n" }, { kind: "text", channel: "stderr", text: "UserWarning: 3 empty rows\n" }] };
+    server.use(
+      http.get(`/api/attempts/${load.id}/outputs`, () => HttpResponse.json([...loadOutputs, consoleOut])),
+      http.get(`/api/artifacts/${consoleOut.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(printed))),
+    );
+    renderWithApi(
+      <>
+        <ViewInstance pin={undefined} setPin={undefined} tab="console">
+          <StepTab />
+        </ViewInstance>
+        <ViewInstance pin={undefined} setPin={undefined} tab="data">
+          <StepTab />
+        </ViewInstance>
+      </>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    const out = await screen.findByRole("region", { name: "Printed output" });
+    expect(out).toHaveTextContent("read 120 rows");
+    expect(within(out).getByText(/3 empty rows/).closest("[data-channel]")).toHaveAttribute("data-channel", "stderr");
+    await screen.findByRole("table", { name: "data rows" });
+    expect(screen.queryByRole("tab", { name: "console" })).toBeNull();
   });
 });

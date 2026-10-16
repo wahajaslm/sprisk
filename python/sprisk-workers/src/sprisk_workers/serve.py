@@ -24,7 +24,7 @@ from sprisk_contracts.generated.models import (
     LeaseAttempt,
 )
 from sprisk_workers.errors import OperatorError, ProtocolError
-from sprisk_workers.output import Output
+from sprisk_workers.output import CONSOLE_PORT, Output
 
 OperatorFn = Callable[[Mapping[str, Any], Mapping[str, Path], Path], list[Output]]
 
@@ -189,7 +189,7 @@ def _verified_input(uri: str, expected: str) -> Path:
 def _manifest(
     attempt_id: str, output: Output, staging: Path, operator: LoadedOperator
 ) -> ArtifactManifest:
-    if output.port not in operator.output_ports:
+    if output.port not in operator.output_ports and output.port != CONSOLE_PORT:
         raise OperatorError("undeclared_output", f"port {output.port!r} is not declared")
     path = output.path.resolve()
     if not path.is_relative_to(staging.resolve()):

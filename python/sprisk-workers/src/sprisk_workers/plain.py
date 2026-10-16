@@ -3,11 +3,13 @@
 The function never sees a file. This module reads each input by its port kind, calls the
 function, and writes what it returns by the output port's kind."""
 
+import contextlib
 import inspect
 import io
 import json
 import typing
-from collections.abc import Callable, Mapping
+import warnings
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,7 @@ from skops.io.exceptions import UntrustedTypesFoundException
 
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError, OperatorError
-from sprisk_workers.output import JSON, PARQUET, SKOPS, Output
+from sprisk_workers.output import CONSOLE_PORT, JSON, PARQUET, SKOPS, Output
 from sprisk_workers.serve import OperatorFn
 
 # skops trusts scikit-learn estimators by default. Anything beyond them and this list fails
@@ -48,7 +50,8 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
         values = {port: _read(paths[port], kind) for port, kind in inputs.items()}
         try:
             arguments = {k: Path(v) if k in files else v for k, v in params.items()}
-            result = fn(**values, **arguments)
+            with _console() as printed:
+                result = fn(**values, **arguments)
         except pl.exceptions.ColumnNotFoundError as e:
             raise OperatorError("missing_column", f"column not found: {_first_line(e)}") from e
         except ValueError as e:
@@ -59,7 +62,12 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
         if not isinstance(by_port, dict) or set(by_port) != set(outputs):
             got = sorted(by_port) if isinstance(by_port, dict) else type(by_port).__name__
             raise OperatorError("bad_output", f"expected outputs {sorted(outputs)}, got {got}")
-        return [_write(port, by_port[port], kind, out_dir) for port, kind in outputs.items()]
+        written = [_write(port, by_port[port], kind, out_dir) for port, kind in outputs.items()]
+        if printed:
+            path = out_dir / f"{CONSOLE_PORT}.json"
+            path.write_text(json.dumps({"items": printed}))
+            written.append(Output(CONSOLE_PORT, path, JSON))
+        return written
 
     return run
 
@@ -74,6 +82,47 @@ def _check_signature(
     missing = sorted(inputs - set(params))
     if missing:
         raise ManifestError(f"{ref}: function does not take input ports {missing}")
+
+
+class _Channel(io.TextIOBase):
+    """stdout or stderr of a step: each write becomes one console item, in order."""
+
+    def __init__(self, items: list[dict[str, str]], channel: str) -> None:
+        self._items, self._channel = items, channel
+
+    def write(self, text: str) -> int:
+        last = self._items[-1] if self._items else None
+        if last is not None and last["channel"] == self._channel:
+            last["text"] += text  # print() writes in pieces; one item per run of output
+        elif text:
+            self._items.append({"kind": "text", "channel": self._channel, "text": text})
+        return len(text)
+
+
+@contextlib.contextmanager
+def _console() -> Iterator[list[dict[str, str]]]:
+    """Everything the step prints or warns, in the CodeDisplay format (text items)."""
+    items: list[dict[str, str]] = []
+    err = _Channel(items, "stderr")
+
+    def show(
+        message: Warning | str,
+        category: type[Warning],
+        filename: str,
+        lineno: int,
+        file: typing.TextIO | None = None,
+        line: str | None = None,
+    ) -> None:
+        err.write(f"{category.__name__}: {message}\n")
+
+    with (
+        contextlib.redirect_stdout(_Channel(items, "stdout")),
+        contextlib.redirect_stderr(err),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("default")
+        warnings.showwarning = show
+        yield items
 
 
 def _check_paths(fn: Callable[..., Any], ref: str, marked: set[str]) -> None:

@@ -39,3 +39,7 @@ export const useCodeDisplay = (attempt: Attempt | undefined): Read<CodeDisplay> 
 /** What a code step's run found about its interface (ADR-0021). */
 export const useCodeInterface = (attempt: Attempt | undefined): Read<CodeInterface> =>
   useReport(attempt, "interface", (raw) => parse("CodeInterface", raw), 1024 * 1024);
+
+/** What any step printed and warned (ADR-0025). Absent when it printed nothing. */
+export const useConsole = (attempt: Attempt | undefined): Read<CodeDisplay> =>
+  useReport(attempt, "console", (raw) => parse("CodeDisplay", raw), 1024 * 1024);

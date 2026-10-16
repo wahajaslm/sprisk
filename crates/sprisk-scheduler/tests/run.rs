@@ -223,7 +223,8 @@ fn sha256(bytes: &[u8]) -> String {
 
 fn outputs_of(operator: &str) -> &'static [&'static str] {
     match operator.split('@').next().unwrap() {
-        "sprisk.io.file_source" => &["data"],
+        // Any step may also send `console` (ADR-0025).
+        "sprisk.io.file_source" => &["data", "console"],
         "sprisk.validation.random_split" => &["train", "test"],
         "sprisk.ml.linear_model" | "sprisk.ml.dummy_baseline" => &["model"],
         "sprisk.ml.evaluate" => &["metrics", "figures"],
@@ -402,6 +403,21 @@ async fn states(env: &Env, node: &str) -> Vec<AttemptState> {
 async fn happy_path_runs_every_step_and_commits_outputs() {
     let (env, status) = run_with(Script::new()).await;
     assert_eq!(status, RunStatus::Succeeded);
+    let load = env
+        .store
+        .list_attempts(&RUN.parse().unwrap())
+        .await
+        .unwrap();
+    let load = load.iter().find(|a| a.node_id.as_str() == "load").unwrap();
+    let ports: Vec<_> = env
+        .store
+        .outputs(&load.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    assert!(ports.contains(&"console".to_owned()), "{ports:?}");
     for node in ["load", "split", "model", "score"] {
         assert_eq!(
             states(&env, node).await,
