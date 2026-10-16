@@ -319,3 +319,27 @@ p { margin: 0; }
 .detail-switch button { height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12px; }
 .detail-switch button:hover { color: var(--ink); }
 .detail-switch button[aria-checked="true"] { background: var(--wash-strong); color: var(--ink); }
+
+/* ── Inspector tabs ─────────────────────────────────── */
+.tab-badge { margin-left: 6px; font: 10px var(--mono); color: var(--alert); }
+.tech-switch { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.tech-switch input { accent-color: var(--ink); margin: 0; }
+.output-title { font-size: 12px; font-weight: 500; color: var(--soft); margin: 0 0 8px; }
+.output-head .output-title { margin-bottom: 8px; }
+.tech { font: 10.5px var(--mono); color: var(--faint); margin: 0 0 8px; overflow-wrap: anywhere; }
+.metrics { display: grid; gap: 10px; }
+.metric-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.metric-tile { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); }
+.metric-name { font: 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.metric-value { font: 500 26px/1.2 var(--sans); color: var(--ink); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.metric-delta { font: 10.5px var(--mono); color: var(--muted); }
+.metric-caption { font: 11px var(--mono); color: var(--muted); }
+.builtin { display: grid; gap: 8px; align-content: start; }
+.check-body p { margin: 0; }
+.check-limit { font-size: 11px; color: var(--faint); margin-top: 2px; }
+.history { display: grid; gap: 14px; }
+.history-table { border-collapse: collapse; width: 100%; font: 11.5px var(--mono); font-variant-numeric: tabular-nums; }
+.history-table th { text-align: left; font-weight: 500; color: var(--faint); padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.history-table td { padding: 7px 10px; border-bottom: 1px solid var(--line-soft); color: var(--soft); }
+.history-table tr.current td { background: var(--wash); color: var(--ink); }
+.current-tag { margin-left: 8px; font-size: 10px; color: var(--muted); }

@@ -23,6 +23,7 @@ import {
   pipeline,
   profilePage,
   run,
+  scoreAttempt,
   scoreOutputs,
   tablePage,
 } from "./fixtures.ts";
@@ -152,16 +153,43 @@ describe("flow canvas", () => {
 });
 
 describe("inspector", () => {
-  it("Data tab shows the selected step's JSON outputs", async () => {
+  it("Result tab shows an evaluator's metrics as tiles, not raw JSON", async () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
-    expect(await screen.findByText(/"accuracy": 0.947/)).toBeInTheDocument();
+    expect(within(await screen.findByRole("group", { name: "accuracy" })).getByText("0.947")).toBeInTheDocument();
+    expect(screen.getByText(/LogisticRegression · scored on 38 held-out rows/)).toBeInTheDocument();
+    expect(screen.queryByText(/application\/json/)).toBeNull();
   });
 
-  it("Logs tab lists every attempt, failures with their error", async () => {
+  it("each metric tile shows the change since the previous run", async () => {
+    const older = { ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ1" };
+    const olderScore = { ...scoreAttempt, id: "att_01JABCDEFGHJKMNPQRSTVWXY55", run_id: older.id };
+    const olderMetrics = { ...scoreOutputs[0]!, artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY55" } };
+    server.use(
+      http.get("/api/runs", () => HttpResponse.json([run, older])),
+      http.get(`/api/runs/${older.id}/attempts`, () => HttpResponse.json([olderScore])),
+      http.get(`/api/attempts/${olderScore.id}/outputs`, () => HttpResponse.json([olderMetrics])),
+      http.get(`/api/artifacts/${olderMetrics.artifact.id}/content`, () => HttpResponse.text('{"accuracy": 0.9}')),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
+    const tile = await screen.findByRole("group", { name: "accuracy" });
+    await waitFor(() => expect(tile).toHaveTextContent("▲ 0.047 vs last run"));
+  });
+
+  it("technical details show media types and hashes only when switched on", async () => {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
+    await screen.findByRole("group", { name: "accuracy" });
+    await userEvent.click(screen.getByRole("checkbox", { name: "Technical details" }));
+    expect(screen.getByText(/application\/json · 80 bytes/)).toBeInTheDocument();
+  });
+
+  it("History tab lists the run and, below, every attempt with its error", async () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
-    await userEvent.click(await screen.findByRole("tab", { name: "Logs" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "History" }));
+    expect(await screen.findByRole("table", { name: "Runs of this step" })).toHaveTextContent("2 attempts");
     expect(await screen.findByText(/worker_lost/)).toBeInTheDocument();
     expect(screen.getByText(/#2/)).toBeInTheDocument();
   });
@@ -173,9 +201,20 @@ describe("inspector", () => {
 });
 
 describe("inspector failures and checks", () => {
+  it("badges the Checks tab when a check on this step did not pass", async () => {
+    const failing = JSON.parse(checksJson).map((c: { verdict: string }) => ({ ...c, verdict: "fail" }));
+    server.use(http.get("/api/artifacts/:id/content", ({ params }) =>
+      HttpResponse.text(params.id === "art_01JABCDEFGHJKMNPQRSTVWXYZ1" ? JSON.stringify(failing) : "{}"),
+    ));
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    expect(await screen.findByRole("tab", { name: "Checks, 1 to review" })).toBeInTheDocument();
+  });
+
   it("shows methodology checks that cite the selected step", async () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Checks" }));
     const checks = await screen.findByRole("region", { name: "Methodology checks" });
     expect(within(checks).getByLabelText("pass")).toBeInTheDocument();
     expect(checks).toHaveTextContent("at most one non-baseline model");
@@ -185,6 +224,7 @@ describe("inspector failures and checks", () => {
     server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text('{"verdict": "pass"}')));
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Checks" }));
     expect(await screen.findByText(/Unreadable methodology checks/)).toBeInTheDocument();
   });
 
@@ -547,7 +587,7 @@ describe("cached steps", () => {
     server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(cachedAttempts())));
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
-    expect(await screen.findByText(/"accuracy": 0.947/)).toBeInTheDocument();
+    expect(within(await screen.findByRole("group", { name: "accuracy" })).getByText("0.947")).toBeInTheDocument();
   });
 
   it("counts cached steps as done in the run summary", async () => {
@@ -619,7 +659,7 @@ describe("pinned inspector", () => {
       </ViewInstance>,
     );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
-    expect(await screen.findByText(/"accuracy": 0.947/)).toBeInTheDocument();
+    expect(within(await screen.findByRole("group", { name: "accuracy" })).getByText("0.947")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Pinned/ })).toHaveAttribute("aria-pressed", "true");
   });
 

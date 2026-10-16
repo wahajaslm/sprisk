@@ -3,7 +3,7 @@ import { parse } from "@sprisk/contracts";
 
 import { useArtifactText, useOutputs, useTablePage } from "../api/hooks.ts";
 import { PARQUET } from "../api/media.ts";
-import { useMetricTrend } from "../api/trend.ts";
+import { useNodeHistory } from "../api/history.ts";
 import { isCodeOperator } from "../flow/edit.ts";
 import { isProfileOperator } from "../flow/stages.ts";
 import { formatMetric, headlineMetric } from "./NodeFact.tsx";
@@ -108,7 +108,10 @@ function MetricTrend(props: VisualFor) {
   const outputs = useOutputs(props.attemptId);
   const text = useArtifactText(outputs.data?.[0]?.artifact.id);
   const metric = text.data === undefined ? undefined : headlineMetric(text.data);
-  const trend = useMetricTrend(props.pipelineVersionId, props.nodeId);
+  const trend = useNodeHistory(props.pipelineVersionId, props.nodeId)
+    .map((h) => h.metrics?.[metric?.name ?? ""])
+    .filter((v): v is number => v !== undefined)
+    .reverse();
   if (!metric) return <VisualSkeleton />;
   return (
     <div className="nv nv-metric">
