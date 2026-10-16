@@ -1,12 +1,18 @@
 import base64
+from collections.abc import Mapping
 from pathlib import Path
 
 import polars as pl
 import pytest
 from conftest import WriteParquet
 
-from sprisk_code.python_step import MAX_TABLE_ROWS, python_step, python_step_with_output
-from sprisk_contracts import CodeDisplay
+from sprisk_code.python_step import (
+    MAX_TABLE_ROWS,
+    python_step,
+    python_step_v12,
+    python_step_with_output,
+)
+from sprisk_contracts import CodeDisplay, CodeInterface
 from sprisk_workers.errors import OperatorError
 
 
@@ -113,3 +119,56 @@ def test_output_must_be_a_polars_dataframe(
             {"source": "sprisk.output([1, 2])"}, {"data": write_parquet("d", clf_frame)}, out_dir
         )
     assert e.value.code == "code_error" and "polars DataFrame" in e.value.message
+
+
+def run_v12(
+    write_parquet: WriteParquet, out_dir: Path, params: Mapping[str, object]
+) -> dict[str, Path]:
+    df = pl.DataFrame({"x": [1.0, 2.0, 3.0]})
+    outputs = python_step_v12(params, {"data": write_parquet("d", df)}, out_dir)
+    return {o.port: o.path for o in outputs}
+
+
+SOURCE = (
+    "factor = 2\nout = data.with_columns(y=pl.col('x') * factor)\nif False:\n    print(lookup)\n"
+)
+
+
+def test_exposed_parameter_changes_the_run_but_not_the_source(
+    write_parquet: WriteParquet, out_dir: Path
+) -> None:
+    params = {"source": SOURCE, "parameters": {"factor": 10}, "output": "out"}
+    paths = run_v12(write_parquet, out_dir, params)
+    assert pl.read_parquet(paths["data"])["y"].to_list() == [10.0, 20.0, 30.0]
+    assert params["source"] == SOURCE
+    found = CodeInterface.model_validate_json(paths["interface"].read_text())
+    [factor] = found.parameters
+    assert (factor.name, factor.default_text, factor.effective_text, factor.origin.value) == (
+        "factor",
+        "2",
+        "10",
+        "confirmed",
+    )
+
+
+def test_interface_reports_inputs_and_output_candidates(
+    write_parquet: WriteParquet, out_dir: Path
+) -> None:
+    paths = run_v12(write_parquet, out_dir, {"source": SOURCE})
+    found = CodeInterface.model_validate_json(paths["interface"].read_text())
+    assert [(i.name, i.bound) for i in found.inputs] == [("data", True), ("lookup", False)]
+    [out] = found.outputs
+    assert (out.name, out.type, out.rows, out.columns, out.chosen) == (
+        "out",
+        "polars.DataFrame",
+        3,
+        2,
+        False,
+    )
+    assert found.parameters[0].origin.value == "inferred"
+
+
+def test_chosen_output_must_be_a_dataframe(write_parquet: WriteParquet, out_dir: Path) -> None:
+    with pytest.raises(OperatorError) as e:
+        run_v12(write_parquet, out_dir, {"source": SOURCE, "output": "factor"})
+    assert e.value.code == "code_error" and "factor" in e.value.message and "int" in e.value.message

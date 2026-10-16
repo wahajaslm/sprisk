@@ -1,0 +1,21 @@
+schema_version: sprisk.operator/v1
+id: sprisk.code.python@1.2.0
+capability_class: analyzer
+description: Your Python code on the input table. Shows what it prints, its last value and its figures; finds settings you can expose and values you can pass on (ADR-0021).
+entrypoint: sprisk_code.python_step:python_step_v12
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: data, kind: table }, { name: display, kind: diagnostics }, { name: interface, kind: diagnostics }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source: { type: string, maxLength: 100000, description: Python source. `data` is the input as a polars DataFrame. }
+    parameters:
+      type: object
+      description: Exposed settings, by variable name. Each replaces that top-level literal in a copy of the code.
+      additionalProperties: { type: [integer, number, string, boolean] }
+    output: { type: string, minLength: 1, description: The variable whose final DataFrame becomes the data output. }
+effects: side_effecting
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
