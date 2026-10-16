@@ -92,10 +92,12 @@ TOOLS = ("pl", "sprisk", "display")
 MAX_OUTPUT_CANDIDATES = 20
 MAX_SAMPLE_ROWS = 10
 MAX_FIELDS = 500
+MAX_VALUE_CHARS = 2000
 # Fields and samples of every variable share this; the browser reads the report whole.
 EXPLORER_BUDGET_BYTES = 768 * 1024
-# reprlib bounds the work as well as the text: a huge list is never fully formatted.
-_VALUE_REPR = reprlib.Repr(maxlevel=3, maxlist=20, maxdict=20, maxstring=1000, maxother=1000)
+# reprlib bounds the work: a huge list is never fully formatted. Nesting can still multiply
+# its limits, so the text is cut as well.
+_VALUE_REPR = reprlib.Repr(maxlevel=2, maxlist=20, maxdict=20, maxstring=200, maxother=1000)
 
 
 def _interface(
@@ -177,7 +179,7 @@ def _candidate(name: str, value: object, chosen: bool) -> tuple[dict[str, Any], 
         "chosen": chosen,
     }
     if not isinstance(value, pl.DataFrame | pl.Series):
-        doc["text"] = _VALUE_REPR.repr(value)
+        doc["text"] = _cut(_VALUE_REPR.repr(value), MAX_VALUE_CHARS)
         return doc, {}
     frame = value.to_frame() if isinstance(value, pl.Series) else value
     doc["rows"], doc["columns"] = frame.height, frame.width

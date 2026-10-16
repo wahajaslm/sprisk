@@ -280,3 +280,17 @@ def test_variable_samples_stay_within_a_size_budget(
     assert last.sample is None and last.fields is not None and len(last.fields) == 60
     note = found.outputs[19]
     assert note.text is not None and len(note.text) < 2000
+
+
+def test_a_nested_value_s_text_is_capped(write_parquet: WriteParquet, out_dir: Path) -> None:
+    source = "nested = [[['x' * 5000] * 30] * 30] * 30\n"
+    found = run_v12(write_parquet, out_dir, {"source": source})["interface"]
+    [nested] = found.outputs
+    assert nested.text is not None and len(nested.text) <= 2001
+
+
+def test_a_wide_table_lists_its_first_fields(write_parquet: WriteParquet, out_dir: Path) -> None:
+    source = "wide = pl.DataFrame({f'c{i}': [1] for i in range(501)})\n"
+    found = run_v12(write_parquet, out_dir, {"source": source})["interface"]
+    [wide] = found.outputs
+    assert wide.columns == 501 and wide.fields is not None and len(wide.fields) == 500

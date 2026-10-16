@@ -113,7 +113,7 @@ export function useStep() {
     previous: shownAt >= 0 ? history.slice(shownAt + 1).find((h) => h.metrics)?.metrics : undefined,
     metric: HEADLINE.find((m) => history.some((h) => h.metrics?.[m] !== undefined)),
     concernCount: nodeId ? concerns(checks, nodeId) : 0,
-    visuals: isCode ? visualCount(display) : (done ? figurePorts.length : 0) + (pipeline && nodeId ? chartsOf(pipeline, nodeId).length : 0),
+    visuals: (isCode ? visualCount(display) : done ? figurePorts.length : 0) + (pipeline && nodeId ? chartsOf(pipeline, nodeId).length : 0),
     printed,
     problems: consoleProblems(printed, mine),
   };
@@ -192,30 +192,29 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
   const { technical } = useInspectorDetail();
   const { pipeline, node, nodeId, operator, done, isCode, display, found } = step;
   if (!nodeId) return null;
+  const charts = pipeline && (
+    <StepCharts pipeline={pipeline} nodeId={nodeId} attempt={done} attempts={step.all} operators={step.operatorsById} addChart={step.addChart} />
+  );
   switch (tab) {
     case "data":
       return (
         <>
           {step.saveAndRun.isError && <p role="alert" className="error">{step.saveAndRun.error.message}</p>}
-          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} addChart={step.addChart} figurePorts={step.figurePorts} shown={shownTables(display)}>
+          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} figurePorts={step.figurePorts} shown={shownTables(display)}>
             {isCode && pipeline && node && <CodeData pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} />}
           </DataTab>
         </>
       );
     case "visuals":
       return isCode ? (
-        <VisualsTab display={display} isCode={isCode} />
+        <VisualsTab display={display} charts={charts} />
       ) : (
         <FiguresTab
           attempt={done}
           ports={step.figurePorts}
           failure={step.latest?.state === "failed" ? step.latest.error?.message : undefined}
           controls={pipeline && <ViewControls pipeline={pipeline} nodeId={nodeId} operator={operator} columns={step.inputColumns} />}
-          charts={
-            pipeline && (
-              <StepCharts pipeline={pipeline} nodeId={nodeId} attempt={done} attempts={step.all} operators={step.operatorsById} addChart={step.addChart} />
-            )
-          }
+          charts={charts}
         />
       );
     case "console":

@@ -122,7 +122,18 @@ describe("every step shows its code", () => {
   });
 });
 
-describe("charts (ADR-0023)", () => {
+describe("charts (ADR-0023, ADR-0030)", () => {
+  it("Data has no chart button: charts are made in Visualizations", async () => {
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={undefined} tab="data">
+        <StepTab />
+      </ViewInstance>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chart" })).toBeNull();
+  });
+
   it("adds a chart of a table and opens it in Visualizations", async () => {
     const { http, HttpResponse } = await import("msw");
     const { server } = await import("./server.ts");
@@ -139,7 +150,7 @@ describe("charts (ADR-0023)", () => {
     const dock = fakeDock();
     useWorkbench.setState({ dock });
     renderWithApi(
-      <ViewInstance pin={undefined} setPin={undefined} tab="data">
+      <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
         <StepTab />
       </ViewInstance>,
     );

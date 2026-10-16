@@ -1,16 +1,25 @@
 import type { CodeDisplay, DisplayItem } from "@sprisk/contracts";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import type { Read } from "../../api/code.ts";
 import { type ResultLayout, useResultLayout } from "../../workbench/detail.ts";
 import { RowsTable } from "../RowsTable.tsx";
 
-/** Figures, in the order the step drew them (Node Framework §7). Tables it showed are in
- * Data. Inline or as a grid; switching never re-runs anything. */
-export function VisualsTab({ display, isCode }: { display: Read<CodeDisplay>; isCode: boolean }) {
+/** A code step's figures, in the order it drew them (Node Framework §7), then charts of the
+ * table it passes on (ADR-0030). Tables it showed are in Data. Inline or as a grid; switching
+ * never re-runs anything. */
+export function VisualsTab({ display, charts }: { display: Read<CodeDisplay>; charts?: ReactNode }) {
+  return (
+    <>
+      <DrawnFigures display={display} />
+      {charts}
+    </>
+  );
+}
+
+function DrawnFigures({ display }: { display: Read<CodeDisplay> }) {
   const { layout, setLayout } = useResultLayout();
   const [enlarged, setEnlarged] = useState<{ label: string; src: string } | undefined>();
-  if (!isCode) return <p className="muted">Built-in steps draw no figures. Their tables are in Data.</p>;
   if (display.status === "none") return <p className="muted">{display.reason}</p>;
   if (display.status === "loading") return <p className="muted">Loading…</p>;
   if (display.status === "error") return <p role="alert" className="error">{display.message}</p>;

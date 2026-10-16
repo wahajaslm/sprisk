@@ -876,13 +876,14 @@ describe("code step interface (ADR-0021)", () => {
     outputs: [{ name: "out", type: "polars.DataFrame", rows: 120, columns: 2, origin: "measured", chosen: false }],
     files: [{ path: "lookup.csv", reader: "read_csv", line: 3 }],
   };
-  function withInterface() {
+  const passed = { ...loadOutputs[0]!, port: "data", artifact: { ...loadOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY71" } };
+  function withInterface(found: unknown = report) {
     const posted: { params: Record<string, unknown> }[] = [];
     server.use(
       http.get("/api/pipeline_versions", () => HttpResponse.json([v12])),
       http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
-      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () => HttpResponse.json([...codeOutputs, iface])),
-      http.get(`/api/artifacts/${iface.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(report))),
+      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () => HttpResponse.json([...codeOutputs, iface, passed])),
+      http.get(`/api/artifacts/${iface.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(found))),
       http.post("/api/pipeline_versions", async ({ request }) => {
         const body = (await request.json()) as typeof pipeline;
         posted.push(body.nodes.find((n) => n.id === "code_1") as { params: Record<string, unknown> });
@@ -940,6 +941,55 @@ describe("code step interface (ADR-0021)", () => {
     await userEvent.click(within(values).getByRole("button", { name: "Pass this on and run" }));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]!.params).toEqual({ source: "factor = 2\nout = data", output: "out" });
+  });
+
+  it("Data explores every variable the code ended with (ADR-0030)", async () => {
+    const columns = [
+      { name: "age", data_type: "Int64" },
+      { name: "city", data_type: "String" },
+    ];
+    withInterface({
+      ...report,
+      outputs: [
+        {
+          ...report.outputs[0],
+          fields: [
+            { name: "age", data_type: "Int64", null_count: 0 },
+            { name: "city", data_type: "String", null_count: 3 },
+          ],
+          sample: { offset: 0, total_rows: 120, total_columns: 2, columns, rows: [{ values: ["34", "Oslo"], missing: [] }] },
+        },
+        { name: "ages", type: "polars.Series", rows: 120, columns: 1, origin: "measured", chosen: false, fields: [{ name: "age", data_type: "Int64", null_count: 0 }] },
+        { name: "wide", type: "polars.DataFrame", rows: 5, columns: 900, origin: "measured", chosen: false, fields: [{ name: "c0", data_type: "Int64", null_count: 0 }] },
+        { name: "lookup", type: "dict", origin: "measured", chosen: false, text: "{'a': 1}" },
+      ],
+    });
+    await openCode("Data");
+    const variables = await screen.findByRole("region", { name: "Variables" });
+    await userEvent.click(within(variables).getByRole("button", { name: /^out/ }));
+    const fields = within(variables).getByRole("table", { name: "Fields of out" });
+    expect(within(fields).getByText("city").closest("tr")).toHaveTextContent(/city\s*String\s*3/);
+    expect(within(variables).getByRole("table", { name: "First rows of out" })).toHaveTextContent("Oslo");
+
+    await userEvent.click(within(variables).getByRole("button", { name: /^ages/ }));
+    expect(within(variables).getByText(/first rows were not kept/)).toBeInTheDocument();
+
+    await userEvent.click(within(variables).getByRole("button", { name: /^wide/ }));
+    expect(within(variables).getByText("First 1 of 900 fields.")).toBeInTheDocument();
+
+    await userEvent.click(within(variables).getByRole("button", { name: /^lookup/ }));
+    expect(within(variables).getByText("{'a': 1}")).toBeInTheDocument();
+
+    // Only a DataFrame can be passed on to the next step.
+    const values = screen.getByRole("region", { name: "Values in your code" });
+    expect(within(values).queryByRole("radio", { name: /ages/ })).toBeNull();
+  });
+
+  it("Visualizations offers a chart of the table the code passes on (ADR-0030)", async () => {
+    withInterface();
+    await openCode("Visualizations");
+    expect(await screen.findByText("Charts of data")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chart" })).toBeInTheDocument();
   });
 });
 

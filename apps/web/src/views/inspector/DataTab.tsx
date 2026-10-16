@@ -11,11 +11,8 @@ import { ColumnProfile } from "../ColumnProfile.tsx";
 import { formatMetric } from "../NodeFact.tsx";
 import { TablePeek } from "../TablePeek.tsx";
 import { ShownTable } from "./VisualsTab.tsx";
-import { ChartMenu } from "../ChartMenu.tsx";
-import type { ChartSpec } from "../../flow/edit.ts";
 
 export type Explore = ((port: string) => void) | undefined;
-export type AddChart = ((port: string, spec: ChartSpec) => void) | undefined;
 
 /** A code step's reports are shown in their own tabs, not as data. */
 const REPORT_PORTS = ["display", "interface"];
@@ -27,7 +24,6 @@ type Props = {
   /** This step's metrics in the run before the shown one, for change tiles. */
   previous: Record<string, number> | undefined;
   explore: Explore;
-  addChart: AddChart;
   /** Ports that carry figures: shown in Visualizations, never as data (ADR-0025). */
   figurePorts: string[];
   /** Tables a code step showed; they count as data even when it passes nothing on. */
@@ -35,8 +31,9 @@ type Props = {
 };
 
 /** What the step produces, drawn for people: tables, metrics, the model. Code steps also
- * choose what they pass on and list the other values they hold. */
-export function DataTab({ attempt, operator, capability, previous, explore, addChart, figurePorts, shown, children }: Props & { children?: ReactNode }) {
+ * show every variable they ended with and choose what they pass on (ADR-0030). Charts are
+ * made in Visualizations. */
+export function DataTab({ attempt, operator, capability, previous, explore, figurePorts, shown, children }: Props & { children?: ReactNode }) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
   if (outputs.isPending) return <p className="muted">Loading…</p>;
@@ -49,7 +46,7 @@ export function DataTab({ attempt, operator, capability, previous, explore, addC
     ...data.map((o) => ({
       key: o.port,
       label: o.port,
-      body: <Output output={o} view={viewOf(o, operator, capability)} previous={previous} explore={explore} addChart={addChart} />,
+      body: <Output output={o} view={viewOf(o, operator, capability)} previous={previous} explore={explore} />,
     })),
     ...shown.map((item, i) => ({
       key: `shown-${i}`,
@@ -118,13 +115,11 @@ function Output({
   view,
   previous,
   explore,
-  addChart,
 }: {
   output: AttemptOutput;
   view: OutputView;
   previous: Props["previous"];
   explore: Explore;
-  addChart: AddChart;
 }) {
   const technical = useInspectorDetail((s) => s.technical);
   const isJson = view === "json" || view === "metrics";
@@ -139,7 +134,6 @@ function Output({
           port={output.port}
           actions={(columns) => (
             <>
-              {addChart && <ChartMenu columns={columns} busy={false} onAdd={(spec) => addChart(output.port, spec)} />}
               {technical && <span className="tech">{a.content_hash.slice(0, 19)}… · {a.id}</span>}
               {explore && (
                 <button type="button" className="page-btn" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)}>

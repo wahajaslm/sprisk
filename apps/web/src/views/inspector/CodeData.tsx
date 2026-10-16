@@ -3,22 +3,28 @@ import { useState } from "react";
 
 import type { Read } from "../../api/code.ts";
 import { useRunEdit } from "./useRunEdit.ts";
+import { Variables } from "./Variables.tsx";
 
 type Props = { pipeline: PipelineVersion; nodeId: string; params: Record<string, unknown>; found: Read<CodeInterface> };
 
-/** For a code step: which value it passes on, and the other values it ended with. */
+/** For a code step: the variables it ended with, and which table it passes on. */
 export function CodeData({ pipeline, nodeId, params, found }: Props) {
   if (found.status === "error") return <p role="alert" className="error">{found.message}</p>;
   if (found.status !== "ready") return null;
-  return <PassOn key={JSON.stringify(found.value.outputs)} pipeline={pipeline} nodeId={nodeId} params={params} found={found.value} />;
+  return (
+    <>
+      <Variables found={found.value.outputs} />
+      <PassOn key={JSON.stringify(found.value.outputs)} pipeline={pipeline} nodeId={nodeId} params={params} found={found.value} />
+    </>
+  );
 }
 
 function PassOn({ pipeline, nodeId, params, found }: Omit<Props, "found"> & { found: CodeInterface }) {
   const saved = typeof params.output === "string" ? params.output : "";
   const [output, setOutput] = useState(saved);
   const edit = useRunEdit(pipeline, nodeId);
-  const tables = found.outputs.filter((o) => o.rows !== undefined);
-  const others = found.outputs.filter((o) => o.rows === undefined);
+  // Only a DataFrame can become the step's data output.
+  const tables = found.outputs.filter((o) => o.type === "polars.DataFrame");
   const run = () => {
     const next: Record<string, unknown> = { ...params };
     if (output === "") delete next.output;
@@ -55,19 +61,6 @@ function PassOn({ pipeline, nodeId, params, found }: Omit<Props, "found"> & { fo
             {edit.pending ? "Starting…" : "Pass this on and run"}
           </button>
         </div>
-      )}
-      {others.length > 0 && (
-        <>
-          <p className="found-label">Other values the code ended with</p>
-          <ul className="found-list">
-            {others.map((o) => (
-              <li key={o.name} className="found-value">
-                <span className="mono">{o.name}</span>
-                <span className="found-meta">{o.type}</span>
-              </li>
-            ))}
-          </ul>
-        </>
       )}
     </section>
   );
