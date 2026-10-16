@@ -3,32 +3,24 @@ import { lazy, type ReactNode, Suspense, useRef } from "react";
 
 import { useFigureSet } from "../../api/figures.ts";
 import { useResultLayout } from "../../workbench/detail.ts";
-import { ADDED_CHARTS_NOTE } from "./StepCharts.tsx";
 import { LayoutSwitch } from "./VisualsTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
-/** The figures a step drew in Python, on each of its `figure` ports (ADR-0024), then charts
- * added to its table (ADR-0030). One bar, one area: Inline and Grid apply to both. */
+/** The figures a step's code drew, on each of its `figure` ports (ADR-0024). Only code
+ * decides what is shown here (ADR-0032). */
 export function FiguresTab({
   attempt,
   ports,
   controls,
   failure,
-  chartButton,
-  charts,
-  added,
 }: {
   attempt: Attempt | undefined;
   ports: string[];
   controls?: ReactNode;
   /** Why the latest run of this step failed, if it did. */
   failure?: string | undefined;
-  chartButton?: ReactNode;
-  /** Charts added to this step's tables (they live here, not on the canvas). */
-  charts?: ReactNode;
-  added: number;
 }) {
   const { layout, setLayout } = useResultLayout();
   return (
@@ -36,11 +28,9 @@ export function FiguresTab({
       <div className="result-bar">
         {controls}
         <span className="spacer" />
-        {chartButton}
         <LayoutSwitch layout={layout} setLayout={setLayout} />
       </div>
-      {ports.length === 0 && added === 0 && <p className="muted">This step draws no figures. Use Chart to draw its table.</p>}
-      {added > 0 && <p className="muted">{ADDED_CHARTS_NOTE}</p>}
+      {ports.length === 0 && <p className="muted">This step draws no figures. A plot in a step's code shows here.</p>}
       {failure ? (
         <p role="alert" className="error">This step failed: {failure}</p>
       ) : (
@@ -50,7 +40,6 @@ export function FiguresTab({
         {ports.map((port) => (
           <FigurePort key={port} attempt={attempt} port={port} />
         ))}
-        {charts}
       </section>
     </>
   );

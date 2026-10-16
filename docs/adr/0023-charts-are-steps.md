@@ -1,5 +1,5 @@
 # ADR-0023: Charts are steps: Python aggregates, the browser draws
-Status: Accepted
+Status: Superseded by ADR-0024 (drawing) and ADR-0032 (no chart builder)
 Date: 2026-10-16
 Arch doc sections: §2A (views, rule 9), §7 (operators), ADR-0022
 

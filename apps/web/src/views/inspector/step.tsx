@@ -5,8 +5,7 @@ import { useCodeDisplay, useCodeInterface, useConsole } from "../../api/code.ts"
 import { useNodeHistory } from "../../api/history.ts";
 import { useOperators, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun, useTablePage } from "../../api/hooks.ts";
 import { PARQUET } from "../../api/media.ts";
-import { addChartStep, addCodeStep, type ChartSpec, chartsOf, isCodeOperator } from "../../flow/edit.ts";
-import { useWorkbench } from "../../workbench/workbench.ts";
+import { addCodeStep, isCodeOperator } from "../../flow/edit.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { roleOf, shortName } from "../../flow/stages.ts";
 import { useInspectorDetail } from "../../workbench/detail.ts";
@@ -15,7 +14,6 @@ import { useSelection } from "../../workbench/selection.ts";
 import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
 import { FiguresTab } from "./FiguresTab.tsx";
-import { AddedCharts, ChartButton } from "./StepCharts.tsx";
 import { ViewControls } from "./ViewControls.tsx";
 import { ChecksTab, concerns } from "./ChecksTab.tsx";
 import { CodeData } from "./CodeData.tsx";
@@ -64,22 +62,8 @@ export function useStep() {
           saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, codeNode) });
         }
       : undefined;
-  const dock = useWorkbench((s) => s.dock);
   // Figure ports come from the manifest (ADR-0024): any step may draw.
   const figurePorts = (operator?.outputs ?? []).filter((o) => o.kind === "figure").map((o) => String(o.name));
-  const addChart =
-    pipeline && nodeId && !saveAndRun.isPending
-      ? (port: string, spec: ChartSpec) => {
-          const { version, nodeId: chartNode } = addChartStep(pipeline, nodeId, port, spec);
-          saveAndRun.mutate(version, {
-            // The chart lives inside this step: stay on it and show its Visualizations.
-            onSuccess: (r) => {
-              showRun(version.id, r.id, nodeId);
-              dock?.showTab("visuals");
-            },
-          });
-        }
-      : undefined;
   // Columns of the table this step reads, for settings that name a column.
   const source = pipeline?.edges.find((e) => e.to.split(".")[0] === nodeId)?.from.split(".") ?? [];
   const producer = latestByNode(all).get(source[0] ?? "");
@@ -91,7 +75,6 @@ export function useStep() {
     runId,
     operatorsById,
     inputColumns,
-    addChart,
     figurePorts,
     nodeId,
     versions,
@@ -113,7 +96,7 @@ export function useStep() {
     previous: shownAt >= 0 ? history.slice(shownAt + 1).find((h) => h.metrics)?.metrics : undefined,
     metric: HEADLINE.find((m) => history.some((h) => h.metrics?.[m] !== undefined)),
     concernCount: nodeId ? concerns(checks, nodeId) : 0,
-    visuals: (isCode ? visualCount(display) : done ? figurePorts.length : 0) + (pipeline && nodeId ? chartsOf(pipeline, nodeId).length : 0),
+    visuals: isCode ? visualCount(display) : done ? figurePorts.length : 0,
     printed,
     problems: consoleProblems(printed, mine),
   };
@@ -192,9 +175,6 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
   const { technical } = useInspectorDetail();
   const { pipeline, node, nodeId, operator, done, isCode, display, found } = step;
   if (!nodeId) return null;
-  const chartButton = <ChartButton attempt={done} addChart={step.addChart} />;
-  const charts = pipeline && <AddedCharts pipeline={pipeline} nodeId={nodeId} attempt={done} attempts={step.all} operators={step.operatorsById} />;
-  const added = pipeline ? chartsOf(pipeline, nodeId).length : 0;
   switch (tab) {
     case "data":
       return (
@@ -207,16 +187,13 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       );
     case "visuals":
       return isCode ? (
-        <VisualsTab display={display} chartButton={chartButton} charts={charts} added={added} />
+        <VisualsTab display={display} />
       ) : (
         <FiguresTab
           attempt={done}
           ports={step.figurePorts}
           failure={step.latest?.state === "failed" ? step.latest.error?.message : undefined}
           controls={pipeline && <ViewControls pipeline={pipeline} nodeId={nodeId} operator={operator} columns={step.inputColumns} />}
-          chartButton={chartButton}
-          charts={charts}
-          added={added}
         />
       );
     case "console":

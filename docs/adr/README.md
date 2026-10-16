@@ -24,7 +24,7 @@
 | [0020](0020-code-steps.md) | Code steps run the user's Python as a recorded pipeline step | Accepted |
 | [0021](0021-node-framework-v1.md) | Adopt the Node Framework V1 on top of the existing engine | Accepted |
 | [0022](0022-operators-are-plain-functions.md) | Operators are plain Python functions; the worker does the plumbing | Accepted |
-| [0023](0023-charts-are-steps.md) | Charts are steps: Python aggregates, the browser draws | Superseded by ADR-0024 (drawing) |
+| [0023](0023-charts-are-steps.md) | Charts are steps: Python aggregates, the browser draws | Superseded by ADR-0024 (drawing) and ADR-0032 (no chart builder) |
 | [0024](0024-figures-from-any-python-library.md) | Steps return figures from any Python plotting library; the worker saves them, the browser shows them | Accepted |
 | [0025](0025-the-code-decides-the-tabs.md) | The code decides the tabs: one rule for every step | Accepted |
 | [0026](0026-edits-run-from-the-edited-step.md) | An edit runs from the edited step onwards; Run graph runs from the start | Accepted |
@@ -33,6 +33,7 @@
 | [0029](0029-large-figures-get-an-image-preview.md) | Large figures show a download link, not a frozen tab | Accepted |
 | [0030](0030-data-explores-variables-visualizations-shows-and-builds.md) | Data explores variables; Visualizations shows displays and builds charts | Accepted |
 | [0031](0031-code-steps-link-by-variable-name.md) | Code steps link by variable name | Accepted |
+| [0032](0032-charts-come-only-from-code.md) | Charts come only from code: no Chart button | Accepted |
 
 ## Open questions (arch doc §17)
 

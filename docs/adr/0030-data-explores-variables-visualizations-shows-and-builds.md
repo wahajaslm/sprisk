@@ -1,5 +1,5 @@
 # ADR-0030: Data explores variables; Visualizations shows displays and builds charts
-Status: Accepted
+Status: Accepted; the chart builder is superseded by ADR-0032
 Date: 2026-10-16
 Arch doc sections: §2A (Inspector, data locality), §11 (contracts). Amends the Data and Visualizations rows of ADR-0025. Builds on ADR-0021, 0024, 0027.
 

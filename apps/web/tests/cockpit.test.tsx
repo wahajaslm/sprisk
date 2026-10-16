@@ -1016,10 +1016,12 @@ describe("code step interface (ADR-0021)", () => {
     expect(within(outputs).getByText("kept").closest("li")).toHaveTextContent("table");
   });
 
-  it("Visualizations offers a chart of the table the code passes on (ADR-0030)", async () => {
+
+  it("a code step's Visualizations show only what its code drew (ADR-0032)", async () => {
     withInterface();
     await openCode("Visualizations");
-    expect(await screen.findByRole("button", { name: "Chart" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Visualizations" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chart" })).toBeNull();
   });
 });
 

@@ -122,48 +122,22 @@ describe("every step shows its code", () => {
   });
 });
 
-describe("charts (ADR-0023, ADR-0030)", () => {
-  it("Data has no chart button: charts are made in Visualizations", async () => {
+describe("charts come only from code (ADR-0032)", () => {
+  it("no step offers a Chart button, in Data or in Visualizations", async () => {
     renderWithApi(
-      <ViewInstance pin={undefined} setPin={undefined} tab="data">
-        <StepTab />
-      </ViewInstance>,
+      <>
+        <ViewInstance pin={undefined} setPin={undefined} tab="data">
+          <StepTab />
+        </ViewInstance>
+        <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
+          <StepTab />
+        </ViewInstance>
+      </>,
     );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
     expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(screen.getByText(/This step draws no figures/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Chart" })).toBeNull();
-  });
-
-  it("adds a chart of a table and opens it in Visualizations", async () => {
-    const { http, HttpResponse } = await import("msw");
-    const { server } = await import("./server.ts");
-    const { pipeline, run } = await import("./fixtures.ts");
-    const posted: { nodes: { id: string; operator: string; params: unknown }[] }[] = [];
-    server.use(
-      http.post("/api/pipeline_versions", async ({ request }) => {
-        const body = (await request.json()) as (typeof posted)[number];
-        posted.push(body);
-        return HttpResponse.json(body, { status: 201 });
-      }),
-      http.post("/api/runs", () => HttpResponse.json({ ...run, status: "queued" }, { status: 202 })),
-    );
-    const dock = fakeDock();
-    useWorkbench.setState({ dock });
-    renderWithApi(
-      <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
-        <StepTab />
-      </ViewInstance>,
-    );
-    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
-    await userEvent.click(await screen.findByRole("button", { name: "Chart" }));
-    const form = screen.getByRole("form", { name: "New chart" });
-    await userEvent.selectOptions(within(form).getByRole("combobox", { name: "Chart" }), "histogram");
-    await userEvent.selectOptions(within(form).getByRole("combobox", { name: "x" }), "sepal_length");
-    await userEvent.click(within(form).getByRole("button", { name: "Add chart" }));
-    await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]!.nodes.at(-1)).toEqual({ id: "chart_1", operator: "sprisk.profile.chart@1.0.0", params: { kind: "histogram", x: "sepal_length" } });
-    expect(pipeline.nodes.some((n) => n.id === "chart_1")).toBe(false);
-    await waitFor(() => expect(dock.showTab).toHaveBeenCalledWith("visuals"));
   });
 });
 
@@ -277,17 +251,6 @@ describe("Visualizations show what Python drew (ADR-0024)", () => {
     expect(screen.getByRole("region", { name: "Figures" })).toHaveClass("grid");
   });
 
-  it("a chart added to a step says so, and follows Inline and Grid with the step's figures", async () => {
-    await chartStep([plotly("one")]);
-    show("visuals");
-    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
-    const figures = await screen.findByRole("region", { name: "Figures" });
-    expect(await within(figures).findByRole("region", { name: "Chart chart_1" })).toBeInTheDocument();
-    expect(screen.getByText(/added with Chart.*not by this step's code/)).toBeInTheDocument();
-    expect(screen.getAllByRole("radiogroup", { name: "Result layout" })).toHaveLength(1);
-    await userEvent.click(screen.getByRole("radio", { name: "Grid" }));
-    expect(figures).toHaveClass("grid");
-  });
 });
 
 describe("the code decides the tabs (ADR-0025)", () => {
@@ -343,7 +306,7 @@ describe("Console for every step (ADR-0025)", () => {
   });
 });
 
-describe("charts live inside the step they draw", () => {
+describe("a chart step from an older flow version (ADR-0032)", () => {
   async function loadWithChart() {
     const { http, HttpResponse } = await import("msw");
     const { server } = await import("./server.ts");
@@ -372,29 +335,21 @@ describe("charts live inside the step they draw", () => {
     return posted;
   }
 
-  it("the canvas has no chart step", async () => {
+  it("is an ordinary step: on the canvas, and not shown inside the step it reads", async () => {
     const { FlowCanvas } = await import("../src/views/FlowCanvas.tsx");
     await loadWithChart();
-    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    renderWithApi(<FlowCanvas />);
-    await screen.findByRole("button", { name: /^load/ });
-    expect(screen.queryByRole("button", { name: /^chart_1/ })).toBeNull();
-  });
-
-  it("the step's Visualizations show its chart with the chart's choices, and can remove it", async () => {
-    const posted = await loadWithChart();
-    renderWithApi(
-      <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
-        <StepTab />
-      </ViewInstance>,
-    );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
-    const chart = await screen.findByRole("region", { name: "Chart chart_1" });
-    expect(await within(chart).findByRole("img", { name: "histogram of sepal_length" })).toBeInTheDocument();
-    expect(within(chart).getByRole("combobox", { name: "kind" })).toHaveValue("histogram");
-    await userEvent.click(within(chart).getByRole("button", { name: "Remove chart chart_1" }));
-    await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]!.nodes.some((n) => n.id === "chart_1")).toBe(false);
+    renderWithApi(
+      <>
+        <FlowCanvas />
+        <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
+          <StepTab />
+        </ViewInstance>
+      </>,
+    );
+    expect(await screen.findByRole("button", { name: /^chart_1/ })).toBeInTheDocument();
+    expect(screen.getByText(/This step draws no figures/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Chart chart_1" })).toBeNull();
   });
 });
 
