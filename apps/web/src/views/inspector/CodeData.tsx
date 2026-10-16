@@ -2,6 +2,7 @@ import type { CodeInterface, PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
 
 import type { Read } from "../../api/code.ts";
+import { NOTEBOOK_OPERATOR } from "../../flow/notebook.ts";
 import { useRunEdit } from "./useRunEdit.ts";
 import { Variables } from "./Variables.tsx";
 
@@ -11,10 +12,12 @@ type Props = { pipeline: PipelineVersion; nodeId: string; params: Record<string,
 export function CodeData({ pipeline, nodeId, params, found }: Props) {
   if (found.status === "error") return <p role="alert" className="error">{found.message}</p>;
   if (found.status !== "ready") return null;
+  // A notebook step passes on the names later steps read (ADR-0031); there is nothing to pick.
+  const byName = pipeline.nodes.find((n) => n.id === nodeId)?.operator === NOTEBOOK_OPERATOR;
   return (
     <>
       <Variables found={found.value.outputs} />
-      <PassOn key={JSON.stringify(found.value.outputs)} pipeline={pipeline} nodeId={nodeId} params={params} found={found.value} />
+      {!byName && <PassOn key={JSON.stringify(found.value.outputs)} pipeline={pipeline} nodeId={nodeId} params={params} found={found.value} />}
     </>
   );
 }

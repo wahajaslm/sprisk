@@ -5,6 +5,7 @@ import { flows } from "../flow/flows.ts";
 import { flowName } from "../flow/labels.ts";
 import { NAV, useSelection } from "../workbench/selection.ts";
 import { Chevron, Logo, PlayIcon } from "./Icons.tsx";
+import { ImportNotebook } from "./ImportNotebook.tsx";
 
 /** Local mode has one project (the CLI's LOCAL_PROJECT). */
 const PROJECT = "Local project";
@@ -15,6 +16,7 @@ export function TopBar() {
   const runs = useRuns(pipelineVersionId);
   const startRun = useStartRun();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // Open the newest pipeline version and its newest run by default.
   useEffect(() => {
@@ -79,8 +81,19 @@ export function TopBar() {
                 </span>
               </button>
             ))}
+            <button
+              type="button"
+              className="menu-item"
+              onClick={() => {
+                setImporting(true);
+                setMenuOpen(false);
+              }}
+            >
+              Import notebook…
+            </button>
           </div>
         )}
+        {importing && <ImportNotebook onClose={() => setImporting(false)} />}
       </div>
       <span className="divider" aria-hidden="true" />
       <nav className="nav">

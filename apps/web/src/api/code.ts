@@ -1,7 +1,8 @@
 import type { Attempt, CodeDisplay, CodeInterface } from "@sprisk/contracts";
 import { parse } from "@sprisk/contracts";
+import { useMutation } from "@tanstack/react-query";
 
-import { artifactDownloadUrl } from "./client.ts";
+import { artifactDownloadUrl, postOne } from "./client.ts";
 import { useArtifactText, useOutputs } from "./hooks.ts";
 
 /** Code output carries figures, so it may be larger than other JSON; still capped (rule 9). */
@@ -48,3 +49,7 @@ export const useCodeInterface = (attempt: Attempt | undefined): Read<CodeInterfa
 /** What any step printed and warned (ADR-0025). Absent when it printed nothing. */
 export const useConsole = (attempt: Attempt | undefined): Read<CodeDisplay> =>
   useReport(attempt, "console", (raw) => parse("CodeDisplay", raw), 1024 * 1024);
+
+/** Python reads notebook cells into suggested code steps (ADR-0031). It never runs them. */
+export const useSplitCells = () =>
+  useMutation({ mutationFn: (cells: string[]) => postOne("CodeSplit", "/code/split", { cells }) });

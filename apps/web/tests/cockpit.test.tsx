@@ -877,10 +877,10 @@ describe("code step interface (ADR-0021)", () => {
     files: [{ path: "lookup.csv", reader: "read_csv", line: 3 }],
   };
   const passed = { ...loadOutputs[0]!, port: "data", artifact: { ...loadOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY71" } };
-  function withInterface(found: unknown = report) {
+  function withInterface(found: unknown = report, version: typeof v12 = v12) {
     const posted: { params: Record<string, unknown> }[] = [];
     server.use(
-      http.get("/api/pipeline_versions", () => HttpResponse.json([v12])),
+      http.get("/api/pipeline_versions", () => HttpResponse.json([version])),
       http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
       http.get(`/api/attempts/${codeAttempt.id}/outputs`, () => HttpResponse.json([...codeOutputs, iface, passed])),
       http.get(`/api/artifacts/${iface.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(found))),
@@ -983,6 +983,37 @@ describe("code step interface (ADR-0021)", () => {
     // Only a DataFrame can be passed on to the next step.
     const values = screen.getByRole("region", { name: "Values in your code" });
     expect(within(values).queryByRole("radio", { name: /ages/ })).toBeNull();
+  });
+
+  it("a notebook step passes on by name: no pass-on choice, named outputs listed (ADR-0031)", async () => {
+    const notebook = {
+      ...codePipeline,
+      nodes: codePipeline.nodes.map((n) =>
+        n.id === "code_1" ? { ...n, operator: "sprisk.code.python@2.0.0", params: { source: "kept = df", inputs: ["df"], outputs: ["kept"] } } : n,
+      ),
+      edges: codePipeline.edges.map((e) => (e.to === "code_1.data" ? { ...e, to: "code_1.df" } : e)),
+    };
+    const notebookOperator = {
+      ...operators[0]!,
+      id: "sprisk.code.python@2.0.0",
+      inputs: [],
+      outputs: [{ name: "display", kind: "diagnostics" }],
+      params_schema: {
+        type: "object",
+        properties: { source: { type: "string" }, inputs: { type: "array", "x-sprisk-ports": "input" }, outputs: { type: "array", "x-sprisk-ports": "output" } },
+      },
+    };
+    server.use(http.get("/api/operators", () => HttpResponse.json([...operators, notebookOperator])));
+    withInterface(report, notebook);
+    await openCode("Data");
+    await screen.findByRole("region", { name: "Variables" });
+    expect(screen.queryByRole("region", { name: "Values in your code" })).toBeNull();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Inputs" }));
+    const inputs = await screen.findByRole("region", { name: "Input tables" });
+    expect(within(inputs).getByText("df").closest("li")).toHaveTextContent("load");
+    const outputs = screen.getByRole("region", { name: "Outputs" });
+    expect(within(outputs).getByText("kept").closest("li")).toHaveTextContent("table");
   });
 
   it("Visualizations offers a chart of the table the code passes on (ADR-0030)", async () => {

@@ -8,6 +8,7 @@ import { useOutputs, useTablePage } from "../../api/hooks.ts";
 import { PARQUET } from "../../api/media.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
+import { namedPorts } from "../../flow/notebook.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { isFileInput, settingsOf } from "./ParametersTab.tsx";
 
@@ -21,9 +22,16 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
   const latest = latestByNode(attempts);
   const mine = latest.get(nodeId);
   // Declared ports first; an edge to a port the manifest does not list still shows.
-  const declared = operator?.inputs ?? [];
+  const declared = [
+    ...(operator?.inputs ?? []),
+    ...namedPorts(operator, node?.params, "input").map((name) => ({ name, kind: "table" as const })),
+  ];
   const extra = incoming.map((e) => e.to.split(".")[1] ?? "").filter((p) => !declared.some((d) => d.name === p));
   const inputs = [...declared.map((d) => ({ name: d.name, kind: d.kind as string })), ...extra.map((name) => ({ name, kind: "" }))];
+  const outputs = [
+    ...(operator?.outputs ?? []),
+    ...namedPorts(operator, node?.params, "output").map((name) => ({ name, kind: "table" as const })),
+  ];
   // Files are inputs (ADR-0025): a built-in step's path settings, a code step's file reads.
   const pathFiles = operator ? settingsOf(operator.params_schema).filter(isFileInput) : [];
   const codeFiles = found.status === "ready" ? (found.value.files ?? []) : [];
@@ -71,11 +79,11 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
           </ul>
         )}
       </section>
-      {operator && operator.outputs.length > 0 && (
+      {outputs.length > 0 && (
         <section className="input-tables" aria-label="Outputs">
           <p className="output-title">Outputs</p>
           <ul className="input-list">
-            {operator.outputs.map((o) => (
+            {outputs.map((o) => (
               <PortRow key={o.name} name={o.name} kind={o.kind}>
                 <span className="input-arrow" aria-hidden="true">→</span>
                 <span />
