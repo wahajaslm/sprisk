@@ -758,6 +758,26 @@ describe("cached steps", () => {
   });
 });
 
+describe("a run that finishes between polls", () => {
+  it("reads the attempts again once the run is finished", async () => {
+    let attemptReads = 0;
+    server.use(
+      // The run list arrives after the first attempts read, already finished (all cached).
+      http.get("/api/runs", async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        return HttpResponse.json([run]);
+      }),
+      http.get(`/api/runs/${RUN}/attempts`, () => {
+        attemptReads += 1;
+        return HttpResponse.json(attemptReads === 1 ? [] : attempts);
+      }),
+    );
+    renderWithApi(<Copilot />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    expect(await screen.findByText("6 of 7 step attempts done", {}, { timeout: 4000 })).toBeInTheDocument();
+  });
+});
+
 describe("copilot", () => {
   it("summarises the run's step attempts, without the gate", async () => {
     renderWithApi(<Copilot />);

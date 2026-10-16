@@ -25,15 +25,17 @@ export const useRuns = (pipelineVersionId: string | undefined) =>
 /** The selected run's attempts, re-read while the run is unfinished. */
 export function useRunAttempts(pipelineVersionId: string | undefined, runId: string | undefined) {
   const runs = useRuns(pipelineVersionId);
-  return useAttempts(runId, isLive(runs.data?.find((r) => r.id === runId)));
+  return useAttempts(runId, runs.data?.find((r) => r.id === runId));
 }
 
-const useAttempts = (runId: string | undefined, live: boolean) =>
+// The run's status is part of the key: attempts read while a run was starting are read
+// again once it finishes, even when it finished between two polls.
+const useAttempts = (runId: string | undefined, run: Run | undefined) =>
   useQuery({
-    queryKey: ["attempts", runId],
+    queryKey: ["attempts", runId, run?.status],
     queryFn: () => getList("Attempt", `/runs/${runId ?? ""}/attempts`),
     enabled: runId !== undefined,
-    refetchInterval: live ? LIVE_MS : false,
+    refetchInterval: isLive(run) ? LIVE_MS : false,
   });
 
 export const useOutputs = (attemptId: string | undefined) =>
