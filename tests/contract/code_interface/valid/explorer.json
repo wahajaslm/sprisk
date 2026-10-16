@@ -1,0 +1,47 @@
+{
+  "inputs": [],
+  "parameters": [],
+  "outputs": [
+    {
+      "name": "filtered",
+      "type": "polars.DataFrame",
+      "rows": 420,
+      "columns": 2,
+      "origin": "measured",
+      "chosen": false,
+      "fields": [
+        { "name": "age", "data_type": "Int64", "null_count": 0 },
+        { "name": "city", "data_type": "String", "null_count": 3 }
+      ],
+      "sample": {
+        "offset": 0,
+        "total_rows": 420,
+        "total_columns": 2,
+        "columns": [
+          { "name": "age", "data_type": "Int64" },
+          { "name": "city", "data_type": "String" }
+        ],
+        "rows": [
+          { "values": ["34", "Oslo"], "missing": [] },
+          { "values": ["51", ""], "missing": [1] }
+        ]
+      }
+    },
+    {
+      "name": "big",
+      "type": "polars.DataFrame",
+      "rows": 9000000,
+      "columns": 1,
+      "origin": "measured",
+      "chosen": false,
+      "fields": [{ "name": "x", "data_type": "Float64", "null_count": 0 }]
+    },
+    {
+      "name": "lookup",
+      "type": "dict",
+      "origin": "measured",
+      "chosen": false,
+      "text": "{'a': 1, 'b': 2}"
+    }
+  ]
+}

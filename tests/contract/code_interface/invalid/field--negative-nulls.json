@@ -1,0 +1,13 @@
+{
+  "inputs": [],
+  "parameters": [],
+  "outputs": [
+    {
+      "name": "t",
+      "type": "polars.DataFrame",
+      "origin": "measured",
+      "chosen": false,
+      "fields": [{ "name": "age", "data_type": "Int64", "null_count": -1 }]
+    }
+  ]
+}

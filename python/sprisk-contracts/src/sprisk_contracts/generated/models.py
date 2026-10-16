@@ -82,6 +82,15 @@ class ValueType(StrEnum):
     boolean = "boolean"
 
 
+class CodeField(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    data_type: Annotated[str, Field(description="Polars data type name, for display only.")]
+    null_count: Annotated[int, Field(ge=0)]
+
+
 class ArtifactId(RootModel[str]):
     root: Annotated[str, Field(pattern="^art_[0-9A-HJKMNP-TV-Z]{26}$")]
 
@@ -538,6 +547,22 @@ class CodeOutputCandidate(StrictModel):
     columns: Annotated[int | None, Field(ge=0)] = None
     origin: Origin
     chosen: Annotated[bool, Field(description="This value became the step's data output.")]
+    fields: Annotated[
+        list[CodeField] | None,
+        Field(
+            description="For tables: their columns with type and missing count, for the Data tab's variable explorer (ADR-0030). Capped."
+        ),
+    ] = None
+    sample: Annotated[
+        TablePage | None,
+        Field(
+            description="For tables: the first rows (ADR-0030). Omitted once the report's size budget is used up."
+        ),
+    ] = None
+    text: Annotated[
+        str | None,
+        Field(description="For other values: their repr, cut to a bounded length (ADR-0030)."),
+    ] = None
 
 
 class Artifact(StrictModel):

@@ -436,6 +436,43 @@ export interface CodeOutputCandidate {
    * This value became the step's data output.
    */
   chosen: boolean;
+  /**
+   * For tables: their columns with type and missing count, for the Data tab's variable explorer (ADR-0030). Capped.
+   */
+  fields?: CodeField[];
+  sample?: TablePage2;
+  /**
+   * For other values: their repr, cut to a bounded length (ADR-0030).
+   */
+  text?: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeField".
+ */
+export interface CodeField {
+  name: string;
+  /**
+   * Polars data type name, for display only.
+   */
+  data_type: string;
+  null_count: number;
+}
+/**
+ * For tables: the first rows (ADR-0030). Omitted once the report's size budget is used up.
+ */
+export interface TablePage2 {
+  /**
+   * Index of the first row in this page.
+   */
+  offset: number;
+  total_rows: number;
+  /**
+   * Columns in the table; more than `columns` holds when the table is too wide to page whole.
+   */
+  total_columns: number;
+  columns: TableColumn[];
+  rows: TableRow[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

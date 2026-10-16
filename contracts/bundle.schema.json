@@ -431,6 +431,43 @@
         "chosen": {
           "type": "boolean",
           "description": "This value became the step's data output."
+        },
+        "fields": {
+          "type": "array",
+          "description": "For tables: their columns with type and missing count, for the Data tab's variable explorer (ADR-0030). Capped.",
+          "items": {
+            "$ref": "#/$defs/CodeField"
+          }
+        },
+        "sample": {
+          "$ref": "#/$defs/TablePage",
+          "description": "For tables: the first rows (ADR-0030). Omitted once the report's size budget is used up."
+        },
+        "text": {
+          "type": "string",
+          "description": "For other values: their repr, cut to a bounded length (ADR-0030)."
+        }
+      }
+    },
+    "CodeField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "data_type",
+        "null_count"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "data_type": {
+          "type": "string",
+          "description": "Polars data type name, for display only."
+        },
+        "null_count": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
