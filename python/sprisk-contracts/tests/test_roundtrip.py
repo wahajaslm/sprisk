@@ -16,6 +16,7 @@ from sprisk_contracts import (
     CreateRun,
     MethodologyCheck,
     Operator,
+    OperatorSource,
     PipelineVersion,
     Problem,
     QuestionVersion,
@@ -40,6 +41,7 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (Problem, "problem"),
     (TablePage, "table_page"),
     (CodeDisplay, "code_display"),
+    (OperatorSource, "operator_source"),
     (CodeInterface, "code_interface"),
 ]
 

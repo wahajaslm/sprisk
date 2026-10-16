@@ -12,8 +12,8 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactId, AttemptId, CreateRun, Operator, PipelineVersion, PipelineVersionId, Problem, Run,
-    RunId, parse,
+    ArtifactId, AttemptId, CreateRun, Operator, OperatorSource, PipelineVersion, PipelineVersionId,
+    Problem, Run, RunId, parse,
 };
 use sprisk_graph::{CompileError, Plan, compile};
 use sprisk_registry::Registry;
@@ -41,6 +41,7 @@ pub fn router(state: AppState) -> Router {
             post(create_pipeline_version).get(list_pipeline_versions),
         )
         .route("/operators", get(list_operators))
+        .route("/operators/{id}/source", get(get_operator_source))
         .route("/pipeline_versions/{id}", get(get_pipeline_version))
         .route("/runs", post(create_run).get(list_runs))
         .route("/runs/{id}", get(get_run))
@@ -141,6 +142,8 @@ enum ApiError {
     Store(#[from] StoreError),
     #[error(transparent)]
     Artifacts(#[from] sprisk_artifacts::StoreError),
+    #[error(transparent)]
+    Registry(#[from] sprisk_registry::RegistryError),
     #[error("{0}")]
     Internal(String),
 }
@@ -164,6 +167,10 @@ impl IntoResponse for ApiError {
             ApiError::Forbidden(message) => {
                 (StatusCode::FORBIDDEN, vec![("forbidden", message.clone())])
             }
+            ApiError::Registry(
+                sprisk_registry::RegistryError::UnknownOperator(_)
+                | sprisk_registry::RegistryError::NoSource { .. },
+            ) => (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())]),
             ApiError::Store(StoreError::NotFound { .. }) => {
                 (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
             }
@@ -259,6 +266,13 @@ fn optional_id<T: std::str::FromStr>(query: &Query, key: &str) -> Result<Option<
 
 async fn list_operators(State(state): State<AppState>) -> Json<Vec<Operator>> {
     Json(state.registry.operators().cloned().collect())
+}
+
+async fn get_operator_source(
+    State(state): State<AppState>,
+    Path(operator_ref): Path<String>,
+) -> Result<Json<OperatorSource>, ApiError> {
+    Ok(Json(state.registry.source(&operator_ref)?.clone()))
 }
 
 async fn list_pipeline_versions(

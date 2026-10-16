@@ -26,10 +26,11 @@ Object.assign(globalThis, { DOMMatrixReadOnly: DOMMatrixStub });
 // Monaco needs a real browser (workers, layout). Tests drive a plain textbox with the same
 // contract; the real editor is checked in the browser.
 vi.mock("../src/views/MonacoCode.tsx", () => ({
-  default: ({ value, label, onChange, onRun }: CodeInputProps) =>
+  default: ({ value, label, onChange, onRun, readOnly }: CodeInputProps) =>
     createElement("textarea", {
       "aria-label": label,
       value,
+      readOnly,
       onChange: (e: { target: { value: string } }) => onChange(e.target.value),
       onKeyDown: (e: { key: string; shiftKey: boolean; preventDefault: () => void; currentTarget: { value: string } }) => {
         if (e.key === "Enter" && e.shiftKey) {

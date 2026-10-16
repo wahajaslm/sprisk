@@ -1,0 +1,7 @@
+{
+  "operator": "sprisk.clean.impute@1.0.0",
+  "path": "sprisk_clean/impute.py",
+  "language": "python",
+  "text": "def impute(params, inputs, out_dir):\n    ...\n",
+  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

@@ -18,6 +18,7 @@ import { ConsoleTab, consoleProblems } from "./ConsoleTab.tsx";
 import { DataTab } from "./DataTab.tsx";
 import { HistoryTab } from "./HistoryTab.tsx";
 import { InputsTab } from "./InputsTab.tsx";
+import { OperatorCode } from "./OperatorCode.tsx";
 import { ParametersTab } from "./ParametersTab.tsx";
 import { type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
 import { ShownTables, shownTableCount, VisualsTab, visualCount } from "./VisualsTab.tsx";
@@ -174,12 +175,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       return pipeline && node && isCode && typeof node.params.source === "string" ? (
         <CodeEditor key={`${pipeline.id}/${node.id}`} pipeline={pipeline} nodeId={node.id} source={node.params.source} />
       ) : (
-        <div className="builtin">
-          <p className="output-title">Built-in step · {node ? shortName(node.operator) : "unknown"}</p>
-          {operator?.description && <p className="muted">{operator.description}</p>}
-          <p className="muted">Its code ships with sprisk and is read-only. Change how it runs in Parameters.</p>
-          {technical && <p className="tech">{node?.operator}</p>}
-        </div>
+        node && <OperatorCode operatorRef={node.operator} />
       );
     case "checks":
       return <ChecksTab run={step.checks} nodeId={nodeId} />;

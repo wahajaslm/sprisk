@@ -38,6 +38,13 @@ export type ContentHash = string;
  */
 export type Timestamp = string;
 /**
+ * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorRef".
+ */
+export type OperatorRef = string;
+/**
  * explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -76,13 +83,6 @@ export type WorkerId = string;
  * via the `definition` "NodeId".
  */
 export type NodeId = string;
-/**
- * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "OperatorRef".
- */
-export type OperatorRef = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodologyCheckId".
@@ -280,6 +280,25 @@ export interface TableRow {
    * Indexes of columns whose value is missing in this row.
    */
   missing: number[];
+}
+/**
+ * Read-only source of a registered operator's entrypoint module, so every step's code can be read like a code step's. Served by GET /operators/{id}/source; the API reads only files inside the operator's plugin pack.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorSource".
+ */
+export interface OperatorSource {
+  operator: OperatorRef;
+  /**
+   * Relative to the pack's src/, e.g. sprisk_clean/impute.py. Never an absolute path.
+   */
+  path: string;
+  language: "python";
+  text: string;
+  /**
+   * The operator's implementation digest: the code that runs, and the code shown, are the same.
+   */
+  digest: string;
 }
 /**
  * What a code step showed (ADR-0020): printed text, tables and images, in order. Written by the worker as the step's display artifact; every part is capped.

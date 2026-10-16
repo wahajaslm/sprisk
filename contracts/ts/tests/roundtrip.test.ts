@@ -20,6 +20,7 @@ const entities: [keyof Entities, string][] = [
   ["Problem", "problem"],
   ["TablePage", "table_page"],
   ["CodeDisplay", "code_display"],
+  ["OperatorSource", "operator_source"],
   ["CodeInterface", "code_interface"],
 ];
 

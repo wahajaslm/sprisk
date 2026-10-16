@@ -132,6 +132,20 @@
         }
       }
     },
+    "OperatorSource": {
+      "title": "OperatorSource",
+      "description": "Read-only source of a registered operator's entrypoint module, so every step's code can be read like a code step's. Served by GET /operators/{id}/source; the API reads only files inside the operator's plugin pack.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator", "path", "language", "text", "digest"],
+      "properties": {
+        "operator": { "$ref": "#/$defs/OperatorRef" },
+        "path": { "type": "string", "description": "Relative to the pack's src/, e.g. sprisk_clean/impute.py. Never an absolute path." },
+        "language": { "type": "string", "enum": ["python"] },
+        "text": { "type": "string" },
+        "digest": { "$ref": "#/$defs/ContentHash", "description": "The operator's implementation digest: the code that runs, and the code shown, are the same." }
+      }
+    },
     "CodeDisplay": {
       "title": "CodeDisplay",
       "description": "What a code step showed (ADR-0020): printed text, tables and images, in order. Written by the worker as the step's display artifact; every part is capped.",

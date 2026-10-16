@@ -11,6 +11,7 @@ use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use sprisk_api::{AppState, router};
 use sprisk_artifacts::ArtifactStore;
+use sprisk_contracts::{OperatorSource, parse};
 use sprisk_registry::Registry;
 use sprisk_scheduler::Settings;
 use sprisk_store::SqliteStore;
@@ -461,4 +462,27 @@ async fn edited_version_must_name_an_existing_parent() {
     .await;
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(child)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
+async fn an_operators_source_can_be_read() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "GET",
+        "/operators/sprisk.clean.impute@1.0.0/source",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let source: OperatorSource = parse(&body.to_string()).unwrap();
+    assert_eq!(source.path, "sprisk_clean/impute.py");
+    assert!(source.text.contains("def impute("));
+}
+
+#[tokio::test]
+async fn source_of_an_unknown_operator_is_not_found() {
+    let api = api().await;
+    let (status, body) = call(&api.app, "GET", "/operators/acme.io.csv@0.1.0/source", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }

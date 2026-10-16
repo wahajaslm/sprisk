@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
-use sprisk_contracts::{ContractError, Operator};
+use sprisk_contracts::{ContractError, Operator, OperatorSource, OperatorSourceLanguage};
 use walkdir::WalkDir;
 
 const MANIFEST: &str = "manifest.yaml";
@@ -34,6 +34,12 @@ pub enum RegistryError {
         path: PathBuf,
         source: ContractError,
     },
+    #[error("unknown operator {0}")]
+    UnknownOperator(String),
+    #[error("operator {operator} has no readable source in its pack")]
+    NoSource { operator: String },
+    #[error("operator {operator}: digest is not a content hash: {reason}")]
+    BadDigest { operator: String, reason: String },
     #[error("operator {id} defined twice: {first} and {second}")]
     Duplicate {
         id: String,
@@ -53,6 +59,8 @@ struct Entry {
     path: PathBuf,
     /// Arch §9 `implementation_digest`: the manifest plus the pack's source code.
     digest: String,
+    /// The entrypoint module, read once with the digest so the code shown is the code that runs.
+    source: Option<OperatorSource>,
 }
 
 impl Registry {
@@ -67,10 +75,12 @@ impl Registry {
                 let path = entry.into_path();
                 let operator = read_manifest(&path)?;
                 let digest = implementation_digest(&path)?;
+                let source = read_source(&path, &operator, &digest)?;
                 registry.insert(Entry {
                     operator,
                     path,
                     digest,
+                    source,
                 })?;
             }
         }
@@ -123,6 +133,72 @@ impl Registry {
     }
 }
 
+impl Registry {
+    /// The Python module behind an operator's entrypoint, as read when the registry loaded.
+    pub fn source(&self, operator_ref: &str) -> Result<&OperatorSource, RegistryError> {
+        let entry = self
+            .operators
+            .get(operator_ref)
+            .ok_or_else(|| RegistryError::UnknownOperator(operator_ref.to_owned()))?;
+        entry
+            .source
+            .as_ref()
+            .ok_or_else(|| RegistryError::NoSource {
+                operator: operator_ref.to_owned(),
+            })
+    }
+}
+
+/// Largest module the registry keeps for reading; plugin modules are a few KB.
+const MAX_SOURCE_BYTES: u64 = 512 * 1024;
+
+/// The entrypoint module from the pack's `src/`. Only a regular, UTF-8 file under the cap that
+/// resolves inside that `src/` is kept: no links out, no other paths. Anything else is `None`.
+fn read_source(
+    manifest: &Path,
+    operator: &Operator,
+    digest: &str,
+) -> Result<Option<OperatorSource>, RegistryError> {
+    let entrypoint = operator.entrypoint.to_string();
+    let module = entrypoint.split(':').next().unwrap_or_default();
+    let rel = format!("{}.py", module.replace('.', "/"));
+    let Some(src) = pack_src(manifest).and_then(|s| s.canonicalize().ok()) else {
+        return Ok(None);
+    };
+    let Ok(file) = src.join(&rel).canonicalize() else {
+        return Ok(None);
+    };
+    let small_file =
+        std::fs::metadata(&file).is_ok_and(|m| m.is_file() && m.len() <= MAX_SOURCE_BYTES);
+    if !file.starts_with(&src) || !small_file {
+        return Ok(None);
+    }
+    let Ok(text) = std::fs::read_to_string(&file) else {
+        return Ok(None);
+    };
+    let digest = digest.parse().map_err(|e| RegistryError::BadDigest {
+        operator: operator.id.to_string(),
+        reason: format!("{e}"),
+    })?;
+    Ok(Some(OperatorSource {
+        operator: operator.id.clone(),
+        path: rel,
+        language: OperatorSourceLanguage::Python,
+        text,
+        digest,
+    }))
+}
+
+/// The pack's `src/`: the pack is the nearest ancestor of the manifest holding a `pyproject.toml`.
+fn pack_src(manifest: &Path) -> Option<PathBuf> {
+    manifest
+        .ancestors()
+        .skip(1)
+        .find(|dir| dir.join("pyproject.toml").is_file())
+        .map(|p| p.join("src"))
+        .filter(|s| s.is_dir())
+}
+
 /// YAML → JSON value → the contract parser, so manifests get the same checks as wire data.
 fn read_manifest(path: &Path) -> Result<Operator, RegistryError> {
     let text = std::fs::read_to_string(path).map_err(|source| RegistryError::Io {
@@ -151,11 +227,7 @@ fn implementation_digest(manifest: &Path) -> Result<String, RegistryError> {
     };
     let mut hasher = Sha256::new();
     hasher.update(read(manifest)?);
-    let pack = manifest
-        .ancestors()
-        .skip(1)
-        .find(|dir| dir.join("pyproject.toml").is_file());
-    if let Some(src) = pack.map(|p| p.join("src")).filter(|s| s.is_dir()) {
+    if let Some(src) = pack_src(manifest) {
         let files = WalkDir::new(&src)
             .sort_by_file_name()
             .into_iter()

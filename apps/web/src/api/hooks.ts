@@ -14,6 +14,15 @@ export const usePipelineVersions = () =>
 export const useOperators = () =>
   useQuery({ queryKey: ["operators"], queryFn: () => getList("Operator", "/operators"), staleTime: Infinity });
 
+/** A built-in operator's code. It changes only when the API restarts with new plugins. */
+export const useOperatorSource = (operatorRef: string | undefined) =>
+  useQuery({
+    queryKey: ["operator_source", operatorRef],
+    queryFn: () => getOne("OperatorSource", `/operators/${encodeURIComponent(operatorRef ?? "")}/source`),
+    enabled: operatorRef !== undefined,
+    staleTime: Infinity,
+  });
+
 export const useRuns = (pipelineVersionId: string | undefined) =>
   useQuery({
     queryKey: ["runs", pipelineVersionId],

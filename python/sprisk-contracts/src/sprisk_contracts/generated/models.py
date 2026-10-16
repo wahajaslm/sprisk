@@ -411,6 +411,27 @@ class TablePage(StrictModel):
     rows: list[TableRow]
 
 
+class OperatorSource(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    operator: OperatorRef
+    path: Annotated[
+        str,
+        Field(
+            description="Relative to the pack's src/, e.g. sprisk_clean/impute.py. Never an absolute path."
+        ),
+    ]
+    language: Literal["python"]
+    text: str
+    digest: Annotated[
+        ContentHash,
+        Field(
+            description="The operator's implementation digest: the code that runs, and the code shown, are the same."
+        ),
+    ]
+
+
 class DisplayItem(StrictModel):
     model_config = ConfigDict(
         extra="forbid",

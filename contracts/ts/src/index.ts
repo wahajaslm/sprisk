@@ -21,6 +21,7 @@ export interface Entities {
   TablePage: C.TablePage;
   CodeDisplay: C.CodeDisplay;
   CodeInterface: C.CodeInterface;
+  OperatorSource: C.OperatorSource;
 }
 
 export class ContractError extends Error {}

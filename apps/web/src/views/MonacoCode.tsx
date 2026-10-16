@@ -29,7 +29,7 @@ monaco.editor.defineTheme("sprisk-studio", {
 });
 
 /** Monaco edits the code. It never runs it; running goes through the API (apps/web rules). */
-export default function MonacoCode({ value, onChange, onRun, label }: CodeInputProps) {
+export default function MonacoCode({ value, onChange, onRun, label, readOnly = false }: CodeInputProps) {
   const mount: OnMount = (editor) => {
     editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => onRun(editor.getValue()));
   };
@@ -42,6 +42,8 @@ export default function MonacoCode({ value, onChange, onRun, label }: CodeInputP
       onMount={mount}
       options={{
         ariaLabel: label,
+        readOnly,
+        domReadOnly: readOnly,
         fontFamily: "Geist Mono Variable, ui-monospace, Menlo, monospace",
         fontSize: 12,
         lineHeight: 20,

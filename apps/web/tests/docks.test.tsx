@@ -92,3 +92,31 @@ describe("closed tabs can come back", () => {
     expect(closedTabs([])).toHaveLength(9);
   });
 });
+
+describe("every step shows its code", () => {
+  it("a built-in step's Code tab shows its real source, read-only", async () => {
+    const { http, HttpResponse } = await import("msw");
+    const { server } = await import("./server.ts");
+    server.use(
+      http.get("/api/operators/:id/source", ({ params }) =>
+        HttpResponse.json({
+          operator: params.id,
+          path: "sprisk_validation/random_split.py",
+          language: "python",
+          text: "def random_split(params, inputs, out_dir):\n    ...\n",
+          digest: `sha256:${"a".repeat(64)}`,
+        }),
+      ),
+    );
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={undefined} tab="code">
+        <StepTab />
+      </ViewInstance>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    const code = await screen.findByRole("textbox", { name: /random_split\.py/ });
+    expect(code).toHaveValue("def random_split(params, inputs, out_dir):\n    ...\n");
+    expect(code).toHaveAttribute("readonly");
+    expect(screen.queryByText(/Built-in step/)).toBeNull();
+  });
+});

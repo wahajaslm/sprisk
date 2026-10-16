@@ -188,3 +188,80 @@ fn manifest_without_a_python_pack_is_digested_alone() {
         .to_owned();
     assert_ne!(first, second, "the manifest alone still changes the digest");
 }
+
+fn pack_with_source(root: &Path, entrypoint: &str) {
+    write(root, "validation/pyproject.toml", "");
+    write(
+        root,
+        "validation/operators/split/manifest.yaml",
+        &SPLIT.replace(
+            "sprisk_validation.temporal_split:temporal_split",
+            entrypoint,
+        ),
+    );
+    write(
+        root,
+        "validation/src/sprisk_validation/temporal_split.py",
+        "def temporal_split(params, inputs, out_dir):\n    return []\n",
+    );
+}
+
+#[test]
+fn source_is_the_entrypoint_module_with_the_implementation_digest() {
+    let dir = tempfile::tempdir().unwrap();
+    pack_with_source(
+        dir.path(),
+        "sprisk_validation.temporal_split:temporal_split",
+    );
+    let registry = Registry::load_dir(dir.path()).unwrap();
+    let id = "sprisk.validation.temporal_split@1.0.0";
+
+    let source = registry.source(id).unwrap();
+
+    assert_eq!(source.path, "sprisk_validation/temporal_split.py");
+    assert!(source.text.starts_with("def temporal_split"));
+    assert_eq!(source.digest.as_str(), registry.digest(id).unwrap());
+}
+
+#[test]
+fn source_of_an_unknown_operator_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    pack_with_source(
+        dir.path(),
+        "sprisk_validation.temporal_split:temporal_split",
+    );
+    let registry = Registry::load_dir(dir.path()).unwrap();
+    assert!(matches!(
+        registry.source("acme.io.csv@0.1.0"),
+        Err(RegistryError::UnknownOperator(_))
+    ));
+}
+
+#[test]
+fn source_of_a_missing_module_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    pack_with_source(dir.path(), "sprisk_validation.missing:run");
+    let registry = Registry::load_dir(dir.path()).unwrap();
+    assert!(matches!(
+        registry.source("sprisk.validation.temporal_split@1.0.0"),
+        Err(RegistryError::NoSource { .. })
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn source_never_follows_a_link_out_of_the_pack() {
+    let dir = tempfile::tempdir().unwrap();
+    pack_with_source(dir.path(), "sprisk_validation.leak:run");
+    write(dir.path(), "secret.py", "TOKEN = 'x'\n");
+    std::os::unix::fs::symlink(
+        dir.path().join("secret.py"),
+        dir.path().join("validation/src/sprisk_validation/leak.py"),
+    )
+    .unwrap();
+    let registry = Registry::load_dir(dir.path()).unwrap();
+    assert!(matches!(
+        registry.source("sprisk.validation.temporal_split@1.0.0"),
+        Err(RegistryError::NoSource { .. })
+    ));
+}
