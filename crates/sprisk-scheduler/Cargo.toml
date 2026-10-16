@@ -9,6 +9,7 @@ publish.workspace = true
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
 jiff = "0.2"
 serde = "1.0.229"
+sha2 = "0.10"
 serde_json = "1.0.154"
 sprisk-artifacts = { path = "../sprisk-artifacts" }
 sprisk-contracts = { path = "../sprisk-contracts" }
@@ -28,5 +29,4 @@ workspace = true
 sprisk-registry = { path = "../sprisk-registry" }
 tempfile = "3.27.0"
 tokio = { version = "1.53.3", features = ["macros", "rt"] }
-sha2 = "0.10"
 url = "2.5.8"

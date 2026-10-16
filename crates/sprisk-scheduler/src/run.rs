@@ -8,7 +8,7 @@ use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     ArtifactManifest, Attempt, AttemptId, AttemptState, Effects, FailFailureKind as FailureKind,
-    RunId, RunStatus, WorkerMessage, parse,
+    MethodologyCheck, Operator, PipelineVersion, RunId, RunStatus, Verdict, WorkerMessage, parse,
 };
 use sprisk_graph::{Plan, Step};
 use sprisk_store::{SqliteStore, StoreError};
@@ -51,6 +51,22 @@ pub enum SchedulerError {
     },
     #[error("build {what}: {reason}")]
     Contract { what: &'static str, reason: String },
+    #[error("node id {GATE_NODE} is reserved for the methodology gate")]
+    ReservedNode,
+    #[error("gate output: {0}")]
+    GateOutput(String),
+}
+
+/// Attempts of the methodology gate use this node id (ADR-0017).
+pub const GATE_NODE: &str = "gate_b";
+
+/// Where an attempt's inputs come from.
+#[derive(Clone, Copy)]
+enum Inputs<'p> {
+    /// Outputs of the upstream steps named in the plan.
+    Upstream,
+    /// The pipeline version and its operators, for the methodology gate.
+    Gate(&'p PipelineVersion, &'p Plan),
 }
 
 /// How one attempt ended, from the scheduler's point of view.
@@ -65,6 +81,7 @@ pub struct Scheduler<'a, W: Workers> {
     artifacts: &'a ArtifactStore,
     workers: W,
     settings: Settings,
+    gate: Option<Operator>,
     worker: Option<W::Worker>,
 }
 
@@ -80,32 +97,92 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             artifacts,
             workers,
             settings,
+            gate: None,
             worker: None,
         }
     }
 
+    /// Run this methodology pack entrypoint as Gate B before the first step (ADR-0017).
+    pub fn with_gate(mut self, operator: Operator) -> Self {
+        self.gate = Some(operator);
+        self
+    }
+
     /// Run every step of `plan` for `run_id` until the run succeeds or a step cannot.
     /// Safe to call again after a crash: finished steps are kept, interrupted attempts time out.
-    pub async fn run(&mut self, run_id: &RunId, plan: &Plan) -> Result<RunStatus, SchedulerError> {
+    pub async fn run(
+        &mut self,
+        run_id: &RunId,
+        pipeline: &PipelineVersion,
+        plan: &Plan,
+    ) -> Result<RunStatus, SchedulerError> {
+        if plan.steps.iter().any(|s| s.node_id == GATE_NODE) {
+            return Err(SchedulerError::ReservedNode);
+        }
         if self.store.get_run(run_id).await?.status == RunStatus::Queued {
             self.store
                 .set_run_status(run_id, RunStatus::Running, &now())
                 .await?;
         }
         let mut done = self.reconcile(run_id).await?;
+        if let Some(operator) = self.gate.clone() {
+            let gate = Step {
+                node_id: GATE_NODE.to_owned(),
+                operator,
+                params: serde_json::Map::new(),
+                inputs: vec![],
+            };
+            let attempt = match done.get(GATE_NODE) {
+                Some(attempt) => attempt.clone(),
+                None => match self
+                    .run_step(run_id, &gate, &done, Inputs::Gate(pipeline, plan))
+                    .await?
+                {
+                    Some(attempt) => attempt,
+                    None => return self.finish(run_id, RunStatus::Failed).await,
+                },
+            };
+            if self.gate_failed(&attempt).await? {
+                return self.finish(run_id, RunStatus::Failed).await;
+            }
+            done.insert(GATE_NODE.to_owned(), attempt);
+        }
         loop {
             let succeeded: HashSet<String> = done.keys().cloned().collect();
+            // The gate is not a plan step; `succeeded` only needs plan nodes.
             let step = match next_step(plan, &succeeded) {
                 Next::Done => return self.finish(run_id, RunStatus::Succeeded).await,
                 Next::Run(step) => step,
             };
-            match self.run_step(run_id, step, &done).await? {
+            match self.run_step(run_id, step, &done, Inputs::Upstream).await? {
                 Some(attempt) => {
                     done.insert(step.node_id.clone(), attempt);
                 }
                 None => return self.finish(run_id, RunStatus::Failed).await,
             }
         }
+    }
+
+    /// True when any methodology check in the gate's `checks` output failed.
+    async fn gate_failed(&self, attempt: &AttemptId) -> Result<bool, SchedulerError> {
+        let outputs = self.store.outputs(attempt).await?;
+        let (_, artifact) = outputs
+            .iter()
+            .find(|(port, _)| port == "checks")
+            .ok_or_else(|| SchedulerError::GateOutput("no checks output".into()))?;
+        let bytes = self.artifacts.get(artifact.content_hash.as_str()).await?;
+        let text =
+            std::str::from_utf8(&bytes).map_err(|e| SchedulerError::GateOutput(e.to_string()))?;
+        let checks: Vec<MethodologyCheck> =
+            parse(text).map_err(|e| SchedulerError::GateOutput(e.to_string()))?;
+        for check in checks.iter().filter(|c| c.verdict == Verdict::Fail) {
+            tracing::info!(
+                check = check.check.as_str(),
+                rationale = check.rationale.as_str(),
+                "methodology check failed"
+            );
+        }
+        Ok(checks.iter().any(|c| c.verdict == Verdict::Fail))
     }
 
     async fn finish(&self, run_id: &RunId, status: RunStatus) -> Result<RunStatus, SchedulerError> {
@@ -147,6 +224,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         run_id: &RunId,
         step: &Step,
         done: &HashMap<String, AttemptId>,
+        inputs: Inputs<'_>,
     ) -> Result<Option<AttemptId>, SchedulerError> {
         let previous = self
             .store
@@ -174,7 +252,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             };
             let attempt = self.new_attempt(run_id, step, number).await?;
             match self
-                .try_attempt(run_id, step, &attempt, done, worker)
+                .try_attempt(run_id, step, &attempt, done, inputs, worker)
                 .await?
             {
                 End::Succeeded => return Ok(Some(attempt.id)),
@@ -221,10 +299,11 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         step: &Step,
         attempt: &Attempt,
         done: &HashMap<String, AttemptId>,
+        inputs: Inputs<'_>,
         mut worker: W::Worker,
     ) -> Result<End, SchedulerError> {
         let id = &attempt.id;
-        let lease = self.lease_message(run_id, step, id, done).await?;
+        let lease = self.lease_message(run_id, step, id, done, inputs).await?;
         self.store
             .lease_attempt(id, worker.id(), &self.expiry()?, &now())
             .await?;
@@ -404,8 +483,14 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         step: &Step,
         attempt: &AttemptId,
         done: &HashMap<String, AttemptId>,
+        source: Inputs<'_>,
     ) -> Result<WorkerMessage, SchedulerError> {
-        let mut inputs = Vec::new();
+        let mut inputs = match source {
+            Inputs::Upstream => Vec::new(),
+            Inputs::Gate(pipeline, plan) => {
+                self.gate_inputs(run_id, attempt, pipeline, plan).await?
+            }
+        };
         for input in &step.inputs {
             let from = format!("{}.{}", input.from_node, input.from_port);
             let missing = || SchedulerError::MissingInput {
@@ -452,6 +537,58 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         )
     }
 
+    /// Commit the pipeline version and its operators as the gate attempt's input artifacts.
+    async fn gate_inputs(
+        &self,
+        run_id: &RunId,
+        attempt: &AttemptId,
+        pipeline: &PipelineVersion,
+        plan: &Plan,
+    ) -> Result<Vec<serde_json::Value>, SchedulerError> {
+        let mut operators: Vec<&Operator> = plan.steps.iter().map(|s| &s.operator).collect();
+        operators.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+        operators.dedup_by(|a, b| a.id == b.id);
+        let docs = [
+            ("operators", json!(operators)),
+            ("pipeline", json!(pipeline)),
+        ];
+        let dir = self
+            .artifacts
+            .staging_dir(&format!("{}_inputs", attempt.as_str()))?;
+        std::fs::create_dir_all(&dir)?;
+        let project_id = self.store.get_run(run_id).await?.project_id;
+        let mut bindings = Vec::new();
+        for (port, doc) in docs {
+            let bytes = doc.to_string();
+            let path = dir.join(format!("{port}.json"));
+            std::fs::write(&path, &bytes)?;
+            let hash = format!("sha256:{}", sha256_hex(bytes.as_bytes()));
+            let committed = self.artifacts.commit(&path, &hash).await?;
+            let artifact: sprisk_contracts::Artifact = build(
+                "artifact",
+                json!({
+                    "schema_version": "sprisk.artifact/v1",
+                    "id": format!("art_{}", ulid::Ulid::new()),
+                    "project_id": project_id,
+                    "producer_attempt_id": attempt,
+                    "content_hash": committed.content_hash,
+                    "media_type": "application/json",
+                    "size_bytes": committed.size_bytes,
+                    "uri": committed.uri,
+                    "created_at": now(),
+                }),
+            )?;
+            self.store.insert_artifact(&artifact).await?;
+            bindings.push(json!({
+                "port": port,
+                "artifact_id": artifact.id,
+                "uri": artifact.uri,
+                "content_hash": artifact.content_hash,
+            }));
+        }
+        Ok(bindings)
+    }
+
     fn expiry(&self) -> Result<sprisk_contracts::Timestamp, SchedulerError> {
         let at = jiff::Timestamp::now() + self.settings.lease;
         build("timestamp", json!(format_ts(at)))
@@ -491,4 +628,9 @@ fn now() -> String {
 /// Contract timestamps are UTC, whole seconds, `Z`.
 fn format_ts(at: jiff::Timestamp) -> String {
     at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    format!("{:x}", sha2::Sha256::digest(bytes))
 }

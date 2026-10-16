@@ -31,6 +31,8 @@ enum Behave {
     RemoteUri,
     /// Points its manifest at a file in another attempt's staging directory.
     Escape,
+    /// Gate B attempt that reports a failing methodology check.
+    GateFail,
 }
 
 /// node id -> behaviour per attempt number (1-based); missing entries succeed.
@@ -162,7 +164,22 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
                     } else {
                         staging.join(port)
                     };
-                    let bytes = format!("{} {port}", lease.node_id.as_str());
+                    let bytes = if lease.node_id.as_str() == "gate_b" {
+                        let verdict = if matches!(behave, Behave::GateFail) {
+                            "fail"
+                        } else {
+                            "pass"
+                        };
+                        json!([{"schema_version": "sprisk.methodology_check/v1",
+                                "id": "mck_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                                "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                                "check": "supervised.split_leakage@1.0.0", "verdict": verdict,
+                                "rationale": "fake", "cited_nodes": ["split"],
+                                "created_at": "2026-10-16T10:00:00Z"}])
+                        .to_string()
+                    } else {
+                        format!("{} {port}", lease.node_id.as_str())
+                    };
                     std::fs::write(&path, &bytes).unwrap();
                     let hash = if matches!(behave, Behave::BadHash) {
                         format!("sha256:{}", "0".repeat(64))
@@ -205,6 +222,7 @@ fn outputs_of(operator: &str) -> &'static [&'static str] {
         "sprisk.validation.random_split" => &["train", "test"],
         "sprisk.ml.linear_model" | "sprisk.ml.dummy_baseline" => &["model"],
         "sprisk.ml.evaluate" => &["metrics"],
+        "sprisk.methodology.supervised" => &["checks"],
         other => panic!("no fake outputs for {other}"),
     }
 }
@@ -214,7 +232,20 @@ fn plugins() -> PathBuf {
 }
 
 fn plan() -> Plan {
-    let pipeline: PipelineVersion = parse(
+    compile(&pipeline(), &Registry::load_dir(&plugins()).unwrap()).unwrap()
+}
+
+fn gate_operator() -> sprisk_contracts::Operator {
+    let methodology = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let registry = Registry::load_dir(&methodology).unwrap();
+    registry
+        .get("sprisk.methodology.supervised@1.0.0")
+        .unwrap()
+        .clone()
+}
+
+fn pipeline() -> PipelineVersion {
+    parse(
         &json!({
             "schema_version": "sprisk.pipeline_version/v1",
             "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
@@ -239,8 +270,7 @@ fn plan() -> Plan {
         })
         .to_string(),
     )
-    .unwrap();
-    compile(&pipeline, &Registry::load_dir(&plugins()).unwrap()).unwrap()
+    .unwrap()
 }
 
 struct Env {
@@ -259,7 +289,12 @@ async fn run_with_settings(script: Script, settings: Settings) -> (Env, RunStatu
         script,
         ..FakeWorkers::default()
     };
-    let (env, status) = setup(workers, settings, &[], None, "queued").await;
+    let (env, status) = setup(Case {
+        workers,
+        settings,
+        ..Case::default()
+    })
+    .await;
     (env, status.unwrap())
 }
 
@@ -270,15 +305,38 @@ fn short_lease() -> Settings {
     }
 }
 
-/// Runs `plan()` with earlier attempts already stored (`(node, number, state)`), optionally
-/// marking one node's operator side-effecting.
-async fn setup(
+struct Case {
     workers: FakeWorkers,
     settings: Settings,
-    earlier: &[(&str, u64, &str)],
-    side_effecting: Option<&str>,
-    run_status: &str,
-) -> (Env, Result<RunStatus, sprisk_scheduler::SchedulerError>) {
+    /// Attempts already stored: `(node, number, state)`.
+    earlier: Vec<(&'static str, u64, &'static str)>,
+    side_effecting: Option<&'static str>,
+    run_status: &'static str,
+    gate: bool,
+}
+
+impl Default for Case {
+    fn default() -> Self {
+        Self {
+            workers: FakeWorkers::default(),
+            settings: Settings::default(),
+            earlier: vec![],
+            side_effecting: None,
+            run_status: "queued",
+            gate: false,
+        }
+    }
+}
+
+async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::SchedulerError>) {
+    let Case {
+        workers,
+        settings,
+        earlier,
+        side_effecting,
+        run_status,
+        gate,
+    } = case;
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteStore::in_memory().await.unwrap();
     let run: Run = parse(
@@ -308,9 +366,11 @@ async fn setup(
     }
     let artifacts = ArtifactStore::local(dir.path()).unwrap();
     let log = workers.log.clone();
-    let status = Scheduler::new(&store, &artifacts, workers, settings)
-        .run(&run.id, &plan)
-        .await;
+    let mut scheduler = Scheduler::new(&store, &artifacts, workers, settings);
+    if gate {
+        scheduler = scheduler.with_gate(gate_operator());
+    }
+    let status = scheduler.run(&run.id, &pipeline(), &plan).await;
     (
         Env {
             _dir: dir,
@@ -493,7 +553,7 @@ async fn attempt_left_in_flight_by_a_crashed_control_plane_times_out_and_is_retr
     let artifacts = ArtifactStore::local(dir.path()).unwrap();
     let workers = FakeWorkers::default();
     let status = Scheduler::new(&store, &artifacts, workers, Settings::default())
-        .run(&run.id, &plan())
+        .run(&run.id, &pipeline(), &plan())
         .await
         .unwrap();
 
@@ -537,21 +597,24 @@ async fn side_effecting_step_is_not_retried_after_a_transient_failure() {
         script: [("load", vec![Behave::FailTransient])].into(),
         ..FakeWorkers::default()
     };
-    let (env, status) = setup(workers, Settings::default(), &[], Some("load"), "queued").await;
+    let (env, status) = setup(Case {
+        workers,
+        side_effecting: Some("load"),
+        ..Case::default()
+    })
+    .await;
     assert_eq!(status.unwrap(), RunStatus::Failed);
     assert_eq!(states(&env, "load").await, vec![AttemptState::Failed]);
 }
 
 #[tokio::test]
 async fn side_effecting_step_interrupted_by_a_crash_is_not_rerun() {
-    let earlier = [("load", 1, "running")];
-    let (env, status) = setup(
-        FakeWorkers::default(),
-        Settings::default(),
-        &earlier,
-        Some("load"),
-        "running",
-    )
+    let (env, status) = setup(Case {
+        earlier: vec![("load", 1, "running")],
+        side_effecting: Some("load"),
+        run_status: "running",
+        ..Case::default()
+    })
     .await;
     assert_eq!(status.unwrap(), RunStatus::Failed);
     assert_eq!(states(&env, "load").await, vec![AttemptState::TimedOut]);
@@ -560,18 +623,15 @@ async fn side_effecting_step_interrupted_by_a_crash_is_not_rerun() {
 
 #[tokio::test]
 async fn rerun_at_the_attempt_cap_starts_no_new_attempt() {
-    let earlier = [
-        ("load", 1, "failed"),
-        ("load", 2, "failed"),
-        ("load", 3, "timed_out"),
-    ];
-    let (env, status) = setup(
-        FakeWorkers::default(),
-        Settings::default(),
-        &earlier,
-        None,
-        "running",
-    )
+    let (env, status) = setup(Case {
+        earlier: vec![
+            ("load", 1, "failed"),
+            ("load", 2, "failed"),
+            ("load", 3, "timed_out"),
+        ],
+        run_status: "running",
+        ..Case::default()
+    })
     .await;
     assert_eq!(status.unwrap(), RunStatus::Failed);
     assert_eq!(states(&env, "load").await.len(), 3);
@@ -583,7 +643,11 @@ async fn worker_that_cannot_start_fails_the_run_and_leaves_no_queued_attempt() {
         fail_spawn: true,
         ..FakeWorkers::default()
     };
-    let (env, status) = setup(workers, Settings::default(), &[], None, "queued").await;
+    let (env, status) = setup(Case {
+        workers,
+        ..Case::default()
+    })
+    .await;
     assert!(status.is_err());
     assert_eq!(run_status(&env).await, RunStatus::Failed);
     assert!(states(&env, "load").await.is_empty());
@@ -595,7 +659,11 @@ async fn lease_that_cannot_be_delivered_fails_the_attempt_and_retries() {
         fail_send: Some("load"),
         ..FakeWorkers::default()
     };
-    let (env, status) = setup(workers, Settings::default(), &[], None, "queued").await;
+    let (env, status) = setup(Case {
+        workers,
+        ..Case::default()
+    })
+    .await;
     assert_eq!(status.unwrap(), RunStatus::Succeeded);
     assert_eq!(
         states(&env, "load").await,
@@ -614,4 +682,69 @@ async fn bad_manifests_fail_the_attempt_permanently() {
             "{behave:?}"
         );
     }
+}
+
+#[tokio::test]
+async fn gate_b_runs_first_with_the_pipeline_and_operators_as_inputs() {
+    let (env, status) = setup(Case {
+        gate: true,
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Succeeded);
+    assert_eq!(states(&env, "gate_b").await, vec![AttemptState::Succeeded]);
+    let log = env.log.lock().unwrap();
+    let gate = &log.leases[0];
+    assert_eq!(gate.node_id.as_str(), "gate_b");
+    let ports: Vec<_> = gate
+        .inputs
+        .iter()
+        .map(|i| i.port.as_str().to_owned())
+        .collect();
+    assert_eq!(ports, ["operators", "pipeline"]);
+    let pipeline_uri = url::Url::parse(&gate.inputs[1].uri)
+        .unwrap()
+        .to_file_path()
+        .unwrap();
+    let sent: PipelineVersion = parse(&std::fs::read_to_string(pipeline_uri).unwrap()).unwrap();
+    assert_eq!(sent, pipeline());
+}
+
+#[tokio::test]
+async fn failing_methodology_check_stops_the_run_before_any_step() {
+    let workers = FakeWorkers {
+        script: [("gate_b", vec![Behave::GateFail])].into(),
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(Case {
+        workers,
+        gate: true,
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Failed);
+    assert_eq!(states(&env, "gate_b").await, vec![AttemptState::Succeeded]);
+    assert!(states(&env, "load").await.is_empty());
+}
+
+#[tokio::test]
+async fn pipeline_node_named_like_the_gate_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = SqliteStore::in_memory().await.unwrap();
+    let artifacts = ArtifactStore::local(dir.path()).unwrap();
+    let mut plan = plan();
+    plan.steps[0].node_id = sprisk_scheduler::GATE_NODE.to_owned();
+    let err = Scheduler::new(
+        &store,
+        &artifacts,
+        FakeWorkers::default(),
+        Settings::default(),
+    )
+    .run(&RUN.parse().unwrap(), &pipeline(), &plan)
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, sprisk_scheduler::SchedulerError::ReservedNode),
+        "{err}"
+    );
 }

@@ -13,7 +13,7 @@ use sprisk_scheduler::{ProcessWorkers, Scheduler, Settings};
 use sprisk_store::SqliteStore;
 
 #[tokio::test]
-async fn source_step_runs_in_the_python_worker_and_commits_parquet() {
+async fn gate_and_source_step_run_in_the_python_worker() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let python = root.join(".venv/bin/python");
     assert!(
@@ -61,17 +61,31 @@ async fn source_step_runs_in_the_python_worker_and_commits_parquet() {
             "sprisk_workers".into(),
             "--plugins-root".into(),
             root.join("plugins").display().to_string(),
+            "--plugins-root".into(),
+            root.join("methodology").display().to_string(),
         ],
     };
+    let gate = Registry::load_dir(&root.join("methodology"))
+        .unwrap()
+        .get("sprisk.methodology.supervised@1.0.0")
+        .unwrap()
+        .clone();
 
     let status = Scheduler::new(&store, &artifacts, workers, Settings::default())
-        .run(&run.id, &plan)
+        .with_gate(gate)
+        .run(&run.id, &pipeline, &plan)
         .await
         .unwrap();
 
     assert_eq!(status, RunStatus::Succeeded);
     let attempts = store.list_attempts(&run.id).await.unwrap();
-    let outputs = store.outputs(&attempts[0].id).await.unwrap();
+    let nodes: Vec<_> = attempts.iter().map(|a| a.node_id.as_str()).collect();
+    assert_eq!(nodes, ["gate_b", "load"], "gate ran in the real worker");
+    let load = attempts
+        .iter()
+        .find(|a| a.node_id.as_str() == "load")
+        .unwrap();
+    let outputs = store.outputs(&load.id).await.unwrap();
     assert_eq!(outputs.len(), 1);
     let (port, artifact) = &outputs[0];
     assert_eq!(port, "data");
