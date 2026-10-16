@@ -51,6 +51,18 @@ describe("top bar", () => {
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
   });
 
+  it("lists a flow once however many times it was edited", async () => {
+    const edited = { ...pipeline, id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ7", parent_id: PV };
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([edited, pipeline])));
+    renderWithApi(<TopBar />);
+    await userEvent.click(await screen.findByRole("button", { name: "Project and flow" }));
+    const options = within(screen.getByRole("listbox", { name: "Flows" })).getAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent("2 versions");
+    await userEvent.click(options[0]!);
+    expect(useSelection.getState().pipelineVersionId).toBe(edited.id);
+  });
+
   it("starts a run of the selected pipeline version", async () => {
     let posted: unknown;
     server.use(

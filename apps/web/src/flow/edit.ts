@@ -16,6 +16,7 @@ function nextVersion(base: PipelineVersion, change: Pick<PipelineVersion, "nodes
     ...base,
     ...change,
     id: `plv_${ulid()}`,
+    parent_id: base.id,
     created_at: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
   };
 }

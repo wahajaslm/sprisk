@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { usePipelineVersions, useRuns, useStartRun } from "../api/hooks.ts";
+import { flows } from "../flow/flows.ts";
 import { flowName } from "../flow/labels.ts";
 import { NAV, useSelection } from "../workbench/selection.ts";
 import { Chevron, Logo, PlayIcon } from "./Icons.tsx";
@@ -58,21 +59,21 @@ export function TopBar() {
         {menuOpen && (
           <div className="menu" role="listbox" aria-label="Flows">
             <p className="menu-title">FLOWS</p>
-            {versions.data?.map((v) => (
+            {flows(versions.data ?? []).map(({ head, ids }) => (
               <button
-                key={v.id}
+                key={head.id}
                 type="button"
                 role="option"
-                aria-selected={v.id === pipelineVersionId}
+                aria-selected={pipelineVersionId !== undefined && ids.includes(pipelineVersionId)}
                 className="menu-item"
                 onClick={() => {
-                  selectPipelineVersion(v.id);
+                  selectPipelineVersion(head.id);
                   setMenuOpen(false);
                 }}
               >
-                <span>{flowName(v)}</span>
+                <span>{flowName(head)}</span>
                 <span className="menu-meta">
-                  {v.nodes.length} steps · {v.id.slice(-6)}
+                  {head.nodes.length} steps · {ids.length === 1 ? "1 version" : `${ids.length} versions`}
                 </span>
               </button>
             ))}
