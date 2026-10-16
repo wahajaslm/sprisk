@@ -228,7 +228,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       return pipeline && node && isCode && typeof node.params.source === "string" ? (
         <CodeEditor key={`${pipeline.id}/${node.id}`} pipeline={pipeline} nodeId={node.id} source={node.params.source} />
       ) : (
-        node && <OperatorCode operatorRef={node.operator} />
+        pipeline && node && operator && <OperatorCode key={`${pipeline.id}/${node.id}`} pipeline={pipeline} nodeId={node.id} operator={operator} />
       );
     case "checks":
       return <ChecksTab run={step.checks} nodeId={nodeId} />;

@@ -1,0 +1,20 @@
+{
+  "schema_version": "sprisk.pipeline_version/v1",
+  "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "nodes": [
+    {
+      "id": "ingest",
+      "operator": "sprisk.source.parquet@1.0.0",
+      "params": {
+        "dataset_version": "dv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+      },
+      "code": {
+        "source": "def run(data):\n    return data\n",
+        "function": "run"
+      }
+    }
+  ],
+  "edges": [],
+  "created_at": "2026-10-15T10:00:00Z"
+}

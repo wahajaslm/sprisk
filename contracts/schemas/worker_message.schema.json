@@ -111,6 +111,10 @@
             "$ref": "#/$defs/InputBinding"
           }
         },
+        "code": {
+          "$ref": "#/$defs/NodeCode",
+          "description": "The step's own code (ADR-0028): run this function instead of the operator's."
+        },
         "staging_uri": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9+.-]*://.+$",

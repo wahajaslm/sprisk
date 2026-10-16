@@ -553,6 +553,20 @@ export interface Node {
   id: NodeId;
   operator: OperatorRef;
   params: Params;
+  code?: NodeCode;
+}
+/**
+ * This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs.
+ */
+export interface NodeCode {
+  /**
+   * Python module source.
+   */
+  source: string;
+  /**
+   * The function in source that is the step.
+   */
+  function: string;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -561,6 +575,20 @@ export interface Node {
 export interface Edge {
   from: PortRef;
   to: PortRef;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NodeCode".
+ */
+export interface NodeCode1 {
+  /**
+   * Python module source.
+   */
+  source: string;
+  /**
+   * The function in source that is the step.
+   */
+  function: string;
 }
 /**
  * Immutable formal statement of what an investigation asks (arch doc §4, §7). Every field records its origin. An absent target means no supervised target exists; never invent one.
@@ -702,6 +730,7 @@ export interface LeaseAttempt {
   operator: OperatorRef;
   params: Params;
   inputs: InputBinding[];
+  code?: NodeCode2;
   /**
    * Only location the worker may write outputs to. Scoped to this attempt.
    */
@@ -719,6 +748,19 @@ export interface InputBinding {
   artifact_id: ArtifactId;
   uri: string;
   content_hash: ContentHash;
+}
+/**
+ * The step's own code (ADR-0028): run this function instead of the operator's.
+ */
+export interface NodeCode2 {
+  /**
+   * Python module source.
+   */
+  source: string;
+  /**
+   * The function in source that is the step.
+   */
+  function: string;
 }
 /**
  * Worker → control plane. Extends the lease.

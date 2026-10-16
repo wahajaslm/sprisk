@@ -36,6 +36,7 @@ Remove an item when it is done; link the commit or ADR.
 | Random split: `group_column` (stratify done) | methodology review | M3 |
 | Record the producing package with each model artifact; refuse skops loads from non-first-party producers, or load them in a sandbox (trusted `sklearn.tree._tree.Tree`) | security review | before third-party plugins |
 | Re-check trusted skops types before hosted / multi-tenant stores (arch §13) | security review | M5 |
+| Planner: reject any `PipelineProposal` that sets a node's `code` (ADR-0028), with a test | security review | M2 |
 | Linear model: mark integer columns as categorical | methodology review | M3 |
 | Metrics: record train row count and class counts | methodology review | M3 |
 | Stream splits with `scan_parquet`/`sink_parquet` (bounded memory) | simplicity review | when data size needs it |

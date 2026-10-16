@@ -41,6 +41,15 @@ fn registry() -> (tempfile::TempDir, Registry) {
             }),
         ),
         operator(
+            "sprisk.io.file@1.0.0",
+            &[],
+            &[("data", "table")],
+            json!({
+                "type": "object",
+                "properties": { "path": { "type": "string", "x-sprisk-local-path": true } }
+            }),
+        ),
+        operator(
             "sprisk.validation.split@1.0.0",
             &[("data", "table")],
             &[("train", "table"), ("validation", "table")],
@@ -314,5 +323,45 @@ fn reserved_node_id_is_refused() {
     assert!(
         matches!(errs.as_slice(), [CompileError::ReservedNode(_)]),
         "{errs:?}"
+    );
+}
+
+#[test]
+fn a_step_with_its_own_code_gets_that_code_and_its_own_digest() {
+    let (_dir, registry) = registry();
+    let mut nodes = valid_nodes();
+    nodes[1]["code"] =
+        json!({ "source": "def train(training_data):\n    ...\n", "function": "train" });
+
+    let plan = compile(&pipeline(nodes, valid_edges()), &registry).unwrap();
+
+    let train = plan.steps.iter().find(|s| s.node_id == "train").unwrap();
+    let split = plan.steps.iter().find(|s| s.node_id == "split").unwrap();
+    assert_eq!(train.code.as_ref().unwrap().function.as_str(), "train");
+    assert_ne!(
+        Some(train.implementation_digest.as_str()),
+        registry.digest("sprisk.ml.train@1.0.0")
+    );
+    assert!(train.implementation_digest.starts_with("sha256:"));
+    assert_eq!(
+        Some(split.implementation_digest.as_str()),
+        registry.digest("sprisk.validation.split@1.0.0")
+    );
+    assert!(split.code.is_none());
+}
+
+#[test]
+fn a_step_that_reads_files_cannot_carry_its_own_code() {
+    // Its own code could ignore the data-root check its path setting passed (ADR-0028).
+    let nodes = json!([{
+        "id": "load", "operator": "sprisk.io.file@1.0.0", "params": { "path": "/data/a.csv" },
+        "code": { "source": "def run(path):\n    ...\n", "function": "run" }
+    }]);
+    let found = errors(nodes, json!([]));
+    assert!(
+        found
+            .iter()
+            .any(|e| e.code() == "code_not_allowed" && e.to_string().contains("load")),
+        "{found:?}"
     );
 }

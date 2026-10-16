@@ -5,7 +5,7 @@ import io
 import json
 import traceback
 import warnings
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from types import ModuleType, SimpleNamespace
 from typing import Any, TextIO
 
@@ -68,6 +68,21 @@ def python_step_v12(
         "display": display,
         "interface": interface.model_dump(mode="json", exclude_none=True),
     }
+
+
+def load_function(source: str, function: str) -> Callable[..., Any]:
+    """A step's own code (ADR-0028): define its module and return the step function. Run here
+    because this is the one module allowed to execute user code (ADR-0020)."""
+    namespace: dict[str, Any] = {"__name__": "__sprisk_step__"}
+    try:
+        exec(compile(source, FILENAME, "exec"), namespace)
+    except Exception as e:  # noqa: BLE001 - user code: report it with its line, never hide it
+        raise OperatorError("code_error", _describe(e)) from e
+    found = namespace.get(function)
+    if not callable(found):
+        raise OperatorError("code_error", f"the code defines no function named {function}")
+    step: Callable[..., Any] = found
+    return step
 
 
 PROVIDED = ("data",)

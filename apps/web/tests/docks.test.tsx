@@ -346,3 +346,52 @@ describe("charts live inside the step they draw", () => {
     expect(posted[0]!.nodes.some((n) => n.id === "chart_1")).toBe(false);
   });
 });
+
+describe("editing a built-in step's code (ADR-0028)", () => {
+  async function codeOf(source: string) {
+    const { http, HttpResponse } = await import("msw");
+    const { server } = await import("./server.ts");
+    const { run } = await import("./fixtures.ts");
+    const posted: { nodes: { id: string; code?: unknown }[] }[] = [];
+    server.use(
+      http.get("/api/operators/:id/source", ({ params }) =>
+        HttpResponse.json({ operator: params.id, path: "m.py", language: "python", text: source, digest: `sha256:${"a".repeat(64)}` }),
+      ),
+      http.post("/api/pipeline_versions", async ({ request }) => {
+        const body = (await request.json()) as (typeof posted)[number];
+        posted.push(body);
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.post("/api/runs", () => HttpResponse.json({ ...run, status: "queued" }, { status: 202 })),
+    );
+    return posted;
+  }
+  const showCode = (nodeId: string) => {
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={undefined} tab="code">
+        <StepTab />
+      </ViewInstance>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId });
+  };
+
+  it("Edit makes the code editable and Run saves it as the step's own code", async () => {
+    const posted = await codeOf("def f(data):\n    return data\n");
+    showCode("split");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const editor = screen.getByRole("textbox", { name: /m\.py/ });
+    expect(editor).not.toHaveAttribute("readonly");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "def f(data):{Enter}    return data.head(1){Enter}");
+    await userEvent.click(screen.getByRole("button", { name: /Run code/ }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.nodes.find((n) => n.id === "split")?.code).toEqual({ source: "def f(data):\n    return data.head(1)\n", function: "f" });
+  });
+
+  it("a step that reads files cannot be edited, and says why", async () => {
+    await codeOf("def f(path, format):\n    ...\n");
+    showCode("load");
+    expect(await screen.findByText(/reads files/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+});

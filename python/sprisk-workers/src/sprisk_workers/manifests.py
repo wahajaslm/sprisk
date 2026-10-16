@@ -51,5 +51,8 @@ def _load(path: Path) -> tuple[str, LoadedOperator]:
         raise ManifestError(f"{path}: {module_name} has no function {function_name}")
     ports = frozenset(port.name.root for port in operator.outputs)
     return operator.id.root, LoadedOperator(
-        run=adapt(function, operator), output_ports=ports, params_schema=operator.params_schema
+        run=adapt(function, operator),
+        output_ports=ports,
+        params_schema=operator.params_schema,
+        operator=operator,
     )

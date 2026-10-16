@@ -166,6 +166,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 implementation_digest: String::new(),
                 params: serde_json::Map::new(),
                 inputs: vec![],
+                code: None,
             };
             let attempt = match done.get(GATE_NODE) {
                 Some(attempt) => attempt.clone(),
@@ -621,20 +622,22 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 reason: format!("{} is not absolute", staging.display()),
             })?
             .to_string();
-        build(
-            "lease_attempt",
-            json!({
-                "type": "lease_attempt",
-                "attempt_id": attempt,
-                "run_id": run_id,
-                "node_id": step.node_id,
-                "operator": step.operator.id,
-                "params": step.params,
-                "inputs": inputs,
-                "staging_uri": staging_uri,
-                "lease_expires_at": self.expiry()?,
-            }),
-        )
+        let mut lease = json!({
+            "type": "lease_attempt",
+            "attempt_id": attempt,
+            "run_id": run_id,
+            "node_id": step.node_id,
+            "operator": step.operator.id,
+            "params": step.params,
+            "inputs": inputs,
+            "staging_uri": staging_uri,
+            "lease_expires_at": self.expiry()?,
+        });
+        // The step's own code travels with its lease (ADR-0028).
+        if let Some(code) = &step.code {
+            lease["code"] = json!(code);
+        }
+        build("lease_attempt", lease)
     }
 
     /// Each input port's artifact, from the upstream attempt that produced it. Sorted by port.

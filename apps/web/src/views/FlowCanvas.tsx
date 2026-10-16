@@ -48,6 +48,8 @@ type StepData = {
   kind: NodeKind;
   /** What the step is for, in plain words: "Transform". */
   role: string;
+  /** The step runs its own code in this flow, not the built-in (ADR-0028). */
+  edited: boolean;
   state: string;
   attemptId?: string;
   /** Methodology checks citing this step that did not pass. */
@@ -179,7 +181,10 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       </span>
       <span className="round-text">
         <span className="node-title">{data.id}</span>
-        <span className="round-sub">{data.role}</span>
+        <span className="round-sub">
+          {data.role}
+          {data.edited && " · edited"}
+        </span>
         {/* Only what needs attention gets words; a finished step is just its dot. */}
         {(status.tone === "bad" || status.tone === "live") && <span className={`round-state tone-${status.tone}`}>{status.text}</span>}
         {data.concerns > 0 && <span className="round-state tone-bad">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>}
@@ -266,6 +271,7 @@ export function flowGraph(
         level,
         kind: op ? kindOf(op) : "recipe",
         role: op ? roleOf(op) : "Step",
+        edited: node.code !== undefined,
         state: latest.get(id)?.state ?? "not run",
         ...(hasOutputs(latest.get(id)) ? { attemptId: latest.get(id)?.id } : {}),
         selected: id === selectedId,

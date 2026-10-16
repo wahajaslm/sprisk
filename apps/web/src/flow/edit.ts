@@ -1,4 +1,4 @@
-import type { PipelineVersion } from "@sprisk/contracts";
+import type { NodeCode, PipelineVersion } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
 export const CODE_OPERATOR = "sprisk.code.python@1.2.0";
@@ -73,6 +73,19 @@ export function removeStep(base: PipelineVersion, nodeId: string): PipelineVersi
   return nextVersion(base, {
     nodes: base.nodes.filter((n) => n.id !== nodeId),
     edges: base.edges.filter((e) => e.to.split(".")[0] !== nodeId),
+  });
+}
+
+/** A new version where a step runs its own code, or (undefined) its operator's again
+ * (ADR-0028). */
+export function setNodeCode(base: PipelineVersion, nodeId: string, code: NodeCode | undefined): PipelineVersion {
+  return nextVersion(base, {
+    nodes: base.nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const { code: _old, ...rest } = n;
+      return code ? { ...rest, code } : rest;
+    }),
+    edges: base.edges,
   });
 }
 

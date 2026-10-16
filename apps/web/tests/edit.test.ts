@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addChartStep, addCodeStep, CHART_OPERATOR, chartsOf, CODE_OPERATOR, removeStep, setCodeSource, setParams, withoutCharts } from "../src/flow/edit.ts";
+import { addChartStep, addCodeStep, CHART_OPERATOR, chartsOf, CODE_OPERATOR, removeStep, setCodeSource, setNodeCode, setParams, withoutCharts } from "../src/flow/edit.ts";
 import { settingChanges } from "../src/flow/diff.ts";
 import { flows } from "../src/flow/flows.ts";
 import { pipeline } from "./fixtures.ts";
@@ -42,6 +42,14 @@ describe("flow edits create a new pipeline version", () => {
     expect(removed.parent_id).toBe(version.id);
     expect(removed.nodes.some((n) => n.id === "chart_1")).toBe(false);
     expect(removed.edges).toEqual(pipeline.edges);
+  });
+
+  it("gives a step its own code, and takes it away again (ADR-0028)", () => {
+    const edited = setNodeCode(pipeline, "split", { source: "def f(data):\n    return data\n", function: "f" });
+    expect(edited.parent_id).toBe(pipeline.id);
+    expect(edited.nodes.find((n) => n.id === "split")?.code).toEqual({ source: "def f(data):\n    return data\n", function: "f" });
+    const reverted = setNodeCode(edited, "split", undefined);
+    expect(reverted.nodes.find((n) => n.id === "split")).not.toHaveProperty("code");
   });
 
   it("numbers code steps past the ones already there", () => {

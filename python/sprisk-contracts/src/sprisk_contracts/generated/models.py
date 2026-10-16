@@ -239,13 +239,18 @@ class Resources(StrictModel):
     timeout_seconds: Annotated[int, Field(ge=1)]
 
 
-class Node(StrictModel):
+class NodeCode(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    id: NodeId
-    operator: OperatorRef
-    params: Params
+    source: Annotated[str, Field(description="Python module source.", max_length=200000)]
+    function: Annotated[
+        str,
+        Field(
+            description="The function in source that is the step.",
+            pattern="^[A-Za-z_][A-Za-z0-9_]*$",
+        ),
+    ]
 
 
 class PortRef(RootModel[str]):
@@ -600,6 +605,21 @@ class Port(StrictModel):
     description: str | None = None
 
 
+class Node(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: NodeId
+    operator: OperatorRef
+    params: Params
+    code: Annotated[
+        NodeCode | None,
+        Field(
+            description="This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs."
+        ),
+    ] = None
+
+
 class Edge(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -666,6 +686,12 @@ class LeaseAttempt(StrictModel):
     operator: OperatorRef
     params: Params
     inputs: list[InputBinding]
+    code: Annotated[
+        NodeCode | None,
+        Field(
+            description="The step's own code (ADR-0028): run this function instead of the operator's."
+        ),
+    ] = None
     staging_uri: Annotated[
         str,
         Field(

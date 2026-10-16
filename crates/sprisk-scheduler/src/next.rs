@@ -44,6 +44,7 @@ mod tests {
                     implementation_digest: String::new(),
                     params: serde_json::Map::new(),
                     inputs: vec![],
+                    code: None,
                 })
                 .collect(),
         }

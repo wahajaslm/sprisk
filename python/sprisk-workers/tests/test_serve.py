@@ -228,3 +228,45 @@ def test_acknowledge_and_cancel_between_attempts_are_accepted(tmp_path: Path) ->
 def test_invalid_or_unexpected_inbound_message_raises(line: str) -> None:
     with pytest.raises(ProtocolError):
         run([line])
+
+
+def test_a_lease_with_the_step_s_own_code_runs_that_code(tmp_path: Path) -> None:
+    from sprisk_contracts import Operator
+    from sprisk_workers.plain import adapt
+
+    manifest = {
+        "schema_version": "sprisk.operator/v1",
+        "id": OP,
+        "capability_class": "transform",
+        "entrypoint": "sprisk_x.echo:echo",
+        "inputs": [],
+        "outputs": [{"name": "out", "kind": "metrics"}],
+        "params_schema": SCHEMA,
+        "effects": "pure",
+        "network": "none",
+        "resources": {"cpu_cores": 1, "memory_mb": 512, "gpu": "none", "timeout_seconds": 60},
+    }
+    operator = Operator.model_validate_json(json.dumps(manifest))
+
+    def builtin(text: str) -> dict[str, str]:
+        return {"said": text}
+
+    ops = {
+        OP: LoadedOperator(
+            run=adapt(builtin, operator),
+            output_ports=frozenset({"out"}),
+            params_schema=SCHEMA,
+            operator=operator,
+        )
+    }
+    with_code = json.loads(lease(tmp_path))
+    with_code["code"] = {
+        "source": "def shout(text):\n    return {'said': text.upper()}\n",
+        "function": "shout",
+    }
+    stdout = io.StringIO()
+    serve(io.StringIO(json.dumps(with_code) + "\n"), stdout, WORKER_ID, ops, 60.0)
+    sent = [json.loads(line) for line in stdout.getvalue().splitlines()]
+    [manifest_msg] = [m for m in sent if m["type"] == "artifact_manifest"]
+    path = Path(manifest_msg["staging_uri"].removeprefix("file://"))
+    assert json.loads(path.read_text()) == {"said": "HI"}

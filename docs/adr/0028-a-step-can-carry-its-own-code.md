@@ -10,7 +10,9 @@ Arch doc sections: §7 (operators), §9 (versions, caching, implementation diges
 
 ## Decision
 - A pipeline node may carry `code`: `{ source, function }`. The step keeps its operator: inputs, outputs, settings and manifest checks stay those of the operator. The code replaces its implementation in this version only.
-- Rust: a node with `code` uses `sha256(source)` as its implementation digest, so the cache, `reuse_run_id` (ADR-0026) and history treat it as different code. The original operator is unchanged in the library.
+- Rust: a node with `code` uses `sha256(function, source)` as its implementation digest, so the cache, `reuse_run_id` (ADR-0026) and history treat it as different code. The original operator is unchanged in the library.
+- Only pure steps that read no files may carry `code` (compile error `code_not_allowed` otherwise): replacement code could ignore the data-root check a path setting passed, or add effects that caching and approval would not see.
+- An AI `PipelineProposal` never sets `code` (hard rule 3); only a person editing in the Code tab does.
 - The lease carries `code`. The worker loads `function` from `source` in the code-step runner, the only module allowed to `exec` (ADR-0020), then calls it through the same plain-function adapter: signature, types and port checks as any step (ADR-0022, ADR-0025).
 - The code runs with the same trust as a code step: the user's own code in their own worker. No new permission.
 - UI: the Code tab offers Edit; Run saves a new version with the node's `code`; Revert to built-in saves a version without it. The canvas marks an edited step.

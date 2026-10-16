@@ -222,3 +222,21 @@ def test_interface_lists_files_the_code_reads(write_parquet: WriteParquet, out_d
     found = run_v12(write_parquet, out_dir, {"source": source})["interface"]
     assert [(f.path, f.reader) for f in found.files] == [("lookup.csv", "read_csv")]
     assert found.parameters == []
+
+
+def test_a_step_s_own_code_is_loaded_as_a_function() -> None:
+    from sprisk_code.python_step import load_function
+
+    fn = load_function(
+        "import polars as pl\n\ndef double(data, factor=2):\n    return data * factor\n", "double"
+    )
+    assert fn(3) == 6
+
+
+def test_own_code_without_the_function_or_with_an_error_says_so() -> None:
+    from sprisk_code.python_step import load_function
+
+    with pytest.raises(OperatorError, match="defines no function named run"):
+        load_function("x = 1\n", "run")
+    with pytest.raises(OperatorError, match="line 1: SyntaxError"):
+        load_function("def run(:\n", "run")

@@ -10,7 +10,7 @@ from urllib.request import url2pathname
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
 
-from sprisk_contracts import WorkerMessage
+from sprisk_contracts import Operator, WorkerMessage
 from sprisk_contracts.generated.models import (
     Acknowledge,
     ArtifactManifest,
@@ -23,7 +23,7 @@ from sprisk_contracts.generated.models import (
     Heartbeat,
     LeaseAttempt,
 )
-from sprisk_workers.errors import OperatorError, ProtocolError
+from sprisk_workers.errors import ManifestError, OperatorError, ProtocolError
 from sprisk_workers.output import CONSOLE_PORT, Output
 
 OperatorFn = Callable[[Mapping[str, Any], Mapping[str, Path], Path], list[Output]]
@@ -34,6 +34,8 @@ class LoadedOperator:
     run: OperatorFn
     output_ports: frozenset[str]
     params_schema: Mapping[str, Any]
+    # The manifest, so a step's own code can be checked and called like the built-in (ADR-0028).
+    operator: Operator | None = None
 
 
 class _Failure(Exception):
@@ -143,7 +145,7 @@ def _execute(
     try:
         inputs = {b.port.root: _verified_input(b.uri, b.content_hash.root) for b in lease.inputs}
         staging.mkdir(parents=True, exist_ok=True)
-        outputs = operator.run(params, inputs, staging)
+        outputs = _runner(lease, operator)(params, inputs, staging)
         return [_manifest(lease.attempt_id.root, o, staging, operator) for o in outputs]
     except OperatorError as e:
         raise _Failure(e.code, e.message, FailureKind.permanent) from e
@@ -151,6 +153,27 @@ def _execute(
         raise _Failure(
             "io_error", f"attempt {lease.attempt_id.root}: {e}", FailureKind.transient
         ) from e
+
+
+def _runner(lease: LeaseAttempt, operator: LoadedOperator) -> OperatorFn:
+    """The operator's code, or the step's own code from the lease (ADR-0028), which gets the
+    same signature, type and port checks."""
+    if lease.code is None:
+        return operator.run
+    if operator.operator is None:
+        raise _Failure(
+            "no_manifest",
+            f"{lease.operator.root} cannot run its own code here",
+            FailureKind.permanent,
+        )
+    # Imported here: user code runs only in the code-step runner (ADR-0020).
+    from sprisk_code.python_step import load_function
+    from sprisk_workers.plain import adapt
+
+    try:
+        return adapt(load_function(lease.code.source, lease.code.function), operator.operator)
+    except ManifestError as e:
+        raise OperatorError("code_error", str(e)) from e
 
 
 def _check_params(operator: str, params: Mapping[str, Any], schema: Mapping[str, Any]) -> None:

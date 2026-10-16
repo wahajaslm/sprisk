@@ -869,6 +869,30 @@
         },
         "params": {
           "$ref": "#/$defs/Params"
+        },
+        "code": {
+          "$ref": "#/$defs/NodeCode",
+          "description": "This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs."
+        }
+      }
+    },
+    "NodeCode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "function"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "maxLength": 200000,
+          "description": "Python module source."
+        },
+        "function": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "The function in source that is the step."
         }
       }
     },
@@ -1276,6 +1300,10 @@
           "items": {
             "$ref": "#/$defs/InputBinding"
           }
+        },
+        "code": {
+          "$ref": "#/$defs/NodeCode",
+          "description": "The step's own code (ADR-0028): run this function instead of the operator's."
         },
         "staging_uri": {
           "type": "string",

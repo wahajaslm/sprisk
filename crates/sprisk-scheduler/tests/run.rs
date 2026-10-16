@@ -893,6 +893,34 @@ async fn changing_one_step_reruns_it_and_its_dependents_only() {
 }
 
 #[tokio::test]
+async fn a_step_s_own_code_travels_with_its_lease() {
+    let (env, leased) = rerun(|plan| {
+        let split = plan
+            .steps
+            .iter_mut()
+            .find(|s| s.node_id == "split")
+            .unwrap();
+        split.code = Some(
+            parse(
+                &json!({"source": "def split(data):\n    ...\n", "function": "split"}).to_string(),
+            )
+            .unwrap(),
+        );
+        split.implementation_digest = "sha256:own".into();
+    })
+    .await;
+    assert!(leased.contains(&"split".to_owned()));
+    let log = env.log.lock().unwrap();
+    let lease = log
+        .leases
+        .iter()
+        .rev()
+        .find(|l| l.node_id.as_str() == "split")
+        .unwrap();
+    assert_eq!(lease.code.as_ref().unwrap().function.as_str(), "split");
+}
+
+#[tokio::test]
 async fn a_finished_run_hands_its_worker_back_for_the_next_run() {
     let (env, status) = run_with(Script::new()).await;
     assert_eq!(status, RunStatus::Succeeded);

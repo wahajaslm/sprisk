@@ -47,6 +47,12 @@ pub enum CompileError {
     Cycle(String),
     #[error("node id {0} is reserved")]
     ReservedNode(String),
+    #[error("node {node}: {operator} cannot carry its own code: {reason}")]
+    CodeNotAllowed {
+        node: String,
+        operator: String,
+        reason: &'static str,
+    },
 }
 
 /// Node ids the control plane uses for its own attempts (`gate_b`: ADR-0017).
@@ -69,6 +75,7 @@ impl CompileError {
             CompileError::ConnectedTwice(_) => "input_connected_twice",
             CompileError::Cycle(_) => "cycle",
             CompileError::ReservedNode(_) => "reserved_node_id",
+            CompileError::CodeNotAllowed { .. } => "code_not_allowed",
         }
     }
 }
@@ -83,11 +90,14 @@ pub struct Plan {
 pub struct Step {
     pub node_id: String,
     pub operator: Operator,
-    /// The registry's digest of the code that runs this step (arch §9 cache key).
+    /// Digest of the code that runs this step (arch §9 cache key): the registry's, or that of
+    /// the step's own code (ADR-0028).
     pub implementation_digest: String,
     pub params: serde_json::Map<String, serde_json::Value>,
     /// Sorted by input port name.
     pub inputs: Vec<Input>,
+    /// The step's own code in this version, run instead of its operator's (ADR-0028).
+    pub code: Option<sprisk_contracts::NodeCode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +133,9 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
                 operators.insert(id, op);
                 digests.insert(id, digest);
                 errors.extend(check_params(id, op, &node.params));
+                if node.code.is_some() {
+                    errors.extend(check_own_code(id, op));
+                }
             }
             None => errors.push(CompileError::UnknownOperator {
                 node: id.to_owned(),
@@ -224,16 +237,57 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
                     from_port: sources[0].1.to_owned(),
                 })
                 .collect();
+            let code = nodes[id].code.clone();
             Step {
                 node_id: id.to_owned(),
                 operator: operators[id].clone(),
-                implementation_digest: digests[id].to_owned(),
+                implementation_digest: code
+                    .as_ref()
+                    .map_or_else(|| digests[id].to_owned(), own_code_digest),
                 params: nodes[id].params.clone().into(),
                 inputs,
+                code,
             }
         })
         .collect();
     Ok(Plan { steps })
+}
+
+/// A step's own code runs instead of its operator's (ADR-0028). Only pure steps that read no
+/// files may carry it: replacement code could ignore the data-root check a path setting
+/// passed, or add effects that caching and approval would not see.
+fn check_own_code(node: &str, op: &Operator) -> Option<CompileError> {
+    let reads_files = op
+        .params_schema
+        .get("properties")
+        .and_then(|p| p.as_object())
+        .is_some_and(|props| {
+            props
+                .values()
+                .any(|v| v.get("x-sprisk-local-path") == Some(&serde_json::Value::Bool(true)))
+        });
+    let reason = if reads_files {
+        "it reads files, and its code must stay the checked one"
+    } else if op.effects != sprisk_contracts::Effects::Pure {
+        "it is not a pure step"
+    } else {
+        return None;
+    };
+    Some(CompileError::CodeNotAllowed {
+        node: node.to_owned(),
+        operator: op.id.to_string(),
+        reason,
+    })
+}
+
+/// The digest of a step's own code: different code never shares a cache entry (ADR-0028).
+fn own_code_digest(code: &sprisk_contracts::NodeCode) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(code.function.as_bytes());
+    hasher.update([0]);
+    hasher.update(code.source.as_bytes());
+    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 fn check_params(
