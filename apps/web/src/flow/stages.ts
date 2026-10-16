@@ -46,3 +46,20 @@ export const stageNumber = (stage: Stage) => String(STAGES.indexOf(stage) + 1).p
 /** The profile step writes one DuckDB SUMMARIZE row per data column. Matched by operator
  * because ports do not declare their table shape yet (docs/backlog.md). */
 export const isProfileOperator = (ref: string | undefined) => ref?.startsWith("sprisk.profile.summarize@") === true;
+
+/** One entry per operator name: its highest `major.minor.patch` version. */
+export function newestVersions(operators: Operator[]): Operator[] {
+  const parts = (id: string) => (id.split("@")[1] ?? "").split(".").map(Number);
+  const newer = (a: string, b: string) => {
+    const [x, y] = [parts(a), parts(b)];
+    for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+    return false;
+  };
+  const best = new Map<string, Operator>();
+  for (const op of operators) {
+    const name = op.id.split("@")[0] ?? op.id;
+    const seen = best.get(name);
+    if (!seen || newer(op.id, seen.id)) best.set(name, op);
+  }
+  return [...best.values()];
+}

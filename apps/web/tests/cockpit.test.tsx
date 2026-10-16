@@ -18,6 +18,7 @@ import {
   codeOutputs,
   codePipeline,
   loadOutputs,
+  operators,
   pipeline,
   profilePage,
   run,
@@ -83,6 +84,19 @@ describe("step library", () => {
     const clean = await screen.findByRole("region", { name: "Clean" });
     expect(within(clean).getByText("impute")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Model" })).getByText("linear_model")).toBeInTheDocument();
+  });
+
+  it("lists only the newest version of an operator", async () => {
+    const v = (id: string) => ({ ...operators[0]!, id, capability_class: "analyzer" as const });
+    server.use(
+      http.get("/api/operators", () =>
+        HttpResponse.json([v("sprisk.code.python@1.0.0"), v("sprisk.code.python@1.10.0"), v("sprisk.code.python@1.9.0")]),
+      ),
+    );
+    renderWithApi(<StepLibrary />);
+    const explore = await screen.findByRole("region", { name: "Explore" });
+    expect(within(explore).getAllByText("python")).toHaveLength(1);
+    expect(within(explore).getByTitle(/sprisk.code.python@1.10.0/)).toBeInTheDocument();
   });
 
   it("filters steps by search", async () => {

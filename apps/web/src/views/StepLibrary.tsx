@@ -2,7 +2,7 @@ import type { Operator } from "@sprisk/contracts";
 import { useState } from "react";
 
 import { useOperators } from "../api/hooks.ts";
-import { kindOf, shortName, STAGES, stageNumber, stageOf } from "../flow/stages.ts";
+import { kindOf, newestVersions, shortName, STAGES, stageNumber, stageOf } from "../flow/stages.ts";
 import { KindIcon, SearchIcon } from "./Icons.tsx";
 
 export function StepLibrary() {
@@ -30,7 +30,7 @@ export function StepLibrary() {
         {operators.isSuccess && operators.data.length === 0 && <p className="muted">No operators registered.</p>}
         {operators.isSuccess &&
           STAGES.map((stage) => {
-            const inStage = operators.data.filter(
+            const inStage = newestVersions(operators.data).filter(
               (op) => stageOf(op) === stage && (needle === "" || op.id.toLowerCase().includes(needle)),
             );
             if (inStage.length === 0) return null;
@@ -54,7 +54,7 @@ export function StepLibrary() {
 function StepItem({ operator }: { operator: Operator }) {
   const kind = kindOf(operator);
   return (
-    <div className="step-item" title={operator.description}>
+    <div className="step-item" title={`${operator.id}: ${operator.description ?? ""}`}>
       <span className={`icon-tile small kind-${kind}`}>
         <KindIcon kind={kind} size={12} />
       </span>
