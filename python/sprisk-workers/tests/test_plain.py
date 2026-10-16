@@ -265,3 +265,41 @@ def test_a_figure_of_an_unknown_library_names_its_type(tmp_path: Path) -> None:
     with pytest.raises(OperatorError) as e:
         figures(tmp_path, op)
     assert e.value.code == "bad_output" and "object" in e.value.message
+
+
+SOURCE = operator(
+    "[]",
+    "[{ name: data, kind: table }]",
+    "{ path: { type: string, x-sprisk-local-path: true }, sep: { type: string } }",
+)
+
+
+def test_a_path_argument_arrives_as_a_path(tmp_path: Path) -> None:
+    from pathlib import Path as P
+
+    seen: list[object] = []
+
+    def op(path: P, sep: str = ",") -> pl.DataFrame:
+        seen.append(path)
+        return pl.DataFrame({"x": [1]})
+
+    adapt(op, SOURCE)({"path": "/data/a.csv"}, {}, staging(tmp_path))
+    assert seen == [P("/data/a.csv")]
+
+
+def test_a_path_argument_must_be_a_marked_local_path() -> None:
+    from pathlib import Path as P
+
+    def op(path: P, sep: P) -> pl.DataFrame:
+        return pl.DataFrame()
+
+    with pytest.raises(ManifestError, match="sep.*x-sprisk-local-path"):
+        adapt(op, SOURCE)
+
+
+def test_a_marked_local_path_must_be_typed_as_a_path() -> None:
+    def op(path: str, sep: str = ",") -> pl.DataFrame:
+        return pl.DataFrame()
+
+    with pytest.raises(ManifestError, match="path.*pathlib.Path"):
+        adapt(op, SOURCE)

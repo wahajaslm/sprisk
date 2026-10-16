@@ -231,3 +231,25 @@ describe("Visualizations show what Python drew (ADR-0024)", () => {
     expect(screen.getByRole("region", { name: "Figures" })).toHaveClass("grid");
   });
 });
+
+describe("the code decides the tabs (ADR-0025)", () => {
+  it("a file the step reads is an input, never a parameter", async () => {
+    renderWithApi(
+      <>
+        <ViewInstance pin={undefined} setPin={undefined} tab="inputs">
+          <StepTab />
+        </ViewInstance>
+        <ViewInstance pin={undefined} setPin={undefined} tab="parameters">
+          <StepTab />
+        </ViewInstance>
+      </>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    const inputs = await screen.findByRole("region", { name: "Input tables" });
+    expect(within(inputs).getByText("path")).toBeInTheDocument();
+    expect(within(inputs).getByText("/d/iris.csv")).toBeInTheDocument();
+    const settings = await screen.findByRole("region", { name: "Settings" });
+    expect(within(settings).queryByRole("textbox", { name: "path" })).toBeNull();
+    expect(within(settings).getByRole("combobox", { name: "format" })).toBeInTheDocument();
+  });
+});

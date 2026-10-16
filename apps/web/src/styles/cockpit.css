@@ -411,6 +411,7 @@ p { margin: 0; }
 .input-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .input-row { display: grid; grid-template-columns: 120px 90px 14px auto minmax(0, 1fr); white-space: nowrap; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--line-soft); font: 11.5px var(--sans); }
 .input-kind { color: var(--faint); }
+.input-file { color: var(--soft); overflow: hidden; text-overflow: ellipsis; }
 .input-port { color: var(--ink); }
 .input-arrow { color: var(--faint); }
 .input-source { justify-self: start; border: 0; padding: 0; background: none; color: var(--soft); font: inherit; text-decoration: underline; text-decoration-color: var(--ghost); text-underline-offset: 3px; }

@@ -136,6 +136,8 @@ type Field = {
   "x-sprisk-show-in"?: string;
   /** The value names a column of the input table. */
   "x-sprisk-column"?: boolean;
+  /** A file the step reads: an input, shown under Inputs (ADR-0025). */
+  "x-sprisk-local-path"?: boolean;
 };
 
 export type { Field };
@@ -143,6 +145,7 @@ export type { Field };
 /** A step's settings from its schema, split by where they are shown. */
 export const settingsOf = (schema: Record<string, unknown>) => fieldsOf(schema, []);
 export const isViewSetting = (f: Field) => f["x-sprisk-show-in"] === "visualizations";
+export const isFileInput = (f: Field) => f["x-sprisk-local-path"] === true;
 
 function fieldsOf(schema: Record<string, unknown>, skip: string[]): Field[] {
   const properties = (schema.properties ?? {}) as Record<string, Omit<Field, "name" | "required">>;
@@ -197,7 +200,8 @@ function Settings({ pipeline, nodeId, params, schema }: {
   schema: Record<string, unknown>;
 }) {
   const all = fieldsOf(schema, []);
-  const fields = all.filter((f) => !isViewSetting(f));
+  // Parameters are tunable values only: files are Inputs, view choices sit by the figure.
+  const fields = all.filter((f) => !isViewSetting(f) && !isFileInput(f));
   const elsewhere = all.filter(isViewSetting).map((f) => f.name);
   const initial: Draft = Object.fromEntries(fields.map((f) => [f.name, toDraft(params[f.name])]));
   const [draft, setDraft] = useState<Draft>(initial);

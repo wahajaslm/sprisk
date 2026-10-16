@@ -28,7 +28,13 @@ export function fakeDock(overrides: Partial<DockCommands> = {}): DockCommands {
 }
 
 export const operators: Operator[] = [
-  op("sprisk.io.file_source@1.0.0", "source", [], [["data", "table"]]),
+  {
+    ...op("sprisk.io.file_source@1.0.0", "source", [], [["data", "table"]]),
+    params_schema: {
+      type: "object",
+      properties: { path: { type: "string", "x-sprisk-local-path": true }, format: { type: "string", enum: ["csv", "parquet"] } },
+    },
+  },
   op("sprisk.profile.summarize@1.0.0", "analyzer", [["data", "table"]], [["profile", "diagnostics"]]),
   op("sprisk.validation.random_split@1.0.0", "transform", [["data", "table"]], [["train", "table"], ["test", "table"]]),
   op("sprisk.clean.impute@1.0.0", "transform", [["train", "table"], ["test", "table"]], [["train", "table"], ["test", "table"]]),

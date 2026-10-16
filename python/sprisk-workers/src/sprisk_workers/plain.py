@@ -6,6 +6,7 @@ function, and writes what it returns by the output port's kind."""
 import inspect
 import io
 import json
+import typing
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -32,13 +33,22 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
     """Check `fn`'s arguments against the manifest now, and return the worker's runner."""
     inputs = {p.name.root: p.kind.value for p in operator.inputs}
     outputs = {p.name.root: p.kind.value for p in operator.outputs}
-    settings = set((operator.params_schema.get("properties") or {}).keys())
+    properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
+    settings = set(properties)
     _check_signature(fn, operator.id.root, set(inputs), settings)
+    # A file the step reads is an input (ADR-0025): typed Path in the code, marked in the manifest.
+    files = {
+        k
+        for k, v in properties.items()
+        if isinstance(v, Mapping) and v.get("x-sprisk-local-path") is True
+    }
+    _check_paths(fn, operator.id.root, files)
 
     def run(params: Mapping[str, Any], paths: Mapping[str, Path], out_dir: Path) -> list[Output]:
         values = {port: _read(paths[port], kind) for port, kind in inputs.items()}
         try:
-            result = fn(**values, **params)
+            arguments = {k: Path(v) if k in files else v for k, v in params.items()}
+            result = fn(**values, **arguments)
         except pl.exceptions.ColumnNotFoundError as e:
             raise OperatorError("missing_column", f"column not found: {_first_line(e)}") from e
         except ValueError as e:
@@ -64,6 +74,21 @@ def _check_signature(
     missing = sorted(inputs - set(params))
     if missing:
         raise ManifestError(f"{ref}: function does not take input ports {missing}")
+
+
+def _check_paths(fn: Callable[..., Any], ref: str, marked: set[str]) -> None:
+    hints = typing.get_type_hints(fn)
+    typed = {name for name, hint in hints.items() if hint is Path or Path in typing.get_args(hint)}
+    unmarked = sorted(typed - marked)
+    if unmarked:
+        raise ManifestError(
+            f"{ref}: {unmarked} are files the step reads; mark them x-sprisk-local-path"
+        )
+    untyped = sorted(marked - typed)
+    if untyped:
+        raise ManifestError(
+            f"{ref}: {untyped} are marked local paths; type them pathlib.Path in the code"
+        )
 
 
 def _read(path: Path, kind: str) -> Any:

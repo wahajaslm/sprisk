@@ -9,6 +9,7 @@ import { PARQUET } from "../../api/media.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { useSelection } from "../../workbench/selection.ts";
+import { isFileInput, settingsOf } from "./ParametersTab.tsx";
 
 type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator | undefined; attempts: Attempt[]; found: Read<CodeInterface> };
 
@@ -23,11 +24,23 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
   const declared = operator?.inputs ?? [];
   const extra = incoming.map((e) => e.to.split(".")[1] ?? "").filter((p) => !declared.some((d) => d.name === p));
   const inputs = [...declared.map((d) => ({ name: d.name, kind: d.kind as string })), ...extra.map((name) => ({ name, kind: "" }))];
+  const files = operator ? settingsOf(operator.params_schema).filter(isFileInput) : [];
   return (
     <div className="inputs-tab">
       <section className="input-tables" aria-label="Input tables">
         <p className="output-title">Inputs</p>
-        {inputs.length === 0 ? (
+        {files.length > 0 && (
+          <ul className="input-list">
+            {files.map((f) => (
+              <PortRow key={f.name} name={f.name} kind="file">
+                <span className="input-arrow" aria-hidden="true">←</span>
+                <span className="input-file">{String(node?.params[f.name] ?? "not set")}</span>
+                <span />
+              </PortRow>
+            ))}
+          </ul>
+        )}
+        {inputs.length === 0 && files.length === 0 ? (
           <p className="muted">This step reads no other step. It starts the flow.</p>
         ) : (
           <ul className="input-list">
