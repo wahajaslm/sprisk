@@ -2,7 +2,7 @@ import type { Operator } from "@sprisk/contracts";
 import { useState } from "react";
 
 import { useOperators } from "../api/hooks.ts";
-import { kindOf, newestVersions, shortName, STAGES, stageNumber, stageOf } from "../flow/stages.ts";
+import { kindOf, newestVersions, STAGES, stageOf, stepTitle } from "../flow/stages.ts";
 import { KindIcon, SearchIcon } from "./Icons.tsx";
 
 export function StepLibrary() {
@@ -31,14 +31,14 @@ export function StepLibrary() {
         {operators.isSuccess &&
           STAGES.map((stage) => {
             const inStage = newestVersions(operators.data).filter(
-              (op) => stageOf(op) === stage && (needle === "" || op.id.toLowerCase().includes(needle)),
+              (op) => stageOf(op) === stage && (needle === "" || `${op.id} ${stepTitle(op.id)}`.toLowerCase().includes(needle)),
             );
             if (inStage.length === 0) return null;
             return (
               <section key={stage} aria-label={stage} className="stage-group">
                 <h3 className="stage-heading">
-                  <span className="stage-num">{stageNumber(stage)}</span>
                   {stage}
+                  <span className="stage-count">{inStage.length}</span>
                 </h3>
                 {inStage.map((op) => (
                   <StepItem key={op.id} operator={op} />
@@ -55,11 +55,13 @@ function StepItem({ operator }: { operator: Operator }) {
   const kind = kindOf(operator);
   return (
     <div className="step-item" title={`${operator.id}: ${operator.description ?? ""}`}>
-      <span className={`icon-tile small kind-${kind}`}>
-        <KindIcon kind={kind} size={12} />
+      <span className={`step-icon kind-${kind}`}>
+        <KindIcon kind={kind} size={13} />
       </span>
-      <span className="step-name">{shortName(operator.id)}</span>
-      <span className="step-hint">{operator.capability_class}</span>
+      <span className="step-text">
+        <span className="step-name">{stepTitle(operator.id)}</span>
+        <span className="step-desc">{operator.description}</span>
+      </span>
     </div>
   );
 }

@@ -157,17 +157,19 @@ p { margin: 0; }
 
 /* ── Step library ────────────────────────────────────── */
 .library { height: 100%; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); }
-.library-search { padding: 12px; border-bottom: 1px solid var(--line-soft); }
-.search { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; color: var(--muted); }
-.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); }
-.library-list { flex: 1; overflow: auto; padding: 4px 12px 16px; display: flex; flex-direction: column; gap: 8px; }
-.stage-group { display: flex; flex-direction: column; gap: 2px; }
-.stage-heading { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 2px 4px; font-size: 12px; font-weight: 400; color: var(--quiet); }
-.stage-num { font: 10px var(--mono); color: var(--ghost); }
-.step-item { height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border: 1px solid transparent; border-radius: 0; }
-.step-item:hover { background: var(--wash); border-color: rgba(255, 255, 255, 0.08); }
-.step-name { flex: 1; font-size: 12.5px; font-weight: 400; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.step-hint { font-size: 11px; color: var(--faint); white-space: nowrap; }
+.library-search { padding: 8px; border-bottom: 1px solid var(--line-soft); }
+.search { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; color: var(--muted); }
+.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 12px; }
+.library-list { flex: 1; overflow: auto; padding: 0 0 12px; display: flex; flex-direction: column; }
+.stage-group { display: flex; flex-direction: column; }
+.stage-heading { display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 14px 12px 4px; font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.stage-count { color: var(--ghost); }
+.step-item { display: flex; align-items: flex-start; gap: 8px; padding: 5px 12px; cursor: default; }
+.step-item:hover { background: var(--wash); }
+.library .step-icon { flex-shrink: 0; display: grid; place-items: center; width: 16px; height: 16px; margin-top: 1px; background: transparent; }
+.step-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.step-name { font-size: 12.5px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-desc { font-size: 11px; line-height: 1.35; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Kind tiles: tint per Studio KIND table */
 .icon-tile { width: 32px; height: 32px; border-radius: 0; flex-shrink: 0; display: grid; place-items: center; }

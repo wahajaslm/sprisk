@@ -86,8 +86,11 @@ export function stageGroups(pipeline: PipelineVersion, operators: Map<string, Op
 /** "sprisk.clean.impute@1.0.0" → "impute". */
 export const shortName = (ref: string) => ref.split("@")[0]?.split(".").at(-1) ?? ref;
 
-/** Two-digit stage number as Studio shows it: "01". */
-export const stageNumber = (stage: Stage) => String(STAGES.indexOf(stage) + 1).padStart(2, "0");
+/** "sprisk.ml.linear_model@1.0.0" → "Linear model": the name a person reads in a list. */
+export function stepTitle(ref: string): string {
+  const words = shortName(ref).replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 /** The profile step writes one DuckDB SUMMARIZE row per data column. Matched by operator
  * because ports do not declare their table shape yet (docs/backlog.md). */

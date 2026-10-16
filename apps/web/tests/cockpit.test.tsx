@@ -107,8 +107,15 @@ describe("step library", () => {
   it("groups registered operators by stage", async () => {
     renderWithApi(<StepLibrary />);
     const clean = await screen.findByRole("region", { name: "Clean" });
-    expect(within(clean).getByText("impute")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Model" })).getByText("linear_model")).toBeInTheDocument();
+    expect(within(clean).getByText("Impute")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Model" })).getByText("Linear model")).toBeInTheDocument();
+  });
+
+  it("shows each step's description under its name", async () => {
+    const described = { ...operators[0]!, description: "Read a local CSV file." };
+    server.use(http.get("/api/operators", () => HttpResponse.json([described])));
+    renderWithApi(<StepLibrary />);
+    expect(await screen.findByText("Read a local CSV file.")).toBeInTheDocument();
   });
 
   it("lists only the newest version of an operator", async () => {
@@ -120,7 +127,7 @@ describe("step library", () => {
     );
     renderWithApi(<StepLibrary />);
     const explore = await screen.findByRole("region", { name: "Explore" });
-    expect(within(explore).getAllByText("python")).toHaveLength(1);
+    expect(within(explore).getAllByText("Python")).toHaveLength(1);
     expect(within(explore).getByTitle(/sprisk.code.python@1.10.0/)).toBeInTheDocument();
   });
 
@@ -128,8 +135,8 @@ describe("step library", () => {
     renderWithApi(<StepLibrary />);
     await screen.findByRole("region", { name: "Clean" });
     await userEvent.type(screen.getByRole("searchbox", { name: "Search steps" }), "split");
-    expect(screen.getByText("random_split")).toBeInTheDocument();
-    expect(screen.queryByText("impute")).toBeNull();
+    expect(screen.getByText("Random split")).toBeInTheDocument();
+    expect(screen.queryByText("Impute")).toBeNull();
   });
 });
 
