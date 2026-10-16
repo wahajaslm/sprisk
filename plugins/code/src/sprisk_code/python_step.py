@@ -3,11 +3,9 @@ import base64
 import contextlib
 import io
 import json
-import shutil
 import traceback
 import warnings
 from collections.abc import Mapping
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any, TextIO
 
@@ -17,7 +15,6 @@ import polars as pl
 from sprisk_code.discovery import bind, free_names, literal_parameters
 from sprisk_contracts import CodeDisplay, CodeInterface
 from sprisk_workers.errors import OperatorError
-from sprisk_workers.output import JSON, PARQUET, Output
 
 matplotlib.use("Agg")  # no display in a worker
 import matplotlib.pyplot as plt  # noqa: E402
@@ -33,59 +30,44 @@ MAX_ITEMS = 100
 MAX_FIGURE_BYTES = 512 * 1024
 
 
-def python_step(
-    params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
-) -> list[Output]:
+def python_step(data: pl.DataFrame, source: str) -> dict[str, Any]:
     """Run the user's code on the input table and record what it shows (ADR-0020)."""
-    display, _, _ = _run(params["source"], {}, inputs["data"], out_dir)
-    return [display]
+    display, _, _ = _run(source, {}, data)
+    return display
 
 
-def python_step_with_output(
-    params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
-) -> list[Output]:
+def python_step_with_output(data: pl.DataFrame, source: str) -> dict[str, Any]:
     """As `python_step`, plus a `data` output: the table passed to `sprisk.output`, or the
     input unchanged when the code passes nothing on."""
-    display, result, _ = _run(params["source"], {}, inputs["data"], out_dir)
-    return [_data_output(result, inputs["data"], out_dir), display]
+    display, result, _ = _run(source, {}, data)
+    return {"data": data if result is None else result, "display": display}
 
 
 def python_step_v12(
-    params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
-) -> list[Output]:
+    data: pl.DataFrame,
+    source: str,
+    parameters: Mapping[str, Any] | None = None,
+    output: str | None = None,
+) -> dict[str, Any]:
     """As `python_step_with_output`, plus exposed parameters bound into a copy of the code,
     a chosen output variable, and an `interface` report of what the run found (ADR-0021)."""
-    source: str = params["source"]
-    values: dict[str, Any] = dict(params.get("parameters", {}))
-    chosen: str | None = params.get("output")
-    display, passed, namespace = _run(source, values, inputs["data"], out_dir)
-    result = passed
-    if chosen is not None:
-        value = namespace.get(chosen)
+    values = dict(parameters or {})
+    display, passed, namespace = _run(source, values, data)
+    result = data if passed is None else passed
+    if output is not None:
+        value = namespace.get(output)
         if not isinstance(value, pl.DataFrame):
             raise OperatorError(
                 "code_error",
-                f"output {chosen} is not a polars DataFrame (it is {type(value).__name__})",
+                f"output {output} is not a polars DataFrame (it is {type(value).__name__})",
             )
         result = value
-    path = out_dir / "interface.json"
-    path.write_text(
-        _interface(source, values, chosen, namespace).model_dump_json(exclude_none=True)
-    )
-    return [
-        _data_output(result, inputs["data"], out_dir),
-        display,
-        Output(port="interface", path=path, media_type=JSON),
-    ]
-
-
-def _data_output(result: pl.DataFrame | None, data: Path, out_dir: Path) -> Output:
-    path = out_dir / "data.parquet"
-    if result is None:
-        shutil.copyfile(data, path)  # same bytes, same hash: stored once
-    else:
-        result.write_parquet(path)
-    return Output(port="data", path=path, media_type=PARQUET)
+    interface = _interface(source, values, output, namespace)
+    return {
+        "data": result,
+        "display": display,
+        "interface": interface.model_dump(mode="json", exclude_none=True),
+    }
 
 
 PROVIDED = ("data",)
@@ -159,8 +141,8 @@ def _candidate(name: str, value: object, chosen: bool) -> dict[str, Any]:
 
 
 def _run(
-    source: str, values: dict[str, Any], data: Path, out_dir: Path
-) -> tuple[Output, pl.DataFrame | None, dict[str, Any]]:
+    source: str, values: dict[str, Any], data: pl.DataFrame
+) -> tuple[dict[str, Any], pl.DataFrame | None, dict[str, Any]]:
     passed: list[pl.DataFrame] = []
 
     def output(df: object) -> None:
@@ -171,7 +153,7 @@ def _run(
     shown = _Collector()
     namespace: dict[str, Any] = {
         "__name__": "__sprisk_code__",
-        "data": pl.read_parquet(data),
+        "data": data,
         "pl": pl,
         "sprisk": SimpleNamespace(output=output),
         "display": shown.display,
@@ -207,11 +189,9 @@ def _run(
     if value is not None:
         shown.display(value)
     shown.open_figures()
-    path = out_dir / "display.json"
     display = CodeDisplay.model_validate_json(json.dumps({"items": shown.items}))
-    path.write_text(display.model_dump_json(exclude_none=True))
     result = passed[0] if passed else None
-    return Output(port="display", path=path, media_type=JSON), result, namespace
+    return display.model_dump(mode="json", exclude_none=True), result, namespace
 
 
 def _split_last_expression(module: ast.Module) -> tuple[ast.Module, ast.Expression | None]:

@@ -1,73 +1,59 @@
 import datetime as dt
-from pathlib import Path
 from typing import Any
 
 import polars as pl
 import pytest
-from conftest import WriteParquet
-from model_runs import CLF, fit, fit_and_score, with_null_target
 
-from sprisk_ml.linear_model import linear_model
-from sprisk_workers.errors import OperatorError
+from sprisk_ml.evaluate import evaluate
+from sprisk_ml.models import linear_model
+
+CLF: dict[str, Any] = {"target": "y", "task": "classification", "features": ["x", "c"]}
 
 
-def test_only_listed_features_are_used(
-    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
-) -> None:
+def test_only_listed_features_are_used(clf_frame: pl.DataFrame) -> None:
     # A datetime split column next to the features must be ignored, not fit on.
-    df = clf_frame.with_columns(
-        pl.datetime_range(
-            dt.datetime(2026, 1, 1),
-            dt.datetime(2026, 1, 1) + dt.timedelta(hours=59),
-            "1h",
-            eager=True,
-        ).alias("t")
+    times = pl.datetime_range(
+        dt.datetime(2026, 1, 1), dt.datetime(2026, 1, 1) + dt.timedelta(hours=59), "1h", eager=True
     )
-    m = fit_and_score(linear_model, CLF, write_parquet, out_dir, df[::2], df[1::2])
+    df = clf_frame.with_columns(times.alias("t"))
+    m = evaluate(linear_model(df[::2], **CLF), df[1::2], target="y", task="classification")
     assert m["accuracy"] > 0.9
 
 
-def test_category_seen_only_in_test_does_not_break_prediction(
-    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
-) -> None:
+def test_category_seen_only_in_test_does_not_break_prediction(clf_frame: pl.DataFrame) -> None:
     # The encoder is fit on train only, so it has never seen "unseen".
     test = clf_frame[28:32].with_columns(pl.lit("unseen").alias("c"))
-    m = fit_and_score(linear_model, CLF, write_parquet, out_dir, clf_frame, test)
-    assert m["n_rows"] == 4
+    assert (
+        evaluate(linear_model(clf_frame, **CLF), test, target="y", task="classification")["n_rows"]
+        == 4
+    )
 
 
 @pytest.mark.parametrize(
-    ("params", "code"),
+    ("params", "error"),
     [
-        ({**CLF, "features": ["x", "missing"]}, "missing_column"),
-        ({**CLF, "target": "missing"}, "missing_column"),
-        ({**CLF, "features": ["x", "y"]}, "target_in_features"),
+        ({**CLF, "features": ["x", "missing"]}, pl.exceptions.ColumnNotFoundError),
+        ({**CLF, "target": "missing"}, pl.exceptions.ColumnNotFoundError),
+        ({**CLF, "features": ["x", "y"]}, ValueError),
     ],
 )
-def test_bad_columns_are_operator_errors(
-    params: dict[str, Any],
-    code: str,
-    write_parquet: WriteParquet,
-    clf_frame: pl.DataFrame,
-    out_dir: Path,
+def test_bad_columns_are_errors(
+    params: dict[str, Any], error: type[Exception], clf_frame: pl.DataFrame
 ) -> None:
-    with pytest.raises(OperatorError) as e:
-        fit(linear_model, params, write_parquet, out_dir, clf_frame)
-    assert e.value.code == code
+    with pytest.raises(error):
+        linear_model(clf_frame, **params)
 
 
-def test_unsupported_feature_type_is_an_operator_error(
-    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
-) -> None:
+def test_unsupported_feature_type_is_an_error(clf_frame: pl.DataFrame) -> None:
     df = clf_frame.with_columns(pl.lit(dt.date(2026, 1, 1)).alias("d"))
-    with pytest.raises(OperatorError) as e:
-        fit(linear_model, {**CLF, "features": ["x", "d"]}, write_parquet, out_dir, df)
-    assert e.value.code == "unsupported_feature_type"
+    with pytest.raises(ValueError, match="not numeric or categorical"):
+        linear_model(df, **{**CLF, "features": ["x", "d"]})
 
 
-def test_null_target_in_train_is_an_operator_error(
-    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
-) -> None:
-    with pytest.raises(OperatorError) as e:
-        fit(linear_model, CLF, write_parquet, out_dir, with_null_target(clf_frame))
-    assert e.value.code == "null_target"
+def test_missing_target_in_train_is_an_error(clf_frame: pl.DataFrame) -> None:
+    with pytest.raises(ValueError, match="missing values in train"):
+        linear_model(with_missing_target(clf_frame), **CLF)
+
+
+def with_missing_target(df: pl.DataFrame) -> pl.DataFrame:
+    return df.with_columns(pl.when(pl.col("x") == 3).then(None).otherwise(pl.col("y")).alias("y"))

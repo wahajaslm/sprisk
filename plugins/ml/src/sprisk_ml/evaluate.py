@@ -1,37 +1,20 @@
-import json
-from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
+import polars as pl
 import sklearn
-import skops.io
 from sklearn import metrics
 from sklearn.base import is_classifier
-from skops.io.exceptions import UntrustedTypesFoundException
-
-from sprisk_workers.errors import OperatorError
-from sprisk_workers.output import JSON, Output
-from sprisk_workers.tables import read_table
-
-# skops trusts sklearn estimators by default. Anything beyond them and this list
-# fails to load, so a tampered model file cannot run arbitrary code.
-TRUSTED_TYPES = ["numpy.dtype"]
+from sklearn.pipeline import Pipeline
 
 
-def evaluate(params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path) -> list[Output]:
-    """Score a fitted model on the test table. Never sees training rows."""
-    target, task = params["target"], params["task"]
-    try:
-        model = skops.io.load(inputs["model"], trusted=TRUSTED_TYPES)
-    except UntrustedTypesFoundException as e:
-        raise OperatorError("untrusted_model", str(e)) from e
+def evaluate(model: Pipeline, test: pl.DataFrame, target: str, task: str) -> dict[str, Any]:
+    """Score a fitted model on the test table. It never sees training rows."""
     if is_classifier(model) != (task == "classification"):
-        raise OperatorError("task_mismatch", f"model is not a {task} model")
+        raise ValueError(f"model is not a {task} model")
+    if test[target].null_count():
+        raise ValueError(f"{target} has {test[target].null_count()} missing values in test")
     # The model selects exactly the columns it was fit on.
     features = list(model.feature_names_in_)
-    test = read_table(inputs["test"], [target, *features])
-    if test[target].null_count():
-        raise OperatorError("null_target", f"{target} has {test[target].null_count()} nulls")
     y_true = test[target].to_numpy()
     y_pred = model.predict(test.select(features))
     result: dict[str, Any] = {
@@ -47,6 +30,4 @@ def evaluate(params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Pat
         result["rmse"] = float(metrics.root_mean_squared_error(y_true, y_pred))
         result["mae"] = float(metrics.mean_absolute_error(y_true, y_pred))
         result["r2"] = float(metrics.r2_score(y_true, y_pred))
-    path = out_dir / "metrics.json"
-    path.write_text(json.dumps(result))
-    return [Output(port="metrics", path=path, media_type=JSON)]
+    return result

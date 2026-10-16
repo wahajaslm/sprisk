@@ -1,23 +1,16 @@
-from collections.abc import Mapping
-from pathlib import Path
-from typing import Any
-
 import polars as pl
-
-from sprisk_validation.write_split import write_split
-from sprisk_workers.errors import OperatorError
-from sprisk_workers.output import Output
-from sprisk_workers.tables import read_table
 
 
 def temporal_split(
-    params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
-) -> list[Output]:
+    data: pl.DataFrame, time_column: str, test_fraction: float
+) -> dict[str, pl.DataFrame]:
     """Train rows are strictly earlier than every test row; ties at the cutoff go to test."""
-    column = params["time_column"]
-    df = read_table(inputs["data"], [column])
-    if df[column].null_count():
-        raise OperatorError("null_time_values", f"{column} has {df[column].null_count()} nulls")
-    cutoff = df[column].quantile(1 - params["test_fraction"], interpolation="lower")
-    is_test = pl.col(column) >= cutoff
-    return write_split(df.filter(~is_test), df.filter(is_test), out_dir)
+    times = data[time_column]
+    if times.null_count():
+        raise ValueError(f"{time_column} has {times.null_count()} missing values")
+    cutoff = times.quantile(1 - test_fraction, interpolation="lower")
+    is_test = pl.col(time_column) >= cutoff
+    train, test = data.filter(~is_test), data.filter(is_test)
+    if train.is_empty() or test.is_empty():
+        raise ValueError(f"split gave {train.height} train and {test.height} test rows")
+    return {"train": train, "test": test}

@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -9,12 +10,11 @@ import yaml
 from sprisk_contracts import MethodologyCheck
 from sprisk_supervised.pack import run
 from sprisk_workers.errors import OperatorError
-from sprisk_workers.output import JSON
 
 PLUGINS = Path(__file__).parents[3] / "plugins"
 
 
-def write_inputs(tmp_path: Path, evaluators: int) -> dict[str, Path]:
+def inputs_for(evaluators: int) -> dict[str, Any]:
     nodes = [
         {"id": "load", "operator": "sprisk.io.file_source@1.0.0", "params": {}},
         {"id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {}},
@@ -39,42 +39,25 @@ def write_inputs(tmp_path: Path, evaluators: int) -> dict[str, Path]:
         "created_at": "2026-10-16T10:00:00Z",
     }
     operators = [yaml.safe_load(p.read_text()) for p in sorted(PLUGINS.rglob("manifest.yaml"))]
-    (tmp_path / "pipeline.json").write_text(json.dumps(pipeline))
-    (tmp_path / "operators.json").write_text(json.dumps(operators))
-    return {"pipeline": tmp_path / "pipeline.json", "operators": tmp_path / "operators.json"}
-
-
-def checks(out: Path) -> list[MethodologyCheck]:
-    return [
-        MethodologyCheck.model_validate_json(json.dumps(c)) for c in json.loads(out.read_text())
-    ]
+    return {"pipeline": pipeline, "operators": operators}
 
 
 @pytest.mark.parametrize(("evaluators", "verdict"), [(1, "pass"), (2, "fail")])
-def test_writes_every_rule_result_as_a_json_array(
-    tmp_path: Path, evaluators: int, verdict: str
-) -> None:
-    out_dir = tmp_path / "out"
-    out_dir.mkdir()
-    [output] = run({}, write_inputs(tmp_path, evaluators), out_dir)
-    assert (output.port, output.media_type) == ("checks", JSON)
-    [result] = checks(output.path)
+def test_returns_every_rule_result(evaluators: int, verdict: str) -> None:
+    [raw] = run(**inputs_for(evaluators))
+    result = MethodologyCheck.model_validate_json(json.dumps(raw))
     assert result.check.root == "supervised.split_leakage@1.0.0"
     assert result.verdict == verdict
     assert result.id.root.startswith("mck_")
 
 
-def test_invalid_pipeline_is_an_operator_error(tmp_path: Path) -> None:
-    inputs = write_inputs(tmp_path, 1)
-    inputs["pipeline"].write_text('{"nodes": []}')
+def test_invalid_pipeline_is_an_operator_error() -> None:
     with pytest.raises(OperatorError) as e:
-        run({}, inputs, tmp_path)
+        run(**{**inputs_for(1), "pipeline": {"nodes": []}})
     assert e.value.code == "invalid_check_input"
 
 
-def test_pipeline_using_an_unknown_operator_is_an_operator_error(tmp_path: Path) -> None:
-    inputs = write_inputs(tmp_path, 1)
-    inputs["operators"].write_text("[]")
+def test_pipeline_using_an_unknown_operator_is_an_operator_error() -> None:
     with pytest.raises(OperatorError) as e:
-        run({}, inputs, tmp_path)
+        run(**{**inputs_for(1), "operators": []})
     assert e.value.code == "invalid_check_input"

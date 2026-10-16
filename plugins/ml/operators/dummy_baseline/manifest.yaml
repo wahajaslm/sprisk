@@ -2,7 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.ml.dummy_baseline@1.0.0
 capability_class: estimator
 description: Majority class or mean predictor. The floor every model must beat.
-entrypoint: sprisk_ml.dummy_baseline:dummy_baseline
+entrypoint: sprisk_ml.models:dummy_baseline
 inputs: [{ name: train, kind: table }]
 outputs: [{ name: model, kind: model }]
 params_schema:

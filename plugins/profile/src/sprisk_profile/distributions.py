@@ -1,12 +1,7 @@
-from collections.abc import Mapping
 from itertools import combinations
-from pathlib import Path
-from typing import Any
 
 import duckdb
 import polars as pl
-
-from sprisk_workers.output import PARQUET, Output
 
 BINS = 20
 NUMERIC = (
@@ -25,19 +20,17 @@ NUMERIC = (
 )
 
 
-def distributions(
-    params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
-) -> list[Output]:
+def distributions(data: pl.DataFrame) -> dict[str, pl.DataFrame]:
     """Equal-width histograms of numeric columns and their pairwise Pearson correlation,
-    aggregated by DuckDB so the table is never loaded whole. Charts draw only these."""
+    aggregated by DuckDB. Charts draw only these."""
     with duckdb.connect() as con:
-        con.read_parquet(str(inputs["data"])).create_view("t")
+        con.register("t", data)
         numeric = [
             name
             for name, dtype, *_ in con.sql("DESCRIBE t").fetchall()
             if dtype.startswith(NUMERIC)
         ]
-        hist = pl.DataFrame(
+        histograms = pl.DataFrame(
             [row for name in numeric for row in _histogram(con, name)],
             schema={
                 "column_name": pl.String,
@@ -47,18 +40,12 @@ def distributions(
             },
             orient="row",
         )
-        corr = pl.DataFrame(
+        correlation = pl.DataFrame(
             _correlations(con, numeric),
             schema={"column_a": pl.String, "column_b": pl.String, "pearson": pl.Float64},
             orient="row",
         )
-    hist_path, corr_path = out_dir / "histograms.parquet", out_dir / "correlation.parquet"
-    hist.write_parquet(hist_path)
-    corr.write_parquet(corr_path)
-    return [
-        Output(port="histograms", path=hist_path, media_type=PARQUET),
-        Output(port="correlation", path=corr_path, media_type=PARQUET),
-    ]
+    return {"histograms": histograms, "correlation": correlation}
 
 
 def _quote(name: str) -> str:

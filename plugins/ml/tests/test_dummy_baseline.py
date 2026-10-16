@@ -1,20 +1,18 @@
-from pathlib import Path
+from typing import Any
 
 import polars as pl
 import pytest
-from conftest import WriteParquet
-from model_runs import CLF, fit_and_score
 
-from sprisk_ml.dummy_baseline import dummy_baseline
-from sprisk_ml.linear_model import linear_model
+from sprisk_ml.evaluate import evaluate
+from sprisk_ml.models import dummy_baseline, linear_model
+
+CLF: dict[str, Any] = {"target": "y", "task": "classification", "features": ["x", "c"]}
 
 
-def test_logistic_beats_dummy_on_separable_data(
-    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
-) -> None:
+def test_logistic_beats_dummy_on_separable_data(clf_frame: pl.DataFrame) -> None:
     train, test = clf_frame[::2], clf_frame[1::2]
-    dummy = fit_and_score(dummy_baseline, CLF, write_parquet, out_dir, train, test)
-    linear = fit_and_score(linear_model, CLF, write_parquet, out_dir, train, test)
+    dummy = evaluate(dummy_baseline(train, **CLF), test, target="y", task="classification")
+    linear = evaluate(linear_model(train, **CLF), test, target="y", task="classification")
     assert dummy["balanced_accuracy"] == pytest.approx(0.5)
     assert dummy["estimator"] == "DummyClassifier"
     assert linear["accuracy"] > 0.9

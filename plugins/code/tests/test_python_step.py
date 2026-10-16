@@ -1,6 +1,8 @@
 import base64
+import json
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 import pytest
@@ -17,9 +19,7 @@ from sprisk_workers.errors import OperatorError
 
 
 def run(write_parquet: WriteParquet, df: pl.DataFrame, out_dir: Path, source: str) -> CodeDisplay:
-    [out] = python_step({"source": source}, {"data": write_parquet("d", df)}, out_dir)
-    assert (out.port, out.media_type) == ("display", "application/json")
-    return CodeDisplay.model_validate_json(out.path.read_text())
+    return CodeDisplay.model_validate_json(json.dumps(python_step(df, source)))
 
 
 def test_last_expression_is_shown_as_a_table(
@@ -95,38 +95,31 @@ def test_huge_figure_is_replaced_by_a_note(
 def test_output_becomes_the_data_port(write_parquet: WriteParquet, out_dir: Path) -> None:
     df = pl.DataFrame({"x": [1.0, 2.0, 3.0]})
     source = "sprisk.output(data.with_columns(y=pl.col('x') * 2))"
-    outputs = python_step_with_output({"source": source}, {"data": write_parquet("d", df)}, out_dir)
-    data = next(o for o in outputs if o.port == "data")
-    assert data.media_type == "application/vnd.apache.parquet"
-    assert pl.read_parquet(data.path)["y"].to_list() == [2.0, 4.0, 6.0]
-    assert {o.port for o in outputs} == {"data", "display"}
+    outputs = python_step_with_output(df, source)
+    assert outputs["data"]["y"].to_list() == [2.0, 4.0, 6.0]
+    assert set(outputs) == {"data", "display"}
 
 
 def test_without_output_the_input_passes_through_unchanged(
     write_parquet: WriteParquet, out_dir: Path
 ) -> None:
-    src = write_parquet("d", pl.DataFrame({"x": [1, 2]}))
-    outputs = python_step_with_output({"source": "data.height"}, {"data": src}, out_dir)
-    data = next(o for o in outputs if o.port == "data")
-    assert data.path.read_bytes() == src.read_bytes()
+    df = pl.DataFrame({"x": [1, 2]})
+    assert python_step_with_output(df, "data.height")["data"] is df
 
 
 def test_output_must_be_a_polars_dataframe(
     write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
 ) -> None:
     with pytest.raises(OperatorError) as e:
-        python_step_with_output(
-            {"source": "sprisk.output([1, 2])"}, {"data": write_parquet("d", clf_frame)}, out_dir
-        )
+        python_step_with_output(clf_frame, "sprisk.output([1, 2])")
     assert e.value.code == "code_error" and "polars DataFrame" in e.value.message
 
 
 def run_v12(
-    write_parquet: WriteParquet, out_dir: Path, params: Mapping[str, object]
-) -> dict[str, Path]:
-    df = pl.DataFrame({"x": [1.0, 2.0, 3.0]})
-    outputs = python_step_v12(params, {"data": write_parquet("d", df)}, out_dir)
-    return {o.port: o.path for o in outputs}
+    write_parquet: WriteParquet, out_dir: Path, params: Mapping[str, Any]
+) -> dict[str, Any]:
+    out = python_step_v12(pl.DataFrame({"x": [1.0, 2.0, 3.0]}), **params)
+    return {**out, "interface": CodeInterface.model_validate_json(json.dumps(out["interface"]))}
 
 
 SOURCE = (
@@ -139,9 +132,9 @@ def test_exposed_parameter_changes_the_run_but_not_the_source(
 ) -> None:
     params = {"source": SOURCE, "parameters": {"factor": 10}, "output": "out"}
     paths = run_v12(write_parquet, out_dir, params)
-    assert pl.read_parquet(paths["data"])["y"].to_list() == [10.0, 20.0, 30.0]
+    assert paths["data"]["y"].to_list() == [10.0, 20.0, 30.0]
     assert params["source"] == SOURCE
-    found = CodeInterface.model_validate_json(paths["interface"].read_text())
+    found = paths["interface"]
     [factor] = found.parameters
     assert (factor.name, factor.default_text, factor.effective_text, factor.origin.value) == (
         "factor",
@@ -155,7 +148,7 @@ def test_interface_reports_inputs_and_output_candidates(
     write_parquet: WriteParquet, out_dir: Path
 ) -> None:
     paths = run_v12(write_parquet, out_dir, {"source": SOURCE})
-    found = CodeInterface.model_validate_json(paths["interface"].read_text())
+    found = paths["interface"]
     assert [(i.name, i.bound) for i in found.inputs] == [("data", True), ("lookup", False)]
     [out] = found.outputs
     assert (out.name, out.type, out.rows, out.columns, out.chosen) == (

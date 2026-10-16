@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 
-from sprisk_validation.temporal_split import temporal_split
 from sprisk_workers.errors import ManifestError
 from sprisk_workers.manifests import load_operators
 
@@ -15,7 +14,9 @@ capability_class: transform
 entrypoint: {entrypoint}
 inputs: [{{ name: data, kind: table }}]
 outputs: [{{ name: train, kind: table }}, {{ name: test, kind: table }}]
-params_schema: {{ type: object }}
+params_schema:
+  type: object
+  properties: {{ time_column: {{ type: string }}, test_fraction: {{ type: number }} }}
 effects: pure
 network: none
 resources: {{ cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }}
@@ -48,7 +49,6 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.validation.temporal_split@1.0.0",
     ]
     split = ops["sprisk.validation.temporal_split@1.0.0"]
-    assert split.run is temporal_split
     assert split.output_ports == {"train", "test"}
     assert split.params_schema["required"] == ["time_column", "test_fraction"]
 
@@ -83,3 +83,16 @@ def test_same_operator_in_two_roots_is_an_error(tmp_path: Path) -> None:
     write(tmp_path / "b", "sprisk_validation.temporal_split:temporal_split")
     with pytest.raises(ManifestError, match="declared twice"):
         load_operators(tmp_path / "a", tmp_path / "b")
+
+
+# The code step runs the user's code; its own module is the worker's runner for it (ADR-0022).
+RUNNERS = {"sprisk_code"}  # methodology packs live outside plugins/ and are runners too
+
+
+def test_no_step_imports_sprisk() -> None:
+    """Steps are plain Polars / scikit-learn code (ADR-0022); the worker does the plumbing."""
+    sources = [p for p in PLUGINS.glob("*/src/*/*.py") if p.parent.name not in RUNNERS]
+    assert sources
+    for path in sources:
+        text = path.read_text()
+        assert "from sprisk" not in text and "import sprisk" not in text, path

@@ -74,9 +74,11 @@ def _read(path: Path, kind: str) -> Any:
 
 
 def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
-    if kind == "table":
-        if not isinstance(value, pl.DataFrame):
-            raise _wrong(port, "a polars DataFrame", value)
+    """A table is Parquet on any port (profiles and histograms are tables too); a model is
+    skops; anything else is JSON."""
+    if kind == "table" and not isinstance(value, pl.DataFrame):
+        raise _wrong(port, "a polars DataFrame", value)
+    if isinstance(value, pl.DataFrame) and kind != "model":
         path = out_dir / f"{port}.parquet"
         value.write_parquet(path)
         return Output(port, path, PARQUET)

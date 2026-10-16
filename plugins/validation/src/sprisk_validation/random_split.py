@@ -1,15 +1,11 @@
-from collections.abc import Mapping
-from pathlib import Path
-from typing import Any
-
-from sprisk_validation.write_split import write_split
-from sprisk_workers.output import Output
-from sprisk_workers.tables import read_table
+import polars as pl
 
 
-def random_split(
-    params: Mapping[str, Any], inputs: Mapping[str, Path], out_dir: Path
-) -> list[Output]:
-    df = read_table(inputs["data"]).sample(fraction=1.0, shuffle=True, seed=params["seed"])
-    n_test = round(df.height * params["test_fraction"])
-    return write_split(df.slice(n_test), df.head(n_test), out_dir)
+def random_split(data: pl.DataFrame, test_fraction: float, seed: int) -> dict[str, pl.DataFrame]:
+    """Shuffle rows with a fixed seed, then hold out `test_fraction` of them for testing."""
+    shuffled = data.sample(fraction=1.0, shuffle=True, seed=seed)
+    n_test = round(shuffled.height * test_fraction)
+    train, test = shuffled.slice(n_test), shuffled.head(n_test)
+    if train.is_empty() or test.is_empty():
+        raise ValueError(f"split gave {train.height} train and {test.height} test rows")
+    return {"train": train, "test": test}

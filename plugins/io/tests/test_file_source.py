@@ -1,10 +1,8 @@
-import inspect
 from pathlib import Path
 
 import polars as pl
 import pytest
 
-import sprisk_io.file_source as module
 from sprisk_io.file_source import file_source
 
 
@@ -37,8 +35,3 @@ def test_parquet_is_read_as_a_table(tmp_path: Path) -> None:
 def test_missing_file_is_an_error_naming_it(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="no file at .*nope.csv"):
         file_source(str(tmp_path / "nope.csv"), "csv")
-
-
-def test_the_code_imports_nothing_from_sprisk() -> None:
-    source = inspect.getsource(module)
-    assert "from sprisk" not in source and "import sprisk" not in source

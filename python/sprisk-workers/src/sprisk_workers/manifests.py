@@ -1,5 +1,4 @@
 import importlib
-import inspect
 import json
 from pathlib import Path
 
@@ -9,10 +8,7 @@ from pydantic import ValidationError
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError
 from sprisk_workers.plain import adapt
-from sprisk_workers.serve import LoadedOperator, OperatorFn
-
-# Steps not yet converted to plain functions (ADR-0022) still take these three arguments.
-STAGED_ARGUMENTS = ["params", "inputs", "out_dir"]
+from sprisk_workers.serve import LoadedOperator
 
 # Only first-party packs run until plugin isolation exists (arch doc §12).
 TRUSTED_PACKAGES = (
@@ -54,8 +50,6 @@ def _load(path: Path) -> tuple[str, LoadedOperator]:
     if function is None:
         raise ManifestError(f"{path}: {module_name} has no function {function_name}")
     ports = frozenset(port.name.root for port in operator.outputs)
-    staged = list(inspect.signature(function).parameters) == STAGED_ARGUMENTS
-    run: OperatorFn = function if staged else adapt(function, operator)
     return operator.id.root, LoadedOperator(
-        run=run, output_ports=ports, params_schema=operator.params_schema
+        run=adapt(function, operator), output_ports=ports, params_schema=operator.params_schema
     )

@@ -188,3 +188,30 @@ def test_an_optional_setting_left_out_uses_the_functions_default(tmp_path: Path)
         {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
     )
     assert pl.read_parquet(out.path)["x"].to_list() == [10]
+
+
+def test_a_model_file_with_untrusted_types_is_refused(tmp_path: Path) -> None:
+    import datetime as dt
+
+    score = operator("[{ name: model, kind: model }]", "[{ name: metrics, kind: metrics }]")
+    evil = tmp_path / "evil.skops"
+    skops.io.dump({"call": dt.datetime}, evil)
+
+    def op(model: Any) -> dict[str, Any]:
+        return {}
+
+    with pytest.raises(OperatorError) as e:
+        adapt(op, score)({}, {"model": evil}, staging(tmp_path))
+    assert e.value.code == "untrusted_model"
+
+
+def test_a_table_on_a_diagnostics_port_is_saved_as_parquet(tmp_path: Path) -> None:
+    profile = operator("[{ name: data, kind: table }]", "[{ name: profile, kind: diagnostics }]")
+
+    def op(data: pl.DataFrame) -> pl.DataFrame:
+        return data.describe()
+
+    [out] = adapt(op, profile)(
+        {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+    )
+    assert out.media_type == PARQUET

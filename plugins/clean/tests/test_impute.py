@@ -27,12 +27,3 @@ def test_nan_is_treated_as_missing() -> None:
     out = impute(train, test, columns=["x"], method="mean")
     assert out["train"]["x"].to_list() == [1.0, 2.0, 3.0]
     assert out["test"]["x"].to_list() == [2.0]
-
-
-def test_the_code_imports_nothing_from_sprisk() -> None:
-    import inspect
-
-    import sprisk_clean.impute as module
-
-    source = inspect.getsource(module)
-    assert "from sprisk" not in source and "import sprisk" not in source

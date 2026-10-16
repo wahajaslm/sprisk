@@ -22,7 +22,9 @@ Arch doc sections: §7 (operators), §9 (operator manifest), §11 (worker protoc
   - Polars column errors → permanent failure `missing_column`.
   - Anything else → permanent failure `operator_error` with type and message.
 - Operator code imports no sprisk module. It may use Polars, NumPy, scikit-learn, SciPy and statsmodels.
-- The code step (ADR-0020) follows the same rule: it returns `data`, `display` and `interface`.
+- The code step (ADR-0020) uses the same calling style: it returns `data`, `display` and `interface`.
+  Its own module is the worker's runner for the user's code, so it may import sprisk (the display
+  contract, AST discovery, the code-error type). Its Code tab shows the user's code, never this module.
 
 ## Alternatives considered
 - **Hide plumbing in the UI** (show only the function body). Rejected: the shown code would not be the code that runs.
