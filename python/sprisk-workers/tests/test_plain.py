@@ -332,3 +332,61 @@ def test_a_quiet_step_has_no_console(tmp_path: Path) -> None:
         {"factor": 1}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
     )
     assert [o.port for o in outputs] == ["data"]
+
+
+NAMED = operator(
+    "[]",
+    "[{ name: display, kind: diagnostics }]",
+    "{ inputs: { type: array, x-sprisk-ports: input },"
+    " outputs: { type: array, x-sprisk-ports: output } }",
+)
+NOTHING_SHOWN: dict[str, list[Any]] = {"items": []}
+
+
+def test_tables_named_in_params_arrive_as_a_dict_and_leave_by_name(tmp_path: Path) -> None:
+    def op(inputs: dict[str, Any], outputs: list[str]) -> dict[str, Any]:
+        return {"display": NOTHING_SHOWN, "filtered": inputs["df"].filter(pl.col("x") > 1)}
+
+    params = {"inputs": ["df"], "outputs": ["filtered"]}
+    written = adapt(op, NAMED)(
+        params, {"df": parquet(tmp_path, pl.DataFrame({"x": [1, 2]}))}, staging(tmp_path)
+    )
+
+    by_port = {o.port: o for o in written}
+    assert set(by_port) == {"display", "filtered"}
+    assert pl.read_parquet(by_port["filtered"].path)["x"].to_list() == [2]
+
+
+def test_a_pandas_table_comes_back_as_pandas_to_a_code_step_and_as_polars_to_others(
+    tmp_path: Path,
+) -> None:
+    import pandas as pd
+
+    def make(inputs: dict[str, Any], outputs: list[str]) -> dict[str, Any]:
+        return {"display": NOTHING_SHOWN, "df": pd.DataFrame({"x": [1, 2]})}
+
+    written = adapt(make, NAMED)({"inputs": [], "outputs": ["df"]}, {}, staging(tmp_path))
+    table = next(o.path for o in written if o.port == "df")
+    seen: list[str] = []
+
+    def use(inputs: dict[str, Any], outputs: list[str]) -> dict[str, Any]:
+        seen.append(type(inputs["df"]).__module__.split(".")[0])
+        return {"display": NOTHING_SHOWN}
+
+    def builtin(data: pl.DataFrame, factor: float = 1.0) -> pl.DataFrame:
+        seen.append(type(data).__module__.split(".")[0])
+        return data
+
+    later = tmp_path / "later"
+    later.mkdir()
+    adapt(use, NAMED)({"inputs": ["df"], "outputs": []}, {"df": table}, later)
+    adapt(builtin, ONE_TABLE)({}, {"data": table}, later)
+    assert seen == ["pandas", "polars"]
+
+
+def test_a_named_output_that_is_not_a_table_names_its_type(tmp_path: Path) -> None:
+    def op(inputs: dict[str, Any], outputs: list[str]) -> dict[str, Any]:
+        return {"display": NOTHING_SHOWN, "lookup": {"a": 1}}
+
+    with pytest.raises(OperatorError, match="output lookup: expected a DataFrame, got dict"):
+        adapt(op, NAMED)({"inputs": [], "outputs": ["lookup"]}, {}, staging(tmp_path))

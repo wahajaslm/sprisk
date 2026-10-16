@@ -270,3 +270,20 @@ def test_a_lease_with_the_step_s_own_code_runs_that_code(tmp_path: Path) -> None
     [manifest_msg] = [m for m in sent if m["type"] == "artifact_manifest"]
     path = Path(manifest_msg["staging_uri"].removeprefix("file://"))
     assert json.loads(path.read_text()) == {"said": "HI"}
+
+
+def test_outputs_named_in_params_are_declared(tmp_path: Path) -> None:
+    def named(p: Mapping[str, Any], i: Mapping[str, Path], out_dir: Path) -> list[Output]:
+        path = out_dir / "df.parquet"
+        path.write_text("x")
+        return [Output(port="df", path=path, media_type="application/vnd.apache.parquet")]
+
+    schema = {"type": "object", "properties": {"outputs": {"x-sprisk-ports": "output"}}}
+    operator = LoadedOperator(
+        run=named, output_ports=frozenset(), params_schema=schema, named_outputs="outputs"
+    )
+    stdout = io.StringIO()
+    line = lease(tmp_path, params={"outputs": ["df"]})
+    serve(io.StringIO(line + "\n"), stdout, WORKER_ID, {OP: operator}, 60.0)
+    sent = [json.loads(m) for m in stdout.getvalue().splitlines()]
+    assert [m["type"] for m in sent] == ["handshake", "artifact_manifest", "complete"]

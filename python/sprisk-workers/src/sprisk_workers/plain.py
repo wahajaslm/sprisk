@@ -45,11 +45,20 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
         if isinstance(v, Mapping) and v.get("x-sprisk-local-path") is True
     }
     _check_paths(fn, operator.id.root, files)
+    # A code step's ports can be variable names listed in its params (ADR-0031).
+    named_in, named_out = named_ports(operator, "input"), named_ports(operator, "output")
 
     def run(params: Mapping[str, Any], paths: Mapping[str, Path], out_dir: Path) -> list[Output]:
         values = {port: _read(paths[port], kind) for port, kind in inputs.items()}
+        expected = dict(outputs)
+        if named_out is not None:
+            expected |= {name: "table" for name in params.get(named_out) or []}
         try:
             arguments = {k: Path(v) if k in files else v for k, v in params.items()}
+            if named_in is not None:
+                arguments[named_in] = {
+                    n: _read_as_written(paths[n]) for n in params.get(named_in) or []
+                }
             with _console() as printed:
                 result = fn(**values, **arguments)
         except pl.exceptions.ColumnNotFoundError as e:
@@ -58,11 +67,12 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
             raise OperatorError("invalid_input", str(e)) from e
         except Exception as e:  # noqa: BLE001 - reported as the attempt's failure, never swallowed
             raise OperatorError("operator_error", f"{type(e).__name__}: {e}") from e
-        by_port = result if len(outputs) > 1 else {next(iter(outputs)): result}
-        if not isinstance(by_port, dict) or set(by_port) != set(outputs):
+        several = len(expected) > 1 or named_out is not None
+        by_port = result if several else {next(iter(expected)): result}
+        if not isinstance(by_port, dict) or set(by_port) != set(expected):
             got = sorted(by_port) if isinstance(by_port, dict) else type(by_port).__name__
-            raise OperatorError("bad_output", f"expected outputs {sorted(outputs)}, got {got}")
-        written = [_write(port, by_port[port], kind, out_dir) for port, kind in outputs.items()]
+            raise OperatorError("bad_output", f"expected outputs {sorted(expected)}, got {got}")
+        written = [_write(port, by_port[port], kind, out_dir) for port, kind in expected.items()]
         if printed:
             path = out_dir / f"{CONSOLE_PORT}.json"
             path.write_text(json.dumps({"items": printed}))
@@ -70,6 +80,19 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
         return written
 
     return run
+
+
+def named_ports(operator: Operator, side: str) -> str | None:
+    """The params key listing a step's port names on `side` ("input" or "output"), if any."""
+    properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
+    return next(
+        (
+            key
+            for key, schema in properties.items()
+            if isinstance(schema, Mapping) and schema.get("x-sprisk-ports") == side
+        ),
+        None,
+    )
 
 
 def _check_signature(
@@ -151,6 +174,22 @@ def _read(path: Path, kind: str) -> Any:
     return json.loads(path.read_text())
 
 
+def _read_as_written(path: Path) -> Any:
+    """A table for a code step, in the library that wrote it: pandas writes its own metadata
+    into the file. Built-in steps always read polars (`_read`)."""
+    import pyarrow.parquet as pq
+
+    if b"pandas" in (pq.read_schema(path).metadata or {}):
+        return pq.read_table(path).to_pandas()
+    return pl.read_parquet(path)
+
+
+def _is_pandas_frame(value: Any) -> bool:
+    # Checked by name: pandas is imported only by code that made one.
+    kind = type(value)
+    return kind.__name__ == "DataFrame" and kind.__module__.split(".")[0] == "pandas"
+
+
 def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
     """A table is Parquet on any port (profiles and histograms are tables too); a model is
     skops; figures are one FigureSet (ADR-0024); anything else is JSON."""
@@ -159,8 +198,12 @@ def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
         path = out_dir / f"{port}.json"
         path.write_text(json.dumps({"items": [_figure(port, f) for f in figures]}))
         return Output(port, path, JSON)
+    if kind == "table" and _is_pandas_frame(value):
+        path = out_dir / f"{port}.parquet"
+        value.to_parquet(path)
+        return Output(port, path, PARQUET)
     if kind == "table" and not isinstance(value, pl.DataFrame):
-        raise _wrong(port, "a polars DataFrame", value)
+        raise _wrong(port, "a DataFrame", value)
     if isinstance(value, pl.DataFrame) and kind != "model":
         path = out_dir / f"{port}.parquet"
         value.write_parquet(path)

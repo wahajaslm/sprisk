@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError
-from sprisk_workers.plain import adapt
+from sprisk_workers.plain import adapt, named_ports
 from sprisk_workers.serve import LoadedOperator
 
 # Only first-party packs run until plugin isolation exists (arch doc §12).
@@ -55,4 +55,5 @@ def _load(path: Path) -> tuple[str, LoadedOperator]:
         output_ports=ports,
         params_schema=operator.params_schema,
         operator=operator,
+        named_outputs=named_ports(operator, "output"),
     )

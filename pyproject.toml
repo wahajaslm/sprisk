@@ -16,7 +16,7 @@ python_version = "3.12"
 [tool.ruff.lint.isort]
 known-first-party = ["sprisk_*"]
 
-# scikit-learn and skops ship no type information.
+# scikit-learn, skops, pyarrow and pandas ship no usable type information.
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "skops.*", "plotly.*"]
+module = ["sklearn.*", "skops.*", "plotly.*", "pyarrow.*", "pandas.*"]
 ignore_missing_imports = true
