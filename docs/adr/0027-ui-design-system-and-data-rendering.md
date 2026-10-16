@@ -21,7 +21,7 @@ Arch doc sections: §2A, §13
 
 ### 2. Primitives in `src/components/ui`
 - `PanelHeader`, `ListRow`, `SectionLabel`, `StatTile`, `QueryState` (loading, error, empty).
-- `VirtualList`: the only way to render a list that can grow. Built on `@tanstack/react-virtual`, already a dependency.
+- `VirtualList`: the only way to render a list that can grow. Built on `@tanstack/react-virtual`, already a dependency. Added with the first list that pages past one screen; today every list is capped (runs at 20).
 - Panels compose these. They do not restyle them.
 
 ### 3. One renderer per kind of data
