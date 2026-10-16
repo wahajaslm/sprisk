@@ -192,7 +192,7 @@ p { margin: 0; }
 .stage-label { font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; }
 .stage-count { font: 10px var(--mono); color: var(--quiet); white-space: nowrap; }
 .icon-tile.ring { box-shadow: 0 0 0 1px currentColor; }
-.node-title { font-size: 12.5px; font-weight: 400; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-title { font-size: 14px; font-weight: 400; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tone-done { color: var(--quiet); }
 .tone-done .dot { color: #e0e0e0; }
 .tone-live { color: var(--ink); }
@@ -316,16 +316,16 @@ p { margin: 0; }
 .flow-round:hover .round-icon { background: var(--node-hover); border-color: var(--dim); }
 .flow-round.selected .round-icon { background: var(--ink); border-color: var(--ink); color: var(--ground); box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08); }
 .flow-round.bad .round-icon { border-color: var(--alert); }
-.round-text { display: grid; gap: 1px; min-width: 0; max-width: 128px; }
+.round-text { display: grid; gap: 1px; min-width: 0; max-width: 140px; }
 .flow-round .node-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 .state-dot { position: absolute; right: 1px; bottom: 1px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--canvas); background: var(--ghost); }
 .state-dot.tone-done { background: var(--dim); }
 .state-dot.tone-live { background: var(--ink); }
 .state-dot.tone-bad { background: var(--alert); }
-.round-state { font-size: 11px; line-height: 1.3; }
+.round-state { font-size: 12px; line-height: 1.3; }
 .round-state.tone-bad { color: var(--alert); }
 .round-state.tone-live { color: var(--soft); }
-.round-sub { font-size: 11px; line-height: 1.3; color: var(--faint); }
+.round-sub { font-size: 12px; line-height: 1.3; color: var(--faint); }
 .flow-round.bad .node-title { color: var(--alert); }
 .flow-edge { stroke: rgba(255, 255, 255, 0.26); stroke-width: 1.2; }
 .flow-edge.active { stroke: rgba(255, 255, 255, 0.7); stroke-width: 1.4; }
@@ -339,41 +339,41 @@ p { margin: 0; }
 .step-menu hr { margin: 4px 2px; border: 0; border-top: 1px solid var(--line); }
 .canvas-error { position: absolute; top: 12px; left: 12px; z-index: 5; }
 .card-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
-.card-title { font-size: 12.5px; font-weight: 400; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-op { margin-left: auto; font: 10px var(--sans); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.card-title { font-size: 14px; font-weight: 400; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-op { margin-left: auto; font: 11.5px var(--sans); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 .card-body { display: grid; align-content: start; gap: 8px; padding: 8px 10px 0; min-height: 0; overflow: hidden; }
-.card-fact { font: 11px var(--mono); color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-fact .node-fact { font-size: 11px; color: var(--soft); }
-.card-status { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; font: 10.5px var(--mono); white-space: nowrap; }
+.card-fact { font: 12px var(--mono); color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-fact .node-fact { font-size: 12px; color: var(--soft); }
+.card-status { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; font: 11.5px var(--mono); white-space: nowrap; }
 .card-status .dot { width: 5px; height: 5px; }
 .card-concern { margin-left: auto; color: var(--alert); }
 
 /* Small pictures inside cards. Monochrome; red only for problems. */
 .nv { display: grid; gap: 5px; min-width: 0; }
-.nv-legend { display: flex; justify-content: space-between; gap: 6px; font: 10px var(--mono); color: var(--muted); }
+.nv-legend { display: flex; justify-content: space-between; gap: 6px; font: 11px var(--mono); color: var(--muted); }
 .nv-legend b { color: var(--soft); font-weight: 500; }
 .nv-split-bar { height: 8px; border-radius: 0; background: var(--wash-strong); overflow: hidden; }
 .nv-split-bar span { display: block; height: 100%; background: var(--dim); border-radius: 0; }
 .nv-bars { display: flex; align-items: flex-end; gap: 2px; height: 30px; }
 .nv-bars span { flex: 1; min-width: 2px; border-radius: 0; background: var(--ghost); }
 .nv-bars span.warn { background: var(--alert); }
-.nv-cols { grid-template-columns: 1fr 1fr; gap: 3px 8px; font: 10px var(--mono); color: var(--muted); }
+.nv-cols { grid-template-columns: 1fr 1fr; gap: 3px 8px; font: 11px var(--mono); color: var(--muted); }
 .nv-col { display: flex; gap: 5px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nv-col-type { width: 14px; flex-shrink: 0; color: var(--faint); }
 .nv-more { color: var(--faint); }
 .nv-metric { grid-template-columns: auto 1fr; align-items: center; gap: 10px; }
 .nv-metric-value { display: grid; line-height: 1.1; }
 .nv-metric-value b { font: 500 22px var(--sans); color: var(--ink); }
-.nv-metric-value span { font: 10px var(--mono); color: var(--muted); }
+.nv-metric-value span { font: 11px var(--mono); color: var(--muted); }
 .nv-spark { width: 100%; height: 30px; overflow: visible; }
 .nv-spark polyline { fill: none; stroke: var(--dim); stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .nv-spark circle { fill: var(--ink); }
-.nv-kv { margin: 0; gap: 3px; font: 10.5px var(--mono); }
+.nv-kv { margin: 0; gap: 3px; font: 11.5px var(--mono); }
 .nv-kv div { display: flex; justify-content: space-between; gap: 8px; }
 .nv-kv dt { color: var(--faint); }
 .nv-kv dd { margin: 0; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nv-thumb { display: block; width: 100%; height: 64px; object-fit: cover; object-position: top; border-radius: 0; background: var(--white); opacity: 0.92; }
-.nv-note { font: 10px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nv-note { font: 11px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nv-skeleton { height: 30px; border-radius: 0; background: var(--wash); }
 
 /* Canvas controls: zoom and node detail side by side. */
@@ -505,7 +505,7 @@ p { margin: 0; }
 /* Stage heading above its steps on the canvas; no box (design reference). */
 /* The group box is invisible and lets clicks through; only its heading is grabbed. */
 .react-flow__node-stage { pointer-events: none; }
-.stage-head { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 2px 4px; font-size: 12px; font-weight: 400; color: var(--quiet); pointer-events: all; cursor: grab; white-space: nowrap; }
+.stage-head { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 2px 4px; font-size: 13.5px; font-weight: 400; color: var(--quiet); pointer-events: all; cursor: grab; white-space: nowrap; }
 .stage-head:hover { color: var(--ink); }
 .stage-head .stage-count { padding: 0 5px; background: var(--wash); font: 10px var(--sans); color: var(--faint); }
 .stage-head.active { color: var(--ink); }
