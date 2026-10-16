@@ -5,8 +5,8 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, Run, RunId, RunStatus, Timestamp,
-    WorkerId,
+    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, PipelineVersion, PipelineVersionId,
+    Run, RunId, RunStatus, Timestamp, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -69,6 +69,31 @@ impl SqliteStore {
             .await
             .map_err(|e| StoreError::Db(e.into()))?;
         Ok(Self { pool })
+    }
+
+    pub async fn insert_pipeline_version(
+        &self,
+        pipeline: &PipelineVersion,
+    ) -> Result<(), StoreError> {
+        sqlx::query("INSERT INTO pipeline_versions (id, project_id, body) VALUES (?, ?, ?)")
+            .bind(pipeline.id.as_str())
+            .bind(pipeline.project_id.as_str())
+            .bind(to_json(pipeline)?)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_pipeline_version(
+        &self,
+        id: &PipelineVersionId,
+    ) -> Result<PipelineVersion, StoreError> {
+        let body: Option<String> =
+            sqlx::query_scalar("SELECT body FROM pipeline_versions WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        from_json(body, "pipeline version", id.as_str())
     }
 
     pub async fn insert_run(&self, run: &Run) -> Result<(), StoreError> {

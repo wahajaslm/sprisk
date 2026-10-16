@@ -309,3 +309,18 @@ async fn failing_an_attempt_records_its_error() {
     assert_eq!(failed.state, AttemptState::TimedOut);
     assert_eq!(failed.error, Some(error));
 }
+
+#[tokio::test]
+async fn pipeline_version_round_trips_and_is_never_replaced() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let pipeline: sprisk_contracts::PipelineVersion =
+        fixture("pipeline_version", "all-fields.json");
+    store.insert_pipeline_version(&pipeline).await.unwrap();
+
+    assert_eq!(
+        store.get_pipeline_version(&pipeline.id).await.unwrap(),
+        pipeline
+    );
+    let err = store.insert_pipeline_version(&pipeline).await.unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+}
