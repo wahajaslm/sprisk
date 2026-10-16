@@ -28,6 +28,7 @@
 | [0024](0024-figures-from-any-python-library.md) | Steps return figures from any Python plotting library; the worker saves them, the browser shows them | Accepted |
 | [0025](0025-the-code-decides-the-tabs.md) | The code decides the tabs: one rule for every step | Accepted |
 | [0026](0026-edits-run-from-the-edited-step.md) | An edit runs from the edited step onwards; Run graph runs from the start | Accepted |
+| [0027](0027-ui-design-system-and-data-rendering.md) | UI design system and data rendering: tokens, primitives, one renderer per data kind, enforced limits | Proposed |
 
 ## Open questions (arch doc §17)
 
