@@ -727,7 +727,7 @@ describe("code step failures", () => {
 
   it("does not download output above the cap", async () => {
     await showCode(codeDisplayJson, 10_000_000);
-    expect(await screen.findByText(/Too large to show here/)).toBeInTheDocument();
+    expect(await screen.findByText(/Too large to draw here/)).toBeInTheDocument();
   });
 
   it("left-aligns text columns the code returns", async () => {

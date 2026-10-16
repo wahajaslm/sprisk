@@ -12,6 +12,9 @@ export class ApiError extends Error {
   }
 }
 
+/** A link that downloads an artifact as a file; the browser never loads it into the page. */
+export const artifactDownloadUrl = (artifactId: string) => `${API_BASE}/artifacts/${artifactId}/content?download=true`;
+
 /** One fetch for every call: a failed response becomes an ApiError with the Problem text. */
 async function request(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`${API_BASE}${path}`, init);

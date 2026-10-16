@@ -1,13 +1,14 @@
 import type { Attempt, CodeDisplay, CodeInterface } from "@sprisk/contracts";
 import { parse } from "@sprisk/contracts";
 
+import { artifactDownloadUrl } from "./client.ts";
 import { useArtifactText, useOutputs } from "./hooks.ts";
 
 /** Code output carries figures, so it may be larger than other JSON; still capped (rule 9). */
 const MAX_CODE_DISPLAY_BYTES = 4 * 1024 * 1024;
 
 export type Read<T> =
-  | { status: "none"; reason: string }
+  | { status: "none"; reason: string; download?: string }
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; value: T };
@@ -22,7 +23,11 @@ export function useReport<T>(attempt: Attempt | undefined, port: string, parseIt
   if (outputs.isError) return { status: "error", message: outputs.error.message };
   if (outputs.isPending) return { status: "loading" };
   if (!artifact) return { status: "none", reason: "This step's version does not report it. Edit and run it to upgrade." };
-  if (!small) return { status: "none", reason: `Too large to show here (${artifact.size_bytes} bytes).` };
+  if (!small) {
+    // Never fetched into the page; the server serves it as a file download (ADR-0027, ADR-0029).
+    const mb = Math.round(artifact.size_bytes / (1024 * 1024));
+    return { status: "none", reason: `Too large to draw here (${mb} MB).`, download: artifactDownloadUrl(artifact.id) };
+  }
   if (text.isError) return { status: "error", message: text.error.message };
   if (text.data === undefined) return { status: "loading" };
   try {

@@ -212,6 +212,34 @@ describe("Visualizations show what Python drew (ADR-0024)", () => {
     expect(posted[0]!.nodes.find((n) => n.id === "chart_1")?.params).toEqual({ kind: "box", x: "sepal_length", bins: 10 });
   });
 
+  it("a figure set too large to draw offers a download instead of fetching it (ADR-0029)", async () => {
+    const { http, HttpResponse } = await import("msw");
+    const { server } = await import("./server.ts");
+    const { attempts, pipeline, scoreOutputs } = await import("./fixtures.ts");
+    const withChart = {
+      ...pipeline,
+      nodes: [...pipeline.nodes, { id: "chart_1", operator: "sprisk.profile.chart@1.0.0", params: { kind: "histogram", x: "x" } }],
+      edges: [...pipeline.edges, { from: "load.data", to: "chart_1.data" }],
+    };
+    const chartAttempt = { ...attempts[1]!, id: "att_01JABCDEFGHJKMNPQRSTVWXY77", node_id: "chart_1" };
+    const huge = { port: "chart", artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY78", size_bytes: 12 * 1024 * 1024 } };
+    let fetched = false;
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([withChart])),
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, chartAttempt])),
+      http.get(`/api/attempts/${chartAttempt.id}/outputs`, () => HttpResponse.json([huge])),
+      http.get(`/api/artifacts/${huge.artifact.id}/content`, () => {
+        fetched = true;
+        return HttpResponse.text("{}");
+      }),
+    );
+    show("visuals");
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "chart_1" });
+    expect(await screen.findByText(/Too large to draw here \(12 MB\)/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("href", `/api/artifacts/${huge.artifact.id}/content?download=true`);
+    expect(fetched).toBe(false);
+  });
+
   it("figures are never shown as data", async () => {
     await chartStep([plotly("one")]);
     show("data");

@@ -56,7 +56,17 @@ export function FigurePort({ attempt, port }: { attempt: Attempt | undefined; po
   const items = set.status === "ready" ? set.value.items : last.current;
   if (!items) {
     if (set.status === "loading") return <p className="muted">Loading figures…</p>;
-    return set.status === "none" && attempt ? <p className="muted">{set.reason}</p> : null;
+    if (set.status !== "none" || !attempt) return null;
+    return (
+      <p className="muted">
+        {set.reason}{" "}
+        {set.download && (
+          <a href={set.download} download>
+            Download
+          </a>
+        )}
+      </p>
+    );
   }
   if (items.length === 0) return <p className="muted">No figures this run.</p>;
   return (
