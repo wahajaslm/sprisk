@@ -42,3 +42,7 @@ export const shortName = (ref: string) => ref.split("@")[0]?.split(".").at(-1) ?
 
 /** Two-digit stage number as Studio shows it: "01". */
 export const stageNumber = (stage: Stage) => String(STAGES.indexOf(stage) + 1).padStart(2, "0");
+
+/** The profile step writes one DuckDB SUMMARIZE row per data column. Matched by operator
+ * because ports do not declare their table shape yet (docs/backlog.md). */
+export const isProfileOperator = (ref: string | undefined) => ref?.startsWith("sprisk.profile.summarize@") === true;

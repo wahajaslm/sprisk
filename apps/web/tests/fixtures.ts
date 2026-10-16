@@ -21,6 +21,7 @@ function op(id: string, capability_class: Operator["capability_class"], inputs: 
 
 export const operators: Operator[] = [
   op("sprisk.io.file_source@1.0.0", "source", [], [["data", "table"]]),
+  op("sprisk.profile.summarize@1.0.0", "analyzer", [["data", "table"]], [["profile", "diagnostics"]]),
   op("sprisk.validation.random_split@1.0.0", "transform", [["data", "table"]], [["train", "table"], ["test", "table"]]),
   op("sprisk.clean.impute@1.0.0", "transform", [["train", "table"], ["test", "table"]], [["train", "table"], ["test", "table"]]),
   op("sprisk.ml.linear_model@1.0.0", "estimator", [["train", "table"]], [["model", "model"]]),
@@ -37,6 +38,7 @@ export const pipeline: PipelineVersion = {
   project_id: "prj_00000000000000000000000000",
   nodes: [
     { id: "load", operator: "sprisk.io.file_source@1.0.0", params: { path: "/d/iris.csv", format: "csv" } },
+    { id: "profile", operator: "sprisk.profile.summarize@1.0.0", params: {} },
     { id: "split", operator: "sprisk.validation.random_split@1.0.0", params: { test_fraction: 0.25, seed: 42 } },
     { id: "impute", operator: "sprisk.clean.impute@1.0.0", params: { columns: ["x"], method: "median" } },
     { id: "model", operator: "sprisk.ml.linear_model@1.0.0", params: { target: "y", features: ["x"], task: "classification" } },
@@ -44,6 +46,7 @@ export const pipeline: PipelineVersion = {
   ],
   edges: [
     { from: "load.data", to: "split.data" },
+    { from: "load.data", to: "profile.data" },
     { from: "split.train", to: "impute.train" },
     { from: "split.test", to: "impute.test" },
     { from: "impute.train", to: "model.train" },
@@ -86,6 +89,7 @@ export const attempts: Attempt[] = [
   attempt("impute", "succeeded"),
   attempt("model", "succeeded"),
   attempt("score", "succeeded"),
+  attempt("profile", "succeeded"),
 ];
 
 export const scoreAttempt = attempts[6]!;
@@ -164,3 +168,26 @@ export function tablePage(offset: number, limit: number): TablePage {
     rows,
   };
 }
+
+export const profileAttempt = attempts[7]!;
+
+export const profileOutputs: AttemptOutput[] = [
+  {
+    port: "profile",
+    artifact: { ...loadOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXYZ3", producer_attempt_id: profileAttempt.id },
+  },
+];
+
+const SUMMARY_COLUMNS = ["column_name", "column_type", "min", "max", "approx_unique", "avg", "std", "q25", "q50", "q75", "count", "null_percentage"];
+
+/** DuckDB SUMMARIZE output, as the profile step writes it. */
+export const profilePage: TablePage = {
+  offset: 0,
+  total_rows: 2,
+  total_columns: SUMMARY_COLUMNS.length,
+  columns: SUMMARY_COLUMNS.map((name) => ({ name, data_type: "Utf8View" })),
+  rows: [
+    { values: ["sepal_length", "DOUBLE", "4.3", "7.9", "35", "5.843", "0.828", "5.1", "5.8", "6.4", "150", "2.67"], missing: [] },
+    { values: ["species", "VARCHAR", "setosa", "virginica", "3", "", "", "", "", "", "150", "0.00"], missing: [5, 6, 7, 8, 9] },
+  ],
+};

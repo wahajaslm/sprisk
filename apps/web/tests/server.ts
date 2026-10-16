@@ -8,6 +8,9 @@ import {
   gateOutputs,
   loadAttempt,
   loadOutputs,
+  profileAttempt,
+  profileOutputs,
+  profilePage,
   metricsJson,
   operators,
   pipeline,
@@ -30,13 +33,16 @@ export const handlers = [
           ? gateOutputs
           : params.id === loadAttempt.id
             ? loadOutputs
-            : [],
+            : params.id === profileAttempt.id
+              ? profileOutputs
+              : [],
     ),
   ),
   http.get("/api/artifacts/:id/content", ({ params }) =>
     HttpResponse.text(params.id === gateOutputs[0]!.artifact.id ? checksJson : metricsJson),
   ),
-  http.get("/api/artifacts/:id/rows", ({ request }) => {
+  http.get("/api/artifacts/:id/rows", ({ request, params }) => {
+    if (params.id === profileOutputs[0]!.artifact.id) return HttpResponse.json(profilePage);
     const url = new URL(request.url);
     return HttpResponse.json(tablePage(Number(url.searchParams.get("offset")), Number(url.searchParams.get("limit"))));
   }),

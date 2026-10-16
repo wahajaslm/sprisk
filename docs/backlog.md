@@ -43,3 +43,5 @@ Remove an item when it is done; link the commit or ADR.
 | Table peek: cap Parquet footer size and decoded page bytes, and time out the read (a forged file can still make the API decode a lot) | security review | before untrusted packs (M5) |
 | Table peek: send a fixed error code to the browser; keep parquet/object_store detail in the server log | security review | M3 |
 | Parquet media type string is written in Rust, Python and TS; move it into `contracts/` | simplicity review | next contract change |
+| Canvas node facts cost about two cached requests per node; add one batched "node facts" read if graphs get large | simplicity review | when graphs exceed ~30 nodes |
+| Ports do not declare their table shape, so the UI finds the profile output by operator id; add a declared output schema | simplicity review | with ADR-0019 evidence contracts |

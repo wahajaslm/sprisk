@@ -9,7 +9,7 @@ import { StepLibrary } from "../src/views/StepLibrary.tsx";
 import { TopBar } from "../src/views/TopBar.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { Copilot } from "../src/views/Copilot.tsx";
-import { PV, RUN, loadOutputs, run, scoreOutputs, tablePage } from "./fixtures.ts";
+import { PV, RUN, loadOutputs, profilePage, run, scoreOutputs, tablePage } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -231,11 +231,97 @@ describe("peek at a table output", () => {
   });
 });
 
+describe("column profile", () => {
+  it("shows one card per column with missing share, distinct count and spread", async () => {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "profile" });
+    const profile = await screen.findByRole("region", { name: "Column profile" });
+    const sepal = within(profile).getByRole("group", { name: "sepal_length" });
+    expect(sepal).toHaveTextContent("DOUBLE");
+    expect(sepal).toHaveTextContent("2.67% missing");
+    expect(sepal).toHaveTextContent("35 distinct");
+    expect(within(sepal).getByRole("img", { name: "min 4.3, q25 5.1, median 5.8, q75 6.4, max 7.9" })).toBeInTheDocument();
+  });
+
+  it("shows a text column's range without a spread strip", async () => {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "profile" });
+    const species = within(await screen.findByRole("region", { name: "Column profile" })).getByRole("group", { name: "species" });
+    expect(species).toHaveTextContent("setosa … virginica");
+    expect(within(species).queryByRole("img")).toBeNull();
+  });
+});
+
+describe("column profile edge cases", () => {
+  it("shows why the profile could not be read", async () => {
+    server.use(
+      http.get("/api/artifacts/:id/rows", () =>
+        HttpResponse.json({ errors: [{ code: "not_a_table", message: "bad footer" }] }, { status: 422 }),
+      ),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "profile" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("not_a_table: bad footer");
+  });
+
+  it("falls back to the range when quartiles are missing, and omits a missing std", async () => {
+    const row = { values: ["age", "BIGINT", "1", "90", "50", "40", "", "", "", "", "10", "0.00"], missing: [6, 7, 8, 9] };
+    server.use(http.get("/api/artifacts/:id/rows", () => HttpResponse.json({ ...profilePage, total_rows: 1, rows: [row] })));
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "profile" });
+    const age = within(await screen.findByRole("region", { name: "Column profile" })).getByRole("group", { name: "age" });
+    expect(age).toHaveTextContent("1 … 90");
+    expect(age).toHaveTextContent("mean 40");
+    expect(age).not.toHaveTextContent("±");
+  });
+
+  it("says when only the first columns are profiled", async () => {
+    server.use(http.get("/api/artifacts/:id/rows", () => HttpResponse.json({ ...profilePage, total_rows: 900 })));
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "profile" });
+    expect(await screen.findByText("First 2 of 900 columns.")).toBeInTheDocument();
+  });
+});
+
+describe("node previews", () => {
+  it("keeps the plain status when an evaluator's output is not metrics JSON", async () => {
+    server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text("not json")));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    const score = await screen.findByRole("button", { name: /^score/ });
+    await waitFor(() => expect(score).toHaveTextContent("succeeded"));
+    expect(score).not.toHaveTextContent("accuracy");
+  });
+
+  it("shows the size of a table output and the headline metric on the canvas", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    expect(await screen.findByText("120 rows × 2 cols")).toBeInTheDocument();
+    expect(await screen.findByText("accuracy 0.947")).toBeInTheDocument();
+  });
+
+  it("says how many columns a profile covers, not its own row count", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    expect(await screen.findByText("2 cols profiled")).toBeInTheDocument();
+  });
+
+  it("names the port when a step has several outputs", async () => {
+    server.use(http.get("/api/attempts/:id/outputs", () => HttpResponse.json([
+      { ...loadOutputs[0]!, port: "test" },
+      { ...loadOutputs[0]!, port: "train" },
+    ])));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    expect((await screen.findAllByText("test 120 × 2"))[0]).toBeInTheDocument();
+  });
+});
+
 describe("copilot", () => {
   it("summarises the run's step attempts, without the gate", async () => {
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("5 of 6 step attempts succeeded")).toBeInTheDocument();
+    expect(await screen.findByText("6 of 7 step attempts succeeded")).toBeInTheDocument();
     expect(run.status).toBe("succeeded");
   });
 

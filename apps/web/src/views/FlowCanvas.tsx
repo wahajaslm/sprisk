@@ -23,6 +23,7 @@ import { useEffect } from "react";
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { latestByNode } from "../flow/latest.ts";
 import { kindOf, type NodeKind, shortName, STAGES, type Stage, stageNumber, stageOf } from "../flow/stages.ts";
+import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
 import { KindIcon, KindMark } from "./Icons.tsx";
 
@@ -35,7 +36,7 @@ const PAD = 12;
 /** Studio's stage greys, darker to lighter left to right. */
 const STAGE_HUE = ["#4a4a4a", "#636363", "#7e7e7e", "#9c9c9c", "#bfbfbf", "#e8e8e8"] as const;
 
-type StepData = { id: string; operator: string; kind: NodeKind; state: string; selected: boolean };
+type StepData = { id: string; operator: string; operatorRef: string; isEvaluator: boolean; kind: NodeKind; state: string; attemptId?: string; selected: boolean };
 type FrameData = { stage: Stage; count: number; active: boolean };
 type FlowEdgeData = { hue: string };
 
@@ -68,7 +69,7 @@ function StepNode({ data }: NodeProps<Node<StepData>>) {
         <span className="node-title">{data.id}</span>
         <span className={`node-status tone-${status.tone}`}>
           <span className="dot" aria-hidden="true" />
-          {status.text}
+          {data.attemptId ? <NodeFact attemptId={data.attemptId} operator={data.operatorRef} isEvaluator={data.isEvaluator} status={status.text} /> : status.text}
         </span>
       </span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
@@ -149,8 +150,11 @@ export function layout(
         data: {
           id,
           operator: node ? shortName(node.operator) : id,
+          operatorRef: node?.operator ?? "",
+          isEvaluator: op?.capability_class === "evaluator",
           kind: op ? kindOf(op) : "recipe",
           state: latest.get(id)?.state ?? "not run",
+          ...(latest.get(id)?.state === "succeeded" ? { attemptId: latest.get(id)?.id } : {}),
           selected: id === selectedId,
         },
       });

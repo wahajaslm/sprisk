@@ -3,15 +3,14 @@ import { parse } from "@sprisk/contracts";
 import * as Tabs from "@radix-ui/react-tabs";
 
 import { useArtifactText, useOutputs, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
+import { MAX_INLINE_BYTES, PARQUET } from "../api/media.ts";
 import { GATE_NODE, latestByNode } from "../flow/latest.ts";
 import { useViewInstance, useViewSelection } from "../workbench/instance.tsx";
 import { PinIcon } from "./Icons.tsx";
+import { ColumnProfile } from "./ColumnProfile.tsx";
 import { TablePeek } from "./TablePeek.tsx";
-import { shortName } from "../flow/stages.ts";
+import { isProfileOperator, shortName } from "../flow/stages.ts";
 
-/** JSON outputs larger than this are not pulled into the browser (rule 9). */
-const MAX_INLINE_BYTES = 64 * 1024;
-const PARQUET = "application/vnd.apache.parquet";
 
 export function Inspector() {
   const { pipelineVersionId, runId, nodeId } = useViewSelection();
@@ -73,7 +72,7 @@ export function Inspector() {
         </div>
         <div>
           <p className="section-label">Outputs</p>
-          <Outputs attempt={latest?.state === "succeeded" ? latest : undefined} />
+          <Outputs attempt={latest?.state === "succeeded" ? latest : undefined} operator={node?.operator} />
         </div>
       </Tabs.Content>
       <Tabs.Content value="logs" className="pane single">
@@ -90,7 +89,7 @@ export function Inspector() {
   );
 }
 
-function Outputs({ attempt }: { attempt: Attempt | undefined }) {
+function Outputs({ attempt, operator }: { attempt: Attempt | undefined; operator: string | undefined }) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No successful attempt yet.</p>;
   if (outputs.isPending) return <p className="muted">Loading outputs…</p>;
@@ -99,13 +98,13 @@ function Outputs({ attempt }: { attempt: Attempt | undefined }) {
   return (
     <div className="outputs">
       {outputs.data.map((o) => (
-        <Output key={o.port} output={o} />
+        <Output key={o.port} output={o} isProfile={isProfileOperator(operator) && o.port === "profile"} />
       ))}
     </div>
   );
 }
 
-function Output({ output }: { output: AttemptOutput }) {
+function Output({ output, isProfile }: { output: AttemptOutput; isProfile: boolean }) {
   const isJson = output.artifact.media_type === "application/json";
   const small = output.artifact.size_bytes <= MAX_INLINE_BYTES;
   const text = useArtifactText(isJson && small ? output.artifact.id : undefined);
@@ -118,6 +117,8 @@ function Output({ output }: { output: AttemptOutput }) {
         <p className="muted">JSON output too large to show here ({output.artifact.size_bytes} bytes).</p>
       ) : isJson ? (
         text.isError ? <p role="alert" className="error">{text.error.message}</p> : <pre className="code">{prettyJson(text.data)}</pre>
+      ) : isProfile ? (
+        <ColumnProfile artifactId={output.artifact.id} />
       ) : output.artifact.media_type === PARQUET ? (
         <TablePeek artifactId={output.artifact.id} port={output.port} />
       ) : (

@@ -190,7 +190,7 @@ p { margin: 0; }
 .pin.on { color: var(--ground); background: var(--ink); border-color: var(--ink); }
 .sel-meta { font: 11px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane { min-height: 0; overflow: auto; }
-.pane.columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+.pane.columns { display: grid; grid-template-columns: minmax(200px, 0.55fr) minmax(0, 2fr); }
 .pane.columns > * { padding: 14px 16px; border-right: 1px solid var(--line-soft); overflow: auto; }
 .pane.single { padding: 14px 16px; }
 .section-label { font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
@@ -238,3 +238,21 @@ p { margin: 0; }
 .page-btn:hover:not(:disabled) { color: var(--ink); background: var(--node-hover); }
 .page-btn:disabled { color: var(--ghost); cursor: default; }
 .peek-table .text { text-align: left; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.node-fact { font-family: var(--mono); font-size: 10.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Column profile (cards from the profile step) ───── */
+.profile { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.profile > p { grid-column: 1 / -1; }
+.profile-card { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); min-width: 0; }
+.profile-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.profile-name { font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-head .col-type { margin-left: auto; font: 10px var(--mono); color: var(--faint); }
+.profile-facts { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 11px var(--mono); color: var(--muted); }
+.profile-facts .warn { color: var(--alert); }
+.profile-range { font: 11px var(--mono); color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spread svg { display: block; width: 100%; height: 16px; }
+.spread .whisker { stroke: var(--faint); stroke-width: 1; }
+.spread .box { fill: var(--wash-strong); stroke: var(--dim); stroke-width: 1; }
+.spread .median { stroke: var(--ink); stroke-width: 1.5; }
+.spread-axis { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--faint); }
