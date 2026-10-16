@@ -1,0 +1,30 @@
+schema_version: sprisk.operator/v1
+id: sprisk.code.python@2.0.0
+capability_class: analyzer
+description: Notebook cells as a step (ADR-0031). Reads tables from earlier steps by variable name and passes on the variables later steps read. Shows what it prints, its last value and its figures.
+entrypoint: sprisk_code.python_step:python_step_v2
+inputs: []
+outputs: [{ name: display, kind: diagnostics }, { name: interface, kind: diagnostics }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source: { type: string, maxLength: 100000, description: "Python source, as in a notebook cell." }
+    parameters:
+      type: object
+      description: Exposed settings, by variable name. Each replaces that top-level literal in a copy of the code.
+      additionalProperties: { type: [integer, number, string, boolean] }
+    inputs:
+      type: array
+      description: Tables the code reads from earlier steps, by variable name.
+      items: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$" }
+      x-sprisk-ports: input
+    outputs:
+      type: array
+      description: Variables later steps read, passed on by name.
+      items: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$" }
+      x-sprisk-ports: output
+effects: nondeterministic
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

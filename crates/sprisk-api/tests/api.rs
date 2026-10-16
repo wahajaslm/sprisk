@@ -581,3 +581,81 @@ async fn too_many_cells_are_refused_before_python_starts() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body["errors"][0]["code"], "too_many_cells");
 }
+
+/// The first slice of ADR-0031: notebook cells become linked steps that run.
+#[tokio::test(flavor = "multi_thread")]
+async fn notebook_cells_become_a_flow_that_runs() {
+    let api = api().await;
+    let csv = api.csv.display().to_string();
+    let cells = json!({"cells": [
+        "import pandas as pd",
+        format!("df = pd.read_csv({csv:?})"),
+        "min_x = 2\nkept = df[df['x'] >= min_x]\nprint(len(kept))",
+        "kept.describe()",
+    ]});
+    let (status, split) = call(&api.app, "POST", "/code/split", Some(cells)).await;
+    assert_eq!(status, StatusCode::OK, "{split}");
+    let ids: Vec<String> = (1..=split["steps"].as_array().unwrap().len())
+        .map(|i| format!("cell_{i}"))
+        .collect();
+    let nodes: Vec<Value> = split["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(&ids)
+        .map(|(step, id)| {
+            json!({"id": id, "operator": "sprisk.code.python@2.0.0", "params": {
+                "source": step["source"], "inputs": step["inputs"], "outputs": step["outputs"]}})
+        })
+        .collect();
+    let edges: Vec<Value> = split["links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| {
+            let (from, to, name) = (&l["from_step"], &l["to_step"], l["name"].as_str().unwrap());
+            json!({"from": format!("{}.{name}", ids[from.as_u64().unwrap() as usize]),
+                   "to": format!("{}.{name}", ids[to.as_u64().unwrap() as usize])})
+        })
+        .collect();
+    let mut version = pipeline(&api.csv);
+    version["nodes"] = json!(nodes);
+    version["edges"] = json!(edges);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(version)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
+    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
+    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
+    let mut finished = Value::Null;
+    for _ in 0..400 {
+        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
+        if body["status"] == "succeeded" || body["status"] == "failed" {
+            finished = body;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
+    assert_eq!(finished["status"], "succeeded", "{finished} {attempts}");
+    let filter = attempts
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["node_id"] == "cell_2")
+        .unwrap();
+    let uri = format!("/attempts/{}/outputs", filter["id"].as_str().unwrap());
+    let (_, outputs) = call(&api.app, "GET", &uri, None).await;
+    let kept = outputs
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["port"] == "kept")
+        .unwrap();
+    let rows = format!(
+        "/artifacts/{}/rows",
+        kept["artifact"]["id"].as_str().unwrap()
+    );
+    let (_, page) = call(&api.app, "GET", &rows, None).await;
+    assert_eq!(page["total_rows"], 1, "{page}");
+}

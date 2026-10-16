@@ -33,15 +33,17 @@ MAX_FIGURE_BYTES = 512 * 1024
 
 def python_step(data: pl.DataFrame, source: str) -> dict[str, Any]:
     """Run the user's code on the input table and record what it shows (ADR-0020)."""
-    display, _, _ = _run(source, {}, data)
+    provided, _ = _with_data(data)
+    display, _ = _run(source, {}, provided)
     return display
 
 
 def python_step_with_output(data: pl.DataFrame, source: str) -> dict[str, Any]:
     """As `python_step`, plus a `data` output: the table passed to `sprisk.output`, or the
     input unchanged when the code passes nothing on."""
-    display, result, _ = _run(source, {}, data)
-    return {"data": data if result is None else result, "display": display}
+    provided, passed = _with_data(data)
+    display, _ = _run(source, {}, provided)
+    return {"data": passed[0] if passed else data, "display": display}
 
 
 def python_step_v12(
@@ -53,8 +55,9 @@ def python_step_v12(
     """As `python_step_with_output`, plus exposed parameters bound into a copy of the code,
     a chosen output variable, and an `interface` report of what the run found (ADR-0021)."""
     values = dict(parameters or {})
-    display, passed, namespace = _run(source, values, data)
-    result = data if passed is None else passed
+    provided, passed = _with_data(data)
+    display, namespace = _run(source, values, provided)
+    result = passed[0] if passed else data
     if output is not None:
         value = namespace.get(output)
         if not isinstance(value, pl.DataFrame):
@@ -63,12 +66,80 @@ def python_step_v12(
                 f"output {output} is not a polars DataFrame (it is {type(value).__name__})",
             )
         result = value
-    interface = _interface(source, values, output, namespace)
+    chosen = {output} if output else set()
+    interface = _interface(source, values, namespace, set(PROVIDED), chosen)
     return {
         "data": result,
         "display": display,
         "interface": interface.model_dump(mode="json", exclude_none=True),
     }
+
+
+def python_step_v2(
+    inputs: Mapping[str, Any],
+    source: str,
+    parameters: Mapping[str, Any] | None = None,
+    outputs: list[str] | None = None,
+) -> dict[str, Any]:
+    """Notebook cells as a step (ADR-0031): each input table under its own name, and each
+    variable a later step reads passed on under its name. Nothing sprisk-specific is in scope
+    but `display`, as in a notebook."""
+    values = dict(parameters or {})
+    display, namespace = _run(source, values, dict(inputs))
+    passed = {}
+    for name in outputs or []:
+        if name not in namespace:
+            raise OperatorError(
+                "code_error", f"the code does not set {name}, which a later step reads"
+            )
+        value = namespace[name]
+        if not _is_table(value):
+            raise OperatorError(
+                "code_error",
+                f"{name} is a {type(value).__name__}, not a table. Only tables pass between "
+                "steps: keep the cells that use it in one step.",
+            )
+        passed[name] = value
+    interface = _interface(source, values, namespace, set(inputs), set(passed))
+    return {
+        "display": display,
+        "interface": interface.model_dump(mode="json", exclude_none=True),
+        **passed,
+    }
+
+
+def _with_data(data: pl.DataFrame) -> tuple[dict[str, Any], list[pl.DataFrame]]:
+    """What a v1 code step sees: its input as `data`, polars as `pl`, and `sprisk.output`."""
+    passed: list[pl.DataFrame] = []
+
+    def output(df: object) -> None:
+        if not isinstance(df, pl.DataFrame):
+            raise TypeError(f"sprisk.output takes a polars DataFrame, got {type(df).__name__}")
+        passed[:] = [df]
+
+    return {"data": data, "pl": pl, "sprisk": SimpleNamespace(output=output)}, passed
+
+
+def _is_pandas(value: object, *names: str) -> bool:
+    # Checked by name: pandas is imported only by user code that made one.
+    kind = type(value)
+    return kind.__name__ in names and kind.__module__.split(".")[0] == "pandas"
+
+
+def _is_table(value: object) -> bool:
+    return isinstance(value, pl.DataFrame) or _is_pandas(value, "DataFrame")
+
+
+def _as_polars(value: object) -> pl.DataFrame | None:
+    """A table to summarise or show, whichever library made it."""
+    if isinstance(value, pl.Series):
+        return value.to_frame()
+    if isinstance(value, pl.DataFrame):
+        return value
+    if _is_pandas(value, "DataFrame", "Series"):
+        frame = pl.from_pandas(value)
+        return frame.to_frame() if isinstance(frame, pl.Series) else frame
+    return None
 
 
 def load_function(source: str, function: str) -> Callable[..., Any]:
@@ -101,7 +172,11 @@ _VALUE_REPR = reprlib.Repr(maxlevel=2, maxlist=20, maxdict=20, maxstring=200, ma
 
 
 def _interface(
-    source: str, values: dict[str, Any], chosen: str | None, namespace: dict[str, Any]
+    source: str,
+    values: dict[str, Any],
+    namespace: dict[str, Any],
+    provided: set[str],
+    passed_on: set[str],
 ) -> CodeInterface:
     parameters = literal_parameters(source)
     names = {p.name for p in parameters}
@@ -115,7 +190,7 @@ def _interface(
     ][:MAX_OUTPUT_CANDIDATES]
     doc = {
         "inputs": [
-            {"name": n, "origin": "inferred", "bound": n in PROVIDED}
+            {"name": n, "origin": "inferred", "bound": n in provided}
             for n in free_names(source)
             if n not in TOOLS
         ],
@@ -132,7 +207,7 @@ def _interface(
             }
             for p in parameters
         ],
-        "outputs": _candidates_within_budget(candidates, namespace, chosen),
+        "outputs": _candidates_within_budget(candidates, namespace, passed_on),
         "files": [{"path": f.path, "reader": f.reader, "line": f.line} for f in file_reads(source)],
     }
     return CodeInterface.model_validate_json(json.dumps(doc))
@@ -151,14 +226,14 @@ def _top_level_names(source: str) -> list[str]:
 
 
 def _candidates_within_budget(
-    names: list[str], namespace: dict[str, Any], chosen: str | None
+    names: list[str], namespace: dict[str, Any], passed_on: set[str]
 ) -> list[dict[str, Any]]:
     """Each variable for the Data tab's explorer (ADR-0030). Fields and samples are added in
     order while they fit the budget, so many large tables cannot make the report unreadable."""
     left = EXPLORER_BUDGET_BYTES
     found = []
     for name in names:
-        doc, extras = _candidate(name, namespace[name], name == chosen)
+        doc, extras = _candidate(name, namespace[name], name in passed_on)
         for key, value in extras.items():
             size = len(json.dumps(value))
             if size <= left:
@@ -178,10 +253,10 @@ def _candidate(name: str, value: object, chosen: bool) -> tuple[dict[str, Any], 
         "origin": "measured",
         "chosen": chosen,
     }
-    if not isinstance(value, pl.DataFrame | pl.Series):
+    frame = _as_polars(value)
+    if frame is None:
         doc["text"] = _cut(_VALUE_REPR.repr(value), MAX_VALUE_CHARS)
         return doc, {}
-    frame = value.to_frame() if isinstance(value, pl.Series) else value
     doc["rows"], doc["columns"] = frame.height, frame.width
     nulls = frame.select(frame.columns[:MAX_FIELDS]).null_count().row(0)
     fields = [
@@ -192,21 +267,14 @@ def _candidate(name: str, value: object, chosen: bool) -> tuple[dict[str, Any], 
 
 
 def _run(
-    source: str, values: dict[str, Any], data: pl.DataFrame
-) -> tuple[dict[str, Any], pl.DataFrame | None, dict[str, Any]]:
-    passed: list[pl.DataFrame] = []
-
-    def output(df: object) -> None:
-        if not isinstance(df, pl.DataFrame):
-            raise TypeError(f"sprisk.output takes a polars DataFrame, got {type(df).__name__}")
-        passed[:] = [df]
-
+    source: str, values: dict[str, Any], provided: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run the code with `provided` in scope, like a notebook cell: what it prints, shows and
+    draws is collected in order. Returns that display and the namespace it ended with."""
     shown = _Collector()
     namespace: dict[str, Any] = {
         "__name__": "__sprisk_code__",
-        "data": data,
-        "pl": pl,
-        "sprisk": SimpleNamespace(output=output),
+        **provided,
         "display": shown.display,
     }
     plt.close("all")
@@ -241,8 +309,7 @@ def _run(
         shown.display(value)
     shown.open_figures()
     display = CodeDisplay.model_validate_json(json.dumps({"items": shown.items}))
-    result = passed[0] if passed else None
-    return display.model_dump(mode="json", exclude_none=True), result, namespace
+    return display.model_dump(mode="json", exclude_none=True), namespace
 
 
 def _split_last_expression(module: ast.Module) -> tuple[ast.Module, ast.Expression | None]:
@@ -289,8 +356,7 @@ class _Collector:
         for value in values:
             if isinstance(value, Figure):
                 self.figure(value)
-            elif isinstance(value, pl.Series | pl.DataFrame):
-                frame = value.to_frame() if isinstance(value, pl.Series) else value
+            elif (frame := _as_polars(value)) is not None:
                 self._add({"kind": "table", "table": _table(frame)})
             else:
                 self._add({"kind": "text", "text": _cut(repr(value), MAX_TEXT_CHARS)})

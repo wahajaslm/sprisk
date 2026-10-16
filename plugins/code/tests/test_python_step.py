@@ -294,3 +294,50 @@ def test_a_wide_table_lists_its_first_fields(write_parquet: WriteParquet, out_di
     found = run_v12(write_parquet, out_dir, {"source": source})["interface"]
     [wide] = found.outputs
     assert wide.columns == 501 and wide.fields is not None and len(wide.fields) == 500
+
+
+def test_notebook_cells_get_tables_by_name_and_pass_variables_on() -> None:
+    from sprisk_code.python_step import python_step_v2
+
+    source = "min_age = 18\nfiltered = df.filter(pl.col('age') >= min_age)\nprint(filtered.height)"
+    df = pl.DataFrame({"age": [10, 20, 30]})
+    out = python_step_v2(
+        {"df": df}, "import polars as pl\n" + source, {"min_age": 25}, ["filtered"]
+    )
+    assert out["filtered"]["age"].to_list() == [30]
+    assert set(out) == {"display", "interface", "filtered"}
+    found = CodeInterface.model_validate_json(json.dumps(out["interface"]))
+    assert [(i.name, i.bound) for i in found.inputs] == [("df", True)]
+    assert [o.name for o in found.outputs if o.chosen] == ["filtered"]
+
+
+def test_pandas_cells_work_and_their_tables_show(write_parquet: WriteParquet) -> None:
+    import pandas as pd
+
+    from sprisk_code.python_step import python_step_v2
+
+    source = "import pandas as pd\nsmall = raw[raw['x'] > 1]\nsmall.head()"
+    out = python_step_v2({"raw": pd.DataFrame({"x": [1, 2, 3]})}, source, None, ["small"])
+    assert isinstance(out["small"], pd.DataFrame) and out["small"]["x"].tolist() == [2, 3]
+    shown = CodeDisplay.model_validate_json(json.dumps(out["display"]))
+    assert [i.kind for i in shown.items] == ["table"]
+    found = CodeInterface.model_validate_json(json.dumps(out["interface"]))
+    small = next(o for o in found.outputs if o.name == "small")
+    assert (small.type, small.rows) == ("pandas.DataFrame", 2)
+
+
+def test_a_variable_a_later_step_reads_must_be_set() -> None:
+    from sprisk_code.python_step import python_step_v2
+
+    with pytest.raises(OperatorError, match="does not set summary"):
+        python_step_v2({}, "x = 1", None, ["summary"])
+
+
+def test_only_tables_pass_between_steps_and_the_message_says_what_to_do() -> None:
+    from sprisk_code.python_step import python_step_v2
+
+    with pytest.raises(OperatorError) as e:
+        python_step_v2({}, "lookup = {'a': 1}", None, ["lookup"])
+    assert e.value.code == "code_error"
+    assert "lookup is a dict, not a table" in e.value.message
+    assert "one step" in e.value.message
