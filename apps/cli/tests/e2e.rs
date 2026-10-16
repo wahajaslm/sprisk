@@ -107,7 +107,10 @@ async fn penguins_species_forest_beats_the_baseline() {
     let baseline = metrics(&client, &run.id, "score_baseline").await;
     let forest = metrics(&client, &run.id, "score_forest").await;
     assert!(baseline["balanced_accuracy"].as_f64().unwrap() < 0.5);
-    assert!(forest["balanced_accuracy"].as_f64().unwrap() > 0.9, "{forest}");
+    assert!(
+        forest["balanced_accuracy"].as_f64().unwrap() > 0.9,
+        "{forest}"
+    );
     assert_eq!(forest["n_rows"], 86, "25% of 344 rows held out");
     assert_eq!(forest["confusion"]["labels"].as_array().unwrap().len(), 3);
 }
