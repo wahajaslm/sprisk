@@ -182,7 +182,8 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
                                 "created_at": "2026-10-16T10:00:00Z"}])
                         .to_string()
                     } else {
-                        format!("{} {port}", lease.node_id.as_str())
+                        // Params change the bytes, as they would for a real operator.
+                        format!("{} {port} {}", lease.node_id.as_str(), json!(lease.params))
                     };
                     std::fs::write(&path, &bytes).unwrap();
                     let hash = if matches!(behave, Behave::BadHash) {
@@ -217,7 +218,7 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
 
 fn sha256(bytes: &[u8]) -> String {
     use sha2::Digest;
-    format!("sha256:{:x}", sha2::Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(sha2::Sha256::digest(bytes)))
 }
 
 fn outputs_of(operator: &str) -> &'static [&'static str] {
@@ -437,11 +438,11 @@ async fn downstream_lease_carries_upstream_artifacts_and_its_own_staging_dir() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(bytes, b"split test");
-    assert_eq!(
-        test_input.content_hash.as_str().to_owned(),
-        sha256(b"split test")
+    assert!(
+        bytes.starts_with(b"split test "),
+        "the upstream split.test bytes"
     );
+    assert_eq!(test_input.content_hash.as_str().to_owned(), sha256(&bytes));
     assert!(
         score
             .staging_uri
@@ -749,4 +750,153 @@ async fn unreadable_gate_output_fails_the_run_instead_of_leaving_it_running() {
     ));
     assert_eq!(run_status(&env).await, RunStatus::Failed);
     assert!(states(&env, "load").await.is_empty());
+}
+
+const RUN2: &str = "run_01JABCDEFGHJKMNPQRSTVWXYZ2";
+
+/// A first run of `plan()`, then a second run of `plan()` changed by `change`, in one store.
+/// Returns the env and the nodes the worker was leased in the second run.
+async fn rerun(change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
+    rerun_in("prj_01JABCDEFGHJKMNPQRSTVWXYZ0", change).await
+}
+
+async fn rerun_in(project: &str, change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
+    let (env, status) = run_with(Script::new()).await;
+    assert_eq!(status, RunStatus::Succeeded);
+    let run: Run = parse(
+        &json!({"schema_version": "sprisk.run/v1", "id": RUN2,
+                "project_id": project,
+                "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                "status": "queued", "created_at": "2026-10-16T10:00:00Z"})
+        .to_string(),
+    )
+    .unwrap();
+    env.store.insert_run(&run).await.unwrap();
+    let mut plan = plan();
+    change(&mut plan);
+    let first_leases = env.log.lock().unwrap().leases.len();
+    let workers = FakeWorkers {
+        log: env.log.clone(),
+        ..FakeWorkers::default()
+    };
+    let status = Scheduler::new(&env.store, &env.artifacts, workers, Settings::default())
+        .run(&run.id, &pipeline(), &plan)
+        .await
+        .unwrap();
+    assert_eq!(status, RunStatus::Succeeded);
+    let leased = env.log.lock().unwrap().leases[first_leases..]
+        .iter()
+        .map(|l| l.node_id.to_string())
+        .collect();
+    (env, leased)
+}
+
+async fn states_in(env: &Env, run: &str, node: &str) -> Vec<AttemptState> {
+    env.store
+        .list_attempts(&run.parse().unwrap())
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|a| a.node_id.as_str() == node)
+        .map(|a| a.state)
+        .collect()
+}
+
+#[tokio::test]
+async fn identical_rerun_reuses_pure_steps_and_rereads_the_source() {
+    let (env, leased) = rerun(|_| {}).await;
+
+    assert_eq!(leased, ["load"], "a nondeterministic source always runs");
+    for node in ["split", "model", "score"] {
+        assert_eq!(
+            states_in(&env, RUN2, node).await,
+            [AttemptState::CacheHit],
+            "{node}"
+        );
+    }
+    let first = env
+        .store
+        .list_attempts(&RUN.parse().unwrap())
+        .await
+        .unwrap();
+    let second = env
+        .store
+        .list_attempts(&RUN2.parse().unwrap())
+        .await
+        .unwrap();
+    let id_of = |all: &[sprisk_contracts::Attempt], node: &str| {
+        all.iter()
+            .find(|a| a.node_id.as_str() == node)
+            .unwrap()
+            .id
+            .clone()
+    };
+    assert_eq!(
+        env.store.outputs(&id_of(&second, "model")).await.unwrap(),
+        env.store.outputs(&id_of(&first, "model")).await.unwrap(),
+        "a cache hit points at the earlier artifacts"
+    );
+}
+
+#[tokio::test]
+async fn changing_one_step_reruns_it_and_its_dependents_only() {
+    let (env, leased) = rerun(|plan| {
+        let model = plan
+            .steps
+            .iter_mut()
+            .find(|s| s.node_id == "model")
+            .unwrap();
+        model.params.insert("features".into(), json!(["x", "z"]));
+    })
+    .await;
+
+    assert_eq!(leased, ["load", "model", "score"]);
+    assert_eq!(
+        states_in(&env, RUN2, "split").await,
+        [AttemptState::CacheHit]
+    );
+}
+
+#[tokio::test]
+async fn changed_operator_code_is_not_served_from_cache() {
+    let (_, leased) = rerun(|plan| {
+        let split = plan
+            .steps
+            .iter_mut()
+            .find(|s| s.node_id == "split")
+            .unwrap();
+        split.implementation_digest = "sha256:edited".into();
+    })
+    .await;
+
+    assert_eq!(
+        leased,
+        ["load", "split"],
+        "model and score inputs are unchanged bytes"
+    );
+}
+
+#[tokio::test]
+async fn side_effecting_step_always_runs() {
+    let (env, leased) = rerun(|plan| {
+        let split = plan
+            .steps
+            .iter_mut()
+            .find(|s| s.node_id == "split")
+            .unwrap();
+        split.operator.effects = sprisk_contracts::Effects::SideEffecting;
+    })
+    .await;
+
+    assert!(leased.contains(&"split".to_owned()), "{leased:?}");
+    assert_eq!(
+        states_in(&env, RUN2, "split").await,
+        [AttemptState::Succeeded]
+    );
+}
+
+#[tokio::test]
+async fn another_project_never_reuses_these_results() {
+    let (_, leased) = rerun_in("prj_01JABCDEFGHJKMNPQRSTVWXYZ9", |_| {}).await;
+    assert_eq!(leased, ["load", "split", "model", "score"]);
 }

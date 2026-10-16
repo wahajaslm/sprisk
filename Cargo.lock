@@ -2488,7 +2488,9 @@ dependencies = [
 name = "sprisk-registry"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "serde_json",
+ "sha2 0.11.1",
  "sprisk-contracts",
  "tempfile",
  "thiserror",
@@ -2501,10 +2503,11 @@ name = "sprisk-scheduler"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "hex",
  "jiff",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "sprisk-artifacts",
  "sprisk-contracts",
  "sprisk-core",

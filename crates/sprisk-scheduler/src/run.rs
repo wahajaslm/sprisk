@@ -7,12 +7,14 @@ use tokio::time::Instant;
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactManifest, Attempt, AttemptId, AttemptState, Effects, FailFailureKind as FailureKind,
-    MethodologyCheck, Operator, PipelineVersion, RunId, RunStatus, Verdict, WorkerMessage, parse,
+    Artifact, ArtifactManifest, Attempt, AttemptId, AttemptState, Effects,
+    FailFailureKind as FailureKind, MethodologyCheck, Operator, PipelineVersion, RunId, RunStatus,
+    Verdict, WorkerMessage, parse,
 };
 use sprisk_graph::{Plan, Step};
 use sprisk_store::{SqliteStore, StoreError};
 
+use crate::cache::{cache_key, cacheable};
 use crate::next::{Next, next_step};
 use crate::worker::{Worker, WorkerError, Workers};
 
@@ -147,6 +149,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             let gate = Step {
                 node_id: GATE_NODE.to_owned(),
                 operator,
+                implementation_digest: String::new(),
                 params: serde_json::Map::new(),
                 inputs: vec![],
             };
@@ -220,7 +223,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         let mut done = HashMap::new();
         for attempt in self.store.list_attempts(run_id).await? {
             match attempt.state {
-                AttemptState::Succeeded => {
+                AttemptState::Succeeded | AttemptState::CacheHit => {
                     done.insert(attempt.node_id.to_string(), attempt.id);
                 }
                 AttemptState::Leased | AttemptState::Running | AttemptState::Uploading => {
@@ -261,6 +264,27 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         } else {
             self.settings.max_attempts
         };
+        let key = match inputs {
+            Inputs::Upstream if cacheable(step) => {
+                let hashes: Vec<(String, String)> = self
+                    .resolve_inputs(step, done)
+                    .await?
+                    .into_iter()
+                    .map(|(port, artifact)| (port, artifact.content_hash.to_string()))
+                    .collect();
+                let project = self.store.get_run(run_id).await?.project_id;
+                Some(cache_key(project.as_str(), step, &hashes))
+            }
+            _ => None,
+        };
+        if let Some(source) = match &key {
+            Some(key) => self.store.cached_attempt(key).await?,
+            None => None,
+        } {
+            return Ok(Some(
+                self.cache_hit(run_id, step, previous + 1, &source).await?,
+            ));
+        }
         for number in previous + 1..=cap {
             let worker = match self.worker.take() {
                 Some(worker) => worker,
@@ -271,7 +295,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             };
             let attempt = self.new_attempt(run_id, step, number).await?;
             match self
-                .try_attempt(run_id, step, &attempt, done, inputs, worker)
+                .try_attempt(step, &attempt, done, inputs, key.as_deref(), worker)
                 .await?
             {
                 End::Succeeded => return Ok(Some(attempt.id)),
@@ -280,6 +304,34 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             }
         }
         Ok(None)
+    }
+
+    /// A new attempt that reuses `source`'s outputs instead of running (arch §9).
+    async fn cache_hit(
+        &self,
+        run_id: &RunId,
+        step: &Step,
+        number: u64,
+        source: &AttemptId,
+    ) -> Result<AttemptId, SchedulerError> {
+        let attempt: Attempt = build(
+            "attempt",
+            json!({
+                "schema_version": "sprisk.attempt/v1",
+                "id": format!("att_{}", ulid::Ulid::new()),
+                "run_id": run_id,
+                "node_id": step.node_id,
+                "number": number,
+                "state": "created",
+                "created_at": now(),
+            }),
+        )?;
+        self.store.insert_attempt(&attempt).await?;
+        self.store
+            .transition_attempt(&attempt.id, AttemptState::Validated, &now())
+            .await?;
+        self.store.hit_cache(&attempt.id, source, &now()).await?;
+        Ok(attempt.id)
     }
 
     async fn new_attempt(
@@ -314,14 +366,15 @@ impl<'a, W: Workers> Scheduler<'a, W> {
     /// next attempt only when this one succeeded; after any failure its state is unknown.
     async fn try_attempt(
         &mut self,
-        run_id: &RunId,
         step: &Step,
         attempt: &Attempt,
         done: &HashMap<String, AttemptId>,
         inputs: Inputs<'_>,
+        cache_key: Option<&str>,
         mut worker: W::Worker,
     ) -> Result<End, SchedulerError> {
         let id = &attempt.id;
+        let run_id = &attempt.run_id;
         let lease = self.lease_message(run_id, step, id, done, inputs).await?;
         self.store
             .lease_attempt(id, worker.id(), &self.expiry()?, &now())
@@ -385,7 +438,9 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                     self.store
                         .transition_attempt(id, AttemptState::Uploading, &now())
                         .await?;
-                    let end = self.commit(run_id, step, attempt, &manifests).await?;
+                    let end = self
+                        .commit(run_id, step, attempt, &manifests, cache_key)
+                        .await?;
                     // The ack is a courtesy; a worker that cannot take it is simply not reused.
                     if matches!(end, End::Succeeded) && worker.send(&ack(id)?).await.is_ok() {
                         self.worker = Some(worker);
@@ -431,6 +486,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         step: &Step,
         attempt: &Attempt,
         manifests: &[ArtifactManifest],
+        cache_key: Option<&str>,
     ) -> Result<End, SchedulerError> {
         let id = &attempt.id;
         let mut declared: Vec<String> = step
@@ -480,7 +536,9 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             outputs.push((m.port.to_string(), build("artifact", artifact)?));
         }
         // Every object is promoted before any row is written (promote, then DB commit).
-        self.store.succeed_attempt(id, &outputs, &now()).await?;
+        self.store
+            .succeed_attempt(id, &outputs, cache_key, &now())
+            .await?;
         Ok(End::Succeeded)
     }
 
@@ -510,23 +568,9 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 self.gate_inputs(run_id, attempt, pipeline, plan).await?
             }
         };
-        for input in &step.inputs {
-            let from = format!("{}.{}", input.from_node, input.from_port);
-            let missing = || SchedulerError::MissingInput {
-                node: step.node_id.clone(),
-                port: input.port.clone(),
-                from: from.clone(),
-            };
-            let producer = done.get(&input.from_node).ok_or_else(missing)?;
-            let (_, artifact) = self
-                .store
-                .outputs(producer)
-                .await?
-                .into_iter()
-                .find(|(port, _)| *port == input.from_port)
-                .ok_or_else(missing)?;
+        for (port, artifact) in self.resolve_inputs(step, done).await? {
             inputs.push(json!({
-                "port": input.port,
+                "port": port,
                 "artifact_id": artifact.id,
                 "uri": artifact.uri,
                 "content_hash": artifact.content_hash,
@@ -554,6 +598,33 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 "lease_expires_at": self.expiry()?,
             }),
         )
+    }
+
+    /// Each input port's artifact, from the upstream attempt that produced it. Sorted by port.
+    async fn resolve_inputs(
+        &self,
+        step: &Step,
+        done: &HashMap<String, AttemptId>,
+    ) -> Result<Vec<(String, Artifact)>, SchedulerError> {
+        let mut resolved = Vec::new();
+        for input in &step.inputs {
+            let from = format!("{}.{}", input.from_node, input.from_port);
+            let missing = || SchedulerError::MissingInput {
+                node: step.node_id.clone(),
+                port: input.port.clone(),
+                from: from.clone(),
+            };
+            let producer = done.get(&input.from_node).ok_or_else(missing)?;
+            let (_, artifact) = self
+                .store
+                .outputs(producer)
+                .await?
+                .into_iter()
+                .find(|(port, _)| *port == input.from_port)
+                .ok_or_else(missing)?;
+            resolved.push((input.port.clone(), artifact));
+        }
+        Ok(resolved)
     }
 
     /// Commit the pipeline version and its operators as the gate attempt's input artifacts.

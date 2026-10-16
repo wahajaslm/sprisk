@@ -221,6 +221,7 @@ async fn succeeding_records_outputs_by_port_with_the_state_change() {
         .succeed_attempt(
             &attempt.id,
             &[("train".to_owned(), artifact.clone())],
+            None,
             LATER,
         )
         .await
@@ -239,7 +240,7 @@ async fn succeeding_an_attempt_that_is_not_uploading_records_nothing() {
     let artifact: Artifact = fixture("artifact", "parquet-with-schema.json");
     let outputs = [("train".to_owned(), artifact.clone())];
     store
-        .succeed_attempt(&attempt.id, &outputs, LATER)
+        .succeed_attempt(&attempt.id, &outputs, None, LATER)
         .await
         .unwrap();
     let mut other = artifact.clone();
@@ -247,7 +248,12 @@ async fn succeeding_an_attempt_that_is_not_uploading_records_nothing() {
 
     // A duplicate completion for the same attempt (at-least-once delivery).
     let err = store
-        .succeed_attempt(&attempt.id, &[("train".to_owned(), other.clone())], LATER)
+        .succeed_attempt(
+            &attempt.id,
+            &[("train".to_owned(), other.clone())],
+            None,
+            LATER,
+        )
         .await
         .unwrap_err();
 
@@ -416,4 +422,74 @@ async fn pipeline_versions_are_listed_newest_first_and_paged() {
             "plv_01JABCDEFGHJKMNPQRSTVWXYZ2"
         ]
     );
+}
+
+const KEY: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+/// A succeeded attempt whose outputs are recorded under `KEY`.
+async fn cached_success() -> (SqliteStore, Attempt, Artifact) {
+    let (store, _, attempt) = store_with_queued_attempt().await;
+    uploading_attempt(&store, &attempt).await;
+    let mut artifact: Artifact = fixture("artifact", "parquet-with-schema.json");
+    artifact.producer_attempt_id = attempt.id.clone();
+    store
+        .succeed_attempt(
+            &attempt.id,
+            &[("train".to_owned(), artifact.clone())],
+            Some(KEY),
+            LATER,
+        )
+        .await
+        .unwrap();
+    (store, attempt, artifact)
+}
+
+fn later_attempt(base: &Attempt, state: AttemptState) -> Attempt {
+    let mut next = base.clone();
+    next.id = "att_01JABCDEFGHJKMNPQRSTVWXY77".parse().unwrap();
+    next.number = (base.number.get() + 1).try_into().unwrap();
+    next.state = state;
+    next.worker_id = None;
+    next.lease_expires_at = None;
+    next
+}
+
+#[tokio::test]
+async fn success_with_a_cache_key_can_be_found_by_it() {
+    let (store, attempt, _) = cached_success().await;
+    assert_eq!(store.cached_attempt(KEY).await.unwrap(), Some(attempt.id));
+    let other = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    assert_eq!(store.cached_attempt(other).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn cache_hit_reuses_the_source_outputs_in_a_new_attempt() {
+    let (store, source, artifact) = cached_success().await;
+    let hit = later_attempt(&source, AttemptState::Validated);
+    store.insert_attempt(&hit).await.unwrap();
+
+    let done = store.hit_cache(&hit.id, &source.id, LATER).await.unwrap();
+
+    assert_eq!(done.state, AttemptState::CacheHit);
+    assert_eq!(
+        store.outputs(&hit.id).await.unwrap(),
+        vec![("train".to_owned(), artifact)]
+    );
+    let events = store.audit_events(hit.id.as_str()).await.unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|(_, e)| e == "attempt.validated->cache_hit"),
+        "{events:?}"
+    );
+}
+
+#[tokio::test]
+async fn cache_hit_needs_a_validated_attempt_and_records_nothing_otherwise() {
+    let (store, source, _) = cached_success().await;
+    let hit = later_attempt(&source, AttemptState::Queued);
+    store.insert_attempt(&hit).await.unwrap();
+
+    assert!(store.hit_cache(&hit.id, &source.id, LATER).await.is_err());
+    assert!(store.outputs(&hit.id).await.unwrap().is_empty());
 }

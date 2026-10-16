@@ -25,6 +25,8 @@ pub enum StoreError {
     RunFinished { id: String, status: RunStatus },
     #[error("corrupt stored JSON: {0}")]
     Corrupt(#[from] serde_json::Error),
+    #[error("cache entry has an invalid attempt id {0:?}")]
+    BadCacheEntry(String),
     #[error("invalid timestamp {0}")]
     BadTimestamp(String),
     #[error("database: {0}")]
@@ -271,10 +273,12 @@ impl SqliteStore {
 
     /// `uploading -> succeeded`, recording each output artifact and the port that produced it,
     /// all in one transaction. A duplicate or late completion fails the transition and records nothing.
+    /// With a `cache_key`, the outputs become reusable by later attempts with the same key.
     pub async fn succeed_attempt(
         &self,
         id: &AttemptId,
         outputs: &[(String, Artifact)],
+        cache_key: Option<&str>,
         at: &str,
     ) -> Result<Attempt, StoreError> {
         let mut tx = self.pool.begin().await?;
@@ -297,12 +301,67 @@ impl SqliteStore {
             .execute(&mut *tx)
             .await?;
         }
+        if let Some(key) = cache_key {
+            sqlx::query(
+                "INSERT OR IGNORE INTO cache_entries (cache_key, attempt_id) VALUES (?, ?)",
+            )
+            .bind(key)
+            .bind(id.as_str())
+            .execute(&mut *tx)
+            .await?;
+        }
         write_attempt(&mut tx, &attempt).await?;
         audit(
             &mut tx,
             at,
             id.as_str(),
             &format!("attempt.{from}->succeeded"),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(attempt)
+    }
+
+    /// The succeeded attempt recorded under `cache_key`, if any.
+    pub async fn cached_attempt(&self, cache_key: &str) -> Result<Option<AttemptId>, StoreError> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT attempt_id FROM cache_entries WHERE cache_key = ?")
+                .bind(cache_key)
+                .fetch_optional(&self.pool)
+                .await?;
+        row.map(|(id,)| {
+            id.parse()
+                .map_err(|_| StoreError::BadCacheEntry(id.clone()))
+        })
+        .transpose()
+    }
+
+    /// `validated -> cache_hit`: the attempt reuses `source`'s outputs instead of running.
+    /// One transaction; a wrong state records nothing.
+    pub async fn hit_cache(
+        &self,
+        id: &AttemptId,
+        source: &AttemptId,
+        at: &str,
+    ) -> Result<Attempt, StoreError> {
+        let mut tx = self.pool.begin().await?;
+        let mut attempt = read_attempt(&mut tx, id).await?;
+        let from = attempt.state;
+        attempt.state = transition(from, AttemptState::CacheHit)?;
+        sqlx::query(
+            "INSERT INTO attempt_outputs (attempt_id, port, artifact_id) \
+             SELECT ?, port, artifact_id FROM attempt_outputs WHERE attempt_id = ?",
+        )
+        .bind(id.as_str())
+        .bind(source.as_str())
+        .execute(&mut *tx)
+        .await?;
+        write_attempt(&mut tx, &attempt).await?;
+        audit(
+            &mut tx,
+            at,
+            id.as_str(),
+            &format!("attempt.{from}->cache_hit"),
         )
         .await?;
         tx.commit().await?;

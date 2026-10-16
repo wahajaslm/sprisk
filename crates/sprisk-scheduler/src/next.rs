@@ -41,6 +41,7 @@ mod tests {
                 .map(|n| Step {
                     node_id: (*n).to_owned(),
                     operator: Clone::clone(&operator),
+                    implementation_digest: String::new(),
                     params: serde_json::Map::new(),
                     inputs: vec![],
                 })
