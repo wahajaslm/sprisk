@@ -9,7 +9,21 @@ import { StepLibrary } from "../src/views/StepLibrary.tsx";
 import { TopBar } from "../src/views/TopBar.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { Copilot } from "../src/views/Copilot.tsx";
-import { PV, RUN, loadOutputs, profilePage, run, scoreOutputs, tablePage } from "./fixtures.ts";
+import {
+  PV,
+  RUN,
+  attempts,
+  codeAttempt,
+  codeDisplayJson,
+  codeOutputs,
+  codePipeline,
+  loadOutputs,
+  pipeline,
+  profilePage,
+  run,
+  scoreOutputs,
+  tablePage,
+} from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -314,6 +328,119 @@ describe("node previews", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     expect((await screen.findAllByText("test 120 × 2"))[0]).toBeInTheDocument();
+  });
+});
+
+describe("code steps (ADR-0020)", () => {
+  function recordPosts() {
+    const posted: { versions: unknown[]; runs: unknown[] } = { versions: [], runs: [] };
+    server.use(
+      http.post("/api/pipeline_versions", async ({ request }) => {
+        const body = await request.json();
+        posted.versions.push(body);
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.post("/api/runs", async ({ request }) => {
+        const body = (await request.json()) as { pipeline_version_id: string };
+        posted.runs.push(body);
+        return HttpResponse.json({ ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ9", pipeline_version_id: body.pipeline_version_id, status: "queued" }, { status: 202 });
+      }),
+    );
+    return posted;
+  }
+
+  it("explores a table output in a new code step and runs it", async () => {
+    const posted = recordPosts();
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    await userEvent.click(await screen.findByRole("button", { name: "Explore data in code" }));
+    await waitFor(() => expect(posted.runs).toHaveLength(1));
+    const version = posted.versions[0] as typeof pipeline;
+    expect(version.nodes.at(-1)).toMatchObject({ id: "code_1", operator: "sprisk.code.python@1.0.0" });
+    expect(version.edges.at(-1)).toEqual({ from: "load.data", to: "code_1.data" });
+    expect(posted.runs[0]).toEqual({ pipeline_version_id: version.id });
+    expect(useSelection.getState()).toMatchObject({ pipelineVersionId: version.id, runId: "run_01JABCDEFGHJKMNPQRSTVWXYZ9", nodeId: "code_1" });
+  });
+
+  it("edits the code in the Code tab and runs the new version", async () => {
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])));
+    const posted = recordPosts();
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
+    const editor = await screen.findByRole("textbox", { name: "Code for code_1" });
+    expect(editor).toHaveValue("print(data.height)\ndata.head(1)");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "data.height");
+    await userEvent.click(screen.getByRole("button", { name: "Run code" }));
+    await waitFor(() => expect(posted.runs).toHaveLength(1));
+    const version = posted.versions[0] as typeof pipeline;
+    expect(version.nodes.find((n) => n.id === "code_1")?.params).toEqual({ source: "data.height" });
+  });
+
+  it("shows what the code printed, its table and its figures", async () => {
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])),
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
+      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () => HttpResponse.json(codeOutputs)),
+      http.get(`/api/artifacts/${codeOutputs[0]!.artifact.id}/content`, () => HttpResponse.text(codeDisplayJson)),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
+    const shown = await screen.findByRole("region", { name: "Code output" });
+    expect(within(shown).getByText("150")).toBeInTheDocument();
+    expect(within(shown).getByRole("table")).toHaveTextContent("setosa");
+    expect(within(shown).getByText("1 of 150 rows")).toBeInTheDocument();
+    expect(within(shown).getByRole("img", { name: "Figure 1" })).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
+  });
+});
+
+describe("code step failures", () => {
+  it("shows why a new code step could not be saved", async () => {
+    server.use(
+      http.post("/api/pipeline_versions", () =>
+        HttpResponse.json({ errors: [{ code: "unknown_operator", message: "no sprisk.code.python" }] }, { status: 422 }),
+      ),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    await userEvent.click(await screen.findByRole("button", { name: "Explore data in code" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("unknown_operator: no sprisk.code.python");
+  });
+
+  function showCode(content: string, sizeBytes = 900) {
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])),
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
+      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () =>
+        HttpResponse.json([{ ...codeOutputs[0]!, artifact: { ...codeOutputs[0]!.artifact, size_bytes: sizeBytes } }]),
+      ),
+      http.get(`/api/artifacts/${codeOutputs[0]!.artifact.id}/content`, () => HttpResponse.text(content)),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
+  }
+
+  it("says the output is unreadable instead of drawing nothing", async () => {
+    showCode('{"items": [{"kind": "video"}]}');
+    expect(await screen.findByRole("alert")).toHaveTextContent(`Unreadable code output ${codeOutputs[0]!.artifact.id}`);
+  });
+
+  it("flags an image item with no picture", async () => {
+    showCode('{"items": [{"kind": "image"}]}');
+    expect(await screen.findByRole("alert")).toHaveTextContent("Output item 1 (image) has no content");
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("does not download output above the cap", async () => {
+    showCode(codeDisplayJson, 10_000_000);
+    expect(await screen.findByText(/Code output too large/)).toBeInTheDocument();
+  });
+
+  it("left-aligns text columns the code returns", async () => {
+    showCode(codeDisplayJson);
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("columnheader", { name: /species/ })).toHaveClass("text");
   });
 });
 

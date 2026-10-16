@@ -191,3 +191,27 @@ export const profilePage: TablePage = {
     { values: ["species", "VARCHAR", "setosa", "virginica", "3", "", "", "", "", "", "150", "0.00"], missing: [5, 6, 7, 8, 9] },
   ],
 };
+
+/** The fixture flow plus one code step reading load.data. */
+export const codePipeline: PipelineVersion = {
+  ...pipeline,
+  nodes: [...pipeline.nodes, { id: "code_1", operator: "sprisk.code.python@1.0.0", params: { source: "print(data.height)\ndata.head(1)" } }],
+  edges: [...pipeline.edges, { from: "load.data", to: "code_1.data" }],
+};
+
+export const codeAttempt: Attempt = { ...attempts[1]!, id: "att_01JABCDEFGHJKMNPQRSTVWXY99", node_id: "code_1" };
+
+export const codeOutputs: AttemptOutput[] = [
+  {
+    port: "display",
+    artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXYZ4", producer_attempt_id: codeAttempt.id, size_bytes: 900 },
+  },
+];
+
+export const codeDisplayJson = JSON.stringify({
+  items: [
+    { kind: "text", text: "150\n" },
+    { kind: "table", table: { ...tablePage(0, 1), total_rows: 150 } },
+    { kind: "image", png_base64: "iVBORw0KGgo=" },
+  ],
+});

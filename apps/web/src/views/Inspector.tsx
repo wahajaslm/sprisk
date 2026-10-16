@@ -2,11 +2,15 @@ import type { Attempt, AttemptOutput, MethodologyCheck } from "@sprisk/contracts
 import { parse } from "@sprisk/contracts";
 import * as Tabs from "@radix-ui/react-tabs";
 
-import { useArtifactText, useOutputs, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
+import { useArtifactText, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../api/hooks.ts";
 import { MAX_INLINE_BYTES, PARQUET } from "../api/media.ts";
 import { GATE_NODE, latestByNode } from "../flow/latest.ts";
 import { useViewInstance, useViewSelection } from "../workbench/instance.tsx";
 import { PinIcon } from "./Icons.tsx";
+import { addCodeStep, CODE_OPERATOR } from "../flow/edit.ts";
+import { useSelection } from "../workbench/selection.ts";
+import { CodeEditor } from "./CodeEditor.tsx";
+import { CodeOutput } from "./CodeOutput.tsx";
 import { ColumnProfile } from "./ColumnProfile.tsx";
 import { TablePeek } from "./TablePeek.tsx";
 import { isProfileOperator, shortName } from "../flow/stages.ts";
@@ -17,7 +21,17 @@ export function Inspector() {
   const { pin, setPin } = useViewInstance();
   const versions = usePipelineVersions();
   const attempts = useRunAttempts(pipelineVersionId, runId);
-  const node = versions.data?.find((v) => v.id === pipelineVersionId)?.nodes.find((n) => n.id === nodeId);
+  const pipeline = versions.data?.find((v) => v.id === pipelineVersionId);
+  const node = pipeline?.nodes.find((n) => n.id === nodeId);
+  const saveAndRun = useSaveAndRun();
+  const showRun = useSelection((s) => s.showRun);
+  const explore =
+    pipeline && nodeId
+      ? (port: string) => {
+          const { version, nodeId: codeNode } = addCodeStep(pipeline, nodeId, port);
+          saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, codeNode) });
+        }
+      : undefined;
 
   if (!nodeId) return <p className="muted pad">Select a step to see its decision, data, code or logs.</p>;
   const all = attempts.data ?? [];
@@ -62,8 +76,14 @@ export function Inspector() {
         </p>
       </Tabs.Content>
       <Tabs.Content value="code" className="pane single">
-        <p className="section-label">Runs as · {node?.operator ?? "unknown"}</p>
-        <pre className="code">{JSON.stringify(node?.params ?? {}, null, 2)}</pre>
+        {pipeline && node?.operator === CODE_OPERATOR && typeof node.params.source === "string" ? (
+          <CodeEditor key={`${pipeline.id}/${node.id}`} pipeline={pipeline} nodeId={node.id} source={node.params.source} />
+        ) : (
+          <>
+            <p className="section-label">Runs as · {node?.operator ?? "unknown"}</p>
+            <pre className="code">{JSON.stringify(node?.params ?? {}, null, 2)}</pre>
+          </>
+        )}
       </Tabs.Content>
       <Tabs.Content value="data" className="pane columns">
         <div>
@@ -72,7 +92,12 @@ export function Inspector() {
         </div>
         <div>
           <p className="section-label">Outputs</p>
-          <Outputs attempt={latest?.state === "succeeded" ? latest : undefined} operator={node?.operator} />
+          {saveAndRun.isError && <p role="alert" className="error">{saveAndRun.error.message}</p>}
+          <Outputs
+            attempt={latest?.state === "succeeded" ? latest : undefined}
+            operator={node?.operator}
+            explore={saveAndRun.isPending ? undefined : explore}
+          />
         </div>
       </Tabs.Content>
       <Tabs.Content value="logs" className="pane single">
@@ -89,7 +114,9 @@ export function Inspector() {
   );
 }
 
-function Outputs({ attempt, operator }: { attempt: Attempt | undefined; operator: string | undefined }) {
+type Explore = ((port: string) => void) | undefined;
+
+function Outputs({ attempt, operator, explore }: { attempt: Attempt | undefined; operator: string | undefined; explore: Explore }) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No successful attempt yet.</p>;
   if (outputs.isPending) return <p className="muted">Loading outputs…</p>;
@@ -98,28 +125,54 @@ function Outputs({ attempt, operator }: { attempt: Attempt | undefined; operator
   return (
     <div className="outputs">
       {outputs.data.map((o) => (
-        <Output key={o.port} output={o} isProfile={isProfileOperator(operator) && o.port === "profile"} />
+        <Output key={o.port} output={o} view={viewOf(o, operator)} explore={explore} />
       ))}
     </div>
   );
 }
 
-function Output({ output, isProfile }: { output: AttemptOutput; isProfile: boolean }) {
-  const isJson = output.artifact.media_type === "application/json";
+type OutputView = "code" | "profile" | "table" | "json" | "other";
+
+function viewOf(output: AttemptOutput, operator: string | undefined): OutputView {
+  if (operator === CODE_OPERATOR && output.port === "display") return "code";
+  if (isProfileOperator(operator) && output.port === "profile") return "profile";
+  if (output.artifact.media_type === PARQUET) return "table";
+  if (output.artifact.media_type === "application/json") return "json";
+  return "other";
+}
+
+/** Code output carries figures, so it may be larger than other JSON; still capped (rule 9). */
+const MAX_CODE_DISPLAY_BYTES = 4 * 1024 * 1024;
+
+function Output({ output, view, explore }: { output: AttemptOutput; view: OutputView; explore: Explore }) {
+  const isJson = view === "json";
   const small = output.artifact.size_bytes <= MAX_INLINE_BYTES;
   const text = useArtifactText(isJson && small ? output.artifact.id : undefined);
   return (
     <section className="output">
-      <p className="section-label">
-        {output.port} · {output.artifact.media_type} · {output.artifact.size_bytes} bytes
-      </p>
-      {isJson && !small ? (
+      <div className="output-head">
+        <p className="section-label">
+          {output.port} · {output.artifact.media_type} · {output.artifact.size_bytes} bytes
+        </p>
+        {view === "table" && explore && (
+          <button type="button" className="page-btn" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)}>
+            Explore in code
+          </button>
+        )}
+      </div>
+      {view === "code" ? (
+        output.artifact.size_bytes > MAX_CODE_DISPLAY_BYTES ? (
+          <p className="muted">Code output too large to show here ({output.artifact.size_bytes} bytes).</p>
+        ) : (
+          <CodeOutput artifactId={output.artifact.id} />
+        )
+      ) : isJson && !small ? (
         <p className="muted">JSON output too large to show here ({output.artifact.size_bytes} bytes).</p>
       ) : isJson ? (
         text.isError ? <p role="alert" className="error">{text.error.message}</p> : <pre className="code">{prettyJson(text.data)}</pre>
-      ) : isProfile ? (
+      ) : view === "profile" ? (
         <ColumnProfile artifactId={output.artifact.id} />
-      ) : output.artifact.media_type === PARQUET ? (
+      ) : view === "table" ? (
         <TablePeek artifactId={output.artifact.id} port={output.port} />
       ) : (
         <p className="mono muted">{output.artifact.content_hash.slice(0, 19)}…</p>

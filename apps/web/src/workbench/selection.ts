@@ -13,6 +13,8 @@ type Selection = {
   selectPipelineVersion: (id: string) => void;
   selectRun: (id: string | undefined) => void;
   selectNode: (id: string | undefined) => void;
+  /** Jump to a step of a run, e.g. right after saving a new version and starting it. */
+  showRun: (pipelineVersionId: string, runId: string, nodeId: string) => void;
 };
 
 export const useSelection = create<Selection>((set) => ({
@@ -24,4 +26,5 @@ export const useSelection = create<Selection>((set) => ({
   selectPipelineVersion: (id) => set({ pipelineVersionId: id, runId: undefined, nodeId: undefined }),
   selectRun: (id) => set({ runId: id }),
   selectNode: (id) => set({ nodeId: id }),
+  showRun: (pipelineVersionId, runId, nodeId) => set({ pipelineVersionId, runId, nodeId }),
 }));

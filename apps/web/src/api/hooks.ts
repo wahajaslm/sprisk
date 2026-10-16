@@ -1,4 +1,4 @@
-import type { Run } from "@sprisk/contracts";
+import type { PipelineVersion, Run } from "@sprisk/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getList, getOne, getText, postOne } from "./client.ts";
@@ -68,5 +68,21 @@ export function useStartRun() {
     mutationFn: (pipelineVersionId: string) =>
       postOne("Run", "/runs", { pipeline_version_id: pipelineVersionId }),
     onSuccess: (run) => client.invalidateQueries({ queryKey: ["runs", run.pipeline_version_id] }),
+  });
+}
+
+/** Save an edited flow as a new pipeline version, then run it. Rust compiles and checks
+ * the version; the UI never does (rule 3). */
+export function useSaveAndRun() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (version: PipelineVersion) => {
+      const saved = await postOne("PipelineVersion", "/pipeline_versions", version);
+      return postOne("Run", "/runs", { pipeline_version_id: saved.id });
+    },
+    onSuccess: (run) => {
+      void client.invalidateQueries({ queryKey: ["pipeline_versions"] });
+      void client.invalidateQueries({ queryKey: ["runs", run.pipeline_version_id] });
+    },
   });
 }

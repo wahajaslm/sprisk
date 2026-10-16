@@ -256,3 +256,16 @@ p { margin: 0; }
 .spread .box { fill: var(--wash-strong); stroke: var(--dim); stroke-width: 1; }
 .spread .median { stroke: var(--ink); stroke-width: 1.5; }
 .spread-axis { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--faint); }
+
+/* ── Code steps (ADR-0020) ─────────────────────────── */
+.output-head { display: flex; align-items: center; gap: 10px; }
+.output-head .section-label { margin-bottom: 8px; }
+.output-head .page-btn { margin: 0 0 8px auto; }
+.code-editor { display: grid; grid-template-rows: minmax(160px, 1fr) auto; gap: 8px; height: 100%; }
+.code-input { width: 100%; min-height: 160px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--canvas); color: var(--ink); font: 12px/1.6 var(--mono); tab-size: 4; }
+.code-input:focus-visible { outline: 1px solid var(--ink); outline-offset: 1px; }
+.code-actions { display: flex; align-items: center; gap: 10px; font-size: 11px; }
+.run-code { border: 0; border-radius: 7px; padding: 5px 12px; background: var(--ink); color: var(--ground); font-weight: 500; }
+.run-code:disabled { background: var(--node-hover); color: var(--faint); cursor: default; }
+.code-output { display: grid; gap: 12px; }
+.figure { max-width: 100%; border-radius: 6px; background: var(--white); }
