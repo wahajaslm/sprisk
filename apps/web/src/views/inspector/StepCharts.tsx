@@ -1,4 +1,5 @@
 import type { Attempt, Operator, PipelineVersion } from "@sprisk/contracts";
+import { useViewSelection } from "../../workbench/instance.tsx";
 
 import { useOutputs, useSaveAndRun, useTablePage } from "../../api/hooks.ts";
 import { PARQUET } from "../../api/media.ts";
@@ -65,7 +66,7 @@ function ChartBlock({
   attempt: Attempt | undefined;
   columns: Parameters<typeof ViewControls>[0]["columns"];
 }) {
-  const saveAndRun = useSaveAndRun();
+  const saveAndRun = useSaveAndRun(useViewSelection().runId);
   const showRun = useSelection((s) => s.showRun);
   const remove = () => {
     const version = removeStep(pipeline, chartId);

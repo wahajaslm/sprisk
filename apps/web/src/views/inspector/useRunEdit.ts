@@ -1,4 +1,5 @@
 import type { PipelineVersion } from "@sprisk/contracts";
+import { useViewSelection } from "../../workbench/instance.tsx";
 
 import { useSaveAndRun } from "../../api/hooks.ts";
 import { setParams } from "../../flow/edit.ts";
@@ -8,7 +9,7 @@ import { useSelection } from "../../workbench/selection.ts";
  * Rust compiles and checks the version; its errors come back on `error` (rule 3). */
 /** Run `nodeId` with new params as a new version, then show `showNode` (default: that step). */
 export function useRunEdit(pipeline: PipelineVersion, nodeId: string, showNode: string = nodeId) {
-  const saveAndRun = useSaveAndRun();
+  const saveAndRun = useSaveAndRun(useViewSelection().runId);
   const showRun = useSelection((s) => s.showRun);
   const run = (params: Record<string, unknown>) => {
     const version = setParams(pipeline, nodeId, params);

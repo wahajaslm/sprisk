@@ -1,5 +1,6 @@
 import type { PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
+import { useViewSelection } from "../workbench/instance.tsx";
 
 import { useSaveAndRun } from "../api/hooks.ts";
 import { setCodeSource } from "../flow/edit.ts";
@@ -11,7 +12,7 @@ import { PlayIcon } from "./Icons.tsx";
  * code itself only ever runs in a worker (ADR-0020). */
 export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVersion; nodeId: string; source: string }) {
   const [draft, setDraft] = useState(source);
-  const saveAndRun = useSaveAndRun();
+  const saveAndRun = useSaveAndRun(useViewSelection().runId);
   const showRun = useSelection((s) => s.showRun);
 
   const run = (source: string) => {

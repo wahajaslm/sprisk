@@ -477,7 +477,7 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
   const { at, set } = useStepMenu();
   const dock = useWorkbench((s) => s.dock);
   const { selectNode, showRun } = useSelection();
-  const saveAndRun = useSaveAndRun();
+  const saveAndRun = useSaveAndRun(useSelection((s) => s.runId));
   const first = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!at) return;

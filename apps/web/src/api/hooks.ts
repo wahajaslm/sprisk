@@ -1,7 +1,6 @@
 import type { PipelineVersion, Run } from "@sprisk/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { useSelection } from "../workbench/selection.ts";
 import { getList, getOne, getText, postOne } from "./client.ts";
 
 /** While a run is live, attempts are re-read this often. */
@@ -91,10 +90,10 @@ export function useStartRun() {
 /** Save an edited flow as a new pipeline version, then run it. Rust compiles and checks
  * the version; the UI never does (rule 3). */
 /** Save an edited version and run it from the edited step onwards: every unchanged step
- * reuses the run on screen (ADR-0026). Run graph (useStartRun) runs from the start. */
-export function useSaveAndRun() {
+ * reuses `onScreen`, the run being looked at (ADR-0026). Run graph (useStartRun) runs from
+ * the start. */
+export function useSaveAndRun(onScreen: string | undefined) {
   const client = useQueryClient();
-  const onScreen = useSelection((s) => s.runId);
   return useMutation({
     mutationFn: async (version: PipelineVersion) => {
       const saved = await postOne("PipelineVersion", "/pipeline_versions", version);

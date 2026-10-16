@@ -42,7 +42,7 @@ export function useStep() {
   const pipeline = versions.data?.find((v) => v.id === pipelineVersionId);
   const node = pipeline?.nodes.find((n) => n.id === nodeId);
   const operator = operators.data?.find((o) => o.id === node?.operator);
-  const saveAndRun = useSaveAndRun();
+  const saveAndRun = useSaveAndRun(runId);
   const showRun = useSelection((s) => s.showRun);
   const all = attempts.data ?? [];
   const checks = useRunChecks(latestByNode(all).get(GATE_NODE));
