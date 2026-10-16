@@ -170,6 +170,7 @@ p { margin: 0; }
 .stage-count { margin-left: auto; font: 10px var(--mono); color: var(--ghost); }
 .step-item { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 24px; cursor: default; }
 .step-item:hover { background: var(--wash); }
+.library .step-icon { flex-shrink: 0; width: 14px; height: 14px; display: grid; place-items: center; background: transparent; }
 .step-name { flex: 1; min-width: 0; font-size: 12px; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .step-item:hover .step-name { color: var(--ink); }
 

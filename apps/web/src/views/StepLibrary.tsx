@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { useOperators } from "../api/hooks.ts";
 import { kindOf, newestVersions, STAGES, stageOf, stepTitle } from "../flow/stages.ts";
-import { Chevron, KindMark, SearchIcon } from "./Icons.tsx";
+import { Chevron, KindIcon, SearchIcon } from "./Icons.tsx";
 
 export function StepLibrary() {
   const operators = useOperators();
@@ -66,7 +66,9 @@ function StepItem({ operator }: { operator: Operator }) {
   const kind = kindOf(operator);
   return (
     <div className="step-item" title={operator.description ? `${operator.description}\n${operator.id}` : operator.id}>
-      <KindMark kind={kind} />
+      <span className={`step-icon kind-${kind}`}>
+        <KindIcon kind={kind} size={12} />
+      </span>
       <span className="step-name">{stepTitle(operator.id)}</span>
     </div>
   );
