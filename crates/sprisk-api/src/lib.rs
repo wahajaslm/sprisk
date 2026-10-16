@@ -417,8 +417,9 @@ async fn get_artifact(
     Ok(Json(state.store.get_artifact(&artifact_id).await?))
 }
 
-/// Largest artifact the browser may fetch to show (ADR-0027): the figure cap, the biggest renderer.
-const MAX_DISPLAY_BYTES: u64 = 8 * 1024 * 1024;
+/// Safety ceiling on what the browser may fetch to show (ADR-0027). Each renderer has its own,
+/// lower cap in the browser; this only stops a mistake from pulling a huge artifact.
+const MAX_DISPLAY_BYTES: u64 = 32 * 1024 * 1024;
 
 /// Content over the display cap is refused unless the caller asks for a download (`?download=true`).
 fn display_size(size_bytes: u64, download: bool) -> Result<(), ApiError> {

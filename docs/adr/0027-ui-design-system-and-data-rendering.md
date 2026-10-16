@@ -39,7 +39,7 @@ Arch doc sections: §2A, §13
 A new kind of data needs a row in this table first.
 
 ### 4. Hard limits, enforced in three places
-- **Server:** `/artifacts/{id}/content` refuses anything over 8 MB (the largest renderer cap above) unless the request is a download. Lists keep the 1..=200 page limit.
+- **Server:** `/artifacts/{id}/content` refuses anything over 32 MB unless the request is a download (`?download=true`). This is a safety ceiling, well above every renderer cap in the table. Lists keep the 1..=200 page limit.
 - **API client:** `src/api` is the only place that calls `fetch`. It has no function that returns an unpaged list or uncapped content.
 - `src/api` does not read UI stores (Zustand). Callers pass in what it needs, such as the selected run id.
 - **Lint:** forbid `fetch` outside `src/api`, and `.map` that renders over a server list outside `VirtualList`.
