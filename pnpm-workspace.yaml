@@ -1,2 +1,5 @@
 packages:
   - contracts/ts
+  - apps/web
+minimumReleaseAgeExclude:
+  - jsdom@30.1.3

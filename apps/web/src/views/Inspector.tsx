@@ -1,0 +1,130 @@
+import type { Attempt, AttemptOutput, MethodologyCheck } from "@sprisk/contracts";
+import { parse } from "@sprisk/contracts";
+import * as Tabs from "@radix-ui/react-tabs";
+
+import { useArtifactText, useAttempts, useOutputs, usePipelineVersions, useRuns } from "../api/hooks.ts";
+import { GATE_NODE, latestByNode } from "../flow/latest.ts";
+import { useSelection } from "../workbench/selection.ts";
+import { shortName } from "./StepLibrary.tsx";
+
+export function Inspector() {
+  const { pipelineVersionId, runId, nodeId } = useSelection();
+  const versions = usePipelineVersions();
+  const runs = useRuns(pipelineVersionId);
+  const live = runs.data?.find((r) => r.id === runId)?.status === "running";
+  const attempts = useAttempts(runId, live);
+  const node = versions.data?.find((v) => v.id === pipelineVersionId)?.nodes.find((n) => n.id === nodeId);
+
+  if (!nodeId) return <p className="muted pad">Select a step to see its decision, data, code or logs.</p>;
+  const all = attempts.data ?? [];
+  const ofNode = all.filter((a) => a.node_id === nodeId).sort((a, b) => a.number - b.number);
+  const latest = latestByNode(ofNode).get(nodeId);
+  const gate = latestByNode(all).get(GATE_NODE);
+
+  return (
+    <Tabs.Root className="inspector" defaultValue="data">
+      <div className="inspector-head">
+        <Tabs.List className="tabs" aria-label="Inspector">
+          <Tabs.Trigger value="decision">Decision</Tabs.Trigger>
+          <Tabs.Trigger value="code">Code</Tabs.Trigger>
+          <Tabs.Trigger value="data">Data</Tabs.Trigger>
+          <Tabs.Trigger value="logs">Logs</Tabs.Trigger>
+        </Tabs.List>
+        <strong>{nodeId}</strong>
+        <span className="mono muted">{node ? shortName(node.operator) : ""} · {latest?.state ?? "not run"}</span>
+      </div>
+      {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
+      <Tabs.Content value="decision" className="pane">
+        <p className="muted">
+          Decisions (question, choices, recommended choice, evidence) come with the methodology decision graph
+          (ADR-0019). This step currently runs with fixed settings.
+        </p>
+      </Tabs.Content>
+      <Tabs.Content value="code" className="pane">
+        <p className="eyebrow">Runs as · {node?.operator ?? "unknown"}</p>
+        <pre className="code">{JSON.stringify(node?.params ?? {}, null, 2)}</pre>
+      </Tabs.Content>
+      <Tabs.Content value="data" className="pane columns">
+        <Checks gate={gate} nodeId={nodeId} />
+        <Outputs attempt={latest?.state === "succeeded" ? latest : undefined} />
+      </Tabs.Content>
+      <Tabs.Content value="logs" className="pane">
+        <ol className="log">
+          {ofNode.map((a) => (
+            <li key={a.id} className={`state-${a.state}`}>
+              <span className="mono">#{a.number}</span> {a.state}
+              {a.error && <span className="error"> · {a.error.code}: {a.error.message}</span>}
+            </li>
+          ))}
+        </ol>
+      </Tabs.Content>
+    </Tabs.Root>
+  );
+}
+
+function Outputs({ attempt }: { attempt: Attempt | undefined }) {
+  const outputs = useOutputs(attempt?.id);
+  if (!attempt) return <p className="muted">No successful attempt yet.</p>;
+  if (outputs.isPending) return <p className="muted">Loading outputs…</p>;
+  if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
+  if (outputs.data.length === 0) return <p className="muted">This step committed no outputs.</p>;
+  return (
+    <div className="outputs">
+      {outputs.data.map((o) => (
+        <Output key={o.port} output={o} />
+      ))}
+    </div>
+  );
+}
+
+function Output({ output }: { output: AttemptOutput }) {
+  const isJson = output.artifact.media_type === "application/json";
+  const text = useArtifactText(isJson ? output.artifact.id : undefined);
+  return (
+    <section className="output">
+      <p className="eyebrow">
+        {output.port} · {output.artifact.media_type} · {output.artifact.size_bytes} bytes
+      </p>
+      {isJson ? (
+        text.isError ? <p role="alert" className="error">{text.error.message}</p> : <pre className="code">{prettyJson(text.data)}</pre>
+      ) : (
+        <p className="mono muted">{output.artifact.content_hash.slice(0, 19)}… (tables are not loaded in the browser)</p>
+      )}
+    </section>
+  );
+}
+
+const prettyJson = (text: string | undefined) => {
+  if (text === undefined) return "…";
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+};
+
+/** Methodology checks from the run's gate that cite this step (ADR-0017). */
+function Checks({ gate, nodeId }: { gate: Attempt | undefined; nodeId: string }) {
+  const outputs = useOutputs(gate?.state === "succeeded" ? gate.id : undefined);
+  const checksArtifact = outputs.data?.find((o) => o.port === "checks")?.artifact.id;
+  const text = useArtifactText(checksArtifact);
+  if (!text.data) return null;
+  let checks: MethodologyCheck[];
+  try {
+    const raw: unknown = JSON.parse(text.data);
+    checks = Array.isArray(raw) ? raw.map((c) => parse("MethodologyCheck", c)) : [];
+  } catch (e) {
+    return <p role="alert" className="error">Unreadable methodology checks: {String(e)}</p>;
+  }
+  const mine = checks.filter((c) => c.cited_nodes.includes(nodeId));
+  if (mine.length === 0) return null;
+  return (
+    <section className="checks" aria-label="Methodology checks">
+      {mine.map((c) => (
+        <p key={c.id} className={`check ${c.verdict}`}>
+          <span className={`pill ${c.verdict}`}>{c.verdict.replace("_", " ")}</span> {c.rationale}
+        </p>
+      ))}
+    </section>
+  );
+}

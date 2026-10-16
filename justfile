@@ -40,4 +40,6 @@ check:
     uv run pytest -q python plugins methodology
     pnpm -C contracts/ts typecheck
     pnpm -C contracts/ts test
+    pnpm -C apps/web typecheck
+    pnpm -C apps/web test
     just contracts-check

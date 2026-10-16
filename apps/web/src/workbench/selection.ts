@@ -1,0 +1,27 @@
+import { create } from "zustand";
+
+export const NAV = ["Flow", "Datasets", "Notebooks", "Experiments", "Deploy"] as const;
+export type Nav = (typeof NAV)[number];
+
+/** UI context only (arch §2A WorkbenchContext). Never scientific state. */
+type Selection = {
+  nav: Nav;
+  pipelineVersionId: string | undefined;
+  runId: string | undefined;
+  nodeId: string | undefined;
+  setNav: (nav: Nav) => void;
+  selectPipelineVersion: (id: string) => void;
+  selectRun: (id: string | undefined) => void;
+  selectNode: (id: string | undefined) => void;
+};
+
+export const useSelection = create<Selection>((set) => ({
+  nav: "Flow",
+  pipelineVersionId: undefined,
+  runId: undefined,
+  nodeId: undefined,
+  setNav: (nav) => set({ nav }),
+  selectPipelineVersion: (id) => set({ pipelineVersionId: id, runId: undefined, nodeId: undefined }),
+  selectRun: (id) => set({ runId: id }),
+  selectNode: (id) => set({ nodeId: id }),
+}));
