@@ -9,6 +9,9 @@ dependencies = [
     "jsonschema>=4.23",
     "python-ulid>=3",
     "typer>=0.12",
+    "pyarrow>=17",
+    "scikit-learn>=1.5",
+    "skops>=0.10",
 ]
 
 [project.scripts]

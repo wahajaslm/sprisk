@@ -23,9 +23,11 @@ export function TopBar() {
   }, [versions.data, pipelineVersionId, selectPipelineVersion]);
   const latestRun = runs.data?.[0];
   const latestRunId = latestRun?.id;
+  // Also when the selection was cleared, e.g. by picking the flow that is already open.
+  const runId = useSelection((s) => s.runId);
   useEffect(() => {
-    if (latestRunId) selectRun(latestRunId);
-  }, [latestRunId, selectRun]);
+    if (latestRunId && runId === undefined) selectRun(latestRunId);
+  }, [latestRunId, runId, selectRun]);
 
   const current = versions.data?.find((v) => v.id === pipelineVersionId);
   const runState = startRun.isPending

@@ -1965,8 +1965,11 @@ source = { editable = "python/sprisk-workers" }
 dependencies = [
     { name = "jsonschema" },
     { name = "polars" },
+    { name = "pyarrow" },
     { name = "python-ulid" },
     { name = "pyyaml" },
+    { name = "scikit-learn" },
+    { name = "skops" },
     { name = "sprisk-contracts" },
     { name = "typer" },
 ]
@@ -1984,8 +1987,11 @@ dev = [
 requires-dist = [
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "polars", specifier = ">=1.10" },
+    { name = "pyarrow", specifier = ">=17" },
     { name = "python-ulid", specifier = ">=3" },
     { name = "pyyaml", specifier = ">=6" },
+    { name = "scikit-learn", specifier = ">=1.5" },
+    { name = "skops", specifier = ">=0.10" },
     { name = "sprisk-contracts", editable = "python/sprisk-contracts" },
     { name = "typer", specifier = ">=0.12" },
 ]

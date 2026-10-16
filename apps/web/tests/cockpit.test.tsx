@@ -66,6 +66,14 @@ describe("top bar", () => {
     expect(useSelection.getState().pipelineVersionId).toBe(edited.id);
   });
 
+  it("picking the flow that is already open keeps showing its latest run", async () => {
+    renderWithApi(<TopBar />);
+    await waitFor(() => expect(useSelection.getState().runId).toBe(RUN));
+    await userEvent.click(screen.getByRole("button", { name: "Project and flow" }));
+    await userEvent.click(within(screen.getByRole("listbox", { name: "Flows" })).getByRole("option", { name: /iris.csv/ }));
+    await waitFor(() => expect(useSelection.getState().runId).toBe(RUN));
+  });
+
   it("starts a run of the selected pipeline version", async () => {
     let posted: unknown;
     server.use(

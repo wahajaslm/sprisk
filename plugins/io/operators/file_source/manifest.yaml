@@ -12,6 +12,7 @@ params_schema:
   properties:
     path: { type: string, minLength: 1, x-sprisk-local-path: true, description: "File to read, inside an allowed data folder." }
     format: { type: string, enum: [csv, parquet], description: "How the file is stored." }
+    missing_values: { type: array, items: { type: string }, default: ["NA"], description: "Text that means a value is missing, in a CSV." }
 # The file can change between runs, so the output is not cacheable.
 effects: nondeterministic
 network: none
