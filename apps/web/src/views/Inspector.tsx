@@ -4,7 +4,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 
 import { useArtifactText, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../api/hooks.ts";
 import { MAX_INLINE_BYTES, PARQUET } from "../api/media.ts";
-import { GATE_NODE, latestByNode } from "../flow/latest.ts";
+import { GATE_NODE, hasOutputs, latestByNode } from "../flow/latest.ts";
 import { useViewInstance, useViewSelection } from "../workbench/instance.tsx";
 import { PinIcon } from "./Icons.tsx";
 import { addCodeStep, isCodeOperator } from "../flow/edit.ts";
@@ -94,7 +94,7 @@ export function Inspector() {
           <p className="section-label">Outputs</p>
           {saveAndRun.isError && <p role="alert" className="error">{saveAndRun.error.message}</p>}
           <Outputs
-            attempt={latest?.state === "succeeded" ? latest : undefined}
+            attempt={hasOutputs(latest) ? latest : undefined}
             operator={node?.operator}
             explore={saveAndRun.isPending ? undefined : explore}
           />

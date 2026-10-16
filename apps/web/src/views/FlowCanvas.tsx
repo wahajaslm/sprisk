@@ -21,7 +21,7 @@ import {
 import { useEffect } from "react";
 
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
-import { latestByNode } from "../flow/latest.ts";
+import { hasOutputs, latestByNode } from "../flow/latest.ts";
 import { kindOf, type NodeKind, shortName, STAGES, type Stage, stageNumber, stageOf } from "../flow/stages.ts";
 import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
@@ -42,6 +42,7 @@ type FlowEdgeData = { hue: string };
 
 const STATUS: Record<string, { text: string; tone: string }> = {
   succeeded: { text: "succeeded", tone: "done" },
+  cache_hit: { text: "cached", tone: "done" },
   running: { text: "Running…", tone: "live" },
   leased: { text: "Starting…", tone: "live" },
   queued: { text: "Queued", tone: "idle" },
@@ -154,7 +155,7 @@ export function layout(
           isEvaluator: op?.capability_class === "evaluator",
           kind: op ? kindOf(op) : "recipe",
           state: latest.get(id)?.state ?? "not run",
-          ...(latest.get(id)?.state === "succeeded" ? { attemptId: latest.get(id)?.id } : {}),
+          ...(hasOutputs(latest.get(id)) ? { attemptId: latest.get(id)?.id } : {}),
           selected: id === selectedId,
         },
       });

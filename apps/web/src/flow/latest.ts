@@ -12,3 +12,7 @@ export function latestByNode(attempts: Attempt[]): Map<string, Attempt> {
 
 /** Attempts of the methodology gate use this node id (ADR-0017). */
 export const GATE_NODE = "gate_b";
+
+/** A finished attempt with outputs: it ran and succeeded, or it reused a cached result. */
+export const hasOutputs = (attempt: Attempt | undefined) =>
+  attempt?.state === "succeeded" || attempt?.state === "cache_hit";

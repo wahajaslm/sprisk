@@ -481,11 +481,38 @@ describe("code step failures", () => {
   });
 });
 
+describe("cached steps", () => {
+  const cachedAttempts = () => attempts.map((a) => (a.node_id === "score" ? { ...a, state: "cache_hit" as const } : a));
+
+  it("marks a cached step on the canvas and still shows its fact", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(cachedAttempts())));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    const score = await screen.findByRole("button", { name: /^score/ });
+    await waitFor(() => expect(score).toHaveTextContent("accuracy 0.947"));
+    expect(score).toHaveTextContent("cached");
+  });
+
+  it("shows a cached step's outputs in the inspector", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(cachedAttempts())));
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
+    expect(await screen.findByText(/"accuracy": 0.947/)).toBeInTheDocument();
+  });
+
+  it("counts cached steps as done in the run summary", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(cachedAttempts())));
+    renderWithApi(<Copilot />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    expect(await screen.findByText("6 of 7 step attempts done · 1 cached")).toBeInTheDocument();
+  });
+});
+
 describe("copilot", () => {
   it("summarises the run's step attempts, without the gate", async () => {
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts succeeded")).toBeInTheDocument();
+    expect(await screen.findByText("6 of 7 step attempts done")).toBeInTheDocument();
     expect(run.status).toBe("succeeded");
   });
 
