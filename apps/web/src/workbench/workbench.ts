@@ -1,15 +1,13 @@
 import { create } from "zustand";
 
 import type { InspectorTab } from "./inspectorTabs.ts";
-import type { ViewType } from "./layout.ts";
 
 export const ACTIVITIES = ["steps", "runs", "views"] as const;
 export type Activity = (typeof ACTIVITIES)[number];
 
 /** What the dock can do, registered by DockAdapter so nothing else imports dockview. */
 export type DockCommands = {
-  addView: (type: ViewType) => void;
-  /** Open one Inspector tab in its own panel, following the selection. */
+  /** Open another panel for one Inspector tab, e.g. to pin it and compare runs. */
   openTab: (tab: InspectorTab) => void;
   resetLayout: () => void;
   setEditing: (on: boolean) => void;

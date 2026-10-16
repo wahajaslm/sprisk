@@ -2,7 +2,7 @@ import { lazy } from "react";
 
 import { Copilot } from "./views/Copilot.tsx";
 import { Experiments } from "./views/Experiments.tsx";
-import { Inspector } from "./views/Inspector.tsx";
+import { StepTabLabel } from "./views/inspector/step.tsx";
 import { ComingView, Placeholder } from "./views/Placeholder.tsx";
 import { ActivityBar } from "./views/ActivityBar.tsx";
 import { Sidebar } from "./views/Sidebar.tsx";
@@ -14,7 +14,7 @@ import { useSelection } from "./workbench/selection.ts";
 // React Flow is heavy; load it only when the Flow panel first renders.
 const FlowCanvas = lazy(() => import("./views/FlowCanvas.tsx").then((m) => ({ default: m.FlowCanvas })));
 
-const views = { sidebar: Sidebar, flow: FlowCanvas, inspector: Inspector, copilot: Copilot, "step-tab": StepTab, placeholder: Placeholder };
+const views = { sidebar: Sidebar, flow: FlowCanvas, copilot: Copilot, "step-tab": StepTab, placeholder: Placeholder };
 
 const COMING = {
   Datasets: "Every dataset with origin, rows, columns, quality and where the flow uses it; column profiles from Profile.",
@@ -30,7 +30,7 @@ export function Cockpit() {
       <div className="workspace">
         <ActivityBar />
         {nav === "Flow" ? (
-          <Dock views={views} />
+          <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} />
         ) : nav === "Experiments" ? (
           <Experiments />
         ) : (

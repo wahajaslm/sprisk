@@ -19,7 +19,7 @@ import { DataTab } from "./DataTab.tsx";
 import { HistoryTab } from "./HistoryTab.tsx";
 import { InputsTab } from "./InputsTab.tsx";
 import { ParametersTab } from "./ParametersTab.tsx";
-import type { InspectorTab } from "../../workbench/inspectorTabs.ts";
+import { type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
 import { VisualsTab, visualCount } from "./VisualsTab.tsx";
 
 const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
@@ -179,4 +179,45 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
     case "history":
       return <HistoryTab history={step.history} runId={step.runId} metric={step.metric} />;
   }
+}
+
+type TabMark = { badge?: string; alert?: boolean; muted?: boolean };
+
+/** What a tab's label signals before it is opened: counts, problems, or nothing to show. */
+function tabMark(tab: InspectorTab, step: Step): TabMark {
+  const { visuals, problems, concernCount } = step;
+  switch (tab) {
+    case "visuals":
+      return visuals > 0 ? { badge: String(visuals) } : { muted: true };
+    case "console":
+      return problems > 0 ? { badge: `⚠ ${problems}`, alert: true } : {};
+    case "checks":
+      return concernCount > 0 ? { badge: `⚠ ${concernCount}`, alert: true } : {};
+    case "performance":
+      return { muted: true };
+    default:
+      return {};
+  }
+}
+
+/** A tab's dock label with its badge, e.g. "Checks ⚠ 2". */
+export function StepTabLabel() {
+  const { tab } = useViewInstance();
+  const step = useStep();
+  if (!tab) return <span>Unknown tab</span>;
+  const mark = step.nodeId ? tabMark(tab, step) : {};
+  return (
+    <span
+      className={`step-tab-label${mark.muted ? " muted-tab" : ""}`}
+      aria-label={tab === "checks" && step.concernCount > 0 ? `Checks, ${step.concernCount} to review` : undefined}
+    >
+      {TAB_LABEL[tab]}
+      {mark.badge && (
+        <>
+          {" "}
+          <span className={`tab-badge${mark.alert ? " alert" : ""}`}>{mark.badge}</span>
+        </>
+      )}
+    </span>
+  );
 }

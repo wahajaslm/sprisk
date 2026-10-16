@@ -1,19 +1,14 @@
 /** Saved dock layouts are UI preference only (arch §2A), versioned apart from scientific schemas. */
-// v2: the left panel became the activity sidebar.
-export const LAYOUT_VERSION = 2;
+// v2: the left panel became the activity sidebar. v3: the Inspector became one dock panel per tab.
+export const LAYOUT_VERSION = 3;
 export const LAYOUT_KEY = "sprisk.layout";
 
 /** View types the cockpit can render. Anything else in a saved layout becomes a placeholder. */
-export const VIEW_TYPES = ["sidebar", "flow", "inspector", "copilot", "step-tab", "placeholder"] as const;
+export const VIEW_TYPES = ["sidebar", "flow", "copilot", "step-tab", "placeholder"] as const;
 export type ViewType = (typeof VIEW_TYPES)[number];
 
-/** View types a user can open more of from the Views sidebar (arch §2A ViewInstance). */
-export const ADDABLE_VIEWS: { type: ViewType; title: string; description: string }[] = [
-  { type: "inspector", title: "Inspector", description: "A step's data, code and logs. Pin it to compare runs." },
-];
-
-/** Panels of the Studio default layout; their tab bars stay hidden outside Edit layout. */
-export const DEFAULT_PANELS = ["sidebar", "flow", "inspector", "copilot"] as const;
+/** Studio regions with their own headers; their tab bars stay hidden outside Edit layout. */
+export const HEADED_PANELS = ["sidebar", "flow", "copilot"] as const;
 
 type SavedPanel = { contentComponent: string } & Record<string, unknown>;
 export type SavedDock = { panels: Record<string, SavedPanel> } & Record<string, unknown>;

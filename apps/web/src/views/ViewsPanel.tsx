@@ -1,4 +1,4 @@
-import { ADDABLE_VIEWS } from "../workbench/layout.ts";
+import { INSPECTOR_TABS, TAB_LABEL } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 
 /** Open more views, move docks, or go back to the Studio layout. */
@@ -6,14 +6,14 @@ export function ViewsPanel() {
   const { dock, editing, toggleEditing } = useWorkbench();
   return (
     <div className="sidebar-panel">
-      <p className="sidebar-title">Views</p>
+      <p className="sidebar-title">Open another panel</p>
       <div className="sidebar-list">
-        {ADDABLE_VIEWS.map((view) => (
-          <button key={view.type} type="button" className="list-row" disabled={!dock} onClick={() => dock?.addView(view.type)}>
+        {INSPECTOR_TABS.map((tab) => (
+          <button key={tab} type="button" className="list-row" disabled={!dock} onClick={() => dock?.openTab(tab)}>
             <span className="plus" aria-hidden="true">+</span>
             <span className="row-main">
-              <span className="row-title">{view.title}</span>
-              <span className="row-meta">{view.description}</span>
+              <span className="row-title">{TAB_LABEL[tab]}</span>
+              <span className="row-meta">Another panel; pin it to compare runs.</span>
             </span>
           </button>
         ))}

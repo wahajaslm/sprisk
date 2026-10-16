@@ -1,4 +1,4 @@
-/** The Inspector's tabs, one question each. Each can also open in its own dock panel. */
+/** The Inspector: one dock panel per question about the selected step. */
 export const INSPECTOR_TABS = ["data", "visuals", "console", "inputs", "parameters", "code", "checks", "performance", "history"] as const;
 export type InspectorTab = (typeof INSPECTOR_TABS)[number];
 
@@ -13,9 +13,6 @@ export const TAB_LABEL: Record<InspectorTab, string> = {
   performance: "Performance",
   history: "History",
 };
-
-/** Drag data type for pulling a tab out of the Inspector onto the dock. */
-export const TAB_DRAG_TYPE = "application/x-sprisk-inspector-tab";
 
 export const isInspectorTab = (value: unknown): value is InspectorTab =>
   typeof value === "string" && (INSPECTOR_TABS as readonly string[]).includes(value);

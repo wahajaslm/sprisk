@@ -81,6 +81,9 @@ p { margin: 0; }
 .run-button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 
 /* ── Dock: Studio regions, no tab bars ───────────────── */
+.dock-tab { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 4px 0 2px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.dock-tab-close { border: 0; background: transparent; color: var(--ghost); padding: 0 4px; font-size: 13px; line-height: 1; }
+.dock-tab-close:hover { color: var(--ink); }
 .sprisk-dock {
   height: 100%;
   --dv-background-color: var(--ground);
@@ -182,9 +185,7 @@ p { margin: 0; }
 /* ── Inspector ───────────────────────────────────────── */
 .inspector { height: 100%; display: grid; grid-template-rows: 46px minmax(0, 1fr); background: var(--panel); border-top: 1px solid var(--line); overflow: hidden; }
 .tabs { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--wash); }
-/* Narrow panels scroll the tab strip so the step name and Pin stay visible. */
-.inspector .tabs { min-width: 0; flex-shrink: 1; overflow-x: auto; scrollbar-width: none; }
-.inspector .panel-head > :not(.tabs):not(.sel-meta) { flex-shrink: 0; }
+.inspector .panel-head > :not(.sel-meta) { flex-shrink: 0; }
 .tabs button { height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--quiet); font-weight: 500; white-space: nowrap; }
 .tabs button[data-state="active"] { background: var(--wash-strong); color: var(--ink); }
 .sel-label { font-weight: 500; white-space: nowrap; }
@@ -193,7 +194,6 @@ p { margin: 0; }
 .pin.on { color: var(--ground); background: var(--ink); border-color: var(--ink); }
 .sel-meta { font: 11px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane { min-height: 0; overflow: auto; }
-.tab-title { font-weight: 500; }
 .pane.columns { display: grid; grid-template-columns: minmax(200px, 0.55fr) minmax(0, 2fr); }
 .pane.columns > * { padding: 14px 16px; border-right: 1px solid var(--line-soft); overflow: auto; }
 .pane.single { padding: 14px 16px; }
@@ -431,7 +431,7 @@ p { margin: 0; }
 .lightbox img { max-width: 100%; max-height: calc(90vh - 48px); object-fit: contain; border-radius: 8px; background: var(--white); }
 .lightbox figcaption { display: flex; justify-content: space-between; align-items: center; font: 11px var(--mono); color: var(--soft); }
 .overrides { margin: 0; font: 11px var(--mono); color: var(--soft); padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--wash); }
-.tabs button.muted-tab { color: var(--ghost); }
+.tabs button.muted-tab, .step-tab-label.muted-tab { color: var(--ghost); }
 .tabs button.muted-tab[data-state="active"] { color: var(--dim); }
 .tab-badge { margin-left: 6px; font: 10px var(--mono); color: var(--muted); }
 .tab-badge.alert { color: var(--alert); }

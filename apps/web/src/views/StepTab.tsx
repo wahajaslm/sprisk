@@ -1,17 +1,17 @@
 import { useViewInstance } from "../workbench/instance.tsx";
-import { PinButton, StepErrors, StepMeta, TabBody, TechSwitch, useStep } from "./inspector/step.tsx";
 import { TAB_LABEL } from "../workbench/inspectorTabs.ts";
+import { PinButton, StepErrors, StepMeta, TabBody, TechSwitch, useStep } from "./inspector/step.tsx";
 
-/** One Inspector tab in its own dock panel. Follows the selection unless pinned. */
+/** One question about the selected step (Data, Console, History, ...) as a dock panel.
+ * Follows the selection unless pinned. */
 export function StepTab() {
   const { tab } = useViewInstance();
   const step = useStep();
-  if (!tab) return <p className="muted pad">This panel's tab is unknown. Close it and open the tab again from the Inspector.</p>;
+  if (!tab) return <p className="muted pad">This panel's tab is unknown. Close it and open the tab again from Views.</p>;
   if (!step.nodeId) return <p className="muted pad">Select a step to see its {TAB_LABEL[tab].toLowerCase()}.</p>;
   return (
     <div className="inspector">
       <div className="panel-head">
-        <span className="tab-title">{TAB_LABEL[tab]}</span>
         <StepMeta step={step} />
         <span className="spacer" />
         <TechSwitch />

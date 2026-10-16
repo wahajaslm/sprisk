@@ -1,39 +1,18 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { readTab, TAB_DRAG_TYPE } from "../src/workbench/inspectorTabs.ts";
-import { Inspector } from "../src/views/Inspector.tsx";
+import { StepTabLabel } from "../src/views/inspector/step.tsx";
 import { StepTab } from "../src/views/StepTab.tsx";
 import { ViewInstance } from "../src/workbench/instance.tsx";
+import { readTab } from "../src/workbench/inspectorTabs.ts";
 import { LAYOUT_VERSION, restoreLayout } from "../src/workbench/layout.ts";
 import { useSelection } from "../src/workbench/selection.ts";
-import { useWorkbench } from "../src/workbench/workbench.ts";
-import { fakeDock, PV, RUN } from "./fixtures.ts";
+import { PV, RUN } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 
-describe("inspector tabs in their own dock panels", () => {
-  it("opens the shown tab in its own panel", async () => {
-    const dock = fakeDock();
-    useWorkbench.setState({ dock });
-    renderWithApi(<Inspector />);
-    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
-    await userEvent.click(await screen.findByRole("tab", { name: "History" }));
-    await userEvent.click(screen.getByRole("button", { name: "Open History in its own panel" }));
-    expect(dock.openTab).toHaveBeenCalledWith("history");
-  });
-
-  it("a tab can be dragged out of the inspector", async () => {
-    renderWithApi(<Inspector />);
-    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
-    const tab = await screen.findByRole("tab", { name: "Console" });
-    expect(tab).toHaveAttribute("draggable", "true");
-    const setData = vi.fn();
-    fireEvent.dragStart(tab, { dataTransfer: { setData, effectAllowed: "" } });
-    expect(setData).toHaveBeenCalledWith(TAB_DRAG_TYPE, "console");
-  });
-
-  it("a tab panel follows the selection", async () => {
+describe("each Inspector tab is its own dock panel", () => {
+  it("follows the selection", async () => {
     renderWithApi(
       <ViewInstance pin={undefined} setPin={vi.fn()} tab="history">
         <StepTab />
@@ -44,7 +23,7 @@ describe("inspector tabs in their own dock panels", () => {
     expect(screen.getByText("split")).toBeInTheDocument();
   });
 
-  it("a pinned tab panel keeps its step when the selection moves", async () => {
+  it("a pinned panel keeps its step when the selection moves", async () => {
     renderWithApi(
       <ViewInstance pin={{ runId: RUN, nodeId: "split" }} setPin={vi.fn()} tab="history">
         <StepTab />
@@ -55,7 +34,7 @@ describe("inspector tabs in their own dock panels", () => {
     await waitFor(() => expect(screen.getByText("split")).toBeInTheDocument());
   });
 
-  it("pins a tab panel to the shown run and step", async () => {
+  it("pins a panel to the shown run and step", async () => {
     const setPin = vi.fn();
     renderWithApi(
       <ViewInstance pin={undefined} setPin={setPin} tab="console">
@@ -66,6 +45,25 @@ describe("inspector tabs in their own dock panels", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Pin/ }));
     expect(setPin).toHaveBeenCalledWith({ runId: RUN, nodeId: "split" });
   });
+
+  it("the dock tab label is muted when there is nothing to show", async () => {
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={undefined} tab="performance">
+        <StepTabLabel />
+      </ViewInstance>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await waitFor(() => expect(screen.getByText("Performance")).toHaveClass("muted-tab"));
+  });
+
+  it("asks for a selection when nothing is selected", () => {
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={undefined} tab="console">
+        <StepTab />
+      </ViewInstance>,
+    );
+    expect(within(document.body).getByText("Select a step to see its console.")).toBeInTheDocument();
+  });
 });
 
 describe("saved tab panels", () => {
@@ -75,8 +73,12 @@ describe("saved tab panels", () => {
     expect(readTab(null)).toBeUndefined();
   });
 
-  it("keeps step-tab panels when a layout is restored", () => {
-    const saved = JSON.stringify({ version: LAYOUT_VERSION, dock: { panels: { t: { id: "t", contentComponent: "step-tab" } } } });
+  it("keeps step-tab panels and drops the old single Inspector panel to a placeholder", () => {
+    const saved = JSON.stringify({
+      version: LAYOUT_VERSION,
+      dock: { panels: { t: { id: "t", contentComponent: "step-tab" }, i: { id: "i", contentComponent: "inspector" } } },
+    });
     expect(restoreLayout(saved)?.panels["t"]?.contentComponent).toBe("step-tab");
+    expect(restoreLayout(saved)?.panels["i"]?.contentComponent).toBe("placeholder");
   });
 });

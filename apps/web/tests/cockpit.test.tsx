@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import { FlowCanvas } from "../src/views/FlowCanvas.tsx";
-import { Inspector } from "../src/views/Inspector.tsx";
+import { Inspector } from "./inspector.tsx";
 import { StepLibrary } from "../src/views/StepLibrary.tsx";
 import { TopBar } from "../src/views/TopBar.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
@@ -895,14 +895,14 @@ describe("activity bar and sidebar", () => {
     expect(setSidebarVisible).toHaveBeenLastCalledWith(false);
   });
 
-  it("opens another view and resets the layout from the Views sidebar", async () => {
+  it("opens another tab panel and resets the layout from the Views sidebar", async () => {
     const { ViewsPanel } = await import("../src/views/ViewsPanel.tsx");
     const { useWorkbench } = await import("../src/workbench/workbench.ts");
     const dock = fakeDock();
     useWorkbench.setState({ activity: "views", editing: false, dock });
     renderWithApi(<ViewsPanel />);
-    await userEvent.click(screen.getByRole("button", { name: /^Inspector/ }));
-    expect(dock.addView).toHaveBeenCalledWith("inspector");
+    await userEvent.click(screen.getByRole("button", { name: /^Console/ }));
+    expect(dock.openTab).toHaveBeenCalledWith("console");
     await userEvent.click(screen.getByRole("button", { name: /Edit layout/ }));
     expect(dock.setEditing).toHaveBeenCalledWith(true);
     await userEvent.click(screen.getByRole("button", { name: /Reset to Studio layout/ }));
@@ -912,25 +912,15 @@ describe("activity bar and sidebar", () => {
 
 describe("pinned inspector", () => {
   it("keeps showing its pinned step when the selection moves", async () => {
-    const { ViewInstance } = await import("../src/workbench/instance.tsx");
-    renderWithApi(
-      <ViewInstance pin={{ runId: RUN, nodeId: "score" }} setPin={vi.fn()}>
-        <Inspector />
-      </ViewInstance>,
-    );
+    renderWithApi(<Inspector pin={{ runId: RUN, nodeId: "score" }} setPin={vi.fn()} />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
     expect(within(await screen.findByRole("group", { name: "accuracy" })).getByText("0.947")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Pinned/ })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("pins to the current run and step", async () => {
-    const { ViewInstance } = await import("../src/workbench/instance.tsx");
     const setPin = vi.fn();
-    renderWithApi(
-      <ViewInstance pin={undefined} setPin={setPin}>
-        <Inspector />
-      </ViewInstance>,
-    );
+    renderWithApi(<Inspector setPin={setPin} />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
     await userEvent.click(await screen.findByRole("button", { name: /Pin/ }));
     expect(setPin).toHaveBeenCalledWith({ runId: RUN, nodeId: "score" });
