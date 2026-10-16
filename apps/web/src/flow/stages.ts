@@ -37,6 +37,21 @@ export function kindOf(operator: Operator): NodeKind {
   }
 }
 
+const ROLE: Record<Operator["capability_class"], string> = {
+  source: "Data source",
+  transform: "Transform",
+  analyzer: "Analysis",
+  estimator: "Model",
+  evaluator: "Evaluation",
+  optimizer: "Tuning",
+  decision_evaluator: "Decision",
+  sink: "Export",
+  custom_code: "Code",
+};
+
+/** What a step is for, in plain words: "Transform", "Model". Code steps say "Code". */
+export const roleOf = (operator: Operator) => (operator.id.startsWith("sprisk.code.") ? "Code" : ROLE[operator.capability_class]);
+
 /** "sprisk.clean.impute@1.0.0" → "impute". */
 export const shortName = (ref: string) => ref.split("@")[0]?.split(".").at(-1) ?? ref;
 

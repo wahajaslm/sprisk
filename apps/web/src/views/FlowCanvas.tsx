@@ -28,7 +28,7 @@ import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../
 import { NodeVisual } from "./NodeVisual.tsx";
 import { addCodeStep } from "../flow/edit.ts";
 import { flowPositions, type Point } from "../flow/layout.ts";
-import { kindOf, type NodeKind, shortName } from "../flow/stages.ts";
+import { kindOf, type NodeKind, roleOf, shortName } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -45,6 +45,8 @@ type StepData = {
   pipelineVersionId: string;
   isEvaluator: boolean;
   kind: NodeKind;
+  /** What the step is for, in plain words: "Transform". */
+  role: string;
   state: string;
   attemptId?: string;
   /** Methodology checks citing this step that did not pass. */
@@ -138,6 +140,7 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
     <button
       type="button"
       className={`flow-round${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
+      aria-label={`${data.id}, ${data.role}, ${status.text}`}
       title={data.operatorRef}
       onClick={() => select(data.id)}
       onContextMenu={(e) => {
@@ -149,13 +152,14 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
       <span className={`round-icon kind-${data.kind}`}>
         <KindIcon kind={data.kind} size={16} />
+        <span className={`state-dot tone-${status.tone}`} role="img" aria-label={status.text} />
       </span>
       <span className="round-text">
         <span className="node-title">{data.id}</span>
-        <span className={`round-sub tone-${status.tone}`}>
-          {data.operator} · {status.text}
-          {data.concerns > 0 && ` · ⚠ ${data.concerns}`}
-        </span>
+        <span className="round-sub">{data.role}</span>
+        {/* Only what needs attention gets words; a finished step is just its dot. */}
+        {(status.tone === "bad" || status.tone === "live") && <span className={`round-state tone-${status.tone}`}>{status.text}</span>}
+        {data.concerns > 0 && <span className="round-state tone-bad">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>}
       </span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
     </button>
@@ -201,6 +205,7 @@ export function flowGraph(
         concerns: concerns.get(id) ?? 0,
         level,
         kind: op ? kindOf(op) : "recipe",
+        role: op ? roleOf(op) : "Step",
         state: latest.get(id)?.state ?? "not run",
         ...(hasOutputs(latest.get(id)) ? { attemptId: latest.get(id)?.id } : {}),
         selected: id === selectedId,
