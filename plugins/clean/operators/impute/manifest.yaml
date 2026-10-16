@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.impute@1.0.0
+capability_class: transform
+description: Fill missing values with the train median or mean, or with 0. Fit on train only.
+entrypoint: sprisk_clean.impute:impute
+inputs: [{ name: train, kind: table }, { name: test, kind: table }]
+outputs: [{ name: train, kind: table }, { name: test, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [columns, method]
+  properties:
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true }
+    method: { type: string, enum: [median, mean, zero] }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

@@ -15,6 +15,7 @@ TRUSTED_PACKAGES = (
     "sprisk_profile",
     "sprisk_validation",
     "sprisk_ml",
+    "sprisk_clean",
     "sprisk_supervised",
 )
 
