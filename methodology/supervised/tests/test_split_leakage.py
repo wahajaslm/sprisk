@@ -225,3 +225,38 @@ def test_unknown_operator_is_an_input_error() -> None:
 def test_unconnected_evaluator_input_is_an_input_error() -> None:
     with pytest.raises(CheckInputError, match="e.test"):
         split_leakage(pipeline({"e": EVAL}, []), operators(), CHECK_ID, NOW)
+
+
+IMPUTE = "sprisk.clean.impute@1.0.0"
+
+
+def cleaned(train_from: str, test_from: str) -> PipelineVersion:
+    """load → split → impute(train, test) → linear + evaluate on the imputed tables."""
+    return pipeline(
+        {"load": SOURCE, "split": SPLIT, "impute": IMPUTE, "linear": LINEAR, "eval": EVAL},
+        [
+            ("load.data", "split.data"),
+            (train_from, "impute.train"),
+            (test_from, "impute.test"),
+            ("impute.train", "linear.train"),
+            ("linear.model", "eval.model"),
+            ("impute.test", "eval.test"),
+        ],
+    )
+
+
+def test_fit_on_train_transform_after_the_split_passes() -> None:
+    # impute's train output carries no test rows, so the model is not fit on the holdout.
+    assert check(cleaned("split.train", "split.test")).verdict == Verdict.pass_
+
+
+def test_fit_on_train_transform_fed_unsplit_data_fails() -> None:
+    result = check(cleaned("load.data", "load.data"))
+    assert result.verdict == Verdict.fail
+    assert "impute" in [n.root for n in result.cited_nodes]
+
+
+def test_fit_on_train_transform_fitting_on_the_test_rows_fails() -> None:
+    result = check(cleaned("split.test", "split.test"))
+    assert result.verdict == Verdict.fail
+    assert "impute" in [n.root for n in result.cited_nodes]

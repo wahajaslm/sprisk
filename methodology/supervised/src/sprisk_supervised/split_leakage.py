@@ -19,6 +19,11 @@ HOLDOUT_PORTS = {
     "sprisk.validation.random_split": "test",
     "sprisk.validation.temporal_split": "test",
 }
+TRAIN_PORT = "train"
+# Transforms that learn from their `train` input and apply to `train` and `test` (ADR-0018).
+FITTING_TRANSFORMS = frozenset(
+    {"sprisk.clean.impute", "sprisk.clean.scale", "sprisk.clean.clip_outliers"}
+)
 
 LIMITATIONS = (
     "Checks one pipeline version only; selection across versions that reuse the same "
@@ -35,6 +40,7 @@ def split_leakage(
 ) -> MethodologyCheck:
     """FAIL when a holdout is used to fit or to choose between models (ADR-0015, §15.11).
 
+    - A fitting transform must learn from a split's train rows, never unsplit data or a holdout.
     - Any estimator downstream of a holdout port was fit on it.
     - Per holdout, evaluators may score at most one non-baseline model, where a
       model is the nearest estimator upstream of the evaluator's model input.
@@ -46,6 +52,20 @@ def split_leakage(
         for node, op in op_of.items()
         if _unversioned(op) in HOLDOUT_PORTS
     }
+
+    splits = [n for n, op in op_of.items() if _unversioned(op) in HOLDOUT_PORTS]
+    train_ports = {f"{n}.{TRAIN_PORT}" for n in splits}
+    for node in sorted(n for n, op in op_of.items() if _unversioned(op) in FITTING_TRANSFORMS):
+        source = _source_of(graph, node, TRAIN_PORT)
+        lineage = nx.ancestors(graph, source) | {source}
+        on_holdout = sorted(holdouts & lineage)
+        if on_holdout or not train_ports & lineage:
+            where = f"holdout {on_holdout[0]}" if on_holdout else f"unsplit data ({source})"
+            rationale = (
+                f"{node} learns its statistics from {where}; fit it on a split's train rows."
+            )
+            cited = sorted({node, source.split(".")[0]})
+            return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
 
     for node in sorted(op_of):
         if op_of[node].capability_class == CapabilityClass.estimator:
@@ -116,7 +136,21 @@ def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> Por
         consumer, in_port = edge.to.root.split(".")
         graph.add_edge(edge.from_.root, consumer)
         graph.edges[edge.from_.root, consumer].setdefault("ports", set()).add(in_port)
+    # A fitting transform's train output carries only its train input; its test output
+    # depends on both. Without this, every model after a transform looks fit on test rows.
+    for node, op in op_of.items():
+        if _unversioned(op) in FITTING_TRANSFORMS:
+            graph.remove_edge(node, f"{node}.{TRAIN_PORT}")
+            graph.add_edge(_source_of(graph, node, TRAIN_PORT), f"{node}.{TRAIN_PORT}")
     return graph
+
+
+def _source_of(graph: PortGraph, node: str, port: str) -> str:
+    """The upstream output port feeding `node.port`."""
+    for src in graph.predecessors(node):
+        if _feeds(graph, src, node, port):
+            return str(src)
+    raise CheckInputError(f"input {node}.{port} is not connected")
 
 
 def _input_sources(evaluator: str, op: Operator, graph: PortGraph) -> tuple[str, str]:
