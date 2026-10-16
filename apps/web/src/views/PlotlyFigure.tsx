@@ -15,7 +15,7 @@ function themed(layout: Partial<Plotly.Layout>): Partial<Plotly.Layout> {
     // Python's axis titles and settings stay; only the colours change.
     xaxis: { ...layout.xaxis, ...axis },
     yaxis: { ...layout.yaxis, ...axis },
-    margin: { l: 56, r: 24, t: 44, b: 48 },
+    margin: layout.margin ?? { l: 56, r: 24, t: 44, b: 48 },
   };
 }
 

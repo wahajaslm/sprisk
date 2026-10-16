@@ -65,7 +65,9 @@ def _figure(histograms: pl.DataFrame, numeric: list[str]) -> go.Figure:
         figure.add_trace(
             go.Bar(x=middle, y=bins["count"].to_list(), name=name), row=i // 3 + 1, col=i % 3 + 1
         )
-    figure.update_layout(title={"text": "Distributions"}, showlegend=False, height=260 * rows)
+    figure.update_layout(
+        title={"text": "Distributions"}, showlegend=False, height=260 * rows, margin={"t": 80}
+    )
     return figure
 
 
