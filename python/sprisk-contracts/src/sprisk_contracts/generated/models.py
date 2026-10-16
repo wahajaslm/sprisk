@@ -41,6 +41,11 @@ class Kind(StrEnum):
     image = "image"
 
 
+class Channel(StrEnum):
+    stdout = "stdout"
+    stderr = "stderr"
+
+
 class ValueType(StrEnum):
     integer = "integer"
     number = "number"
@@ -417,6 +422,12 @@ class DisplayItem(StrictModel):
     ] = None
     png_base64: Annotated[
         str | None, Field(description="Present for kind image: a PNG, base64-encoded.")
+    ] = None
+    channel: Annotated[
+        Channel | None,
+        Field(
+            description="For printed text: which stream it came from. Absent for displayed values. Warnings arrive on stderr."
+        ),
     ] = None
 
 

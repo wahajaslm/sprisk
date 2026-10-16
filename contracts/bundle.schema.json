@@ -178,6 +178,14 @@
         "png_base64": {
           "type": "string",
           "description": "Present for kind image: a PNG, base64-encoded."
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "stdout",
+            "stderr"
+          ],
+          "description": "For printed text: which stream it came from. Absent for displayed values. Warnings arrive on stderr."
         }
       }
     },

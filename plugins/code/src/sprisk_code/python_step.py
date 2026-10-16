@@ -5,10 +5,11 @@ import io
 import json
 import shutil
 import traceback
+import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, TextIO
 
 import matplotlib
 import polars as pl
@@ -20,13 +21,15 @@ from sprisk_workers.output import JSON, PARQUET, Output
 
 matplotlib.use("Agg")  # no display in a worker
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
 
 FILENAME = "<code step>"
 MAX_TABLE_ROWS = 50
 MAX_TABLE_COLUMNS = 50
 MAX_CELL_CHARS = 500
 MAX_TEXT_CHARS = 20_000
-MAX_FIGURES = 6
+MAX_FIGURES = 12
+MAX_ITEMS = 100
 MAX_FIGURE_BYTES = 512 * 1024
 
 
@@ -165,34 +168,47 @@ def _run(
             raise TypeError(f"sprisk.output takes a polars DataFrame, got {type(df).__name__}")
         passed[:] = [df]
 
+    shown = _Collector()
     namespace: dict[str, Any] = {
         "__name__": "__sprisk_code__",
         "data": pl.read_parquet(data),
         "pl": pl,
         "sprisk": SimpleNamespace(output=output),
+        "display": shown.display,
     }
-    stdout = io.StringIO()
     plt.close("all")
+    real_show = plt.show
+
+    def show(*_: Any, **__: Any) -> None:
+        shown.open_figures()
+
+    plt.show = show  # notebook-style: show() puts open figures here, in order
     try:
         body, last = _split_last_expression(
             bind(source, values) if values else ast.parse(source, FILENAME)
         )
-        with contextlib.redirect_stdout(stdout):
+        with (
+            contextlib.redirect_stdout(_Stream(shown, "stdout")),
+            contextlib.redirect_stderr(_Stream(shown, "stderr")),
+            warnings.catch_warnings(),
+        ):
+            # Warnings go to stderr in order, whatever hook the host process installed.
+            warnings.simplefilter("default")
+            warnings.showwarning = shown.warning
             exec(compile(body, FILENAME, "exec"), namespace)
             value = eval(compile(last, FILENAME, "eval"), namespace) if last else None
     except OperatorError:
         raise
     except Exception as e:  # noqa: BLE001 - any error in user code fails the step with its line
         raise OperatorError("code_error", _describe(e)) from e
+    finally:
+        plt.show = real_show
 
-    items: list[dict[str, Any]] = []
-    if stdout.getvalue():
-        items.append({"kind": "text", "text": _cut(stdout.getvalue(), MAX_TEXT_CHARS)})
     if value is not None:
-        items.append(_show(value))
-    items += _figures()
+        shown.display(value)
+    shown.open_figures()
     path = out_dir / "display.json"
-    display = CodeDisplay.model_validate_json(json.dumps({"items": items}))
+    display = CodeDisplay.model_validate_json(json.dumps({"items": shown.items}))
     path.write_text(display.model_dump_json(exclude_none=True))
     result = passed[0] if passed else None
     return Output(port="display", path=path, media_type=JSON), result, namespace
@@ -215,12 +231,88 @@ def _describe(e: BaseException) -> str:
     return f"{where}{type(e).__name__}: {e}"
 
 
-def _show(value: Any) -> dict[str, Any]:
-    if isinstance(value, pl.Series):
-        value = value.to_frame()
-    if isinstance(value, pl.DataFrame):
-        return {"kind": "table", "table": _table(value)}
-    return {"kind": "text", "text": _cut(repr(value), MAX_TEXT_CHARS)}
+class _Collector:
+    """What a code step shows, in the order it happened: printed text, displayed values and
+    figures. Everything is capped so one step cannot produce an unbounded display."""
+
+    def __init__(self) -> None:
+        self.items: list[dict[str, Any]] = []
+        self.figures = 0
+        # The stream whose printed text the last item holds; further prints to it extend it.
+        self.printing: str | None = None
+
+    def _add(self, item: dict[str, Any]) -> None:
+        self.printing = None
+        if len(self.items) < MAX_ITEMS:
+            self.items.append(item)
+
+    def text(self, chunk: str, channel: str) -> None:
+        if self.printing == channel and self.items:
+            last = self.items[-1]
+            last["text"] = _cut(last["text"] + chunk, MAX_TEXT_CHARS)
+            return
+        self._add({"kind": "text", "text": chunk, "channel": channel})
+        self.printing = channel
+
+    def display(self, *values: Any) -> None:
+        for value in values:
+            if isinstance(value, Figure):
+                self.figure(value)
+            elif isinstance(value, pl.Series | pl.DataFrame):
+                frame = value.to_frame() if isinstance(value, pl.Series) else value
+                self._add({"kind": "table", "table": _table(frame)})
+            else:
+                self._add({"kind": "text", "text": _cut(repr(value), MAX_TEXT_CHARS)})
+
+    def figure(self, fig: Figure) -> None:
+        self.figures += 1
+        if self.figures > MAX_FIGURES:
+            if self.figures == MAX_FIGURES + 1:
+                self._add(
+                    {
+                        "kind": "text",
+                        "text": f"More than {MAX_FIGURES} figures; the rest are not shown.",
+                    }
+                )
+        else:
+            buffer = io.BytesIO()
+            fig.savefig(buffer, format="png", dpi=96, bbox_inches="tight")
+            png = buffer.getvalue()
+            if len(png) > MAX_FIGURE_BYTES:
+                self._add(
+                    {"kind": "text", "text": f"Figure {self.figures} not shown: {len(png)} bytes."}
+                )
+            else:
+                self._add({"kind": "image", "png_base64": base64.b64encode(png).decode()})
+        plt.close(fig)
+
+    def warning(
+        self,
+        message: Warning | str,
+        category: type[Warning],
+        filename: str,
+        lineno: int,
+        file: TextIO | None = None,
+        line: str | None = None,
+    ) -> None:
+        self.text(warnings.formatwarning(message, category, filename, lineno, line), "stderr")
+
+    def open_figures(self) -> None:
+        for number in plt.get_fignums():
+            self.figure(plt.figure(number))
+
+
+class _Stream(io.TextIOBase):
+    """stdout or stderr that hands each write to the collector, so prints keep their place."""
+
+    def __init__(self, collector: _Collector, channel: str) -> None:
+        self.collector = collector
+        self.channel = channel
+
+    def write(self, chunk: str) -> int:
+        if chunk:
+            self.collector.text(chunk, self.channel)
+        return len(chunk)
 
 
 def _table(df: pl.DataFrame) -> dict[str, Any]:
@@ -242,20 +334,6 @@ def _table(df: pl.DataFrame) -> dict[str, Any]:
 def _text(value: Any) -> str:
     # Display only: six significant digits, like a notebook, not full float noise.
     return f"{value:.6g}" if isinstance(value, float) else str(value)
-
-
-def _figures() -> list[dict[str, Any]]:
-    items = []
-    for number in plt.get_fignums()[:MAX_FIGURES]:
-        buffer = io.BytesIO()
-        plt.figure(number).savefig(buffer, format="png", dpi=96, bbox_inches="tight")
-        png = buffer.getvalue()
-        if len(png) > MAX_FIGURE_BYTES:
-            items.append({"kind": "text", "text": f"Figure {number} not shown: {len(png)} bytes."})
-            continue
-        items.append({"kind": "image", "png_base64": base64.b64encode(png).decode()})
-    plt.close("all")
-    return items
 
 
 def _cut(text: str, limit: int) -> str:

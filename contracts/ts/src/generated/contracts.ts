@@ -305,6 +305,10 @@ export interface DisplayItem {
    * Present for kind image: a PNG, base64-encoded.
    */
   png_base64?: string;
+  /**
+   * For printed text: which stream it came from. Absent for displayed values. Warnings arrive on stderr.
+   */
+  channel?: "stdout" | "stderr";
 }
 /**
  * Present for kind table: the first rows only.

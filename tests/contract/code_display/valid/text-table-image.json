@@ -2,7 +2,8 @@
   "items": [
     {
       "kind": "text",
-      "text": "112 rows\n"
+      "text": "112 rows\n",
+      "channel": "stdout"
     },
     {
       "kind": "table",
@@ -22,7 +23,10 @@
         ],
         "rows": [
           {
-            "values": ["setosa", "6.9"],
+            "values": [
+              "setosa",
+              "6.9"
+            ],
             "missing": []
           }
         ]
@@ -31,6 +35,11 @@
     {
       "kind": "image",
       "png_base64": "iVBORw0KGgo="
+    },
+    {
+      "kind": "text",
+      "text": "UserWarning: small sample\n",
+      "channel": "stderr"
     }
   ]
 }

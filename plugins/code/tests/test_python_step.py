@@ -172,3 +172,53 @@ def test_chosen_output_must_be_a_dataframe(write_parquet: WriteParquet, out_dir:
     with pytest.raises(OperatorError) as e:
         run_v12(write_parquet, out_dir, {"source": SOURCE, "output": "factor"})
     assert e.value.code == "code_error" and "factor" in e.value.message and "int" in e.value.message
+
+
+def test_output_keeps_the_order_it_happened_in(
+    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
+) -> None:
+    source = (
+        "import matplotlib.pyplot as plt\n"
+        "print('first')\n"
+        "display(data.head(2))\n"
+        "print('second')\n"
+        "plt.plot([1, 2])\n"
+        "plt.show()\n"
+        "fig, ax = plt.subplots()\n"
+        "display(fig, 'note')\n"
+        "plt.figure()\n"
+        "data.height\n"
+    )
+    items = run(write_parquet, clf_frame, out_dir, source).items
+    kinds = [(i.kind, i.text) for i in items]
+    assert kinds == [
+        ("text", "first\n"),
+        ("table", None),
+        ("text", "second\n"),
+        ("image", None),
+        ("image", None),
+        ("text", "'note'"),
+        ("text", "60"),
+        ("image", None),
+    ]
+
+
+def test_a_figure_as_the_last_value_is_shown_once(
+    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
+) -> None:
+    source = "import matplotlib.pyplot as plt\nfig, ax = plt.subplots()\nfig"
+    items = run(write_parquet, clf_frame, out_dir, source).items
+    assert [i.kind for i in items] == ["image"]
+
+
+def test_stderr_and_warnings_are_kept_apart_from_printed_text(
+    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
+) -> None:
+    source = (
+        "import sys, warnings\nprint('ok')\n"
+        "warnings.warn('small sample')\nprint('done', file=sys.stderr)\n"
+    )
+    items = run(write_parquet, clf_frame, out_dir, source).items
+    assert [(i.channel.value if i.channel else None) for i in items] == ["stdout", "stderr"]
+    assert items[0].text == "ok\n"
+    assert items[1].text is not None and "small sample" in items[1].text and "done" in items[1].text
