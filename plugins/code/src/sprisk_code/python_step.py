@@ -3,6 +3,7 @@ import base64
 import contextlib
 import io
 import json
+import reprlib
 import traceback
 import warnings
 from collections.abc import Callable, Mapping
@@ -89,6 +90,12 @@ PROVIDED = ("data",)
 # Tools the step itself puts in scope; reading them is not an input.
 TOOLS = ("pl", "sprisk", "display")
 MAX_OUTPUT_CANDIDATES = 20
+MAX_SAMPLE_ROWS = 10
+MAX_FIELDS = 500
+# Fields and samples of every variable share this; the browser reads the report whole.
+EXPLORER_BUDGET_BYTES = 768 * 1024
+# reprlib bounds the work as well as the text: a huge list is never fully formatted.
+_VALUE_REPR = reprlib.Repr(maxlevel=3, maxlist=20, maxdict=20, maxstring=1000, maxother=1000)
 
 
 def _interface(
@@ -123,7 +130,7 @@ def _interface(
             }
             for p in parameters
         ],
-        "outputs": [_candidate(n, namespace[n], n == chosen) for n in candidates],
+        "outputs": _candidates_within_budget(candidates, namespace, chosen),
         "files": [{"path": f.path, "reader": f.reader, "line": f.line} for f in file_reads(source)],
     }
     return CodeInterface.model_validate_json(json.dumps(doc))
@@ -141,7 +148,25 @@ def _top_level_names(source: str) -> list[str]:
     return found
 
 
-def _candidate(name: str, value: object, chosen: bool) -> dict[str, Any]:
+def _candidates_within_budget(
+    names: list[str], namespace: dict[str, Any], chosen: str | None
+) -> list[dict[str, Any]]:
+    """Each variable for the Data tab's explorer (ADR-0030). Fields and samples are added in
+    order while they fit the budget, so many large tables cannot make the report unreadable."""
+    left = EXPLORER_BUDGET_BYTES
+    found = []
+    for name in names:
+        doc, extras = _candidate(name, namespace[name], name == chosen)
+        for key, value in extras.items():
+            size = len(json.dumps(value))
+            if size <= left:
+                doc[key] = value
+                left -= size
+        found.append(doc)
+    return found
+
+
+def _candidate(name: str, value: object, chosen: bool) -> tuple[dict[str, Any], dict[str, Any]]:
     kind = type(value)
     doc: dict[str, Any] = {
         "name": name,
@@ -151,9 +176,17 @@ def _candidate(name: str, value: object, chosen: bool) -> dict[str, Any]:
         "origin": "measured",
         "chosen": chosen,
     }
-    if isinstance(value, pl.DataFrame):
-        doc["rows"], doc["columns"] = value.height, value.width
-    return doc
+    if not isinstance(value, pl.DataFrame | pl.Series):
+        doc["text"] = _VALUE_REPR.repr(value)
+        return doc, {}
+    frame = value.to_frame() if isinstance(value, pl.Series) else value
+    doc["rows"], doc["columns"] = frame.height, frame.width
+    nulls = frame.select(frame.columns[:MAX_FIELDS]).null_count().row(0)
+    fields = [
+        {"name": n, "data_type": str(t), "null_count": c}
+        for (n, t), c in zip(list(frame.schema.items())[:MAX_FIELDS], nulls, strict=True)
+    ]
+    return doc, {"fields": fields, "sample": _table(frame, MAX_SAMPLE_ROWS)}
 
 
 def _run(
@@ -311,8 +344,8 @@ class _Stream(io.TextIOBase):
         return len(chunk)
 
 
-def _table(df: pl.DataFrame) -> dict[str, Any]:
-    shown = df.select(df.columns[:MAX_TABLE_COLUMNS]).head(MAX_TABLE_ROWS)
+def _table(df: pl.DataFrame, limit: int = MAX_TABLE_ROWS) -> dict[str, Any]:
+    shown = df.select(df.columns[:MAX_TABLE_COLUMNS]).head(limit)
     rows = []
     for row in shown.iter_rows():
         missing = [i for i, v in enumerate(row) if v is None]

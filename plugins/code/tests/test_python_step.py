@@ -240,3 +240,43 @@ def test_own_code_without_the_function_or_with_an_error_says_so() -> None:
         load_function("x = 1\n", "run")
     with pytest.raises(OperatorError, match="line 1: SyntaxError"):
         load_function("def run(:\n", "run")
+
+
+def test_every_variable_can_be_explored(write_parquet: WriteParquet, out_dir: Path) -> None:
+    source = (
+        "filtered = pl.DataFrame({'age': [34, None, 51], 'city': ['Oslo', 'Rome', None]})\n"
+        "ages = filtered['age']\n"
+        "lookup = {'a': 1}\n"
+    )
+    found = run_v12(write_parquet, out_dir, {"source": source})["interface"]
+    by_name = {o.name: o for o in found.outputs}
+
+    table = by_name["filtered"]
+    assert [(f.name, f.data_type, f.null_count) for f in table.fields or []] == [
+        ("age", "Int64", 1),
+        ("city", "String", 1),
+    ]
+    assert table.sample is not None and table.sample.total_rows == 3
+    assert [r.values for r in table.sample.rows] == [["34", "Oslo"], ["", "Rome"], ["51", ""]]
+
+    series = by_name["ages"]
+    assert (series.rows, series.columns) == (3, 1)
+    assert series.sample is not None and series.sample.columns[0].name == "age"
+
+    assert by_name["lookup"].text == "{'a': 1}"
+    assert by_name["lookup"].sample is None
+
+
+def test_variable_samples_stay_within_a_size_budget(
+    write_parquet: WriteParquet, out_dir: Path
+) -> None:
+    wide = "pl.DataFrame({f'c{i}': ['x' * 400] * 30 for i in range(60)})"
+    source = "".join(f"t{n} = {wide}\n" for n in range(19)) + "note = 'y' * 50_000\n"
+    out = python_step_v12(pl.DataFrame({"x": [1.0]}), source)
+    found = CodeInterface.model_validate_json(json.dumps(out["interface"]))
+    assert len(json.dumps(out["interface"])) < 1024 * 1024  # the browser's limit for it
+    first, last = found.outputs[0], found.outputs[18]
+    assert first.sample is not None and len(first.sample.rows) <= 10
+    assert last.sample is None and last.fields is not None and len(last.fields) == 60
+    note = found.outputs[19]
+    assert note.text is not None and len(note.text) < 2000
