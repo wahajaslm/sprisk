@@ -1,5 +1,6 @@
 import type { NodeRun } from "../../api/history.ts";
 import { useInspectorDetail } from "../../workbench/detail.ts";
+import { useSelection } from "../../workbench/selection.ts";
 import { formatMetric } from "../NodeFact.tsx";
 
 const STATE_TEXT: Record<string, string> = {
@@ -15,6 +16,7 @@ const STATE_TEXT: Record<string, string> = {
 /** This step across the latest runs, newest first. Retries and errors of the shown run below. */
 export function HistoryTab({ history, runId, metric }: { history: NodeRun[]; runId: string | undefined; metric: string | undefined }) {
   const technical = useInspectorDetail((s) => s.technical);
+  const { setCompare, setNav } = useSelection();
   if (history.length === 0) return <p className="muted">No runs of this flow yet.</p>;
   const shown = history.find((h) => h.run.id === runId);
   return (
@@ -27,6 +29,7 @@ export function HistoryTab({ history, runId, metric }: { history: NodeRun[]; run
             <th scope="col">This step</th>
             {metric && <th scope="col">{metric}</th>}
             {technical && <th scope="col">Run id</th>}
+            <th scope="col"><span className="sr-only">Compare</span></th>
           </tr>
         </thead>
         <tbody>
@@ -42,6 +45,21 @@ export function HistoryTab({ history, runId, metric }: { history: NodeRun[]; run
                 </td>
                 {metric && <td>{h.metrics?.[metric] === undefined ? "—" : formatMetric(h.metrics[metric])}</td>}
                 {technical && <td className="mono muted">{h.run.id}</td>}
+                <td>
+                  {runId && h.run.id !== runId && (
+                    <button
+                      type="button"
+                      className="page-btn"
+                      aria-label={`Compare run #${history.length - i} with the shown run`}
+                      onClick={() => {
+                        setCompare([h.run.id, runId]);
+                        setNav("Experiments");
+                      }}
+                    >
+                      Compare
+                    </button>
+                  )}
+                </td>
               </tr>
             );
           })}

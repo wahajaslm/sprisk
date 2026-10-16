@@ -1,6 +1,7 @@
 import { lazy } from "react";
 
 import { Copilot } from "./views/Copilot.tsx";
+import { Experiments } from "./views/Experiments.tsx";
 import { Inspector } from "./views/Inspector.tsx";
 import { ComingView, Placeholder } from "./views/Placeholder.tsx";
 import { ActivityBar } from "./views/ActivityBar.tsx";
@@ -17,7 +18,6 @@ const views = { sidebar: Sidebar, flow: FlowCanvas, inspector: Inspector, copilo
 const COMING = {
   Datasets: "Every dataset with origin, rows, columns, quality and where the flow uses it; column profiles from Profile.",
   Notebooks: "Notebook cells that run through the same workers, with Add to Flow.",
-  Experiments: "Every run with the decisions it took, metrics, leakage flags and a decision diff.",
   Deploy: "Production and staging models, canary traffic, latency and drift.",
 } as const;
 
@@ -28,7 +28,13 @@ export function Cockpit() {
       <TopBar />
       <div className="workspace">
         <ActivityBar />
-        {nav === "Flow" ? <Dock views={views} /> : <ComingView title={nav} shows={COMING[nav]} />}
+        {nav === "Flow" ? (
+          <Dock views={views} />
+        ) : nav === "Experiments" ? (
+          <Experiments />
+        ) : (
+          <ComingView title={nav} shows={COMING[nav]} />
+        )}
       </div>
     </div>
   );

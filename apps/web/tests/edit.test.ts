@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { addCodeStep, CODE_OPERATOR, setCodeSource } from "../src/flow/edit.ts";
+import { settingChanges } from "../src/flow/diff.ts";
 import { flows } from "../src/flow/flows.ts";
 import { pipeline } from "./fixtures.ts";
 
@@ -53,5 +54,22 @@ describe("flows group versions by parent", () => {
   it("keeps both branches when one version was edited twice", () => {
     const versions = [v("plv_c", "plv_a"), v("plv_b", "plv_a"), v("plv_a")];
     expect(flows(versions).map((f) => f.head.id)).toEqual(["plv_c", "plv_b"]);
+  });
+});
+
+describe("setting changes between versions", () => {
+  it("lists changed params, changed operators and added steps", () => {
+    const after = {
+      ...pipeline,
+      nodes: [
+        ...pipeline.nodes.map((n) => (n.id === "split" ? { ...n, params: { ...n.params, seed: 7 } } : n)),
+        { id: "code_1", operator: "sprisk.code.python@1.1.0", params: { source: "data" } },
+      ],
+    };
+    expect(settingChanges(pipeline, after)).toEqual([
+      { node: "split", key: "seed", before: 42, after: 7 },
+      { node: "code_1", key: "step", before: undefined, after: "present" },
+    ]);
+    expect(settingChanges(pipeline, pipeline)).toEqual([]);
   });
 });

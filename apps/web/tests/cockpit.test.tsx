@@ -177,6 +177,19 @@ describe("inspector", () => {
     await waitFor(() => expect(tile).toHaveTextContent("▲ 0.047 vs last run"));
   });
 
+  it("History compares an earlier run with the shown one in Experiments", async () => {
+    const older = { ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ1" };
+    server.use(
+      http.get("/api/runs", () => HttpResponse.json([run, older])),
+      http.get(`/api/runs/${older.id}/attempts`, () => HttpResponse.json([])),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
+    await userEvent.click(await screen.findByRole("tab", { name: "History" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Compare run #1 with the shown run" }));
+    expect(useSelection.getState()).toMatchObject({ nav: "Experiments", compare: [older.id, RUN] });
+  });
+
   it("technical details show media types and hashes only when switched on", async () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });

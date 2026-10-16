@@ -13,6 +13,9 @@ type Selection = {
   selectPipelineVersion: (id: string) => void;
   selectRun: (id: string | undefined) => void;
   selectNode: (id: string | undefined) => void;
+  /** The two runs the Experiments view compares, older first. Empty until the user picks. */
+  compare: string[];
+  setCompare: (runIds: string[]) => void;
   /** Jump to a step of a run, e.g. right after saving a new version and starting it. */
   showRun: (pipelineVersionId: string, runId: string, nodeId: string) => void;
 };
@@ -27,4 +30,6 @@ export const useSelection = create<Selection>((set) => ({
   selectRun: (id) => set({ runId: id }),
   selectNode: (id) => set({ nodeId: id }),
   showRun: (pipelineVersionId, runId, nodeId) => set({ pipelineVersionId, runId, nodeId }),
+  compare: [],
+  setCompare: (compare) => set({ compare }),
 }));
