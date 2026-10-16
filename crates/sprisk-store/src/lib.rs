@@ -134,8 +134,8 @@ impl SqliteStore {
         before: Option<&RunId>,
         limit: u32,
     ) -> Result<Vec<Run>, StoreError> {
-        let bodies: Vec<String> = sqlx::query_scalar(
-            "SELECT body FROM runs WHERE (?1 IS NULL OR pipeline_version_id = ?1) \
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM runs WHERE (?1 IS NULL OR pipeline_version_id = ?1) \
              AND (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?3",
         )
         .bind(pipeline_version.map(|p| p.as_str()))
@@ -143,7 +143,7 @@ impl SqliteStore {
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
-        parse_all(&bodies)
+        parse_all(rows, "run")
     }
 
     /// Newest first, at most `limit`, optionally before a version id.
@@ -152,14 +152,14 @@ impl SqliteStore {
         before: Option<&PipelineVersionId>,
         limit: u32,
     ) -> Result<Vec<PipelineVersion>, StoreError> {
-        let bodies: Vec<String> = sqlx::query_scalar(
-            "SELECT body FROM pipeline_versions WHERE (?1 IS NULL OR id < ?1) ORDER BY id DESC LIMIT ?2",
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM pipeline_versions WHERE (?1 IS NULL OR id < ?1) ORDER BY id DESC LIMIT ?2",
         )
         .bind(before.map(|p| p.as_str()))
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
-        parse_all(&bodies)
+        parse_all(rows, "pipeline version")
     }
 
     pub async fn insert_attempt(&self, attempt: &Attempt) -> Result<(), StoreError> {
@@ -430,10 +430,13 @@ fn run_finished(status: RunStatus) -> bool {
     )
 }
 
-fn parse_all<T: DeserializeOwned>(bodies: &[String]) -> Result<Vec<T>, StoreError> {
-    bodies
-        .iter()
-        .map(|b| serde_json::from_str(b).map_err(StoreError::from))
+/// Parse `(id, body)` rows; a bad body names its entity and id.
+fn parse_all<T: DeserializeOwned>(
+    rows: Vec<(String, String)>,
+    entity: &'static str,
+) -> Result<Vec<T>, StoreError> {
+    rows.into_iter()
+        .map(|(id, body)| from_json(Some(body), entity, &id))
         .collect()
 }
 

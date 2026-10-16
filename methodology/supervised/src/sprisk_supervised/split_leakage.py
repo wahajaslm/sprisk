@@ -54,17 +54,11 @@ def split_leakage(
     }
 
     splits = [n for n, op in op_of.items() if _unversioned(op) in HOLDOUT_PORTS]
-    train_ports = {f"{n}.{TRAIN_PORT}" for n in splits}
+    sources = {n for n, op in op_of.items() if op.capability_class == CapabilityClass.source}
     for node in sorted(n for n, op in op_of.items() if _unversioned(op) in FITTING_TRANSFORMS):
-        source = _source_of(graph, node, TRAIN_PORT)
-        lineage = nx.ancestors(graph, source) | {source}
-        on_holdout = sorted(holdouts & lineage)
-        if on_holdout or not train_ports & lineage:
-            where = f"holdout {on_holdout[0]}" if on_holdout else f"unsplit data ({source})"
-            rationale = (
-                f"{node} learns its statistics from {where}; fit it on a split's train rows."
-            )
-            cited = sorted({node, source.split(".")[0]})
+        problem = _fit_problem(graph, node, splits, sources, holdouts)
+        if problem:
+            rationale, cited = problem
             return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
 
     for node in sorted(op_of):
@@ -140,9 +134,48 @@ def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> Por
     # depends on both. Without this, every model after a transform looks fit on test rows.
     for node, op in op_of.items():
         if _unversioned(op) in FITTING_TRANSFORMS:
+            source = _source_of(graph, node, TRAIN_PORT)
             graph.remove_edge(node, f"{node}.{TRAIN_PORT}")
-            graph.add_edge(_source_of(graph, node, TRAIN_PORT), f"{node}.{TRAIN_PORT}")
+            graph.add_edge(source, f"{node}.{TRAIN_PORT}")
     return graph
+
+
+def _fit_problem(
+    graph: PortGraph, node: str, splits: list[str], sources: set[str], holdouts: set[str]
+) -> tuple[str, list[str]] | None:
+    """Why a fitting transform's inputs are wrong, or None.
+
+    `train` must reach data sources only through one split's train port, and `test`
+    must come from that same split's holdout.
+    """
+    train_src = _source_of(graph, node, TRAIN_PORT)
+    test_src = _source_of(graph, node, "test")
+    train_lineage = nx.ancestors(graph, train_src) | {train_src}
+    fed_by = [s for s in splits if f"{s}.{TRAIN_PORT}" in train_lineage]
+    # Cut every split's train port; any data source still reachable bypassed the split.
+    cut = graph.copy()
+    cut.remove_nodes_from(f"{s}.{TRAIN_PORT}" for s in splits)
+    reach = (
+        (nx.ancestors(cut, train_src) | {train_src.split(".")[0]}) if train_src in cut else set()
+    )
+    if holdouts & train_lineage:
+        where = f"holdout {sorted(holdouts & train_lineage)[0]}"
+    elif not fed_by or sources & reach:
+        where = f"rows that did not pass through a split's train port ({train_src})"
+    else:
+        test_lineage = nx.ancestors(graph, test_src) | {test_src}
+        own = {h for h in holdouts if h.split(".")[0] in fed_by}
+        if own & test_lineage:
+            return None
+        return (
+            f"{node}.test must come from the holdout of the split that feeds {node}.train; "
+            f"it comes from {test_src}.",
+            sorted({node, test_src.split(".")[0]}),
+        )
+    return (
+        f"{node} learns its statistics from {where}; fit it on a split's train rows.",
+        sorted({node, train_src.split(".")[0]}),
+    )
 
 
 def _source_of(graph: PortGraph, node: str, port: str) -> str:

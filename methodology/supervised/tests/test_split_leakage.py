@@ -260,3 +260,68 @@ def test_fit_on_train_transform_fitting_on_the_test_rows_fails() -> None:
     result = check(cleaned("split.test", "split.test"))
     assert result.verdict == Verdict.fail
     assert "impute" in [n.root for n in result.cited_nodes]
+
+
+CONCAT = "sprisk.test.concat@1.0.0"
+
+
+def test_fitting_transform_fed_train_rows_mixed_with_raw_data_fails() -> None:
+    # Merging the full table back in brings the holdout rows into the fit.
+    ops = operators()
+    ops[CONCAT] = fake(CONCAT, "transform", [("a", "table"), ("b", "table")], [("data", "table")])
+    p = pipeline(
+        {"load": SOURCE, "split": SPLIT, "mix": CONCAT, "impute": IMPUTE},
+        [
+            ("load.data", "split.data"),
+            ("split.train", "mix.a"),
+            ("load.data", "mix.b"),
+            ("mix.data", "impute.train"),
+            ("split.test", "impute.test"),
+        ],
+    )
+    result = split_leakage(p, ops, CHECK_ID, NOW)
+    assert result.verdict == Verdict.fail
+    assert "impute" in [n.root for n in result.cited_nodes]
+
+
+def test_fitting_transform_test_input_must_be_the_same_splits_holdout() -> None:
+    for test_from in ["split.train", "load.data"]:
+        result = check(cleaned("split.train", test_from))
+        assert result.verdict == Verdict.fail, test_from
+
+
+def test_chained_fitting_transforms_after_the_split_pass() -> None:
+    p = pipeline(
+        {
+            "load": SOURCE,
+            "split": SPLIT,
+            "impute": IMPUTE,
+            "scale": "sprisk.clean.scale@1.0.0",
+            "linear": LINEAR,
+            "eval": EVAL,
+        },
+        [
+            ("load.data", "split.data"),
+            ("split.train", "impute.train"),
+            ("split.test", "impute.test"),
+            ("impute.train", "scale.train"),
+            ("impute.test", "scale.test"),
+            ("scale.train", "linear.train"),
+            ("linear.model", "eval.model"),
+            ("scale.test", "eval.test"),
+        ],
+    )
+    assert check(p).verdict == Verdict.pass_
+
+
+def test_model_trained_on_a_transforms_test_output_fails() -> None:
+    p = cleaned("split.train", "split.test")
+    nodes, edges = nodes_edges(p)
+    edges = [(a, b) if b != "linear.train" else ("impute.test", b) for a, b in edges]
+    assert check(pipeline(nodes, edges)).verdict == Verdict.fail
+
+
+def test_unconnected_fitting_transform_train_is_an_input_error() -> None:
+    p = pipeline({"impute": IMPUTE}, [])
+    with pytest.raises(CheckInputError, match="impute.train"):
+        split_leakage(p, operators(), CHECK_ID, NOW)

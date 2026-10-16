@@ -31,3 +31,13 @@ def test_column_that_is_empty_in_train_is_an_error(
     with pytest.raises(OperatorError) as e:
         run_fit(impute, {"columns": ["x"], "method": "mean"}, empty, TEST, write_parquet, out_dir)
     assert e.value.code == "no_train_values"
+
+
+def test_nan_is_treated_as_missing(write_parquet: WriteParquet, out_dir: Path) -> None:
+    train = pl.DataFrame({"x": [1.0, float("nan"), 3.0]})
+    test = pl.DataFrame({"x": [float("nan")]})
+    train_out, test_out = run_fit(
+        impute, {"columns": ["x"], "method": "mean"}, train, test, write_parquet, out_dir
+    )
+    assert train_out["x"].to_list() == [1.0, 2.0, 3.0]
+    assert test_out["x"].to_list() == [2.0]

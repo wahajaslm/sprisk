@@ -387,9 +387,17 @@ async fn pipeline_versions_and_runs_are_listed_newest_first() {
 }
 
 #[tokio::test]
-async fn list_limit_is_bounded() {
+async fn bad_list_parameters_are_rejected() {
     let api = api().await;
-    let (status, body) = call(&api.app, "GET", "/runs?limit=100000", None).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["errors"][0]["code"], "invalid_limit");
+    for (uri, code) in [
+        ("/runs?limit=100000", "invalid_limit"),
+        ("/runs?limit=0", "invalid_limit"),
+        ("/runs?limit=abc", "invalid_limit"),
+        ("/runs?pipeline_version_id=bogus", "invalid_id"),
+        ("/pipeline_versions?before=bogus", "invalid_id"),
+    ] {
+        let (status, body) = call(&api.app, "GET", uri, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
+        assert_eq!(body["errors"][0]["code"], code, "{uri}");
+    }
 }

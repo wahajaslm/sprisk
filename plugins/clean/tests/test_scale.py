@@ -41,3 +41,14 @@ def test_constant_train_column_is_an_error(write_parquet: WriteParquet, out_dir:
     with pytest.raises(OperatorError) as e:
         run_fit(scale, {"columns": ["x"], "method": "z_score"}, flat, TEST, write_parquet, out_dir)
     assert e.value.code == "constant_column"
+
+
+def test_nan_in_train_is_ignored_when_learning_the_range(
+    write_parquet: WriteParquet, out_dir: Path
+) -> None:
+    train = pl.DataFrame({"x": [0.0, float("nan"), 10.0]})
+    train_out, _ = run_fit(
+        scale, {"columns": ["x"], "method": "min_max"}, train, TEST, write_parquet, out_dir
+    )
+    assert train_out["x"].to_list()[0] == 0.0
+    assert train_out["x"].to_list()[2] == 1.0
