@@ -107,3 +107,25 @@ export const scoreOutputs: AttemptOutput[] = [
 ];
 
 export const metricsJson = '{"n_rows": 38, "estimator": "LogisticRegression", "accuracy": 0.947}';
+
+export const gateAttempt = attempts[0]!;
+
+export const gateOutputs: AttemptOutput[] = [
+  {
+    port: "checks",
+    artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXYZ1", producer_attempt_id: gateAttempt.id },
+  },
+];
+
+export const checksJson = JSON.stringify([
+  {
+    schema_version: "sprisk.methodology_check/v1",
+    id: "mck_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    pipeline_version_id: PV,
+    check: "supervised.split_leakage@1.0.0",
+    verdict: "pass",
+    rationale: "Each holdout scores at most one non-baseline model.",
+    cited_nodes: ["score", "split"],
+    created_at: NOW,
+  },
+]);

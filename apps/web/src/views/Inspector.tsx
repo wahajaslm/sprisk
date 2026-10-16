@@ -2,17 +2,18 @@ import type { Attempt, AttemptOutput, MethodologyCheck } from "@sprisk/contracts
 import { parse } from "@sprisk/contracts";
 import * as Tabs from "@radix-ui/react-tabs";
 
-import { useArtifactText, useAttempts, useOutputs, usePipelineVersions, useRuns } from "../api/hooks.ts";
+import { useArtifactText, useOutputs, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { GATE_NODE, latestByNode } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
-import { shortName } from "./StepLibrary.tsx";
+import { shortName } from "../flow/stages.ts";
+
+/** JSON outputs larger than this are not pulled into the browser (rule 9). */
+const MAX_INLINE_BYTES = 64 * 1024;
 
 export function Inspector() {
   const { pipelineVersionId, runId, nodeId } = useSelection();
   const versions = usePipelineVersions();
-  const runs = useRuns(pipelineVersionId);
-  const live = runs.data?.find((r) => r.id === runId)?.status === "running";
-  const attempts = useAttempts(runId, live);
+  const attempts = useRunAttempts(pipelineVersionId, runId);
   const node = versions.data?.find((v) => v.id === pipelineVersionId)?.nodes.find((n) => n.id === nodeId);
 
   if (!nodeId) return <p className="muted pad">Select a step to see its decision, data, code or logs.</p>;
@@ -31,9 +32,12 @@ export function Inspector() {
           <Tabs.Trigger value="logs">Logs</Tabs.Trigger>
         </Tabs.List>
         <strong>{nodeId}</strong>
-        <span className="mono muted">{node ? shortName(node.operator) : ""} · {latest?.state ?? "not run"}</span>
+        <span className="mono muted">
+          {node ? shortName(node.operator) : ""} · {attempts.isPending && runId ? "loading" : (latest?.state ?? "not run")}
+        </span>
       </div>
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
+      {versions.isError && <p role="alert" className="error pad">{versions.error.message}</p>}
       <Tabs.Content value="decision" className="pane">
         <p className="muted">
           Decisions (question, choices, recommended choice, evidence) come with the methodology decision graph
@@ -79,13 +83,16 @@ function Outputs({ attempt }: { attempt: Attempt | undefined }) {
 
 function Output({ output }: { output: AttemptOutput }) {
   const isJson = output.artifact.media_type === "application/json";
-  const text = useArtifactText(isJson ? output.artifact.id : undefined);
+  const small = output.artifact.size_bytes <= MAX_INLINE_BYTES;
+  const text = useArtifactText(isJson && small ? output.artifact.id : undefined);
   return (
     <section className="output">
       <p className="eyebrow">
         {output.port} · {output.artifact.media_type} · {output.artifact.size_bytes} bytes
       </p>
-      {isJson ? (
+      {isJson && !small ? (
+        <p className="muted">JSON output too large to show here ({output.artifact.size_bytes} bytes).</p>
+      ) : isJson ? (
         text.isError ? <p role="alert" className="error">{text.error.message}</p> : <pre className="code">{prettyJson(text.data)}</pre>
       ) : (
         <p className="mono muted">{output.artifact.content_hash.slice(0, 19)}… (tables are not loaded in the browser)</p>
@@ -108,13 +115,16 @@ function Checks({ gate, nodeId }: { gate: Attempt | undefined; nodeId: string })
   const outputs = useOutputs(gate?.state === "succeeded" ? gate.id : undefined);
   const checksArtifact = outputs.data?.find((o) => o.port === "checks")?.artifact.id;
   const text = useArtifactText(checksArtifact);
+  if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
+  if (text.isError) return <p role="alert" className="error">{text.error.message}</p>;
   if (!text.data) return null;
   let checks: MethodologyCheck[];
   try {
     const raw: unknown = JSON.parse(text.data);
-    checks = Array.isArray(raw) ? raw.map((c) => parse("MethodologyCheck", c)) : [];
+    if (!Array.isArray(raw)) throw new Error("expected a list of checks");
+    checks = raw.map((c) => parse("MethodologyCheck", c));
   } catch (e) {
-    return <p role="alert" className="error">Unreadable methodology checks: {String(e)}</p>;
+    return <p role="alert" className="error">Unreadable methodology checks: {e instanceof Error ? e.message : "invalid"}</p>;
   }
   const mine = checks.filter((c) => c.cited_nodes.includes(nodeId));
   if (mine.length === 0) return null;

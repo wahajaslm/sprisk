@@ -1,7 +1,7 @@
 import type { Operator } from "@sprisk/contracts";
 
 /** Presentation grouping only (rule 9: layout is not provenance). */
-export const STAGES = ["Explore", "Split", "Clean", "Model", "Evaluate"] as const;
+export const STAGES = ["Explore", "Split", "Clean", "Model", "Evaluate", "Unknown"] as const;
 export type Stage = (typeof STAGES)[number];
 
 export type NodeKind = "data" | "step" | "model";
@@ -28,3 +28,6 @@ export function kindOf(operator: Operator): NodeKind {
   if (operator.capability_class === "estimator") return "model";
   return "step";
 }
+
+/** "sprisk.clean.impute@1.0.0" → "impute". */
+export const shortName = (ref: string) => ref.split("@")[0]?.split(".").at(-1) ?? ref;

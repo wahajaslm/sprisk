@@ -15,9 +15,10 @@ export function TopBar() {
     if (pipelineVersionId === undefined && newest) selectPipelineVersion(newest.id);
   }, [versions.data, pipelineVersionId, selectPipelineVersion]);
   const latestRun = runs.data?.[0];
+  const latestRunId = latestRun?.id;
   useEffect(() => {
-    if (latestRun) selectRun(latestRun.id);
-  }, [latestRun, selectRun]);
+    if (latestRunId) selectRun(latestRunId);
+  }, [latestRunId, selectRun]);
 
   const runState = startRun.isPending
     ? "Starting run…"
@@ -53,6 +54,7 @@ export function TopBar() {
       </nav>
       <div className="runbar">
         {versions.isError && <span role="alert">{versions.error.message}</span>}
+        {runs.isError && <span role="alert">{runs.error.message}</span>}
         {startRun.isError && <span role="alert">{startRun.error.message}</span>}
         <span className={`runstate ${latestRun?.status ?? "none"}`}>● {runState}</span>
         <button

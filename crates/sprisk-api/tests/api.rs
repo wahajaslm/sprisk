@@ -401,3 +401,24 @@ async fn bad_list_parameters_are_rejected() {
         assert_eq!(body["errors"][0]["code"], code, "{uri}");
     }
 }
+
+#[tokio::test]
+async fn request_from_a_non_local_origin_is_refused() {
+    use tower::ServiceExt;
+    let api = api().await;
+    for (origin, expected) in [
+        ("https://evil.example", StatusCode::FORBIDDEN),
+        ("null", StatusCode::FORBIDDEN),
+        ("http://localhost:5173", StatusCode::NOT_FOUND),
+        ("http://127.0.0.1:5173", StatusCode::NOT_FOUND),
+    ] {
+        let request = Request::builder()
+            .uri("/runs/run_01JABCDEFGHJKMNPQRSTVWXYZ9")
+            .header("host", "127.0.0.1:7420")
+            .header("origin", origin)
+            .body(Body::empty())
+            .unwrap();
+        let response = api.app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), expected, "{origin}");
+    }
+}

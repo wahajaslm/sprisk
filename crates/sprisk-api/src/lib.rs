@@ -52,8 +52,9 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Refuse requests not addressed to this machine by name or loopback IP. A web page that
-/// rebinds its own domain to 127.0.0.1 still sends its own Host header, so it is refused.
+/// Refuse requests not addressed to this machine by name or loopback IP, and browser requests
+/// from any non-local page. A rebinding page sends its own Host; a cross-site page sends its
+/// own Origin; both are refused.
 async fn local_host_only(
     request: axum::extract::Request,
     next: axum::middleware::Next,
@@ -63,15 +64,28 @@ async fn local_host_only(
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
-    let name = match host.rsplit_once(':') {
-        Some((name, port)) if port.chars().all(|c| c.is_ascii_digit()) => name,
-        _ => host,
-    };
-    if matches!(name, "127.0.0.1" | "localhost" | "[::1]") {
-        next.run(request).await
-    } else {
-        ApiError::Forbidden(format!("host {host:?} is not local")).into_response()
+    if !is_local_name(host) {
+        return ApiError::Forbidden(format!("host {host:?} is not local")).into_response();
     }
+    if let Some(origin) = request.headers().get(header::ORIGIN) {
+        let origin = origin.to_str().unwrap_or("");
+        let authority = origin
+            .strip_prefix("http://")
+            .or_else(|| origin.strip_prefix("https://"));
+        if !authority.is_some_and(is_local_name) {
+            return ApiError::Forbidden(format!("origin {origin:?} is not local")).into_response();
+        }
+    }
+    next.run(request).await
+}
+
+/// `localhost`, `127.0.0.1` or `[::1]`, with or without a port.
+fn is_local_name(authority: &str) -> bool {
+    let name = match authority.rsplit_once(':') {
+        Some((name, port)) if port.chars().all(|c| c.is_ascii_digit()) => name,
+        _ => authority,
+    };
+    matches!(name, "127.0.0.1" | "localhost" | "[::1]")
 }
 
 /// Params marked `x-sprisk-local-path` in an operator's params_schema must resolve, after

@@ -8,7 +8,8 @@ import { Inspector } from "../src/views/Inspector.tsx";
 import { StepLibrary } from "../src/views/StepLibrary.tsx";
 import { TopBar } from "../src/views/TopBar.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
-import { PV, RUN } from "./fixtures.ts";
+import { Copilot } from "../src/views/Copilot.tsx";
+import { PV, RUN, run, scoreOutputs } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -30,7 +31,6 @@ describe("top bar", () => {
     server.use(
       http.post("/api/runs", async ({ request }) => {
         posted = await request.json();
-        const { run } = await import("./fixtures.ts");
         return HttpResponse.json({ ...run, status: "queued" }, { status: 202 });
       }),
     );
@@ -38,6 +38,18 @@ describe("top bar", () => {
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
     await userEvent.click(screen.getByRole("button", { name: /Run graph/ }));
     await waitFor(() => expect(posted).toEqual({ pipeline_version_id: PV }));
+  });
+
+  it("shows why a run could not start", async () => {
+    server.use(
+      http.post("/api/runs", () =>
+        HttpResponse.json({ errors: [{ code: "path_outside_data_roots", message: "node load: outside" }] }, { status: 422 }),
+      ),
+    );
+    renderWithApi(<TopBar />);
+    await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
+    await userEvent.click(screen.getByRole("button", { name: /Run graph/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("path_outside_data_roots");
   });
 });
 
@@ -98,5 +110,61 @@ describe("inspector", () => {
   it("asks for a selection when nothing is selected", () => {
     renderWithApi(<Inspector />);
     expect(screen.getByText(/Select a step/)).toBeInTheDocument();
+  });
+});
+
+describe("inspector failures and checks", () => {
+  it("shows methodology checks that cite the selected step", async () => {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    const checks = await screen.findByRole("region", { name: "Methodology checks" });
+    expect(checks).toHaveTextContent("pass");
+    expect(checks).toHaveTextContent("at most one non-baseline model");
+  });
+
+  it("says so when the checks output is not a list of checks", async () => {
+    server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text('{"verdict": "pass"}')));
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    expect(await screen.findByText(/Unreadable methodology checks/)).toBeInTheDocument();
+  });
+
+  it("shows an attempts error instead of 'not run'", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })));
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+  });
+
+  it("does not download a large JSON artifact", async () => {
+    let fetched = false;
+    const big = [{ ...scoreOutputs[0]!, artifact: { ...scoreOutputs[0]!.artifact, size_bytes: 10_000_000 } }];
+    server.use(
+      http.get("/api/attempts/:id/outputs", () => HttpResponse.json(big)),
+      http.get("/api/artifacts/:id/content", () => {
+        fetched = true;
+        return HttpResponse.text("{}");
+      }),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
+    expect(await screen.findByText(/too large to show/)).toBeInTheDocument();
+    expect(fetched).toBe(false);
+  });
+});
+
+describe("copilot", () => {
+  it("summarises the run's step attempts, without the gate", async () => {
+    renderWithApi(<Copilot />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    expect(await screen.findByText("5 of 6 step attempts succeeded")).toBeInTheDocument();
+    expect(run.status).toBe("succeeded");
+  });
+
+  it("shows an attempts error", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })));
+    renderWithApi(<Copilot />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
   });
 });

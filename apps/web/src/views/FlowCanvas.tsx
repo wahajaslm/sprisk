@@ -4,11 +4,10 @@ import type { Attempt, Operator, PipelineVersion } from "@sprisk/contracts";
 import { Background, Controls, type Edge, type Node, type NodeProps, ReactFlow, useNodesState } from "@xyflow/react";
 import { useEffect } from "react";
 
-import { useAttempts, useOperators, usePipelineVersions, useRuns } from "../api/hooks.ts";
+import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { latestByNode } from "../flow/latest.ts";
-import { kindOf, type NodeKind, STAGES, type Stage, stageOf } from "../flow/stages.ts";
+import { kindOf, type NodeKind, shortName, STAGES, type Stage, stageOf } from "../flow/stages.ts";
 import { useSelection } from "../workbench/selection.ts";
-import { shortName } from "./StepLibrary.tsx";
 
 const COLUMN = 230;
 const ROW = 70;
@@ -55,7 +54,7 @@ export function layout(
   const stageOfNode = new Map<string, Stage>();
   for (const n of pipeline.nodes) {
     const op = operators.get(n.operator);
-    const stage = op ? stageOf(op) : "Clean";
+    const stage = op ? stageOf(op) : "Unknown";
     stageOfNode.set(n.id, stage);
     byStage.set(stage, [...(byStage.get(stage) ?? []), n.id]);
   }
@@ -106,9 +105,7 @@ export function FlowCanvas() {
   const { pipelineVersionId, runId, nodeId } = useSelection();
   const versions = usePipelineVersions();
   const operators = useOperators();
-  const runs = useRuns(pipelineVersionId);
-  const live = runs.data?.find((r) => r.id === runId)?.status === "running";
-  const attempts = useAttempts(runId, live);
+  const attempts = useRunAttempts(pipelineVersionId, runId);
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;

@@ -1,10 +1,12 @@
+import type { Run } from "@sprisk/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getList, getText, postOne } from "./client.ts";
 
 /** While a run is live, attempts are re-read this often. */
 const LIVE_MS = 1000;
-const FINISHED = new Set(["succeeded", "failed", "cancelled"]);
+const FINISHED: ReadonlySet<Run["status"]> = new Set(["succeeded", "failed", "cancelled"]);
+export const isLive = (run: Run | undefined) => run !== undefined && !FINISHED.has(run.status);
 
 export const usePipelineVersions = () =>
   useQuery({ queryKey: ["pipeline_versions"], queryFn: () => getList("PipelineVersion", "/pipeline_versions?limit=50") });
@@ -17,10 +19,16 @@ export const useRuns = (pipelineVersionId: string | undefined) =>
     queryKey: ["runs", pipelineVersionId],
     queryFn: () => getList("Run", `/runs?pipeline_version_id=${pipelineVersionId ?? ""}&limit=20`),
     enabled: pipelineVersionId !== undefined,
-    refetchInterval: (query) => (query.state.data?.some((r) => !FINISHED.has(r.status)) ? LIVE_MS : false),
+    refetchInterval: (query) => (query.state.data?.some(isLive) ? LIVE_MS : false),
   });
 
-export const useAttempts = (runId: string | undefined, live: boolean) =>
+/** The selected run's attempts, re-read while the run is unfinished. */
+export function useRunAttempts(pipelineVersionId: string | undefined, runId: string | undefined) {
+  const runs = useRuns(pipelineVersionId);
+  return useAttempts(runId, isLive(runs.data?.find((r) => r.id === runId)));
+}
+
+const useAttempts = (runId: string | undefined, live: boolean) =>
   useQuery({
     queryKey: ["attempts", runId],
     queryFn: () => getList("Attempt", `/runs/${runId ?? ""}/attempts`),

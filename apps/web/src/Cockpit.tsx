@@ -1,11 +1,15 @@
+import { lazy } from "react";
+
 import { Copilot } from "./views/Copilot.tsx";
-import { FlowCanvas } from "./views/FlowCanvas.tsx";
 import { Inspector } from "./views/Inspector.tsx";
 import { ComingView, Placeholder } from "./views/Placeholder.tsx";
 import { StepLibrary } from "./views/StepLibrary.tsx";
 import { TopBar } from "./views/TopBar.tsx";
 import { Dock } from "./workbench/DockAdapter.tsx";
 import { useSelection } from "./workbench/selection.ts";
+
+// React Flow is heavy; load it only when the Flow panel first renders.
+const FlowCanvas = lazy(() => import("./views/FlowCanvas.tsx").then((m) => ({ default: m.FlowCanvas })));
 
 const views = { library: StepLibrary, flow: FlowCanvas, inspector: Inspector, copilot: Copilot, placeholder: Placeholder };
 

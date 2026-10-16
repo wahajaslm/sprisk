@@ -12,17 +12,15 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson(path: string): Promise<unknown> {
-  const response = await fetch(`${API_BASE}${path}`);
+/** One fetch for every call: a failed response becomes an ApiError with the Problem text. */
+async function request(path: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(`${API_BASE}${path}`, init);
+  if (response.ok) return response;
   const body: unknown = await response.json().catch(() => undefined);
-  if (!response.ok) {
-    const problem = parseProblem(body);
-    throw new ApiError(response.status, problem ?? `${response.status} ${response.statusText}`);
-  }
-  return body;
+  throw new ApiError(response.status, problemText(body) ?? `${response.status} ${response.statusText}`);
 }
 
-function parseProblem(body: unknown): string | undefined {
+function problemText(body: unknown): string | undefined {
   try {
     return parse("Problem", body)
       .errors.map((e) => `${e.code}: ${e.message}`)
@@ -35,31 +33,21 @@ function parseProblem(body: unknown): string | undefined {
 
 /** One contract entity, validated. */
 export async function getOne<K extends keyof Entities>(entity: K, path: string): Promise<Entities[K]> {
-  return parse(entity, await getJson(path));
+  return parse(entity, await (await request(path)).json());
 }
 
 /** A list of contract entities, each validated. */
 export async function getList<K extends keyof Entities>(entity: K, path: string): Promise<Entities[K][]> {
-  const body = await getJson(path);
+  const body: unknown = await (await request(path)).json();
   if (!Array.isArray(body)) throw new ContractError(`expected a list of ${entity}`);
   return body.map((item) => parse(entity, item));
 }
 
 export async function getText(path: string): Promise<string> {
-  const response = await fetch(`${API_BASE}${path}`);
-  if (!response.ok) throw new ApiError(response.status, `${response.status} ${response.statusText}`);
-  return response.text();
+  return (await request(path)).text();
 }
 
 export async function postOne<K extends keyof Entities>(entity: K, path: string, body: unknown): Promise<Entities[K]> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const json: unknown = await response.json().catch(() => undefined);
-  if (!response.ok) {
-    throw new ApiError(response.status, parseProblem(json) ?? `${response.status} ${response.statusText}`);
-  }
-  return parse(entity, json);
+  const init = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+  return parse(entity, await (await request(path, init)).json());
 }

@@ -18,6 +18,23 @@ dockview-react (behind an adapter), @xyflow/react, Radix + shadcn patterns, AG G
 - No AG Grid Enterprise or Dockview commercial features.
 - Use `/new-view-type` to add a view.
 
+## Performance (always)
+- Lazy-load every heavy panel (`React.lazy` + `Suspense`): React Flow, Monaco, chart libraries, grids.
+- Every list endpoint is paged (`?limit=`, `?before=`). Never request "all". Virtualize long lists and tables.
+- Never pull a table into the browser. Fetch JSON artifacts only under a byte cap; show size and hash otherwise.
+- Poll only while something is live (`isLive`), then stop. Never poll a finished run.
+- Data that never changes (attempt outputs, artifact content) gets `staleTime: Infinity`.
+- Hidden panels do no work. Effects depend on ids, not on objects that change identity every refetch.
+- Measure before memoizing. Add `useMemo`/`useCallback` only when a profile shows the need.
+
+## Consistency, modularity, reuse
+- One way to do each thing: one API request function, one hook per resource, one query-state pattern.
+- Before writing a component or hook, search `src/` for one that already does it. Extract on the third copy.
+- Shared pieces live by job: API in `src/api`, flow helpers in `src/flow`, dock and selection in `src/workbench`, panels in `src/views`. No `utils` dumping ground.
+- Studio tokens only (`src/styles/cockpit.css`): Geist / Geist Mono, near-black panels, hairline borders, red `#ff5c5c` only for problems. No new colors or fonts without a token.
+- Same names as the contracts and the arch doc for the same concept.
+- Small components with one job. Accessible by default: real buttons, labels, roles, visible focus, keyboard reachable.
+
 ## Checks
 `pnpm lint && pnpm typecheck && pnpm test`
 
