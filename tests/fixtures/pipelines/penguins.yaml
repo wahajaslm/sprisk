@@ -7,6 +7,8 @@ nodes:
   - { id: has_species, operator: sprisk.clean.drop_missing@1.0.0, params: { columns: [Species] } }
   - { id: columns, operator: sprisk.clean.select_columns@1.0.0, params: { columns: [Species, Island, Sex, "Culmen Length (mm)", "Culmen Depth (mm)", "Flipper Length (mm)", "Body Mass (g)"] } }
   - { id: profile, operator: sprisk.profile.summarize@1.0.0, params: {} }
+  - { id: distributions, operator: sprisk.profile.distributions@1.0.0, params: {} }
+  - { id: mass_histogram, operator: sprisk.profile.chart@1.0.0, params: { kind: histogram, x: "Body Mass (g)" } }
   - { id: mass_by_species, operator: sprisk.profile.chart@1.0.0, params: { kind: box, x: Species, y: "Body Mass (g)" } }
   - { id: flipper_vs_mass, operator: sprisk.profile.chart@1.0.0, params: { kind: scatter, x: "Flipper Length (mm)", y: "Body Mass (g)" } }
   - { id: split, operator: sprisk.validation.random_split@1.0.0, params: { test_fraction: 0.25, seed: 42, stratify: Species } }
@@ -20,6 +22,8 @@ edges:
   - { from: tidy_text.data, to: has_species.data }
   - { from: has_species.data, to: columns.data }
   - { from: columns.data, to: profile.data }
+  - { from: columns.data, to: distributions.data }
+  - { from: columns.data, to: mass_histogram.data }
   - { from: columns.data, to: mass_by_species.data }
   - { from: columns.data, to: flipper_vs_mass.data }
   - { from: columns.data, to: split.data }
