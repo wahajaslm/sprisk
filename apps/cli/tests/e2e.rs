@@ -150,7 +150,10 @@ async fn worker_killed_mid_run_is_replaced_and_nothing_false_is_committed() {
             break;
         }
         if tokio::time::Instant::now() >= deadline {
-            panic!("no step started:\n{}", client.report(&run.id).await.unwrap());
+            panic!(
+                "no step started:\n{}",
+                client.report(&run.id).await.unwrap()
+            );
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
