@@ -48,6 +48,7 @@ pub fn router(state: AppState) -> Router {
         .route("/attempts/{id}/outputs", get(list_outputs))
         .route("/artifacts/{id}", get(get_artifact))
         .route("/artifacts/{id}/content", get(get_artifact_content))
+        .route("/artifacts/{id}/rows", get(get_artifact_rows))
         .layer(axum::middleware::from_fn(local_host_only))
         .with_state(state)
 }
@@ -148,7 +149,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, errors) = match &self {
             ApiError::BadRequest { code, message } => {
-                let status = if matches!(*code, "invalid_id" | "invalid_limit") {
+                let status = if matches!(*code, "invalid_id" | "invalid_limit" | "invalid_offset") {
                     StatusCode::BAD_REQUEST
                 } else {
                     StatusCode::UNPROCESSABLE_ENTITY
@@ -166,6 +167,10 @@ impl IntoResponse for ApiError {
             ApiError::Store(StoreError::NotFound { .. }) => {
                 (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
             }
+            ApiError::Artifacts(sprisk_artifacts::StoreError::NotATable { .. }) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                vec![("not_a_table", self.to_string())],
+            ),
             ApiError::Store(StoreError::Conflict(_)) => {
                 (StatusCode::CONFLICT, vec![("conflict", self.to_string())])
             }
@@ -390,4 +395,38 @@ async fn get_artifact_content(
         bytes,
     )
         .into_response())
+}
+
+const PARQUET: &str = "application/vnd.apache.parquet";
+
+/// One page of a Parquet artifact as display rows. The browser never gets the table itself.
+async fn get_artifact_rows(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    query: Query,
+) -> Result<Json<sprisk_contracts::TablePage>, ApiError> {
+    let artifact_id: ArtifactId = id(&raw)?;
+    let offset = match query.get("offset") {
+        None => 0,
+        Some(raw) => raw.parse::<u64>().map_err(|_| ApiError::BadRequest {
+            code: "invalid_offset",
+            message: format!("offset must be a whole number >= 0, got {raw}"),
+        })?,
+    };
+    let limit = limit(&query)?;
+    let artifact = state.store.get_artifact(&artifact_id).await?;
+    if artifact.media_type.as_str() != PARQUET {
+        return Err(ApiError::BadRequest {
+            code: "not_a_table",
+            message: format!(
+                "artifact {raw} is {}, not a table",
+                artifact.media_type.as_str()
+            ),
+        });
+    }
+    let page = state
+        .artifacts
+        .read_table_page(artifact.content_hash.as_str(), offset, limit)
+        .await?;
+    Ok(Json(page))
 }

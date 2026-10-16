@@ -214,6 +214,24 @@ async fn run_executes_in_the_background_and_reports_attempts_and_outputs() {
     let artifact = outputs[0]["artifact"]["id"].as_str().unwrap();
     let (status, _) = call(&api.app, "GET", &format!("/artifacts/{artifact}"), None).await;
     assert_eq!(status, StatusCode::OK);
+
+    let rows = format!("/artifacts/{artifact}/rows");
+    let (status, page) = call(&api.app, "GET", &format!("{rows}?offset=1&limit=5"), None).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(page["total_rows"], 2);
+    assert_eq!(page["columns"][0]["name"], "x");
+    assert_eq!(page["rows"], json!([{"values": ["3", "4"], "missing": []}]));
+
+    let (status, body) = call(&api.app, "GET", &format!("{rows}?offset=-1"), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_offset");
+
+    let gate = attempts[0]["id"].as_str().unwrap();
+    let (_, gate_outputs) = call(&api.app, "GET", &format!("/attempts/{gate}/outputs"), None).await;
+    let checks = gate_outputs[0]["artifact"]["id"].as_str().unwrap();
+    let (status, body) = call(&api.app, "GET", &format!("/artifacts/{checks}/rows"), None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "not_a_table");
 }
 
 #[tokio::test]
