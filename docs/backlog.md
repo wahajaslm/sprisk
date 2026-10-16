@@ -45,3 +45,5 @@ Remove an item when it is done; link the commit or ADR.
 | Parquet media type string is written in Rust, Python and TS; move it into `contracts/` | simplicity review | next contract change |
 | Canvas node facts cost about two cached requests per node; add one batched "node facts" read if graphs get large | simplicity review | when graphs exceed ~30 nodes |
 | Ports do not declare their table shape, so the UI finds the profile output by operator id; add a declared output schema | simplicity review | with ADR-0019 evidence contracts |
+| Code steps: approval gate so AI-proposed code never runs without the user's explicit run, plus a §15 security test | security review (ADR-0020) | before the M2 planner ships |
+| Code steps: run user code in a separate sandbox process (no network, read-only inputs, no lease credentials); `network: none` is declared, not enforced | security review (ADR-0020) | before hosted (M5) |

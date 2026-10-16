@@ -24,6 +24,7 @@ MAX_TABLE_COLUMNS = 50
 MAX_CELL_CHARS = 500
 MAX_TEXT_CHARS = 20_000
 MAX_FIGURES = 6
+MAX_FIGURE_BYTES = 512 * 1024
 
 
 def python_step(
@@ -89,7 +90,7 @@ def _table(df: pl.DataFrame) -> dict[str, Any]:
     rows = []
     for row in shown.iter_rows():
         missing = [i for i, v in enumerate(row) if v is None]
-        values = ["" if v is None else _cut(str(v), MAX_CELL_CHARS) for v in row]
+        values = ["" if v is None else _cut(_text(v), MAX_CELL_CHARS) for v in row]
         rows.append({"values": values, "missing": missing})
     return {
         "offset": 0,
@@ -100,12 +101,21 @@ def _table(df: pl.DataFrame) -> dict[str, Any]:
     }
 
 
+def _text(value: Any) -> str:
+    # Display only: six significant digits, like a notebook, not full float noise.
+    return f"{value:.6g}" if isinstance(value, float) else str(value)
+
+
 def _figures() -> list[dict[str, Any]]:
     items = []
     for number in plt.get_fignums()[:MAX_FIGURES]:
         buffer = io.BytesIO()
         plt.figure(number).savefig(buffer, format="png", dpi=96, bbox_inches="tight")
-        items.append({"kind": "image", "png_base64": base64.b64encode(buffer.getvalue()).decode()})
+        png = buffer.getvalue()
+        if len(png) > MAX_FIGURE_BYTES:
+            items.append({"kind": "text", "text": f"Figure {number} not shown: {len(png)} bytes."})
+            continue
+        items.append({"kind": "image", "png_base64": base64.b64encode(png).decode()})
     plt.close("all")
     return items
 

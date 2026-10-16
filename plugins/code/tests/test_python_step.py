@@ -65,3 +65,22 @@ def test_syntax_error_names_the_line(
     with pytest.raises(OperatorError) as e:
         run(write_parquet, clf_frame, out_dir, "ok = 1\nnot python(")
     assert e.value.code == "code_error" and "line 2" in e.value.message
+
+
+def test_floats_are_shown_short(write_parquet: WriteParquet, out_dir: Path) -> None:
+    df = pl.DataFrame({"r": [6.907999999999995, 1e-12, 123456789.0]})
+    [item] = run(write_parquet, df, out_dir, "data").items
+    assert item.table is not None
+    assert [r.values for r in item.table.rows] == [["6.908"], ["1e-12"], ["1.23457e+08"]]
+
+
+def test_huge_figure_is_replaced_by_a_note(
+    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
+) -> None:
+    source = (
+        "import matplotlib.pyplot as plt, numpy as np\n"
+        "plt.figure(figsize=(40, 40))\n"
+        "plt.imshow(np.random.default_rng(0).random((800, 800)))\nNone"
+    )
+    [note] = run(write_parquet, clf_frame, out_dir, source).items
+    assert note.kind == "text" and note.text is not None and "not shown" in note.text
