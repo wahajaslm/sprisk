@@ -20,7 +20,7 @@
 | [0016](0016-methodology-chosen-params.md) | Params chosen by methodology: column roles and ParamChoice | Accepted |
 | [0017](0017-gate-b-as-worker-attempt.md) | Gate B runs as a worker attempt | Accepted |
 | [0018](0018-studio-cockpit-workbench.md) | Studio cockpit is the default workbench layout and workflow | Accepted |
-| [0019](0019-methodology-as-steerable-decision-graph.md) | Methodology is a user-steerable decision graph | Proposed |
+| [0019](0019-methodology-as-steerable-decision-graph.md) | Methodology guides pipeline decisions without becoming a separate workflow | Proposed |
 
 ## Open questions (arch doc §17)
 
