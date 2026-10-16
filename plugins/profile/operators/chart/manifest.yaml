@@ -10,9 +10,9 @@ params_schema:
   additionalProperties: false
   required: [kind, x]
   properties:
-    kind: { type: string, enum: [histogram, box, scatter, bar, line], description: "Which chart to draw." }
-    x: { type: string, minLength: 1, description: "Column on the horizontal axis (the categories for box and bar)." }
-    y: { type: string, minLength: 1, description: "Column on the vertical axis. Needed for scatter and line; for box and bar, the values per category." }
+    kind: { type: string, enum: [histogram, box, scatter, bar, line], x-sprisk-show-in: visualizations, description: "Which chart to draw." }
+    x: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-show-in: visualizations, description: "Column on the horizontal axis (the categories for box and bar)." }
+    y: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-show-in: visualizations, description: "Column on the vertical axis. Needed for scatter and line; for box and bar, the values per category." }
     bins: { type: integer, minimum: 2, maximum: 200, default: 20, description: "Histogram bars." }
     max_points: { type: integer, minimum: 10, maximum: 20000, default: 2000, description: "Most points a scatter or line draws; more are sampled with a fixed seed." }
 effects: pure

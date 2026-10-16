@@ -61,7 +61,7 @@ export function ShownTable({ item, index }: { item: DisplayItem; index: number }
   );
 }
 
-function LayoutSwitch({ layout, setLayout }: { layout: ResultLayout; setLayout: (l: ResultLayout) => void }) {
+export function LayoutSwitch({ layout, setLayout }: { layout: ResultLayout; setLayout: (l: ResultLayout) => void }) {
   return (
     <div className="detail-switch small" role="radiogroup" aria-label="Result layout">
       {(["inline", "grid"] as const).map((l) => (

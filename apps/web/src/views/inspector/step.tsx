@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { useRunChecks } from "../../api/checks.ts";
 import { useCodeDisplay, useCodeInterface } from "../../api/code.ts";
 import { useNodeHistory } from "../../api/history.ts";
-import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
+import { useOperators, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun, useTablePage } from "../../api/hooks.ts";
+import { PARQUET } from "../../api/media.ts";
 import { addChartStep, addCodeStep, type ChartSpec, isCodeOperator } from "../../flow/edit.ts";
 import { useWorkbench } from "../../workbench/workbench.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
@@ -14,6 +15,7 @@ import { useSelection } from "../../workbench/selection.ts";
 import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
 import { FiguresTab } from "./FiguresTab.tsx";
+import { ViewControls } from "./ViewControls.tsx";
 import { ChecksTab, concerns } from "./ChecksTab.tsx";
 import { CodeData } from "./CodeData.tsx";
 import { ConsoleTab, consoleProblems } from "./ConsoleTab.tsx";
@@ -73,8 +75,15 @@ export function useStep() {
           });
         }
       : undefined;
+  // Columns of the table this step reads, for settings that name a column.
+  const source = pipeline?.edges.find((e) => e.to.split(".")[0] === nodeId)?.from.split(".") ?? [];
+  const producer = latestByNode(all).get(source[0] ?? "");
+  const sourceOutputs = useOutputs(producer && hasOutputs(producer) ? producer.id : undefined);
+  const sourceTable = sourceOutputs.data?.find((o) => o.port === source[1] && o.artifact.media_type === PARQUET)?.artifact.id;
+  const inputColumns = useTablePage(sourceTable, 0, 1).data?.columns ?? [];
   return {
     runId,
+    inputColumns,
     addChart,
     figurePorts,
     nodeId,
@@ -186,7 +195,16 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
         </>
       );
     case "visuals":
-      return isCode ? <VisualsTab display={display} isCode={isCode} /> : <FiguresTab attempt={done} ports={step.figurePorts} />;
+      return isCode ? (
+        <VisualsTab display={display} isCode={isCode} />
+      ) : (
+        <FiguresTab
+          attempt={done}
+          ports={step.figurePorts}
+          failure={step.latest?.state === "failed" ? step.latest.error?.message : undefined}
+          controls={pipeline && <ViewControls pipeline={pipeline} nodeId={nodeId} operator={operator} columns={step.inputColumns} />}
+        />
+      );
     case "console":
       return <ConsoleTab display={display} attempts={step.mine} isCode={isCode} />;
     case "inputs":

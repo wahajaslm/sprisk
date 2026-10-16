@@ -132,7 +132,17 @@ type Field = {
   exclusiveMaximum?: number;
   default?: unknown;
   description?: string;
+  /** Settings about what is shown live in Visualizations, next to the figure. */
+  "x-sprisk-show-in"?: string;
+  /** The value names a column of the input table. */
+  "x-sprisk-column"?: boolean;
 };
+
+export type { Field };
+
+/** A step's settings from its schema, split by where they are shown. */
+export const settingsOf = (schema: Record<string, unknown>) => fieldsOf(schema, []);
+export const isViewSetting = (f: Field) => f["x-sprisk-show-in"] === "visualizations";
 
 function fieldsOf(schema: Record<string, unknown>, skip: string[]): Field[] {
   const properties = (schema.properties ?? {}) as Record<string, Omit<Field, "name" | "required">>;
@@ -186,12 +196,15 @@ function Settings({ pipeline, nodeId, params, schema }: {
   params: Record<string, unknown>;
   schema: Record<string, unknown>;
 }) {
-  const fields = fieldsOf(schema, []);
+  const all = fieldsOf(schema, []);
+  const fields = all.filter((f) => !isViewSetting(f));
+  const elsewhere = all.filter(isViewSetting).map((f) => f.name);
   const initial: Draft = Object.fromEntries(fields.map((f) => [f.name, toDraft(params[f.name])]));
   const [draft, setDraft] = useState<Draft>(initial);
   const edit = useRunEdit(pipeline, nodeId);
   const changed = fields.some((f) => draft[f.name] !== initial[f.name]);
-  if (fields.length === 0) return <p className="muted">This step has no settings.</p>;
+  const note = elsewhere.length > 0 && <p className="muted">{listed(elsewhere)} {elsewhere.length === 1 ? "is" : "are"} set in Visualizations, next to the figure.</p>;
+  if (fields.length === 0) return note || <p className="muted">This step has no settings.</p>;
 
   const run = () => {
     const next: Record<string, unknown> = { ...params };
@@ -207,6 +220,7 @@ function Settings({ pipeline, nodeId, params, schema }: {
   return (
     <section className="settings" aria-label="Settings">
       <p className="output-title">Settings</p>
+      {note}
       <div className="settings-grid">
         {fields.map((f) => (
           <div key={f.name} className="setting">
@@ -234,6 +248,11 @@ function Settings({ pipeline, nodeId, params, schema }: {
       </div>
     </section>
   );
+}
+
+/** "kind, x and y" */
+function listed(names: string[]): string {
+  return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
 }
 
 function SettingInput({ field, value, onChange }: { field: Field; value: string | boolean; onChange: (v: string | boolean) => void }) {

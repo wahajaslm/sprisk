@@ -157,36 +157,77 @@ describe("charts (ADR-0023)", () => {
 });
 
 describe("Visualizations show what Python drew (ADR-0024)", () => {
-  it("shows every figure on a step's figure ports: Plotly drawn, SVG as an image", async () => {
+  async function chartStep(items: { library: string; format: string; title?: string; content: string }[]) {
     const { http, HttpResponse } = await import("msw");
     const { server } = await import("./server.ts");
-    const { attempts, pipeline, scoreOutputs } = await import("./fixtures.ts");
+    const { attempts, pipeline, run, scoreOutputs } = await import("./fixtures.ts");
     const chartPipeline = {
       ...pipeline,
-      nodes: [...pipeline.nodes, { id: "chart_1", operator: "sprisk.profile.chart@1.0.0", params: { kind: "histogram", x: "x" } }],
+      nodes: [...pipeline.nodes, { id: "chart_1", operator: "sprisk.profile.chart@1.0.0", params: { kind: "histogram", x: "sepal_length", bins: 10 } }],
       edges: [...pipeline.edges, { from: "load.data", to: "chart_1.data" }],
     };
     const chartAttempt = { ...attempts[1]!, id: "att_01JABCDEFGHJKMNPQRSTVWXY77", node_id: "chart_1" };
     const output = { port: "chart", artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY77", size_bytes: 200 } };
-    const figures = {
-      items: [
-        { library: "plotly", format: "plotly_json", title: "histogram of x", content: '{"data": [], "layout": {}}' },
-        { library: "matplotlib", format: "svg", content: "<svg xmlns='http://www.w3.org/2000/svg'></svg>" },
-      ],
-    };
+    const posted: { nodes: { id: string; params: unknown }[] }[] = [];
     server.use(
       http.get("/api/pipeline_versions", () => HttpResponse.json([chartPipeline])),
       http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, chartAttempt])),
       http.get(`/api/attempts/${chartAttempt.id}/outputs`, () => HttpResponse.json([output])),
-      http.get(`/api/artifacts/${output.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(figures))),
+      http.get(`/api/artifacts/${output.artifact.id}/content`, () => HttpResponse.text(JSON.stringify({ items }))),
+      http.post("/api/pipeline_versions", async ({ request }) => {
+        const body = (await request.json()) as (typeof posted)[number];
+        posted.push(body);
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.post("/api/runs", () => HttpResponse.json({ ...run, status: "queued" }, { status: 202 })),
     );
+    return posted;
+  }
+  const show = (tab: "visuals" | "parameters") =>
     renderWithApi(
-      <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
+      <ViewInstance pin={undefined} setPin={undefined} tab={tab}>
         <StepTab />
       </ViewInstance>,
     );
+  const plotly = (title: string) => ({ library: "plotly", format: "plotly_json", title, content: '{"data": [], "layout": {}}' });
+
+  it("shows every figure on a step's figure ports: Plotly drawn, SVG as an image", async () => {
+    await chartStep([plotly("histogram of x"), { library: "matplotlib", format: "svg", content: "<svg xmlns='http://www.w3.org/2000/svg'></svg>" }]);
+    show("visuals");
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "chart_1" });
     expect(await screen.findByRole("img", { name: "histogram of x" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Figure 2" })).toHaveAttribute("src", expect.stringMatching(/^data:image\/svg\+xml/));
+  });
+
+  it("puts chart choices above the figure, not in Parameters, and redraws on change", async () => {
+    const posted = await chartStep([plotly("histogram of sepal_length")]);
+    show("visuals");
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "chart_1" });
+    const kind = await screen.findByRole("combobox", { name: "kind" });
+    expect(kind).toHaveValue("histogram");
+    const x = screen.getByRole("combobox", { name: "x" });
+    await waitFor(() => expect(within(x).getAllByRole("option").map((o) => o.textContent)).toEqual(["sepal_length", "species"]));
+    await userEvent.selectOptions(kind, "box");
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.nodes.find((n) => n.id === "chart_1")?.params).toEqual({ kind: "box", x: "sepal_length", bins: 10 });
+  });
+
+  it("Parameters keeps only settings that are not about the view", async () => {
+    await chartStep([]);
+    show("parameters");
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "chart_1" });
+    const settings = await screen.findByRole("region", { name: "Settings" });
+    expect(within(settings).getByRole("spinbutton", { name: "bins" })).toBeInTheDocument();
+    expect(within(settings).queryByRole("combobox", { name: "kind" })).toBeNull();
+    expect(screen.getByText(/kind, x and y are set in Visualizations/)).toBeInTheDocument();
+  });
+
+  it("several figures can be shown inline or as a grid", async () => {
+    await chartStep([plotly("one"), plotly("two")]);
+    show("visuals");
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "chart_1" });
+    await screen.findByRole("img", { name: "two" });
+    await userEvent.click(screen.getByRole("radio", { name: "Grid" }));
+    expect(screen.getByRole("region", { name: "Figures" })).toHaveClass("grid");
   });
 });
