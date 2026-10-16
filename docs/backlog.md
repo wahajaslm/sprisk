@@ -40,3 +40,6 @@ Remove an item when it is done; link the commit or ADR.
 | Third-party plugin code: isolation before loading non-core packs | arch §12 | M5 |
 | API bearer token so other local processes cannot call it (Host check only stops browsers) | security review | before hosted (M5) |
 | Local paths are checked at submit and run start; a file swapped for a symlink afterwards is not caught (worker should open the resolved path) | security review | M3 |
+| Table peek: cap Parquet footer size and decoded page bytes, and time out the read (a forged file can still make the API decode a lot) | security review | before untrusted packs (M5) |
+| Table peek: send a fixed error code to the browser; keep parquet/object_store detail in the server log | security review | M3 |
+| Parquet media type string is written in Rust, Python and TS; move it into `contracts/` | simplicity review | next contract change |

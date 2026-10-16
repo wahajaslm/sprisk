@@ -9,14 +9,19 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, TryFutureExt, TryStreamExt};
 use object_store::path::Path as ObjectPath;
 use object_store::{ObjectStore, ObjectStoreExt};
-use parquet::arrow::ParquetRecordBatchStreamBuilder;
 use parquet::arrow::arrow_reader::ArrowReaderOptions;
 use parquet::arrow::async_reader::AsyncFileReader;
+use parquet::arrow::{ParquetRecordBatchStreamBuilder, ProjectionMask};
 use parquet::errors::ParquetError;
 use parquet::file::metadata::{ParquetMetaData, ParquetMetaDataReader};
 use sprisk_contracts::{TableColumn, TablePage, TableRow};
 
 use crate::{ArtifactStore, StoreError, object_key, parse_hash};
+
+/// A page holds at most this many columns, and each cell at most this many characters,
+/// so one page stays small whatever the table looks like.
+const MAX_COLUMNS: usize = 100;
+const MAX_CELL_CHARS: usize = 500;
 
 impl ArtifactStore {
     /// Rows `offset..offset + limit` of a Parquet artifact as display text. Reads only the
@@ -40,32 +45,36 @@ impl ArtifactStore {
             key,
             size,
         };
+        let not_a_table = |reason: String| StoreError::NotATable {
+            hash: content_hash.to_owned(),
+            reason,
+        };
         let builder = ParquetRecordBatchStreamBuilder::new(reader)
             .await
-            .map_err(|e| StoreError::NotATable {
-                hash: content_hash.to_owned(),
-                reason: e.to_string(),
-            })?;
+            .map_err(|e| not_a_table(e.to_string()))?;
         let num_rows = builder.metadata().file_metadata().num_rows();
-        let total_rows = u64::try_from(num_rows).map_err(|_| StoreError::NotATable {
-            hash: content_hash.to_owned(),
-            reason: format!("footer reports {num_rows} rows"),
-        })?;
-        let columns = builder
-            .schema()
-            .fields()
+        let total_rows = u64::try_from(num_rows)
+            .map_err(|_| not_a_table(format!("footer reports {num_rows} rows")))?;
+        let fields = builder.schema().fields();
+        let total_columns = fields.len();
+        let shown = total_columns.min(MAX_COLUMNS);
+        let columns = fields
             .iter()
+            .take(shown)
             .map(|f| TableColumn {
                 name: f.name().clone(),
                 data_type: f.data_type().to_string(),
             })
             .collect();
+        let projection = ProjectionMask::roots(builder.parquet_schema(), 0..shown);
         let batches: Vec<_> = builder
+            .with_projection(projection)
             .with_offset(usize::try_from(offset).unwrap_or(usize::MAX))
             .with_limit(limit as usize)
             .build()?
             .try_collect()
-            .await?;
+            .await
+            .map_err(|e| not_a_table(e.to_string()))?;
         let mut rows = Vec::new();
         let options = FormatOptions::default();
         for batch in &batches {
@@ -85,7 +94,7 @@ impl ArtifactStore {
                         row.values.push(String::new());
                         row.missing.push(col as u64);
                     } else {
-                        row.values.push(formatter.value(i).to_string());
+                        row.values.push(cut(formatter.value(i).to_string()));
                     }
                 }
                 rows.push(row);
@@ -94,9 +103,17 @@ impl ArtifactStore {
         Ok(TablePage {
             offset,
             total_rows,
+            total_columns: total_columns as u64,
             columns,
             rows,
         })
+    }
+}
+
+fn cut(text: String) -> String {
+    match text.char_indices().nth(MAX_CELL_CHARS) {
+        Some((end, _)) => format!("{}…", &text[..end]),
+        None => text,
     }
 }
 

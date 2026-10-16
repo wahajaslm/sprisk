@@ -1,6 +1,7 @@
 {
   "offset": 100,
   "total_rows": 150,
+  "total_columns": 2,
   "columns": [
     {
       "name": "sepal_length",
@@ -13,12 +14,20 @@
   ],
   "rows": [
     {
-      "values": ["6.3", "virginica"],
+      "values": [
+        "6.3",
+        "virginica"
+      ],
       "missing": []
     },
     {
-      "values": ["", "virginica"],
-      "missing": [0]
+      "values": [
+        "",
+        "virginica"
+      ],
+      "missing": [
+        0
+      ]
     }
   ]
 }

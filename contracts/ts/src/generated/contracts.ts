@@ -241,7 +241,7 @@ export interface Error {
   message: string;
 }
 /**
- * One page of rows from a tabular artifact, for display (GET /artifacts/{id}/rows). Cells are display text; a missing cell is listed by column index and its text is empty.
+ * One page of rows from a tabular artifact, for display (GET /artifacts/{id}/rows). Cells are display text, cut to a bounded length; a missing cell is listed by column index and its text is empty. Wide tables return only their first columns.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "TablePage".
@@ -252,6 +252,10 @@ export interface TablePage {
    */
   offset: number;
   total_rows: number;
+  /**
+   * Columns in the table; more than `columns` holds when the table is too wide to page whole.
+   */
+  total_columns: number;
   columns: TableColumn[];
   rows: TableRow[];
 }

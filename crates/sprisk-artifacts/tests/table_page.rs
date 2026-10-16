@@ -45,7 +45,10 @@ async fn page_starts_at_offset_and_spans_row_groups() {
 
     let page = store.read_table_page(&hash, 95, 30).await.unwrap();
 
-    assert_eq!((page.offset, page.total_rows), (95, 250));
+    assert_eq!(
+        (page.offset, page.total_rows, page.total_columns),
+        (95, 250, 2)
+    );
     let columns: Vec<_> = page.columns.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(columns, ["x", "name"]);
     assert_eq!(page.columns[0].data_type, "Int64");
@@ -92,4 +95,46 @@ async fn unknown_hash_is_not_found() {
     let err = store.read_table_page(&unknown, 0, 10).await.unwrap_err();
 
     assert!(matches!(err, StoreError::NotFound(_)), "{err}");
+}
+
+fn single_batch_parquet(batch: &RecordBatch) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut writer = ArrowWriter::try_new(&mut bytes, batch.schema(), None).unwrap();
+    writer.write(batch).unwrap();
+    writer.close().unwrap();
+    bytes
+}
+
+#[tokio::test]
+async fn long_text_is_cut_so_a_page_stays_small() {
+    let long: StringArray = [Some("é".repeat(10_000))].into_iter().collect();
+    let batch = RecordBatch::try_from_iter([("note", Arc::new(long) as ArrayRef)]).unwrap();
+    let (_dir, store, hash) = committed(&single_batch_parquet(&batch)).await;
+
+    let page = store.read_table_page(&hash, 0, 1).await.unwrap();
+
+    let text = &page.rows[0].values[0];
+    assert_eq!(text.chars().count(), 501);
+    assert!(text.ends_with('…'));
+}
+
+#[tokio::test]
+async fn wide_table_returns_only_its_first_columns() {
+    let columns: Vec<_> = (0..150)
+        .map(|i| {
+            (
+                format!("c{i}"),
+                Arc::new(Int64Array::from(vec![i])) as ArrayRef,
+            )
+        })
+        .collect();
+    let batch = RecordBatch::try_from_iter(columns).unwrap();
+    let (_dir, store, hash) = committed(&single_batch_parquet(&batch)).await;
+
+    let page = store.read_table_page(&hash, 0, 1).await.unwrap();
+
+    assert_eq!(page.total_columns, 150);
+    assert_eq!(page.columns.len(), 100);
+    assert_eq!(page.rows[0].values.len(), 100);
+    assert_eq!(page.columns[99].name, "c99");
 }

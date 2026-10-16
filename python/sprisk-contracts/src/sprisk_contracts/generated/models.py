@@ -382,6 +382,13 @@ class TablePage(StrictModel):
     )
     offset: Annotated[int, Field(description="Index of the first row in this page.", ge=0)]
     total_rows: Annotated[int, Field(ge=0)]
+    total_columns: Annotated[
+        int,
+        Field(
+            description="Columns in the table; more than `columns` holds when the table is too wide to page whole.",
+            ge=0,
+        ),
+    ]
     columns: list[TableColumn]
     rows: list[TableRow]
 

@@ -52,12 +52,13 @@
     },
     "TablePage": {
       "title": "TablePage",
-      "description": "One page of rows from a tabular artifact, for display (GET /artifacts/{id}/rows). Cells are display text; a missing cell is listed by column index and its text is empty.",
+      "description": "One page of rows from a tabular artifact, for display (GET /artifacts/{id}/rows). Cells are display text, cut to a bounded length; a missing cell is listed by column index and its text is empty. Wide tables return only their first columns.",
       "type": "object",
       "additionalProperties": false,
       "required": [
         "offset",
         "total_rows",
+        "total_columns",
         "columns",
         "rows"
       ],
@@ -70,6 +71,11 @@
         "total_rows": {
           "type": "integer",
           "minimum": 0
+        },
+        "total_columns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Columns in the table; more than `columns` holds when the table is too wide to page whole."
         },
         "columns": {
           "type": "array",
