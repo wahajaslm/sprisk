@@ -1,4 +1,4 @@
-# ADR-0028: Large figures get an image preview
+# ADR-0029: Large figures get an image preview
 Status: Proposed
 Date: 2026-10-16
 Arch doc sections: §2A, §11. Amends ADR-0024 (figures) and ADR-0027 (size caps).
