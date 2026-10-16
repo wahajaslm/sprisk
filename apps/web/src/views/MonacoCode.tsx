@@ -8,18 +8,14 @@ import type { CodeInputProps } from "./CodeInput.tsx";
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 loader.config({ monaco });
 
+// VS Code Dark+ token colours (inherited from vs-dark), so code reads as it does in a notebook;
+// only the editor chrome uses Studio greys.
 monaco.editor.defineTheme("sprisk-studio", {
   base: "vs-dark",
   inherit: true,
-  rules: [
-    { token: "comment", foreground: "787878" },
-    { token: "string", foreground: "d4d4d4" },
-    { token: "keyword", foreground: "f2f2f2", fontStyle: "bold" },
-    { token: "number", foreground: "a8a8a8" },
-  ],
+  rules: [],
   colors: {
     "editor.background": "#0d0d0d",
-    "editor.foreground": "#d4d4d4",
     "editorLineNumber.foreground": "#4f4f4f",
     "editorLineNumber.activeForeground": "#a8a8a8",
     "editor.lineHighlightBackground": "#121212",

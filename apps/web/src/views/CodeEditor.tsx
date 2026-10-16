@@ -5,6 +5,7 @@ import { useSaveAndRun } from "../api/hooks.ts";
 import { setCodeSource } from "../flow/edit.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { CodeInput } from "./CodeInput.tsx";
+import { PlayIcon } from "./Icons.tsx";
 
 /** Edit a code step. Running saves a new pipeline version and starts a run of it; the
  * code itself only ever runs in a worker (ADR-0020). */
@@ -27,15 +28,17 @@ export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVer
           Runs with {overrides.map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join(", ")} (set in Inputs). The code below is unchanged.
         </p>
       )}
-      <CodeInput label={`Code for ${nodeId}`} value={draft} onChange={setDraft} onRun={run} />
+      {/* Like VS Code's editor title bar: what this is on the left, Run on the right. */}
       <div className="code-actions">
-        <span className="muted">Shift+Enter runs. Each run is saved as a new version.</span>
+        <span className="muted">Python · Shift+Enter runs · each run is saved as a new version</span>
         <span className="spacer" />
         {saveAndRun.isError && <span role="alert" className="error">{saveAndRun.error.message}</span>}
         <button type="button" className="run-code" disabled={saveAndRun.isPending || draft === ""} onClick={() => run(draft)}>
+          <PlayIcon />
           {saveAndRun.isPending ? "Starting…" : "Run code"}
         </button>
       </div>
+      <CodeInput label={`Code for ${nodeId}`} value={draft} onChange={setDraft} onRun={run} />
     </div>
   );
 }
