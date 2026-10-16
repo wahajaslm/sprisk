@@ -3,6 +3,7 @@ import { parse } from "@sprisk/contracts";
 import * as Tabs from "@radix-ui/react-tabs";
 
 import { useArtifactText, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../api/hooks.ts";
+import { useRunChecks } from "../api/checks.ts";
 import { MAX_INLINE_BYTES, PARQUET } from "../api/media.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../flow/latest.ts";
 import { useViewInstance, useViewSelection } from "../workbench/instance.tsx";
@@ -192,21 +193,11 @@ const prettyJson = (text: string | undefined) => {
 
 /** Methodology checks from the run's gate that cite this step (ADR-0017). */
 function Checks({ gate, nodeId }: { gate: Attempt | undefined; nodeId: string }) {
-  const outputs = useOutputs(gate?.state === "succeeded" ? gate.id : undefined);
-  const checksArtifact = outputs.data?.find((o) => o.port === "checks")?.artifact.id;
-  const text = useArtifactText(checksArtifact);
-  if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
-  if (text.isError) return <p role="alert" className="error">{text.error.message}</p>;
-  if (!gate || gate.state !== "succeeded") return <p className="muted">No methodology run for this flow yet.</p>;
-  if (!text.data) return <p className="muted">Loading…</p>;
-  let checks: MethodologyCheck[];
-  try {
-    const raw: unknown = JSON.parse(text.data);
-    if (!Array.isArray(raw)) throw new Error("expected a list of checks");
-    checks = raw.map((c) => parse("MethodologyCheck", c));
-  } catch (e) {
-    return <p role="alert" className="error">Unreadable methodology checks: {e instanceof Error ? e.message : "invalid"}</p>;
-  }
+  const run = useRunChecks(gate);
+  if (run.status === "error") return <p role="alert" className="error">{run.message}</p>;
+  if (run.status === "none") return <p className="muted">No methodology run for this flow yet.</p>;
+  if (run.status === "loading") return <p className="muted">Loading…</p>;
+  const checks = run.checks;
   const mine = checks.filter((c) => c.cited_nodes.includes(nodeId));
   if (mine.length === 0) return <p className="muted">No methodology check concerns this step.</p>;
   return (

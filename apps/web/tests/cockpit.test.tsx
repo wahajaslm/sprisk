@@ -13,6 +13,7 @@ import {
   PV,
   RUN,
   attempts,
+  checksJson,
   codeAttempt,
   codeDisplayJson,
   codeOutputs,
@@ -478,6 +479,55 @@ describe("code step failures", () => {
     showCode(codeDisplayJson);
     const table = await screen.findByRole("table");
     expect(within(table).getByRole("columnheader", { name: /species/ })).toHaveClass("text");
+  });
+});
+
+describe("node detail switch", () => {
+  const splitOutputs = [
+    { ...loadOutputs[0]!, port: "test", artifact: { ...loadOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXYT1" } },
+    { ...loadOutputs[0]!, port: "train", artifact: { ...loadOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXYT2" } },
+  ];
+  function withSplitOutputs() {
+    const split = attempts.filter((a) => a.node_id === "split").at(-1)!;
+    server.use(
+      http.get(`/api/attempts/${split.id}/outputs`, () => HttpResponse.json(splitOutputs)),
+      http.get("/api/artifacts/:id/rows", ({ params }) =>
+        HttpResponse.json({ ...tablePage(0, 1), total_rows: params.id === "art_01JABCDEFGHJKMNPQRSTVWXYT1" ? 30 : 90 }),
+      ),
+    );
+  }
+
+  it("hides every preview in Compact and shows them in Summary", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Compact" }));
+    const score = await screen.findByRole("button", { name: /^score/ });
+    expect(score.querySelector(".card-head")).toBeNull();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Summary" }));
+    const card = await screen.findByRole("button", { name: /^score/ });
+    await waitFor(() => expect(card).toHaveTextContent("accuracy 0.947"));
+    expect(card.querySelector(".card-status")).toHaveTextContent("succeeded");
+    expect(screen.getByRole("radio", { name: "Summary" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("draws the train / test balance of a split in Detail", async () => {
+    withSplitOutputs();
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Detail" }));
+    expect(await screen.findByLabelText("train 90 rows, test 30 rows")).toBeInTheDocument();
+    expect(screen.getByText("75 / 25")).toBeInTheDocument();
+  });
+
+  it("flags a step that a methodology check did not pass", async () => {
+    const failing = JSON.parse(checksJson).map((c: { verdict: string }) => ({ ...c, verdict: "fail" }));
+    server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify(failing))));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Summary" }));
+    const split = await screen.findByRole("button", { name: /^split/ });
+    await waitFor(() => expect(split).toHaveTextContent("⚠ 1 check"));
   });
 });
 

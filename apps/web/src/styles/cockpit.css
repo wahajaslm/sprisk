@@ -269,3 +269,53 @@ p { margin: 0; }
 .run-code:disabled { background: var(--node-hover); color: var(--faint); cursor: default; }
 .code-output { display: grid; gap: 12px; }
 .figure { max-width: 100%; border-radius: 6px; background: var(--white); }
+
+/* ── Canvas cards (Summary / Detail levels) ─────────── */
+.flow-card { display: grid; grid-template-rows: auto 1fr auto; padding: 0; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; background: var(--node); text-align: left; overflow: hidden; transition: background 0.15s, border-color 0.15s; }
+.flow-card:hover { background: var(--node-hover); }
+.flow-card.selected { background: var(--node-selected); border-color: rgba(255, 255, 255, 0.16); }
+.flow-card.bad { border-color: rgba(255, 92, 92, 0.35); }
+.card-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+.card-title { font-size: 12.5px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-op { margin-left: auto; font: 10px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.card-body { display: grid; align-content: start; gap: 8px; padding: 8px 10px 0; min-height: 0; overflow: hidden; }
+.card-fact { font: 11px var(--mono); color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-fact .node-fact { font-size: 11px; color: var(--soft); }
+.card-status { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; font: 10.5px var(--mono); white-space: nowrap; }
+.card-status .dot { width: 5px; height: 5px; }
+.card-concern { margin-left: auto; color: var(--alert); }
+
+/* Small pictures inside cards. Monochrome; red only for problems. */
+.nv { display: grid; gap: 5px; min-width: 0; }
+.nv-legend { display: flex; justify-content: space-between; gap: 6px; font: 10px var(--mono); color: var(--muted); }
+.nv-legend b { color: var(--soft); font-weight: 500; }
+.nv-split-bar { height: 8px; border-radius: 4px; background: var(--wash-strong); overflow: hidden; }
+.nv-split-bar span { display: block; height: 100%; background: var(--dim); border-radius: 4px 0 0 4px; }
+.nv-bars { display: flex; align-items: flex-end; gap: 2px; height: 30px; }
+.nv-bars span { flex: 1; min-width: 2px; border-radius: 1px 1px 0 0; background: var(--ghost); }
+.nv-bars span.warn { background: var(--alert); }
+.nv-cols { grid-template-columns: 1fr 1fr; gap: 3px 8px; font: 10px var(--mono); color: var(--muted); }
+.nv-col { display: flex; gap: 5px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nv-col-type { width: 14px; flex-shrink: 0; color: var(--faint); }
+.nv-more { color: var(--faint); }
+.nv-metric { grid-template-columns: auto 1fr; align-items: center; gap: 10px; }
+.nv-metric-value { display: grid; line-height: 1.1; }
+.nv-metric-value b { font: 500 22px var(--sans); color: var(--ink); letter-spacing: -0.01em; }
+.nv-metric-value span { font: 10px var(--mono); color: var(--muted); }
+.nv-spark { width: 100%; height: 30px; overflow: visible; }
+.nv-spark polyline { fill: none; stroke: var(--dim); stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.nv-spark circle { fill: var(--ink); }
+.nv-kv { margin: 0; gap: 3px; font: 10.5px var(--mono); }
+.nv-kv div { display: flex; justify-content: space-between; gap: 8px; }
+.nv-kv dt { color: var(--faint); }
+.nv-kv dd { margin: 0; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nv-thumb { display: block; width: 100%; height: 64px; object-fit: cover; object-position: top; border-radius: 6px; background: var(--white); opacity: 0.92; }
+.nv-note { font: 10px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nv-skeleton { height: 30px; border-radius: 6px; background: var(--wash); }
+
+/* Canvas controls: zoom and node detail side by side. */
+.canvas-controls { display: flex; gap: 8px; }
+.detail-switch { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line); }
+.detail-switch button { height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12px; }
+.detail-switch button:hover { color: var(--ink); }
+.detail-switch button[aria-checked="true"] { background: var(--wash-strong); color: var(--ink); }

@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 import type { CodeInputProps } from "../src/views/CodeInput.tsx";
 
+import { useCanvasDetail } from "../src/workbench/detail.ts";
 import { useSelection } from "../src/workbench/selection.ts";
 import { useWorkbench } from "../src/workbench/workbench.ts";
 
@@ -43,6 +44,7 @@ beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 beforeEach(() => {
   useSelection.setState({ nav: "Flow", pipelineVersionId: undefined, runId: undefined, nodeId: undefined });
   useWorkbench.setState({ activity: "steps", editing: false, dock: undefined });
+  useCanvasDetail.setState({ level: "summary" });
 });
 afterEach(() => {
   cleanup();

@@ -56,15 +56,24 @@ function withStatus(status: string, fact: string | undefined): ReactNode {
   );
 }
 
-function headline(text: string): string | undefined {
+/** The evaluator's headline metric, e.g. `{ name: "accuracy", value: 0.947 }`. */
+export function headlineMetric(text: string): { name: string; value: number } | undefined {
   let metrics: unknown;
   try {
     metrics = JSON.parse(text);
   } catch {
-    return undefined; // the node keeps its status; the Inspector shows the raw text
+    return undefined; // not metrics; the Inspector shows the raw text
   }
   if (typeof metrics !== "object" || metrics === null) return undefined;
   const values = metrics as Record<string, unknown>;
   const name = HEADLINE_METRICS.find((m) => typeof values[m] === "number");
-  return name ? `${name} ${Number((values[name] as number).toPrecision(3))}` : undefined;
+  return name ? { name, value: values[name] as number } : undefined;
 }
+
+export const formatMetric = (value: number) => String(Number(value.toPrecision(3)));
+
+function headline(text: string): string | undefined {
+  const metric = headlineMetric(text);
+  return metric && `${metric.name} ${formatMetric(metric.value)}`;
+}
+
