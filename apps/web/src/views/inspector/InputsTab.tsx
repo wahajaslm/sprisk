@@ -1,17 +1,17 @@
-import type { Attempt, Operator, PipelineVersion } from "@sprisk/contracts";
-import { useState } from "react";
+import type { Attempt, CodeInterface, PipelineVersion } from "@sprisk/contracts";
 
-import { useOutputs, useSaveAndRun, useTablePage } from "../../api/hooks.ts";
+import type { Read } from "../../api/code.ts";
+
+import { useOutputs, useTablePage } from "../../api/hooks.ts";
 import { PARQUET } from "../../api/media.ts";
-import { isCodeOperator, setParams } from "../../flow/edit.ts";
+import { isCodeOperator } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { CodeFound } from "./CodeFound.tsx";
 
-type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator | undefined; attempts: Attempt[] };
+type Props = { pipeline: PipelineVersion; nodeId: string; attempts: Attempt[]; found: Read<CodeInterface> };
 
-/** What a step reads and the settings it runs with. Changing a setting runs a new version. */
-export function InputsTab({ pipeline, nodeId, operator, attempts }: Props) {
+/** What a step reads: tables from other steps, and names its code reads but nothing defines. */
+export function InputsTab({ pipeline, nodeId, attempts, found }: Props) {
   const node = pipeline.nodes.find((n) => n.id === nodeId);
   const incoming = pipeline.edges.filter((e) => e.to.split(".")[0] === nodeId);
   const latest = latestByNode(attempts);
@@ -39,19 +39,7 @@ export function InputsTab({ pipeline, nodeId, operator, attempts }: Props) {
           </ul>
         )}
       </section>
-      {node && isCodeOperator(node.operator) && (
-        <CodeFound pipeline={pipeline} nodeId={nodeId} params={node.params} attempt={hasOutputs(latest.get(nodeId)) ? latest.get(nodeId) : undefined} />
-      )}
-      {node && operator && (
-        <Settings
-          key={`${pipeline.id}/${nodeId}`}
-          pipeline={pipeline}
-          nodeId={nodeId}
-          params={node.params}
-          schema={operator.params_schema}
-          skip={isCodeOperator(operator.id) ? ["source", "parameters", "output"] : []}
-        />
-      )}
+      {node && isCodeOperator(node.operator) && <UnboundNames found={found} />}
     </div>
   );
 }
@@ -70,134 +58,40 @@ function InputRow({ port, from, fromPort, attempt }: { port: string; from: strin
         {from}.{fromPort}
       </button>
       <span className="input-size">
-        {!attempt ? "not run yet" : size ? `${size.total_rows} rows × ${size.total_columns} cols` : artifact ? "" : "…"}
+        {!attempt
+          ? "not run yet"
+          : size
+            ? `${size.total_rows} rows × ${size.total_columns} cols`
+            : artifact?.media_type === "application/vnd.skops"
+              ? "fitted model"
+              : artifact
+                ? ""
+                : "…"}
       </span>
     </li>
   );
 }
 
-type Field = { name: string; type: string; enum?: string[]; items?: { type?: string }; minimum?: number; maximum?: number };
-
-function fieldsOf(schema: Record<string, unknown>, skip: string[]): Field[] {
-  const properties = (schema.properties ?? {}) as Record<string, Omit<Field, "name">>;
-  return Object.entries(properties)
-    .filter(([name]) => !skip.includes(name))
-    .map(([name, spec]) => ({ name, ...spec }));
-}
-
-/** Form values as typed; turned back into params only when the user runs. */
-type Draft = Record<string, string | boolean>;
-
-function toDraft(value: unknown): string | boolean {
-  if (typeof value === "boolean") return value;
-  if (Array.isArray(value)) return value.join(", ");
-  if (value === undefined) return "";
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-function fromDraft(field: Field, value: string | boolean): unknown {
-  if (typeof value === "boolean") return value;
-  if (field.type === "integer" || field.type === "number") return value.trim() === "" ? undefined : Number(value);
-  if (field.type === "array") return value.split(",").map((v) => v.trim()).filter((v) => v !== "");
-  if (field.type === "string") return value;
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return value; // the compiler reports what is wrong with it
-  }
-}
-
-function Settings({ pipeline, nodeId, params, schema, skip }: {
-  pipeline: PipelineVersion;
-  nodeId: string;
-  params: Record<string, unknown>;
-  schema: Record<string, unknown>;
-  skip: string[];
-}) {
-  const fields = fieldsOf(schema, skip);
-  const initial: Draft = Object.fromEntries(fields.map((f) => [f.name, toDraft(params[f.name])]));
-  const [draft, setDraft] = useState<Draft>(initial);
-  const saveAndRun = useSaveAndRun();
-  const showRun = useSelection((s) => s.showRun);
-  const changed = fields.some((f) => draft[f.name] !== initial[f.name]);
-  if (fields.length === 0) return null;
-
-  const run = () => {
-    const next: Record<string, unknown> = { ...params };
-    for (const f of fields) {
-      const value = fromDraft(f, draft[f.name] ?? "");
-      if (value === undefined) delete next[f.name];
-      else next[f.name] = value;
-    }
-    const version = setParams(pipeline, nodeId, next);
-    // Rust compiles and checks the new version; its errors are shown below (rule 3).
-    saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
-  };
-  const set = (name: string, value: string | boolean) => setDraft({ ...draft, [name]: value });
-
+function UnboundNames({ found }: { found: Read<CodeInterface> }) {
+  if (found.status === "error") return <p role="alert" className="error">{found.message}</p>;
+  if (found.status !== "ready") return null;
+  const unbound = found.value.inputs.filter((i) => !i.bound);
   return (
-    <section className="settings" aria-label="Settings">
-      <p className="output-title">Settings</p>
-      <div className="settings-grid">
-        {fields.map((f) => (
-          <label key={f.name} className="setting">
-            <span className="setting-name">{f.name.replaceAll("_", " ")}</span>
-            <SettingInput field={f} value={draft[f.name] ?? ""} onChange={(v) => set(f.name, v)} />
-          </label>
+    <section className="found" aria-label="Names read by the code">
+      <p className="found-label">Names the code reads</p>
+      <ul className="found-list">
+        {found.value.inputs.map((i) => (
+          <li key={i.name} className={i.bound ? "found-value" : "found-unbound"}>
+            <span className="mono">{i.name}</span>{" "}
+            {i.bound ? (
+              <span className="found-meta">the input table</span>
+            ) : (
+              <span className="error">nothing defines it; the code fails if it reaches it</span>
+            )}
+          </li>
         ))}
-      </div>
-      <div className="settings-actions">
-        {saveAndRun.isError && <span role="alert" className="error">{saveAndRun.error.message}</span>}
-        <span className="spacer" />
-        {changed && (
-          <button type="button" className="page-btn" onClick={() => setDraft(initial)}>
-            Reset
-          </button>
-        )}
-        <button type="button" className="run-code" disabled={!changed || saveAndRun.isPending} onClick={run}>
-          {saveAndRun.isPending ? "Starting…" : "Run with these settings"}
-        </button>
-      </div>
+      </ul>
+      {unbound.length === 0 && found.value.inputs.length === 0 && <p className="muted">The code reads no outside names.</p>}
     </section>
-  );
-}
-
-function SettingInput({ field, value, onChange }: { field: Field; value: string | boolean; onChange: (v: string | boolean) => void }) {
-  const label = field.name;
-  if (field.type === "boolean") {
-    return <input aria-label={label} type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />;
-  }
-  if (field.enum) {
-    return (
-      <select aria-label={label} value={String(value)} onChange={(e) => onChange(e.target.value)}>
-        {field.enum.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  if (field.type === "integer" || field.type === "number") {
-    return (
-      <input
-        aria-label={label}
-        type="number"
-        step={field.type === "integer" ? 1 : "any"}
-        min={field.minimum}
-        max={field.maximum}
-        value={String(value)}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    );
-  }
-  return (
-    <input
-      aria-label={label}
-      type="text"
-      value={String(value)}
-      placeholder={field.type === "array" ? "comma separated" : undefined}
-      onChange={(e) => onChange(e.target.value)}
-    />
   );
 }

@@ -1,16 +1,19 @@
 import type { Attempt, AttemptOutput } from "@sprisk/contracts";
+import type { ReactNode } from "react";
 
 import { useArtifactText, useOutputs } from "../../api/hooks.ts";
 import { MAX_INLINE_BYTES, PARQUET } from "../../api/media.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { isProfileOperator } from "../../flow/stages.ts";
 import { useInspectorDetail } from "../../workbench/detail.ts";
-import { CodeOutput } from "../CodeOutput.tsx";
 import { ColumnProfile } from "../ColumnProfile.tsx";
 import { formatMetric } from "../NodeFact.tsx";
 import { TablePeek } from "../TablePeek.tsx";
 
 export type Explore = ((port: string) => void) | undefined;
+
+/** A code step's reports are shown in their own tabs, not as data. */
+const REPORT_PORTS = ["display", "interface"];
 
 type Props = {
   attempt: Attempt | undefined;
@@ -21,27 +24,29 @@ type Props = {
   explore: Explore;
 };
 
-/** What the step produced, drawn for people: tables, metrics, figures. */
-export function ResultTab({ attempt, operator, capability, previous, explore }: Props) {
+/** What the step produces, drawn for people: tables, metrics, the model. Code steps also
+ * choose what they pass on and list the other values they hold. */
+export function DataTab({ attempt, operator, capability, previous, explore, children }: Props & { children?: ReactNode }) {
   const outputs = useOutputs(attempt?.id);
-  if (!attempt) return <p className="muted">No result yet. Run the flow to see this step's output.</p>;
-  if (outputs.isPending) return <p className="muted">Loading result…</p>;
+  if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
+  if (outputs.isPending) return <p className="muted">Loading…</p>;
   if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
-  if (outputs.data.length === 0) return <p className="muted">This step produced no output.</p>;
+  const data = outputs.data.filter((o) => !(isCodeOperator(operator) && REPORT_PORTS.includes(o.port)));
   return (
     <div className="outputs">
-      {outputs.data.map((o) => (
+      {data.length === 0 && <p className="muted">This step produces no data.</p>}
+      {data.map((o) => (
         <Output key={o.port} output={o} view={viewOf(o, operator, capability)} previous={previous} explore={explore} />
       ))}
+      {children}
     </div>
   );
 }
 
-type OutputView = "code" | "profile" | "table" | "metrics" | "json" | "model" | "other";
+type OutputView = "profile" | "table" | "metrics" | "json" | "model" | "other";
 
 function viewOf(output: AttemptOutput, operator: string | undefined, capability: string | undefined): OutputView {
   const media = output.artifact.media_type;
-  if (isCodeOperator(operator) && output.port === "display") return "code";
   if (isProfileOperator(operator) && output.port === "profile") return "profile";
   if (media === PARQUET) return "table";
   if (media === "application/json") return capability === "evaluator" ? "metrics" : "json";
@@ -50,7 +55,6 @@ function viewOf(output: AttemptOutput, operator: string | undefined, capability:
 }
 
 const TITLE: Record<OutputView, (port: string) => string> = {
-  code: () => "Output",
   profile: () => "Columns",
   table: (port) => `Table · ${port}`,
   metrics: () => "Metrics",
@@ -58,9 +62,6 @@ const TITLE: Record<OutputView, (port: string) => string> = {
   model: () => "Model",
   other: (port) => port,
 };
-
-/** Code output carries figures, so it may be larger than other JSON; still capped (rule 9). */
-const MAX_CODE_DISPLAY_BYTES = 4 * 1024 * 1024;
 
 function Output({ output, view, previous, explore }: { output: AttemptOutput; view: OutputView; previous: Props["previous"]; explore: Explore }) {
   const technical = useInspectorDetail((s) => s.technical);
@@ -83,13 +84,7 @@ function Output({ output, view, previous, explore }: { output: AttemptOutput; vi
           </button>
         )}
       </div>
-      {view === "code" ? (
-        a.size_bytes > MAX_CODE_DISPLAY_BYTES ? (
-          <p className="muted">Code output too large to show here ({a.size_bytes} bytes).</p>
-        ) : (
-          <CodeOutput artifactId={a.id} />
-        )
-      ) : isJson && !small ? (
+      {isJson && !small ? (
         <p className="muted">Output too large to show here ({a.size_bytes} bytes).</p>
       ) : isJson && text.isError ? (
         <p role="alert" className="error">{text.error.message}</p>

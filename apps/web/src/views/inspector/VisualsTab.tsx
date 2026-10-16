@@ -1,48 +1,35 @@
 import type { CodeDisplay } from "@sprisk/contracts";
-import { parse } from "@sprisk/contracts";
 import { useEffect, useState } from "react";
 
-import { useArtifactText } from "../api/hooks.ts";
-import { type ResultLayout, useResultLayout } from "../workbench/detail.ts";
-import { RowsTable } from "./RowsTable.tsx";
+import type { Read } from "../../api/code.ts";
+import { type ResultLayout, useResultLayout } from "../../workbench/detail.ts";
+import { RowsTable } from "../RowsTable.tsx";
 
-/** What a code step showed, in the order it happened: printed text, tables and figures
- * (ADR-0020, Node Framework Scenario F). Inline or as a grid; switching never re-runs. */
-export function CodeOutput({ artifactId }: { artifactId: string }) {
-  const text = useArtifactText(artifactId);
+/** Figures and displayed tables, in the order the step showed them (Node Framework §7).
+ * Inline or as a grid; switching never re-runs anything. */
+export function VisualsTab({ display, isCode }: { display: Read<CodeDisplay>; isCode: boolean }) {
   const { layout, setLayout } = useResultLayout();
   const [enlarged, setEnlarged] = useState<{ label: string; src: string } | undefined>();
-  if (text.isPending) return <p className="muted">Loading output…</p>;
-  if (text.isError) return <p role="alert" className="error">{text.error.message}</p>;
-  let display: CodeDisplay;
-  try {
-    display = parse("CodeDisplay", JSON.parse(text.data));
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : String(e);
-    return <p role="alert" className="error">Unreadable code output {artifactId}: {reason}</p>;
+  if (!isCode) return <p className="muted">Built-in steps draw no figures. Their tables are in Data.</p>;
+  if (display.status === "none") return <p className="muted">{display.reason}</p>;
+  if (display.status === "loading") return <p className="muted">Loading…</p>;
+  if (display.status === "error") return <p role="alert" className="error">{display.message}</p>;
+  const items = display.value.items.filter((i) => i.kind !== "text");
+  if (items.length === 0) {
+    return <p className="muted">Nothing to draw. Use <code>display(df)</code>, a plot, or end the code with a table.</p>;
   }
-  if (display.items.length === 0) return <p className="muted">The code showed nothing. End it with an expression, a print or a plot.</p>;
   let figure = 0;
   return (
     <>
       <div className="result-bar">
         <LayoutSwitch layout={layout} setLayout={setLayout} />
       </div>
-      <section className={`code-output ${layout}`} aria-label="Code output">
-        {display.items.map((item, i) => {
-          if (item.kind === "text") {
-            const channel = item.channel ?? "stdout";
-            return (
-              <div key={i} className={`result-text ${channel}`} data-channel={channel}>
-                {channel === "stderr" && <span className="result-tag">stderr</span>}
-                <pre className="code">{item.text}</pre>
-              </div>
-            );
-          }
+      <section className={`code-output ${layout}`} aria-label="Visualizations">
+        {items.map((item, i) => {
           if (item.kind === "table" && item.table) {
             return (
               <div key={i} className="peek result-tile">
-                <RowsTable page={item.table} label={`result ${i + 1}`} />
+                <RowsTable page={item.table} label={`table ${i + 1}`} />
                 <div className="peek-foot">{`${item.table.rows.length} of ${item.table.total_rows} rows`}</div>
               </div>
             );
@@ -64,6 +51,10 @@ export function CodeOutput({ artifactId }: { artifactId: string }) {
     </>
   );
 }
+
+/** Figures and tables the step displayed, for the tab badge. */
+export const visualCount = (display: Read<CodeDisplay>) =>
+  display.status === "ready" ? display.value.items.filter((i) => i.kind !== "text").length : 0;
 
 function LayoutSwitch({ layout, setLayout }: { layout: ResultLayout; setLayout: (l: ResultLayout) => void }) {
   return (

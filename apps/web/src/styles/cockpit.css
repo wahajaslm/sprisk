@@ -321,7 +321,6 @@ p { margin: 0; }
 .detail-switch button[aria-checked="true"] { background: var(--wash-strong); color: var(--ink); }
 
 /* ── Inspector tabs ─────────────────────────────────── */
-.tab-badge { margin-left: 6px; font: 10px var(--mono); color: var(--alert); }
 .tech-switch { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .tech-switch input { accent-color: var(--ink); margin: 0; }
 .output-title { font-size: 12px; font-weight: 500; color: var(--soft); margin: 0 0 8px; }
@@ -428,3 +427,10 @@ p { margin: 0; }
 .lightbox img { max-width: 100%; max-height: calc(90vh - 48px); object-fit: contain; border-radius: 8px; background: var(--white); }
 .lightbox figcaption { display: flex; justify-content: space-between; align-items: center; font: 11px var(--mono); color: var(--soft); }
 .overrides { margin: 0; font: 11px var(--mono); color: var(--soft); padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--wash); }
+.tabs button.muted-tab { color: var(--ghost); }
+.tabs button.muted-tab[data-state="active"] { color: var(--dim); }
+.tab-badge { margin-left: 6px; font: 10px var(--mono); color: var(--muted); }
+.tab-badge.alert { color: var(--alert); }
+.console { display: grid; gap: 14px; }
+.console-text { display: grid; gap: 8px; }
+.found-value { display: flex; gap: 10px; align-items: baseline; font-size: 12px; }

@@ -90,7 +90,7 @@ def _data_output(result: pl.DataFrame | None, data: Path, out_dir: Path) -> Outp
 
 PROVIDED = ("data",)
 # Tools the step itself puts in scope; reading them is not an input.
-TOOLS = ("pl", "sprisk")
+TOOLS = ("pl", "sprisk", "display")
 MAX_OUTPUT_CANDIDATES = 20
 
 

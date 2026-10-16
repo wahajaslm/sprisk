@@ -492,11 +492,13 @@ describe("code steps (ADR-0020)", () => {
     );
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
-    const shown = await screen.findByRole("region", { name: "Code output" });
-    expect(within(shown).getByText("150")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("tab", { name: /Visualizations/ }));
+    const shown = await screen.findByRole("region", { name: "Visualizations" });
     expect(within(shown).getByRole("table")).toHaveTextContent("setosa");
     expect(within(shown).getByText("1 of 150 rows")).toBeInTheDocument();
     expect(within(shown).getByRole("img", { name: "Figure 1" })).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
+    await userEvent.click(screen.getByRole("tab", { name: /Console/ }));
+    expect(within(await screen.findByRole("region", { name: "Printed output" })).getByText("150")).toBeInTheDocument();
   });
 });
 
@@ -519,24 +521,30 @@ describe("code output layout (Scenario F)", () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
   }
+  const open = async (tab: RegExp) => userEvent.click(await screen.findByRole("tab", { name: tab }));
 
-  it("marks stderr and warnings apart from printed text", async () => {
+  it("marks stderr and warnings apart from printed text, and badges the Console", async () => {
     showMany();
+    expect(await screen.findByRole("tab", { name: /Console ⚠ 1/ })).toBeInTheDocument();
+    await open(/Console/);
     const warning = await screen.findByText(/small sample/);
     expect(warning.closest("[data-channel]")).toHaveAttribute("data-channel", "stderr");
   });
 
   it("switches between inline and a grid without re-running anything", async () => {
     showMany();
-    const shown = await screen.findByRole("region", { name: "Code output" });
+    expect(await screen.findByRole("tab", { name: /Visualizations 2/ })).toBeInTheDocument();
+    await open(/Visualizations/);
+    const shown = await screen.findByRole("region", { name: "Visualizations" });
     expect(shown).toHaveClass("inline");
     await userEvent.click(screen.getByRole("radio", { name: "Grid" }));
-    expect(screen.getByRole("region", { name: "Code output" })).toHaveClass("grid");
+    expect(screen.getByRole("region", { name: "Visualizations" })).toHaveClass("grid");
     expect(screen.getAllByRole("img", { name: /Figure \d/ })).toHaveLength(2);
   });
 
   it("opens a figure large and closes it with Escape", async () => {
     showMany();
+    await open(/Visualizations/);
     await userEvent.click(await screen.findByRole("button", { name: "Enlarge Figure 2" }));
     const dialog = screen.getByRole("dialog", { name: "Figure 2" });
     expect(within(dialog).getByRole("img")).toHaveAttribute("src", "data:image/png;base64,BBBB");
@@ -558,7 +566,7 @@ describe("code step failures", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("unknown_operator: no sprisk.code.python");
   });
 
-  function showCode(content: string, sizeBytes = 900) {
+  async function showCode(content: string, sizeBytes = 900) {
     server.use(
       http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])),
       http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
@@ -569,37 +577,40 @@ describe("code step failures", () => {
     );
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
+    await userEvent.click(await screen.findByRole("tab", { name: /Visualizations/ }));
   }
 
   it("says the output is unreadable instead of drawing nothing", async () => {
-    showCode('{"items": [{"kind": "video"}]}');
-    expect(await screen.findByRole("alert")).toHaveTextContent(`Unreadable code output ${codeOutputs[0]!.artifact.id}`);
+    await showCode('{"items": [{"kind": "video"}]}');
+    expect(await screen.findByRole("alert")).toHaveTextContent(`Unreadable display report ${codeOutputs[0]!.artifact.id}`);
   });
 
   it("flags an image item with no picture", async () => {
-    showCode('{"items": [{"kind": "image"}]}');
+    await showCode('{"items": [{"kind": "image"}]}');
     expect(await screen.findByRole("alert")).toHaveTextContent("Output item 1 (image) has no content");
     expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("does not download output above the cap", async () => {
-    showCode(codeDisplayJson, 10_000_000);
-    expect(await screen.findByText(/Code output too large/)).toBeInTheDocument();
+    await showCode(codeDisplayJson, 10_000_000);
+    expect(await screen.findByText(/Too large to show here/)).toBeInTheDocument();
   });
 
   it("left-aligns text columns the code returns", async () => {
-    showCode(codeDisplayJson);
+    await showCode(codeDisplayJson);
     const table = await screen.findByRole("table");
     expect(within(table).getByRole("columnheader", { name: /species/ })).toHaveClass("text");
   });
 });
 
 describe("inputs tab", () => {
-  function openInputs(nodeId: string) {
+  function openTab(nodeId: string, name: string) {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId });
-    return screen.findByRole("tab", { name: "Inputs" }).then((tab) => userEvent.click(tab));
+    return screen.findByRole("tab", { name }).then((tab) => userEvent.click(tab));
   }
+  const openInputs = (nodeId: string) => openTab(nodeId, "Inputs");
+  const openParameters = (nodeId: string) => openTab(nodeId, "Parameters");
 
   it("lists each input table with where it comes from and its size", async () => {
     await openInputs("split");
@@ -633,7 +644,7 @@ describe("inputs tab", () => {
         ),
       ),
     );
-    await openInputs("model");
+    await openParameters("model");
     const settings = await screen.findByRole("region", { name: "Settings" });
     expect(within(settings).getByRole("textbox", { name: "target" })).toHaveValue("y");
     expect(within(settings).getByRole("textbox", { name: "features" })).toHaveValue("x");
@@ -665,7 +676,7 @@ describe("inputs tab", () => {
         return HttpResponse.json({ ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ8", pipeline_version_id: body.pipeline_version_id }, { status: 202 });
       }),
     );
-    await openInputs("split");
+    await openParameters("split");
     const seed = await screen.findByRole("spinbutton", { name: "seed" });
     await userEvent.clear(seed);
     await userEvent.type(seed, "7");
@@ -711,33 +722,42 @@ describe("code step interface (ADR-0021)", () => {
     return posted;
   }
 
-  async function openInputs() {
+  async function openCode(tab: string) {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
-    await userEvent.click(await screen.findByRole("tab", { name: "Inputs" }));
-    return screen.findByRole("region", { name: "Found in your code" });
+    await userEvent.click(await screen.findByRole("tab", { name: tab }));
   }
 
-  it("lists what the run found, marking names nothing defines", async () => {
+  it("Inputs lists the names the code reads, marking names nothing defines", async () => {
     withInterface();
-    const found = await openInputs();
-    expect(found).toHaveTextContent("factor");
-    expect(found).toHaveTextContent("line 1");
-    expect(within(found).getByText(/lookup/).closest("li")).toHaveTextContent("nothing defines it");
-    expect(within(found).getByRole("radio", { name: /out · 120 rows × 2 cols/ })).toBeInTheDocument();
+    await openCode("Inputs");
+    const names = await screen.findByRole("region", { name: "Names read by the code" });
+    expect(within(names).getByText("data").closest("li")).toHaveTextContent("the input table");
+    expect(within(names).getByText("lookup").closest("li")).toHaveTextContent("nothing defines it");
   });
 
-  it("exposes a setting and runs with a new value, leaving the code as written", async () => {
+  it("Parameters exposes a setting found in the code and runs with a new value", async () => {
     const posted = withInterface();
-    const found = await openInputs();
+    await openCode("Parameters");
+    const found = await screen.findByRole("region", { name: "Settings in your code" });
+    expect(found).toHaveTextContent("line 1");
     await userEvent.click(within(found).getByRole("checkbox", { name: "Expose factor" }));
     const value = within(found).getByRole("spinbutton", { name: "factor" });
     await userEvent.clear(value);
     await userEvent.type(value, "10");
-    await userEvent.click(within(found).getByRole("radio", { name: /out · 120 rows/ }));
     await userEvent.click(within(found).getByRole("button", { name: "Run with these settings" }));
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]!.params).toEqual({ source: "factor = 2\nout = data", parameters: { factor: 10 }, output: "out" });
+    expect(posted[0]!.params).toEqual({ source: "factor = 2\nout = data", parameters: { factor: 10 } });
+  });
+
+  it("Data chooses which value the code passes on", async () => {
+    const posted = withInterface();
+    await openCode("Data");
+    const values = await screen.findByRole("region", { name: "Values in your code" });
+    await userEvent.click(within(values).getByRole("radio", { name: /out · 120 rows × 2 cols/ }));
+    await userEvent.click(within(values).getByRole("button", { name: "Pass this on and run" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.params).toEqual({ source: "factor = 2\nout = data", output: "out" });
   });
 });
 
