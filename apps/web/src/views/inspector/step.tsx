@@ -6,7 +6,7 @@ import { useNodeHistory } from "../../api/history.ts";
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
 import { addCodeStep, isCodeOperator } from "../../flow/edit.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
-import { shortName } from "../../flow/stages.ts";
+import { roleOf, shortName } from "../../flow/stages.ts";
 import { useInspectorDetail } from "../../workbench/detail.ts";
 import { useViewInstance, useViewSelection } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
@@ -24,6 +24,9 @@ import { type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
 import { shownTables, VisualsTab, visualCount } from "./VisualsTab.tsx";
 
 const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
+
+/** Attempt states in the words people use. */
+const STATE_WORDS: Record<string, string> = { cache_hit: "cached", timed_out: "timed out" };
 
 /** Everything the Inspector tabs show about the step this panel follows or is pinned to. */
 export function useStep() {
@@ -85,12 +88,13 @@ export type Step = ReturnType<typeof useStep>;
 /** The step's name, kind and state, plus the run when the panel is pinned. */
 export function StepMeta({ step }: { step: Step }) {
   const { pin } = useViewInstance();
-  const { node, nodeId, attempts, runId, latest } = step;
+  const { operator, nodeId, attempts, runId, latest } = step;
+  const state = attempts.isPending && runId ? "loading" : latest ? (STATE_WORDS[latest.state] ?? latest.state.replace("_", " ")) : "not run";
   return (
     <>
       <span className="sel-label">{nodeId}</span>
       <span className="sel-meta">
-        {node ? shortName(node.operator) : ""} · {attempts.isPending && runId ? "loading" : (latest?.state.replace("_", " ") ?? "not run")}
+        {operator ? roleOf(operator) : ""} · {state}
         {pin ? ` · run ${pin.runId.slice(-8)}` : ""}
       </span>
     </>

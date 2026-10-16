@@ -10,7 +10,7 @@ export function StepTab() {
   if (!tab) return <p className="muted pad">This panel's tab is unknown. Close it and open the tab again from Views.</p>;
   if (!step.nodeId) return <p className="muted pad">Select a step to see its {TAB_LABEL[tab].toLowerCase()}.</p>;
   return (
-    <div className="pane single step-pane">
+    <div className={`pane single step-pane tab-${tab}`}>
       <StepErrors step={step} />
       <TabBody tab={tab} step={step} />
     </div>

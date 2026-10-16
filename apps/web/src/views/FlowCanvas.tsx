@@ -131,7 +131,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
   );
 }
 
-/** Compact: a round icon, the step's name, and what kind of step it is and how it ran. */
+/** Compact: a round icon with the step's name and what it is for underneath; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
   const status = statusOf(data.state);
@@ -149,10 +149,12 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         openStepMenu({ nodeId: data.id, x: e.clientX, y: e.clientY });
       }}
     >
-      <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
+      {/* Handles sit on the circle, so lines meet it with no gap. */}
       <span className={`round-icon kind-${data.kind}`}>
+        <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
         <KindIcon kind={data.kind} size={16} />
         <span className={`state-dot tone-${status.tone}`} role="img" aria-label={status.text} />
+        <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       </span>
       <span className="round-text">
         <span className="node-title">{data.id}</span>
@@ -161,7 +163,6 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         {(status.tone === "bad" || status.tone === "live") && <span className={`round-state tone-${status.tone}`}>{status.text}</span>}
         {data.concerns > 0 && <span className="round-state tone-bad">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>}
       </span>
-      <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
     </button>
   );
 }
