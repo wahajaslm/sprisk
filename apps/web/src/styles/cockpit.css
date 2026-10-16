@@ -498,3 +498,13 @@ p { margin: 0; }
 .stage-head { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 400; color: var(--quiet); pointer-events: none; white-space: nowrap; }
 .stage-head .stage-count { padding: 0 5px; background: var(--wash); font: 10px var(--mono); color: var(--faint); }
 .stage-head.active { color: var(--ink); }
+
+/* Charts (ADR-0023): fill the tab like a table does. */
+.pane.step-pane.tab-visuals:has(.chart-tab) { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.chart-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chart-figure { flex: 1; min-height: 240px; margin: 0; }
+.chart-menu { position: relative; }
+.chart-form { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 8px; width: 240px; padding: 10px; border: 1px solid var(--line-strong); background: var(--raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); font: 12px var(--sans); color: var(--muted); }
+.chart-form label { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 8px; }
+.chart-form select { height: 26px; border: 1px solid var(--line-strong); background: var(--canvas); color: var(--ink); font: 12px var(--mono); }
+.chart-form .run-code { justify-self: end; }

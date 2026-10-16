@@ -28,6 +28,12 @@ Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true
 
 // Monaco needs a real browser (workers, layout). Tests drive a plain textbox with the same
 // contract; the real editor is checked in the browser.
+// ECharts needs a real browser (canvas, layout). Tests check what is drawn from; Chrome checks the drawing.
+vi.mock("../src/views/ChartView.tsx", () => ({
+  default: ({ chart }: { chart: { kind: string; x: string; y?: string | null } }) =>
+    createElement("figure", { "aria-label": `${chart.kind} of ${chart.x}${chart.y ? ` and ${chart.y}` : ""}`, "data-kind": chart.kind }),
+}));
+
 vi.mock("../src/views/MonacoCode.tsx", () => ({
   default: ({ value, label, onChange, onRun, readOnly }: CodeInputProps) =>
     createElement("textarea", {

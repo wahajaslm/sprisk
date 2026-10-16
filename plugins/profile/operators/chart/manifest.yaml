@@ -1,0 +1,20 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.chart@1.0.0
+capability_class: analyzer
+description: A chart of a table. Computes only the numbers the chart needs (bins, quartiles, a capped sample); the browser draws them (ADR-0023).
+entrypoint: sprisk_profile.chart:chart
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: chart, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [kind, x]
+  properties:
+    kind: { type: string, enum: [histogram, box, scatter, bar, line], description: "Which chart to draw." }
+    x: { type: string, minLength: 1, description: "Column on the horizontal axis (the categories for box and bar)." }
+    y: { type: string, minLength: 1, description: "Column on the vertical axis. Needed for scatter and line; for box and bar, the values per category." }
+    bins: { type: integer, minimum: 2, maximum: 200, default: 20, description: "Histogram bars." }
+    max_points: { type: integer, minimum: 10, maximum: 20000, default: 2000, description: "Most points a scatter or line draws; more are sampled with a fixed seed." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 120 }

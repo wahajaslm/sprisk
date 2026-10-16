@@ -8,7 +8,8 @@ import { ViewInstance } from "../src/workbench/instance.tsx";
 import { readTab } from "../src/workbench/inspectorTabs.ts";
 import { LAYOUT_VERSION, restoreLayout } from "../src/workbench/layout.ts";
 import { useSelection } from "../src/workbench/selection.ts";
-import { PV, RUN } from "./fixtures.ts";
+import { useWorkbench } from "../src/workbench/workbench.ts";
+import { fakeDock, PV, RUN } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 
 describe("each Inspector tab is its own dock panel", () => {
@@ -118,5 +119,69 @@ describe("every step shows its code", () => {
     expect(code).toHaveValue("def random_split(params, inputs, out_dir):\n    ...\n");
     expect(code).toHaveAttribute("readonly");
     expect(screen.queryByText(/Built-in step/)).toBeNull();
+  });
+});
+
+describe("charts (ADR-0023)", () => {
+  it("adds a chart of a table and opens it in Visualizations", async () => {
+    const { http, HttpResponse } = await import("msw");
+    const { server } = await import("./server.ts");
+    const { pipeline, run } = await import("./fixtures.ts");
+    const posted: { nodes: { id: string; operator: string; params: unknown }[] }[] = [];
+    server.use(
+      http.post("/api/pipeline_versions", async ({ request }) => {
+        const body = (await request.json()) as (typeof posted)[number];
+        posted.push(body);
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.post("/api/runs", () => HttpResponse.json({ ...run, status: "queued" }, { status: 202 })),
+    );
+    const dock = fakeDock();
+    useWorkbench.setState({ dock });
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={undefined} tab="data">
+        <StepTab />
+      </ViewInstance>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    await userEvent.click(await screen.findByRole("button", { name: "Chart" }));
+    const form = screen.getByRole("form", { name: "New chart" });
+    await userEvent.selectOptions(within(form).getByRole("combobox", { name: "Chart" }), "histogram");
+    await userEvent.selectOptions(within(form).getByRole("combobox", { name: "x" }), "sepal_length");
+    await userEvent.click(within(form).getByRole("button", { name: "Add chart" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.nodes.at(-1)).toEqual({ id: "chart_1", operator: "sprisk.profile.chart@1.0.0", params: { kind: "histogram", x: "sepal_length" } });
+    expect(pipeline.nodes.some((n) => n.id === "chart_1")).toBe(false);
+    await waitFor(() => expect(dock.showTab).toHaveBeenCalledWith("visuals"));
+  });
+});
+
+describe("a chart step's Visualizations", () => {
+  it("draws the chart from the step's aggregated numbers", async () => {
+    const { http, HttpResponse } = await import("msw");
+    const { server } = await import("./server.ts");
+    const { attempts, pipeline, scoreOutputs } = await import("./fixtures.ts");
+    const chartPipeline = {
+      ...pipeline,
+      nodes: [...pipeline.nodes, { id: "chart_1", operator: "sprisk.profile.chart@1.0.0", params: { kind: "histogram", x: "x" } }],
+      edges: [...pipeline.edges, { from: "load.data", to: "chart_1.data" }],
+    };
+    const chartAttempt = { ...attempts[1]!, id: "att_01JABCDEFGHJKMNPQRSTVWXY77", node_id: "chart_1" };
+    const output = { port: "chart", artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY77", size_bytes: 200 } };
+    const report = { kind: "histogram", x: "x", n_rows: 3, bins: [{ lower: 0, upper: 1, count: 3 }], missing: 0 };
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([chartPipeline])),
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, chartAttempt])),
+      http.get(`/api/attempts/${chartAttempt.id}/outputs`, () => HttpResponse.json([output])),
+      http.get(`/api/artifacts/${output.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(report))),
+    );
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
+        <StepTab />
+      </ViewInstance>,
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "chart_1" });
+    const figure = await screen.findByRole("figure", { name: "histogram of x" });
+    expect(figure).toHaveAttribute("data-kind", "histogram");
   });
 });

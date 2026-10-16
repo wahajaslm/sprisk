@@ -12,8 +12,8 @@ export type Read<T> =
   | { status: "error"; message: string }
   | { status: "ready"; value: T };
 
-/** One JSON report a code step's attempt wrote on `port`, parsed through its contract. */
-function useReport<T>(attempt: Attempt | undefined, port: string, parseIt: (raw: unknown) => T, limit: number): Read<T> {
+/** One JSON report an attempt wrote on `port`, parsed through its contract. */
+export function useReport<T>(attempt: Attempt | undefined, port: string, parseIt: (raw: unknown) => T, limit: number): Read<T> {
   const outputs = useOutputs(attempt?.id);
   const artifact = outputs.data?.find((o) => o.port === port)?.artifact;
   const small = artifact !== undefined && artifact.size_bytes <= limit;

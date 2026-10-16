@@ -33,6 +33,24 @@ export function addCodeStep(base: PipelineVersion, node: string, port: string) {
   return { version, nodeId };
 }
 
+export const CHART_OPERATOR = "sprisk.profile.chart@1.0.0";
+export const CHART_KINDS = ["histogram", "box", "scatter", "bar", "line"] as const;
+export type ChartSpec = { kind: (typeof CHART_KINDS)[number]; x: string; y?: string };
+
+export const isChartOperator = (ref: string | undefined) => ref?.startsWith("sprisk.profile.chart@") === true;
+
+/** A new version with a chart step reading `node.port` (ADR-0023). */
+export function addChartStep(base: PipelineVersion, node: string, port: string, spec: ChartSpec) {
+  let n = 1;
+  while (base.nodes.some((x) => x.id === `chart_${n}`)) n += 1;
+  const nodeId = `chart_${n}`;
+  const version = nextVersion(base, {
+    nodes: [...base.nodes, { id: nodeId, operator: CHART_OPERATOR, params: { ...spec } }],
+    edges: [...base.edges, { from: `${node}.${port}`, to: `${nodeId}.data` }],
+  });
+  return { version, nodeId };
+}
+
 /** A new version where one step runs with `params`; everything else is unchanged. */
 export function setParams(base: PipelineVersion, nodeId: string, params: Record<string, unknown>): PipelineVersion {
   return nextVersion(base, {

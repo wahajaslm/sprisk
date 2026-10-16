@@ -21,6 +21,7 @@ const entities: [keyof Entities, string][] = [
   ["TablePage", "table_page"],
   ["CodeDisplay", "code_display"],
   ["OperatorSource", "operator_source"],
+  ["ChartReport", "chart_report"],
   ["CodeInterface", "code_interface"],
 ];
 

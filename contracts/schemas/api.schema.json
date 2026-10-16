@@ -146,6 +146,51 @@
         "digest": { "$ref": "#/$defs/ContentHash", "description": "The operator's implementation digest: the code that runs, and the code shown, are the same." }
       }
     },
+    "ChartReport": {
+      "title": "ChartReport",
+      "description": "The numbers one chart needs, from a chart step (ADR-0023): bin counts, quartiles, a capped sample or bar values. Never the table.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "x", "n_rows"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["histogram", "box", "scatter", "bar", "line"] },
+        "x": { "type": "string" },
+        "y": { "type": "string", "description": "Omitted when the chart has no y column." },
+        "n_rows": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0, "description": "Histogram: rows with no value." },
+        "sampled": { "type": "boolean", "description": "Scatter and line: true when points were capped." },
+        "bins": { "type": "array", "items": { "$ref": "#/$defs/ChartBin" } },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/ChartBox" } },
+        "bars": { "type": "array", "items": { "$ref": "#/$defs/ChartBar" } },
+        "points": { "type": "array", "items": { "type": "array", "items": { "anyOf": [{ "type": "number" }, { "type": "string" }] } } }
+      }
+    },
+    "ChartBin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lower", "upper", "count"],
+      "properties": { "lower": { "type": "number" }, "upper": { "type": "number" }, "count": { "type": "integer", "minimum": 0 } }
+    },
+    "ChartBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group", "n"],
+      "properties": {
+        "group": { "type": "string" },
+        "min": { "type": "number" },
+        "q1": { "type": "number" },
+        "median": { "type": "number" },
+        "q3": { "type": "number" },
+        "max": { "type": "number" },
+        "n": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ChartBar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "value"],
+      "properties": { "x": { "type": "string" }, "value": { "type": "number" } }
+    },
     "CodeDisplay": {
       "title": "CodeDisplay",
       "description": "What a code step showed (ADR-0020): printed text, tables and images, in order. Written by the worker as the step's display artifact; every part is capped.",

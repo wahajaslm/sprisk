@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addCodeStep, CODE_OPERATOR, setCodeSource, setParams } from "../src/flow/edit.ts";
+import { addChartStep, addCodeStep, CHART_OPERATOR, CODE_OPERATOR, setCodeSource, setParams } from "../src/flow/edit.ts";
 import { settingChanges } from "../src/flow/diff.ts";
 import { flows } from "../src/flow/flows.ts";
 import { pipeline } from "./fixtures.ts";
@@ -17,6 +17,14 @@ describe("flow edits create a new pipeline version", () => {
     expect(version.edges.at(-1)).toEqual({ from: "load.data", to: "code_1.data" });
     expect(version.created_at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
     expect(pipeline.nodes.some((n) => n.id === "code_1")).toBe(false);
+  });
+
+  it("adds a chart step reading one table, with the chosen kind and columns", () => {
+    const { version, nodeId } = addChartStep(pipeline, "split", "test", { kind: "scatter", x: "a", y: "b" });
+    expect(nodeId).toBe("chart_1");
+    expect(version.nodes.at(-1)).toEqual({ id: "chart_1", operator: CHART_OPERATOR, params: { kind: "scatter", x: "a", y: "b" } });
+    expect(version.edges.at(-1)).toEqual({ from: "split.test", to: "chart_1.data" });
+    expect(addChartStep(version, "load", "data", { kind: "histogram", x: "a" }).version.nodes.at(-1)?.params).toEqual({ kind: "histogram", x: "a" });
   });
 
   it("numbers code steps past the ones already there", () => {

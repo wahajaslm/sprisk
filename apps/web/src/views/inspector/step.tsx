@@ -4,7 +4,8 @@ import { useRunChecks } from "../../api/checks.ts";
 import { useCodeDisplay, useCodeInterface } from "../../api/code.ts";
 import { useNodeHistory } from "../../api/history.ts";
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
-import { addCodeStep, isCodeOperator } from "../../flow/edit.ts";
+import { addChartStep, addCodeStep, type ChartSpec, isChartOperator, isCodeOperator } from "../../flow/edit.ts";
+import { useWorkbench } from "../../workbench/workbench.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { roleOf, shortName } from "../../flow/stages.ts";
 import { useInspectorDetail } from "../../workbench/detail.ts";
@@ -12,6 +13,7 @@ import { useViewInstance, useViewSelection } from "../../workbench/instance.tsx"
 import { useSelection } from "../../workbench/selection.ts";
 import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
+import { ChartTab } from "./ChartTab.tsx";
 import { ChecksTab, concerns } from "./ChecksTab.tsx";
 import { CodeData } from "./CodeData.tsx";
 import { ConsoleTab, consoleProblems } from "./ConsoleTab.tsx";
@@ -56,8 +58,23 @@ export function useStep() {
           saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, codeNode) });
         }
       : undefined;
+  const dock = useWorkbench((s) => s.dock);
+  const addChart =
+    pipeline && nodeId && !saveAndRun.isPending
+      ? (port: string, spec: ChartSpec) => {
+          const { version, nodeId: chartNode } = addChartStep(pipeline, nodeId, port, spec);
+          saveAndRun.mutate(version, {
+            onSuccess: (r) => {
+              showRun(version.id, r.id, chartNode);
+              dock?.showTab("visuals");
+            },
+          });
+        }
+      : undefined;
   return {
     runId,
+    addChart,
+    isChart: isChartOperator(node?.operator),
     nodeId,
     versions,
     attempts,
@@ -78,7 +95,7 @@ export function useStep() {
     previous: shownAt >= 0 ? history.slice(shownAt + 1).find((h) => h.metrics)?.metrics : undefined,
     metric: HEADLINE.find((m) => history.some((h) => h.metrics?.[m] !== undefined)),
     concernCount: nodeId ? concerns(checks, nodeId) : 0,
-    visuals: visualCount(display),
+    visuals: isChartOperator(node?.operator) ? (done ? 1 : 0) : visualCount(display),
     problems: consoleProblems(display, mine),
   };
 }
@@ -161,13 +178,13 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       return (
         <>
           {step.saveAndRun.isError && <p role="alert" className="error">{step.saveAndRun.error.message}</p>}
-          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} shown={shownTables(display)}>
+          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} addChart={step.addChart} shown={shownTables(display)}>
             {isCode && pipeline && node && <CodeData pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} />}
           </DataTab>
         </>
       );
     case "visuals":
-      return <VisualsTab display={display} isCode={isCode} />;
+      return step.isChart ? <ChartTab attempt={done} /> : <VisualsTab display={display} isCode={isCode} />;
     case "console":
       return <ConsoleTab display={display} attempts={step.mine} isCode={isCode} />;
     case "inputs":

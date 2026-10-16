@@ -36,6 +36,44 @@ class TableRow(StrictModel):
 
 
 class Kind(StrEnum):
+    histogram = "histogram"
+    box = "box"
+    scatter = "scatter"
+    bar = "bar"
+    line = "line"
+
+
+class ChartBin(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    lower: float
+    upper: float
+    count: Annotated[int, Field(ge=0)]
+
+
+class ChartBox(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    group: str
+    min: float | None = None
+    q1: float | None = None
+    median: float | None = None
+    q3: float | None = None
+    max: float | None = None
+    n: Annotated[int, Field(ge=0)]
+
+
+class ChartBar(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    x: str
+    value: float
+
+
+class Kind1(StrEnum):
     text = "text"
     table = "table"
     image = "image"
@@ -432,11 +470,29 @@ class OperatorSource(StrictModel):
     ]
 
 
-class DisplayItem(StrictModel):
+class ChartReport(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     kind: Kind
+    x: str
+    y: Annotated[str | None, Field(description="Omitted when the chart has no y column.")] = None
+    n_rows: Annotated[int, Field(ge=0)]
+    missing: Annotated[int | None, Field(description="Histogram: rows with no value.", ge=0)] = None
+    sampled: Annotated[
+        bool | None, Field(description="Scatter and line: true when points were capped.")
+    ] = None
+    bins: list[ChartBin] | None = None
+    groups: list[ChartBox] | None = None
+    bars: list[ChartBar] | None = None
+    points: list[list[float | str]] | None = None
+
+
+class DisplayItem(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Kind1
     text: Annotated[str | None, Field(description="Present for kind text.")] = None
     table: Annotated[
         TablePage | None, Field(description="Present for kind table: the first rows only.")
