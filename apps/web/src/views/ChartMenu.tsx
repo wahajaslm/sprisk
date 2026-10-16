@@ -2,6 +2,7 @@ import type { TableColumn } from "@sprisk/contracts";
 import { useState } from "react";
 
 import { CHART_KINDS, type ChartSpec } from "../flow/edit.ts";
+import { isText } from "./RowsTable.tsx";
 
 const NEEDS_Y: ReadonlySet<ChartSpec["kind"]> = new Set(["scatter", "line"]);
 
@@ -9,7 +10,8 @@ const NEEDS_Y: ReadonlySet<ChartSpec["kind"]> = new Set(["scatter", "line"]);
 export function ChartMenu({ columns, onAdd, busy }: { columns: TableColumn[]; onAdd: (spec: ChartSpec) => void; busy: boolean }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<ChartSpec["kind"]>("histogram");
-  const [x, setX] = useState(columns[0]?.name ?? "");
+  // Start on a number column: the default chart is a histogram.
+  const [x, setX] = useState((columns.find((c) => !isText(c.data_type)) ?? columns[0])?.name ?? "");
   const [y, setY] = useState("");
   const missingY = NEEDS_Y.has(kind) && y === "";
   return (
