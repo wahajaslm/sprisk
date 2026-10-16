@@ -195,7 +195,7 @@ describe("inspector", () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
     await screen.findByRole("group", { name: "accuracy" });
-    await userEvent.click(screen.getByRole("checkbox", { name: "Technical details" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Technical" }));
     expect(screen.getByText(/application\/json · 80 bytes/)).toBeInTheDocument();
   });
 
@@ -494,10 +494,14 @@ describe("code steps (ADR-0020)", () => {
     );
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
-    await userEvent.click(await screen.findByRole("tab", { name: /Visualizations/ }));
+    const tables = await screen.findByRole("region", { name: "Shown tables" });
+    expect(within(tables).getByRole("table")).toHaveTextContent("setosa");
+    expect(within(tables).getByText("1 of 150 rows")).toBeInTheDocument();
+    expect(screen.queryByText("This step produces no data.")).toBeNull();
+    expect(await screen.findByRole("tab", { name: /Visualizations 1/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: /Visualizations/ }));
     const shown = await screen.findByRole("region", { name: "Visualizations" });
-    expect(within(shown).getByRole("table")).toHaveTextContent("setosa");
-    expect(within(shown).getByText("1 of 150 rows")).toBeInTheDocument();
+    expect(within(shown).queryByRole("table")).toBeNull();
     expect(within(shown).getByRole("img", { name: "Figure 1" })).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
     await userEvent.click(screen.getByRole("tab", { name: /Console/ }));
     expect(within(await screen.findByRole("region", { name: "Printed output" })).getByText("150")).toBeInTheDocument();
@@ -600,7 +604,8 @@ describe("code step failures", () => {
 
   it("left-aligns text columns the code returns", async () => {
     await showCode(codeDisplayJson);
-    const table = await screen.findByRole("table");
+    await userEvent.click(screen.getByRole("tab", { name: /^Data/ }));
+    const table = await within(await screen.findByRole("region", { name: "Shown tables" })).findByRole("table");
     expect(within(table).getByRole("columnheader", { name: /species/ })).toHaveClass("text");
   });
 });

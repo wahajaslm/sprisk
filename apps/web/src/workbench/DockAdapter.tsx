@@ -10,7 +10,7 @@ import {
   type IDockviewPanelProps,
   type SerializedDockview,
 } from "dockview-react";
-import { type FunctionComponent, Suspense, useEffect, useRef } from "react";
+import { type FunctionComponent, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { closedTabs, INSPECTOR_TABS, type InspectorTab, readTab, TAB_LABEL } from "./inspectorTabs.ts";
 import { readPin, type Pin, ViewInstance } from "./instance.tsx";
@@ -18,8 +18,30 @@ import { HEADED_PANELS, readSavedLayout, restoreLayout, saveLayout, type ViewTyp
 import { useWorkbench } from "./workbench.ts";
 
 type Views = Record<ViewType, FunctionComponent>;
-/** Dock tab labels for view types that show more than a title (badges, muted states). */
-type TabLabels = Partial<Record<ViewType, FunctionComponent>>;
+/** Per view type: a dock tab label that shows more than a title (badges, muted states), and a
+ * toolbar shown at the right of the tab bar for the active panel, as in VS Code. */
+type TabParts = Partial<Record<ViewType, FunctionComponent>>;
+type PanelApi = IDockviewPanelProps["api"];
+
+/** Pinning stores the pin in the panel's params, so it is saved with the layout. */
+function pinSetter(api: PanelApi, fallbackTitle: string) {
+  return (next: Pin | undefined) => {
+    const base = api.title?.split(" · ")[0] ?? fallbackTitle;
+    api.updateParameters({ pin: next });
+    api.setTitle(next ? `${base} · pinned` : base);
+  };
+}
+
+/** The panel's params, re-read whenever they change (e.g. a pin from the toolbar). */
+function usePanelParams(api: PanelApi): unknown {
+  return useSyncExternalStore(
+    (onChange) => {
+      const sub = api.onDidParametersChange(onChange);
+      return () => sub.dispose();
+    },
+    () => api.getParameters(),
+  );
+}
 
 /** The Studio cockpit: sidebar left, flow over the Inspector tabs in the centre, copilot right (ADR-0018). */
 function addDefaultLayout(api: DockviewApi): void {
@@ -69,11 +91,13 @@ function reopenTab(api: DockviewApi, tab: InspectorTab): void {
 }
 
 /** Right end of a tab bar, as in VS Code: close the shown tab; in the Inspector, reopen a closed one. */
-function TabGroupActions({ group, containerApi, activePanel }: IDockviewHeaderActionsProps) {
+function TabGroupActions({ group, containerApi, activePanel, toolbars }: IDockviewHeaderActionsProps & { toolbars: TabParts }) {
   const isTabGroup = group.panels.some((p) => readTab(p.params) !== undefined);
   const closed = isTabGroup ? closedTabs(openTabs(containerApi)) : [];
+  const Toolbar = activePanel ? toolbars[activePanel.view.contentComponent as ViewType] : undefined;
   return (
     <div className="tab-actions">
+      {activePanel && Toolbar && <PanelToolbar api={activePanel.api} Toolbar={Toolbar} />}
       {closed.length > 0 && (
         <details className="reopen-tabs">
           <summary aria-label="Reopen a closed tab" title="Reopen a closed tab">+</summary>
@@ -95,6 +119,15 @@ function TabGroupActions({ group, containerApi, activePanel }: IDockviewHeaderAc
   );
 }
 
+function PanelToolbar({ api, Toolbar }: { api: PanelApi; Toolbar: FunctionComponent }) {
+  const params = usePanelParams(api);
+  return (
+    <ViewInstance pin={readPin(params)} setPin={pinSetter(api, api.title ?? "")} tab={readTab(params)}>
+      <Toolbar />
+    </ViewInstance>
+  );
+}
+
 function commands(api: DockviewApi) {
   return {
     openTab: (tab: InspectorTab) => reopenTab(api, tab),
@@ -108,7 +141,7 @@ function commands(api: DockviewApi) {
   };
 }
 
-export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels }) {
+export function Dock({ views, tabLabels, toolbars }: { views: Views; tabLabels: TabParts; toolbars: TabParts }) {
   const attachDock = useWorkbench((s) => s.attachDock);
   const dockApi = useRef<DockviewApi | undefined>(undefined);
   // Strict Mode unmounts and remounts effects once; re-attach so the commands survive it.
@@ -121,13 +154,8 @@ export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels 
     Object.entries(views).map(([type, View]) => [
       type,
       ({ params, api }: IDockviewPanelProps) => {
-        const pin = readPin(params);
-        const setPin = (next: Pin | undefined) => {
-          api.updateParameters({ pin: next });
-          api.setTitle(next ? `${api.title?.split(" · ")[0] ?? type} · pinned` : (api.title?.split(" · ")[0] ?? type));
-        };
         return (
-          <ViewInstance pin={pin} setPin={setPin} tab={readTab(params)}>
+          <ViewInstance pin={readPin(params)} setPin={pinSetter(api, type)} tab={readTab(params)}>
             <Suspense fallback={<p className="muted pad">Loading…</p>}>
               <View />
             </Suspense>
@@ -158,6 +186,8 @@ export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels 
     </span>
   );
 
+  const GroupActions = (props: IDockviewHeaderActionsProps) => <TabGroupActions {...props} toolbars={toolbars} />;
+
   const onReady = ({ api }: DockviewReadyEvent) => {
     const saved = restoreLayout(readSavedLayout());
     if (saved) {
@@ -182,5 +212,5 @@ export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels 
     dockApi.current = api;
     attachDock(commands(api));
   };
-  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} defaultTabComponent={PlainTab} rightHeaderActionsComponent={TabGroupActions} onReady={onReady} />;
+  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} defaultTabComponent={PlainTab} rightHeaderActionsComponent={GroupActions} onReady={onReady} />;
 }

@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { StepTabLabel } from "../src/views/inspector/step.tsx";
+import { StepTabLabel, StepToolbar } from "../src/views/inspector/step.tsx";
 import { StepTab } from "../src/views/StepTab.tsx";
 import { ViewInstance } from "../src/workbench/instance.tsx";
 import { readTab } from "../src/workbench/inspectorTabs.ts";
@@ -15,6 +15,7 @@ describe("each Inspector tab is its own dock panel", () => {
   it("follows the selection", async () => {
     renderWithApi(
       <ViewInstance pin={undefined} setPin={vi.fn()} tab="history">
+        <StepToolbar />
         <StepTab />
       </ViewInstance>,
     );
@@ -26,6 +27,7 @@ describe("each Inspector tab is its own dock panel", () => {
   it("a pinned panel keeps its step when the selection moves", async () => {
     renderWithApi(
       <ViewInstance pin={{ runId: RUN, nodeId: "split" }} setPin={vi.fn()} tab="history">
+        <StepToolbar />
         <StepTab />
       </ViewInstance>,
     );
@@ -38,7 +40,7 @@ describe("each Inspector tab is its own dock panel", () => {
     const setPin = vi.fn();
     renderWithApi(
       <ViewInstance pin={undefined} setPin={setPin} tab="console">
-        <StepTab />
+        <StepToolbar />
       </ViewInstance>,
     );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });

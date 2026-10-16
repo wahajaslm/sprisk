@@ -22,11 +22,13 @@ type Props = {
   /** This step's metrics in the run before the shown one, for change tiles. */
   previous: Record<string, number> | undefined;
   explore: Explore;
+  /** Tables a code step showed; they count as data even when it passes nothing on. */
+  shownTables: number;
 };
 
 /** What the step produces, drawn for people: tables, metrics, the model. Code steps also
  * choose what they pass on and list the other values they hold. */
-export function DataTab({ attempt, operator, capability, previous, explore, children }: Props & { children?: ReactNode }) {
+export function DataTab({ attempt, operator, capability, previous, explore, shownTables, children }: Props & { children?: ReactNode }) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
   if (outputs.isPending) return <p className="muted">Loading…</p>;
@@ -34,7 +36,7 @@ export function DataTab({ attempt, operator, capability, previous, explore, chil
   const data = outputs.data.filter((o) => !(isCodeOperator(operator) && REPORT_PORTS.includes(o.port)));
   return (
     <div className="outputs">
-      {data.length === 0 && <p className="muted">This step produces no data.</p>}
+      {data.length === 0 && shownTables === 0 && <p className="muted">This step produces no data.</p>}
       {data.map((o) => (
         <Output key={o.port} output={o} view={viewOf(o, operator, capability)} previous={previous} explore={explore} />
       ))}

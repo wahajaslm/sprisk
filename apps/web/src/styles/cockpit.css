@@ -83,6 +83,10 @@ p { margin: 0; }
 /* ── Dock: Studio regions, no tab bars ───────────────── */
 .dock-tab { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .tab-actions { height: 100%; display: flex; align-items: center; gap: 2px; padding: 0 8px; }
+.step-toolbar { display: flex; align-items: center; gap: 12px; margin-right: 8px; min-width: 0; }
+.step-toolbar .pin { height: 24px; }
+.step-pane { height: 100%; background: var(--panel); }
+.shown-tables { display: grid; gap: 18px; }
 .reopen-tabs { position: relative; display: flex; }
 .reopen-tabs > summary, .tab-action { list-style: none; cursor: pointer; width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--quiet); font-size: 15px; line-height: 1; }
 .reopen-tabs > summary::-webkit-details-marker { display: none; }

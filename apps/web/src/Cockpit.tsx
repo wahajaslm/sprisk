@@ -2,7 +2,7 @@ import { lazy } from "react";
 
 import { Copilot } from "./views/Copilot.tsx";
 import { Experiments } from "./views/Experiments.tsx";
-import { StepTabLabel } from "./views/inspector/step.tsx";
+import { StepTabLabel, StepToolbar } from "./views/inspector/step.tsx";
 import { ComingView, Placeholder } from "./views/Placeholder.tsx";
 import { ActivityBar } from "./views/ActivityBar.tsx";
 import { Sidebar } from "./views/Sidebar.tsx";
@@ -30,7 +30,7 @@ export function Cockpit() {
       <div className="workspace">
         <ActivityBar />
         {nav === "Flow" ? (
-          <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} />
+          <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} toolbars={{ "step-tab": StepToolbar }} />
         ) : nav === "Experiments" ? (
           <Experiments />
         ) : (

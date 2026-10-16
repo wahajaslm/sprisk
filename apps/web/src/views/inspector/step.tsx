@@ -20,7 +20,7 @@ import { HistoryTab } from "./HistoryTab.tsx";
 import { InputsTab } from "./InputsTab.tsx";
 import { ParametersTab } from "./ParametersTab.tsx";
 import { type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
-import { VisualsTab, visualCount } from "./VisualsTab.tsx";
+import { ShownTables, shownTableCount, VisualsTab, visualCount } from "./VisualsTab.tsx";
 
 const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
 
@@ -114,12 +114,25 @@ export function PinButton({ step }: { step: Step }) {
   );
 }
 
+/** The active step tab's controls, shown at the right of the dock tab bar. */
+export function StepToolbar() {
+  const step = useStep();
+  if (!step.nodeId) return null;
+  return (
+    <div className="step-toolbar">
+      <StepMeta step={step} />
+      <TechSwitch />
+      <PinButton step={step} />
+    </div>
+  );
+}
+
 export function TechSwitch() {
   const { technical, setTechnical } = useInspectorDetail();
   return (
     <label className="tech-switch">
       <input type="checkbox" checked={technical} onChange={(e) => setTechnical(e.target.checked)} />
-      Technical details
+      Technical
     </label>
   );
 }
@@ -143,7 +156,8 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       return (
         <>
           {step.saveAndRun.isError && <p role="alert" className="error">{step.saveAndRun.error.message}</p>}
-          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore}>
+          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} shownTables={shownTableCount(display)}>
+            <ShownTables display={display} />
             {isCode && pipeline && node && <CodeData pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} />}
           </DataTab>
         </>
