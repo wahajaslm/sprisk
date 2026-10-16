@@ -10,8 +10,8 @@ params_schema:
   additionalProperties: false
   required: [columns, k]
   properties:
-    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true }
-    k: { type: number, exclusiveMinimum: 0 }
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Numeric columns to clip." }
+    k: { type: number, exclusiveMinimum: 0, description: "Clip to the train mean ± k standard deviations." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

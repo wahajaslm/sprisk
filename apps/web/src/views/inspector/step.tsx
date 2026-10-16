@@ -168,7 +168,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
     case "console":
       return <ConsoleTab display={display} attempts={step.mine} isCode={isCode} />;
     case "inputs":
-      return pipeline && <InputsTab pipeline={pipeline} nodeId={nodeId} attempts={step.all} found={found} />;
+      return pipeline && <InputsTab pipeline={pipeline} nodeId={nodeId} operator={operator} attempts={step.all} found={found} />;
     case "parameters":
       return pipeline && <ParametersTab pipeline={pipeline} nodeId={nodeId} operator={operator} found={found} />;
     case "code":

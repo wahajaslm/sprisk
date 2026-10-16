@@ -10,8 +10,8 @@ params_schema:
   additionalProperties: false
   required: [time_column, test_fraction]
   properties:
-    time_column: { type: string, minLength: 1 }
-    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1 }
+    time_column: { type: string, minLength: 1, description: "Rows are ordered by this column; the latest rows become the test set." }
+    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Share of the latest rows held out for testing." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

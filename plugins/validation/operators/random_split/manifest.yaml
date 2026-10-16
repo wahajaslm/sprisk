@@ -10,8 +10,8 @@ params_schema:
   additionalProperties: false
   required: [test_fraction, seed]
   properties:
-    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1 }
-    seed: { type: integer, minimum: 0 }
+    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Share of rows held out for testing." }
+    seed: { type: integer, minimum: 0, description: "Fixes the shuffle so runs repeat." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

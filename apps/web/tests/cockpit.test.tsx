@@ -659,6 +659,44 @@ describe("inputs tab", () => {
     expect(within(settings).getByRole("button", { name: "Run with these settings" })).toBeDisabled();
   });
 
+  it("explains each setting: description, type, allowed values, default and whether it is required", async () => {
+    server.use(
+      http.get("/api/operators", () =>
+        HttpResponse.json(
+          operators.map((o) =>
+            o.id === "sprisk.validation.random_split@1.0.0"
+              ? {
+                  ...o,
+                  params_schema: {
+                    type: "object",
+                    required: ["test_fraction"],
+                    properties: {
+                      test_fraction: { type: "number", minimum: 0, maximum: 1, description: "Share of rows held out for testing." },
+                      seed: { type: "integer", default: 0, description: "Fixes the shuffle so runs repeat." },
+                    },
+                  },
+                }
+              : o,
+          ),
+        ),
+      ),
+    );
+    await openParameters("split");
+    const settings = await screen.findByRole("region", { name: "Settings" });
+    const fraction = within(settings).getByRole("spinbutton", { name: "test_fraction" });
+    expect(fraction).toHaveAccessibleDescription(/Share of rows held out for testing\..*number.*0 to 1.*required/);
+    expect(within(settings).getByRole("spinbutton", { name: "seed" })).toHaveAccessibleDescription(/Fixes the shuffle.*integer.*default 0/);
+  });
+
+  it("lists every declared input, even one not connected, and every output with its type", async () => {
+    await openInputs("score");
+    const inputs = await screen.findByRole("region", { name: "Input tables" });
+    expect(inputs).toHaveTextContent(/model.*model/);
+    expect(inputs).toHaveTextContent(/test.*table/);
+    const outputs = await screen.findByRole("region", { name: "Outputs" });
+    expect(outputs).toHaveTextContent(/metrics.*metrics/);
+  });
+
   it("runs a new version with the changed setting", async () => {
     server.use(
       http.get("/api/operators", () =>

@@ -10,8 +10,8 @@ params_schema:
   additionalProperties: false
   required: [target, task]
   properties:
-    target: { type: string, minLength: 1 }
-    task: { type: string, enum: [classification, regression] }
+    target: { type: string, minLength: 1, description: "Column with the true values in the test table." }
+    task: { type: string, enum: [classification, regression], description: "Must match the model's task." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

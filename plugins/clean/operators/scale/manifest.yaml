@@ -10,8 +10,8 @@ params_schema:
   additionalProperties: false
   required: [columns, method]
   properties:
-    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true }
-    method: { type: string, enum: [min_max, z_score] }
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Numeric columns to rescale." }
+    method: { type: string, enum: [min_max, z_score], description: "min_max maps the train range to 0..1; z_score centres on the train mean with unit spread." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

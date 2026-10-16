@@ -356,23 +356,24 @@ p { margin: 0; }
 .current-tag { margin-left: 8px; font-size: 10px; color: var(--muted); }
 
 /* ── Inputs tab ─────────────────────────────────────── */
-.inputs-tab { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: start; }
-.input-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.input-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); font: 11.5px var(--mono); }
+.inputs-tab { display: grid; gap: 20px; max-width: 760px; }
+.input-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.input-row { display: grid; grid-template-columns: 120px 90px 14px auto minmax(0, 1fr); white-space: nowrap; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--line-soft); font: 11.5px var(--mono); }
+.input-kind { color: var(--faint); }
 .input-port { color: var(--ink); }
 .input-arrow { color: var(--faint); }
 .input-source { justify-self: start; border: 0; padding: 0; background: none; color: var(--soft); font: inherit; text-decoration: underline; text-decoration-color: var(--ghost); text-underline-offset: 3px; }
 .input-source:hover { color: var(--ink); }
-.input-size { color: var(--muted); white-space: nowrap; }
+.input-size { color: var(--muted); white-space: nowrap; text-align: right; overflow: hidden; text-overflow: ellipsis; }
 .settings-grid { display: grid; gap: 8px; }
 .setting { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px; }
 .setting-name { font-size: 12px; color: var(--muted); }
+.setting-help { grid-column: 2; margin: -4px 0 6px; font-size: 11px; color: var(--faint); }
 .setting input[type="text"], .setting input[type="number"], .setting select { height: 30px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--canvas); color: var(--ink); font: 12px var(--mono); }
 .setting input:focus-visible, .setting select:focus-visible { outline: 1px solid var(--ink); outline-offset: 1px; }
 .setting input[type="checkbox"] { justify-self: start; accent-color: var(--ink); }
 .settings-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 11px; }
 .pane.single { container-type: inline-size; }
-@container (max-width: 640px) { .inputs-tab { grid-template-columns: 1fr; } }
 
 /* ── Experiments (compare runs) ─────────────────────── */
 .experiments { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; background: var(--canvas); overflow: hidden; }

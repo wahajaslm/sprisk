@@ -1,4 +1,6 @@
-import type { Attempt, CodeInterface, PipelineVersion } from "@sprisk/contracts";
+import type { Attempt, CodeInterface, Operator, PipelineVersion } from "@sprisk/contracts";
+
+import type { ReactNode } from "react";
 
 import type { Read } from "../../api/code.ts";
 
@@ -8,67 +10,104 @@ import { isCodeOperator } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { useSelection } from "../../workbench/selection.ts";
 
-type Props = { pipeline: PipelineVersion; nodeId: string; attempts: Attempt[]; found: Read<CodeInterface> };
+type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator | undefined; attempts: Attempt[]; found: Read<CodeInterface> };
 
-/** What a step reads: tables from other steps, and names its code reads but nothing defines. */
-export function InputsTab({ pipeline, nodeId, attempts, found }: Props) {
+/** What a step reads and writes: every port its operator declares, with its kind, where it
+ * comes from and how big it is; and, for code, names it reads that nothing defines. */
+export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props) {
   const node = pipeline.nodes.find((n) => n.id === nodeId);
   const incoming = pipeline.edges.filter((e) => e.to.split(".")[0] === nodeId);
   const latest = latestByNode(attempts);
+  const mine = latest.get(nodeId);
+  // Declared ports first; an edge to a port the manifest does not list still shows.
+  const declared = operator?.inputs ?? [];
+  const extra = incoming.map((e) => e.to.split(".")[1] ?? "").filter((p) => !declared.some((d) => d.name === p));
+  const inputs = [...declared.map((d) => ({ name: d.name, kind: d.kind as string })), ...extra.map((name) => ({ name, kind: "" }))];
   return (
     <div className="inputs-tab">
       <section className="input-tables" aria-label="Input tables">
-        <p className="output-title">Input tables</p>
-        {incoming.length === 0 ? (
+        <p className="output-title">Inputs</p>
+        {inputs.length === 0 ? (
           <p className="muted">This step reads no other step. It starts the flow.</p>
         ) : (
           <ul className="input-list">
-            {incoming.map((e) => {
-              const [from = "", port = ""] = e.from.split(".");
+            {inputs.map((input) => {
+              const edge = incoming.find((e) => e.to.split(".")[1] === input.name);
+              const [from = "", fromPort = ""] = edge?.from.split(".") ?? [];
               const producer = latest.get(from);
               return (
-                <InputRow
-                  key={e.to}
-                  port={e.to.split(".")[1] ?? ""}
-                  from={from}
-                  fromPort={port}
-                  attempt={hasOutputs(producer) ? producer : undefined}
-                />
+                <PortRow key={input.name} name={input.name} kind={input.kind}>
+                  {edge ? (
+                    <>
+                      <span className="input-arrow" aria-hidden="true">←</span>
+                      <SourceButton from={from} fromPort={fromPort} />
+                      <ArtifactSize attempt={hasOutputs(producer) ? producer : undefined} port={fromPort} />
+                    </>
+                  ) : (
+                    <span className="error">not connected</span>
+                  )}
+                </PortRow>
               );
             })}
           </ul>
         )}
       </section>
+      {operator && operator.outputs.length > 0 && (
+        <section className="input-tables" aria-label="Outputs">
+          <p className="output-title">Outputs</p>
+          <ul className="input-list">
+            {operator.outputs.map((o) => (
+              <PortRow key={o.name} name={o.name} kind={o.kind}>
+                <span className="input-arrow" aria-hidden="true">→</span>
+                <span />
+                <ArtifactSize attempt={hasOutputs(mine) ? mine : undefined} port={o.name} />
+              </PortRow>
+            ))}
+          </ul>
+        </section>
+      )}
       {node && isCodeOperator(node.operator) && <UnboundNames found={found} />}
     </div>
   );
 }
 
-function InputRow({ port, from, fromPort, attempt }: { port: string; from: string; fromPort: string; attempt: Attempt | undefined }) {
+function PortRow({ name, kind, children }: { name: string; kind: string; children: ReactNode }) {
+  return (
+    <li className="input-row">
+      <span className="input-port">{name}</span>
+      <span className="input-kind">{kind}</span>
+      {children}
+    </li>
+  );
+}
+
+function SourceButton({ from, fromPort }: { from: string; fromPort: string }) {
   const select = useSelection((s) => s.selectNode);
+  return (
+    <button type="button" className="input-source" onClick={() => select(from)}>
+      {from}.{fromPort}
+    </button>
+  );
+}
+
+/** Rows × columns of a table, or what kind of thing it is, once the producing step has run. */
+function ArtifactSize({ attempt, port }: { attempt: Attempt | undefined; port: string }) {
   const outputs = useOutputs(attempt?.id);
-  const artifact = outputs.data?.find((o) => o.port === fromPort)?.artifact;
+  const artifact = outputs.data?.find((o) => o.port === port)?.artifact;
   const page = useTablePage(artifact?.media_type === PARQUET ? artifact.id : undefined, 0, 1);
   const size = artifact?.media_type !== PARQUET ? undefined : page.data;
   return (
-    <li className="input-row">
-      <span className="input-port">{port}</span>
-      <span className="input-arrow" aria-hidden="true">←</span>
-      <button type="button" className="input-source" onClick={() => select(from)}>
-        {from}.{fromPort}
-      </button>
-      <span className="input-size">
-        {!attempt
-          ? "not run yet"
-          : size
-            ? `${size.total_rows} rows × ${size.total_columns} cols`
-            : artifact?.media_type === "application/vnd.skops"
-              ? "fitted model"
-              : artifact
-                ? ""
-                : "…"}
-      </span>
-    </li>
+    <span className="input-size">
+      {!attempt
+        ? "not run yet"
+        : size
+          ? `${size.total_rows} rows × ${size.total_columns} cols`
+          : artifact?.media_type === "application/vnd.skops"
+            ? "fitted model"
+            : artifact
+              ? "saved"
+              : "…"}
+    </span>
   );
 }
 

@@ -120,13 +120,42 @@ function ParamInput({ p, value, onChange }: { p: CodeParameter; value: string | 
   );
 }
 
-type Field = { name: string; type: string; enum?: string[]; items?: { type?: string }; minimum?: number; maximum?: number };
+type Field = {
+  name: string;
+  type: string;
+  required: boolean;
+  enum?: string[];
+  items?: { type?: string };
+  minimum?: number;
+  maximum?: number;
+  exclusiveMinimum?: number;
+  exclusiveMaximum?: number;
+  default?: unknown;
+  description?: string;
+};
 
 function fieldsOf(schema: Record<string, unknown>, skip: string[]): Field[] {
-  const properties = (schema.properties ?? {}) as Record<string, Omit<Field, "name">>;
+  const properties = (schema.properties ?? {}) as Record<string, Omit<Field, "name" | "required">>;
+  const required = Array.isArray(schema.required) ? (schema.required as unknown[]) : [];
   return Object.entries(properties)
     .filter(([name]) => !skip.includes(name))
-    .map(([name, spec]) => ({ name, ...spec }));
+    .map(([name, spec]) => ({ name, ...spec, required: required.includes(name) }));
+}
+
+/** One line under a setting: what it does, then its type, range, default and whether it is required. */
+function fieldHelp(f: Field): string {
+  const type = f.type === "array" ? `list of ${f.items?.type ?? "values"}` : f.type;
+  const low = f.minimum !== undefined ? `at least ${f.minimum}` : f.exclusiveMinimum !== undefined ? `more than ${f.exclusiveMinimum}` : undefined;
+  const high = f.maximum !== undefined ? `at most ${f.maximum}` : f.exclusiveMaximum !== undefined ? `less than ${f.exclusiveMaximum}` : undefined;
+  const range =
+    f.minimum !== undefined && f.maximum !== undefined ? `${f.minimum} to ${f.maximum}` : [low, high].filter(Boolean).join(", ") || undefined;
+  const facts = [
+    type,
+    f.enum ? `one of ${f.enum.join(", ")}` : range,
+    f.default !== undefined ? `default ${JSON.stringify(f.default)}` : undefined,
+    f.required ? "required" : "optional",
+  ].filter((x): x is string => x !== undefined);
+  return [f.description, facts.join(" · ")].filter(Boolean).join(" ");
 }
 
 /** Form values as typed; turned back into params only when the user runs. */
@@ -180,10 +209,15 @@ function Settings({ pipeline, nodeId, params, schema }: {
       <p className="output-title">Settings</p>
       <div className="settings-grid">
         {fields.map((f) => (
-          <label key={f.name} className="setting">
-            <span className="setting-name">{f.name.replaceAll("_", " ")}</span>
+          <div key={f.name} className="setting">
+            <label className="setting-name" htmlFor={`setting-${f.name}`}>
+              {f.name.replaceAll("_", " ")}
+            </label>
             <SettingInput field={f} value={draft[f.name] ?? ""} onChange={(v) => set(f.name, v)} />
-          </label>
+            <p id={`setting-${f.name}-help`} className="setting-help">
+              {fieldHelp(f)}
+            </p>
+          </div>
         ))}
       </div>
       <div className="settings-actions">
@@ -204,12 +238,13 @@ function Settings({ pipeline, nodeId, params, schema }: {
 
 function SettingInput({ field, value, onChange }: { field: Field; value: string | boolean; onChange: (v: string | boolean) => void }) {
   const label = field.name;
+  const a11y = { id: `setting-${field.name}`, "aria-label": label, "aria-describedby": `setting-${field.name}-help` };
   if (field.type === "boolean") {
-    return <input aria-label={label} type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />;
+    return <input {...a11y} type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />;
   }
   if (field.enum) {
     return (
-      <select aria-label={label} value={String(value)} onChange={(e) => onChange(e.target.value)}>
+      <select {...a11y} value={String(value)} onChange={(e) => onChange(e.target.value)}>
         {field.enum.map((option) => (
           <option key={option} value={option}>
             {option}
@@ -221,7 +256,7 @@ function SettingInput({ field, value, onChange }: { field: Field; value: string 
   if (field.type === "integer" || field.type === "number") {
     return (
       <input
-        aria-label={label}
+        {...a11y}
         type="number"
         step={field.type === "integer" ? 1 : "any"}
         min={field.minimum}
@@ -233,7 +268,7 @@ function SettingInput({ field, value, onChange }: { field: Field; value: string 
   }
   return (
     <input
-      aria-label={label}
+      {...a11y}
       type="text"
       value={String(value)}
       placeholder={field.type === "array" ? "comma separated" : undefined}
