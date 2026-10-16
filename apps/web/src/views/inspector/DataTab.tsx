@@ -1,4 +1,5 @@
-import type { Attempt, AttemptOutput } from "@sprisk/contracts";
+import * as Tabs from "@radix-ui/react-tabs";
+import type { Attempt, AttemptOutput, DisplayItem } from "@sprisk/contracts";
 import type { ReactNode } from "react";
 
 import { useArtifactText, useOutputs } from "../../api/hooks.ts";
@@ -9,6 +10,7 @@ import { useInspectorDetail } from "../../workbench/detail.ts";
 import { ColumnProfile } from "../ColumnProfile.tsx";
 import { formatMetric } from "../NodeFact.tsx";
 import { TablePeek } from "../TablePeek.tsx";
+import { ShownTable } from "./VisualsTab.tsx";
 
 export type Explore = ((port: string) => void) | undefined;
 
@@ -23,25 +25,63 @@ type Props = {
   previous: Record<string, number> | undefined;
   explore: Explore;
   /** Tables a code step showed; they count as data even when it passes nothing on. */
-  shownTables: number;
+  shown: DisplayItem[];
 };
 
 /** What the step produces, drawn for people: tables, metrics, the model. Code steps also
  * choose what they pass on and list the other values they hold. */
-export function DataTab({ attempt, operator, capability, previous, explore, shownTables, children }: Props & { children?: ReactNode }) {
+export function DataTab({ attempt, operator, capability, previous, explore, shown, children }: Props & { children?: ReactNode }) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
   if (outputs.isPending) return <p className="muted">Loading…</p>;
   if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
   const data = outputs.data.filter((o) => !(isCodeOperator(operator) && REPORT_PORTS.includes(o.port)));
+  const parts: Part[] = [
+    ...data.map((o) => ({
+      key: o.port,
+      label: o.port,
+      body: <Output output={o} view={viewOf(o, operator, capability)} previous={previous} explore={explore} />,
+    })),
+    ...shown.map((item, i) => ({
+      key: `shown-${i}`,
+      label: `shown ${i + 1}`,
+      body: (
+        <section className="output" aria-label={`Shown table ${i + 1}`}>
+          <p className="output-title">Shown table {i + 1}</p>
+          <ShownTable item={item} index={i} />
+        </section>
+      ),
+    })),
+  ];
   return (
     <div className="outputs">
-      {data.length === 0 && shownTables === 0 && <p className="muted">This step produces no data.</p>}
-      {data.map((o) => (
-        <Output key={o.port} output={o} view={viewOf(o, operator, capability)} previous={previous} explore={explore} />
-      ))}
+      {parts.length === 0 && <p className="muted">This step produces no data.</p>}
+      {parts.length === 1 && parts[0]!.body}
+      {parts.length > 1 && <SubTabs parts={parts} />}
       {children}
     </div>
+  );
+}
+
+type Part = { key: string; label: string; body: ReactNode };
+
+/** Several tables or results: one at a time, picked by name. */
+function SubTabs({ parts }: { parts: Part[] }) {
+  return (
+    <Tabs.Root defaultValue={parts[0]!.key} className="sub-tabs">
+      <Tabs.List className="detail-switch small" aria-label="Outputs">
+        {parts.map((p) => (
+          <Tabs.Trigger key={p.key} value={p.key}>
+            {p.label}
+          </Tabs.Trigger>
+        ))}
+      </Tabs.List>
+      {parts.map((p) => (
+        <Tabs.Content key={p.key} value={p.key}>
+          {p.body}
+        </Tabs.Content>
+      ))}
+    </Tabs.Root>
   );
 }
 

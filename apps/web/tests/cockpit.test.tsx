@@ -494,7 +494,7 @@ describe("code steps (ADR-0020)", () => {
     );
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
-    const tables = await screen.findByRole("region", { name: "Shown tables" });
+    const tables = await screen.findByRole("region", { name: "Shown table 1" });
     expect(within(tables).getByRole("table")).toHaveTextContent("setosa");
     expect(within(tables).getByText("1 of 150 rows")).toBeInTheDocument();
     expect(screen.queryByText("This step produces no data.")).toBeNull();
@@ -605,7 +605,7 @@ describe("code step failures", () => {
   it("left-aligns text columns the code returns", async () => {
     await showCode(codeDisplayJson);
     await userEvent.click(screen.getByRole("tab", { name: /^Data/ }));
-    const table = await within(await screen.findByRole("region", { name: "Shown tables" })).findByRole("table");
+    const table = await within(await screen.findByRole("region", { name: "Shown table 1" })).findByRole("table");
     expect(within(table).getByRole("columnheader", { name: /species/ })).toHaveClass("text");
   });
 });
@@ -820,6 +820,19 @@ describe("node detail switch", () => {
       ),
     );
   }
+
+  it("a step with several tables shows one sub-tab per table in Data", async () => {
+    withSplitOutputs();
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    const tables = await screen.findByRole("tablist", { name: "Outputs" });
+    expect(within(tables).getAllByRole("tab").map((t) => t.textContent)).toEqual(["test", "train"]);
+    expect(await screen.findByRole("region", { name: "Table · test" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Table · train" })).toBeNull();
+    await userEvent.click(within(tables).getByRole("tab", { name: "train" }));
+    expect(await screen.findByRole("region", { name: "Table · train" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Table · test" })).toBeNull();
+  });
 
   it("shows only step names in Compact and full cards in Detail; there is no Summary", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });

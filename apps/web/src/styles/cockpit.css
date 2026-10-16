@@ -86,7 +86,8 @@ p { margin: 0; }
 .step-toolbar { display: flex; align-items: center; gap: 12px; margin-right: 8px; min-width: 0; }
 .step-toolbar .pin { height: 24px; }
 .step-pane { height: 100%; background: var(--panel); }
-.shown-tables { display: grid; gap: 18px; }
+.sub-tabs { display: grid; gap: 12px; }
+.sub-tabs > .detail-switch { justify-self: start; }
 .reopen-tabs { position: relative; display: flex; }
 .reopen-tabs > summary, .tab-action { list-style: none; cursor: pointer; width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--quiet); font-size: 15px; line-height: 1; }
 .reopen-tabs > summary::-webkit-details-marker { display: none; }
@@ -330,7 +331,7 @@ p { margin: 0; }
 .detail-switch { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line); }
 .detail-switch button { height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12px; }
 .detail-switch button:hover { color: var(--ink); }
-.detail-switch button[aria-checked="true"] { background: var(--wash-strong); color: var(--ink); }
+.detail-switch button[aria-checked="true"], .detail-switch button[data-state="active"] { background: var(--wash-strong); color: var(--ink); }
 
 /* ── Inspector tabs ─────────────────────────────────── */
 .tech-switch { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }

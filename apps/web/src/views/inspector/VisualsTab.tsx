@@ -1,4 +1,4 @@
-import type { CodeDisplay } from "@sprisk/contracts";
+import type { CodeDisplay, DisplayItem } from "@sprisk/contracts";
 import { useEffect, useState } from "react";
 
 import type { Read } from "../../api/code.ts";
@@ -48,28 +48,18 @@ export const visualCount = (display: Read<CodeDisplay>) =>
   display.status === "ready" ? display.value.items.filter((i) => i.kind !== "text" && i.kind !== "table").length : 0;
 
 /** Tables the code showed with display() or as its last line, in order. They belong with Data. */
-export function ShownTables({ display }: { display: Read<CodeDisplay> }) {
-  if (display.status !== "ready") return null;
-  const tables = display.value.items.flatMap((i) => (i.kind === "table" ? [i] : []));
-  if (tables.length === 0) return null;
+export const shownTables = (display: Read<CodeDisplay>): DisplayItem[] =>
+  display.status === "ready" ? display.value.items.filter((i) => i.kind === "table") : [];
+
+export function ShownTable({ item, index }: { item: DisplayItem; index: number }) {
+  if (!item.table) return <p role="alert" className="error">Shown table {index + 1} has no content.</p>;
   return (
-    <section className="shown-tables" aria-label="Shown tables">
-      {tables.map((item, i) =>
-        item.table ? (
-          <div key={i}>
-            <RowsTable page={item.table} label={`shown table ${i + 1}`} />
-            <div className="peek-foot">{`${item.table.rows.length} of ${item.table.total_rows} rows`}</div>
-          </div>
-        ) : (
-          <p key={i} role="alert" className="error">Shown table {i + 1} has no content.</p>
-        ),
-      )}
-    </section>
+    <div>
+      <RowsTable page={item.table} label={`shown table ${index + 1}`} />
+      <div className="peek-foot">{`${item.table.rows.length} of ${item.table.total_rows} rows`}</div>
+    </div>
   );
 }
-
-export const shownTableCount = (display: Read<CodeDisplay>) =>
-  display.status === "ready" ? display.value.items.filter((i) => i.kind === "table").length : 0;
 
 function LayoutSwitch({ layout, setLayout }: { layout: ResultLayout; setLayout: (l: ResultLayout) => void }) {
   return (

@@ -21,7 +21,7 @@ import { InputsTab } from "./InputsTab.tsx";
 import { OperatorCode } from "./OperatorCode.tsx";
 import { ParametersTab } from "./ParametersTab.tsx";
 import { type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
-import { ShownTables, shownTableCount, VisualsTab, visualCount } from "./VisualsTab.tsx";
+import { shownTables, VisualsTab, visualCount } from "./VisualsTab.tsx";
 
 const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
 
@@ -157,8 +157,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       return (
         <>
           {step.saveAndRun.isError && <p role="alert" className="error">{step.saveAndRun.error.message}</p>}
-          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} shownTables={shownTableCount(display)}>
-            <ShownTables display={display} />
+          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} shown={shownTables(display)}>
             {isCode && pipeline && node && <CodeData pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} />}
           </DataTab>
         </>
