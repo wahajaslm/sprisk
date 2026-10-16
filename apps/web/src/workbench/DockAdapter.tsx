@@ -217,5 +217,5 @@ export function Dock({ views, tabLabels, toolbars }: { views: Views; tabLabels: 
     dockApi.current = api;
     attachDock(commands(api));
   };
-  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} defaultTabComponent={PlainTab} rightHeaderActionsComponent={GroupActions} onReady={onReady} />;
+  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} defaultTabComponent={PlainTab} defaultRenderer="always" rightHeaderActionsComponent={GroupActions} onReady={onReady} />;
 }

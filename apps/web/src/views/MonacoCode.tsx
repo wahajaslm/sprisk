@@ -15,7 +15,7 @@ monaco.editor.defineTheme("sprisk-studio", {
   inherit: true,
   rules: [],
   colors: {
-    "editor.background": "#0d0d0d",
+    "editor.background": "#131313",
     "editorLineNumber.foreground": "#4f4f4f",
     "editorLineNumber.activeForeground": "#a8a8a8",
     "editor.lineHighlightBackground": "#121212",

@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 function tokens() {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string) => css.getPropertyValue(name).trim();
-  return { ink: v("--ink"), muted: v("--muted"), faint: v("--faint"), line: v("--line"), mark: v("--dim"), panel: v("--panel") };
+  return { ink: v("--ink"), muted: v("--muted"), faint: v("--faint"), line: v("--line"), mark: v("--soft"), panel: v("--panel") };
 }
 
 function option(chart: ChartReport): echarts.EChartsCoreOption {
