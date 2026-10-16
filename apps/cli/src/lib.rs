@@ -8,7 +8,8 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    Attempt, AttemptOutput, CreateRun, PipelineVersion, Problem, Run, RunId, RunStatus, parse,
+    ArtifactId, Attempt, AttemptId, AttemptOutput, AttemptState, CreateRun, PipelineVersion,
+    Problem, Run, RunId, RunStatus, parse,
 };
 
 /// Project used when a pipeline file names none. Local mode has one project.
@@ -195,16 +196,33 @@ impl Client {
         }
     }
 
+    pub async fn attempts(&self, run: &RunId) -> anyhow::Result<Vec<Attempt>> {
+        let url = format!("{}/runs/{}/attempts", self.base, run.as_str());
+        read(self.http.get(url).send().await?).await
+    }
+
+    pub async fn outputs(&self, attempt: &AttemptId) -> anyhow::Result<Vec<AttemptOutput>> {
+        let url = format!("{}/attempts/{}/outputs", self.base, attempt.as_str());
+        read(self.http.get(url).send().await?).await
+    }
+
+    /// An artifact's bytes as text. For small JSON artifacts such as metrics and checks.
+    pub async fn content(&self, artifact: &ArtifactId) -> anyhow::Result<String> {
+        let url = format!("{}/artifacts/{}/content", self.base, artifact.as_str());
+        Ok(self
+            .http
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?)
+    }
+
     /// Plain-text summary: one line per attempt, then every JSON output (metrics, checks).
     pub async fn report(&self, id: &RunId) -> anyhow::Result<String> {
         let run = self.run(id).await?;
-        let attempts: Vec<Attempt> = read(
-            self.http
-                .get(format!("{}/runs/{}/attempts", self.base, id.as_str()))
-                .send()
-                .await?,
-        )
-        .await?;
+        let attempts = self.attempts(id).await?;
         let mut out = format!("run {}  {}\n\n", id.as_str(), run.status);
         for a in &attempts {
             let error = a
@@ -213,7 +231,7 @@ impl Client {
                 .map(|e| format!("  {}: {}", e.code.as_str(), e.message.as_str()))
                 .unwrap_or_default();
             out += &format!(
-                "{:<12} #{}  {}{error}\n",
+                "{:<15} #{}  {}{error}\n",
                 a.node_id.as_str(),
                 a.number,
                 a.state
@@ -221,32 +239,13 @@ impl Client {
         }
         for a in attempts
             .iter()
-            .filter(|a| a.state == sprisk_contracts::AttemptState::Succeeded)
+            .filter(|a| a.state == AttemptState::Succeeded)
         {
-            let outputs: Vec<AttemptOutput> = read(
-                self.http
-                    .get(format!("{}/attempts/{}/outputs", self.base, a.id.as_str()))
-                    .send()
-                    .await?,
-            )
-            .await?;
-            for o in outputs
-                .iter()
-                .filter(|o| o.artifact.media_type.as_str() == "application/json")
-            {
-                let text = self
-                    .http
-                    .get(format!(
-                        "{}/artifacts/{}/content",
-                        self.base,
-                        o.artifact.id.as_str()
-                    ))
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .text()
-                    .await?;
-                out += &format!("\n{}.{}:\n{text}\n", a.node_id.as_str(), o.port.as_str());
+            for o in self.outputs(&a.id).await? {
+                if o.artifact.media_type.as_str() == "application/json" {
+                    let text = self.content(&o.artifact.id).await?;
+                    out += &format!("\n{}.{}:\n{text}\n", a.node_id.as_str(), o.port.as_str());
+                }
             }
         }
         Ok(out)
