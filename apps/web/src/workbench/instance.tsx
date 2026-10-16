@@ -1,16 +1,18 @@
 import { createContext, type ReactNode, useContext } from "react";
 
+import type { InspectorTab } from "./inspectorTabs.ts";
 import { useSelection } from "./selection.ts";
 
 /** A panel either follows the shared selection or is pinned to one run and step (arch §2A). */
 export type Pin = { runId: string; nodeId: string | undefined };
 
-type Instance = { pin: Pin | undefined; setPin: ((pin: Pin | undefined) => void) | undefined };
+/** `tab` is set only on a panel that shows one Inspector tab. */
+type Instance = { pin: Pin | undefined; setPin: ((pin: Pin | undefined) => void) | undefined; tab?: InspectorTab | undefined };
 
 const InstanceContext = createContext<Instance>({ pin: undefined, setPin: undefined });
 
-export function ViewInstance({ pin, setPin, children }: Instance & { children: ReactNode }) {
-  return <InstanceContext.Provider value={{ pin, setPin }}>{children}</InstanceContext.Provider>;
+export function ViewInstance({ pin, setPin, tab, children }: Instance & { children: ReactNode }) {
+  return <InstanceContext.Provider value={{ pin, setPin, tab }}>{children}</InstanceContext.Provider>;
 }
 
 export const useViewInstance = () => useContext(InstanceContext);

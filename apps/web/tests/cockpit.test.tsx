@@ -15,6 +15,7 @@ import {
   attempts,
   checksJson,
   codeAttempt,
+  fakeDock,
   codeDisplayJson,
   codeOutputs,
   codePipeline,
@@ -879,7 +880,7 @@ describe("activity bar and sidebar", () => {
     const { Sidebar } = await import("../src/views/Sidebar.tsx");
     const { useWorkbench } = await import("../src/workbench/workbench.ts");
     const setSidebarVisible = vi.fn();
-    useWorkbench.setState({ activity: "steps", editing: false, dock: { addView: vi.fn(), resetLayout: vi.fn(), setEditing: vi.fn(), setSidebarVisible } });
+    useWorkbench.setState({ activity: "steps", editing: false, dock: fakeDock({ setSidebarVisible }) });
     useSelection.setState({ pipelineVersionId: PV });
     renderWithApi(
       <>
@@ -897,7 +898,7 @@ describe("activity bar and sidebar", () => {
   it("opens another view and resets the layout from the Views sidebar", async () => {
     const { ViewsPanel } = await import("../src/views/ViewsPanel.tsx");
     const { useWorkbench } = await import("../src/workbench/workbench.ts");
-    const dock = { addView: vi.fn(), resetLayout: vi.fn(), setEditing: vi.fn(), setSidebarVisible: vi.fn() };
+    const dock = fakeDock();
     useWorkbench.setState({ activity: "views", editing: false, dock });
     renderWithApi(<ViewsPanel />);
     await userEvent.click(screen.getByRole("button", { name: /^Inspector/ }));

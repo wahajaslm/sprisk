@@ -136,3 +136,13 @@ export function PinIcon() {
     </svg>
   );
 }
+
+export function PopOutIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 2.5h4.5V7" />
+      <path d="M13.5 2.5 7.5 8.5" />
+      <path d="M11.5 9.5v4h-9v-9h4" />
+    </svg>
+  );
+}

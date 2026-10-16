@@ -4,7 +4,7 @@ export const LAYOUT_VERSION = 2;
 export const LAYOUT_KEY = "sprisk.layout";
 
 /** View types the cockpit can render. Anything else in a saved layout becomes a placeholder. */
-export const VIEW_TYPES = ["sidebar", "flow", "inspector", "copilot", "placeholder"] as const;
+export const VIEW_TYPES = ["sidebar", "flow", "inspector", "copilot", "step-tab", "placeholder"] as const;
 export type ViewType = (typeof VIEW_TYPES)[number];
 
 /** View types a user can open more of from the Views sidebar (arch §2A ViewInstance). */

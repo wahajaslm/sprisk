@@ -1,3 +1,6 @@
+import { vi } from "vitest";
+
+import type { DockCommands } from "../src/workbench/workbench.ts";
 import type { TablePage } from "@sprisk/contracts";
 import type { Attempt, AttemptOutput, Operator, PipelineVersion, Run } from "@sprisk/contracts";
 
@@ -17,6 +20,11 @@ function op(id: string, capability_class: Operator["capability_class"], inputs: 
     network: "none",
     resources,
   };
+}
+
+/** A dock that records commands; the real one needs a browser layout engine. */
+export function fakeDock(overrides: Partial<DockCommands> = {}): DockCommands {
+  return { addView: vi.fn(), openTab: vi.fn(), resetLayout: vi.fn(), setEditing: vi.fn(), setSidebarVisible: vi.fn(), ...overrides };
 }
 
 export const operators: Operator[] = [

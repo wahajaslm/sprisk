@@ -6,6 +6,7 @@ import { Inspector } from "./views/Inspector.tsx";
 import { ComingView, Placeholder } from "./views/Placeholder.tsx";
 import { ActivityBar } from "./views/ActivityBar.tsx";
 import { Sidebar } from "./views/Sidebar.tsx";
+import { StepTab } from "./views/StepTab.tsx";
 import { TopBar } from "./views/TopBar.tsx";
 import { Dock } from "./workbench/DockAdapter.tsx";
 import { useSelection } from "./workbench/selection.ts";
@@ -13,7 +14,7 @@ import { useSelection } from "./workbench/selection.ts";
 // React Flow is heavy; load it only when the Flow panel first renders.
 const FlowCanvas = lazy(() => import("./views/FlowCanvas.tsx").then((m) => ({ default: m.FlowCanvas })));
 
-const views = { sidebar: Sidebar, flow: FlowCanvas, inspector: Inspector, copilot: Copilot, placeholder: Placeholder };
+const views = { sidebar: Sidebar, flow: FlowCanvas, inspector: Inspector, copilot: Copilot, "step-tab": StepTab, placeholder: Placeholder };
 
 const COMING = {
   Datasets: "Every dataset with origin, rows, columns, quality and where the flow uses it; column profiles from Profile.",
