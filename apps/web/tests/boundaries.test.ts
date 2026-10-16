@@ -38,3 +38,12 @@ it("font weights are 300, 400 or 500 only", () => {
   );
   expect(off).toEqual([]);
 });
+
+it("spacing comes from the 4px tokens; only 1-2px hairlines and negative nudges are raw", () => {
+  const off = Object.entries(styles).flatMap(([path, css]) =>
+    [...css.matchAll(/(?:padding|margin|gap)(?:-[a-z]+)?:\s*([^;]+)/g)].flatMap((m) =>
+      [...(m[1] ?? "").matchAll(/(?<![-\w.])(\d+)px/g)].filter((n) => Number(n[1]) > 2).map(() => `${path}: ${m[0]}`),
+    ),
+  );
+  expect(off).toEqual([]);
+});

@@ -15,7 +15,7 @@ Arch doc sections: §2A, §13
 ### 1. Tokens (in `cockpit.css` `:root`, nothing else)
 - Type scale, five sizes: `--text-xs` 11px, `--text-sm` 12px, `--text-md` 14px, `--text-lg` 20px, `--text-xl` 24px. Canvas step names use `md`, stage names `lg`, big metric numbers `xl`.
 - Weights: 300 for large titles, 400 for body, 500 for emphasis. No other weights.
-- Spacing on a 4px grid: `--space-1` 4px up to `--space-8` 32px.
+- Spacing on a 4px grid: `--space-1` 4px up to `--space-8` 32px. Only 1-2px hairlines and negative nudges stay raw.
 - Colours stay as they are. A new colour needs a new token.
 - Existing token names (`--sans`, `--mono`, `--soft`, `--line` and the rest) do not change. The Plotly renderer reads them at runtime.
 
