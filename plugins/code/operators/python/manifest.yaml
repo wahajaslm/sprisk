@@ -1,0 +1,16 @@
+schema_version: sprisk.operator/v1
+id: sprisk.code.python@1.0.0
+capability_class: analyzer
+description: Your Python code on the input table. Shows the last expression, printed text and matplotlib figures (ADR-0020).
+entrypoint: sprisk_code.python_step:python_step
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: display, kind: diagnostics }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source: { type: string, maxLength: 100000, description: Python source. `data` is the input as a polars DataFrame. }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

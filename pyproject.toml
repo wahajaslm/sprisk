@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["python/sprisk-contracts", "python/sprisk-workers", "plugins/io", "plugins/profile", "plugins/validation", "plugins/ml", "plugins/clean", "methodology/supervised"]
+members = ["python/sprisk-contracts", "python/sprisk-workers", "plugins/io", "plugins/profile", "plugins/validation", "plugins/ml", "plugins/clean", "plugins/code", "methodology/supervised"]
 
 [tool.ruff]
 line-length = 100

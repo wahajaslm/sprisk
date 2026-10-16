@@ -1,0 +1,13 @@
+[project]
+name = "sprisk-code"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["sprisk-workers", "sprisk-contracts", "polars>=1.10", "matplotlib>=3.9"]
+
+[tool.uv.sources]
+sprisk-workers = { workspace = true }
+sprisk-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

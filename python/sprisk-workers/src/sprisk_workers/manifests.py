@@ -12,6 +12,7 @@ from sprisk_workers.serve import LoadedOperator
 # Only first-party packs run until plugin isolation exists (arch doc §12).
 TRUSTED_PACKAGES = (
     "sprisk_io",
+    "sprisk_code",
     "sprisk_profile",
     "sprisk_validation",
     "sprisk_ml",
