@@ -80,6 +80,15 @@ fn registry() -> (tempfile::TempDir, Registry) {
                 }
             }),
         ),
+        operator(
+            "sprisk.code.typo@1.0.0",
+            &[],
+            &[],
+            json!({
+                "type": "object",
+                "properties": { "names": { "type": "array", "x-sprisk-ports": "inptu" } }
+            }),
+        ),
     ];
     let dir = tempfile::tempdir().unwrap();
     for (i, op) in ops.iter().enumerate() {
@@ -444,4 +453,25 @@ fn a_port_name_must_be_a_valid_name() {
         .map(CompileError::code)
         .collect();
     assert_eq!(codes, ["invalid_port_name"]);
+}
+
+#[test]
+fn a_reserved_name_cannot_be_a_port() {
+    let nodes = json!([cell("cell_1", &[], &["console"])]);
+    let codes: Vec<&str> = errors(nodes, json!([]))
+        .iter()
+        .map(CompileError::code)
+        .collect();
+    assert_eq!(codes, ["invalid_port_name"]);
+}
+
+#[test]
+fn a_port_marker_must_say_input_or_output() {
+    let nodes =
+        json!([{ "id": "a", "operator": "sprisk.code.typo@1.0.0", "params": { "names": ["x"] } }]);
+    let codes: Vec<&str> = errors(nodes, json!([]))
+        .iter()
+        .map(CompileError::code)
+        .collect();
+    assert_eq!(codes, ["invalid_params_schema"]);
 }

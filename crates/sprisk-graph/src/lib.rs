@@ -61,6 +61,9 @@ pub enum CompileError {
     },
 }
 
+/// Ports every step may send without declaring them: what it printed (ADR-0025).
+const RESERVED_PORTS: [&str; 1] = ["console"];
+
 /// Node ids the control plane uses for its own attempts (`gate_b`: ADR-0017).
 pub const RESERVED_NODE_IDS: [&str; 1] = ["gate_b"];
 
@@ -273,31 +276,45 @@ fn with_named_ports(
     op: &Operator,
     params: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<Operator, Vec<CompileError>> {
-    let mut op = op.clone();
+    let mut named = op.clone();
     let mut errors = Vec::new();
-    let marked: Vec<(String, String)> = op
+    let schema_error = |reason: String| CompileError::InvalidParamsSchema {
+        node: node.to_owned(),
+        operator: op.id.to_string(),
+        reason,
+    };
+    let properties = op
         .params_schema
         .get("properties")
-        .and_then(|p| p.as_object())
-        .into_iter()
-        .flatten()
-        .filter_map(|(key, schema)| {
-            let side = schema.get("x-sprisk-ports")?.as_str()?;
-            Some((key.clone(), side.to_owned()))
-        })
-        .collect();
-    for (key, side) in marked {
+        .and_then(|p| p.as_object());
+    let mut sides_seen = Vec::new();
+    for (key, schema) in properties.into_iter().flatten() {
+        let Some(side) = schema.get("x-sprisk-ports") else {
+            continue;
+        };
+        let ports = match side.as_str() {
+            Some("input") => &mut named.inputs,
+            Some("output") => &mut named.outputs,
+            _ => {
+                errors.push(schema_error(format!(
+                    "x-sprisk-ports on {key} must be input or output"
+                )));
+                continue;
+            }
+        };
+        if sides_seen.contains(&side) {
+            errors.push(schema_error(format!(
+                "more than one setting lists {side} ports"
+            )));
+            continue;
+        }
+        sides_seen.push(side);
         let names = params
-            .get(&key)
+            .get(key)
             .and_then(|v| v.as_array())
             .into_iter()
             .flatten();
         for name in names.filter_map(|n| n.as_str()) {
-            let ports = if side == "input" {
-                &mut op.inputs
-            } else {
-                &mut op.outputs
-            };
             let bad = |reason| CompileError::InvalidPortName {
                 node: node.to_owned(),
                 name: name.to_owned(),
@@ -307,7 +324,7 @@ fn with_named_ports(
                 errors.push(bad("port names are lowercase letters, digits and _"));
                 continue;
             };
-            if ports.iter().any(|p| p.name == port_name) {
+            if RESERVED_PORTS.contains(&name) || ports.iter().any(|p| p.name == port_name) {
                 errors.push(bad("the step already has a port with this name"));
                 continue;
             }
@@ -319,7 +336,7 @@ fn with_named_ports(
         }
     }
     if errors.is_empty() {
-        Ok(op)
+        Ok(named)
     } else {
         Err(errors)
     }
