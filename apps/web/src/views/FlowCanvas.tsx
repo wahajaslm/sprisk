@@ -18,24 +18,23 @@ import {
   useReactFlow,
   useViewport,
 } from "@xyflow/react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { create } from "zustand";
 
-import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
+import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../api/hooks.ts";
 import { type RunChecks, useRunChecks } from "../api/checks.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
-import { kindOf, type NodeKind, shortName, STAGES, type Stage, stageNumber, stageOf } from "../flow/stages.ts";
+import { addCodeStep } from "../flow/edit.ts";
+import { flowPositions, type Point } from "../flow/layout.ts";
+import { kindOf, type NodeKind, shortName } from "../flow/stages.ts";
+import type { InspectorTab } from "../workbench/inspectorTabs.ts";
+import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
 import { KindIcon, KindMark } from "./Icons.tsx";
 
-const COLUMN_GAP = 52;
-const ROW_GAP = 12;
-const HEAD = 36;
-const PAD = 12;
-/** Studio's stage greys, darker to lighter left to right. */
-const STAGE_HUE = ["#4a4a4a", "#636363", "#7e7e7e", "#9c9c9c", "#bfbfbf", "#e8e8e8"] as const;
 
 type StepData = {
   id: string;
@@ -53,8 +52,8 @@ type StepData = {
   level: DetailLevel;
   selected: boolean;
 };
-type FrameData = { stage: Stage; count: number; active: boolean };
-type FlowEdgeData = { hue: string };
+/** An edge into or out of the selected step is drawn brighter. */
+type FlowEdgeData = { active: boolean };
 
 const STATUS: Record<string, { text: string; tone: string }> = {
   succeeded: { text: "succeeded", tone: "done" },
@@ -82,9 +81,13 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
       style={{ width, height }}
       title={data.operatorRef}
       onClick={() => select(data.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        select(data.id);
+        openStepMenu({ nodeId: data.id, x: e.clientX, y: e.clientY });
+      }}
     >
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
-      <Handle id="in-top" type="target" position={Position.Top} isConnectable={false} />
       <span className="card-head">
         <span className={`icon-tile small kind-${data.kind}${data.selected ? " ring" : ""}`}>
           <KindIcon kind={data.kind} size={13} />
@@ -122,143 +125,122 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
         )}
       </span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
-      <Handle id="out-bottom" type="source" position={Position.Bottom} isConnectable={false} />
     </button>
   );
 }
 
-/** Compact: icon and name, no card. A failed or flagged step turns red; details are in the Inspector. */
+/** Compact: a round icon, the step's name, and what kind of step it is and how it ran. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
   const status = statusOf(data.state);
+  const bad = status.tone === "bad" || data.concerns > 0;
   return (
     <button
       type="button"
-      className={`flow-node${data.selected ? " selected" : ""}${status.tone === "bad" || data.concerns > 0 ? " bad" : ""}`}
-      title={`${data.operator} · ${status.text}`}
+      className={`flow-round${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
+      title={data.operatorRef}
       onClick={() => select(data.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        select(data.id);
+        openStepMenu({ nodeId: data.id, x: e.clientX, y: e.clientY });
+      }}
     >
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
-      <Handle id="in-top" type="target" position={Position.Top} isConnectable={false} />
-      <span className={`icon-tile small kind-${data.kind}${data.selected ? " ring" : ""}`}>
-        <KindIcon kind={data.kind} size={13} />
+      <span className={`round-icon kind-${data.kind}`}>
+        <KindIcon kind={data.kind} size={16} />
       </span>
-      <span className="node-title">{data.id}</span>
-      <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
-      <Handle id="out-bottom" type="source" position={Position.Bottom} isConnectable={false} />
-    </button>
-  );
-}
-
-function StageFrame({ data }: NodeProps<Node<FrameData>>) {
-  return (
-    <div className={`stage-frame${data.active ? " active" : ""}`}>
-      <div className="stage-frame-head">
-        <span className="stage-num">{stageNumber(data.stage)}</span>
-        <span className="stage-label">{data.stage}</span>
-        <span className="spacer" />
-        <span className="stage-count">
-          {data.count} {data.count === 1 ? "step" : "steps"}
+      <span className="round-text">
+        <span className="node-title">{data.id}</span>
+        <span className={`round-sub tone-${status.tone}`}>
+          {data.operator} · {status.text}
+          {data.concerns > 0 && ` · ⚠ ${data.concerns}`}
         </span>
-      </div>
-    </div>
+      </span>
+      <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
+    </button>
   );
 }
 
 function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<Edge<FlowEdgeData>>) {
   const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
-  const hue = data?.hue ?? STAGE_HUE[5];
-  return (
-    <>
-      <BaseEdge id={id} path={path} style={{ stroke: hue, strokeWidth: 1.1 }} />
-      <circle cx={targetX} cy={targetY} r={2.2} fill={hue} />
-    </>
-  );
+  return <BaseEdge id={id} path={path} className={`flow-edge${data?.active ? " active" : ""}`} />;
 }
 
-const nodeTypes = { step: StepNode, frame: StageFrame };
+const nodeTypes = { step: StepNode };
 const edgeTypes = { flow: FlowEdge };
 
-/** Stage columns left to right, steps stacked inside their stage (Studio layout). */
-export function layout(
+/** React Flow nodes and edges for a flow, at the positions the layout chose. */
+export function flowGraph(
   pipeline: PipelineVersion,
   operators: Map<string, Operator>,
   latest: Map<string, Attempt>,
   selectedId: string | undefined,
-  level: DetailLevel = "compact",
-  concerns: Map<string, number> = new Map(),
+  level: DetailLevel,
+  concerns: Map<string, number>,
+  at: Map<string, Point>,
 ): { nodes: Node[]; edges: Edge[] } {
-  const { width: NODE_W, height: NODE_H } = NODE_SIZE[level];
-  const COLUMN = NODE_W + COLUMN_GAP;
-  const ROW = NODE_H + ROW_GAP;
-  const byStage = new Map<Stage, string[]>();
-  const stageOfNode = new Map<string, Stage>();
-  for (const n of pipeline.nodes) {
-    const op = operators.get(n.operator);
-    const stage = op ? stageOf(op) : "Unknown";
-    stageOfNode.set(n.id, stage);
-    byStage.set(stage, [...(byStage.get(stage) ?? []), n.id]);
-  }
-  const used = STAGES.filter((s) => byStage.has(s));
-  const nodes: Node[] = [];
-  used.forEach((stage, col) => {
-    const ids = byStage.get(stage) ?? [];
-    const height = HEAD + PAD + ids.length * ROW;
-    nodes.push({
-      id: `stage:${stage}`,
-      type: "frame",
-      position: { x: col * COLUMN, y: 0 },
-      width: NODE_W + 2 * PAD,
+  const { width, height } = NODE_SIZE[level];
+  const nodes: Node[] = pipeline.nodes.map((node) => {
+    const id = node.id;
+    const op = operators.get(node.operator);
+    return {
+      id,
+      type: "step",
+      position: at.get(id) ?? { x: 0, y: 0 },
+      width,
       height,
-      data: { stage, count: ids.length, active: selectedId !== undefined && ids.includes(selectedId) },
-      draggable: false,
-      selectable: false,
-      zIndex: -1,
-    });
-    ids.forEach((id, row) => {
-      const node = pipeline.nodes.find((n) => n.id === id);
-      const op = node ? operators.get(node.operator) : undefined;
-      nodes.push({
+      data: {
         id,
-        type: "step",
-        position: { x: col * COLUMN + PAD, y: HEAD + PAD + row * ROW },
-        width: NODE_W,
-        height: NODE_H,
-        data: {
-          id,
-          operator: node ? shortName(node.operator) : id,
-          operatorRef: node?.operator ?? "",
-          capability: op?.capability_class ?? "",
-          params: node?.params ?? {},
-          pipelineVersionId: pipeline.id,
-          isEvaluator: op?.capability_class === "evaluator",
-          concerns: concerns.get(id) ?? 0,
-          level,
-          kind: op ? kindOf(op) : "recipe",
-          state: latest.get(id)?.state ?? "not run",
-          ...(hasOutputs(latest.get(id)) ? { attemptId: latest.get(id)?.id } : {}),
-          selected: id === selectedId,
-        },
-      });
-    });
+        operator: shortName(node.operator),
+        operatorRef: node.operator,
+        capability: op?.capability_class ?? "",
+        params: node.params,
+        pipelineVersionId: pipeline.id,
+        isEvaluator: op?.capability_class === "evaluator",
+        concerns: concerns.get(id) ?? 0,
+        level,
+        kind: op ? kindOf(op) : "recipe",
+        state: latest.get(id)?.state ?? "not run",
+        ...(hasOutputs(latest.get(id)) ? { attemptId: latest.get(id)?.id } : {}),
+        selected: id === selectedId,
+      },
+    };
   });
   const edges: Edge[] = pipeline.edges.map((e) => {
     const source = e.from.split(".")[0] ?? e.from;
     const target = e.to.split(".")[0] ?? e.to;
-    const stage = stageOfNode.get(target) ?? "Unknown";
-    // Within one stage the steps are stacked, so the edge runs down instead of looping round.
-    const sameStage = stageOfNode.get(source) === stage;
     return {
       id: `${e.from}->${e.to}`,
       type: "flow",
       source,
       target,
-      sourceHandle: sameStage ? "out-bottom" : "out",
-      targetHandle: sameStage ? "in-top" : "in",
-      data: { hue: STAGE_HUE[STAGES.indexOf(stage)] ?? STAGE_HUE[5] },
+      sourceHandle: "out",
+      targetHandle: "in",
+      data: { active: selectedId !== undefined && (source === selectedId || target === selectedId) },
     };
   });
   return { nodes, edges };
+}
+
+/** Layout runs off the main path (ELK is async); a new flow or node size lays out afresh. */
+function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel) {
+  const key = pipeline ? `${pipeline.id}/${level}` : "";
+  const [result, setResult] = useState<{ key: string; at?: Map<string, Point>; error?: string }>();
+  useEffect(() => {
+    if (!pipeline) return;
+    let live = true;
+    flowPositions(pipeline, NODE_SIZE[level]).then(
+      (at) => live && setResult({ key, at }),
+      (e: unknown) => live && setResult({ key, error: e instanceof Error ? e.message : String(e) }),
+    );
+    return () => {
+      live = false;
+    };
+    // `key` names the pipeline version and size; versions are immutable.
+  }, [key]);
+  // Keep showing the last layout of this flow while the next one is computed: no flicker.
+  return result?.key.startsWith(`${pipeline?.id ?? ""}/`) ? result : undefined;
 }
 
 export function FlowCanvas() {
@@ -269,6 +251,8 @@ export function FlowCanvas() {
   const level = useCanvasDetail((s) => s.level);
   const checks = useRunChecks(latestByNode(attempts.data ?? []).get(GATE_NODE));
 
+  const pipelineNow = versions.data?.find((v) => v.id === pipelineVersionId);
+  const positions = usePositions(pipelineNow, level);
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
   if (versions.isPending || operators.isPending) return <p className="muted pad">Loading flow…</p>;
@@ -277,12 +261,15 @@ export function FlowCanvas() {
 
   const byRef = new Map(operators.data.map((op) => [op.id, op]));
   const latest = latestByNode(attempts.data ?? []);
-  const computed = layout(pipeline, byRef, latest, nodeId, level, concernsByNode(checks));
+  if (positions?.error) return <p role="alert" className="error pad">Could not lay out the flow: {positions.error}</p>;
+  if (!positions?.at) return <p className="muted pad">Laying out the flow…</p>;
+  const computed = flowGraph(pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at);
   return (
     <div className="flow" aria-label="Flow canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
-      {/* A new level means new node sizes: lay the canvas out afresh. */}
-      <Canvas key={level} computed={computed} />
+      {/* A new layout means new positions: start the canvas afresh. */}
+      <Canvas key={positions.key} computed={computed} />
+      <StepMenu pipeline={pipeline} operators={byRef} />
     </div>
   );
 }
@@ -387,6 +374,82 @@ function Legend() {
           {label}
         </span>
       ))}
+    </div>
+  );
+}
+
+type MenuAt = { nodeId: string; x: number; y: number };
+
+/** Which step's action menu is open, and where. UI state only. */
+const useStepMenu = create<{ at: MenuAt | undefined; set: (at: MenuAt | undefined) => void }>((set) => ({
+  at: undefined,
+  set: (at) => set({ at }),
+}));
+const openStepMenu = (at: MenuAt) => useStepMenu.getState().set(at);
+
+const OPEN_TABS: [InspectorTab, string][] = [
+  ["data", "Open data"],
+  ["code", "Open code"],
+  ["parameters", "Open parameters"],
+];
+
+/** Right-click actions on a step. Escape or a click elsewhere closes it. */
+function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operators: Map<string, Operator> }) {
+  const { at, set } = useStepMenu();
+  const dock = useWorkbench((s) => s.dock);
+  const { selectNode, showRun } = useSelection();
+  const saveAndRun = useSaveAndRun();
+  const first = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!at) return;
+    first.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && set(undefined);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [at, set]);
+  if (!at) return saveAndRun.isError ? <p role="alert" className="error canvas-error">{saveAndRun.error.message}</p> : null;
+  const node = pipeline.nodes.find((n) => n.id === at.nodeId);
+  const tablePort = node ? operators.get(node.operator)?.outputs.find((o) => o.kind === "table")?.name : undefined;
+  const close = () => set(undefined);
+  const act = (fn: () => void) => () => {
+    fn();
+    close();
+  };
+  return (
+    <div className="menu-backdrop" onClick={close} onContextMenu={(e) => (e.preventDefault(), close())}>
+      <div className="step-menu" role="menu" aria-label={at.nodeId} style={{ left: at.x, top: at.y }} onClick={(e) => e.stopPropagation()}>
+        {OPEN_TABS.map(([tab, label], i) => (
+          <button
+            key={tab}
+            ref={i === 0 ? first : undefined}
+            type="button"
+            role="menuitem"
+            onClick={act(() => {
+              selectNode(at.nodeId);
+              dock?.showTab(tab);
+            })}
+          >
+            {label}
+          </button>
+        ))}
+        {tablePort && (
+          <button
+            type="button"
+            role="menuitem"
+            disabled={saveAndRun.isPending}
+            onClick={act(() => {
+              const { version, nodeId } = addCodeStep(pipeline, at.nodeId, String(tablePort));
+              saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
+            })}
+          >
+            Explore in code
+          </button>
+        )}
+        <hr />
+        <button type="button" role="menuitem" onClick={act(() => void navigator.clipboard.writeText(at.nodeId))}>
+          Copy step id
+        </button>
+      </div>
     </div>
   );
 }

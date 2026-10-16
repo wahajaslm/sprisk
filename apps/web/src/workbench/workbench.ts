@@ -9,6 +9,8 @@ export type Activity = (typeof ACTIVITIES)[number];
 export type DockCommands = {
   /** Open another panel for one Inspector tab, e.g. to pin it and compare runs. */
   openTab: (tab: InspectorTab) => void;
+  /** Bring a tab to the front, reopening it if it was closed. */
+  showTab: (tab: InspectorTab) => void;
   resetLayout: () => void;
   setEditing: (on: boolean) => void;
   setSidebarVisible: (on: boolean) => void;

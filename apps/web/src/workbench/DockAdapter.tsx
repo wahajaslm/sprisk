@@ -131,6 +131,11 @@ function PanelToolbar({ api, Toolbar }: { api: PanelApi; Toolbar: FunctionCompon
 function commands(api: DockviewApi) {
   return {
     openTab: (tab: InspectorTab) => reopenTab(api, tab),
+    showTab: (tab: InspectorTab) => {
+      const panel = api.panels.find((p) => readTab(p.params) === tab);
+      if (panel) panel.api.setActive();
+      else reopenTab(api, tab);
+    },
     resetLayout: () => {
       api.clear();
       addDefaultLayout(api);

@@ -8,6 +8,8 @@ import { Inspector } from "./inspector.tsx";
 import { StepLibrary } from "../src/views/StepLibrary.tsx";
 import { TopBar } from "../src/views/TopBar.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
+import { useCanvasDetail } from "../src/workbench/detail.ts";
+import { useWorkbench } from "../src/workbench/workbench.ts";
 import { Copilot } from "../src/views/Copilot.tsx";
 import {
   PV,
@@ -132,13 +134,46 @@ describe("step library", () => {
 });
 
 describe("flow canvas", () => {
-  it("shows every node in a stage frame with its latest attempt state", async () => {
+  it("shows every step as a node with its name and latest state, with no stage boxes", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    useCanvasDetail.setState({ level: "compact" });
     renderWithApi(<FlowCanvas />);
     const split = await screen.findByRole("button", { name: /^split/ });
-    await waitFor(() => expect(split).toHaveTextContent("succeeded"));
-    expect(screen.getByText("Split").closest(".stage-frame-head")).toHaveTextContent("02Split1 step");
+    await waitFor(() => expect(split).toHaveTextContent(/random_split.*succeeded/));
+    expect(document.querySelector(".stage-frame")).toBeNull();
     expect(screen.queryByRole("button", { name: /gate_b/ })).toBeNull();
+  });
+
+  it("places each step to the right of the steps it reads", async () => {
+    const { flowPositions } = await import("../src/flow/layout.ts");
+    const at = await flowPositions(pipeline, { width: 168, height: 44 });
+    const x = (id: string) => at.get(id)!.x;
+    expect(x("load")).toBeLessThan(x("split"));
+    expect(x("split")).toBeLessThan(x("model"));
+    expect(x("model")).toBeLessThan(x("score"));
+  });
+
+  it("right-click on a step opens its actions", async () => {
+    const dock = fakeDock();
+    useWorkbench.setState({ dock });
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { clipboard: { writeText } });
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /^split/ }));
+    const menu = screen.getByRole("menu", { name: "split" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Open code" }));
+    expect(useSelection.getState().nodeId).toBe("split");
+    expect(dock.showTab).toHaveBeenCalledWith("code");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^split/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Copy step id" }));
+    expect(writeText).toHaveBeenCalledWith("split");
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^split/ }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("selecting a node opens it in the inspector", async () => {
@@ -844,14 +879,14 @@ describe("node detail switch", () => {
     expect(screen.queryByRole("region", { name: "Table · test" })).toBeNull();
   });
 
-  it("shows only step names in Compact and full cards in Detail; there is no Summary", async () => {
+  it("shows round steps with name and state in Compact and full cards in Detail; there is no Summary", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     await userEvent.click(await screen.findByRole("radio", { name: "Compact" }));
     expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Compact", "Detail"]);
-    const score = await screen.findByRole("button", { name: "score" });
-    expect(score).toHaveTextContent(/^score$/);
-    expect(score.querySelector(".icon-tile")).not.toBeNull();
+    const score = await screen.findByRole("button", { name: /^score/ });
+    expect(score).toHaveTextContent(/^score\s*evaluate · succeeded$/);
+    expect(score.querySelector(".round-icon")).not.toBeNull();
 
     await userEvent.click(screen.getByRole("radio", { name: "Detail" }));
     const card = await screen.findByRole("button", { name: /^score/ });
