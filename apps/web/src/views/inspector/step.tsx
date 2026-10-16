@@ -15,7 +15,7 @@ import { useSelection } from "../../workbench/selection.ts";
 import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
 import { FiguresTab } from "./FiguresTab.tsx";
-import { StepCharts } from "./StepCharts.tsx";
+import { AddedCharts, ChartButton } from "./StepCharts.tsx";
 import { ViewControls } from "./ViewControls.tsx";
 import { ChecksTab, concerns } from "./ChecksTab.tsx";
 import { CodeData } from "./CodeData.tsx";
@@ -192,9 +192,9 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
   const { technical } = useInspectorDetail();
   const { pipeline, node, nodeId, operator, done, isCode, display, found } = step;
   if (!nodeId) return null;
-  const charts = pipeline && (
-    <StepCharts pipeline={pipeline} nodeId={nodeId} attempt={done} attempts={step.all} operators={step.operatorsById} addChart={step.addChart} />
-  );
+  const chartButton = <ChartButton attempt={done} addChart={step.addChart} />;
+  const charts = pipeline && <AddedCharts pipeline={pipeline} nodeId={nodeId} attempt={done} attempts={step.all} operators={step.operatorsById} />;
+  const added = pipeline ? chartsOf(pipeline, nodeId).length : 0;
   switch (tab) {
     case "data":
       return (
@@ -207,14 +207,16 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       );
     case "visuals":
       return isCode ? (
-        <VisualsTab display={display} charts={charts} />
+        <VisualsTab display={display} chartButton={chartButton} charts={charts} added={added} />
       ) : (
         <FiguresTab
           attempt={done}
           ports={step.figurePorts}
           failure={step.latest?.state === "failed" ? step.latest.error?.message : undefined}
           controls={pipeline && <ViewControls pipeline={pipeline} nodeId={nodeId} operator={operator} columns={step.inputColumns} />}
+          chartButton={chartButton}
           charts={charts}
+          added={added}
         />
       );
     case "console":

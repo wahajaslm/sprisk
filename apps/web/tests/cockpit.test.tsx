@@ -1019,8 +1019,7 @@ describe("code step interface (ADR-0021)", () => {
   it("Visualizations offers a chart of the table the code passes on (ADR-0030)", async () => {
     withInterface();
     await openCode("Visualizations");
-    expect(await screen.findByText("Charts of data")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Chart" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Chart" })).toBeInTheDocument();
   });
 });
 

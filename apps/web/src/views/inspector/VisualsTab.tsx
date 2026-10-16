@@ -5,34 +5,41 @@ import type { Read } from "../../api/code.ts";
 import { type ResultLayout, useResultLayout } from "../../workbench/detail.ts";
 import { useEscape } from "../../hooks/useEscape.ts";
 import { RowsTable } from "../RowsTable.tsx";
+import { ADDED_CHARTS_NOTE } from "./StepCharts.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 
-/** A code step's figures, in the order it drew them (Node Framework §7), then charts of the
- * table it passes on (ADR-0030). Tables it showed are in Data. Inline or as a grid; switching
- * never re-runs anything. */
-export function VisualsTab({ display, charts }: { display: Read<CodeDisplay>; charts?: ReactNode }) {
-  return (
-    <>
-      <DrawnFigures display={display} />
-      {charts}
-    </>
-  );
-}
-
-function DrawnFigures({ display }: { display: Read<CodeDisplay> }) {
+/** A code step's figures, in the order it drew them (Node Framework §7), then charts added to
+ * the table it passes on (ADR-0030). Tables it showed are in Data. One bar, one area: Inline
+ * and Grid apply to both, and switching never re-runs anything. */
+export function VisualsTab({
+  display,
+  chartButton,
+  charts,
+  added,
+}: {
+  display: Read<CodeDisplay>;
+  chartButton?: ReactNode;
+  charts?: ReactNode;
+  added: number;
+}) {
   const { layout, setLayout } = useResultLayout();
   const [enlarged, setEnlarged] = useState<{ label: string; src: string } | undefined>();
-  if (display.status === "none") return <p className="muted">{display.reason}</p>;
-  if (display.status === "loading") return <Loading />;
-  if (display.status === "error") return <p role="alert" className="error">{display.message}</p>;
-  const items = display.value.items.filter((i) => i.kind !== "text" && i.kind !== "table");
-  if (items.length === 0) return <p className="muted">No figures. Draw a plot in the code to see it here; tables it shows are in Data.</p>;
+  const items = display.status === "ready" ? display.value.items.filter((i) => i.kind !== "text" && i.kind !== "table") : [];
   let figure = 0;
   return (
     <>
       <div className="result-bar">
+        <span className="spacer" />
+        {chartButton}
         <LayoutSwitch layout={layout} setLayout={setLayout} />
       </div>
+      {display.status === "none" && <p className="muted">{display.reason}</p>}
+      {display.status === "loading" && <p className="muted">Loading…</p>}
+      {display.status === "error" && <p role="alert" className="error">{display.message}</p>}
+      {display.status === "ready" && items.length === 0 && added === 0 && (
+        <p className="muted">No figures. Draw a plot in the code, or use Chart; tables it shows are in Data.</p>
+      )}
+      {added > 0 && <p className="muted">{ADDED_CHARTS_NOTE}</p>}
       <section className={`code-output ${layout}`} aria-label="Visualizations">
         {items.map((item, i) => {
           if (item.kind === "image" && item.png_base64) {
@@ -47,6 +54,7 @@ function DrawnFigures({ display }: { display: Read<CodeDisplay> }) {
           }
           return <p key={i} role="alert" className="error">Output item {i + 1} ({item.kind}) has no content.</p>;
         })}
+        {charts}
       </section>
       {enlarged && <Enlarged {...enlarged} onClose={() => setEnlarged(undefined)} />}
     </>

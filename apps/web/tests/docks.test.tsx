@@ -276,6 +276,18 @@ describe("Visualizations show what Python drew (ADR-0024)", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Grid" }));
     expect(screen.getByRole("region", { name: "Figures" })).toHaveClass("grid");
   });
+
+  it("a chart added to a step says so, and follows Inline and Grid with the step's figures", async () => {
+    await chartStep([plotly("one")]);
+    show("visuals");
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    const figures = await screen.findByRole("region", { name: "Figures" });
+    expect(await within(figures).findByRole("region", { name: "Chart chart_1" })).toBeInTheDocument();
+    expect(screen.getByText(/added with Chart.*not by this step's code/)).toBeInTheDocument();
+    expect(screen.getAllByRole("radiogroup", { name: "Result layout" })).toHaveLength(1);
+    await userEvent.click(screen.getByRole("radio", { name: "Grid" }));
+    expect(figures).toHaveClass("grid");
+  });
 });
 
 describe("the code decides the tabs (ADR-0025)", () => {

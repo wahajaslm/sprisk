@@ -3,36 +3,44 @@ import { lazy, type ReactNode, Suspense, useRef } from "react";
 
 import { useFigureSet } from "../../api/figures.ts";
 import { useResultLayout } from "../../workbench/detail.ts";
+import { ADDED_CHARTS_NOTE } from "./StepCharts.tsx";
 import { LayoutSwitch } from "./VisualsTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
-/** The figures a step drew in Python, on each of its `figure` ports (ADR-0024). */
+/** The figures a step drew in Python, on each of its `figure` ports (ADR-0024), then charts
+ * added to its table (ADR-0030). One bar, one area: Inline and Grid apply to both. */
 export function FiguresTab({
   attempt,
   ports,
   controls,
   failure,
+  chartButton,
   charts,
+  added,
 }: {
   attempt: Attempt | undefined;
   ports: string[];
   controls?: ReactNode;
   /** Why the latest run of this step failed, if it did. */
   failure?: string | undefined;
-  /** Charts of this step's tables (they live here, not on the canvas). */
+  chartButton?: ReactNode;
+  /** Charts added to this step's tables (they live here, not on the canvas). */
   charts?: ReactNode;
+  added: number;
 }) {
   const { layout, setLayout } = useResultLayout();
-  if (ports.length === 0 && !charts) return <p className="muted">This step draws no figures.</p>;
   return (
     <>
       <div className="result-bar">
         {controls}
         <span className="spacer" />
+        {chartButton}
         <LayoutSwitch layout={layout} setLayout={setLayout} />
       </div>
+      {ports.length === 0 && added === 0 && <p className="muted">This step draws no figures. Use Chart to draw its table.</p>}
+      {added > 0 && <p className="muted">{ADDED_CHARTS_NOTE}</p>}
       {failure ? (
         <p role="alert" className="error">This step failed: {failure}</p>
       ) : (
@@ -42,8 +50,8 @@ export function FiguresTab({
         {ports.map((port) => (
           <FigurePort key={port} attempt={attempt} port={port} />
         ))}
+        {charts}
       </section>
-      {charts}
     </>
   );
 }

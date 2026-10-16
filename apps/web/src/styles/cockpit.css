@@ -537,6 +537,7 @@ p { margin: 0; }
 .figures.grid { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
 .step-charts { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
 .chart-block { display: grid; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--line-soft); }
+.figures.inline > .chart-block, .code-output.inline > .chart-block { max-width: 720px; }
 .view-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: var(--text-sm); color: var(--muted); }
 .view-controls label { display: flex; align-items: center; gap: var(--space-2); }
 .view-controls select { height: 26px; max-width: 220px; border: 1px solid var(--line-strong); background: var(--canvas); color: var(--ink); font: var(--text-sm) var(--sans); }
