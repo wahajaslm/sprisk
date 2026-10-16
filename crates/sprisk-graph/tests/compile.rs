@@ -67,6 +67,19 @@ fn registry() -> (tempfile::TempDir, Registry) {
             &[("metrics", "metrics")],
             json!({ "type": "object" }),
         ),
+        operator(
+            "sprisk.code.cells@1.0.0",
+            &[],
+            &[("display", "diagnostics")],
+            json!({
+                "type": "object",
+                "properties": {
+                    "source": { "type": "string" },
+                    "inputs": { "type": "array", "items": { "type": "string" }, "x-sprisk-ports": "input" },
+                    "outputs": { "type": "array", "items": { "type": "string" }, "x-sprisk-ports": "output" }
+                }
+            }),
+        ),
     ];
     let dir = tempfile::tempdir().unwrap();
     for (i, op) in ops.iter().enumerate() {
@@ -364,4 +377,71 @@ fn a_step_that_reads_files_cannot_carry_its_own_code() {
             .any(|e| e.code() == "code_not_allowed" && e.to_string().contains("load")),
         "{found:?}"
     );
+}
+
+fn cell(id: &str, inputs: &[&str], outputs: &[&str]) -> Value {
+    json!({
+        "id": id,
+        "operator": "sprisk.code.cells@1.0.0",
+        "params": { "source": "", "inputs": inputs, "outputs": outputs }
+    })
+}
+
+#[test]
+fn a_code_step_s_ports_are_the_names_in_its_params() {
+    let (_dir, registry) = registry();
+    let nodes = json!([
+        cell("cell_1", &[], &["df"]),
+        cell("cell_2", &["df"], &["filtered"]),
+        node("split", "sprisk.validation.split@1.0.0"),
+    ]);
+    let edges = json!([
+        edge("cell_1.df", "cell_2.df"),
+        edge("cell_2.filtered", "split.data")
+    ]);
+
+    let plan = compile(&pipeline(nodes, edges), &registry).unwrap();
+
+    let second = plan.steps.iter().find(|s| s.node_id == "cell_2").unwrap();
+    assert_eq!(second.inputs[0].from_node, "cell_1");
+    let outputs: Vec<(String, String)> = second
+        .operator
+        .outputs
+        .iter()
+        .map(|p| (p.name.to_string(), p.kind.to_string()))
+        .collect();
+    assert_eq!(
+        outputs,
+        [
+            ("display".to_owned(), "diagnostics".to_owned()),
+            ("filtered".to_owned(), "table".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn a_code_step_needs_every_name_it_reads_connected_and_no_others() {
+    let nodes = json!([
+        cell("cell_1", &[], &["df"]),
+        cell("cell_2", &["df", "lookup"], &[])
+    ]);
+    let edges = json!([
+        edge("cell_1.df", "cell_2.df"),
+        edge("cell_1.df", "cell_2.other")
+    ]);
+    let codes: Vec<&str> = errors(nodes, edges)
+        .iter()
+        .map(CompileError::code)
+        .collect();
+    assert_eq!(codes, ["not_an_input", "unconnected_input"]);
+}
+
+#[test]
+fn a_port_name_must_be_a_valid_name() {
+    let nodes = json!([cell("cell_1", &[], &["X_train"])]);
+    let codes: Vec<&str> = errors(nodes, json!([]))
+        .iter()
+        .map(CompileError::code)
+        .collect();
+    assert_eq!(codes, ["invalid_port_name"]);
 }

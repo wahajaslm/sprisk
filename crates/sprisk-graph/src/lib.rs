@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
-use sprisk_contracts::{Operator, PipelineVersion, Port};
+use sprisk_contracts::{Operator, PipelineVersion, Port, PortKind, PortName};
 use sprisk_registry::Registry;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -47,6 +47,12 @@ pub enum CompileError {
     Cycle(String),
     #[error("node id {0} is reserved")]
     ReservedNode(String),
+    #[error("node {node}: {name:?} cannot be a port: {reason}")]
+    InvalidPortName {
+        node: String,
+        name: String,
+        reason: &'static str,
+    },
     #[error("node {node}: {operator} cannot carry its own code: {reason}")]
     CodeNotAllowed {
         node: String,
@@ -76,6 +82,7 @@ impl CompileError {
             CompileError::Cycle(_) => "cycle",
             CompileError::ReservedNode(_) => "reserved_node_id",
             CompileError::CodeNotAllowed { .. } => "code_not_allowed",
+            CompileError::InvalidPortName { .. } => "invalid_port_name",
         }
     }
 }
@@ -114,7 +121,8 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
     let mut errors = Vec::new();
 
     // Resolve each node to its operator and check its params.
-    let mut operators: HashMap<&str, &Operator> = HashMap::new();
+    // Each node's operator with the ports its params name (ADR-0031).
+    let mut operators: HashMap<&str, Operator> = HashMap::new();
     let mut digests: HashMap<&str, &str> = HashMap::new();
     let mut graph = DiGraph::<&str, ()>::new();
     let mut index: HashMap<&str, NodeIndex> = HashMap::new();
@@ -130,11 +138,16 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
         index.insert(id, graph.add_node(id));
         match registry.resolve(&node.operator) {
             Some((op, digest)) => {
-                operators.insert(id, op);
                 digests.insert(id, digest);
                 errors.extend(check_params(id, op, &node.params));
                 if node.code.is_some() {
                     errors.extend(check_own_code(id, op));
+                }
+                match with_named_ports(id, op, &node.params) {
+                    Ok(op) => {
+                        operators.insert(id, op);
+                    }
+                    Err(e) => errors.extend(e),
                 }
             }
             None => errors.push(CompileError::UnknownOperator {
@@ -253,6 +266,65 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
     Ok(Plan { steps })
 }
 
+/// A code step's ports are variable names listed in its params (ADR-0031). A params property
+/// marked `x-sprisk-ports: input | output` lists them; each is a table port.
+fn with_named_ports(
+    node: &str,
+    op: &Operator,
+    params: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Operator, Vec<CompileError>> {
+    let mut op = op.clone();
+    let mut errors = Vec::new();
+    let marked: Vec<(String, String)> = op
+        .params_schema
+        .get("properties")
+        .and_then(|p| p.as_object())
+        .into_iter()
+        .flatten()
+        .filter_map(|(key, schema)| {
+            let side = schema.get("x-sprisk-ports")?.as_str()?;
+            Some((key.clone(), side.to_owned()))
+        })
+        .collect();
+    for (key, side) in marked {
+        let names = params
+            .get(&key)
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten();
+        for name in names.filter_map(|n| n.as_str()) {
+            let ports = if side == "input" {
+                &mut op.inputs
+            } else {
+                &mut op.outputs
+            };
+            let bad = |reason| CompileError::InvalidPortName {
+                node: node.to_owned(),
+                name: name.to_owned(),
+                reason,
+            };
+            let Ok(port_name) = name.parse::<PortName>() else {
+                errors.push(bad("port names are lowercase letters, digits and _"));
+                continue;
+            };
+            if ports.iter().any(|p| p.name == port_name) {
+                errors.push(bad("the step already has a port with this name"));
+                continue;
+            }
+            ports.push(Port {
+                name: port_name,
+                kind: PortKind::Table,
+                description: None,
+            });
+        }
+    }
+    if errors.is_empty() {
+        Ok(op)
+    } else {
+        Err(errors)
+    }
+}
+
 /// A step's own code runs instead of its operator's (ADR-0028). Only pure steps that read no
 /// files may carry it: replacement code could ignore the data-root check a path setting
 /// passed, or add effects that caching and approval would not see.
@@ -329,7 +401,7 @@ enum Lookup<'a> {
 }
 
 fn resolve_port<'a>(
-    operators: &HashMap<&str, &'a Operator>,
+    operators: &'a HashMap<&str, Operator>,
     index: &HashMap<&str, NodeIndex>,
     node: &str,
     port: &str,
