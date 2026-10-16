@@ -3,6 +3,9 @@
 
 use std::sync::Arc;
 
+mod split;
+pub use split::{SplitError, Splitter};
+
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
@@ -12,8 +15,8 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactId, AttemptId, CreateRun, Operator, OperatorSource, PipelineVersion, PipelineVersionId,
-    Problem, Run, RunId, parse,
+    ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, Operator, OperatorSource,
+    PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
 };
 use sprisk_graph::{CompileError, Plan, compile};
 use sprisk_registry::Registry;
@@ -34,6 +37,8 @@ pub struct AppState {
     pub settings: Settings,
     /// Canonical directories local-path params may point into. Nothing else is readable.
     pub data_roots: Vec<std::path::PathBuf>,
+    /// Reads notebook cells into suggested code steps (ADR-0031).
+    pub splitter: Splitter,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -44,6 +49,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/operators", get(list_operators))
         .route("/operators/{id}/source", get(get_operator_source))
+        .route("/code/split", post(split_code))
         .route("/pipeline_versions/{id}", get(get_pipeline_version))
         .route("/runs", post(create_run).get(list_runs))
         .route("/runs/{id}", get(get_run))
@@ -146,6 +152,8 @@ enum ApiError {
     Artifacts(#[from] sprisk_artifacts::StoreError),
     #[error(transparent)]
     Registry(#[from] sprisk_registry::RegistryError),
+    #[error(transparent)]
+    Split(#[from] SplitError),
     #[error("{0}")]
     Internal(String),
 }
@@ -179,6 +187,14 @@ impl IntoResponse for ApiError {
             ApiError::Artifacts(sprisk_artifacts::StoreError::NotATable { .. }) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 vec![("not_a_table", self.to_string())],
+            ),
+            ApiError::Split(SplitError::TooManyCells(_)) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                vec![("too_many_cells", self.to_string())],
+            ),
+            ApiError::Split(SplitError::Timeout(_)) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                vec![("split_timeout", self.to_string())],
             ),
             ApiError::Store(StoreError::Conflict(_)) => {
                 (StatusCode::CONFLICT, vec![("conflict", self.to_string())])
@@ -268,6 +284,14 @@ fn optional_id<T: std::str::FromStr>(query: &Query, key: &str) -> Result<Option<
 
 async fn list_operators(State(state): State<AppState>) -> Json<Vec<Operator>> {
     Json(state.registry.operators().cloned().collect())
+}
+
+async fn split_code(
+    State(state): State<AppState>,
+    text: String,
+) -> Result<Json<CodeSplit>, ApiError> {
+    let request: CodeSplitRequest = body(&text)?;
+    Ok(Json(state.splitter.split(&request).await?))
 }
 
 async fn get_operator_source(

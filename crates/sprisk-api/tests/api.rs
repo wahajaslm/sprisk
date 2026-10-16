@@ -9,7 +9,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sprisk_api::{AppState, router};
+use sprisk_api::{AppState, Splitter, router};
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{OperatorSource, parse};
 use sprisk_registry::Registry;
@@ -31,6 +31,18 @@ async fn api() -> Api {
 }
 
 async fn api_with_python(python: PathBuf) -> Api {
+    let splitter = Splitter {
+        command: vec![
+            python.display().to_string(),
+            "-m".into(),
+            "sprisk_code.cells".into(),
+        ],
+        timeout: Duration::from_secs(30),
+    };
+    api_with(python, splitter).await
+}
+
+async fn api_with(python: PathBuf, splitter: Splitter) -> Api {
     let dir = tempfile::tempdir().unwrap();
     let csv = dir.path().join("d.csv");
     std::fs::write(&csv, "x,y\n1,2\n3,4\n").unwrap();
@@ -57,6 +69,7 @@ async fn api_with_python(python: PathBuf) -> Api {
         settings: Settings::default(),
         idle_worker: Default::default(),
         data_roots: vec![dir.path().canonicalize().unwrap()],
+        splitter,
     };
     Api {
         _dir: dir,
@@ -517,4 +530,54 @@ async fn a_run_can_reuse_an_earlier_run_which_must_exist() {
     let (status, second) = call(&api.app, "POST", "/runs", Some(again)).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{second}");
     assert_eq!(second["reuse_run_id"], first["id"]);
+}
+
+#[tokio::test]
+async fn notebook_cells_are_split_into_linked_steps() {
+    let api = api().await;
+    let cells = json!({"cells": ["df = load()", "n = len(df)"]});
+    let (status, split) = call(&api.app, "POST", "/code/split", Some(cells)).await;
+    assert_eq!(status, StatusCode::OK, "{split}");
+    assert_eq!(split["steps"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        split["links"],
+        json!([{"from_step": 0, "to_step": 1, "name": "df"}])
+    );
+}
+
+async fn split_with(command: &[&str], timeout: Duration) -> (StatusCode, Value) {
+    let splitter = Splitter {
+        command: command.iter().map(|c| (*c).to_owned()).collect(),
+        timeout,
+    };
+    let api = api_with(root().join(".venv/bin/python"), splitter).await;
+    let cells = json!({"cells": ["a = 1"]});
+    call(&api.app, "POST", "/code/split", Some(cells)).await
+}
+
+#[tokio::test]
+async fn a_failing_splitter_is_an_error_with_its_message() {
+    let (status, body) = split_with(
+        &["sh", "-c", "echo broken >&2; exit 3"],
+        Duration::from_secs(5),
+    )
+    .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(body.to_string().contains("broken"), "{body}");
+}
+
+#[tokio::test]
+async fn a_slow_splitter_is_stopped() {
+    let (status, body) = split_with(&["sleep", "5"], Duration::from_millis(200)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["errors"][0]["code"], "split_timeout");
+}
+
+#[tokio::test]
+async fn too_many_cells_are_refused_before_python_starts() {
+    let api = api().await;
+    let cells = json!({"cells": vec!["a = 1"; 1001]});
+    let (status, body) = call(&api.app, "POST", "/code/split", Some(cells)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["errors"][0]["code"], "too_many_cells");
 }
