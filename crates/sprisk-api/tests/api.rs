@@ -440,3 +440,25 @@ async fn request_from_a_non_local_origin_is_refused() {
         assert_eq!(response.status(), expected, "{origin}");
     }
 }
+
+#[tokio::test]
+async fn edited_version_must_name_an_existing_parent() {
+    let api = api().await;
+    let mut child = pipeline(&api.csv);
+    child["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ1");
+    child["parent_id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(child.clone())).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "unknown_parent");
+
+    call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(child)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}

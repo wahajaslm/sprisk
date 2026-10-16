@@ -222,6 +222,17 @@ async fn create_pipeline_version(
     let pipeline: PipelineVersion = body(&text)?;
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     check_local_paths(&plan, &state.data_roots)?;
+    if let Some(parent) = &pipeline.parent_id {
+        match state.store.get_pipeline_version(parent).await {
+            Err(StoreError::NotFound { .. }) => {
+                return Err(ApiError::BadRequest {
+                    code: "unknown_parent",
+                    message: format!("parent pipeline version {} does not exist", parent.as_str()),
+                });
+            }
+            other => other?,
+        };
+    }
     state.store.insert_pipeline_version(&pipeline).await?;
     Ok((StatusCode::CREATED, Json(pipeline)))
 }
