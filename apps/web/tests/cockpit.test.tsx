@@ -185,6 +185,15 @@ describe("flow canvas", () => {
     }
   });
 
+  it("stacks a stage's steps top to bottom, while stages still run left to right", async () => {
+    const { flowPositions } = await import("../src/flow/layout.ts");
+    const stage = (id: string) => (id === "model" || id === "score" ? "Model" : undefined);
+    const { nodes: at } = await flowPositions(pipeline, () => ({ width: 168, height: 44 }), stage);
+    expect(at.get("model")!.x).toBe(at.get("score")!.x);
+    expect(at.get("model")!.y + 44).toBeLessThan(at.get("score")!.y);
+    expect(at.get("split")!.x + 168).toBeLessThan(at.get("model")!.x);
+  });
+
   it("groups steps of one stage only where they sit together in the flow", async () => {
     const { stageGroups } = await import("../src/flow/stages.ts");
     const byRef = new Map(operators.map((o) => [o.id, o]));

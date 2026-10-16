@@ -19,58 +19,74 @@ const LAYERED = {
   "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
 };
 
-/** Where each step sits on the canvas: left to right by what it reads, crossings kept low
- * (ELK's layered layout). Steps of one stage stay together inside its group. View state only;
- * never saved with the flow. */
+/** Where each step sits on the canvas: stages left to right by what they read, crossings kept
+ * low (ELK's layered layout). A stage's steps stack top to bottom inside its group. View state
+ * only; never saved with the flow. */
 export async function flowPositions(
   pipeline: PipelineVersion,
   sizeOf: (nodeId: string) => Size,
   groupOf: (nodeId: string) => string | undefined,
 ): Promise<{ nodes: Map<string, Point>; groups: Group[] }> {
-  const groups = new Map<string, ElkNode>();
-  const top: ElkNode[] = [];
+  const step = (end: string) => end.split(".")[0] ?? end;
+  const links = pipeline.edges.map((e) => ({ from: step(e.from), to: step(e.to) }));
+
+  const members = new Map<string, string[]>();
   for (const n of pipeline.nodes) {
-    const child = { id: n.id, ...sizeOf(n.id) };
     const name = groupOf(n.id);
-    if (name === undefined) {
-      top.push(child);
-      continue;
-    }
-    let group = groups.get(name);
-    if (!group) {
-      group = {
-        id: `group:${name}`,
-        layoutOptions: { ...LAYERED, "elk.padding": `[top=${GROUP_HEAD},left=0,bottom=0,right=0]` },
-        children: [],
-      };
-      groups.set(name, group);
-      top.push(group);
-    }
-    group.children?.push(child);
+    if (name !== undefined) members.set(name, [...(members.get(name) ?? []), n.id]);
   }
-  const graph = await elk.layout({
+
+  // Each stage first, on its own, so its steps stack downward; it then takes part in the
+  // canvas layout as one box of that size.
+  const inner = new Map<string, ElkNode>();
+  for (const [name, ids] of members) {
+    const inside = new Set(ids);
+    inner.set(
+      name,
+      await elk.layout({
+        id: `group:${name}`,
+        layoutOptions: { ...LAYERED, "elk.direction": "DOWN", "elk.layered.spacing.nodeNodeBetweenLayers": "28", "elk.padding": "[top=0,left=0,bottom=0,right=0]" },
+        children: ids.map((id) => ({ id, ...sizeOf(id) })),
+        edges: links
+          .filter((l) => inside.has(l.from) && inside.has(l.to))
+          .map((l, i) => ({ id: `e${i}`, sources: [l.from], targets: [l.to] })),
+      }),
+    );
+  }
+
+  const box = (id: string) => {
+    const name = groupOf(id);
+    return name === undefined ? id : `group:${name}`;
+  };
+  const seen = new Set<string>();
+  const outer = await elk.layout({
     id: "flow",
-    layoutOptions: { ...LAYERED, "elk.hierarchyHandling": "INCLUDE_CHILDREN" },
-    children: top,
-    edges: pipeline.edges.map((e, i) => ({
-      id: `e${i}`,
-      sources: [e.from.split(".")[0] ?? e.from],
-      targets: [e.to.split(".")[0] ?? e.to],
-    })),
+    layoutOptions: LAYERED,
+    children: [
+      ...pipeline.nodes.filter((n) => groupOf(n.id) === undefined).map((n) => ({ id: n.id, ...sizeOf(n.id) })),
+      ...[...inner].map(([name, g]) => ({ id: `group:${name}`, width: g.width ?? 0, height: (g.height ?? 0) + GROUP_HEAD })),
+    ],
+    edges: links.flatMap((l, i) => {
+      const [from, to] = [box(l.from), box(l.to)];
+      const key = `${from}>${to}`;
+      if (from === to || seen.has(key)) return [];
+      seen.add(key);
+      return [{ id: `e${i}`, sources: [from], targets: [to] }];
+    }),
   });
 
   const nodes = new Map<string, Point>();
-  const boxes: Group[] = [];
-  for (const child of graph.children ?? []) {
+  const groups: Group[] = [];
+  for (const child of outer.children ?? []) {
     const x = child.x ?? 0;
     const y = child.y ?? 0;
     if (!child.id.startsWith("group:")) {
       nodes.set(child.id, { x, y });
       continue;
     }
-    const inner = child.children ?? [];
-    for (const n of inner) nodes.set(n.id, { x: x + (n.x ?? 0), y: y + (n.y ?? 0) });
-    boxes.push({ id: child.id.slice("group:".length), count: inner.length, x, y, width: child.width ?? 0, height: child.height ?? 0 });
+    const steps = inner.get(child.id.slice("group:".length))?.children ?? [];
+    for (const n of steps) nodes.set(n.id, { x: x + (n.x ?? 0), y: y + GROUP_HEAD + (n.y ?? 0) });
+    groups.push({ id: child.id.slice("group:".length), count: steps.length, x, y, width: child.width ?? 0, height: child.height ?? 0 });
   }
-  return { nodes, groups: boxes };
+  return { nodes, groups };
 }
