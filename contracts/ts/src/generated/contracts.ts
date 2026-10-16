@@ -38,6 +38,13 @@ export type ContentHash = string;
  */
 export type Timestamp = string;
 /**
+ * explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Origin".
+ */
+export type Origin = "explicit" | "inferred" | "measured" | "confirmed";
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "SchemaId".
  */
@@ -131,13 +138,6 @@ export type NetworkAccess = "none" | "egress_allowlisted";
  * via the `definition` "PortRef".
  */
 export type PortRef = string;
-/**
- * explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Origin".
- */
-export type Origin = "explicit" | "inferred" | "measured" | "confirmed";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "TaskType".
@@ -321,6 +321,68 @@ export interface TablePage1 {
   total_columns: number;
   columns: TableColumn[];
   rows: TableRow[];
+}
+/**
+ * What a code step's run found about its interface (ADR-0021): names it reads, literal settings it could expose, and values it ends with. Suggestions, not a claim that arbitrary code is understood.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeInterface".
+ */
+export interface CodeInterface {
+  inputs: CodeInput[];
+  parameters: CodeParameter[];
+  outputs: CodeOutputCandidate[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeInput".
+ */
+export interface CodeInput {
+  name: string;
+  origin: Origin;
+  /**
+   * True when the name is provided by the step (its input table or a library); false means the code reads a name nothing defines.
+   */
+  bound: boolean;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeParameter".
+ */
+export interface CodeParameter {
+  name: string;
+  line: number;
+  value_type: "integer" | "number" | "string" | "boolean";
+  /**
+   * The literal as written in the source.
+   */
+  default_text: string;
+  /**
+   * The literal the run used, as Python source.
+   */
+  effective_text: string;
+  /**
+   * explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value.
+   */
+  origin: "explicit" | "inferred" | "measured" | "confirmed";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeOutputCandidate".
+ */
+export interface CodeOutputCandidate {
+  name: string;
+  /**
+   * Python type of the final value, e.g. polars.DataFrame.
+   */
+  type: string;
+  rows?: number;
+  columns?: number;
+  origin: Origin;
+  /**
+   * This value became the step's data output.
+   */
+  chosen: boolean;
 }
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.

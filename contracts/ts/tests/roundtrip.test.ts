@@ -20,6 +20,7 @@ const entities: [keyof Entities, string][] = [
   ["Problem", "problem"],
   ["TablePage", "table_page"],
   ["CodeDisplay", "code_display"],
+  ["CodeInterface", "code_interface"],
 ];
 
 it("every fixture dir has an entity", () => {

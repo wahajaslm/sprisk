@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, Attempt, AttemptOutput, CodeDisplay, CreateRun, MethodologyCheck, Operator,
-    PipelineVersion, Problem, QuestionVersion, Run, TablePage, WorkerMessage, parse,
+    Artifact, Attempt, AttemptOutput, CodeDisplay, CodeInterface, CreateRun, MethodologyCheck,
+    Operator, PipelineVersion, Problem, QuestionVersion, Run, TablePage, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -55,6 +55,7 @@ const ENTITIES: &[&str] = &[
     "attempt",
     "attempt_output",
     "code_display",
+    "code_interface",
     "create_run",
     "methodology_check",
     "operator",
@@ -145,4 +146,9 @@ fn table_page() {
 #[test]
 fn code_display() {
     check::<CodeDisplay>("code_display");
+}
+
+#[test]
+fn code_interface() {
+    check::<CodeInterface>("code_interface");
 }

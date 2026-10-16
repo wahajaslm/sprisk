@@ -20,6 +20,7 @@ export interface Entities {
   Problem: C.Problem;
   TablePage: C.TablePage;
   CodeDisplay: C.CodeDisplay;
+  CodeInterface: C.CodeInterface;
 }
 
 export class ContractError extends Error {}

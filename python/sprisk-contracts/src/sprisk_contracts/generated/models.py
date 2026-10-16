@@ -41,6 +41,13 @@ class Kind(StrEnum):
     image = "image"
 
 
+class ValueType(StrEnum):
+    integer = "integer"
+    number = "number"
+    string = "string"
+    boolean = "boolean"
+
+
 class ArtifactId(RootModel[str]):
     root: Annotated[str, Field(pattern="^art_[0-9A-HJKMNP-TV-Z]{26}$")]
 
@@ -413,6 +420,46 @@ class DisplayItem(StrictModel):
     ] = None
 
 
+class CodeInput(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    origin: Origin
+    bound: Annotated[
+        bool,
+        Field(
+            description="True when the name is provided by the step (its input table or a library); false means the code reads a name nothing defines."
+        ),
+    ]
+
+
+class CodeParameter(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    line: Annotated[int, Field(ge=0)]
+    value_type: ValueType
+    default_text: Annotated[str, Field(description="The literal as written in the source.")]
+    effective_text: Annotated[str, Field(description="The literal the run used, as Python source.")]
+    origin: Annotated[Origin, Field(description="inferred until the user exposes it (confirmed).")]
+
+
+class CodeOutputCandidate(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    type: Annotated[
+        str, Field(description="Python type of the final value, e.g. polars.DataFrame.")
+    ]
+    rows: Annotated[int | None, Field(ge=0)] = None
+    columns: Annotated[int | None, Field(ge=0)] = None
+    origin: Origin
+    chosen: Annotated[bool, Field(description="This value became the step's data output.")]
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -561,6 +608,15 @@ class CodeDisplay(StrictModel):
         extra="forbid",
     )
     items: list[DisplayItem]
+
+
+class CodeInterface(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    inputs: list[CodeInput]
+    parameters: list[CodeParameter]
+    outputs: list[CodeOutputCandidate]
 
 
 class Operator(StrictModel):

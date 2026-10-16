@@ -181,6 +181,134 @@
         }
       }
     },
+    "CodeInterface": {
+      "title": "CodeInterface",
+      "description": "What a code step's run found about its interface (ADR-0021): names it reads, literal settings it could expose, and values it ends with. Suggestions, not a claim that arbitrary code is understood.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputs",
+        "parameters",
+        "outputs"
+      ],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CodeInput"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CodeParameter"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CodeOutputCandidate"
+          }
+        }
+      }
+    },
+    "CodeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "origin",
+        "bound"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "bound": {
+          "type": "boolean",
+          "description": "True when the name is provided by the step (its input table or a library); false means the code reads a name nothing defines."
+        }
+      }
+    },
+    "CodeParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "line",
+        "value_type",
+        "default_text",
+        "effective_text",
+        "origin"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "value_type": {
+          "type": "string",
+          "enum": [
+            "integer",
+            "number",
+            "string",
+            "boolean"
+          ]
+        },
+        "default_text": {
+          "type": "string",
+          "description": "The literal as written in the source."
+        },
+        "effective_text": {
+          "type": "string",
+          "description": "The literal the run used, as Python source."
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin",
+          "description": "inferred until the user exposes it (confirmed)."
+        }
+      }
+    },
+    "CodeOutputCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "origin",
+        "chosen"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "description": "Python type of the final value, e.g. polars.DataFrame."
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "chosen": {
+          "type": "boolean",
+          "description": "This value became the step's data output."
+        }
+      }
+    },
     "ArtifactId": {
       "type": "string",
       "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$"
