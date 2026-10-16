@@ -31,6 +31,7 @@
 | [0027](0027-ui-design-system-and-data-rendering.md) | UI design system and data rendering: tokens, primitives, one renderer per data kind, enforced limits | Accepted |
 | [0028](0028-a-step-can-carry-its-own-code.md) | A step in a flow can carry its own code | Accepted |
 | [0029](0029-large-figures-get-an-image-preview.md) | Large figures show a download link, not a frozen tab | Accepted |
+| [0030](0030-data-explores-variables-visualizations-shows-and-builds.md) | Data explores variables; Visualizations shows displays and builds charts | Proposed |
 
 ## Open questions (arch doc §17)
 
