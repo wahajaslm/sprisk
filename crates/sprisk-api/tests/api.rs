@@ -54,6 +54,7 @@ async fn api_with_python(python: PathBuf) -> Api {
             root.join("methodology").display().to_string(),
         ],
         settings: Settings::default(),
+        data_roots: vec![dir.path().canonicalize().unwrap()],
     };
     Api {
         _dir: dir,
@@ -68,6 +69,7 @@ async fn call(app: &Router, method: &str, uri: &str, body: Option<Value>) -> (St
         .method(method)
         .uri(uri)
         .header("content-type", "application/json")
+        .header("host", "127.0.0.1:7420")
         .body(body.map_or(Body::empty(), |b| Body::from(b.to_string())))
         .unwrap();
     let response = app.clone().oneshot(request).await.unwrap();
@@ -256,4 +258,90 @@ async fn reserved_node_id_is_refused_at_submit() {
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(bad)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body["errors"][0]["code"], "reserved_node_id");
+}
+
+#[tokio::test]
+async fn source_path_outside_the_data_roots_is_refused() {
+    let api = api().await;
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    let mut p = pipeline(&api.csv);
+    p["nodes"][0]["params"]["path"] = json!(outside.path());
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(p)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["errors"][0]["code"], "path_outside_data_roots");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn symlink_inside_a_root_pointing_outside_is_refused() {
+    let api = api().await;
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    let link = api.csv.with_file_name("link.csv");
+    std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+    let mut p = pipeline(&api.csv);
+    p["nodes"][0]["params"]["path"] = json!(link);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(p)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["errors"][0]["code"], "path_outside_data_roots");
+}
+
+#[tokio::test]
+async fn request_for_a_non_local_host_is_refused() {
+    // Blocks DNS rebinding: a web page cannot reach the API under its own host name.
+    use tower::ServiceExt;
+    let api = api().await;
+    for host in [Some("evil.example:7420"), None] {
+        let mut request = Request::builder().uri("/runs/run_01JABCDEFGHJKMNPQRSTVWXYZ9");
+        if let Some(host) = host {
+            request = request.header("host", host);
+        }
+        let response = api
+            .app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{host:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn artifact_content_is_served_as_a_download_never_rendered() {
+    use tower::ServiceExt;
+    let api = api().await;
+    call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
+    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
+    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
+    for _ in 0..200 {
+        if call(&api.app, "GET", &run_uri, None).await.1["status"] == "succeeded" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
+    let load = attempts[1]["id"].as_str().unwrap();
+    let (_, outputs) = call(&api.app, "GET", &format!("/attempts/{load}/outputs"), None).await;
+    let artifact = outputs[0]["artifact"]["id"].as_str().unwrap();
+    let request = Request::builder()
+        .uri(format!("/artifacts/{artifact}/content"))
+        .header("host", "localhost:7420")
+        .body(Body::empty())
+        .unwrap();
+    let response = api.app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let headers = response.headers();
+    assert_eq!(headers["x-content-type-options"], "nosniff");
+    assert!(
+        headers["content-disposition"]
+            .to_str()
+            .unwrap()
+            .starts_with("attachment")
+    );
 }

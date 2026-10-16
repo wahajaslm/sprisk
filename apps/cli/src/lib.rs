@@ -38,18 +38,34 @@ pub struct ServeConfig {
     pub plugins: PathBuf,
     pub methodology: PathBuf,
     pub python: PathBuf,
+    /// Directories pipelines may read local files from.
+    pub data_roots: Vec<PathBuf>,
 }
 
 impl ServeConfig {
     /// Layout of a source checkout: `plugins/`, `methodology/` and the uv `.venv`.
-    pub fn for_repo(root: &Path, data_dir: &Path) -> Self {
+    pub fn for_repo(root: &Path, data_dir: &Path, data_root: &Path) -> Self {
         Self {
+            data_roots: vec![data_root.to_owned()],
             data_dir: data_dir.to_owned(),
             plugins: root.join("plugins"),
             methodology: root.join("methodology"),
             python: root.join(".venv/bin/python"),
         }
     }
+}
+
+/// The API has no authentication yet, so it may only listen on this machine.
+pub fn loopback_addr(addr: &str) -> anyhow::Result<std::net::SocketAddr> {
+    let parsed: std::net::SocketAddr = addr
+        .parse()
+        .with_context(|| format!("{addr} is not ip:port"))?;
+    if !parsed.ip().is_loopback() {
+        bail!(
+            "refusing to listen on {addr}: the API has no authentication; use 127.0.0.1 or [::1]"
+        );
+    }
+    Ok(parsed)
 }
 
 pub async fn serve_on(
@@ -79,6 +95,14 @@ pub async fn serve_on(
             config.methodology.display().to_string(),
         ],
         settings: sprisk_scheduler::Settings::default(),
+        data_roots: config
+            .data_roots
+            .iter()
+            .map(|r| {
+                r.canonicalize()
+                    .with_context(|| format!("data root {}", r.display()))
+            })
+            .collect::<anyhow::Result<_>>()?,
     };
     axum::serve(listener, sprisk_api::router(state)).await?;
     Ok(())

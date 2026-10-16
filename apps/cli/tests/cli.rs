@@ -40,7 +40,7 @@ async fn run_command_submits_waits_and_reports_through_the_api() {
     let dir = tempfile::tempdir().unwrap();
     let csv = dir.path().join("d.csv");
     std::fs::write(&csv, "x,y\n1,2\n3,4\n").unwrap();
-    let config = ServeConfig::for_repo(&root, &dir.path().join("data"));
+    let config = ServeConfig::for_repo(&root, &dir.path().join("data"), dir.path());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(serve_on(listener, config));
@@ -72,7 +72,7 @@ async fn invalid_pipeline_reports_every_gate_a_error() {
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(serve_on(
         listener,
-        ServeConfig::for_repo(&root, &dir.path().join("data")),
+        ServeConfig::for_repo(&root, &dir.path().join("data"), dir.path()),
     ));
 
     let yaml = "nodes:\n  - { id: a, operator: sprisk.nope.op@1.0.0, params: {} }\nedges: []\n";
@@ -93,7 +93,7 @@ async fn resubmitting_an_id_with_different_content_is_refused() {
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(serve_on(
         listener,
-        ServeConfig::for_repo(&root, &dir.path().join("data")),
+        ServeConfig::for_repo(&root, &dir.path().join("data"), dir.path()),
     ));
     let yaml = |format: &str| {
         format!(
@@ -117,4 +117,12 @@ async fn resubmitting_an_id_with_different_content_is_refused() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("different content"), "{err}");
+}
+
+#[test]
+fn serve_refuses_non_loopback_addresses_until_auth_exists() {
+    assert!(sprisk_cli::loopback_addr("127.0.0.1:7420").is_ok());
+    assert!(sprisk_cli::loopback_addr("[::1]:7420").is_ok());
+    assert!(sprisk_cli::loopback_addr("0.0.0.0:7420").is_err());
+    assert!(sprisk_cli::loopback_addr("192.168.1.5:7420").is_err());
 }

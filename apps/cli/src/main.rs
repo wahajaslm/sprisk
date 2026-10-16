@@ -25,6 +25,9 @@ enum Command {
         /// Source checkout with plugins/, methodology/ and .venv/.
         #[arg(long, default_value = ".")]
         repo: PathBuf,
+        /// Directory pipelines may read data files from. Repeat for more than one.
+        #[arg(long = "data-root", default_value = ".")]
+        data_roots: Vec<PathBuf>,
     },
     /// Submit a pipeline file, run it, and print the result.
     Run {
@@ -61,10 +64,15 @@ async fn main() -> anyhow::Result<()> {
             addr,
             data_dir,
             repo,
+            data_roots,
         } => {
-            let listener = tokio::net::TcpListener::bind(&addr).await?;
+            let listener = tokio::net::TcpListener::bind(sprisk_cli::loopback_addr(&addr)?).await?;
             eprintln!("sprisk API on http://{addr}");
-            serve_on(listener, ServeConfig::for_repo(&repo, &data_dir)).await
+            let config = ServeConfig {
+                data_roots,
+                ..ServeConfig::for_repo(&repo, &data_dir, &repo)
+            };
+            serve_on(listener, config).await
         }
         Command::Run {
             pipeline,

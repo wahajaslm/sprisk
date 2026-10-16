@@ -36,3 +36,5 @@ Remove an item when it is done; link the commit or ADR.
 | Stream splits with `scan_parquet`/`sink_parquet` (bounded memory) | simplicity review | when data size needs it |
 | Unexpected operator exceptions crash the worker; retried as transient until the cap | worker design | revisit after M1 |
 | Third-party plugin code: isolation before loading non-core packs | arch §12 | M5 |
+| API bearer token so other local processes cannot call it (Host check only stops browsers) | security review | before hosted (M5) |
+| Local paths are checked at submit and run start; a file swapped for a symlink afterwards is not caught (worker should open the resolved path) | security review | M3 |

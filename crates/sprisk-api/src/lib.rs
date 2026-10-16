@@ -15,7 +15,7 @@ use sprisk_contracts::{
     ArtifactId, AttemptId, CreateRun, Operator, PipelineVersion, PipelineVersionId, Problem, Run,
     RunId, parse,
 };
-use sprisk_graph::{CompileError, compile};
+use sprisk_graph::{CompileError, Plan, compile};
 use sprisk_registry::Registry;
 use sprisk_scheduler::{ProcessWorkers, Scheduler, Settings};
 use sprisk_store::{SqliteStore, StoreError};
@@ -30,6 +30,8 @@ pub struct AppState {
     /// Command that starts one Python worker.
     pub worker_command: Vec<String>,
     pub settings: Settings,
+    /// Canonical directories local-path params may point into. Nothing else is readable.
+    pub data_roots: Vec<std::path::PathBuf>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -42,7 +44,68 @@ pub fn router(state: AppState) -> Router {
         .route("/attempts/{id}/outputs", get(list_outputs))
         .route("/artifacts/{id}", get(get_artifact))
         .route("/artifacts/{id}/content", get(get_artifact_content))
+        .layer(axum::middleware::from_fn(local_host_only))
         .with_state(state)
+}
+
+/// Refuse requests not addressed to this machine by name or loopback IP. A web page that
+/// rebinds its own domain to 127.0.0.1 still sends its own Host header, so it is refused.
+async fn local_host_only(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let host = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    let name = match host.rsplit_once(':') {
+        Some((name, port)) if port.chars().all(|c| c.is_ascii_digit()) => name,
+        _ => host,
+    };
+    if matches!(name, "127.0.0.1" | "localhost" | "[::1]") {
+        next.run(request).await
+    } else {
+        ApiError::Forbidden(format!("host {host:?} is not local")).into_response()
+    }
+}
+
+/// Params marked `x-sprisk-local-path` in an operator's params_schema must resolve, after
+/// following symlinks, inside one of the data roots.
+fn check_local_paths(plan: &Plan, roots: &[std::path::PathBuf]) -> Result<(), ApiError> {
+    let mut problems = Vec::new();
+    for step in &plan.steps {
+        let Some(properties) = step
+            .operator
+            .params_schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+        else {
+            continue;
+        };
+        for (name, schema) in properties {
+            if schema.get("x-sprisk-local-path") != Some(&serde_json::Value::Bool(true)) {
+                continue;
+            }
+            let Some(raw) = step.params.get(name).and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let at = format!("node {} param {name}", step.node_id);
+            match std::path::Path::new(raw).canonicalize() {
+                Err(e) => problems.push(("path_not_found", format!("{at}: {raw}: {e}"))),
+                Ok(path) if !roots.iter().any(|r| path.starts_with(r)) => problems.push((
+                    "path_outside_data_roots",
+                    format!("{at}: {} is outside the data roots", path.display()),
+                )),
+                Ok(_) => {}
+            }
+        }
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(ApiError::Policy(problems))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -51,6 +114,10 @@ enum ApiError {
     BadRequest { code: &'static str, message: String },
     #[error("invalid pipeline")]
     Compile(Vec<CompileError>),
+    #[error("pipeline breaks local policy")]
+    Policy(Vec<(&'static str, String)>),
+    #[error("forbidden: {0}")]
+    Forbidden(String),
     #[error(transparent)]
     Store(#[from] StoreError),
     #[error(transparent)]
@@ -74,6 +141,10 @@ impl IntoResponse for ApiError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 errors.iter().map(|e| (e.code(), e.to_string())).collect(),
             ),
+            ApiError::Policy(problems) => (StatusCode::UNPROCESSABLE_ENTITY, problems.clone()),
+            ApiError::Forbidden(message) => {
+                (StatusCode::FORBIDDEN, vec![("forbidden", message.clone())])
+            }
             ApiError::Store(StoreError::NotFound { .. }) => {
                 (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
             }
@@ -126,7 +197,8 @@ async fn create_pipeline_version(
     text: String,
 ) -> Result<(StatusCode, Json<PipelineVersion>), ApiError> {
     let pipeline: PipelineVersion = body(&text)?;
-    compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
+    let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
+    check_local_paths(&plan, &state.data_roots)?;
     state.store.insert_pipeline_version(&pipeline).await?;
     Ok((StatusCode::CREATED, Json(pipeline)))
 }
@@ -149,6 +221,8 @@ async fn create_run(
         .get_pipeline_version(&request.pipeline_version_id)
         .await?;
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
+    // Checked again: the files or the configured roots may have changed since submit.
+    check_local_paths(&plan, &state.data_roots)?;
     let now = sprisk_core::time::now();
     let run: Run = parse(
         &json!({
@@ -236,8 +310,16 @@ async fn get_artifact_content(
     let artifact_id: ArtifactId = id(&raw)?;
     let artifact = state.store.get_artifact(&artifact_id).await?;
     let bytes: Bytes = state.artifacts.get(artifact.content_hash.as_str()).await?;
+    // Always a download: the browser must never render artifact bytes on the API origin.
     Ok((
-        [(header::CONTENT_TYPE, artifact.media_type.to_string())],
+        [
+            (header::CONTENT_TYPE, artifact.media_type.to_string()),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", artifact.id.as_str()),
+            ),
+        ],
         bytes,
     )
         .into_response())
