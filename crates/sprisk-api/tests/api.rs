@@ -345,3 +345,51 @@ async fn artifact_content_is_served_as_a_download_never_rendered() {
             .starts_with("attachment")
     );
 }
+
+#[tokio::test]
+async fn operators_are_listed_for_the_step_library() {
+    let api = api().await;
+    let (status, body) = call(&api.app, "GET", "/operators", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let ids: Vec<_> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["id"].clone())
+        .collect();
+    assert!(ids.contains(&json!("sprisk.clean.impute@1.0.0")));
+    assert!(
+        !ids.contains(&json!("sprisk.methodology.supervised@1.0.0")),
+        "gate is not a step"
+    );
+}
+
+#[tokio::test]
+async fn pipeline_versions_and_runs_are_listed_newest_first() {
+    let api = api().await;
+    call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    let (status, versions) = call(&api.app, "GET", "/pipeline_versions?limit=5", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(versions[0]["id"], "plv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+
+    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
+    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
+    let uri = "/runs?pipeline_version_id=plv_01JABCDEFGHJKMNPQRSTVWXYZ0&limit=5";
+    let (status, runs) = call(&api.app, "GET", uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(runs[0]["id"], run["id"]);
+}
+
+#[tokio::test]
+async fn list_limit_is_bounded() {
+    let api = api().await;
+    let (status, body) = call(&api.app, "GET", "/runs?limit=100000", None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["errors"][0]["code"], "invalid_limit");
+}

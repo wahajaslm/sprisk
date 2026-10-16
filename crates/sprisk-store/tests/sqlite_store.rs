@@ -341,3 +341,79 @@ async fn file_database_is_created_and_keeps_data_across_opens() {
 
     assert_eq!(reopened.get_run(&run.id).await.unwrap(), run);
 }
+
+fn run_with_id(id: &str, pipeline: &str) -> Run {
+    let mut run: Run = fixture("run", "running.json");
+    run.id = id.parse().unwrap();
+    run.pipeline_version_id = pipeline.parse().unwrap();
+    run
+}
+
+#[tokio::test]
+async fn runs_are_listed_newest_first_filtered_and_paged() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let a = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";
+    let b = "plv_01JABCDEFGHJKMNPQRSTVWXYZ1";
+    for (id, p) in [
+        ("run_01JABCDEFGHJKMNPQRSTVWXYZ1", a),
+        ("run_01JABCDEFGHJKMNPQRSTVWXYZ2", b),
+        ("run_01JABCDEFGHJKMNPQRSTVWXYZ3", a),
+    ] {
+        store.insert_run(&run_with_id(id, p)).await.unwrap();
+    }
+    let ids = |runs: Vec<Run>| {
+        runs.into_iter()
+            .map(|r| r.id.as_str().to_owned())
+            .collect::<Vec<_>>()
+    };
+
+    let all = store.list_runs(None, None, 10).await.unwrap();
+    assert_eq!(
+        ids(all),
+        [
+            "run_01JABCDEFGHJKMNPQRSTVWXYZ3",
+            "run_01JABCDEFGHJKMNPQRSTVWXYZ2",
+            "run_01JABCDEFGHJKMNPQRSTVWXYZ1"
+        ]
+    );
+    let of_a = store
+        .list_runs(Some(&a.parse().unwrap()), None, 10)
+        .await
+        .unwrap();
+    assert_eq!(
+        ids(of_a),
+        [
+            "run_01JABCDEFGHJKMNPQRSTVWXYZ3",
+            "run_01JABCDEFGHJKMNPQRSTVWXYZ1"
+        ]
+    );
+    let page = store
+        .list_runs(
+            None,
+            Some(&"run_01JABCDEFGHJKMNPQRSTVWXYZ3".parse().unwrap()),
+            1,
+        )
+        .await
+        .unwrap();
+    assert_eq!(ids(page), ["run_01JABCDEFGHJKMNPQRSTVWXYZ2"]);
+}
+
+#[tokio::test]
+async fn pipeline_versions_are_listed_newest_first_and_paged() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let base: sprisk_contracts::PipelineVersion = fixture("pipeline_version", "all-fields.json");
+    for n in 1..=3 {
+        let mut p = base.clone();
+        p.id = format!("plv_01JABCDEFGHJKMNPQRSTVWXYZ{n}").parse().unwrap();
+        store.insert_pipeline_version(&p).await.unwrap();
+    }
+    let listed = store.list_pipeline_versions(None, 2).await.unwrap();
+    let ids: Vec<_> = listed.iter().map(|p| p.id.as_str().to_owned()).collect();
+    assert_eq!(
+        ids,
+        [
+            "plv_01JABCDEFGHJKMNPQRSTVWXYZ3",
+            "plv_01JABCDEFGHJKMNPQRSTVWXYZ2"
+        ]
+    );
+}

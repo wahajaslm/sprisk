@@ -36,9 +36,13 @@ pub struct AppState {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/pipeline_versions", post(create_pipeline_version))
+        .route(
+            "/pipeline_versions",
+            post(create_pipeline_version).get(list_pipeline_versions),
+        )
+        .route("/operators", get(list_operators))
         .route("/pipeline_versions/{id}", get(get_pipeline_version))
-        .route("/runs", post(create_run))
+        .route("/runs", post(create_run).get(list_runs))
         .route("/runs/{id}", get(get_run))
         .route("/runs/{id}/attempts", get(list_attempts))
         .route("/attempts/{id}/outputs", get(list_outputs))
@@ -130,7 +134,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, errors) = match &self {
             ApiError::BadRequest { code, message } => {
-                let status = if *code == "invalid_id" {
+                let status = if matches!(*code, "invalid_id" | "invalid_limit") {
                     StatusCode::BAD_REQUEST
                 } else {
                     StatusCode::UNPROCESSABLE_ENTITY
@@ -201,6 +205,55 @@ async fn create_pipeline_version(
     check_local_paths(&plan, &state.data_roots)?;
     state.store.insert_pipeline_version(&pipeline).await?;
     Ok((StatusCode::CREATED, Json(pipeline)))
+}
+
+type Query = axum::extract::Query<std::collections::HashMap<String, String>>;
+
+/// Page size from `?limit=`: 1..=200, default 50. Lists never return unbounded rows.
+fn limit(query: &Query) -> Result<u32, ApiError> {
+    let Some(raw) = query.get("limit") else {
+        return Ok(50);
+    };
+    match raw.parse::<u32>() {
+        Ok(n) if (1..=200).contains(&n) => Ok(n),
+        _ => Err(ApiError::BadRequest {
+            code: "invalid_limit",
+            message: format!("limit must be 1..=200, got {raw}"),
+        }),
+    }
+}
+
+fn optional_id<T: std::str::FromStr>(query: &Query, key: &str) -> Result<Option<T>, ApiError> {
+    query.get(key).map(|raw| id(raw)).transpose()
+}
+
+async fn list_operators(State(state): State<AppState>) -> Json<Vec<Operator>> {
+    Json(state.registry.operators().cloned().collect())
+}
+
+async fn list_pipeline_versions(
+    State(state): State<AppState>,
+    query: Query,
+) -> Result<Json<Vec<PipelineVersion>>, ApiError> {
+    let before: Option<PipelineVersionId> = optional_id(&query, "before")?;
+    let versions = state
+        .store
+        .list_pipeline_versions(before.as_ref(), limit(&query)?)
+        .await?;
+    Ok(Json(versions))
+}
+
+async fn list_runs(
+    State(state): State<AppState>,
+    query: Query,
+) -> Result<Json<Vec<Run>>, ApiError> {
+    let pipeline: Option<PipelineVersionId> = optional_id(&query, "pipeline_version_id")?;
+    let before: Option<RunId> = optional_id(&query, "before")?;
+    let runs = state
+        .store
+        .list_runs(pipeline.as_ref(), before.as_ref(), limit(&query)?)
+        .await?;
+    Ok(Json(runs))
 }
 
 async fn get_pipeline_version(

@@ -106,9 +106,12 @@ impl SqliteStore {
     }
 
     pub async fn insert_run(&self, run: &Run) -> Result<(), StoreError> {
-        sqlx::query("INSERT INTO runs (id, project_id, status, body) VALUES (?, ?, ?, ?)")
+        sqlx::query(
+            "INSERT INTO runs (id, project_id, pipeline_version_id, status, body) VALUES (?, ?, ?, ?, ?)",
+        )
             .bind(run.id.as_str())
             .bind(run.project_id.as_str())
+            .bind(run.pipeline_version_id.as_str())
             .bind(run.status.to_string())
             .bind(to_json(run)?)
             .execute(&self.pool)
@@ -122,6 +125,41 @@ impl SqliteStore {
             .fetch_optional(&self.pool)
             .await?;
         from_json(body, "run", id.as_str())
+    }
+
+    /// Newest first, at most `limit`, optionally for one pipeline version and before a run id.
+    pub async fn list_runs(
+        &self,
+        pipeline_version: Option<&PipelineVersionId>,
+        before: Option<&RunId>,
+        limit: u32,
+    ) -> Result<Vec<Run>, StoreError> {
+        let bodies: Vec<String> = sqlx::query_scalar(
+            "SELECT body FROM runs WHERE (?1 IS NULL OR pipeline_version_id = ?1) \
+             AND (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?3",
+        )
+        .bind(pipeline_version.map(|p| p.as_str()))
+        .bind(before.map(|r| r.as_str()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        parse_all(&bodies)
+    }
+
+    /// Newest first, at most `limit`, optionally before a version id.
+    pub async fn list_pipeline_versions(
+        &self,
+        before: Option<&PipelineVersionId>,
+        limit: u32,
+    ) -> Result<Vec<PipelineVersion>, StoreError> {
+        let bodies: Vec<String> = sqlx::query_scalar(
+            "SELECT body FROM pipeline_versions WHERE (?1 IS NULL OR id < ?1) ORDER BY id DESC LIMIT ?2",
+        )
+        .bind(before.map(|p| p.as_str()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        parse_all(&bodies)
     }
 
     pub async fn insert_attempt(&self, attempt: &Attempt) -> Result<(), StoreError> {
@@ -390,6 +428,13 @@ fn run_finished(status: RunStatus) -> bool {
         status,
         RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled
     )
+}
+
+fn parse_all<T: DeserializeOwned>(bodies: &[String]) -> Result<Vec<T>, StoreError> {
+    bodies
+        .iter()
+        .map(|b| serde_json::from_str(b).map_err(StoreError::from))
+        .collect()
 }
 
 fn to_json<T: Serialize>(value: &T) -> Result<String, StoreError> {

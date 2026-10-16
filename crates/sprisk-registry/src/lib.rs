@@ -68,6 +68,11 @@ impl Registry {
         self.operators.get(operator_ref).map(|(op, _)| op)
     }
 
+    /// Every operator, ordered by ref.
+    pub fn operators(&self) -> impl Iterator<Item = &Operator> {
+        self.operators.values().map(|(op, _)| op)
+    }
+
     pub fn len(&self) -> usize {
         self.operators.len()
     }
