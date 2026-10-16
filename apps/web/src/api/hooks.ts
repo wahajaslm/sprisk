@@ -1,7 +1,7 @@
 import type { Run } from "@sprisk/contracts";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { getList, getText, postOne } from "./client.ts";
+import { getList, getOne, getText, postOne } from "./client.ts";
 
 /** While a run is live, attempts are re-read this often. */
 const LIVE_MS = 1000;
@@ -51,6 +51,15 @@ export const useArtifactText = (artifactId: string | undefined) =>
     queryFn: () => getText(`/artifacts/${artifactId ?? ""}/content`),
     enabled: artifactId !== undefined,
     staleTime: Infinity,
+  });
+
+/** One page of a table artifact's rows. The previous page stays on screen while the next loads. */
+export const useTablePage = (artifactId: string, offset: number, limit: number) =>
+  useQuery({
+    queryKey: ["table-page", artifactId, offset, limit],
+    queryFn: () => getOne("TablePage", `/artifacts/${artifactId}/rows?offset=${offset}&limit=${limit}`),
+    staleTime: Infinity, // artifacts are immutable
+    placeholderData: keepPreviousData,
   });
 
 export function useStartRun() {

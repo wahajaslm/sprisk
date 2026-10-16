@@ -222,3 +222,19 @@ p { margin: 0; }
 .coming { padding: 28px 24px; max-width: 760px; }
 .coming h1 { margin: 6px 0 10px; font-size: 28px; font-weight: 500; letter-spacing: -0.02em; }
 .eyebrow { font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+/* ── Table peek (paged rows of a table artifact) ─────── */
+.peek { display: grid; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--canvas); }
+.peek-scroll { overflow: auto; max-height: 320px; }
+.peek-table { border-collapse: collapse; width: max-content; min-width: 100%; font: 11px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+.peek-table th, .peek-table td { padding: 5px 12px; border-bottom: 1px solid var(--line-soft); text-align: right; white-space: nowrap; color: var(--soft); }
+.peek-table th { position: sticky; top: 0; background: var(--panel); color: var(--ink); font-weight: 500; text-align: right; }
+.peek-table .col-type { display: block; color: var(--faint); font-weight: 400; font-size: 10px; }
+.peek-table .row-num { color: var(--faint); text-align: left; }
+.peek-table .missing { color: var(--ghost); }
+.peek-table tbody tr:hover td { background: var(--wash); }
+.peek-foot { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line-soft); background: var(--panel); font: 11px var(--mono); color: var(--muted); }
+.page-btn { border: 1px solid var(--line-strong); background: var(--node); color: var(--soft); border-radius: 6px; padding: 2px 9px; font-size: 11px; }
+.page-btn:hover:not(:disabled) { color: var(--ink); background: var(--node-hover); }
+.page-btn:disabled { color: var(--ghost); cursor: default; }
+.peek-table .text { text-align: left; }

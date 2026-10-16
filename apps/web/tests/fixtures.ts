@@ -1,3 +1,4 @@
+import type { TablePage } from "@sprisk/contracts";
 import type { Attempt, AttemptOutput, Operator, PipelineVersion, Run } from "@sprisk/contracts";
 
 const resources = { cpu_cores: 1, memory_mb: 512, gpu: "none", timeout_seconds: 60 } as const;
@@ -129,3 +130,37 @@ export const checksJson = JSON.stringify([
     created_at: NOW,
   },
 ]);
+
+export const loadAttempt = attempts[1]!;
+
+export const loadOutputs: AttemptOutput[] = [
+  {
+    port: "data",
+    artifact: {
+      ...scoreOutputs[0]!.artifact,
+      id: "art_01JABCDEFGHJKMNPQRSTVWXYZ2",
+      producer_attempt_id: loadAttempt.id,
+      media_type: "application/vnd.apache.parquet",
+      size_bytes: 4_000_000,
+    },
+  },
+];
+
+/** 120 rows; sepal_length is missing on row 3. */
+export function tablePage(offset: number, limit: number): TablePage {
+  const end = Math.min(offset + limit, 120);
+  const rows = [];
+  for (let i = offset; i < end; i++) {
+    rows.push(i === 3 ? { values: ["", "setosa"], missing: [0] } : { values: [`${i}.5`, "setosa"], missing: [] });
+  }
+  return {
+    offset,
+    total_rows: 120,
+    total_columns: 2,
+    columns: [
+      { name: "sepal_length", data_type: "Float64" },
+      { name: "species", data_type: "Utf8View" },
+    ],
+    rows,
+  };
+}

@@ -9,7 +9,7 @@ import { StepLibrary } from "../src/views/StepLibrary.tsx";
 import { TopBar } from "../src/views/TopBar.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { Copilot } from "../src/views/Copilot.tsx";
-import { PV, RUN, run, scoreOutputs } from "./fixtures.ts";
+import { PV, RUN, loadOutputs, run, scoreOutputs, tablePage } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -168,6 +168,66 @@ describe("inspector failures and checks", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
     expect(await screen.findByText(/too large to show/)).toBeInTheDocument();
     expect(fetched).toBe(false);
+  });
+});
+
+describe("peek at a table output", () => {
+  it("shows the first page of rows with column types", async () => {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    const table = await screen.findByRole("table", { name: "data rows" });
+    expect(within(table).getByRole("columnheader", { name: /sepal_length\s*Float64/ })).toBeInTheDocument();
+    expect(within(table).getByRole("row", { name: /^1 0.5 setosa/ })).toBeInTheDocument();
+    expect(screen.getByText("Rows 1–50 of 120")).toBeInTheDocument();
+  });
+
+  it("marks a missing cell instead of showing it blank", async () => {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    const table = await screen.findByRole("table", { name: "data rows" });
+    expect(within(within(table).getByRole("row", { name: /^4 / })).getByLabelText("missing")).toBeInTheDocument();
+  });
+
+  it("pages forward and back without loading the whole table", async () => {
+    const offsets: string[] = [];
+    server.use(
+      http.get("/api/artifacts/:id/content", ({ params }) => {
+        if (params.id === loadOutputs[0]!.artifact.id) throw new Error("a table must never be downloaded");
+        return HttpResponse.text("[]");
+      }),
+      http.get("/api/artifacts/:id/rows", ({ request }) => {
+        const url = new URL(request.url);
+        offsets.push(`${url.searchParams.get("offset")}/${url.searchParams.get("limit")}`);
+        return HttpResponse.json(tablePage(Number(url.searchParams.get("offset")), 50));
+      }),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    await screen.findByText("Rows 1–50 of 120");
+    expect(screen.getByRole("button", { name: "Previous rows" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Next rows" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Next rows" }));
+    expect(await screen.findByText("Rows 101–120 of 120")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next rows" })).toBeDisabled();
+    expect(offsets).toEqual(["0/50", "50/50", "100/50"]);
+  });
+
+  it("says when a wide table shows only its first columns", async () => {
+    server.use(http.get("/api/artifacts/:id/rows", () => HttpResponse.json({ ...tablePage(0, 50), total_columns: 340 })));
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    expect(await screen.findByText(/first 2 of 340 columns/)).toBeInTheDocument();
+  });
+
+  it("shows why rows could not be read", async () => {
+    server.use(
+      http.get("/api/artifacts/:id/rows", () =>
+        HttpResponse.json({ errors: [{ code: "not_a_table", message: "corrupt footer" }] }, { status: 422 }),
+      ),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("not_a_table: corrupt footer");
   });
 });
 

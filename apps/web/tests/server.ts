@@ -6,12 +6,15 @@ import {
   checksJson,
   gateAttempt,
   gateOutputs,
+  loadAttempt,
+  loadOutputs,
   metricsJson,
   operators,
   pipeline,
   run,
   scoreAttempt,
   scoreOutputs,
+  tablePage,
 } from "./fixtures.ts";
 
 export const handlers = [
@@ -20,11 +23,23 @@ export const handlers = [
   http.get("/api/runs", () => HttpResponse.json([run])),
   http.get(`/api/runs/${run.id}/attempts`, () => HttpResponse.json(attempts)),
   http.get("/api/attempts/:id/outputs", ({ params }) =>
-    HttpResponse.json(params.id === scoreAttempt.id ? scoreOutputs : params.id === gateAttempt.id ? gateOutputs : []),
+    HttpResponse.json(
+      params.id === scoreAttempt.id
+        ? scoreOutputs
+        : params.id === gateAttempt.id
+          ? gateOutputs
+          : params.id === loadAttempt.id
+            ? loadOutputs
+            : [],
+    ),
   ),
   http.get("/api/artifacts/:id/content", ({ params }) =>
     HttpResponse.text(params.id === gateOutputs[0]!.artifact.id ? checksJson : metricsJson),
   ),
+  http.get("/api/artifacts/:id/rows", ({ request }) => {
+    const url = new URL(request.url);
+    return HttpResponse.json(tablePage(Number(url.searchParams.get("offset")), Number(url.searchParams.get("limit"))));
+  }),
 ];
 
 export const server = setupServer(...handlers);

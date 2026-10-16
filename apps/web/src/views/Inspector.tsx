@@ -6,10 +6,12 @@ import { useArtifactText, useOutputs, usePipelineVersions, useRunAttempts } from
 import { GATE_NODE, latestByNode } from "../flow/latest.ts";
 import { useViewInstance, useViewSelection } from "../workbench/instance.tsx";
 import { PinIcon } from "./Icons.tsx";
+import { TablePeek } from "./TablePeek.tsx";
 import { shortName } from "../flow/stages.ts";
 
 /** JSON outputs larger than this are not pulled into the browser (rule 9). */
 const MAX_INLINE_BYTES = 64 * 1024;
+const PARQUET = "application/vnd.apache.parquet";
 
 export function Inspector() {
   const { pipelineVersionId, runId, nodeId } = useViewSelection();
@@ -116,8 +118,10 @@ function Output({ output }: { output: AttemptOutput }) {
         <p className="muted">JSON output too large to show here ({output.artifact.size_bytes} bytes).</p>
       ) : isJson ? (
         text.isError ? <p role="alert" className="error">{text.error.message}</p> : <pre className="code">{prettyJson(text.data)}</pre>
+      ) : output.artifact.media_type === PARQUET ? (
+        <TablePeek artifactId={output.artifact.id} port={output.port} />
       ) : (
-        <p className="mono muted">{output.artifact.content_hash.slice(0, 19)}… (tables are not loaded in the browser)</p>
+        <p className="mono muted">{output.artifact.content_hash.slice(0, 19)}…</p>
       )}
     </section>
   );
