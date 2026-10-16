@@ -1,5 +1,5 @@
 # ADR-0027: UI design system and data rendering
-Status: Proposed
+Status: Accepted
 Date: 2026-10-16
 Arch doc sections: §2A, §13
 
