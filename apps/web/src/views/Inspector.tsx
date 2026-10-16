@@ -24,35 +24,41 @@ export function Inspector() {
 
   return (
     <Tabs.Root className="inspector" defaultValue="data">
-      <div className="inspector-head">
+      <div className="panel-head">
         <Tabs.List className="tabs" aria-label="Inspector">
           <Tabs.Trigger value="decision">Decision</Tabs.Trigger>
           <Tabs.Trigger value="code">Code</Tabs.Trigger>
           <Tabs.Trigger value="data">Data</Tabs.Trigger>
           <Tabs.Trigger value="logs">Logs</Tabs.Trigger>
         </Tabs.List>
-        <strong>{nodeId}</strong>
-        <span className="mono muted">
+        <span className="sel-label">{nodeId}</span>
+        <span className="sel-meta">
           {node ? shortName(node.operator) : ""} · {attempts.isPending && runId ? "loading" : (latest?.state ?? "not run")}
         </span>
       </div>
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
       {versions.isError && <p role="alert" className="error pad">{versions.error.message}</p>}
-      <Tabs.Content value="decision" className="pane">
-        <p className="muted">
+      <Tabs.Content value="decision" className="pane single">
+        <p className="placeholder-note">
           Decisions (question, choices, recommended choice, evidence) come with the methodology decision graph
           (ADR-0019). This step currently runs with fixed settings.
         </p>
       </Tabs.Content>
-      <Tabs.Content value="code" className="pane">
-        <p className="eyebrow">Runs as · {node?.operator ?? "unknown"}</p>
+      <Tabs.Content value="code" className="pane single">
+        <p className="section-label">Runs as · {node?.operator ?? "unknown"}</p>
         <pre className="code">{JSON.stringify(node?.params ?? {}, null, 2)}</pre>
       </Tabs.Content>
       <Tabs.Content value="data" className="pane columns">
-        <Checks gate={gate} nodeId={nodeId} />
-        <Outputs attempt={latest?.state === "succeeded" ? latest : undefined} />
+        <div>
+          <p className="section-label">Methodology checks</p>
+          <Checks gate={gate} nodeId={nodeId} />
+        </div>
+        <div>
+          <p className="section-label">Outputs</p>
+          <Outputs attempt={latest?.state === "succeeded" ? latest : undefined} />
+        </div>
       </Tabs.Content>
-      <Tabs.Content value="logs" className="pane">
+      <Tabs.Content value="logs" className="pane single">
         <ol className="log">
           {ofNode.map((a) => (
             <li key={a.id} className={`state-${a.state}`}>
@@ -87,7 +93,7 @@ function Output({ output }: { output: AttemptOutput }) {
   const text = useArtifactText(isJson && small ? output.artifact.id : undefined);
   return (
     <section className="output">
-      <p className="eyebrow">
+      <p className="section-label">
         {output.port} · {output.artifact.media_type} · {output.artifact.size_bytes} bytes
       </p>
       {isJson && !small ? (
@@ -117,7 +123,8 @@ function Checks({ gate, nodeId }: { gate: Attempt | undefined; nodeId: string })
   const text = useArtifactText(checksArtifact);
   if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
   if (text.isError) return <p role="alert" className="error">{text.error.message}</p>;
-  if (!text.data) return null;
+  if (!gate || gate.state !== "succeeded") return <p className="muted">No methodology run for this flow yet.</p>;
+  if (!text.data) return <p className="muted">Loading…</p>;
   let checks: MethodologyCheck[];
   try {
     const raw: unknown = JSON.parse(text.data);
@@ -127,12 +134,15 @@ function Checks({ gate, nodeId }: { gate: Attempt | undefined; nodeId: string })
     return <p role="alert" className="error">Unreadable methodology checks: {e instanceof Error ? e.message : "invalid"}</p>;
   }
   const mine = checks.filter((c) => c.cited_nodes.includes(nodeId));
-  if (mine.length === 0) return null;
+  if (mine.length === 0) return <p className="muted">No methodology check concerns this step.</p>;
   return (
     <section className="checks" aria-label="Methodology checks">
       {mine.map((c) => (
         <p key={c.id} className={`check ${c.verdict}`}>
-          <span className={`pill ${c.verdict}`}>{c.verdict.replace("_", " ")}</span> {c.rationale}
+          <span className="check-mark" aria-label={c.verdict.replace("_", " ")}>
+            {c.verdict === "pass" ? "✓" : c.verdict === "fail" ? "✕" : "!"}
+          </span>
+          <span>{c.rationale}</span>
         </p>
       ))}
     </section>

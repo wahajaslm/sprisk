@@ -14,10 +14,20 @@ import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
 describe("top bar", () => {
+  it("lists flows by their data file and switches between them", async () => {
+    renderWithApi(<TopBar />);
+    const switcher = await screen.findByRole("button", { name: "Project and flow" });
+    await waitFor(() => expect(switcher).toHaveTextContent("iris.csv"));
+    await userEvent.click(switcher);
+    const option = within(screen.getByRole("listbox", { name: "Flows" })).getByRole("option", { name: /iris.csv/ });
+    await userEvent.click(option);
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
   it("puts the project and flow switcher first, then the five views, then Run graph", async () => {
     renderWithApi(<TopBar />);
     const bar = screen.getByRole("banner");
-    const switcher = await within(bar).findByRole("combobox", { name: "Project and flow" });
+    const switcher = await within(bar).findByRole("button", { name: "Project and flow" });
     const nav = within(bar).getByRole("navigation");
     const tabs = within(nav).getAllByRole("button").map((b) => b.textContent);
     expect(tabs).toEqual(["Flow", "Datasets", "Notebooks", "Experiments", "Deploy"]);
@@ -60,6 +70,14 @@ describe("step library", () => {
     expect(within(clean).getByText("impute")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Model" })).getByText("linear_model")).toBeInTheDocument();
   });
+
+  it("filters steps by search", async () => {
+    renderWithApi(<StepLibrary />);
+    await screen.findByRole("region", { name: "Clean" });
+    await userEvent.type(screen.getByRole("searchbox", { name: "Search steps" }), "split");
+    expect(screen.getByText("random_split")).toBeInTheDocument();
+    expect(screen.queryByText("impute")).toBeNull();
+  });
 });
 
 describe("flow canvas", () => {
@@ -68,7 +86,7 @@ describe("flow canvas", () => {
     renderWithApi(<FlowCanvas />);
     const split = await screen.findByRole("button", { name: /^split/ });
     await waitFor(() => expect(split).toHaveTextContent("succeeded"));
-    expect(screen.getByText("02 Split")).toBeInTheDocument();
+    expect(screen.getByText("Split").closest(".stage-frame-head")).toHaveTextContent("02Split1 step");
     expect(screen.queryByRole("button", { name: /gate_b/ })).toBeNull();
   });
 
@@ -118,7 +136,7 @@ describe("inspector failures and checks", () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
     const checks = await screen.findByRole("region", { name: "Methodology checks" });
-    expect(checks).toHaveTextContent("pass");
+    expect(within(checks).getByLabelText("pass")).toBeInTheDocument();
     expect(checks).toHaveTextContent("at most one non-baseline model");
   });
 

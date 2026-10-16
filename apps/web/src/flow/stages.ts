@@ -4,7 +4,8 @@ import type { Operator } from "@sprisk/contracts";
 export const STAGES = ["Explore", "Split", "Clean", "Model", "Evaluate", "Unknown"] as const;
 export type Stage = (typeof STAGES)[number];
 
-export type NodeKind = "data" | "step" | "model";
+/** Studio node kinds: they pick the icon and its tint. */
+export type NodeKind = "source" | "recipe" | "view" | "decision" | "model";
 
 export function stageOf(operator: Operator): Stage {
   const domain = operator.id.split(".")[1];
@@ -24,10 +25,20 @@ export function stageOf(operator: Operator): Stage {
 }
 
 export function kindOf(operator: Operator): NodeKind {
-  if (operator.capability_class === "source") return "data";
-  if (operator.capability_class === "estimator") return "model";
-  return "step";
+  switch (operator.capability_class) {
+    case "source":
+      return "source";
+    case "estimator":
+      return "model";
+    case "evaluator":
+      return "view";
+    default:
+      return "recipe";
+  }
 }
 
 /** "sprisk.clean.impute@1.0.0" → "impute". */
 export const shortName = (ref: string) => ref.split("@")[0]?.split(".").at(-1) ?? ref;
+
+/** Two-digit stage number as Studio shows it: "01". */
+export const stageNumber = (stage: Stage) => String(STAGES.indexOf(stage) + 1).padStart(2, "0");

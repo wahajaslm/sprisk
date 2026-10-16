@@ -12,9 +12,14 @@ type Views = Record<ViewType, FunctionComponent>;
 function addDefaultLayout(event: DockviewReadyEvent): void {
   const api = event.api;
   api.addPanel({ id: "flow", component: "flow", title: "Flow" });
-  api.addPanel({ id: "library", component: "library", title: "Steps", position: { referencePanel: "flow", direction: "left" }, initialWidth: 260 });
-  api.addPanel({ id: "copilot", component: "copilot", title: "Copilot", position: { referencePanel: "flow", direction: "right" }, initialWidth: 320 });
+  api.addPanel({ id: "library", component: "library", title: "Steps", position: { referencePanel: "flow", direction: "left" }, initialWidth: 236 });
+  api.addPanel({ id: "copilot", component: "copilot", title: "Copilot", position: { referencePanel: "flow", direction: "right" }, initialWidth: 330 });
   api.addPanel({ id: "inspector", component: "inspector", title: "Inspector", position: { referencePanel: "flow", direction: "below" }, initialHeight: 340 });
+}
+
+/** Studio panels have no tab bars; each region carries its own header. */
+function hideTabBars(event: DockviewReadyEvent): void {
+  for (const group of event.api.groups) group.model.header.hidden = true;
 }
 
 export function Dock({ views }: { views: Views }) {
@@ -42,7 +47,9 @@ export function Dock({ views }: { views: Views }) {
     } else {
       addDefaultLayout(event);
     }
+    hideTabBars(event);
+    event.api.onDidAddGroup(() => hideTabBars(event));
     event.api.onDidLayoutChange(() => saveLayout(event.api.toJSON()));
   };
-  return <DockviewReact className="dockview-theme-abyss sprisk-dock" components={components} onReady={onReady} />;
+  return <DockviewReact className="sprisk-dock" components={components} onReady={onReady} />;
 }
