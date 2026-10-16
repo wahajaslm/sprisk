@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, Attempt, AttemptOutput, CreateRun, MethodologyCheck, Operator, PipelineVersion,
-    Problem, QuestionVersion, Run, WorkerMessage, parse,
+    Problem, QuestionVersion, Run, TablePage, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -61,6 +61,7 @@ const ENTITIES: &[&str] = &[
     "problem",
     "question_version",
     "run",
+    "table_page",
     "worker_message",
 ];
 
@@ -133,4 +134,9 @@ fn create_run() {
 #[test]
 fn problem() {
     check::<Problem>("problem");
+}
+
+#[test]
+fn table_page() {
+    check::<TablePage>("table_page");
 }

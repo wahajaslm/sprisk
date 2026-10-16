@@ -1,0 +1,24 @@
+{
+  "offset": 100,
+  "total_rows": 150,
+  "columns": [
+    {
+      "name": "sepal_length",
+      "data_type": "Float64"
+    },
+    {
+      "name": "species",
+      "data_type": "Utf8View"
+    }
+  ],
+  "rows": [
+    {
+      "values": ["6.3", "virginica"],
+      "missing": []
+    },
+    {
+      "values": ["", "virginica"],
+      "missing": [0]
+    }
+  ]
+}

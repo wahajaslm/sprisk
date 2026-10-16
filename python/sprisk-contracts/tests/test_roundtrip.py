@@ -18,6 +18,7 @@ from sprisk_contracts import (
     Problem,
     QuestionVersion,
     Run,
+    TablePage,
     WorkerMessage,
 )
 
@@ -35,6 +36,7 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (CreateRun, "create_run"),
     (AttemptOutput, "attempt_output"),
     (Problem, "problem"),
+    (TablePage, "table_page"),
 ]
 
 

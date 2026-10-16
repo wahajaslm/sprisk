@@ -241,6 +241,43 @@ export interface Error {
   message: string;
 }
 /**
+ * One page of rows from a tabular artifact, for display (GET /artifacts/{id}/rows). Cells are display text; a missing cell is listed by column index and its text is empty.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TablePage".
+ */
+export interface TablePage {
+  /**
+   * Index of the first row in this page.
+   */
+  offset: number;
+  total_rows: number;
+  columns: TableColumn[];
+  rows: TableRow[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TableColumn".
+ */
+export interface TableColumn {
+  name: string;
+  /**
+   * Arrow data type name, for display only.
+   */
+  data_type: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TableRow".
+ */
+export interface TableRow {
+  values: string[];
+  /**
+   * Indexes of columns whose value is missing in this row.
+   */
+  missing: number[];
+}
+/**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema

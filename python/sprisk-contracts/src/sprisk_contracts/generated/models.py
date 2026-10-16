@@ -12,6 +12,29 @@ class Bundle(RootModel[Any]):
     root: Annotated[Any, Field(title="Bundle")]
 
 
+class TableColumn(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    data_type: Annotated[str, Field(description="Arrow data type name, for display only.")]
+
+
+class MissingItem(RootModel[int]):
+    root: Annotated[int, Field(ge=0)]
+
+
+class TableRow(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    values: list[str]
+    missing: Annotated[
+        list[MissingItem],
+        Field(description="Indexes of columns whose value is missing in this row."),
+    ]
+
+
 class ArtifactId(RootModel[str]):
     root: Annotated[str, Field(pattern="^art_[0-9A-HJKMNP-TV-Z]{26}$")]
 
@@ -351,6 +374,16 @@ class Problem(StrictModel):
         extra="forbid",
     )
     errors: list[Error]
+
+
+class TablePage(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    offset: Annotated[int, Field(description="Index of the first row in this page.", ge=0)]
+    total_rows: Annotated[int, Field(ge=0)]
+    columns: list[TableColumn]
+    rows: list[TableRow]
 
 
 class Artifact(StrictModel):

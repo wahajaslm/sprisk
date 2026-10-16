@@ -1,0 +1,6 @@
+{
+  "offset": 0,
+  "total_rows": 1,
+  "columns": [{"name": "x", "data_type": "Int64"}],
+  "rows": [{"values": [null], "missing": [0]}]
+}

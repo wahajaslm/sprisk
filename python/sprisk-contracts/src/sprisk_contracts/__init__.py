@@ -11,6 +11,7 @@ from sprisk_contracts.generated.models import (
     Problem,
     QuestionVersion,
     Run,
+    TablePage,
     WorkerMessage,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "Problem",
     "QuestionVersion",
     "Run",
+    "TablePage",
     "WorkerMessage",
 ]

@@ -53,6 +53,82 @@
         }
       }
     },
+    "TablePage": {
+      "title": "TablePage",
+      "description": "One page of rows from a tabular artifact, for display (GET /artifacts/{id}/rows). Cells are display text; a missing cell is listed by column index and its text is empty.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offset",
+        "total_rows",
+        "columns",
+        "rows"
+      ],
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of the first row in this page."
+        },
+        "total_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TableColumn"
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TableRow"
+          }
+        }
+      }
+    },
+    "TableColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "data_type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "data_type": {
+          "type": "string",
+          "description": "Arrow data type name, for display only."
+        }
+      }
+    },
+    "TableRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "values",
+        "missing"
+      ],
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Indexes of columns whose value is missing in this row."
+        }
+      }
+    },
     "ArtifactId": {
       "type": "string",
       "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$"
