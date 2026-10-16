@@ -505,7 +505,7 @@ p { margin: 0; }
 /* Stage heading above its steps on the canvas; no box (design reference). */
 /* The group box is invisible and lets clicks through; only its heading is grabbed. */
 .react-flow__node-stage { pointer-events: none; }
-.stage-head { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 2px 4px; font-size: 17px; font-weight: 500; color: var(--soft); pointer-events: all; cursor: grab; white-space: nowrap; }
+.stage-head { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 2px 4px; font-size: 20px; font-weight: 300; color: var(--soft); pointer-events: all; cursor: grab; white-space: nowrap; }
 .stage-head:hover { color: var(--ink); }
 .stage-head .stage-count { padding: 0 5px; background: var(--wash); font: 11.5px var(--sans); color: var(--faint); }
 .stage-head.active { color: var(--ink); }
