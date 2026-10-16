@@ -458,6 +458,20 @@ describe("code steps (ADR-0020)", () => {
     expect(version.nodes.find((n) => n.id === "code_1")?.params).toEqual({ source: "data.height" });
   });
 
+  it("says which exposed settings override the code", async () => {
+    const exposed = {
+      ...codePipeline,
+      nodes: codePipeline.nodes.map((n) =>
+        n.id === "code_1" ? { ...n, operator: "sprisk.code.python@1.2.0", params: { source: "k = 1", parameters: { k: 5.5 } } } : n,
+      ),
+    };
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([exposed])));
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
+    expect(await screen.findByText(/Runs with k = 5.5/)).toHaveTextContent("set in Inputs");
+  });
+
   it("runs the code with Shift+Enter", async () => {
     server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])));
     const posted = recordPosts();
@@ -483,6 +497,51 @@ describe("code steps (ADR-0020)", () => {
     expect(within(shown).getByRole("table")).toHaveTextContent("setosa");
     expect(within(shown).getByText("1 of 150 rows")).toBeInTheDocument();
     expect(within(shown).getByRole("img", { name: "Figure 1" })).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
+  });
+});
+
+describe("code output layout (Scenario F)", () => {
+  const many = JSON.stringify({
+    items: [
+      { kind: "text", text: "150 rows\n", channel: "stdout" },
+      { kind: "image", png_base64: "AAAA" },
+      { kind: "image", png_base64: "BBBB" },
+      { kind: "text", text: "UserWarning: small sample\n", channel: "stderr" },
+    ],
+  });
+  function showMany() {
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])),
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
+      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () => HttpResponse.json(codeOutputs)),
+      http.get(`/api/artifacts/${codeOutputs[0]!.artifact.id}/content`, () => HttpResponse.text(many)),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
+  }
+
+  it("marks stderr and warnings apart from printed text", async () => {
+    showMany();
+    const warning = await screen.findByText(/small sample/);
+    expect(warning.closest("[data-channel]")).toHaveAttribute("data-channel", "stderr");
+  });
+
+  it("switches between inline and a grid without re-running anything", async () => {
+    showMany();
+    const shown = await screen.findByRole("region", { name: "Code output" });
+    expect(shown).toHaveClass("inline");
+    await userEvent.click(screen.getByRole("radio", { name: "Grid" }));
+    expect(screen.getByRole("region", { name: "Code output" })).toHaveClass("grid");
+    expect(screen.getAllByRole("img", { name: /Figure \d/ })).toHaveLength(2);
+  });
+
+  it("opens a figure large and closes it with Escape", async () => {
+    showMany();
+    await userEvent.click(await screen.findByRole("button", { name: "Enlarge Figure 2" }));
+    const dialog = screen.getByRole("dialog", { name: "Figure 2" });
+    expect(within(dialog).getByRole("img")).toHaveAttribute("src", "data:image/png;base64,BBBB");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 

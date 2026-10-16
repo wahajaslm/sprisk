@@ -30,3 +30,14 @@ export const useInspectorDetail = create<InspectorDetail>()(
     storage: createJSONStorage(() => localStorage),
   }),
 );
+
+export type ResultLayout = "inline" | "grid";
+type ResultLayoutState = { layout: ResultLayout; setLayout: (layout: ResultLayout) => void };
+
+/** How a step's shown results are arranged. Presentation only; nothing re-runs. */
+export const useResultLayout = create<ResultLayoutState>()(
+  persist((set) => ({ layout: "inline", setLayout: (layout) => set({ layout }) }), {
+    name: "sprisk.result-layout",
+    storage: createJSONStorage(() => localStorage),
+  }),
+);

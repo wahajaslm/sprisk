@@ -19,8 +19,14 @@ export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVer
     saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
   };
 
+  const overrides = Object.entries((pipeline.nodes.find((n) => n.id === nodeId)?.params.parameters ?? {}) as Record<string, unknown>);
   return (
     <div className="code-editor">
+      {overrides.length > 0 && (
+        <p className="overrides">
+          Runs with {overrides.map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join(", ")} (set in Inputs). The code below is unchanged.
+        </p>
+      )}
       <CodeInput label={`Code for ${nodeId}`} value={draft} onChange={setDraft} onRun={run} />
       <div className="code-actions">
         <span className="muted">Shift+Enter runs. Each run is saved as a new version.</span>
