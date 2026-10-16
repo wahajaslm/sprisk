@@ -20,6 +20,7 @@ import {
   useViewport,
 } from "@xyflow/react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { create } from "zustand";
 
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../api/hooks.ts";
@@ -307,7 +308,13 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
     ? JSON.stringify([pipeline.nodes.map((n) => [n.id, n.operator]), pipeline.edges.map((e) => [e.from, e.to])])
     : "";
   const key = pipeline ? `${shape}/${level}/${operators.size}` : "";
-  const [result, setResult] = useState<{ key: string; at?: Map<string, Point>; groups?: Group[]; error?: string }>();
+  const [result, setResult] = useState<{
+    key: string;
+    pipeline: PipelineVersion;
+    at?: Map<string, Point>;
+    groups?: Group[];
+    error?: string;
+  }>();
   useEffect(() => {
     if (!pipeline) return;
     let live = true;
@@ -321,16 +328,18 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
       },
       (id) => groups.get(id),
     ).then(
-      ({ nodes: at, groups }) => live && setResult({ key, at, groups }),
-      (e: unknown) => live && setResult({ key, error: e instanceof Error ? e.message : String(e) }),
+      ({ nodes: at, groups }) => live && setResult({ key, pipeline, at, groups }),
+      (e: unknown) => live && setResult({ key, pipeline, error: e instanceof Error ? e.message : String(e) }),
     );
     return () => {
       live = false;
     };
     // `key` names the pipeline version and size; versions are immutable.
   }, [key]);
-  // Keep showing the last layout while the next one is computed: no flicker.
-  return result;
+  // While a new shape is laid out, keep drawing the last laid-out flow, so no step appears
+  // without a position and then jumps. Once current, draw the flow as it is now.
+  if (!result || !pipeline) return result;
+  return result.key === key ? { ...result, pipeline } : result;
 }
 
 export function FlowCanvas() {
@@ -355,12 +364,12 @@ export function FlowCanvas() {
   const latest = latestByNode(attempts.data ?? []);
   if (positions?.error) return <p role="alert" className="error pad">Could not lay out the flow: {positions.error}</p>;
   if (!positions?.at) return <p className="muted pad">Laying out the flow…</p>;
-  const computed = flowGraph(pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups);
+  const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups);
   return (
     <div className="flow" aria-label="Flow canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
       {/* A new layout means new positions: start the canvas afresh. */}
-      <Canvas key={positions.key} computed={computed} />
+      <Canvas computed={computed} level={level} />
       <StepMenu pipeline={pipeline} operators={byRef} />
     </div>
   );
@@ -368,21 +377,26 @@ export function FlowCanvas() {
 
 /** Nodes can be dragged and the canvas panned. A dragged node keeps its place while its
  * status keeps updating. Positions are view state only; they are not saved (rule 9). */
-function Canvas({ computed }: { computed: { nodes: Node[]; edges: Edge[] } }) {
+function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] }; level: DetailLevel }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(computed.nodes);
-  const key = JSON.stringify(computed.nodes.map((n) => [n.id, n.data]));
+  // Steps the user dragged keep their place; every other step follows the layout. The canvas
+  // is updated in place, never remounted, so zoom and pan stay (ADR-0027 loading rules).
+  const dragged = useRef(new Set<string>());
+  useEffect(() => dragged.current.clear(), [level]);
+  const key = JSON.stringify(computed.nodes.map((n) => [n.id, n.data, n.position, n.parentId]));
   useEffect(() => {
     setNodes((shown) => {
-      const moved = new Map(shown.map((n) => [n.id, n.position]));
-      return computed.nodes.map((n) => ({ ...n, position: moved.get(n.id) ?? n.position }));
+      const at = new Map(shown.map((n) => [n.id, n.position]));
+      return computed.nodes.map((n) => ({ ...n, position: dragged.current.has(n.id) ? (at.get(n.id) ?? n.position) : n.position }));
     });
-    // `key` captures every change to the computed nodes; positions are kept from `shown`.
+    // `key` captures every change to the computed nodes and their layout.
   }, [key]);
   return (
     <ReactFlow
       nodes={nodes}
       edges={computed.edges}
       onNodesChange={onNodesChange}
+      onNodeDragStop={(_, node) => dragged.current.add(node.id)}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
@@ -507,7 +521,8 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
     fn();
     close();
   };
-  return (
+  // Rendered at the top of the page: inside a dock panel it would sit under other panels.
+  return createPortal(
     <div className="menu-backdrop" onClick={close} onContextMenu={(e) => (e.preventDefault(), close())}>
       <div className="step-menu" role="menu" aria-label={at.nodeId} style={{ left: at.x, top: at.y }} onClick={(e) => e.stopPropagation()}>
         {OPEN_TABS.map(([tab, label], i) => (
@@ -542,6 +557,7 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
           Copy step id
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
