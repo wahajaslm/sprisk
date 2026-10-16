@@ -24,6 +24,7 @@
 | [0020](0020-code-steps.md) | Code steps run the user's Python as a recorded pipeline step | Accepted |
 | [0021](0021-node-framework-v1.md) | Adopt the Node Framework V1 on top of the existing engine | Accepted |
 | [0022](0022-operators-are-plain-functions.md) | Operators are plain Python functions; the worker does the plumbing | Accepted |
+| [0023](0023-charts-are-steps.md) | Charts are steps: Python aggregates, the browser draws | Accepted |
 
 ## Open questions (arch doc §17)
 
