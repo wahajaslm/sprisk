@@ -13,6 +13,7 @@ import { CodeEditor } from "./CodeEditor.tsx";
 import { PinIcon } from "./Icons.tsx";
 import { ChecksTab, concerns } from "./inspector/ChecksTab.tsx";
 import { HistoryTab } from "./inspector/HistoryTab.tsx";
+import { InputsTab } from "./inspector/InputsTab.tsx";
 import { ResultTab } from "./inspector/ResultTab.tsx";
 
 const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
@@ -52,6 +53,7 @@ export function Inspector() {
       <div className="panel-head">
         <Tabs.List className="tabs" aria-label="Inspector">
           <Tabs.Trigger value="result">Result</Tabs.Trigger>
+          <Tabs.Trigger value="inputs">Inputs</Tabs.Trigger>
           <Tabs.Trigger value="code">Code</Tabs.Trigger>
           <Tabs.Trigger value="checks" aria-label={concernCount > 0 ? `Checks, ${concernCount} to review` : "Checks"}>
             Checks{concernCount > 0 && <span className="tab-badge">⚠ {concernCount}</span>}
@@ -92,6 +94,9 @@ export function Inspector() {
           previous={previous}
           explore={explore}
         />
+      </Tabs.Content>
+      <Tabs.Content value="inputs" className="pane single">
+        {pipeline && <InputsTab pipeline={pipeline} nodeId={nodeId} operator={operator} attempts={all} />}
       </Tabs.Content>
       <Tabs.Content value="code" className="pane single">
         {pipeline && node && isCodeOperator(node.operator) && typeof node.params.source === "string" ? (

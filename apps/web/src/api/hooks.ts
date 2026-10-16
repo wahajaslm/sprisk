@@ -54,10 +54,11 @@ export const useArtifactText = (artifactId: string | undefined) =>
   });
 
 /** One page of a table artifact's rows. The previous page stays on screen while the next loads. */
-export const useTablePage = (artifactId: string, offset: number, limit: number) =>
+export const useTablePage = (artifactId: string | undefined, offset: number, limit: number) =>
   useQuery({
     queryKey: ["table-page", artifactId, offset, limit],
-    queryFn: () => getOne("TablePage", `/artifacts/${artifactId}/rows?offset=${offset}&limit=${limit}`),
+    queryFn: () => getOne("TablePage", `/artifacts/${artifactId ?? ""}/rows?offset=${offset}&limit=${limit}`),
+    enabled: artifactId !== undefined,
     staleTime: Infinity, // artifacts are immutable
     placeholderData: keepPreviousData,
   });

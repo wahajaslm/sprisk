@@ -522,6 +522,90 @@ describe("code step failures", () => {
   });
 });
 
+describe("inputs tab", () => {
+  function openInputs(nodeId: string) {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId });
+    return screen.findByRole("tab", { name: "Inputs" }).then((tab) => userEvent.click(tab));
+  }
+
+  it("lists each input table with where it comes from and its size", async () => {
+    await openInputs("split");
+    const inputs = await screen.findByRole("region", { name: "Input tables" });
+    expect(inputs).toHaveTextContent("data");
+    expect(within(inputs).getByRole("button", { name: "load.data" })).toBeInTheDocument();
+    await waitFor(() => expect(inputs).toHaveTextContent("120 rows × 2 cols"));
+    await userEvent.click(within(inputs).getByRole("button", { name: "load.data" }));
+    expect(useSelection.getState().nodeId).toBe("load");
+  });
+
+  it("shows settings as a form built from the operator's schema", async () => {
+    server.use(
+      http.get("/api/operators", () =>
+        HttpResponse.json(
+          operators.map((o) =>
+            o.id === "sprisk.ml.linear_model@1.0.0"
+              ? {
+                  ...o,
+                  params_schema: {
+                    type: "object",
+                    properties: {
+                      target: { type: "string" },
+                      features: { type: "array", items: { type: "string" } },
+                      task: { type: "string", enum: ["classification", "regression"] },
+                    },
+                  },
+                }
+              : o,
+          ),
+        ),
+      ),
+    );
+    await openInputs("model");
+    const settings = await screen.findByRole("region", { name: "Settings" });
+    expect(within(settings).getByRole("textbox", { name: "target" })).toHaveValue("y");
+    expect(within(settings).getByRole("textbox", { name: "features" })).toHaveValue("x");
+    expect(within(settings).getByRole("combobox", { name: "task" })).toHaveValue("classification");
+    expect(within(settings).getByRole("button", { name: "Run with these settings" })).toBeDisabled();
+  });
+
+  it("runs a new version with the changed setting", async () => {
+    server.use(
+      http.get("/api/operators", () =>
+        HttpResponse.json(
+          operators.map((o) =>
+            o.id === "sprisk.validation.random_split@1.0.0"
+              ? { ...o, params_schema: { type: "object", properties: { test_fraction: { type: "number" }, seed: { type: "integer", minimum: 0 } } } }
+              : o,
+          ),
+        ),
+      ),
+    );
+    const posted: unknown[] = [];
+    server.use(
+      http.post("/api/pipeline_versions", async ({ request }) => {
+        const body = await request.json();
+        posted.push(body);
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.post("/api/runs", async ({ request }) => {
+        const body = (await request.json()) as { pipeline_version_id: string };
+        return HttpResponse.json({ ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ8", pipeline_version_id: body.pipeline_version_id }, { status: 202 });
+      }),
+    );
+    await openInputs("split");
+    const seed = await screen.findByRole("spinbutton", { name: "seed" });
+    await userEvent.clear(seed);
+    await userEvent.type(seed, "7");
+    await userEvent.click(screen.getByRole("button", { name: "Run with these settings" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const version = posted[0] as typeof pipeline;
+    expect(version.parent_id).toBe(PV);
+    expect(version.nodes.find((n) => n.id === "split")?.params).toEqual({ test_fraction: 0.25, seed: 7 });
+    expect(useSelection.getState()).toMatchObject({ pipelineVersionId: version.id, nodeId: "split" });
+  });
+});
+
 describe("node detail switch", () => {
   const splitOutputs = [
     { ...loadOutputs[0]!, port: "test", artifact: { ...loadOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXYT1" } },

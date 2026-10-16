@@ -33,9 +33,13 @@ export function addCodeStep(base: PipelineVersion, node: string, port: string) {
   return { version, nodeId };
 }
 
-export function setCodeSource(base: PipelineVersion, nodeId: string, source: string): PipelineVersion {
+/** A new version where one step runs with `params`; everything else is unchanged. */
+export function setParams(base: PipelineVersion, nodeId: string, params: Record<string, unknown>): PipelineVersion {
   return nextVersion(base, {
-    nodes: base.nodes.map((n) => (n.id === nodeId ? { ...n, params: { source } } : n)),
+    nodes: base.nodes.map((n) => (n.id === nodeId ? { ...n, params } : n)),
     edges: base.edges,
   });
 }
+
+export const setCodeSource = (base: PipelineVersion, nodeId: string, source: string) =>
+  setParams(base, nodeId, { source });
