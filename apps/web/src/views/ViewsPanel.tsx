@@ -6,14 +6,13 @@ export function ViewsPanel() {
   const { dock, editing, toggleEditing } = useWorkbench();
   return (
     <div className="sidebar-panel">
-      <p className="sidebar-title">Open another panel</p>
+      <p className="sidebar-title">Inspector tabs</p>
       <div className="sidebar-list">
         {INSPECTOR_TABS.map((tab) => (
           <button key={tab} type="button" className="list-row" disabled={!dock} onClick={() => dock?.openTab(tab)}>
             <span className="plus" aria-hidden="true">+</span>
             <span className="row-main">
               <span className="row-title">{TAB_LABEL[tab]}</span>
-              <span className="row-meta">Another panel; pin it to compare runs.</span>
             </span>
           </button>
         ))}

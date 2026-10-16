@@ -5,13 +5,14 @@ import {
   type DockviewApi,
   DockviewReact,
   type DockviewReadyEvent,
+  type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
   type SerializedDockview,
 } from "dockview-react";
 import { type FunctionComponent, Suspense, useEffect, useRef } from "react";
 
-import { INSPECTOR_TABS, type InspectorTab, readTab, TAB_LABEL } from "./inspectorTabs.ts";
+import { closedTabs, INSPECTOR_TABS, type InspectorTab, readTab, TAB_LABEL } from "./inspectorTabs.ts";
 import { readPin, type Pin, ViewInstance } from "./instance.tsx";
 import { HEADED_PANELS, readSavedLayout, restoreLayout, saveLayout, type ViewType } from "./layout.ts";
 import { useWorkbench } from "./workbench.ts";
@@ -41,7 +42,7 @@ function syncTabBars(api: DockviewApi, editing: boolean): void {
   }
 }
 
-type Position = { referencePanel: string; direction: "right" | "below" | "within" };
+type Position = { referencePanel: string; direction: "below" | "within" };
 
 /** Default tab panels have stable ids (step-console); extra ones get a unique suffix. */
 function addTabPanel(api: DockviewApi, tab: InspectorTab, position?: Position, initialHeight?: number): void {
@@ -49,13 +50,46 @@ function addTabPanel(api: DockviewApi, tab: InspectorTab, position?: Position, i
   api.addPanel({ id, component: "step-tab", tabComponent: "step-tab", title: TAB_LABEL[tab], params: { tab }, ...(position ? { position } : {}), ...(initialHeight ? { initialHeight } : {}) });
 }
 
+const openTabs = (api: DockviewApi): InspectorTab[] =>
+  api.panels.flatMap((p) => {
+    const tab = readTab(p.params);
+    return tab ? [tab] : [];
+  });
+
+/** Into the group that already holds Inspector tabs; under the Flow when every tab was closed. */
+function reopenTab(api: DockviewApi, tab: InspectorTab): void {
+  const sibling = api.panels.find((p) => readTab(p.params) !== undefined);
+  const position: Position | undefined = sibling
+    ? { referencePanel: sibling.id, direction: "within" }
+    : api.getPanel("flow")
+      ? { referencePanel: "flow", direction: "below" }
+      : undefined;
+  addTabPanel(api, tab, position, sibling ? undefined : 340);
+  syncTabBars(api, useWorkbench.getState().editing);
+}
+
+/** "+" at the end of an Inspector tab bar: bring back a closed tab. */
+function ReopenTabs({ group, containerApi }: IDockviewHeaderActionsProps) {
+  const isTabGroup = group.panels.some((p) => readTab(p.params) !== undefined);
+  const closed = closedTabs(openTabs(containerApi));
+  if (!isTabGroup || closed.length === 0) return null;
+  return (
+    <details className="reopen-tabs">
+      <summary aria-label="Reopen a closed tab" title="Reopen a closed tab">+</summary>
+      <div className="reopen-menu" role="menu">
+        {closed.map((tab) => (
+          <button key={tab} type="button" role="menuitem" onClick={() => reopenTab(containerApi, tab)}>
+            {TAB_LABEL[tab]}
+          </button>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function commands(api: DockviewApi) {
   return {
-    openTab: (tab: InspectorTab) => {
-      const near = api.getPanel("flow");
-      addTabPanel(api, tab, near ? { referencePanel: near.id, direction: "right" } : undefined);
-      syncTabBars(api, useWorkbench.getState().editing);
-    },
+    openTab: (tab: InspectorTab) => reopenTab(api, tab),
     resetLayout: () => {
       api.clear();
       addDefaultLayout(api);
@@ -135,5 +169,5 @@ export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels 
     dockApi.current = api;
     attachDock(commands(api));
   };
-  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} onReady={onReady} />;
+  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} rightHeaderActionsComponent={ReopenTabs} onReady={onReady} />;
 }

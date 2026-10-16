@@ -6,7 +6,7 @@ export type DetailLevel = (typeof DETAIL_LEVELS)[number];
 
 /** Node size on the canvas for each level of detail. */
 export const NODE_SIZE: Record<DetailLevel, { width: number; height: number }> = {
-  compact: { width: 168, height: 40 },
+  compact: { width: 168, height: 32 },
   detail: { width: 232, height: 176 },
 };
 

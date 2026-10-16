@@ -22,3 +22,6 @@ export function readTab(params: unknown): InspectorTab | undefined {
   if (typeof params !== "object" || params === null || !("tab" in params)) return undefined;
   return isInspectorTab(params.tab) ? params.tab : undefined;
 }
+
+/** Tabs with no open panel, so the user can bring them back. */
+export const closedTabs = (open: readonly InspectorTab[]): InspectorTab[] => INSPECTOR_TABS.filter((t) => !open.includes(t));
