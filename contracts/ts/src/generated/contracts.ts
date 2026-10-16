@@ -282,6 +282,47 @@ export interface TableRow {
   missing: number[];
 }
 /**
+ * What a code step showed (ADR-0020): printed text, tables and images, in order. Written by the worker as the step's display artifact; every part is capped.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeDisplay".
+ */
+export interface CodeDisplay {
+  items: DisplayItem[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DisplayItem".
+ */
+export interface DisplayItem {
+  kind: "text" | "table" | "image";
+  /**
+   * Present for kind text.
+   */
+  text?: string;
+  table?: TablePage1;
+  /**
+   * Present for kind image: a PNG, base64-encoded.
+   */
+  png_base64?: string;
+}
+/**
+ * Present for kind table: the first rows only.
+ */
+export interface TablePage1 {
+  /**
+   * Index of the first row in this page.
+   */
+  offset: number;
+  total_rows: number;
+  /**
+   * Columns in the table; more than `columns` holds when the table is too wide to page whole.
+   */
+  total_columns: number;
+  columns: TableColumn[];
+  rows: TableRow[];
+}
+/**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema

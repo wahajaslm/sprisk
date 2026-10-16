@@ -135,6 +135,52 @@
         }
       }
     },
+    "CodeDisplay": {
+      "title": "CodeDisplay",
+      "description": "What a code step showed (ADR-0020): printed text, tables and images, in order. Written by the worker as the step's display artifact; every part is capped.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DisplayItem"
+          }
+        }
+      }
+    },
+    "DisplayItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "text",
+            "table",
+            "image"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "description": "Present for kind text."
+        },
+        "table": {
+          "$ref": "#/$defs/TablePage",
+          "description": "Present for kind table: the first rows only."
+        },
+        "png_base64": {
+          "type": "string",
+          "description": "Present for kind image: a PNG, base64-encoded."
+        }
+      }
+    },
     "ArtifactId": {
       "type": "string",
       "pattern": "^art_[0-9A-HJKMNP-TV-Z]{26}$"

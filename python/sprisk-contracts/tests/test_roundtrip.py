@@ -11,6 +11,7 @@ from sprisk_contracts import (
     Artifact,
     Attempt,
     AttemptOutput,
+    CodeDisplay,
     CreateRun,
     MethodologyCheck,
     Operator,
@@ -37,6 +38,7 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (AttemptOutput, "attempt_output"),
     (Problem, "problem"),
     (TablePage, "table_page"),
+    (CodeDisplay, "code_display"),
 ]
 
 

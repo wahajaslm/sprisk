@@ -21,6 +21,7 @@
 | [0017](0017-gate-b-as-worker-attempt.md) | Gate B runs as a worker attempt | Accepted |
 | [0018](0018-studio-cockpit-workbench.md) | Studio cockpit is the default workbench layout and workflow | Accepted |
 | [0019](0019-methodology-as-steerable-decision-graph.md) | Methodology guides pipeline decisions without becoming a separate workflow | Proposed |
+| [0020](0020-code-steps.md) | Code steps run the user's Python as a recorded pipeline step | Accepted |
 
 ## Open questions (arch doc §17)
 

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, Attempt, AttemptOutput, CreateRun, MethodologyCheck, Operator, PipelineVersion,
+    Artifact, Attempt, AttemptOutput, CodeDisplay, CreateRun, MethodologyCheck, Operator, PipelineVersion,
     Problem, QuestionVersion, Run, TablePage, WorkerMessage, parse,
 };
 
@@ -54,6 +54,7 @@ const ENTITIES: &[&str] = &[
     "artifact",
     "attempt",
     "attempt_output",
+    "code_display",
     "create_run",
     "methodology_check",
     "operator",
@@ -139,4 +140,9 @@ fn problem() {
 #[test]
 fn table_page() {
     check::<TablePage>("table_page");
+}
+
+#[test]
+fn code_display() {
+    check::<CodeDisplay>("code_display");
 }

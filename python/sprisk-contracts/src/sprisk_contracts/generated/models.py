@@ -35,6 +35,12 @@ class TableRow(StrictModel):
     ]
 
 
+class Kind(StrEnum):
+    text = "text"
+    table = "table"
+    image = "image"
+
+
 class ArtifactId(RootModel[str]):
     root: Annotated[str, Field(pattern="^art_[0-9A-HJKMNP-TV-Z]{26}$")]
 
@@ -393,6 +399,20 @@ class TablePage(StrictModel):
     rows: list[TableRow]
 
 
+class DisplayItem(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Kind
+    text: Annotated[str | None, Field(description="Present for kind text.")] = None
+    table: Annotated[
+        TablePage | None, Field(description="Present for kind table: the first rows only.")
+    ] = None
+    png_base64: Annotated[
+        str | None, Field(description="Present for kind image: a PNG, base64-encoded.")
+    ] = None
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -534,6 +554,13 @@ class AttemptOutput(StrictModel):
     )
     port: PortName
     artifact: Artifact
+
+
+class CodeDisplay(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    items: list[DisplayItem]
 
 
 class Operator(StrictModel):

@@ -19,6 +19,7 @@ export interface Entities {
   AttemptOutput: C.AttemptOutput;
   Problem: C.Problem;
   TablePage: C.TablePage;
+  CodeDisplay: C.CodeDisplay;
 }
 
 export class ContractError extends Error {}

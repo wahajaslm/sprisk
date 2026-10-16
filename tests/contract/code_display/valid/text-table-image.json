@@ -1,0 +1,36 @@
+{
+  "items": [
+    {
+      "kind": "text",
+      "text": "112 rows\n"
+    },
+    {
+      "kind": "table",
+      "table": {
+        "offset": 0,
+        "total_rows": 3,
+        "total_columns": 2,
+        "columns": [
+          {
+            "name": "species",
+            "data_type": "String"
+          },
+          {
+            "name": "ratio",
+            "data_type": "Float64"
+          }
+        ],
+        "rows": [
+          {
+            "values": ["setosa", "6.9"],
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "image",
+      "png_base64": "iVBORw0KGgo="
+    }
+  ]
+}
