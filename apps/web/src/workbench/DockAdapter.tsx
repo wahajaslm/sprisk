@@ -68,10 +68,10 @@ function reopenTab(api: DockviewApi, tab: InspectorTab): void {
   syncTabBars(api, useWorkbench.getState().editing);
 }
 
-/** Right end of an Inspector tab bar, as in VS Code: reopen a closed tab, close the shown one. */
+/** Right end of a tab bar, as in VS Code: close the shown tab; in the Inspector, reopen a closed one. */
 function TabGroupActions({ group, containerApi, activePanel }: IDockviewHeaderActionsProps) {
-  if (!group.panels.some((p) => readTab(p.params) !== undefined)) return null;
-  const closed = closedTabs(openTabs(containerApi));
+  const isTabGroup = group.panels.some((p) => readTab(p.params) !== undefined);
+  const closed = isTabGroup ? closedTabs(openTabs(containerApi)) : [];
   return (
     <div className="tab-actions">
       {closed.length > 0 && (
@@ -151,6 +151,13 @@ export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels 
     ]),
   );
 
+  /** Every tab is a plain name; closing is at the end of the tab bar (VS Code). */
+  const PlainTab = ({ api }: IDockviewPanelHeaderProps) => (
+    <span className="dock-tab" onAuxClick={(e) => e.button === 1 && api.close()}>
+      {api.title}
+    </span>
+  );
+
   const onReady = ({ api }: DockviewReadyEvent) => {
     const saved = restoreLayout(readSavedLayout());
     if (saved) {
@@ -175,5 +182,5 @@ export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels 
     dockApi.current = api;
     attachDock(commands(api));
   };
-  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} rightHeaderActionsComponent={TabGroupActions} onReady={onReady} />;
+  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} defaultTabComponent={PlainTab} rightHeaderActionsComponent={TabGroupActions} onReady={onReady} />;
 }
