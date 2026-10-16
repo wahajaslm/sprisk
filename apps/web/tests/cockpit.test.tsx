@@ -392,7 +392,8 @@ describe("node previews", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     expect(await screen.findByText("120 rows × 2 cols")).toBeInTheDocument();
-    expect(await screen.findByText("accuracy 0.947")).toBeInTheDocument();
+    const score = await screen.findByRole("button", { name: /^score/ });
+    await waitFor(() => expect(score).toHaveTextContent(/0\.947\s*accuracy/));
   });
 
   it("says how many columns a profile covers, not its own row count", async () => {
@@ -777,18 +778,25 @@ describe("node detail switch", () => {
     );
   }
 
-  it("hides every preview in Compact and shows them in Summary", async () => {
+  it("shows only step names in Compact and full cards in Detail; there is no Summary", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     await userEvent.click(await screen.findByRole("radio", { name: "Compact" }));
-    const score = await screen.findByRole("button", { name: /^score/ });
-    expect(score.querySelector(".card-head")).toBeNull();
+    expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Compact", "Detail"]);
+    const score = await screen.findByRole("button", { name: "score" });
+    expect(score).toHaveTextContent(/^score$/);
 
-    await userEvent.click(screen.getByRole("radio", { name: "Summary" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Detail" }));
     const card = await screen.findByRole("button", { name: /^score/ });
-    await waitFor(() => expect(card).toHaveTextContent("accuracy 0.947"));
-    expect(card.querySelector(".card-status")).toHaveTextContent("succeeded");
-    expect(screen.getByRole("radio", { name: "Summary" })).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => expect(card.querySelector(".card-status")).toHaveTextContent("succeeded"));
+    expect(screen.getByRole("radio", { name: "Detail" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("a remembered Summary choice opens as Detail", async () => {
+    const { readLevel } = await import("../src/workbench/detail.ts");
+    expect(readLevel("summary")).toBe("detail");
+    expect(readLevel("compact")).toBe("compact");
+    expect(readLevel(42)).toBe("detail");
   });
 
   it("draws the train / test balance of a split in Detail", async () => {
@@ -805,7 +813,6 @@ describe("node detail switch", () => {
     server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify(failing))));
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
-    await userEvent.click(await screen.findByRole("radio", { name: "Summary" }));
     const split = await screen.findByRole("button", { name: /^split/ });
     await waitFor(() => expect(split).toHaveTextContent("⚠ 1 check"));
   });
@@ -819,7 +826,7 @@ describe("cached steps", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     const score = await screen.findByRole("button", { name: /^score/ });
-    await waitFor(() => expect(score).toHaveTextContent("accuracy 0.947"));
+    await waitFor(() => expect(score).toHaveTextContent(/0\.947\s*accuracy/));
     expect(score).toHaveTextContent("cached");
   });
 

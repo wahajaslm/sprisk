@@ -127,28 +127,20 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
   );
 }
 
+/** Compact: the step's name only. Its state shows as the outline; details are in the Inspector. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
   const status = statusOf(data.state);
   return (
     <button
       type="button"
-      className={`flow-node${data.selected ? " selected" : ""}`}
-      title={data.operator}
+      className={`flow-node${data.selected ? " selected" : ""}${status.tone === "bad" || data.concerns > 0 ? " bad" : ""}`}
+      title={`${data.operator} · ${status.text}`}
       onClick={() => select(data.id)}
     >
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
       <Handle id="in-top" type="target" position={Position.Top} isConnectable={false} />
-      <span className={`icon-tile kind-${data.kind}${data.selected ? " ring" : ""}`}>
-        <KindIcon kind={data.kind} />
-      </span>
-      <span className="node-text">
-        <span className="node-title">{data.id}</span>
-        <span className={`node-status tone-${status.tone}`}>
-          <span className="dot" aria-hidden="true" />
-          {data.attemptId ? <NodeFact attemptId={data.attemptId} operator={data.operatorRef} isEvaluator={data.isEvaluator} status={status.text} /> : status.text}
-        </span>
-      </span>
+      <span className="node-title">{data.id}</span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       <Handle id="out-bottom" type="source" position={Position.Bottom} isConnectable={false} />
     </button>
@@ -350,7 +342,7 @@ function ZoomControl() {
   );
 }
 
-const DETAIL_LABEL: Record<DetailLevel, string> = { compact: "Compact", summary: "Summary", detail: "Detail" };
+const DETAIL_LABEL: Record<DetailLevel, string> = { compact: "Compact", detail: "Detail" };
 
 /** How much each node shows. Kept per browser; it never changes the flow. */
 function DetailSwitch() {
