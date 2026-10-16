@@ -147,7 +147,7 @@ describe("flow canvas", () => {
 
   it("places each step to the right of the steps it reads", async () => {
     const { flowPositions } = await import("../src/flow/layout.ts");
-    const at = await flowPositions(pipeline, { width: 168, height: 44 });
+    const at = await flowPositions(pipeline, () => ({ width: 168, height: 44 }));
     const x = (id: string) => at.get(id)!.x;
     expect(x("load")).toBeLessThan(x("split"));
     expect(x("split")).toBeLessThan(x("model"));

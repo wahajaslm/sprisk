@@ -131,7 +131,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
   );
 }
 
-/** Compact: a round icon with the step's name and what it is for underneath; its state is a dot. */
+/** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
   const status = statusOf(data.state);
@@ -149,12 +149,10 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         openStepMenu({ nodeId: data.id, x: e.clientX, y: e.clientY });
       }}
     >
-      {/* Handles sit on the circle, so lines meet it with no gap. */}
+      <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
       <span className={`round-icon kind-${data.kind}`}>
-        <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
         <KindIcon kind={data.kind} size={16} />
         <span className={`state-dot tone-${status.tone}`} role="img" aria-label={status.text} />
-        <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       </span>
       <span className="round-text">
         <span className="node-title">{data.id}</span>
@@ -163,6 +161,8 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         {(status.tone === "bad" || status.tone === "live") && <span className={`round-state tone-${status.tone}`}>{status.text}</span>}
         {data.concerns > 0 && <span className="round-state tone-bad">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>}
       </span>
+      {/* The node is as wide as its label, so outgoing lines start right after the text. */}
+      <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
     </button>
   );
 }
@@ -175,6 +175,16 @@ function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
 const nodeTypes = { step: StepNode };
 const edgeTypes = { flow: FlowEdge };
 
+const LABEL_MAX = 128;
+
+/** A compact node is the circle plus its label, no wider; Detail cards have one size. The label
+ * width is estimated from its length (12.5px name, 11px role) and wraps past LABEL_MAX. */
+function sizeOf(level: DetailLevel, id: string, role: string) {
+  if (level !== "compact") return NODE_SIZE[level];
+  const label = Math.min(LABEL_MAX, Math.ceil(Math.max(id.length * 7.2, role.length * 6.2)));
+  return { width: 44 + 10 + label + 2, height: NODE_SIZE.compact.height };
+}
+
 /** React Flow nodes and edges for a flow, at the positions the layout chose. */
 export function flowGraph(
   pipeline: PipelineVersion,
@@ -185,10 +195,10 @@ export function flowGraph(
   concerns: Map<string, number>,
   at: Map<string, Point>,
 ): { nodes: Node[]; edges: Edge[] } {
-  const { width, height } = NODE_SIZE[level];
   const nodes: Node[] = pipeline.nodes.map((node) => {
     const id = node.id;
     const op = operators.get(node.operator);
+    const { width, height } = sizeOf(level, id, op ? roleOf(op) : "Step");
     return {
       id,
       type: "step",
@@ -230,13 +240,18 @@ export function flowGraph(
 }
 
 /** Layout runs off the main path (ELK is async); a new flow or node size lays out afresh. */
-function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel) {
-  const key = pipeline ? `${pipeline.id}/${level}` : "";
+function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel, operators: Map<string, Operator>) {
+  // Sizes depend on each step's role, so lay out again once the operators are known.
+  const key = pipeline ? `${pipeline.id}/${level}/${operators.size}` : "";
   const [result, setResult] = useState<{ key: string; at?: Map<string, Point>; error?: string }>();
   useEffect(() => {
     if (!pipeline) return;
     let live = true;
-    flowPositions(pipeline, NODE_SIZE[level]).then(
+    const roleById = new Map(pipeline.nodes.map((n) => [n.id, operators.get(n.operator)]));
+    flowPositions(pipeline, (id) => {
+      const op = roleById.get(id);
+      return sizeOf(level, id, op ? roleOf(op) : "Step");
+    }).then(
       (at) => live && setResult({ key, at }),
       (e: unknown) => live && setResult({ key, error: e instanceof Error ? e.message : String(e) }),
     );
@@ -258,7 +273,7 @@ export function FlowCanvas() {
   const checks = useRunChecks(latestByNode(attempts.data ?? []).get(GATE_NODE));
 
   const pipelineNow = versions.data?.find((v) => v.id === pipelineVersionId);
-  const positions = usePositions(pipelineNow, level);
+  const positions = usePositions(pipelineNow, level, new Map((operators.data ?? []).map((op) => [op.id, op])));
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
   if (versions.isPending || operators.isPending) return <p className="muted pad">Loading flow…</p>;

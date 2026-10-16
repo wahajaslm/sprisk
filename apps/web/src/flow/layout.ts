@@ -8,7 +8,7 @@ export type Point = { x: number; y: number };
 
 /** Where each step sits on the canvas: left to right by what it reads, with crossings kept low
  * (ELK's layered layout). View state only; never saved with the flow. */
-export async function flowPositions(pipeline: PipelineVersion, size: Size): Promise<Map<string, Point>> {
+export async function flowPositions(pipeline: PipelineVersion, sizeOf: (nodeId: string) => Size): Promise<Map<string, Point>> {
   const graph = await elk.layout({
     id: "flow",
     layoutOptions: {
@@ -18,7 +18,7 @@ export async function flowPositions(pipeline: PipelineVersion, size: Size): Prom
       "elk.spacing.nodeNode": "28",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
     },
-    children: pipeline.nodes.map((n) => ({ id: n.id, ...size })),
+    children: pipeline.nodes.map((n) => ({ id: n.id, ...sizeOf(n.id) })),
     edges: pipeline.edges.map((e, i) => ({
       id: `e${i}`,
       sources: [e.from.split(".")[0] ?? e.from],
