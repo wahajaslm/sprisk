@@ -785,6 +785,7 @@ describe("node detail switch", () => {
     expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Compact", "Detail"]);
     const score = await screen.findByRole("button", { name: "score" });
     expect(score).toHaveTextContent(/^score$/);
+    expect(score.querySelector(".icon-tile")).not.toBeNull();
 
     await userEvent.click(screen.getByRole("radio", { name: "Detail" }));
     const card = await screen.findByRole("button", { name: /^score/ });

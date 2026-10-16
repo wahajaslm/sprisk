@@ -84,6 +84,13 @@ p { margin: 0; }
 .dock-tab { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 4px 0 2px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .dock-tab-close { border: 0; background: transparent; color: var(--ghost); padding: 0 4px; font-size: 13px; line-height: 1; }
 .dock-tab-close:hover { color: var(--ink); }
+.reopen-tabs { position: relative; height: 100%; display: flex; align-items: center; padding: 0 8px; }
+.reopen-tabs > summary { list-style: none; cursor: pointer; padding: 0 6px; border-radius: 6px; color: var(--quiet); font-size: 15px; }
+.reopen-tabs > summary::-webkit-details-marker { display: none; }
+.reopen-tabs > summary:hover { color: var(--ink); background: var(--wash); }
+.reopen-menu { position: absolute; right: 4px; top: 100%; z-index: 20; display: grid; min-width: 150px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); }
+.reopen-menu button { padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--soft); text-align: left; font-size: 12px; }
+.reopen-menu button:hover { background: var(--wash); color: var(--ink); }
 .sprisk-dock {
   height: 100%;
   --dv-background-color: var(--ground);
@@ -157,7 +164,7 @@ p { margin: 0; }
 .stage-frame-head { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
 .stage-label { font-size: 12px; font-weight: 500; color: var(--soft); white-space: nowrap; }
 .stage-count { font: 10px var(--mono); color: var(--quiet); white-space: nowrap; }
-.flow-node { width: 168px; height: 40px; display: flex; align-items: center; padding: 0 12px; border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; background: var(--node); text-align: left; transition: background 0.15s; }
+.flow-node { width: 168px; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; text-align: left; transition: background 0.15s; }
 .flow-node:hover { background: var(--node-hover); }
 .flow-node.selected { background: var(--node-selected); border-color: rgba(255, 255, 255, 0.14); }
 .icon-tile.ring { box-shadow: 0 0 0 1px currentColor; }
@@ -275,7 +282,8 @@ p { margin: 0; }
 .flow-card { display: grid; grid-template-rows: auto 1fr auto; padding: 0; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; background: var(--node); text-align: left; overflow: hidden; transition: background 0.15s, border-color 0.15s; }
 .flow-card:hover { background: var(--node-hover); }
 .flow-card.selected { background: var(--node-selected); border-color: rgba(255, 255, 255, 0.16); }
-.flow-card.bad, .flow-node.bad { border-color: rgba(255, 92, 92, 0.35); }
+.flow-card.bad { border-color: rgba(255, 92, 92, 0.35); }
+.flow-node.bad .node-title { color: var(--alert); }
 .card-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
 .card-title { font-size: 12.5px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-op { margin-left: auto; font: 10px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }

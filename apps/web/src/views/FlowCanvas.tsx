@@ -127,7 +127,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
   );
 }
 
-/** Compact: the step's name only. Its state shows as the outline; details are in the Inspector. */
+/** Compact: icon and name, no card. A failed or flagged step turns red; details are in the Inspector. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
   const status = statusOf(data.state);
@@ -140,6 +140,9 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
     >
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
       <Handle id="in-top" type="target" position={Position.Top} isConnectable={false} />
+      <span className={`icon-tile small kind-${data.kind}${data.selected ? " ring" : ""}`}>
+        <KindIcon kind={data.kind} size={13} />
+      </span>
       <span className="node-title">{data.id}</span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       <Handle id="out-bottom" type="source" position={Position.Bottom} isConnectable={false} />
