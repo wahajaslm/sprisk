@@ -13,6 +13,8 @@ use object_store::{ObjectStore, ObjectStoreExt, WriteMultipart};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 
+mod table;
+
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     #[error("unsafe path segment {0:?}: use letters, digits and underscores only")]
@@ -37,6 +39,12 @@ pub enum StoreError {
     },
     #[error("object store: {0}")]
     Object(#[from] object_store::Error),
+    #[error("artifact {hash} is not a readable Parquet table: {reason}")]
+    NotATable { hash: String, reason: String },
+    #[error("reading table: {0}")]
+    Parquet(#[from] parquet::errors::ParquetError),
+    #[error("formatting table: {0}")]
+    Arrow(#[from] arrow_schema::ArrowError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,7 +164,7 @@ impl ArtifactStore {
     }
 }
 
-fn object_key(hex: &str) -> ObjectPath {
+pub(crate) fn object_key(hex: &str) -> ObjectPath {
     ObjectPath::from(format!("{}/{hex}", &hex[..2]))
 }
 
@@ -175,7 +183,7 @@ pub fn content_hash(bytes: &[u8]) -> String {
 }
 
 /// Returns the hex part of `sha256:<hex>`.
-fn parse_hash(hash: &str) -> Result<&str, StoreError> {
+pub(crate) fn parse_hash(hash: &str) -> Result<&str, StoreError> {
     match hash.strip_prefix("sha256:") {
         Some(hex)
             if hex.len() == 64 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) =>
