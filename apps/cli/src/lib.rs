@@ -111,14 +111,15 @@ pub async fn serve_on(
         worker_command,
         idle_worker,
         settings: sprisk_scheduler::Settings::default(),
-        splitter: sprisk_api::Splitter {
-            command: vec![
+        splitter: sprisk_api::Splitter::new(
+            vec![
                 config.python.display().to_string(),
                 "-m".into(),
                 "sprisk_code.cells".into(),
             ],
-            timeout: std::time::Duration::from_secs(10),
-        },
+            std::time::Duration::from_secs(10),
+            2,
+        ),
         data_roots: config
             .data_roots
             .iter()

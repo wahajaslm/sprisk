@@ -31,15 +31,12 @@ async fn api() -> Api {
 }
 
 async fn api_with_python(python: PathBuf) -> Api {
-    let splitter = Splitter {
-        command: vec![
-            python.display().to_string(),
-            "-m".into(),
-            "sprisk_code.cells".into(),
-        ],
-        timeout: Duration::from_secs(30),
-    };
-    api_with(python, splitter).await
+    let command = vec![
+        python.display().to_string(),
+        "-m".into(),
+        "sprisk_code.cells".into(),
+    ];
+    api_with(python, Splitter::new(command, Duration::from_secs(30), 2)).await
 }
 
 async fn api_with(python: PathBuf, splitter: Splitter) -> Api {
@@ -545,25 +542,51 @@ async fn notebook_cells_are_split_into_linked_steps() {
     );
 }
 
+async fn splitting_api(command: &[&str], timeout: Duration, running: usize) -> Api {
+    let command = command.iter().map(|c| (*c).to_owned()).collect();
+    api_with(
+        root().join(".venv/bin/python"),
+        Splitter::new(command, timeout, running),
+    )
+    .await
+}
+
 async fn split_with(command: &[&str], timeout: Duration) -> (StatusCode, Value) {
-    let splitter = Splitter {
-        command: command.iter().map(|c| (*c).to_owned()).collect(),
-        timeout,
-    };
-    let api = api_with(root().join(".venv/bin/python"), splitter).await;
+    let api = splitting_api(command, timeout, 2).await;
     let cells = json!({"cells": ["a = 1"]});
     call(&api.app, "POST", "/code/split", Some(cells)).await
 }
 
 #[tokio::test]
-async fn a_failing_splitter_is_an_error_with_its_message() {
+async fn a_failing_splitter_is_an_error_that_does_not_echo_its_output() {
     let (status, body) = split_with(
-        &["sh", "-c", "echo broken >&2; exit 3"],
+        &["sh", "-c", "echo /secret/path >&2; exit 3"],
         Duration::from_secs(5),
     )
     .await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(body.to_string().contains("broken"), "{body}");
+    assert!(!body.to_string().contains("/secret/path"), "{body}");
+    assert!(body.to_string().contains("exit status: 3"), "{body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn splits_beyond_the_limit_are_refused_while_others_run() {
+    let api = splitting_api(&["sleep", "1"], Duration::from_secs(5), 1).await;
+    let cells = json!({"cells": ["a = 1"]});
+    let (first, second) = tokio::join!(
+        call(&api.app, "POST", "/code/split", Some(cells.clone())),
+        async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            call(&api.app, "POST", "/code/split", Some(cells.clone())).await
+        }
+    );
+    assert_eq!(
+        first.0,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "sleep prints no split"
+    );
+    assert_eq!(second.0, StatusCode::TOO_MANY_REQUESTS, "{}", second.1);
+    assert_eq!(second.1["errors"][0]["code"], "split_busy");
 }
 
 #[tokio::test]

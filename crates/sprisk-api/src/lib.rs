@@ -196,6 +196,10 @@ impl IntoResponse for ApiError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 vec![("split_timeout", self.to_string())],
             ),
+            ApiError::Split(SplitError::Busy) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                vec![("split_busy", self.to_string())],
+            ),
             ApiError::Store(StoreError::Conflict(_)) => {
                 (StatusCode::CONFLICT, vec![("conflict", self.to_string())])
             }
