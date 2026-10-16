@@ -1,0 +1,6 @@
+{
+  "items": [
+    { "library": "matplotlib", "format": "svg", "title": "Histogram", "content": "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>" },
+    { "library": "plotly", "format": "plotly_json", "content": "{\"data\": [], \"layout\": {}}" }
+  ]
+}

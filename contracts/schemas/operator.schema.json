@@ -107,7 +107,8 @@
         "model",
         "metrics",
         "diagnostics",
-        "report"
+        "report",
+        "figure"
       ]
     },
     "Effects": {

@@ -22,7 +22,7 @@ export interface Entities {
   CodeDisplay: C.CodeDisplay;
   CodeInterface: C.CodeInterface;
   OperatorSource: C.OperatorSource;
-  ChartReport: C.ChartReport;
+  FigureSet: C.FigureSet;
 }
 
 export class ContractError extends Error {}

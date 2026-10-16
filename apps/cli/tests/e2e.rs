@@ -57,7 +57,11 @@ async fn metrics(client: &Client, run: &sprisk_contracts::RunId, node: &str) -> 
         .find(|a| a.node_id.as_str() == node && a.state == AttemptState::Succeeded)
         .unwrap();
     let outputs = client.outputs(&attempt.id).await.unwrap();
-    serde_json::from_str(&client.content(&outputs[0].artifact.id).await.unwrap()).unwrap()
+    let metrics = outputs
+        .iter()
+        .find(|o| o.port.as_str() == "metrics")
+        .unwrap();
+    serde_json::from_str(&client.content(&metrics.artifact.id).await.unwrap()).unwrap()
 }
 
 async fn run_to_end(client: &Client, name: &str) -> sprisk_contracts::Run {

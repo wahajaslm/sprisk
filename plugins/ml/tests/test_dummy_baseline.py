@@ -11,8 +11,12 @@ CLF: dict[str, Any] = {"target": "y", "task": "classification", "features": ["x"
 
 def test_logistic_beats_dummy_on_separable_data(clf_frame: pl.DataFrame) -> None:
     train, test = clf_frame[::2], clf_frame[1::2]
-    dummy = evaluate(dummy_baseline(train, **CLF), test, target="y", task="classification")
-    linear = evaluate(linear_model(train, **CLF), test, target="y", task="classification")
+    dummy = evaluate(dummy_baseline(train, **CLF), test, target="y", task="classification")[
+        "metrics"
+    ]
+    linear = evaluate(linear_model(train, **CLF), test, target="y", task="classification")[
+        "metrics"
+    ]
     assert dummy["balanced_accuracy"] == pytest.approx(0.5)
     assert dummy["estimator"] == "DummyClassifier"
     assert linear["accuracy"] > 0.9

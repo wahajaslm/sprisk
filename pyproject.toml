@@ -18,5 +18,5 @@ known-first-party = ["sprisk_*"]
 
 # scikit-learn and skops ship no type information.
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "skops.*"]
+module = ["sklearn.*", "skops.*", "plotly.*"]
 ignore_missing_imports = true

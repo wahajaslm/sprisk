@@ -226,7 +226,7 @@ fn outputs_of(operator: &str) -> &'static [&'static str] {
         "sprisk.io.file_source" => &["data"],
         "sprisk.validation.random_split" => &["train", "test"],
         "sprisk.ml.linear_model" | "sprisk.ml.dummy_baseline" => &["model"],
-        "sprisk.ml.evaluate" => &["metrics"],
+        "sprisk.ml.evaluate" => &["metrics", "figures"],
         "sprisk.methodology.supervised" => &["checks"],
         other => panic!("no fake outputs for {other}"),
     }

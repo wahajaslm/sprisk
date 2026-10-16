@@ -118,7 +118,7 @@ export type CapabilityClass =
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "PortKind".
  */
-export type PortKind = "table" | "model" | "metrics" | "diagnostics" | "report";
+export type PortKind = "table" | "model" | "metrics" | "diagnostics" | "report" | "figure";
 /**
  * pure: same inputs give same outputs, cacheable. nondeterministic: not replayable. side_effecting: changes the outside world; never auto-retried.
  *
@@ -301,61 +301,26 @@ export interface OperatorSource {
   digest: string;
 }
 /**
- * The numbers one chart needs, from a chart step (ADR-0023): bin counts, quartiles, a capped sample or bar values. Never the table.
+ * Figures a step drew (ADR-0024), converted by the worker: matplotlib as SVG text, Plotly as its figure JSON text.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "ChartReport".
+ * via the `definition` "FigureSet".
  */
-export interface ChartReport {
-  kind: "histogram" | "box" | "scatter" | "bar" | "line";
-  x: string;
-  /**
-   * Omitted when the chart has no y column.
-   */
-  y?: string;
-  n_rows: number;
-  /**
-   * Histogram: rows with no value.
-   */
-  missing?: number;
-  /**
-   * Scatter and line: true when points were capped.
-   */
-  sampled?: boolean;
-  bins?: ChartBin[];
-  groups?: ChartBox[];
-  bars?: ChartBar[];
-  points?: (number | string)[][];
+export interface FigureSet {
+  items: Figure[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "ChartBin".
+ * via the `definition` "Figure".
  */
-export interface ChartBin {
-  lower: number;
-  upper: number;
-  count: number;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "ChartBox".
- */
-export interface ChartBox {
-  group: string;
-  min?: number;
-  q1?: number;
-  median?: number;
-  q3?: number;
-  max?: number;
-  n: number;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "ChartBar".
- */
-export interface ChartBar {
-  x: string;
-  value: number;
+export interface Figure {
+  library: "matplotlib" | "plotly";
+  format: "svg" | "plotly_json";
+  title?: string;
+  /**
+   * SVG markup, or a Plotly figure as JSON text.
+   */
+  content: string;
 }
 /**
  * What a code step showed (ADR-0020): printed text, tables and images, in order. Written by the worker as the step's display artifact; every part is capped.

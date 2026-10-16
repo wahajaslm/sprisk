@@ -1,8 +1,10 @@
-"""The numbers one chart needs, never the table: bin counts, quartiles, a capped sample."""
+"""A chart of a table, drawn with Plotly from only the numbers it needs (ADR-0023, ADR-0024):
+bin counts, quartiles, bar values or a capped, seeded sample. Never the whole table."""
 
 from typing import Any
 
 import numpy as np
+import plotly.graph_objects as go
 import polars as pl
 
 MAX_BARS = 50
@@ -15,8 +17,56 @@ def chart(
     y: str | None = None,
     bins: int = 20,
     max_points: int = 2000,
+) -> go.Figure:
+    """Draw a histogram, box, scatter, bar or line chart of `x` (and `y`)."""
+    numbers = aggregate(data, kind, x, y, bins, max_points)
+    title = f"{kind} of {x}" + (f" and {y}" if y else "")
+    if kind == "histogram":
+        b = numbers["bins"]
+        trace: Any = go.Bar(
+            x=[(i["lower"] + i["upper"]) / 2 for i in b],
+            y=[i["count"] for i in b],
+            width=[i["upper"] - i["lower"] for i in b],
+        )
+        axes = (x, "rows")
+    elif kind == "box":
+        g = numbers["groups"]
+        trace = go.Box(
+            x=[i["group"] for i in g],
+            q1=[i.get("q1") for i in g],
+            median=[i.get("median") for i in g],
+            q3=[i.get("q3") for i in g],
+            lowerfence=[i.get("min") for i in g],
+            upperfence=[i.get("max") for i in g],
+        )
+        axes = (x if y else "", y or x)
+    elif kind == "bar":
+        trace = go.Bar(x=[i["x"] for i in numbers["bars"]], y=[i["value"] for i in numbers["bars"]])
+        axes = (x, f"mean {y}" if y else "rows")
+    else:
+        points = numbers["points"]
+        mode = "markers" if kind == "scatter" else "lines"
+        trace = go.Scatter(
+            x=[p[0] for p in points], y=[p[1] for p in points], mode=mode, marker={"size": 5}
+        )
+        axes = (x, y or "")
+    if numbers.get("sampled"):
+        title += f" (a fixed sample of {len(numbers['points'])} of {numbers['n_rows']} rows)"
+    figure = go.Figure(trace, layout={"title": {"text": title}, "showlegend": False})
+    figure.update_xaxes(title=axes[0])
+    figure.update_yaxes(title=axes[1])
+    return figure
+
+
+def aggregate(
+    data: pl.DataFrame,
+    kind: str,
+    x: str,
+    y: str | None = None,
+    bins: int = 20,
+    max_points: int = 2000,
 ) -> dict[str, Any]:
-    """Aggregate `data` for a histogram, box, scatter, bar or line chart of `x` (and `y`)."""
+    """The numbers a histogram, box, scatter, bar or line chart of `x` (and `y`) needs."""
     spec: dict[str, Any] = {"kind": kind, "x": x, "n_rows": data.height} | (
         {} if y is None else {"y": y}
     )

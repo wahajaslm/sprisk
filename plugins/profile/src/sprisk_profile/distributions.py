@@ -1,7 +1,10 @@
 from itertools import combinations
+from typing import Any
 
 import duckdb
+import plotly.graph_objects as go
 import polars as pl
+from plotly.subplots import make_subplots
 
 BINS = 20
 NUMERIC = (
@@ -20,7 +23,7 @@ NUMERIC = (
 )
 
 
-def distributions(data: pl.DataFrame) -> dict[str, pl.DataFrame]:
+def distributions(data: pl.DataFrame) -> dict[str, Any]:
     """Equal-width histograms of numeric columns and their pairwise Pearson correlation,
     aggregated by DuckDB. Charts draw only these."""
     with duckdb.connect() as con:
@@ -45,7 +48,25 @@ def distributions(data: pl.DataFrame) -> dict[str, pl.DataFrame]:
             schema={"column_a": pl.String, "column_b": pl.String, "pearson": pl.Float64},
             orient="row",
         )
-    return {"histograms": histograms, "correlation": correlation}
+    return {
+        "histograms": histograms,
+        "correlation": correlation,
+        "figures": [_figure(histograms, numeric)],
+    }
+
+
+def _figure(histograms: pl.DataFrame, numeric: list[str]) -> go.Figure:
+    """One small histogram per numeric column, from the bins above."""
+    rows = max(1, -(-len(numeric) // 3))
+    figure = make_subplots(rows=rows, cols=3, subplot_titles=numeric)
+    for i, name in enumerate(numeric):
+        bins = histograms.filter(pl.col("column_name") == name)
+        middle = ((bins["bin_lower"] + bins["bin_upper"]) / 2).to_list()
+        figure.add_trace(
+            go.Bar(x=middle, y=bins["count"].to_list(), name=name), row=i // 3 + 1, col=i % 3 + 1
+        )
+    figure.update_layout(title={"text": "Distributions"}, showlegend=False, height=260 * rows)
+    return figure
 
 
 def _quote(name: str) -> str:

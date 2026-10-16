@@ -35,3 +35,8 @@ def test_column_names_are_quoted_not_executed() -> None:
     name = 'x"); DROP TABLE t; --'
     hist = distributions(pl.DataFrame({name: [1.0, 2.0]}))["histograms"]
     assert hist["column_name"].unique().to_list() == [name]
+
+
+def test_draws_one_histogram_per_numeric_column(clf_frame: pl.DataFrame) -> None:
+    [figure] = distributions(clf_frame)["figures"]
+    assert [t.name for t in figure.data] == ["x"]

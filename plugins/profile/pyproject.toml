@@ -2,7 +2,7 @@
 name = "sprisk-profile"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["sprisk-workers", "duckdb>=1.1"]
+dependencies = ["sprisk-workers", "duckdb>=1.1", "numpy>=2", "plotly>=5.24"]
 
 [tool.uv.sources]
 sprisk-workers = { workspace = true }

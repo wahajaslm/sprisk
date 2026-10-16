@@ -34,6 +34,7 @@ export const operators: Operator[] = [
   op("sprisk.clean.impute@1.0.0", "transform", [["train", "table"], ["test", "table"]], [["train", "table"], ["test", "table"]]),
   op("sprisk.ml.linear_model@1.0.0", "estimator", [["train", "table"]], [["model", "model"]]),
   op("sprisk.ml.evaluate@1.0.0", "evaluator", [["model", "model"], ["test", "table"]], [["metrics", "metrics"]]),
+  op("sprisk.profile.chart@1.0.0", "analyzer", [["data", "table"]], [["chart", "figure"]]),
 ];
 
 export const PV = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";

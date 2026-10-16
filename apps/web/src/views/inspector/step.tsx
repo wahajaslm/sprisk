@@ -4,7 +4,7 @@ import { useRunChecks } from "../../api/checks.ts";
 import { useCodeDisplay, useCodeInterface } from "../../api/code.ts";
 import { useNodeHistory } from "../../api/history.ts";
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
-import { addChartStep, addCodeStep, type ChartSpec, isChartOperator, isCodeOperator } from "../../flow/edit.ts";
+import { addChartStep, addCodeStep, type ChartSpec, isCodeOperator } from "../../flow/edit.ts";
 import { useWorkbench } from "../../workbench/workbench.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { roleOf, shortName } from "../../flow/stages.ts";
@@ -13,7 +13,7 @@ import { useViewInstance, useViewSelection } from "../../workbench/instance.tsx"
 import { useSelection } from "../../workbench/selection.ts";
 import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
-import { ChartTab } from "./ChartTab.tsx";
+import { FiguresTab } from "./FiguresTab.tsx";
 import { ChecksTab, concerns } from "./ChecksTab.tsx";
 import { CodeData } from "./CodeData.tsx";
 import { ConsoleTab, consoleProblems } from "./ConsoleTab.tsx";
@@ -59,6 +59,8 @@ export function useStep() {
         }
       : undefined;
   const dock = useWorkbench((s) => s.dock);
+  // Figure ports come from the manifest (ADR-0024): any step may draw.
+  const figurePorts = (operator?.outputs ?? []).filter((o) => o.kind === "figure").map((o) => String(o.name));
   const addChart =
     pipeline && nodeId && !saveAndRun.isPending
       ? (port: string, spec: ChartSpec) => {
@@ -74,7 +76,7 @@ export function useStep() {
   return {
     runId,
     addChart,
-    isChart: isChartOperator(node?.operator),
+    figurePorts,
     nodeId,
     versions,
     attempts,
@@ -95,7 +97,7 @@ export function useStep() {
     previous: shownAt >= 0 ? history.slice(shownAt + 1).find((h) => h.metrics)?.metrics : undefined,
     metric: HEADLINE.find((m) => history.some((h) => h.metrics?.[m] !== undefined)),
     concernCount: nodeId ? concerns(checks, nodeId) : 0,
-    visuals: isChartOperator(node?.operator) ? (done ? 1 : 0) : visualCount(display),
+    visuals: isCode ? visualCount(display) : done ? figurePorts.length : 0,
     problems: consoleProblems(display, mine),
   };
 }
@@ -184,7 +186,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
         </>
       );
     case "visuals":
-      return step.isChart ? <ChartTab attempt={done} /> : <VisualsTab display={display} isCode={isCode} />;
+      return isCode ? <VisualsTab display={display} isCode={isCode} /> : <FiguresTab attempt={done} ports={step.figurePorts} />;
     case "console":
       return <ConsoleTab display={display} attempts={step.mine} isCode={isCode} />;
     case "inputs":

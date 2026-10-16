@@ -156,8 +156,8 @@ describe("charts (ADR-0023)", () => {
   });
 });
 
-describe("a chart step's Visualizations", () => {
-  it("draws the chart from the step's aggregated numbers", async () => {
+describe("Visualizations show what Python drew (ADR-0024)", () => {
+  it("shows every figure on a step's figure ports: Plotly drawn, SVG as an image", async () => {
     const { http, HttpResponse } = await import("msw");
     const { server } = await import("./server.ts");
     const { attempts, pipeline, scoreOutputs } = await import("./fixtures.ts");
@@ -168,12 +168,17 @@ describe("a chart step's Visualizations", () => {
     };
     const chartAttempt = { ...attempts[1]!, id: "att_01JABCDEFGHJKMNPQRSTVWXY77", node_id: "chart_1" };
     const output = { port: "chart", artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY77", size_bytes: 200 } };
-    const report = { kind: "histogram", x: "x", n_rows: 3, bins: [{ lower: 0, upper: 1, count: 3 }], missing: 0 };
+    const figures = {
+      items: [
+        { library: "plotly", format: "plotly_json", title: "histogram of x", content: '{"data": [], "layout": {}}' },
+        { library: "matplotlib", format: "svg", content: "<svg xmlns='http://www.w3.org/2000/svg'></svg>" },
+      ],
+    };
     server.use(
       http.get("/api/pipeline_versions", () => HttpResponse.json([chartPipeline])),
       http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, chartAttempt])),
       http.get(`/api/attempts/${chartAttempt.id}/outputs`, () => HttpResponse.json([output])),
-      http.get(`/api/artifacts/${output.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(report))),
+      http.get(`/api/artifacts/${output.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(figures))),
     );
     renderWithApi(
       <ViewInstance pin={undefined} setPin={undefined} tab="visuals">
@@ -181,7 +186,7 @@ describe("a chart step's Visualizations", () => {
       </ViewInstance>,
     );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "chart_1" });
-    const figure = await screen.findByRole("figure", { name: "histogram of x" });
-    expect(figure).toHaveAttribute("data-kind", "histogram");
+    expect(await screen.findByRole("img", { name: "histogram of x" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Figure 2" })).toHaveAttribute("src", expect.stringMatching(/^data:image\/svg\+xml/));
   });
 });

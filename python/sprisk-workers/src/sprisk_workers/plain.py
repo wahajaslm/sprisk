@@ -4,6 +4,7 @@ The function never sees a file. This module reads each input by its port kind, c
 function, and writes what it returns by the output port's kind."""
 
 import inspect
+import io
 import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -78,7 +79,12 @@ def _read(path: Path, kind: str) -> Any:
 
 def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
     """A table is Parquet on any port (profiles and histograms are tables too); a model is
-    skops; anything else is JSON."""
+    skops; figures are one FigureSet (ADR-0024); anything else is JSON."""
+    if kind == "figure":
+        figures = value if isinstance(value, list | tuple) else [value]
+        path = out_dir / f"{port}.json"
+        path.write_text(json.dumps({"items": [_figure(port, f) for f in figures]}))
+        return Output(port, path, JSON)
     if kind == "table" and not isinstance(value, pl.DataFrame):
         raise _wrong(port, "a polars DataFrame", value)
     if isinstance(value, pl.DataFrame) and kind != "model":
@@ -107,3 +113,25 @@ def _wrong(port: str, expected: str, value: Any) -> OperatorError:
 
 def _first_line(e: Exception) -> str:
     return str(e).splitlines()[0] if str(e) else type(e).__name__
+
+
+def _figure(port: str, figure: Any) -> dict[str, Any]:
+    """One figure as FigureSet JSON, recognised by its library (no import needed to check)."""
+    library = type(figure).__module__.split(".")[0]
+    if library in ("matplotlib", "seaborn"):
+        # seaborn returns Axes or grids; each knows its matplotlib figure.
+        fig = getattr(figure, "figure", figure)
+        buffer = io.StringIO()
+        fig.savefig(buffer, format="svg", bbox_inches="tight")
+        title = fig.get_suptitle() or next((a.get_title() for a in fig.axes if a.get_title()), "")
+        return _item("matplotlib", "svg", buffer.getvalue(), title)
+    if library == "plotly":
+        layout_title = figure.layout.title.text
+        return _item("plotly", "plotly_json", figure.to_json(), layout_title)
+    raise _wrong(port, "a matplotlib or Plotly figure", figure)
+
+
+def _item(library: str, format: str, content: str, title: str | None) -> dict[str, Any]:
+    return {"library": library, "format": format, "content": content} | (
+        {"title": title} if title else {}
+    )

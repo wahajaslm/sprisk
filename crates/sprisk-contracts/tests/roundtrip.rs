@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, Attempt, AttemptOutput, ChartReport, CodeDisplay, CodeInterface, CreateRun,
+    Artifact, Attempt, AttemptOutput, CodeDisplay, CodeInterface, CreateRun, FigureSet,
     MethodologyCheck, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion, Run,
     TablePage, WorkerMessage, parse,
 };
@@ -55,10 +55,10 @@ const ENTITIES: &[&str] = &[
     "artifact",
     "attempt",
     "attempt_output",
-    "chart_report",
     "code_display",
     "code_interface",
     "create_run",
+    "figure_set",
     "methodology_check",
     "operator",
     "operator_source",
@@ -152,8 +152,8 @@ fn code_display() {
 }
 
 #[test]
-fn chart_report() {
-    check::<ChartReport>("chart_report");
+fn figure_set() {
+    check::<FigureSet>("figure_set");
 }
 
 #[test]

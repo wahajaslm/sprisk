@@ -64,7 +64,6 @@ export const useArtifactText = (artifactId: string | undefined) =>
     staleTime: Infinity,
   });
 
-/** One page of a table artifact's rows. The previous page stays on screen while the next loads. */
 /** One page of a table artifact's rows. Artifacts are immutable, so a page never goes stale. */
 export const tablePageQuery = (artifactId: string, offset: number, limit: number) => ({
   queryKey: ["table-page", artifactId, offset, limit],

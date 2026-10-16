@@ -1,4 +1,4 @@
-/* sprisk Studio tokens and measurements (docs/design/sprisk-studio.html, ADR-0018).
+/* sprisk Studio tokens and measurements (docs/design/sprisk-studio.html, ADR-0018); fonts as VS Code.
    Single dark theme by design. Every colour comes from a token below. */
 :root {
   color-scheme: dark;
@@ -25,8 +25,9 @@
   --wash-strong: rgba(255, 255, 255, 0.09);
   --alert: #ff5c5c;
   --alert-wash: rgba(255, 92, 92, 0.08);
-  --sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  /* VS Code's fonts: the system UI font, and the usual code fonts per platform. */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, Ubuntu, "Droid Sans", sans-serif;
+  --mono: "SF Mono", Menlo, Monaco, Consolas, "Ubuntu Mono", "Droid Sans Mono", "Courier New", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -506,10 +507,10 @@ p { margin: 0; }
 .stage-head .stage-count { padding: 0 5px; background: var(--wash); font: 10px var(--mono); color: var(--faint); }
 .stage-head.active { color: var(--ink); }
 
-/* Charts (ADR-0023): fill the tab like a table does. */
-.pane.step-pane.tab-visuals:has(.chart-tab) { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
-.chart-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chart-figure { flex: 1; min-height: 240px; margin: 0; }
+/* Figures a step drew in Python (ADR-0024). */
+.figures { display: grid; gap: 18px; }
+.plotly-figure { width: 100%; min-height: 360px; }
+.svg-figure { width: 100%; height: auto; background: var(--white); }
 .chart-menu { position: relative; }
 .chart-form { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 8px; width: 240px; padding: 10px; border: 1px solid var(--line-strong); background: var(--raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); font: 12px var(--sans); color: var(--muted); }
 .chart-form label { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 8px; }

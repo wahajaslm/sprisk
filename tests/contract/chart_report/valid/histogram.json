@@ -1,1 +1,0 @@
-{ "kind": "histogram", "x": "mass", "n_rows": 6, "bins": [{ "lower": 3000.0, "upper": 3500.0, "count": 1 }], "missing": 1 }

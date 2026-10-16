@@ -215,3 +215,53 @@ def test_a_table_on_a_diagnostics_port_is_saved_as_parquet(tmp_path: Path) -> No
         {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
     )
     assert out.media_type == PARQUET
+
+
+FIGURE_OP = operator("[{ name: data, kind: table }]", "[{ name: figures, kind: figure }]")
+
+
+def figures(tmp_path: Path, fn: Any) -> list[dict[str, Any]]:
+    [out] = adapt(fn, FIGURE_OP)(
+        {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1, 2]}))}, staging(tmp_path)
+    )
+    assert out.media_type == JSON
+    items: list[dict[str, Any]] = json.loads(out.path.read_text())["items"]
+    return items
+
+
+def test_a_matplotlib_figure_is_saved_as_svg(tmp_path: Path) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    def op(data: pl.DataFrame) -> Any:
+        fig, ax = plt.subplots()
+        ax.plot(data["x"].to_list())
+        ax.set_title("x over rows")
+        return fig
+
+    [item] = figures(tmp_path, op)
+    assert (item["library"], item["format"], item["title"]) == ("matplotlib", "svg", "x over rows")
+    assert item["content"].lstrip().startswith("<?xml") or "<svg" in item["content"][:500]
+
+
+def test_plotly_figures_are_saved_as_their_json_and_lists_keep_order(tmp_path: Path) -> None:
+    import plotly.graph_objects as go
+
+    def op(data: pl.DataFrame) -> Any:
+        return [go.Figure(go.Bar(x=["a"], y=[1]), layout={"title": {"text": "first"}}), go.Figure()]
+
+    first, second = figures(tmp_path, op)
+    assert (first["library"], first["format"], first["title"]) == ("plotly", "plotly_json", "first")
+    assert json.loads(first["content"])["data"][0]["type"] == "bar"
+    assert "title" not in second
+
+
+def test_a_figure_of_an_unknown_library_names_its_type(tmp_path: Path) -> None:
+    def op(data: pl.DataFrame) -> Any:
+        return object()
+
+    with pytest.raises(OperatorError) as e:
+        figures(tmp_path, op)
+    assert e.value.code == "bad_output" and "object" in e.value.message

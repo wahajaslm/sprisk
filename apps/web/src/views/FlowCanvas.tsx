@@ -14,6 +14,7 @@ import {
   Panel,
   Position,
   ReactFlow,
+  useNodes,
   useNodesState,
   useReactFlow,
   useViewport,
@@ -27,7 +28,7 @@ import { GATE_NODE, hasOutputs, latestByNode } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { addCodeStep } from "../flow/edit.ts";
-import { flowPositions, type Group, type Point } from "../flow/layout.ts";
+import { flowPositions, GROUP_HEAD, type Group, type Point } from "../flow/layout.ts";
 import { kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
@@ -56,10 +57,15 @@ type StepData = {
 };
 type StageData = { name: string; count: number; active: boolean };
 
-/** A stage's heading above its steps; no box around them (design reference). */
-function StageHead({ data }: NodeProps<Node<StageData>>) {
+/** A stage's heading above its steps; no box around them (design reference). It sits above
+ * the top-left of its steps and follows them when one is dragged. */
+function StageHead({ id, data }: NodeProps<Node<StageData>>) {
+  const steps = useNodes().filter((n) => n.parentId === id);
+  const left = Math.min(...steps.map((n) => n.position.x));
+  const top = Math.min(...steps.map((n) => n.position.y));
+  const at = steps.length > 0 ? `translate(${left}px, ${top - GROUP_HEAD}px)` : undefined;
   return (
-    <h3 className={`stage-head${data.active ? " active" : ""}`}>
+    <h3 className={`stage-head${data.active ? " active" : ""}`} style={at ? { transform: at } : undefined}>
       {data.name}
       <span className="stage-count">{data.count}</span>
     </h3>

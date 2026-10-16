@@ -1,10 +1,10 @@
 schema_version: sprisk.operator/v1
 id: sprisk.profile.chart@1.0.0
 capability_class: analyzer
-description: A chart of a table. Computes only the numbers the chart needs (bins, quartiles, a capped sample); the browser draws them (ADR-0023).
+description: A chart of a table, drawn with Plotly from only the numbers it needs (bins, quartiles, a capped sample). ADR-0023, ADR-0024.
 entrypoint: sprisk_profile.chart:chart
 inputs: [{ name: data, kind: table }]
-outputs: [{ name: chart, kind: report }]
+outputs: [{ name: chart, kind: figure }]
 params_schema:
   type: object
   additionalProperties: false

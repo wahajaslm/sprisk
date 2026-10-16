@@ -4,7 +4,7 @@ capability_class: analyzer
 description: Equal-width histograms (20 bins) of numeric columns and their pairwise Pearson correlation.
 entrypoint: sprisk_profile.distributions:distributions
 inputs: [{ name: data, kind: table }]
-outputs: [{ name: histograms, kind: diagnostics }, { name: correlation, kind: diagnostics }]
+outputs: [{ name: histograms, kind: diagnostics }, { name: correlation, kind: diagnostics }, { name: figures, kind: figure }]
 params_schema: { type: object, additionalProperties: false }
 effects: pure
 network: none

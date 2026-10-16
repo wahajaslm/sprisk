@@ -1,1 +1,0 @@
-{ "kind": "scatter", "x": "a", "y": "b", "n_rows": 2, "points": [[1.5, 2.5], ["x", 3.5]], "sampled": false }

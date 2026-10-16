@@ -16,7 +16,9 @@ def test_only_listed_features_are_used(clf_frame: pl.DataFrame) -> None:
         dt.datetime(2026, 1, 1), dt.datetime(2026, 1, 1) + dt.timedelta(hours=59), "1h", eager=True
     )
     df = clf_frame.with_columns(times.alias("t"))
-    m = evaluate(linear_model(df[::2], **CLF), df[1::2], target="y", task="classification")
+    m = evaluate(linear_model(df[::2], **CLF), df[1::2], target="y", task="classification")[
+        "metrics"
+    ]
     assert m["accuracy"] > 0.9
 
 
@@ -24,7 +26,9 @@ def test_category_seen_only_in_test_does_not_break_prediction(clf_frame: pl.Data
     # The encoder is fit on train only, so it has never seen "unseen".
     test = clf_frame[28:32].with_columns(pl.lit("unseen").alias("c"))
     assert (
-        evaluate(linear_model(clf_frame, **CLF), test, target="y", task="classification")["n_rows"]
+        evaluate(linear_model(clf_frame, **CLF), test, target="y", task="classification")[
+            "metrics"
+        ]["n_rows"]
         == 4
     )
 
@@ -63,5 +67,5 @@ def test_random_forest_fits_and_scores(clf_frame: pl.DataFrame) -> None:
     from sprisk_ml.models import random_forest
 
     model = random_forest(clf_frame[::2], **CLF, n_estimators=50, seed=0)
-    m = evaluate(model, clf_frame[1::2], target="y", task="classification")
+    m = evaluate(model, clf_frame[1::2], target="y", task="classification")["metrics"]
     assert m["estimator"] == "RandomForestClassifier" and m["accuracy"] > 0.8

@@ -11,10 +11,10 @@ from sprisk_contracts import (
     Artifact,
     Attempt,
     AttemptOutput,
-    ChartReport,
     CodeDisplay,
     CodeInterface,
     CreateRun,
+    FigureSet,
     MethodologyCheck,
     Operator,
     OperatorSource,
@@ -43,7 +43,7 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (TablePage, "table_page"),
     (CodeDisplay, "code_display"),
     (OperatorSource, "operator_source"),
-    (ChartReport, "chart_report"),
+    (FigureSet, "figure_set"),
     (CodeInterface, "code_interface"),
 ]
 

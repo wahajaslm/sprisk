@@ -1,1 +1,0 @@
-{ "kind": "box", "x": "species", "y": "flipper", "n_rows": 6, "groups": [{ "group": "a", "min": 180.0, "q1": 181.0, "median": 182.5, "q3": 184.0, "max": 185.0, "n": 2 }] }
