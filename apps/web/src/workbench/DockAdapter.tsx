@@ -68,22 +68,30 @@ function reopenTab(api: DockviewApi, tab: InspectorTab): void {
   syncTabBars(api, useWorkbench.getState().editing);
 }
 
-/** "+" at the end of an Inspector tab bar: bring back a closed tab. */
-function ReopenTabs({ group, containerApi }: IDockviewHeaderActionsProps) {
-  const isTabGroup = group.panels.some((p) => readTab(p.params) !== undefined);
+/** Right end of an Inspector tab bar, as in VS Code: reopen a closed tab, close the shown one. */
+function TabGroupActions({ group, containerApi, activePanel }: IDockviewHeaderActionsProps) {
+  if (!group.panels.some((p) => readTab(p.params) !== undefined)) return null;
   const closed = closedTabs(openTabs(containerApi));
-  if (!isTabGroup || closed.length === 0) return null;
   return (
-    <details className="reopen-tabs">
-      <summary aria-label="Reopen a closed tab" title="Reopen a closed tab">+</summary>
-      <div className="reopen-menu" role="menu">
-        {closed.map((tab) => (
-          <button key={tab} type="button" role="menuitem" onClick={() => reopenTab(containerApi, tab)}>
-            {TAB_LABEL[tab]}
-          </button>
-        ))}
-      </div>
-    </details>
+    <div className="tab-actions">
+      {closed.length > 0 && (
+        <details className="reopen-tabs">
+          <summary aria-label="Reopen a closed tab" title="Reopen a closed tab">+</summary>
+          <div className="reopen-menu" role="menu">
+            {closed.map((tab) => (
+              <button key={tab} type="button" role="menuitem" onClick={() => reopenTab(containerApi, tab)}>
+                {TAB_LABEL[tab]}
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+      {activePanel && (
+        <button type="button" className="tab-action" aria-label={`Close ${activePanel.title ?? "tab"}`} title="Close tab (or middle-click it)" onClick={() => activePanel.api.close()}>
+          ×
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -134,11 +142,9 @@ export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels 
       type,
       ({ params, api }: IDockviewPanelHeaderProps) => (
         <ViewInstance pin={readPin(params)} setPin={undefined} tab={readTab(params)}>
-          <span className="dock-tab">
+          {/* Middle-click closes, as in VS Code; the close button sits at the end of the tab bar. */}
+          <span className="dock-tab" onAuxClick={(e) => e.button === 1 && api.close()}>
             <Label />
-            <button type="button" className="dock-tab-close" aria-label={`Close ${api.title ?? type}`} onClick={() => api.close()}>
-              ×
-            </button>
           </span>
         </ViewInstance>
       ),
@@ -169,5 +175,5 @@ export function Dock({ views, tabLabels }: { views: Views; tabLabels: TabLabels 
     dockApi.current = api;
     attachDock(commands(api));
   };
-  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} rightHeaderActionsComponent={ReopenTabs} onReady={onReady} />;
+  return <DockviewReact className="sprisk-dock" components={components} tabComponents={tabComponents} rightHeaderActionsComponent={TabGroupActions} onReady={onReady} />;
 }
