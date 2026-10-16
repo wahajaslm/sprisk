@@ -392,6 +392,17 @@ describe("code steps (ADR-0020)", () => {
     expect(version.nodes.find((n) => n.id === "code_1")?.params).toEqual({ source: "data.height" });
   });
 
+  it("runs the code with Shift+Enter", async () => {
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])));
+    const posted = recordPosts();
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
+    const editor = await screen.findByRole("textbox", { name: "Code for code_1" });
+    await userEvent.type(editor, "{Shift>}{Enter}{/Shift}");
+    await waitFor(() => expect(posted.runs).toHaveLength(1));
+  });
+
   it("shows what the code printed, its table and its figures", async () => {
     server.use(
       http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])),
