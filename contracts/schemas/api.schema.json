@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "CreateRun": {
+      "title": "CreateRun",
+      "description": "Request body for POST /runs: run a pipeline version that already passed Gate A.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pipeline_version_id"],
+      "properties": {
+        "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" }
+      }
+    },
+    "AttemptOutput": {
+      "title": "AttemptOutput",
+      "description": "One committed output of an attempt: the port that produced it and the artifact.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port", "artifact"],
+      "properties": {
+        "port": { "$ref": "#/$defs/PortName" },
+        "artifact": { "$ref": "#/$defs/Artifact" }
+      }
+    },
+    "Problem": {
+      "title": "Problem",
+      "description": "Error response body. Lists every problem found, not only the first.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errors"],
+      "properties": {
+        "errors": { "type": "array", "items": { "$ref": "#/$defs/Error" } }
+      }
+    }
+  }
+}

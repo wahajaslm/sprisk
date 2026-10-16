@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, Attempt, MethodologyCheck, Operator, PipelineVersion, QuestionVersion, Run,
-    WorkerMessage, parse,
+    Artifact, Attempt, AttemptOutput, CreateRun, MethodologyCheck, Operator, PipelineVersion,
+    Problem, QuestionVersion, Run, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -53,9 +53,12 @@ fn check<T: Serialize + DeserializeOwned>(entity: &str) {
 const ENTITIES: &[&str] = &[
     "artifact",
     "attempt",
+    "attempt_output",
+    "create_run",
     "methodology_check",
     "operator",
     "pipeline_version",
+    "problem",
     "question_version",
     "run",
     "worker_message",
@@ -115,4 +118,19 @@ fn question_version() {
 #[test]
 fn methodology_check() {
     check::<MethodologyCheck>("methodology_check");
+}
+
+#[test]
+fn attempt_output() {
+    check::<AttemptOutput>("attempt_output");
+}
+
+#[test]
+fn create_run() {
+    check::<CreateRun>("create_run");
+}
+
+#[test]
+fn problem() {
+    check::<Problem>("problem");
 }

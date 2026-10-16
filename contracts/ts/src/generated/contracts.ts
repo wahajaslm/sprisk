@@ -2,6 +2,16 @@
 
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PipelineVersionId".
+ */
+export type PipelineVersionId = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortName".
+ */
+export type PortName = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ArtifactId".
  */
 export type ArtifactId = string;
@@ -44,11 +54,6 @@ export type InvestigationId = string;
 export type QuestionVersionId = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PipelineVersionId".
- */
-export type PipelineVersionId = string;
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RunId".
  */
 export type RunId = string;
@@ -64,11 +69,6 @@ export type WorkerId = string;
  * via the `definition` "NodeId".
  */
 export type NodeId = string;
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PortName".
- */
-export type PortName = string;
 /**
  * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
  *
@@ -178,6 +178,25 @@ export interface Bundle {
   [k: string]: unknown;
 }
 /**
+ * Request body for POST /runs: run a pipeline version that already passed Gate A.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CreateRun".
+ */
+export interface CreateRun {
+  pipeline_version_id: PipelineVersionId;
+}
+/**
+ * One committed output of an attempt: the port that produced it and the artifact.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "AttemptOutput".
+ */
+export interface AttemptOutput {
+  port: PortName;
+  artifact: Artifact;
+}
+/**
  * Immutable, content-addressed output of a step attempt (arch doc §4, §10).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -205,13 +224,13 @@ export interface Artifact {
   created_at: Timestamp;
 }
 /**
- * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
+ * Error response body. Lists every problem found, not only the first.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Params".
+ * via the `definition` "Problem".
  */
-export interface Params {
-  [k: string]: unknown;
+export interface Problem {
+  errors: Error[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -220,6 +239,15 @@ export interface Params {
 export interface Error {
   code: string;
   message: string;
+}
+/**
+ * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Params".
+ */
+export interface Params {
+  [k: string]: unknown;
 }
 /**
  * Result of one Gate B methodology rule on one pipeline version (arch doc §4, §8). Immutable; re-checking creates a new record.

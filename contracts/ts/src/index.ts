@@ -15,6 +15,9 @@ export interface Entities {
   WorkerMessage: C.WorkerMessage;
   QuestionVersion: C.QuestionVersion;
   MethodologyCheck: C.MethodologyCheck;
+  CreateRun: C.CreateRun;
+  AttemptOutput: C.AttemptOutput;
+  Problem: C.Problem;
 }
 
 export class ContractError extends Error {}

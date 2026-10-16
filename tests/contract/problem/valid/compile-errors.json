@@ -1,0 +1,12 @@
+{
+  "errors": [
+    {
+      "code": "unknown_operator",
+      "message": "node train: unknown operator sprisk.ml.nope@1.0.0"
+    },
+    {
+      "code": "cycle",
+      "message": "cycle through a, b"
+    }
+  ]
+}

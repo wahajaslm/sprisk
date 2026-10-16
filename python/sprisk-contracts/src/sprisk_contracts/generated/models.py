@@ -339,6 +339,20 @@ class InputBinding(StrictModel):
     content_hash: ContentHash
 
 
+class CreateRun(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    pipeline_version_id: PipelineVersionId
+
+
+class Problem(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    errors: list[Error]
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -472,6 +486,14 @@ class LeaseAttempt(StrictModel):
         ),
     ]
     lease_expires_at: Timestamp
+
+
+class AttemptOutput(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    port: PortName
+    artifact: Artifact
 
 
 class Operator(StrictModel):
