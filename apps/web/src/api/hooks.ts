@@ -45,6 +45,9 @@ const useAttempts = (runId: string | undefined, run: Run | undefined) =>
     queryFn: () => getList("Attempt", `/runs/${runId ?? ""}/attempts`),
     enabled: runId !== undefined,
     refetchInterval: isLive(run) ? LIVE_MS : false,
+    // Same run read again under a new status: keep its attempts on screen. Another run's
+    // attempts are never shown in its place.
+    placeholderData: (previous, query) => (query?.queryKey[1] === runId ? previous : undefined),
   });
 
 export const useOutputs = (attemptId: string | undefined) =>
