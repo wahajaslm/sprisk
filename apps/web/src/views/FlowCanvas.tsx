@@ -115,7 +115,10 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
           <KindIcon kind={data.kind} size={13} />
         </span>
         <span className="card-title">{data.id}</span>
-        <span className="card-op">{data.operator}</span>
+        <span className="card-op">
+          {data.operator}
+          {data.edited && " · edited"}
+        </span>
       </span>
       <span className="card-body">
         {/* In Detail, an evaluator's metric is drawn large below; do not repeat it. */}
