@@ -6,7 +6,7 @@ Source of truth: [docs/architecture/system-architecture.md](docs/architecture/sy
 
 ## Status
 
-Current milestone: **M1 — non-AI vertical slice** (arch doc §16). M0 closed 2026-10-15. Scoped worker access (`staging_uri`, input URIs) added to `LeaseAttempt` 2026-10-16.
+Current milestone: **M2 — AI-created pipeline** (arch doc §16). M1 closed 2026-10-16 (two datasets end to end, worker-kill recovery). M0 closed 2026-10-15. Scoped worker access (`staging_uri`, input URIs) added to `LeaseAttempt` 2026-10-16.
 Do not build ahead of the current milestone without asking.
 
 ## Layout (arch doc §14)
