@@ -1,7 +1,7 @@
 import type { PipelineVersion } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
-export const CODE_OPERATOR = "sprisk.code.python@1.1.0";
+export const CODE_OPERATOR = "sprisk.code.python@1.2.0";
 export const isCodeOperator = (ref: string | undefined) => ref?.startsWith("sprisk.code.python@") === true;
 
 const STARTER = `# \`data\` is the input table as a polars DataFrame (\`pl\` is polars).
@@ -41,5 +41,8 @@ export function setParams(base: PipelineVersion, nodeId: string, params: Record<
   });
 }
 
-export const setCodeSource = (base: PipelineVersion, nodeId: string, source: string) =>
-  setParams(base, nodeId, { source });
+/** New source for a code step, keeping its exposed settings and chosen output. */
+export function setCodeSource(base: PipelineVersion, nodeId: string, source: string): PipelineVersion {
+  const params = base.nodes.find((n) => n.id === nodeId)?.params ?? {};
+  return setParams(base, nodeId, { ...params, source });
+}

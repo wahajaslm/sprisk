@@ -6,6 +6,7 @@ import { PARQUET } from "../../api/media.ts";
 import { isCodeOperator, setParams } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { useSelection } from "../../workbench/selection.ts";
+import { CodeFound } from "./CodeFound.tsx";
 
 type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator | undefined; attempts: Attempt[] };
 
@@ -38,6 +39,9 @@ export function InputsTab({ pipeline, nodeId, operator, attempts }: Props) {
           </ul>
         )}
       </section>
+      {node && isCodeOperator(node.operator) && (
+        <CodeFound pipeline={pipeline} nodeId={nodeId} params={node.params} attempt={hasOutputs(latest.get(nodeId)) ? latest.get(nodeId) : undefined} />
+      )}
       {node && operator && (
         <Settings
           key={`${pipeline.id}/${nodeId}`}
@@ -45,7 +49,7 @@ export function InputsTab({ pipeline, nodeId, operator, attempts }: Props) {
           nodeId={nodeId}
           params={node.params}
           schema={operator.params_schema}
-          skip={isCodeOperator(operator.id) ? ["source"] : []}
+          skip={isCodeOperator(operator.id) ? ["source", "parameters", "output"] : []}
         />
       )}
     </div>

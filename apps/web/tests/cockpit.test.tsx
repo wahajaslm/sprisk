@@ -436,7 +436,7 @@ describe("code steps (ADR-0020)", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Explore data in code" }));
     await waitFor(() => expect(posted.runs).toHaveLength(1));
     const version = posted.versions[0] as typeof pipeline;
-    expect(version.nodes.at(-1)).toMatchObject({ id: "code_1", operator: "sprisk.code.python@1.1.0" });
+    expect(version.nodes.at(-1)).toMatchObject({ id: "code_1", operator: "sprisk.code.python@1.2.0" });
     expect(version.edges.at(-1)).toEqual({ from: "load.data", to: "code_1.data" });
     expect(posted.runs[0]).toEqual({ pipeline_version_id: version.id });
     expect(useSelection.getState()).toMatchObject({ pipelineVersionId: version.id, runId: "run_01JABCDEFGHJKMNPQRSTVWXYZ9", nodeId: "code_1" });
@@ -616,6 +616,69 @@ describe("inputs tab", () => {
     expect(version.parent_id).toBe(PV);
     expect(version.nodes.find((n) => n.id === "split")?.params).toEqual({ test_fraction: 0.25, seed: 7 });
     expect(useSelection.getState()).toMatchObject({ pipelineVersionId: version.id, nodeId: "split" });
+  });
+});
+
+describe("code step interface (ADR-0021)", () => {
+  const v12 = {
+    ...codePipeline,
+    nodes: codePipeline.nodes.map((n) =>
+      n.id === "code_1" ? { ...n, operator: "sprisk.code.python@1.2.0", params: { source: "factor = 2\nout = data" } } : n,
+    ),
+  };
+  const iface = { ...codeOutputs[0]!, port: "interface", artifact: { ...codeOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY70" } };
+  const report = {
+    inputs: [{ name: "data", origin: "inferred", bound: true }, { name: "lookup", origin: "inferred", bound: false }],
+    parameters: [{ name: "factor", line: 1, value_type: "integer", default_text: "2", effective_text: "2", origin: "inferred" }],
+    outputs: [{ name: "out", type: "polars.DataFrame", rows: 120, columns: 2, origin: "measured", chosen: false }],
+  };
+  function withInterface() {
+    const posted: { params: Record<string, unknown> }[] = [];
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([v12])),
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
+      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () => HttpResponse.json([...codeOutputs, iface])),
+      http.get(`/api/artifacts/${iface.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(report))),
+      http.post("/api/pipeline_versions", async ({ request }) => {
+        const body = (await request.json()) as typeof pipeline;
+        posted.push(body.nodes.find((n) => n.id === "code_1") as { params: Record<string, unknown> });
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.post("/api/runs", async ({ request }) => {
+        const body = (await request.json()) as { pipeline_version_id: string };
+        return HttpResponse.json({ ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ8", pipeline_version_id: body.pipeline_version_id }, { status: 202 });
+      }),
+    );
+    return posted;
+  }
+
+  async function openInputs() {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "code_1" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Inputs" }));
+    return screen.findByRole("region", { name: "Found in your code" });
+  }
+
+  it("lists what the run found, marking names nothing defines", async () => {
+    withInterface();
+    const found = await openInputs();
+    expect(found).toHaveTextContent("factor");
+    expect(found).toHaveTextContent("line 1");
+    expect(within(found).getByText(/lookup/).closest("li")).toHaveTextContent("nothing defines it");
+    expect(within(found).getByRole("radio", { name: /out · 120 rows × 2 cols/ })).toBeInTheDocument();
+  });
+
+  it("exposes a setting and runs with a new value, leaving the code as written", async () => {
+    const posted = withInterface();
+    const found = await openInputs();
+    await userEvent.click(within(found).getByRole("checkbox", { name: "Expose factor" }));
+    const value = within(found).getByRole("spinbutton", { name: "factor" });
+    await userEvent.clear(value);
+    await userEvent.type(value, "10");
+    await userEvent.click(within(found).getByRole("radio", { name: /out · 120 rows/ }));
+    await userEvent.click(within(found).getByRole("button", { name: "Run with these settings" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.params).toEqual({ source: "factor = 2\nout = data", parameters: { factor: 10 }, output: "out" });
   });
 });
 

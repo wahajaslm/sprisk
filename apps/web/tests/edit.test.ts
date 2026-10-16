@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addCodeStep, CODE_OPERATOR, setCodeSource } from "../src/flow/edit.ts";
+import { addCodeStep, CODE_OPERATOR, setCodeSource, setParams } from "../src/flow/edit.ts";
 import { settingChanges } from "../src/flow/diff.ts";
 import { flows } from "../src/flow/flows.ts";
 import { pipeline } from "./fixtures.ts";
@@ -28,6 +28,16 @@ describe("flow edits create a new pipeline version", () => {
     const first = addCodeStep(pipeline, "load", "data");
     const second = addCodeStep(first.version, first.nodeId, "data");
     expect(second.version.edges.at(-1)).toEqual({ from: "code_1.data", to: "code_2.data" });
+  });
+
+  it("keeps exposed settings and the chosen output when the code changes", () => {
+    const { version, nodeId } = addCodeStep(pipeline, "load", "data");
+    const exposed = setParams(version, nodeId, { source: "k = 1", parameters: { k: 2 }, output: "out" });
+    expect(setCodeSource(exposed, nodeId, "k = 1\nout = data").nodes.find((n) => n.id === nodeId)?.params).toEqual({
+      source: "k = 1\nout = data",
+      parameters: { k: 2 },
+      output: "out",
+    });
   });
 
   it("changes only the code step's source", () => {
