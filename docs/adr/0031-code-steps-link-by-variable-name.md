@@ -1,5 +1,5 @@
 # ADR-0031: Code steps link by variable name
-Status: Proposed
+Status: Accepted
 Date: 2026-10-16
 Arch doc sections: §5 (typed pipeline IR), §9 (runs, caching), §11 (contracts). Builds on ADR-0020, 0021, 0026, 0030. Node Framework spec §5, §8.3, Scenario A.
 
@@ -11,24 +11,25 @@ Arch doc sections: §5 (typed pipeline IR), §9 (runs, caching), §11 (contracts
 
 ## Decision
 - **A code step's ports are its variable names.** New operator `sprisk.code.python@2.0.0`. Its params list `inputs` and `outputs` by name. A params-schema marker (`x-sprisk-ports: input | output`) tells the Rust compiler to add them as table ports, so edges, kinds, caching and history work as for any step.
-- **Splitting cells is Python, never running them.** `POST /code/split` takes cells and returns steps and links. The API starts a short Python process (`python -m sprisk_code.cells`, 10 s limit) that only parses the code with stdlib `ast` and `symtable` (rule 2). Nothing is executed; the process is the boundary for hostile input.
+- **Splitting cells is Python, never running them.** `POST /code/split` takes cells and returns steps and links. The API starts a short Python process (`python -m sprisk_code.cells`, 10 s limit, at most 2 at once, at most 1000 cells) that only parses the code with stdlib `ast` and `symtable` (rule 2). Nothing is executed; the process is the boundary for hostile input.
 - **Reading a cell, in notebook order:**
   - a name a cell reads before it sets it comes from the latest earlier cell that sets it;
   - an import is copied into the cell that uses it (`import pandas as pd`);
-  - a top-level literal is copied too (`min_age = 18`), so it can be exposed as a setting there;
-  - a function or class used by a later cell, or a name that is not a valid port name (`X_train`), keeps the cells from definer to user together in one step;
+  - a top-level number, text or boolean is copied too (`min_age = 18`), so it can be exposed as a setting there;
+  - a function, a class, a list/dict/set/tuple literal, or a name that is not a valid port name (`X_train`, `console`) keeps the cells from definer to user together in one step;
+  - a cell that changes a table in place (`df["a"] = 1`, `inplace=True`) passes the changed table on; `del` ends a name;
   - anything else becomes a link: an output on the earlier step, an input on the later one.
-- **The person confirms.** The UI shows the steps, links and notes before it creates the flow. Links are ordinary edges in the `PipelineVersion`. Nothing is resolved by name at run time (rule 5).
+- **The person confirms, then runs.** The UI shows the steps, links, notes and each step's code before it creates the flow. Creating does not run it: the notebook may be someone else's, so the person presses Run graph. Links are ordinary edges in the `PipelineVersion`. Nothing is resolved by name at run time (rule 5).
 - **Tables cross steps; they keep their library.** A polars or pandas DataFrame crosses as Parquet. A code step gets each input table back as the library that wrote it (pandas metadata in the file). Built-in steps always get polars.
 - **Any other value fails the step clearly**: the message names the variable, its type and the fix (keep those cells in one step).
 - **Notebook files.** `.ipynb` code cells and the `# %%` cell format are read in the browser (plain JSON and text) and sent as cells. IPython magics (`%`, `!`) become comments.
-- **Effects: nondeterministic** (like a source): reused within an edit (ADR-0026), re-run by Run graph.
+- **Effects: side_effecting**, like every code step: a notebook cell may write files or call services, so it is never retried or reused automatically (arch §9).
 - **No marimo dependency.** Its analyzer is tied to its runtime. marimo's scoping cases (comprehensions, functions, `global`, `del`) are our test cases.
-- **Later, each with its own change:** models and JSON values crossing steps (kind from a first run), mutation warnings in Checks, session mode (Node Framework §8.3).
+- **Later, each with its own change:** models and JSON values crossing steps (kind from a first run), in-place changes the analyzer cannot see (`lst.append`), session mode (Node Framework §8.3).
 
 ## First slice
-- Paste three cells, or open a notebook. sprisk shows three steps and two links; Create flow.
-- Run, explore each step's variables (ADR-0030), expose one setting, edit it: that step and the ones after it run.
+- Paste three cells, or open a notebook. sprisk shows three steps, two links and their code; Create flow.
+- Run graph, explore each step's variables (ADR-0030), expose one setting and edit it.
 
 ## Alternatives considered
 - **Adopt marimo as the runtime.** Rejected: one shared namespace cannot be scheduled, cached or retried per step.
