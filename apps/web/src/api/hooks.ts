@@ -97,6 +97,8 @@ export function useSaveAndRun(onScreen: string | undefined) {
   return useMutation({
     mutationFn: async (version: PipelineVersion) => {
       const saved = await postOne("PipelineVersion", "/pipeline_versions", version);
+      // Known at once, so the screen can switch to it without a gap while the list refreshes.
+      client.setQueryData<PipelineVersion[]>(["pipeline_versions"], (list) => [saved, ...(list ?? [])]);
       return postOne("Run", "/runs", { pipeline_version_id: saved.id, ...(onScreen ? { reuse_run_id: onScreen } : {}) });
     },
     onSuccess: (run) => {

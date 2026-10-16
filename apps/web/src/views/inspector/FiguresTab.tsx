@@ -1,5 +1,5 @@
 import type { Attempt, Figure } from "@sprisk/contracts";
-import { lazy, type ReactNode, Suspense } from "react";
+import { lazy, type ReactNode, Suspense, useRef } from "react";
 
 import { useFigureSet } from "../../api/figures.ts";
 import { useResultLayout } from "../../workbench/detail.ts";
@@ -49,13 +49,20 @@ export function FiguresTab({
 
 export function FigurePort({ attempt, port }: { attempt: Attempt | undefined; port: string }) {
   const set = useFigureSet(attempt, port);
-  if (set.status === "none") return attempt ? <p className="muted">{set.reason}</p> : null;
-  if (set.status === "loading") return <p className="muted">Loading figures…</p>;
+  // While a new run draws, keep the last figures on screen instead of blanking them.
+  const last = useRef<Figure[] | undefined>(undefined);
+  if (set.status === "ready") last.current = set.value.items;
   if (set.status === "error") return <p role="alert" className="error">{set.message}</p>;
-  if (set.value.items.length === 0) return <p className="muted">No figures this run.</p>;
+  const items = set.status === "ready" ? set.value.items : last.current;
+  if (!items) {
+    if (set.status === "loading") return <p className="muted">Loading figures…</p>;
+    return set.status === "none" && attempt ? <p className="muted">{set.reason}</p> : null;
+  }
+  if (items.length === 0) return <p className="muted">No figures this run.</p>;
   return (
     <>
-      {set.value.items.map((figure, i) => (
+      {set.status === "loading" && <p className="muted">Drawing…</p>}
+      {items.map((figure, i) => (
         <FigureView key={i} figure={figure} index={i} />
       ))}
     </>

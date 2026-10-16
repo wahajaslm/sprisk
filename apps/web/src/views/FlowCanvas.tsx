@@ -293,7 +293,11 @@ export function flowGraph(
 /** Layout runs off the main path (ELK is async); a new flow or node size lays out afresh. */
 function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel, operators: Map<string, Operator>) {
   // Sizes depend on each step's role, so lay out again once the operators are known.
-  const key = pipeline ? `${pipeline.id}/${level}/${operators.size}` : "";
+  // Lay out again only when the shape changes: an edit to settings keeps every position.
+  const shape = pipeline
+    ? JSON.stringify([pipeline.nodes.map((n) => [n.id, n.operator]), pipeline.edges.map((e) => [e.from, e.to])])
+    : "";
+  const key = pipeline ? `${shape}/${level}/${operators.size}` : "";
   const [result, setResult] = useState<{ key: string; at?: Map<string, Point>; groups?: Group[]; error?: string }>();
   useEffect(() => {
     if (!pipeline) return;
@@ -316,8 +320,8 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
     };
     // `key` names the pipeline version and size; versions are immutable.
   }, [key]);
-  // Keep showing the last layout of this flow while the next one is computed: no flicker.
-  return result?.key.startsWith(`${pipeline?.id ?? ""}/`) ? result : undefined;
+  // Keep showing the last layout while the next one is computed: no flicker.
+  return result;
 }
 
 export function FlowCanvas() {
