@@ -12,7 +12,7 @@ from typing import Any, TextIO
 import matplotlib
 import polars as pl
 
-from sprisk_code.discovery import bind, free_names, literal_parameters
+from sprisk_code.discovery import bind, file_reads, free_names, literal_parameters
 from sprisk_contracts import CodeDisplay, CodeInterface
 from sprisk_workers.errors import OperatorError
 
@@ -109,6 +109,7 @@ def _interface(
             for p in parameters
         ],
         "outputs": [_candidate(n, namespace[n], n == chosen) for n in candidates],
+        "files": [{"path": f.path, "reader": f.reader, "line": f.line} for f in file_reads(source)],
     }
     return CodeInterface.model_validate_json(json.dumps(doc))
 

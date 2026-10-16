@@ -65,11 +65,76 @@ def _candidates(module: ast.Module) -> dict[str, ast.Assign]:
     return found
 
 
+@dataclass(frozen=True)
+class FileRead:
+    path: str
+    reader: str
+    line: int
+
+
+# Calls that read a file named by their first argument (polars, pandas, the standard library).
+READERS = {
+    "read_csv",
+    "read_parquet",
+    "read_json",
+    "read_ndjson",
+    "read_excel",
+    "read_ipc",
+    "scan_csv",
+    "scan_parquet",
+    "scan_ndjson",
+    "scan_ipc",
+    "open",
+}
+
+
+def _reader(node: ast.Call) -> str:
+    return node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+
+
+def file_reads(source: str) -> list[FileRead]:
+    """Files the code reads (ADR-0025): a reader called with a literal path, or with a name
+    that a top-level literal sets. These are inputs, never parameters."""
+    module = ast.parse(source)
+    literals = {name: _literal(stmt.value) for name, stmt in _candidates(module).items()}
+    found = []
+    for node in ast.walk(module):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        reader = (
+            node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+        )
+        if reader not in READERS:
+            continue
+        arg = node.args[0]
+        path = _literal(arg) if not isinstance(arg, ast.Name) else literals.get(arg.id)
+        if isinstance(path, str):
+            found.append(FileRead(path, reader, node.lineno))
+    return sorted(found, key=lambda f: f.line)
+
+
+def _path_names(module: ast.Module) -> set[str]:
+    """Top-level names passed to a file reader: their values are files, not settings."""
+    names = set()
+    for node in ast.walk(module):
+        if isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Name):
+            reader = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else getattr(node.func, "id", "")
+            )
+            if reader in READERS:
+                names.add(node.args[0].id)
+    return names
+
+
 def literal_parameters(source: str) -> list[Parameter]:
     module = ast.parse(source)
+    files = _path_names(module)
     return [
         Parameter(name, stmt.lineno, _type_of(_literal(stmt.value)), ast.unparse(stmt.value))
         for name, stmt in _candidates(module).items()
+        if name not in files
     ]
 
 

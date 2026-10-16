@@ -377,6 +377,10 @@ export interface CodeInterface {
   inputs: CodeInput[];
   parameters: CodeParameter[];
   outputs: CodeOutputCandidate[];
+  /**
+   * Files the code reads (ADR-0025): inputs, never parameters. Omitted in reports written before ADR-0025.
+   */
+  files?: CodeFileRead[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -428,6 +432,18 @@ export interface CodeOutputCandidate {
    * This value became the step's data output.
    */
   chosen: boolean;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeFileRead".
+ */
+export interface CodeFileRead {
+  path: string;
+  /**
+   * The call that reads it, e.g. read_csv or open.
+   */
+  reader: string;
+  line: number;
 }
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.

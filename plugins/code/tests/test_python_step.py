@@ -215,3 +215,10 @@ def test_stderr_and_warnings_are_kept_apart_from_printed_text(
     assert [(i.channel.value if i.channel else None) for i in items] == ["stdout", "stderr"]
     assert items[0].text == "ok\n"
     assert items[1].text is not None and "small sample" in items[1].text and "done" in items[1].text
+
+
+def test_interface_lists_files_the_code_reads(write_parquet: WriteParquet, out_dir: Path) -> None:
+    source = 'path = "lookup.csv"\nif False:\n    pl.read_csv(path)\ndata\n'
+    found = run_v12(write_parquet, out_dir, {"source": source})["interface"]
+    assert [(f.path, f.reader) for f in found.files] == [("lookup.csv", "read_csv")]
+    assert found.parameters == []

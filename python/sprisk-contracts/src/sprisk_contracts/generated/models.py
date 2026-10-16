@@ -66,6 +66,15 @@ class Channel(StrEnum):
     stderr = "stderr"
 
 
+class CodeFileRead(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    path: str
+    reader: Annotated[str, Field(description="The call that reads it, e.g. read_csv or open.")]
+    line: Annotated[int, Field(ge=0)]
+
+
 class ValueType(StrEnum):
     integer = "integer"
     number = "number"
@@ -677,6 +686,12 @@ class CodeInterface(StrictModel):
     inputs: list[CodeInput]
     parameters: list[CodeParameter]
     outputs: list[CodeOutputCandidate]
+    files: Annotated[
+        list[CodeFileRead] | None,
+        Field(
+            description="Files the code reads (ADR-0025): inputs, never parameters. Omitted in reports written before ADR-0025."
+        ),
+    ] = None
 
 
 class Operator(StrictModel):

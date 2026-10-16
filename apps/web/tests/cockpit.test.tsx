@@ -854,6 +854,7 @@ describe("code step interface (ADR-0021)", () => {
     inputs: [{ name: "data", origin: "inferred", bound: true }, { name: "lookup", origin: "inferred", bound: false }],
     parameters: [{ name: "factor", line: 1, value_type: "integer", default_text: "2", effective_text: "2", origin: "inferred" }],
     outputs: [{ name: "out", type: "polars.DataFrame", rows: 120, columns: 2, origin: "measured", chosen: false }],
+    files: [{ path: "lookup.csv", reader: "read_csv", line: 3 }],
   };
   function withInterface() {
     const posted: { params: Record<string, unknown> }[] = [];
@@ -887,6 +888,14 @@ describe("code step interface (ADR-0021)", () => {
     const names = await screen.findByRole("region", { name: "Names read by the code" });
     expect(within(names).getByText("data").closest("li")).toHaveTextContent("the input table");
     expect(within(names).getByText("lookup").closest("li")).toHaveTextContent("nothing defines it");
+  });
+
+  it("Inputs lists the files the code reads (ADR-0025)", async () => {
+    withInterface();
+    await openCode("Inputs");
+    const inputs = await screen.findByRole("region", { name: "Input tables" });
+    expect(within(inputs).getByText("lookup.csv")).toBeInTheDocument();
+    expect(within(inputs).getByText("lookup.csv").closest("li")).toHaveTextContent(/file.*read_csv, line 3/);
   });
 
   it("Parameters exposes a setting found in the code and runs with a new value", async () => {

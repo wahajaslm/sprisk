@@ -24,7 +24,13 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
   const declared = operator?.inputs ?? [];
   const extra = incoming.map((e) => e.to.split(".")[1] ?? "").filter((p) => !declared.some((d) => d.name === p));
   const inputs = [...declared.map((d) => ({ name: d.name, kind: d.kind as string })), ...extra.map((name) => ({ name, kind: "" }))];
-  const files = operator ? settingsOf(operator.params_schema).filter(isFileInput) : [];
+  // Files are inputs (ADR-0025): a built-in step's path settings, a code step's file reads.
+  const pathFiles = operator ? settingsOf(operator.params_schema).filter(isFileInput) : [];
+  const codeFiles = found.status === "ready" ? (found.value.files ?? []) : [];
+  const files = [
+    ...pathFiles.map((f) => ({ name: f.name, path: String(node?.params[f.name] ?? "not set"), how: "" })),
+    ...codeFiles.map((f) => ({ name: f.path.split("/").at(-1) ?? f.path, path: f.path, how: `${f.reader}, line ${f.line}` })),
+  ];
   return (
     <div className="inputs-tab">
       <section className="input-tables" aria-label="Input tables">
@@ -32,10 +38,10 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
         {files.length > 0 && (
           <ul className="input-list">
             {files.map((f) => (
-              <PortRow key={f.name} name={f.name} kind="file">
+              <PortRow key={`${f.name}:${f.path}`} name={f.name} kind="file">
                 <span className="input-arrow" aria-hidden="true">←</span>
-                <span className="input-file">{String(node?.params[f.name] ?? "not set")}</span>
-                <span />
+                <span className="input-file">{f.path === f.name ? "" : f.path}</span>
+                <span className="input-size">{f.how}</span>
               </PortRow>
             ))}
           </ul>

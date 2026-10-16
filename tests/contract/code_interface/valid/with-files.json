@@ -1,0 +1,55 @@
+{
+  "inputs": [
+    {
+      "name": "data",
+      "origin": "inferred",
+      "bound": true
+    },
+    {
+      "name": "lookup",
+      "origin": "inferred",
+      "bound": false
+    }
+  ],
+  "parameters": [
+    {
+      "name": "threshold",
+      "line": 2,
+      "value_type": "number",
+      "default_text": "0.15",
+      "effective_text": "0.25",
+      "origin": "confirmed"
+    },
+    {
+      "name": "label",
+      "line": 3,
+      "value_type": "string",
+      "default_text": "\"ok\"",
+      "effective_text": "\"ok\"",
+      "origin": "inferred"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "cleaned",
+      "type": "polars.DataFrame",
+      "rows": 120,
+      "columns": 6,
+      "origin": "measured",
+      "chosen": true
+    },
+    {
+      "name": "n",
+      "type": "int",
+      "origin": "measured",
+      "chosen": false
+    }
+  ],
+  "files": [
+    {
+      "path": "lookup.csv",
+      "reader": "read_csv",
+      "line": 3
+    }
+  ]
+}

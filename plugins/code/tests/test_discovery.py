@@ -67,3 +67,21 @@ def test_binding_a_value_of_the_wrong_kind_fails() -> None:
         with pytest.raises(OperatorError) as e:
             bind(CELL, {"use_log": wrong})
         assert e.value.code == "invalid_parameter"
+
+
+def test_files_the_code_reads_are_inputs_not_parameters() -> None:
+    from sprisk_code.discovery import file_reads
+
+    source = (
+        'path = "data/penguins.csv"\n'
+        "raw = pl.read_csv(path)\n"
+        'extra = pl.read_parquet("lookup.parquet")\n'
+        "with open('notes.txt') as f:\n    notes = f.read()\n"
+        "rate = 0.5\n"
+    )
+    assert [(f.path, f.reader, f.line) for f in file_reads(source)] == [
+        ("data/penguins.csv", "read_csv", 2),
+        ("lookup.parquet", "read_parquet", 3),
+        ("notes.txt", "open", 4),
+    ]
+    assert [p.name for p in literal_parameters(source)] == ["rate"]
