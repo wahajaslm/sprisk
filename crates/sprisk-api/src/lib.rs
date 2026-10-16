@@ -417,12 +417,31 @@ async fn get_artifact(
     Ok(Json(state.store.get_artifact(&artifact_id).await?))
 }
 
+/// Largest artifact the browser may fetch to show (ADR-0027): the figure cap, the biggest renderer.
+const MAX_DISPLAY_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Content over the display cap is refused unless the caller asks for a download (`?download=true`).
+fn display_size(size_bytes: u64, download: bool) -> Result<(), ApiError> {
+    if download || size_bytes <= MAX_DISPLAY_BYTES {
+        return Ok(());
+    }
+    Err(ApiError::BadRequest {
+        code: "too_large",
+        message: format!(
+            "artifact is {size_bytes} bytes, over the {MAX_DISPLAY_BYTES}-byte display cap; add ?download=true"
+        ),
+    })
+}
+
 async fn get_artifact_content(
     State(state): State<AppState>,
     Path(raw): Path<String>,
+    query: Query,
 ) -> Result<Response, ApiError> {
     let artifact_id: ArtifactId = id(&raw)?;
     let artifact = state.store.get_artifact(&artifact_id).await?;
+    let download = query.get("download").is_some_and(|v| v == "true");
+    display_size(artifact.size_bytes, download)?;
     let bytes: Bytes = state.artifacts.get(artifact.content_hash.as_str()).await?;
     // Always a download: the browser must never render artifact bytes on the API origin.
     Ok((
@@ -471,4 +490,23 @@ async fn get_artifact_rows(
         .read_table_page(artifact.content_hash.as_str(), offset, limit)
         .await?;
     Ok(Json(page))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn content_over_the_display_cap_is_refused_unless_downloaded() {
+        assert!(display_size(MAX_DISPLAY_BYTES, false).is_ok());
+        let refused = display_size(MAX_DISPLAY_BYTES + 1, false);
+        assert!(matches!(
+            refused,
+            Err(ApiError::BadRequest {
+                code: "too_large",
+                ..
+            })
+        ));
+        assert!(display_size(MAX_DISPLAY_BYTES + 1, true).is_ok());
+    }
 }
