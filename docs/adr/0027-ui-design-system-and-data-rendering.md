@@ -44,7 +44,15 @@ A new kind of data needs a row in this table first.
 - `src/api` does not read UI stores (Zustand). Callers pass in what it needs, such as the selected run id.
 - **Lint:** forbid `fetch` outside `src/api`, and `.map` that renders over a server list outside `VirtualList`.
 
-### 5. Canvas
+### 5. Loading and rendering states (no flicker, nothing half-drawn)
+- **Draw only complete data.** A view renders when every piece it needs has arrived. The canvas never shows a layout that is missing positions for some steps.
+- **Keep the old view while the next one loads.** Queries switched by a selection (step, run, attempt) use `placeholderData: keepPreviousData`. Show a small busy mark, not a swap to "Loading…".
+- **Show loading text only after 200 ms.** Fast loads show nothing, so there is no flash.
+- **Reserve space.** Loading states take the size of the final content (figure box, table rows), so nothing jumps when data lands.
+- **Update, don't remount.** A new layout moves the existing canvas nodes. It does not rebuild the canvas or refit the view.
+- **Polling changes only what changed.** Effects and memo keys depend on ids and versions, never on refetched objects.
+
+### 6. Canvas
 - Stages run left to right. Steps in a stage stack top to bottom. Edges follow the same rule.
 - Node sizes per detail level and stage heading spacing live in `src/flow/layout.ts` constants, one place only.
 - Canvas text uses the type scale tokens.
@@ -65,6 +73,8 @@ A new kind of data needs a row in this table first.
 - A test requests oversized content and gets a typed error, not the bytes.
 - Lint fails on `fetch` outside `src/api`.
 - No list in the UI renders more than one page of items without `VirtualList`.
+- A test shows the canvas never draws a step without its layout position.
+- A test shows switching the selected step keeps the old content until the new content is ready.
 
 ## Arch doc edits
 - §2A "Architecture and data flow": add the renderer table and the three-place limits.
