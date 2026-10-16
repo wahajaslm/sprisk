@@ -22,6 +22,7 @@
 | [0018](0018-studio-cockpit-workbench.md) | Studio cockpit is the default workbench layout and workflow | Accepted |
 | [0019](0019-methodology-as-steerable-decision-graph.md) | Methodology guides pipeline decisions without becoming a separate workflow | Proposed |
 | [0020](0020-code-steps.md) | Code steps run the user's Python as a recorded pipeline step | Accepted |
+| [0021](0021-node-framework-v1.md) | Adopt the Node Framework V1 on top of the existing engine | Accepted |
 
 ## Open questions (arch doc §17)
 
