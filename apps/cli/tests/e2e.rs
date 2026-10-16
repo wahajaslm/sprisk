@@ -167,36 +167,38 @@ async fn worker_killed_mid_run_is_replaced_and_nothing_false_is_committed() {
     let client = server(data.path(), Some(wrapper)).await;
 
     let run = client.submit_and_start(&pipeline("iris")).await.unwrap();
-    // Kill the worker while a pipeline step (not the gate) is running.
+    // Kill the workers while a pipeline step (not the gate) is running. Steps are fast with a
+    // warm worker (ADR-0026), so a kill can land between steps; then try the next step.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     loop {
+        if tokio::time::Instant::now() >= deadline {
+            panic!(
+                "no step was lost:\n{}",
+                client.report(&run.id).await.unwrap()
+            );
+        }
         let attempts = client.attempts(&run.id).await.unwrap();
+        if attempts.iter().any(|a| {
+            a.error
+                .as_ref()
+                .is_some_and(|e| e.code.as_str() == "worker_lost")
+        }) {
+            break;
+        }
         let busy = attempts.iter().any(|a| {
             a.node_id.as_str() != "gate_b"
                 && matches!(a.state, AttemptState::Running | AttemptState::Leased)
         });
         if busy {
-            break;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            panic!(
-                "no step started:\n{}",
-                client.report(&run.id).await.unwrap()
-            );
+            // Every worker started so far: the busy one, and possibly an idle warm one.
+            for pid in std::fs::read_to_string(&pids).unwrap().lines() {
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", pid])
+                    .status();
+            }
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    let pid = std::fs::read_to_string(&pids)
-        .unwrap()
-        .lines()
-        .last()
-        .unwrap()
-        .to_owned();
-    let killed = std::process::Command::new("kill")
-        .args(["-9", &pid])
-        .status()
-        .unwrap();
-    assert!(killed.success());
 
     let run = client
         .wait(&run.id, Duration::from_secs(120))
@@ -218,8 +220,12 @@ async fn worker_killed_mid_run_is_replaced_and_nothing_false_is_committed() {
                 .is_some_and(|e| e.code.as_str() == "worker_lost")
         })
         .collect();
-    assert_eq!(lost.len(), 1, "{}", client.report(&run.id).await.unwrap());
-    assert_eq!(lost[0].state, AttemptState::Failed);
+    assert!(
+        !lost.is_empty(),
+        "{}",
+        client.report(&run.id).await.unwrap()
+    );
+    assert!(lost.iter().all(|a| a.state == AttemptState::Failed));
     // No falsely committed artifact: only succeeded attempts have outputs.
     for a in &attempts {
         let outputs = client.outputs(&a.id).await.unwrap();
