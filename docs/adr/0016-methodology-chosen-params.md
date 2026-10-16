@@ -1,6 +1,6 @@
 # ADR-0016: Params chosen by methodology, shown and confirmed in the UI
 
-Status: Proposed
+Status: Accepted (by ADR-0018)
 Date: 2026-10-16
 Arch doc sections: §4, §5, §7, §8
 
