@@ -369,7 +369,7 @@ function Canvas({ computed }: { computed: { nodes: Node[]; edges: Edge[] } }) {
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
     >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.07)" />
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1.4} color="rgba(255,255,255,0.18)" />
       <Panel position="bottom-left" className="canvas-controls">
         <ZoomControl />
         <DetailSwitch />
