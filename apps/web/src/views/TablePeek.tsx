@@ -5,6 +5,7 @@ import { type ReactNode, useRef } from "react";
 
 import { tablePageQuery, useTablePage } from "../api/hooks.ts";
 import { isText } from "./RowsTable.tsx";
+import { Loading } from "../components/ui/Loading.tsx";
 
 const PAGE_ROWS = 100;
 const ROW_HEIGHT = 26;
@@ -13,7 +14,7 @@ const ROW_HEIGHT = 26;
  * fetched and drawn, so the browser never holds the table (rule 9). */
 export function TablePeek({ artifactId, port, actions }: { artifactId: string; port: string; actions?: (columns: TableColumn[]) => ReactNode }) {
   const first = useTablePage(artifactId, 0, PAGE_ROWS);
-  if (first.isPending) return <p className="muted">Loading rows…</p>;
+  if (first.isPending) return <Loading text="Loading rows…" />;
   if (first.isError) return <p role="alert" className="error">{first.error.message}</p>;
   const { columns, total_rows, total_columns } = first.data;
   return (

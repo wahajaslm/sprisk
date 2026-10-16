@@ -11,6 +11,7 @@ import { ColumnProfile } from "../ColumnProfile.tsx";
 import { formatMetric } from "../NodeFact.tsx";
 import { TablePeek } from "../TablePeek.tsx";
 import { ShownTable } from "./VisualsTab.tsx";
+import { Loading } from "../../components/ui/Loading.tsx";
 
 export type Explore = ((port: string) => void) | undefined;
 
@@ -36,7 +37,7 @@ type Props = {
 export function DataTab({ attempt, operator, capability, previous, explore, figurePorts, shown, children }: Props & { children?: ReactNode }) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
-  if (outputs.isPending) return <p className="muted">Loading…</p>;
+  if (outputs.isPending) return <Loading />;
   if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
   // Console output is shown in Console, for every step (ADR-0025).
   const data = outputs.data.filter(
@@ -176,7 +177,7 @@ function Output({
 
 /** Each numeric metric as a tile, with its change since the previous run. */
 function MetricTiles({ text, previous }: { text: string | undefined; previous: Record<string, number> | undefined }) {
-  if (text === undefined) return <p className="muted">Loading metrics…</p>;
+  if (text === undefined) return <Loading text="Loading metrics…" />;
   let raw: unknown;
   try {
     raw = JSON.parse(text);

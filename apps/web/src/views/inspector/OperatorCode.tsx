@@ -7,6 +7,7 @@ import { useViewSelection } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { CodeInput } from "../CodeInput.tsx";
 import { PlayIcon } from "../Icons.tsx";
+import { Loading } from "../../components/ui/Loading.tsx";
 
 const ignore = () => undefined;
 
@@ -31,7 +32,7 @@ export function OperatorCode({ pipeline, nodeId, operator }: Props) {
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const saveAndRun = useSaveAndRun(useViewSelection().runId);
   const showRun = useSelection((s) => s.showRun);
-  if (builtin.isPending) return <p className="muted">Loading code…</p>;
+  if (builtin.isPending) return <Loading text="Loading code…" />;
   if (builtin.isError) return <p role="alert" className="error">{builtin.error.message}</p>;
 
   const shown = own?.source ?? builtin.data.text;

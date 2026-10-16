@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Read } from "../../api/code.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { useRunEdit } from "./useRunEdit.ts";
+import { Loading } from "../../components/ui/Loading.tsx";
 
 type Props = {
   pipeline: PipelineVersion;
@@ -20,11 +21,11 @@ export function ParametersTab({ pipeline, nodeId, operator, found }: Props) {
   if (!node) return null;
   if (isCodeOperator(node.operator)) {
     if (found.status === "none") return <p className="muted">{found.reason}</p>;
-    if (found.status === "loading") return <p className="muted">Loading…</p>;
+    if (found.status === "loading") return <Loading />;
     if (found.status === "error") return <p role="alert" className="error">{found.message}</p>;
     return <Expose key={JSON.stringify(found.value.parameters)} pipeline={pipeline} nodeId={nodeId} params={node.params} found={found.value} />;
   }
-  if (!operator) return <p className="muted">Loading…</p>;
+  if (!operator) return <Loading />;
   return <Settings key={`${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} params={node.params} schema={operator.params_schema} />;
 }
 

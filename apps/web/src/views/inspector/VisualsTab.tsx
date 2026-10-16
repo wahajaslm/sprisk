@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import type { Read } from "../../api/code.ts";
 import { type ResultLayout, useResultLayout } from "../../workbench/detail.ts";
 import { RowsTable } from "../RowsTable.tsx";
+import { Loading } from "../../components/ui/Loading.tsx";
 
 /** A code step's figures, in the order it drew them (Node Framework §7), then charts of the
  * table it passes on (ADR-0030). Tables it showed are in Data. Inline or as a grid; switching
@@ -21,7 +22,7 @@ function DrawnFigures({ display }: { display: Read<CodeDisplay> }) {
   const { layout, setLayout } = useResultLayout();
   const [enlarged, setEnlarged] = useState<{ label: string; src: string } | undefined>();
   if (display.status === "none") return <p className="muted">{display.reason}</p>;
-  if (display.status === "loading") return <p className="muted">Loading…</p>;
+  if (display.status === "loading") return <Loading />;
   if (display.status === "error") return <p role="alert" className="error">{display.message}</p>;
   const items = display.value.items.filter((i) => i.kind !== "text" && i.kind !== "table");
   if (items.length === 0) return <p className="muted">No figures. Draw a plot in the code to see it here; tables it shows are in Data.</p>;

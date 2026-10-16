@@ -4,6 +4,7 @@ import { useRunAttempts } from "../api/hooks.ts";
 import { GATE_NODE, hasOutputs } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { SendIcon, SparkIcon } from "./Icons.tsx";
+import { Loading } from "../components/ui/Loading.tsx";
 
 /** The Copilot arrives with M2 (AI-created pipeline). Until then the pane says so plainly,
  * and its input is disabled rather than pretending to answer. */
@@ -27,7 +28,7 @@ export function Copilot() {
           <div className="card">
             <div className="card-head">This run</div>
             <div className="card-body">
-              {attempts.isPending && <p className="muted">Loading…</p>}
+              {attempts.isPending && <Loading />}
               {attempts.isError && <p role="alert" className="error">{attempts.error.message}</p>}
               {attempts.isSuccess && <RunSummary attempts={attempts.data} />}
             </div>

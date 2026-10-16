@@ -16,6 +16,7 @@ import { closedTabs, INSPECTOR_TABS, type InspectorTab, readTab, TAB_LABEL } fro
 import { readPin, type Pin, ViewInstance } from "./instance.tsx";
 import { HEADED_PANELS, readSavedLayout, restoreLayout, saveLayout, type ViewType } from "./layout.ts";
 import { useWorkbench } from "./workbench.ts";
+import { Loading } from "../components/ui/Loading.tsx";
 
 type Views = Record<ViewType, FunctionComponent>;
 /** Per view type: a dock tab label that shows more than a title (badges, muted states), and a
@@ -161,7 +162,7 @@ export function Dock({ views, tabLabels, toolbars }: { views: Views; tabLabels: 
       ({ params, api }: IDockviewPanelProps) => {
         return (
           <ViewInstance pin={readPin(params)} setPin={pinSetter(api, type)} tab={readTab(params)}>
-            <Suspense fallback={<p className="muted pad">Loading…</p>}>
+            <Suspense fallback={<Loading pad />}>
               <View />
             </Suspense>
           </ViewInstance>

@@ -1,6 +1,7 @@
 import type { TablePage } from "@sprisk/contracts";
 
 import { useTablePage } from "../api/hooks.ts";
+import { Loading } from "../components/ui/Loading.tsx";
 
 /** A profile has one row per data column; more than this many is paged by the table view. */
 const MAX_PROFILED = 200;
@@ -18,7 +19,7 @@ function summaries(page: TablePage): Summary[] {
  * the numbers come from the profile step (rule 9). */
 export function ColumnProfile({ artifactId }: { artifactId: string }) {
   const page = useTablePage(artifactId, 0, MAX_PROFILED);
-  if (page.isPending) return <p className="muted">Loading profile…</p>;
+  if (page.isPending) return <Loading text="Loading profile…" />;
   if (page.isError) return <p role="alert" className="error">{page.error.message}</p>;
   const columns = summaries(page.data);
   if (columns.length === 0) return <p className="muted">The profile has no columns.</p>;

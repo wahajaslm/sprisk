@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useOperators } from "../api/hooks.ts";
 import { kindOf, newestVersions, STAGES, stageOf, stepTitle } from "../flow/stages.ts";
 import { Chevron, KindIcon, SearchIcon } from "./Icons.tsx";
+import { Loading } from "../components/ui/Loading.tsx";
 
 export function StepLibrary() {
   const operators = useOperators();
@@ -32,7 +33,7 @@ export function StepLibrary() {
         </label>
       </div>
       <div className="library-list">
-        {operators.isPending && <p className="muted">Loading…</p>}
+        {operators.isPending && <Loading />}
         {operators.isError && <p role="alert" className="error">{operators.error.message}</p>}
         {operators.isSuccess && operators.data.length === 0 && <p className="muted">No operators registered.</p>}
         {operators.isSuccess &&

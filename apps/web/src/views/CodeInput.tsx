@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { Loading } from "../components/ui/Loading.tsx";
 
 export type CodeInputProps = {
   value: string;
@@ -16,7 +17,7 @@ const MonacoCode = lazy(() => import("./MonacoCode.tsx"));
 export function CodeInput(props: CodeInputProps) {
   return (
     <div className="code-input">
-      <Suspense fallback={<p className="muted pad">Loading editor…</p>}>
+      <Suspense fallback={<Loading text="Loading editor…" pad />}>
         <MonacoCode {...props} />
       </Suspense>
     </div>

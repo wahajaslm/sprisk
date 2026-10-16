@@ -36,6 +36,7 @@ import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
 import { KindIcon, KindMark } from "./Icons.tsx";
+import { Loading } from "../components/ui/Loading.tsx";
 
 
 type StepData = {
@@ -356,14 +357,14 @@ export function FlowCanvas() {
   const positions = usePositions(pipelineNow, level, new Map((operators.data ?? []).map((op) => [op.id, op])));
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
-  if (versions.isPending || operators.isPending) return <p className="muted pad">Loading flow…</p>;
+  if (versions.isPending || operators.isPending) return <Loading text="Loading flow…" pad />;
   const pipeline = pipelineNow;
   if (!pipeline) return <p className="muted pad">No flow yet. Submit one with <code>sprisk run</code>.</p>;
 
   const byRef = new Map(operators.data.map((op) => [op.id, op]));
   const latest = latestByNode(attempts.data ?? []);
   if (positions?.error) return <p role="alert" className="error pad">Could not lay out the flow: {positions.error}</p>;
-  if (!positions?.at) return <p className="muted pad">Laying out the flow…</p>;
+  if (!positions?.at) return <Loading text="Laying out the flow…" pad />;
   const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups);
   return (
     <div className="flow" aria-label="Flow canvas">

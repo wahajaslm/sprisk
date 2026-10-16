@@ -1,6 +1,7 @@
 import type { Attempt, CodeDisplay } from "@sprisk/contracts";
 
 import type { Read } from "../../api/code.ts";
+import { Loading } from "../../components/ui/Loading.tsx";
 
 /** What happened while the step ran: printed text, warnings, errors, and each attempt. */
 export function ConsoleTab({ display, attempts }: { display: Read<CodeDisplay>; attempts: Attempt[] }) {
@@ -11,7 +12,7 @@ export function ConsoleTab({ display, attempts }: { display: Read<CodeDisplay>; 
       {display.status === "error" ? (
         <p role="alert" className="error">{display.message}</p>
       ) : display.status === "loading" ? (
-        <p className="muted">Loading…</p>
+        <Loading />
       ) : texts.length === 0 ? (
         <p className="muted">{attempts.length === 0 ? "Not run yet." : "Nothing printed."}</p>
       ) : (

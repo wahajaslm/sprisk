@@ -1,5 +1,6 @@
 import { useRuns } from "../api/hooks.ts";
 import { useSelection } from "../workbench/selection.ts";
+import { Loading } from "../components/ui/Loading.tsx";
 
 /** Runs of the selected flow, newest first (the API pages and caps this list). */
 export function RunsList() {
@@ -10,7 +11,7 @@ export function RunsList() {
       <p className="sidebar-title">Runs</p>
       <div className="sidebar-list">
         {pipelineVersionId === undefined && <p className="muted">Select a flow first.</p>}
-        {runs.isPending && pipelineVersionId !== undefined && <p className="muted">Loading…</p>}
+        {runs.isPending && pipelineVersionId !== undefined && <Loading />}
         {runs.isError && <p role="alert" className="error">{runs.error.message}</p>}
         {runs.isSuccess && runs.data.length === 0 && <p className="muted">This flow has not run yet.</p>}
         {runs.data?.map((run) => (

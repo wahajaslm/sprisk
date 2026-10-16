@@ -4,6 +4,7 @@ import { lazy, type ReactNode, Suspense, useRef } from "react";
 import { useFigureSet } from "../../api/figures.ts";
 import { useResultLayout } from "../../workbench/detail.ts";
 import { LayoutSwitch } from "./VisualsTab.tsx";
+import { Loading } from "../../components/ui/Loading.tsx";
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
@@ -55,7 +56,7 @@ export function FigurePort({ attempt, port }: { attempt: Attempt | undefined; po
   if (set.status === "error") return <p role="alert" className="error">{set.message}</p>;
   const items = set.status === "ready" ? set.value.items : last.current;
   if (!items) {
-    if (set.status === "loading") return <p className="muted">Loading figures…</p>;
+    if (set.status === "loading") return <Loading text="Loading figures…" />;
     if (set.status !== "none" || !attempt) return null;
     return (
       <p className="muted">
@@ -86,7 +87,7 @@ function FigureView({ figure, index }: { figure: Figure; index: number }) {
     return <img className="figure svg-figure" alt={label} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(figure.content)}`} />;
   }
   return (
-    <Suspense fallback={<p className="muted">Loading figure…</p>}>
+    <Suspense fallback={<Loading text="Loading figure…" />}>
       <PlotlyFigure json={figure.content} label={label} />
     </Suspense>
   );
