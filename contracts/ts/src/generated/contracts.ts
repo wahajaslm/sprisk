@@ -487,6 +487,62 @@ export interface CodeFileRead {
   line: number;
 }
 /**
+ * Notebook cells to split into code steps (ADR-0031), in notebook order. Body of POST /code/split. Never executed.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeSplitRequest".
+ */
+export interface CodeSplitRequest {
+  cells: string[];
+}
+/**
+ * Code steps read from notebook cells (ADR-0031): each step's source, the cells it holds and the tables it reads and passes on, the links between steps, and notes for the person. A suggestion they confirm before a flow is made.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CodeSplit".
+ */
+export interface CodeSplit {
+  steps: SplitStep[];
+  links: SplitLink[];
+  notes: SplitNote[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SplitStep".
+ */
+export interface SplitStep {
+  /**
+   * The step's code: its cells, with the imports and literals it uses from earlier cells copied in.
+   */
+  source: string;
+  /**
+   * Indexes (from 0) of the cells this step holds.
+   */
+  cells: number[];
+  inputs: PortName[];
+  outputs: PortName[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SplitLink".
+ */
+export interface SplitLink {
+  from_step: number;
+  to_step: number;
+  name: PortName;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SplitNote".
+ */
+export interface SplitNote {
+  /**
+   * Index (from 0) of the cell the note is about.
+   */
+  cell: number;
+  message: string;
+}
+/**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema

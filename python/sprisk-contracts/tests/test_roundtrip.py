@@ -13,6 +13,8 @@ from sprisk_contracts import (
     AttemptOutput,
     CodeDisplay,
     CodeInterface,
+    CodeSplit,
+    CodeSplitRequest,
     CreateRun,
     FigureSet,
     MethodologyCheck,
@@ -45,6 +47,8 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (OperatorSource, "operator_source"),
     (FigureSet, "figure_set"),
     (CodeInterface, "code_interface"),
+    (CodeSplitRequest, "code_split_request"),
+    (CodeSplit, "code_split"),
 ]
 
 

@@ -21,6 +21,8 @@ export interface Entities {
   TablePage: C.TablePage;
   CodeDisplay: C.CodeDisplay;
   CodeInterface: C.CodeInterface;
+  CodeSplitRequest: C.CodeSplitRequest;
+  CodeSplit: C.CodeSplit;
   OperatorSource: C.OperatorSource;
   FigureSet: C.FigureSet;
 }

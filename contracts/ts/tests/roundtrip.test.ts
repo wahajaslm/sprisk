@@ -23,6 +23,8 @@ const entities: [keyof Entities, string][] = [
   ["OperatorSource", "operator_source"],
   ["FigureSet", "figure_set"],
   ["CodeInterface", "code_interface"],
+  ["CodeSplitRequest", "code_split_request"],
+  ["CodeSplit", "code_split"],
 ];
 
 it("every fixture dir has an entity", () => {

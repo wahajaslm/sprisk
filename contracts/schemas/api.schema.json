@@ -383,6 +383,131 @@
         }
       }
     },
+    "CodeSplitRequest": {
+      "title": "CodeSplitRequest",
+      "description": "Notebook cells to split into code steps (ADR-0031), in notebook order. Body of POST /code/split. Never executed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cells"
+      ],
+      "properties": {
+        "cells": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        }
+      }
+    },
+    "CodeSplit": {
+      "title": "CodeSplit",
+      "description": "Code steps read from notebook cells (ADR-0031): each step's source, the cells it holds and the tables it reads and passes on, the links between steps, and notes for the person. A suggestion they confirm before a flow is made.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps",
+        "links",
+        "notes"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SplitStep"
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SplitLink"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SplitNote"
+          }
+        }
+      }
+    },
+    "SplitStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "cells",
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "The step's code: its cells, with the imports and literals it uses from earlier cells copied in."
+        },
+        "cells": {
+          "type": "array",
+          "description": "Indexes (from 0) of the cells this step holds.",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortName"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortName"
+          }
+        }
+      }
+    },
+    "SplitLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_step",
+        "to_step",
+        "name"
+      ],
+      "properties": {
+        "from_step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "to_step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "name": {
+          "$ref": "#/$defs/PortName"
+        }
+      }
+    },
+    "SplitNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell",
+        "message"
+      ],
+      "properties": {
+        "cell": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index (from 0) of the cell the note is about."
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
     "CodeField": {
       "type": "object",
       "additionalProperties": false,

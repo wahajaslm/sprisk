@@ -82,6 +82,29 @@ class ValueType(StrEnum):
     boolean = "boolean"
 
 
+class Cell(RootModel[str]):
+    root: Annotated[str, Field(max_length=100000)]
+
+
+class CodeSplitRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cells: list[Cell]
+
+
+class Cell1(RootModel[int]):
+    root: Annotated[int, Field(ge=0)]
+
+
+class SplitNote(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cell: Annotated[int, Field(description="Index (from 0) of the cell the note is about.", ge=0)]
+    message: str
+
+
 class CodeField(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -565,6 +588,32 @@ class CodeOutputCandidate(StrictModel):
     ] = None
 
 
+class SplitStep(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    source: Annotated[
+        str,
+        Field(
+            description="The step's code: its cells, with the imports and literals it uses from earlier cells copied in."
+        ),
+    ]
+    cells: Annotated[
+        list[Cell1], Field(description="Indexes (from 0) of the cells this step holds.")
+    ]
+    inputs: list[PortName]
+    outputs: list[PortName]
+
+
+class SplitLink(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    from_step: Annotated[int, Field(ge=0)]
+    to_step: Annotated[int, Field(ge=0)]
+    name: PortName
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -755,6 +804,15 @@ class CodeInterface(StrictModel):
             description="Files the code reads (ADR-0025): inputs, never parameters. Omitted in reports written before ADR-0025."
         ),
     ] = None
+
+
+class CodeSplit(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    steps: list[SplitStep]
+    links: list[SplitLink]
+    notes: list[SplitNote]
 
 
 class Operator(StrictModel):
