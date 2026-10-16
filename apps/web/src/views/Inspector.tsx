@@ -4,14 +4,16 @@ import * as Tabs from "@radix-ui/react-tabs";
 
 import { useArtifactText, useOutputs, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { GATE_NODE, latestByNode } from "../flow/latest.ts";
-import { useSelection } from "../workbench/selection.ts";
+import { useViewInstance, useViewSelection } from "../workbench/instance.tsx";
+import { PinIcon } from "./Icons.tsx";
 import { shortName } from "../flow/stages.ts";
 
 /** JSON outputs larger than this are not pulled into the browser (rule 9). */
 const MAX_INLINE_BYTES = 64 * 1024;
 
 export function Inspector() {
-  const { pipelineVersionId, runId, nodeId } = useSelection();
+  const { pipelineVersionId, runId, nodeId } = useViewSelection();
+  const { pin, setPin } = useViewInstance();
   const versions = usePipelineVersions();
   const attempts = useRunAttempts(pipelineVersionId, runId);
   const node = versions.data?.find((v) => v.id === pipelineVersionId)?.nodes.find((n) => n.id === nodeId);
@@ -34,7 +36,21 @@ export function Inspector() {
         <span className="sel-label">{nodeId}</span>
         <span className="sel-meta">
           {node ? shortName(node.operator) : ""} · {attempts.isPending && runId ? "loading" : (latest?.state ?? "not run")}
+          {pin ? ` · run ${pin.runId.slice(-8)}` : ""}
         </span>
+        <span className="spacer" />
+        {setPin && runId && (
+          <button
+            type="button"
+            className={`pin${pin ? " on" : ""}`}
+            aria-pressed={pin !== undefined}
+            title={pin ? "Unpin: follow the selection again" : "Pin this panel to this run and step"}
+            onClick={() => setPin(pin ? undefined : { runId, nodeId })}
+          >
+            <PinIcon />
+            {pin ? "Pinned" : "Pin"}
+          </button>
+        )}
       </div>
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
       {versions.isError && <p role="alert" className="error pad">{versions.error.message}</p>}

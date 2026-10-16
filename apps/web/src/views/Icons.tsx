@@ -99,3 +99,40 @@ export function SendIcon() {
     </svg>
   );
 }
+
+export function StepsIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 1.5l5.5 3v7L8 14.5l-5.5-3v-7z" />
+      <path d="M2.5 4.5L8 7.5l5.5-3M8 7.5v7" />
+    </svg>
+  );
+}
+
+export function RunsIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" aria-hidden="true">
+      <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9" />
+      <path d="M2.2 2.2v2.3h2.3" />
+      <path d="M8 5v3.2l2 1.3" />
+    </svg>
+  );
+}
+
+export function ViewsIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+      <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="1.5" />
+      <path d="M6 2.25v11.5M6 8h8.25" />
+    </svg>
+  );
+}
+
+export function PinIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 1.8h4l-.6 4.2 2.6 2.5H4l2.6-2.5z" />
+      <path d="M8 8.5v5.7" />
+    </svg>
+  );
+}

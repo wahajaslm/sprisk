@@ -45,6 +45,14 @@ p { margin: 0; }
 .dot { width: 6px; height: 6px; border-radius: 3px; background: currentColor; flex-shrink: 0; }
 
 .cockpit { display: grid; grid-template-rows: 52px minmax(0, 1fr); height: 100%; }
+.workspace { display: grid; grid-template-columns: 52px minmax(0, 1fr); min-height: 0; }
+
+/* ── Activity bar (VS Code style) ────────────────────── */
+.activity-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 8px; background: var(--panel); border-right: 1px solid var(--line); }
+.activity { position: relative; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--quiet); }
+.activity:hover { color: var(--ink); background: var(--wash); }
+.activity[aria-pressed="true"] { color: var(--ink); }
+.activity[aria-pressed="true"]::before { content: ""; position: absolute; left: -6px; top: 9px; bottom: 9px; width: 2px; border-radius: 1px; background: var(--ink); }
 
 /* ── Top bar ─────────────────────────────────────────── */
 .topbar { display: flex; align-items: center; gap: 14px; min-width: 0; padding-right: 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
@@ -80,7 +88,36 @@ p { margin: 0; }
   --dv-separator-border: var(--line);
   --dv-paneview-header-border-color: var(--line);
   --dv-active-sash-color: rgba(255, 255, 255, 0.25);
+  --dv-tabs-and-actions-container-background-color: var(--panel);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--node-selected);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--panel);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--node);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--panel);
+  --dv-activegroup-visiblepanel-tab-color: var(--ink);
+  --dv-activegroup-hiddenpanel-tab-color: var(--quiet);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--soft);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--quiet);
+  --dv-tab-divider-color: var(--line);
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-drag-over-background-color: rgba(255, 255, 255, 0.06);
 }
+
+/* ── Sidebar panels (runs, views) ────────────────────── */
+.sidebar-panel { height: 100%; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: var(--panel); }
+.sidebar-title { padding: 8px 2px 4px; font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.sidebar-list { display: flex; flex-direction: column; gap: 2px; }
+.list-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; text-align: left; }
+.list-row:hover:not(:disabled) { background: var(--wash); border-color: rgba(255, 255, 255, 0.08); }
+.list-row[aria-current="true"], .list-row[aria-pressed="true"] { background: var(--wash-strong); }
+.list-row:disabled { opacity: 0.45; cursor: not-allowed; }
+.row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.row-title { font-weight: 500; }
+.row-meta { font-size: 11px; color: var(--quiet); }
+.row-state { font: 10px var(--mono); color: var(--quiet); }
+.plus { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); color: var(--ink); }
+.status-succeeded { color: #e0e0e0; }
+.status-running, .status-queued { color: var(--white); }
+.status-failed, .status-cancelled { color: var(--alert); }
 
 /* ── Step library ────────────────────────────────────── */
 .library { height: 100%; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); }
@@ -148,6 +185,9 @@ p { margin: 0; }
 .tabs button { height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--quiet); font-weight: 500; white-space: nowrap; }
 .tabs button[data-state="active"] { background: var(--wash-strong); color: var(--ink); }
 .sel-label { font-weight: 500; white-space: nowrap; }
+.pin { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; color: var(--muted); font-size: 12px; }
+.pin:hover { color: var(--ink); }
+.pin.on { color: var(--ground); background: var(--ink); border-color: var(--ink); }
 .sel-meta { font: 11px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane { min-height: 0; overflow: auto; }
 .pane.columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
