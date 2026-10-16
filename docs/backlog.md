@@ -11,6 +11,9 @@ Remove an item when it is done; link the commit or ADR.
 | Run Gate B (methodology checks) before execution and block on FAIL | M1 step 7 (CLI) |
 | User cancel of a run or attempt | M1 step 7 / API |
 | Cancel a running attempt without killing the worker process | M3 |
+| Runs execute inside the API process; move to a separate runner that resumes queued/running runs after a restart | before hosted (M5) |
+| OpenAPI document for the HTTP routes, generated from `contracts/` | M5 |
+| Stream artifact content instead of loading it whole (`/artifacts/{id}/content`) | when artifacts grow |
 
 ## Methodology
 | Item | Source | Milestone |
@@ -20,7 +23,7 @@ Remove an item when it is done; link the commit or ADR.
 | `split_leakage`: detect selection across pipeline versions that reuse one split (key on split artifact hash) | methodology review | M3 |
 | Mark holdout ports in manifests instead of a pack setting | methodology review | with ADR-0016 |
 | Per-project pack settings (thresholds, severity, applicability) — needs an ADR | design discussion | M3 |
-| Acknowledged FAIL recorded as an `Assumption`; per-rule "override permitted" | ADR-0015 | M3 |
+| Acknowledged FAIL recorded as an `Assumption`; per-rule "override permitted" | ADR-0015, ADR-0017 | M3 |
 | Custom project-scoped packs (untrusted) | design discussion | M5 |
 | Column roles (`x-sprisk-column`) and `ParamChoice` | ADR-0016 (Proposed) | M2/M3 |
 

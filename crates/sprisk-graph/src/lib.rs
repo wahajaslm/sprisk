@@ -47,6 +47,26 @@ pub enum CompileError {
     Cycle(String),
 }
 
+impl CompileError {
+    /// Stable snake_case code for API problem responses.
+    pub fn code(&self) -> &'static str {
+        match self {
+            CompileError::Empty => "empty_pipeline",
+            CompileError::DuplicateNode(_) => "duplicate_node",
+            CompileError::UnknownOperator { .. } => "unknown_operator",
+            CompileError::InvalidParams { .. } => "invalid_params",
+            CompileError::InvalidParamsSchema { .. } => "invalid_params_schema",
+            CompileError::UnknownNode(_) => "unknown_node",
+            CompileError::NotAnOutput(_) => "not_an_output",
+            CompileError::NotAnInput(_) => "not_an_input",
+            CompileError::KindMismatch { .. } => "kind_mismatch",
+            CompileError::Unconnected(_) => "unconnected_input",
+            CompileError::ConnectedTwice(_) => "input_connected_twice",
+            CompileError::Cycle(_) => "cycle",
+        }
+    }
+}
+
 /// A compiled pipeline: steps in an order where every step comes after its inputs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
