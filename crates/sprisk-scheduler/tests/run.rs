@@ -33,6 +33,8 @@ enum Behave {
     Escape,
     /// Gate B attempt that reports a failing methodology check.
     GateFail,
+    /// Gate B attempt whose checks output is not a MethodologyCheck array.
+    GateGarbage,
 }
 
 /// node id -> behaviour per attempt number (1-based); missing entries succeed.
@@ -164,7 +166,9 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
                     } else {
                         staging.join(port)
                     };
-                    let bytes = if lease.node_id.as_str() == "gate_b" {
+                    let bytes = if matches!(behave, Behave::GateGarbage) {
+                        "not json".to_owned()
+                    } else if lease.node_id.as_str() == "gate_b" {
                         let verdict = if matches!(behave, Behave::GateFail) {
                             "fail"
                         } else {
@@ -728,23 +732,21 @@ async fn failing_methodology_check_stops_the_run_before_any_step() {
 }
 
 #[tokio::test]
-async fn pipeline_node_named_like_the_gate_is_refused() {
-    let dir = tempfile::tempdir().unwrap();
-    let store = SqliteStore::in_memory().await.unwrap();
-    let artifacts = ArtifactStore::local(dir.path()).unwrap();
-    let mut plan = plan();
-    plan.steps[0].node_id = sprisk_scheduler::GATE_NODE.to_owned();
-    let err = Scheduler::new(
-        &store,
-        &artifacts,
-        FakeWorkers::default(),
-        Settings::default(),
-    )
-    .run(&RUN.parse().unwrap(), &pipeline(), &plan)
-    .await
-    .unwrap_err();
-    assert!(
-        matches!(err, sprisk_scheduler::SchedulerError::ReservedNode),
-        "{err}"
-    );
+async fn unreadable_gate_output_fails_the_run_instead_of_leaving_it_running() {
+    let workers = FakeWorkers {
+        script: [("gate_b", vec![Behave::GateGarbage])].into(),
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(Case {
+        workers,
+        gate: true,
+        ..Case::default()
+    })
+    .await;
+    assert!(matches!(
+        status,
+        Err(sprisk_scheduler::SchedulerError::GateOutput(_))
+    ));
+    assert_eq!(run_status(&env).await, RunStatus::Failed);
+    assert!(states(&env, "load").await.is_empty());
 }

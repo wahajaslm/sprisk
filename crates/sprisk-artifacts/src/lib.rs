@@ -169,6 +169,11 @@ fn safe(name: &str) -> Result<&str, StoreError> {
     }
 }
 
+/// The `sha256:<hex>` hash `commit` verifies, for content held in memory.
+pub fn content_hash(bytes: &[u8]) -> String {
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
+}
+
 /// Returns the hex part of `sha256:<hex>`.
 fn parse_hash(hash: &str) -> Result<&str, StoreError> {
     match hash.strip_prefix("sha256:") {

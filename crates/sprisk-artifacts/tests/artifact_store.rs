@@ -103,3 +103,11 @@ async fn malformed_hash_is_rejected() {
         );
     }
 }
+
+#[test]
+fn content_hash_is_the_sha256_commit_expects() {
+    assert_eq!(
+        sprisk_artifacts::content_hash(b""),
+        "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+}

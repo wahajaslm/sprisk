@@ -14,12 +14,12 @@ anyhow = "1"
 serde = "1.0.229"
 axum = "0.8.9"
 clap = { version = "4.6.7", features = ["derive"] }
-jiff = "0.2"
 reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
 serde_json = "1.0.154"
 sprisk-api = { path = "../../crates/sprisk-api" }
 sprisk-artifacts = { path = "../../crates/sprisk-artifacts" }
 sprisk-contracts = { path = "../../crates/sprisk-contracts" }
+sprisk-core = { path = "../../crates/sprisk-core" }
 sprisk-registry = { path = "../../crates/sprisk-registry" }
 sprisk-scheduler = { path = "../../crates/sprisk-scheduler" }
 sprisk-store = { path = "../../crates/sprisk-store" }

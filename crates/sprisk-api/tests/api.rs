@@ -26,6 +26,10 @@ struct Api {
 }
 
 async fn api() -> Api {
+    api_with_python(root().join(".venv/bin/python")).await
+}
+
+async fn api_with_python(python: PathBuf) -> Api {
     let dir = tempfile::tempdir().unwrap();
     let csv = dir.path().join("d.csv");
     std::fs::write(&csv, "x,y\n1,2\n3,4\n").unwrap();
@@ -41,7 +45,7 @@ async fn api() -> Api {
         registry: Arc::new(Registry::load_dir(&root.join("plugins")).unwrap()),
         gate: Some(gate),
         worker_command: vec![
-            root.join(".venv/bin/python").display().to_string(),
+            python.display().to_string(),
             "-m".into(),
             "sprisk_workers".into(),
             "--plugins-root".into(),
@@ -218,4 +222,38 @@ async fn unknown_artifact_content_is_not_found() {
         call(&api.app, "GET", uri, None).await.0,
         StatusCode::NOT_FOUND
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn run_whose_worker_cannot_start_ends_failed() {
+    let api = api_with_python(PathBuf::from("/nonexistent/python")).await;
+    call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
+    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
+    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
+    let mut status = Value::Null;
+    for _ in 0..100 {
+        status = call(&api.app, "GET", &run_uri, None).await.1["status"].clone();
+        if status == "failed" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(status, "failed");
+}
+
+#[tokio::test]
+async fn reserved_node_id_is_refused_at_submit() {
+    let api = api().await;
+    let mut bad = pipeline(&api.csv);
+    bad["nodes"][0]["id"] = json!("gate_b");
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(bad)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["errors"][0]["code"], "reserved_node_id");
 }

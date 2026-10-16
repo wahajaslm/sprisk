@@ -72,9 +72,7 @@ async fn main() -> anyhow::Result<()> {
             timeout_seconds,
         } => {
             let text = std::fs::read_to_string(&pipeline)?;
-            let now = jiff::Timestamp::now()
-                .strftime("%Y-%m-%dT%H:%M:%SZ")
-                .to_string();
+            let now = sprisk_core::time::now();
             let client = Client::new(&server);
             let run = client
                 .submit_and_start(&pipeline_from_yaml(&text, &now)?)

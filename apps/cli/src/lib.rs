@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    Attempt, AttemptOutput, PipelineVersion, Problem, Run, RunId, RunStatus, parse,
+    Attempt, AttemptOutput, CreateRun, PipelineVersion, Problem, Run, RunId, RunStatus, parse,
 };
 
 /// Project used when a pipeline file names none. Local mode has one project.
@@ -105,14 +105,39 @@ impl Client {
             .json(pipeline)
             .send()
             .await?;
-        // 409: this exact version was submitted before; versions are immutable, so reuse it.
-        if response.status() != reqwest::StatusCode::CONFLICT {
+        // 409: a version with this id exists. Versions are immutable, so reuse it only
+        // when it is exactly what the user submitted.
+        if response.status() == reqwest::StatusCode::CONFLICT {
+            let stored: PipelineVersion = read(
+                self.http
+                    .get(format!(
+                        "{}/pipeline_versions/{}",
+                        self.base,
+                        pipeline.id.as_str()
+                    ))
+                    .send()
+                    .await?,
+            )
+            .await?;
+            // `created_at` is filled at submit time, so it is not part of the content.
+            let mut submitted = pipeline.clone();
+            submitted.created_at = stored.created_at.clone();
+            if stored != submitted {
+                bail!(
+                    "pipeline version {} already exists with different content; give it a new id",
+                    pipeline.id.as_str()
+                );
+            }
+        } else {
             read::<PipelineVersion>(response).await?;
         }
+        let request = CreateRun {
+            pipeline_version_id: pipeline.id.clone(),
+        };
         let response = self
             .http
             .post(format!("{}/runs", self.base))
-            .json(&json!({"pipeline_version_id": pipeline.id}))
+            .json(&request)
             .send()
             .await?;
         read(response).await

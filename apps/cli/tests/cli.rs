@@ -82,3 +82,39 @@ async fn invalid_pipeline_reports_every_gate_a_error() {
         .unwrap_err();
     assert!(err.to_string().contains("unknown_operator"), "{err}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn resubmitting_an_id_with_different_content_is_refused() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = tempfile::tempdir().unwrap();
+    let csv = dir.path().join("d.csv");
+    std::fs::write(&csv, "x\n1\n").unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(serve_on(
+        listener,
+        ServeConfig::for_repo(&root, &dir.path().join("data")),
+    ));
+    let yaml = |format: &str| {
+        format!(
+            "id: plv_01JABCDEFGHJKMNPQRSTVWXYZ0\nnodes:\n  - {{ id: load, operator: sprisk.io.file_source@1.0.0, params: {{ path: {}, format: {format} }} }}\nedges: []\n",
+            csv.display()
+        )
+    };
+    let client = Client::new(&base);
+    client
+        .submit_and_start(&pipeline_from_yaml(&yaml("csv"), NOW).unwrap())
+        .await
+        .unwrap();
+    // Same content again is fine: versions are immutable and identical.
+    client
+        .submit_and_start(&pipeline_from_yaml(&yaml("csv"), NOW).unwrap())
+        .await
+        .unwrap();
+
+    let err = client
+        .submit_and_start(&pipeline_from_yaml(&yaml("parquet"), NOW).unwrap())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("different content"), "{err}");
+}

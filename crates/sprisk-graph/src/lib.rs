@@ -45,7 +45,12 @@ pub enum CompileError {
     ConnectedTwice(String),
     #[error("pipeline has a cycle through node {0}")]
     Cycle(String),
+    #[error("node id {0} is reserved")]
+    ReservedNode(String),
 }
+
+/// Node ids the control plane uses for its own attempts (`gate_b`: ADR-0017).
+pub const RESERVED_NODE_IDS: [&str; 1] = ["gate_b"];
 
 impl CompileError {
     /// Stable snake_case code for API problem responses.
@@ -63,6 +68,7 @@ impl CompileError {
             CompileError::Unconnected(_) => "unconnected_input",
             CompileError::ConnectedTwice(_) => "input_connected_twice",
             CompileError::Cycle(_) => "cycle",
+            CompileError::ReservedNode(_) => "reserved_node_id",
         }
     }
 }
@@ -101,6 +107,9 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
     let mut index: HashMap<&str, NodeIndex> = HashMap::new();
     for node in &pipeline.nodes {
         let id = node.id.as_str();
+        if RESERVED_NODE_IDS.contains(&id) {
+            errors.push(CompileError::ReservedNode(id.to_owned()));
+        }
         if index.contains_key(id) {
             errors.push(CompileError::DuplicateNode(id.to_owned()));
             continue;

@@ -51,14 +51,12 @@ pub enum SchedulerError {
     },
     #[error("build {what}: {reason}")]
     Contract { what: &'static str, reason: String },
-    #[error("node id {GATE_NODE} is reserved for the methodology gate")]
-    ReservedNode,
     #[error("gate output: {0}")]
     GateOutput(String),
 }
 
-/// Attempts of the methodology gate use this node id (ADR-0017).
-pub const GATE_NODE: &str = "gate_b";
+/// Attempts of the methodology gate use this node id (ADR-0017); Gate A reserves it.
+pub const GATE_NODE: &str = sprisk_graph::RESERVED_NODE_IDS[0];
 
 /// Where an attempt's inputs come from.
 #[derive(Clone, Copy)]
@@ -110,15 +108,35 @@ impl<'a, W: Workers> Scheduler<'a, W> {
 
     /// Run every step of `plan` for `run_id` until the run succeeds or a step cannot.
     /// Safe to call again after a crash: finished steps are kept, interrupted attempts time out.
+    /// On an error the run is marked failed, so it never stays running with no one driving it.
     pub async fn run(
         &mut self,
         run_id: &RunId,
         pipeline: &PipelineVersion,
         plan: &Plan,
     ) -> Result<RunStatus, SchedulerError> {
-        if plan.steps.iter().any(|s| s.node_id == GATE_NODE) {
-            return Err(SchedulerError::ReservedNode);
+        let result = self.drive(run_id, pipeline, plan).await;
+        if result.is_err() {
+            match self
+                .store
+                .set_run_status(run_id, RunStatus::Failed, &now())
+                .await
+            {
+                Ok(_) | Err(StoreError::RunFinished { .. }) => {}
+                Err(e) => {
+                    tracing::error!(run = run_id.as_str(), error = %e, "could not mark run failed")
+                }
+            }
         }
+        result
+    }
+
+    async fn drive(
+        &mut self,
+        run_id: &RunId,
+        pipeline: &PipelineVersion,
+        plan: &Plan,
+    ) -> Result<RunStatus, SchedulerError> {
         if self.store.get_run(run_id).await?.status == RunStatus::Queued {
             self.store
                 .set_run_status(run_id, RunStatus::Running, &now())
@@ -175,14 +193,18 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             std::str::from_utf8(&bytes).map_err(|e| SchedulerError::GateOutput(e.to_string()))?;
         let checks: Vec<MethodologyCheck> =
             parse(text).map_err(|e| SchedulerError::GateOutput(e.to_string()))?;
-        for check in checks.iter().filter(|c| c.verdict == Verdict::Fail) {
+        let failed: Vec<_> = checks
+            .iter()
+            .filter(|c| c.verdict == Verdict::Fail)
+            .collect();
+        for check in &failed {
             tracing::info!(
                 check = check.check.as_str(),
                 rationale = check.rationale.as_str(),
                 "methodology check failed"
             );
         }
-        Ok(checks.iter().any(|c| c.verdict == Verdict::Fail))
+        Ok(!failed.is_empty())
     }
 
     async fn finish(&self, run_id: &RunId, status: RunStatus) -> Result<RunStatus, SchedulerError> {
@@ -244,10 +266,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 Some(worker) => worker,
                 None => match self.workers.spawn().await {
                     Ok(worker) => worker,
-                    Err(e) => {
-                        self.finish(run_id, RunStatus::Failed).await?;
-                        return Err(e.into());
-                    }
+                    Err(e) => return Err(e.into()),
                 },
             };
             let attempt = self.new_attempt(run_id, step, number).await?;
@@ -562,7 +581,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             let bytes = doc.to_string();
             let path = dir.join(format!("{port}.json"));
             std::fs::write(&path, &bytes)?;
-            let hash = format!("sha256:{}", sha256_hex(bytes.as_bytes()));
+            let hash = sprisk_artifacts::content_hash(bytes.as_bytes());
             let committed = self.artifacts.commit(&path, &hash).await?;
             let artifact: sprisk_contracts::Artifact = build(
                 "artifact",
@@ -591,7 +610,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
 
     fn expiry(&self) -> Result<sprisk_contracts::Timestamp, SchedulerError> {
         let at = jiff::Timestamp::now() + self.settings.lease;
-        build("timestamp", json!(format_ts(at)))
+        build("timestamp", json!(sprisk_core::time::format(at)))
     }
 }
 
@@ -621,16 +640,4 @@ fn build<T: serde::de::DeserializeOwned>(
     })
 }
 
-fn now() -> String {
-    format_ts(jiff::Timestamp::now())
-}
-
-/// Contract timestamps are UTC, whole seconds, `Z`.
-fn format_ts(at: jiff::Timestamp) -> String {
-    at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::Digest;
-    format!("{:x}", sha2::Sha256::digest(bytes))
-}
+use sprisk_core::time::now;

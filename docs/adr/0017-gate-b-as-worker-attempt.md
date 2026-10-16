@@ -35,3 +35,7 @@ Arch doc sections: §8, §9, §11
 
 - A pipeline that selects on the test set never starts its first step; the run shows the FAIL and its citations.
 - Gate B attempts appear in run history with leases and audit events like any step.
+
+## Note: provenance of the gate's inputs
+
+The two input artifacts (pipeline, operators) are written by the scheduler, not by a worker. They record the gate attempt as `producer_attempt_id` because the contract has no "control plane" producer. Read it as "created for this attempt". If provenance views need the distinction, add a producer kind to the Artifact contract (v2).

@@ -2035,11 +2035,11 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "http-body-util",
- "jiff",
  "serde",
  "serde_json",
  "sprisk-artifacts",
  "sprisk-contracts",
+ "sprisk-core",
  "sprisk-graph",
  "sprisk-registry",
  "sprisk-scheduler",
@@ -2072,13 +2072,13 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
- "jiff",
  "reqwest",
  "serde",
  "serde_json",
  "sprisk-api",
  "sprisk-artifacts",
  "sprisk-contracts",
+ "sprisk-core",
  "sprisk-registry",
  "sprisk-scheduler",
  "sprisk-store",
@@ -2104,6 +2104,7 @@ dependencies = [
 name = "sprisk-core"
 version = "0.1.0"
 dependencies = [
+ "jiff",
  "sprisk-contracts",
  "thiserror",
 ]
@@ -2144,6 +2145,7 @@ dependencies = [
  "sha2 0.10.9",
  "sprisk-artifacts",
  "sprisk-contracts",
+ "sprisk-core",
  "sprisk-graph",
  "sprisk-registry",
  "sprisk-store",

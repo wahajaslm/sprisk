@@ -12,7 +12,8 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactId, AttemptId, CreateRun, Operator, PipelineVersion, Problem, Run, RunId, parse,
+    ArtifactId, AttemptId, CreateRun, Operator, PipelineVersion, PipelineVersionId, Problem, Run,
+    RunId, parse,
 };
 use sprisk_graph::{CompileError, compile};
 use sprisk_registry::Registry;
@@ -34,6 +35,7 @@ pub struct AppState {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/pipeline_versions", post(create_pipeline_version))
+        .route("/pipeline_versions/{id}", get(get_pipeline_version))
         .route("/runs", post(create_run))
         .route("/runs/{id}", get(get_run))
         .route("/runs/{id}/attempts", get(list_attempts))
@@ -90,7 +92,16 @@ impl IntoResponse for ApiError {
         // Validate our own error shape through the contract before sending it.
         match parse::<Problem>(&body.to_string()) {
             Ok(problem) => (status, Json(problem)).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            Err(e) => {
+                tracing::error!(error = %e, "invalid problem body");
+                let fallback = r#"{"errors":[{"code":"internal","message":"internal error"}]}"#;
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    [(header::CONTENT_TYPE, "application/json")],
+                    fallback,
+                )
+                    .into_response()
+            }
         }
     }
 }
@@ -120,6 +131,14 @@ async fn create_pipeline_version(
     Ok((StatusCode::CREATED, Json(pipeline)))
 }
 
+async fn get_pipeline_version(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Json<PipelineVersion>, ApiError> {
+    let pipeline_id: PipelineVersionId = id(&raw)?;
+    Ok(Json(state.store.get_pipeline_version(&pipeline_id).await?))
+}
+
 async fn create_run(
     State(state): State<AppState>,
     text: String,
@@ -130,9 +149,7 @@ async fn create_run(
         .get_pipeline_version(&request.pipeline_version_id)
         .await?;
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
-    let now = jiff::Timestamp::now()
-        .strftime("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
+    let now = sprisk_core::time::now();
     let run: Run = parse(
         &json!({
             "schema_version": "sprisk.run/v1",

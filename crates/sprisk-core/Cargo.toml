@@ -6,8 +6,12 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+jiff = "0.2"
 sprisk-contracts = { path = "../sprisk-contracts" }
 thiserror = "2.0.21"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+jiff = "0.2"
