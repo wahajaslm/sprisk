@@ -26,6 +26,7 @@
 | [0022](0022-operators-are-plain-functions.md) | Operators are plain Python functions; the worker does the plumbing | Accepted |
 | [0023](0023-charts-are-steps.md) | Charts are steps: Python aggregates, the browser draws | Superseded by ADR-0024 (drawing) |
 | [0024](0024-figures-from-any-python-library.md) | Steps return figures from any Python plotting library; the worker saves them, the browser shows them | Accepted |
+| [0025](0025-the-code-decides-the-tabs.md) | The code decides the tabs: one rule for every step | Accepted |
 
 ## Open questions (arch doc §17)
 
