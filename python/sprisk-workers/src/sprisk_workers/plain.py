@@ -21,7 +21,10 @@ from sprisk_workers.serve import OperatorFn
 
 # skops trusts scikit-learn estimators by default. Anything beyond them and this list fails
 # to load, so a tampered model file cannot run arbitrary code.
-TRUSTED_MODEL_TYPES = ["numpy.dtype"]
+# Tree storage is listed so forests load: a forged tree could make predict read out of bounds,
+# but model files are written only by first-party steps into the content-addressed store, and
+# every input's hash is checked against the recorded one before it is loaded (serve.py).
+TRUSTED_MODEL_TYPES = ["numpy.dtype", "sklearn.tree._tree.Tree"]
 
 
 def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
