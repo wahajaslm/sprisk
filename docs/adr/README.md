@@ -30,7 +30,7 @@
 | [0026](0026-edits-run-from-the-edited-step.md) | An edit runs from the edited step onwards; Run graph runs from the start | Accepted |
 | [0027](0027-ui-design-system-and-data-rendering.md) | UI design system and data rendering: tokens, primitives, one renderer per data kind, enforced limits | Accepted |
 | [0028](0028-a-step-can-carry-its-own-code.md) | A step in a flow can carry its own code | Accepted |
-| [0029](0029-large-figures-get-an-image-preview.md) | Large figures get an image preview, with a download link for the full figure | Proposed |
+| [0029](0029-large-figures-get-an-image-preview.md) | Large figures show a download link, not a frozen tab | Accepted |
 
 ## Open questions (arch doc §17)
 
