@@ -55,7 +55,7 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 
 ## 2A. Frontend workbench architecture (revision 1.1)
 
-**Reference:** the existing `sprisk-studio.html` is a *concept and interaction reference*, not an execution or data contract. Preserve its workflow-focused organization while replacing fixed CSS-grid panels with a general-purpose scientific workbench. The architectural model is closer to Blender/JupyterLab/VS Code than to a dashboard framework.
+**Reference:** the existing `sprisk-studio.html` is a *concept and interaction reference*, not an execution or data contract. Its cockpit (top bar with project/flow switcher first, step library, Flow canvas over the Decision/Code/Data/Logs inspector, Copilot) is the default dock layout, and its five views are Flow, Datasets, Notebooks, Experiments and Deploy (ADR-0018; screens in `docs/design/screens/`). Preserve its workflow-focused organization while replacing fixed CSS-grid panels with a general-purpose scientific workbench. The architectural model is closer to Blender/JupyterLab/VS Code than to a dashboard framework.
 
 ### Stack and selection status
 
@@ -178,7 +178,7 @@ Never force reasoning feedback loops into the execution DAG. An `Evaluate → re
 Every human, script, or agent selects from a shared registry. An operator declares:
 
 - Identity/version and entrypoint/runtime; input and output **ports** with typed schemas.
-- Data semantics: column roles, target and entity IDs, temporal meaning, fitted state, training/inference contexts.
+- Data semantics: column roles, target and entity IDs, temporal meaning, fitted state, training/inference contexts. Operators that learn from data take `train` and `test` and fit on `train` only (ADR-0018).
 - Preconditions and methodological checks; parameters/defaults/constraints.
 - Resources: CPU, GPU, memory, duration; sandbox and network permissions.
 - Purity, side effects, nondeterminism and cache eligibility.
@@ -448,6 +448,8 @@ Acceptance tests (must be automated):
 **M0 — Architecture/contract freeze:** approve entity/port schemas, language boundaries, run-state machine, worker protocol, AI privacy policy and first two methodological packs. Exit: Rust/Python/TS contract roundtrip tests.
 
 **M1 — Non-AI vertical slice:** ingest CSV/Parquet, profile, propose hand-authored pipeline, compile, execute in Python worker, emit artifacts, compare a dummy baseline and one model, create run history. Exit: two independent datasets run end-to-end.
+
+**Cockpit shell (before M2, ADR-0018):** Studio cockpit over the M1 engine: switcher, step library, Flow canvas, inspector with data, logs and checks.
 
 **M2 — AI-created pipeline:** natural-language question → structured goal with known/assumed facts → registered operators → validated graph → execution. Exit: multiple novel goals produce runnable or appropriately rejected plans without manually editing graph JSON.
 
