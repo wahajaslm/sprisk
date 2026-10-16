@@ -122,3 +122,69 @@ fn every_core_plugin_manifest_is_valid() {
     assert_eq!(registry.len(), 13);
     assert!(registry.get("sprisk.ml.linear_model@1.0.0").is_some());
 }
+
+const ID: &str = "sprisk.validation.temporal_split@1.0.0";
+
+fn pack(root: &Path, code: &str) -> String {
+    write(root, "pack/pyproject.toml", "[project]\nname = \"p\"\n");
+    write(root, "pack/operators/split/manifest.yaml", SPLIT);
+    write(root, "pack/src/p/split.py", code);
+    Registry::load_dir(root)
+        .unwrap()
+        .digest(ID)
+        .unwrap()
+        .to_owned()
+}
+
+#[test]
+fn implementation_digest_follows_the_pack_source_code() {
+    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let first = pack(a.path(), "def split(): ...");
+    assert_eq!(
+        pack(b.path(), "def split(): ..."),
+        first,
+        "same code, same digest"
+    );
+    assert!(first.starts_with("sha256:"));
+
+    assert_ne!(
+        pack(a.path(), "def split(): return 1"),
+        first,
+        "edited code, new digest"
+    );
+}
+
+#[test]
+fn implementation_digest_ignores_bytecode_caches() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = pack(dir.path(), "def split(): ...");
+    write(
+        dir.path(),
+        "pack/src/p/__pycache__/split.cpython-312.pyc",
+        "bytes",
+    );
+    let registry = Registry::load_dir(dir.path()).unwrap();
+    assert_eq!(registry.digest(ID).unwrap(), first);
+}
+
+#[test]
+fn manifest_without_a_python_pack_is_digested_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "loose/manifest.yaml", SPLIT);
+    let first = Registry::load_dir(dir.path())
+        .unwrap()
+        .digest(ID)
+        .unwrap()
+        .to_owned();
+    write(
+        dir.path(),
+        "loose/manifest.yaml",
+        &format!("{SPLIT}description: edited\n"),
+    );
+    let second = Registry::load_dir(dir.path())
+        .unwrap()
+        .digest(ID)
+        .unwrap()
+        .to_owned();
+    assert_ne!(first, second, "the manifest alone still changes the digest");
+}

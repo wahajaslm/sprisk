@@ -83,6 +83,8 @@ pub struct Plan {
 pub struct Step {
     pub node_id: String,
     pub operator: Operator,
+    /// The registry's digest of the code that runs this step (arch §9 cache key).
+    pub implementation_digest: String,
     pub params: serde_json::Map<String, serde_json::Value>,
     /// Sorted by input port name.
     pub inputs: Vec<Input>,
@@ -103,6 +105,7 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
 
     // Resolve each node to its operator and check its params.
     let mut operators: HashMap<&str, &Operator> = HashMap::new();
+    let mut digests: HashMap<&str, &str> = HashMap::new();
     let mut graph = DiGraph::<&str, ()>::new();
     let mut index: HashMap<&str, NodeIndex> = HashMap::new();
     for node in &pipeline.nodes {
@@ -115,9 +118,10 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
             continue;
         }
         index.insert(id, graph.add_node(id));
-        match registry.get(&node.operator) {
-            Some(op) => {
+        match registry.resolve(&node.operator) {
+            Some((op, digest)) => {
                 operators.insert(id, op);
+                digests.insert(id, digest);
                 errors.extend(check_params(id, op, &node.params));
             }
             None => errors.push(CompileError::UnknownOperator {
@@ -223,6 +227,7 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
             Step {
                 node_id: id.to_owned(),
                 operator: operators[id].clone(),
+                implementation_digest: digests[id].to_owned(),
                 params: nodes[id].params.clone().into(),
                 inputs,
             }
