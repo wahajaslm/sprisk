@@ -186,13 +186,28 @@ describe("flow canvas", () => {
     }
   });
 
-  it("stacks a stage's steps top to bottom, while stages still run left to right", async () => {
+  it("runs a stage's steps left to right in order, like the rest of the flow", async () => {
     const { flowPositions } = await import("../src/flow/layout.ts");
     const stage = (id: string) => (id === "model" || id === "score" ? "Model" : undefined);
     const { nodes: at } = await flowPositions(pipeline, () => ({ width: 168, height: 44 }), stage);
-    expect(at.get("model")!.x).toBe(at.get("score")!.x);
-    expect(at.get("model")!.y + 44).toBeLessThan(at.get("score")!.y);
+    expect(at.get("model")!.x + 168).toBeLessThan(at.get("score")!.x);
     expect(at.get("split")!.x + 168).toBeLessThan(at.get("model")!.x);
+  });
+
+  it("routes every connection from a step's right side to the next step's left side, with right-angle bends", async () => {
+    const { edgeId, flowPositions } = await import("../src/flow/layout.ts");
+    const stage = (id: string) => (id === "model" || id === "score" ? "Model" : undefined);
+    const { nodes: at, routes } = await flowPositions(pipeline, () => ({ width: 168, height: 44 }), stage);
+    for (const e of pipeline.edges) {
+      const route = routes.get(edgeId(e))!;
+      const [from, to] = [at.get(e.from.split(".")[0]!)!, at.get(e.to.split(".")[0]!)!];
+      expect(route[0]!.x).toBeCloseTo(from.x + 168);
+      expect(route.at(-1)!.x).toBeCloseTo(to.x);
+      for (let i = 1; i < route.length; i++) {
+        const [a, b] = [route[i - 1]!, route[i]!];
+        expect(Math.abs(a.x - b.x) < 0.01 || Math.abs(a.y - b.y) < 0.01).toBe(true);
+      }
+    }
   });
 
   it("groups steps of one stage only where they sit together in the flow", async () => {
@@ -218,13 +233,14 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
-  it("links steps of one stage top to bottom, and stages side to side", async () => {
+  it("draws each connection along its route", async () => {
     const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
     const byRef = new Map(operators.map((o) => [o.id, o]));
-    const { edges } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), new Map());
-    const edge = (from: string, to: string) => edges.find((e) => e.source === from && e.target === to)!;
-    expect(edge("load", "profile")).toMatchObject({ sourceHandle: "down", targetHandle: "top" });
-    expect(edge("load", "split")).toMatchObject({ sourceHandle: "out", targetHandle: "in" });
+    const route = [{ x: 10, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 60 }];
+    const routes = new Map([["load.data->split.data", route]]);
+    const { edges } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), new Map(), [], routes);
+    expect(edges.find((e) => e.id === "load.data->split.data")?.data).toMatchObject({ route });
+    expect(edges.find((e) => e.id === "load.data->profile.data")?.data?.route).toBeUndefined();
   });
 
   it("shows a heading with the step count above each stage", async () => {

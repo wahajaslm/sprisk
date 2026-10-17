@@ -18,77 +18,72 @@ const LAYERED = {
   "elk.layered.spacing.nodeNodeBetweenLayers": "90",
   "elk.spacing.nodeNode": "28",
   "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
+  // One layout for steps inside stages too, so every connection is routed around steps.
+  "elk.hierarchyHandling": "INCLUDE_CHILDREN",
+  "elk.edgeRouting": "ORTHOGONAL",
+  // Lines leaving one step share a trunk, and parallel lines keep apart, so they can be told apart.
+  "elk.layered.mergeEdges": "true",
+  "elk.spacing.edgeEdge": "14",
+  "elk.layered.spacing.edgeEdgeBetweenLayers": "14",
+  "elk.layered.spacing.edgeNodeBetweenLayers": "24",
 };
 
-/** Where each step sits on the canvas: stages left to right by what they read, crossings kept
- * low (ELK's layered layout). A stage's steps stack top to bottom inside its group. View state
- * only; never saved with the flow. */
+/** The canvas id of a connection, the same in the layout and on the canvas. */
+export const edgeId = (e: { from: string; to: string }) => `${e.from}->${e.to}`;
+
+/** Where each step sits and how each connection runs: stages left to right by what they read,
+ * a stage's steps together under its heading, connections in straight segments with right-angle
+ * bends that go around steps (ELK's layered layout). View state only; never saved with the flow. */
 export async function flowPositions(
   pipeline: PipelineVersion,
   sizeOf: (nodeId: string) => Size,
   groupOf: (nodeId: string) => string | undefined,
-): Promise<{ nodes: Map<string, Point>; groups: Group[] }> {
-  const links = pipeline.edges.map((e) => ({ from: stepOf(e.from), to: stepOf(e.to) }));
-
+): Promise<{ nodes: Map<string, Point>; groups: Group[]; routes: Map<string, Point[]> }> {
   const members = new Map<string, string[]>();
+  const alone: string[] = [];
   for (const n of pipeline.nodes) {
     const name = groupOf(n.id);
-    if (name !== undefined) members.set(name, [...(members.get(name) ?? []), n.id]);
+    if (name === undefined) alone.push(n.id);
+    else members.set(name, [...(members.get(name) ?? []), n.id]);
   }
-
-  // Each stage first, on its own, so its steps stack downward; it then takes part in the
-  // canvas layout as one box of that size.
-  const inner = new Map<string, ElkNode>();
-  for (const [name, ids] of members) {
-    const inside = new Set(ids);
-    inner.set(
-      name,
-      await elk.layout({
-        id: `group:${name}`,
-        layoutOptions: { ...LAYERED, "elk.direction": "DOWN", "elk.layered.spacing.nodeNodeBetweenLayers": "28", "elk.padding": "[top=0,left=0,bottom=0,right=0]" },
-        children: ids.map((id) => ({ id, ...sizeOf(id) })),
-        edges: links
-          .filter((l) => inside.has(l.from) && inside.has(l.to))
-          .map((l, i) => ({ id: `e${i}`, sources: [l.from], targets: [l.to] })),
-      }),
-    );
-  }
-
-  const box = (id: string) => {
-    const name = groupOf(id);
-    return name === undefined ? id : `group:${name}`;
-  };
-  const seen = new Set<string>();
-  const outer = await elk.layout({
+  const graph: ElkNode = {
     id: "flow",
     layoutOptions: LAYERED,
     children: [
-      ...pipeline.nodes.filter((n) => groupOf(n.id) === undefined).map((n) => ({ id: n.id, ...sizeOf(n.id) })),
-      ...[...inner].map(([name, g]) => ({ id: `group:${name}`, width: g.width ?? 0, height: (g.height ?? 0) + GROUP_HEAD })),
+      ...alone.map((id) => ({ id, ...sizeOf(id) })),
+      ...[...members].map(([name, ids]) => ({
+        id: `group:${name}`,
+        layoutOptions: { "elk.padding": `[top=${GROUP_HEAD},left=0,bottom=0,right=0]` },
+        children: ids.map((id) => ({ id, ...sizeOf(id) })),
+      })),
     ],
-    edges: links.flatMap((l, i) => {
-      const [from, to] = [box(l.from), box(l.to)];
-      const key = `${from}>${to}`;
-      if (from === to || seen.has(key)) return [];
-      seen.add(key);
-      return [{ id: `e${i}`, sources: [from], targets: [to] }];
-    }),
-  });
+    edges: pipeline.edges.map((e) => ({ id: edgeId(e), sources: [stepOf(e.from)], targets: [stepOf(e.to)] })),
+  };
+  const out = await elk.layout(graph);
 
   const nodes = new Map<string, Point>();
   const groups: Group[] = [];
-  for (const child of outer.children ?? []) {
+  // A route's points are relative to the box that holds it (the flow, or a stage).
+  const offset = new Map<string, Point>([["flow", { x: 0, y: 0 }]]);
+  for (const child of out.children ?? []) {
     const x = child.x ?? 0;
     const y = child.y ?? 0;
     if (!child.id.startsWith("group:")) {
       nodes.set(child.id, { x, y });
       continue;
     }
-    const steps = inner.get(child.id.slice("group:".length))?.children ?? [];
-    for (const n of steps) nodes.set(n.id, { x: x + (n.x ?? 0), y: y + GROUP_HEAD + (n.y ?? 0) });
+    offset.set(child.id, { x, y });
+    const steps = child.children ?? [];
+    for (const n of steps) nodes.set(n.id, { x: x + (n.x ?? 0), y: y + (n.y ?? 0) });
     groups.push({ id: child.id.slice("group:".length), count: steps.length, x, y, width: child.width ?? 0, height: child.height ?? 0 });
   }
-  return { nodes, groups };
+  const routes = new Map<string, Point[]>();
+  for (const edge of out.edges ?? []) {
+    const at = offset.get((edge as { container?: string }).container ?? "flow") ?? { x: 0, y: 0 };
+    const points = (edge.sections ?? []).flatMap((s) => [s.startPoint, ...(s.bendPoints ?? []), s.endPoint]);
+    routes.set(edge.id, points.map((p) => ({ x: p.x + at.x, y: p.y + at.y })));
+  }
+  return { nodes, groups, routes };
 }
 
 /** Steps at the layout's places, except steps the person dragged, which stay where they were
@@ -97,3 +92,6 @@ export function keepDragged<T extends { id: string; position: Point }>(computed:
   const at = new Map(shown.map((n) => [n.id, n.position]));
   return computed.map((n) => ({ ...n, position: dragged.has(n.id) ? (at.get(n.id) ?? n.position) : n.position }));
 }
+
+/** An SVG path along a route: straight segments, square corners like the rest of Studio. */
+export const routePath = (route: Point[]) => route.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
