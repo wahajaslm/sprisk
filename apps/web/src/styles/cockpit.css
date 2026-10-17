@@ -196,11 +196,6 @@ p { margin: 0; }
 /* Kind tiles: tint per Studio KIND table */
 .icon-tile { width: 32px; height: 32px; border-radius: 0; flex-shrink: 0; display: grid; place-items: center; }
 .icon-tile.small { width: 22px; height: 22px; border-radius: 0; }
-.kind-source { color: #a3a3a3; background: rgba(200, 200, 200, 0.13); }
-.kind-recipe { color: var(--ink); background: rgba(255, 255, 255, 0.12); }
-.kind-view { color: var(--ink); background: rgba(255, 255, 255, 0.08); }
-.kind-decision { color: var(--white); background: rgba(255, 255, 255, 0.13); }
-.kind-model { color: #e0e0e0; background: rgba(236, 236, 236, 0.12); }
 .kind-mark { width: 7px; height: 7px; border-radius: 0; border: 1.4px solid currentColor; background: transparent; }
 .kind-mark.kind-decision { transform: rotate(45deg); }
 
@@ -210,7 +205,6 @@ p { margin: 0; }
 .flow .react-flow__handle { opacity: 0; width: 1px; height: 1px; min-width: 0; min-height: 0; border: 0; }
 .stage-label { font-size: var(--text-sm); font-weight: 400; color: var(--muted); white-space: nowrap; }
 .stage-count { font: var(--text-xs) var(--mono); color: var(--quiet); white-space: nowrap; }
-.icon-tile.ring { box-shadow: 0 0 0 1px currentColor; }
 .node-title { font-size: var(--text-md); font-weight: 400; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tone-done { color: var(--quiet); }
 .tone-done .dot { color: #e0e0e0; }
@@ -606,8 +600,13 @@ p { margin: 0; }
 .nb-insert:hover::before { border-top-color: var(--line-strong); }
 .nb-insert button { position: relative; height: 20px; padding: 0 var(--space-2); border: 1px solid var(--line-strong); background: var(--canvas); color: var(--soft); font-size: var(--text-xs); opacity: 0; }
 .nb-insert:hover button, .nb-insert button:focus-visible { opacity: 1; }
-.kind-source { color: var(--kind-source); }
-.kind-recipe { color: var(--kind-recipe); }
-.kind-view { color: var(--kind-view); }
-.kind-decision { color: var(--kind-decision); }
-.kind-model { color: var(--kind-model); }
+.kind-icon.kind-source { color: var(--kind-source); }
+.kind-icon.kind-recipe { color: var(--kind-recipe); }
+.kind-icon.kind-view { color: var(--kind-view); }
+.kind-icon.kind-decision { color: var(--kind-decision); }
+.kind-icon.kind-model { color: var(--kind-model); }
+.kind-mark.kind-source { color: var(--kind-source); }
+.kind-mark.kind-recipe { color: var(--kind-recipe); }
+.kind-mark.kind-view { color: var(--kind-view); }
+.kind-mark.kind-decision { color: var(--kind-decision); }
+.kind-mark.kind-model { color: var(--kind-model); }

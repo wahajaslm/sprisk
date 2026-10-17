@@ -104,7 +104,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
     >
       <Handle id="in" type="target" position={Position.Left} isConnectable={false} />
       <span className="card-head">
-        <span className={`icon-tile small kind-${data.kind}${data.selected ? " ring" : ""}`}>
+        <span className="icon-tile small">
           <KindIcon kind={data.kind} size={13} />
         </span>
         <span className="card-title">{data.id}</span>

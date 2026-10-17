@@ -15,8 +15,13 @@ describe("step kind icons", () => {
       const { container } = render(<KindIcon kind={kind} />);
       expect(container.querySelector("svg")).toHaveClass(`kind-${kind}`);
       expect(css).toMatch(new RegExp(`--kind-${kind}: #[0-9a-f]{6};`));
-      expect(css).toContain(`.kind-${kind} { color: var(--kind-${kind}); }`);
+      expect(css).toContain(`.kind-icon.kind-${kind} { color: var(--kind-${kind}); }`);
     }
+  });
+
+  it("an icon has no square behind it: only its outline is coloured", () => {
+    expect(css).not.toMatch(/\.kind-(source|recipe|view|decision|model)[^{]*\{[^}]*background/);
+    expect(css).not.toMatch(/\.icon-tile\.ring\s*\{/);
   });
 
   it("no kind is drawn in the alert red, which means a problem", () => {
