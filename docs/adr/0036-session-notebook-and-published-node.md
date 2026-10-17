@@ -11,7 +11,7 @@ Arch doc sections: §2A (Code and notebooks, Notebook security), §4 (domain mod
 - On 2026-10-18 the user chose to do this before finishing M2.
 
 ## Decision
-- **A notebook cell is not a node.** Exploring and publishing are two modes:
+- **Running a cell does not change the flow.** Cells become a node only when the person selects them and creates one. Exploring and publishing are two modes:
   - **Session notebook:** cells share one live Python kernel. Any value can live in it. Cells run in the order the person chooses. `[n]` is the execution count.
   - **Published node:** a `sprisk.code.python@2.0.0` step in a `PipelineVersion`. It runs isolated in a worker, gets only its declared inputs and writes typed artifacts. Nothing about it changes.
 - **A notebook is its own saved document.** New entities `Notebook` / `NotebookVersion`: ordered code and Markdown cells, each with a stable cell id. Each save is a new immutable version (rule 5). Outputs are not part of it.
