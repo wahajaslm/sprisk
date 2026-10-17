@@ -541,6 +541,7 @@ p { margin: 0; }
 .view-controls label { display: flex; align-items: center; gap: var(--space-2); }
 .view-controls select { height: 26px; max-width: 220px; border: 1px solid var(--line-strong); background: var(--canvas); color: var(--ink); font: var(--text-sm) var(--sans); }
 .plotly-figure { width: 100%; min-height: 360px; }
+.vega-figure { width: 100%; }
 .svg-figure { width: 100%; height: auto; background: var(--white); }
 
 /* ── Flow panel: the flow as a canvas or as notebook cells (ADR-0033) ── */

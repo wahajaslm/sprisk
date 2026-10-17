@@ -755,13 +755,15 @@ describe("code step failures", () => {
       items: [
         { kind: "figure", figure: { library: "matplotlib", format: "svg", title: "Body mass", content: "<svg xmlns='http://www.w3.org/2000/svg'></svg>" } },
         { kind: "figure", figure: { library: "plotly", format: "plotly_json", title: "counts", content: '{"data": [], "layout": {}}' } },
+        { kind: "figure", figure: { library: "altair", format: "vega_lite_json", title: "bars", content: '{"mark": "bar"}' } },
       ],
     };
     await showCode(JSON.stringify(display));
-    await userEvent.click(await screen.findByRole("tab", { name: /Visualizations 2/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: /Visualizations 3/ }));
     const shown = await screen.findByRole("region", { name: "Visualizations" });
     expect(within(shown).getByRole("img", { name: "Body mass" })).toHaveAttribute("src", expect.stringMatching(/^data:image\/svg\+xml/));
     expect(await within(shown).findByRole("img", { name: "counts" })).toBeInTheDocument();
+    expect(await within(shown).findByRole("img", { name: "bars" })).toBeInTheDocument();
   });
 
   it("labels each plot with the code line that showed it", async () => {

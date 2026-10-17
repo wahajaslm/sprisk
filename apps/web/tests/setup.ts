@@ -33,6 +33,11 @@ vi.mock("../src/views/PlotlyFigure.tsx", () => ({
   default: ({ label }: { label: string }) => createElement("div", { role: "img", "aria-label": label }),
 }));
 
+// Vega draws with a real browser's layout too; the same stand-in.
+vi.mock("../src/views/VegaFigure.tsx", () => ({
+  default: ({ label }: { label: string }) => createElement("div", { role: "img", "aria-label": label }),
+}));
+
 vi.mock("../src/views/MonacoCode.tsx", () => ({
   default: ({ value, label, onChange, onRun, readOnly }: CodeInputProps) =>
     createElement("textarea", {

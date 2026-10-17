@@ -7,6 +7,7 @@ import { LayoutSwitch } from "./VisualsTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
+const VegaFigure = lazy(() => import("../VegaFigure.tsx"));
 
 /** The figures a step's code drew, on each of its `figure` ports (ADR-0024). Only code
  * decides what is shown here (ADR-0032). */
@@ -92,6 +93,10 @@ export function FigureView({ figure, index }: { figure: Figure; index: number })
         </Suspense>
       );
     case "vega_lite_json":
-      return <p className="muted">{label}: an Altair chart. Drawing Altair charts comes next.</p>;
+      return (
+        <Suspense fallback={<Loading text="Loading figure…" />}>
+          <VegaFigure json={figure.content} label={label} />
+        </Suspense>
+      );
   }
 }
