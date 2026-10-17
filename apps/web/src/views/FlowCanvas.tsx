@@ -7,7 +7,7 @@ import {
   BaseEdge,
   type Edge,
   type EdgeProps,
-  getSmoothStepPath,
+  getBezierPath,
   Handle,
   type Node,
   type NodeProps,
@@ -29,7 +29,7 @@ import { GATE_NODE, hasOutputs, latestByNode, statusOf } from "../flow/latest.ts
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
-import { edgeId, flowPositions, GROUP_HEAD, type Group, keepDragged, type Point, routePath } from "../flow/layout.ts";
+import { edgeId, flowPositions, GROUP_HEAD, type Group, keepDragged, type Point } from "../flow/layout.ts";
 import { kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
@@ -79,8 +79,7 @@ function StageHead({ id, data }: NodeProps<Node<StageData>>) {
 }
 
 /** An edge into or out of the selected step is drawn brighter. */
-/** `route`: the path the layout chose. Absent once a step at either end was dragged. */
-type FlowEdgeData = { active: boolean; route?: Point[] };
+type FlowEdgeData = { active: boolean };
 
 function StepNode(props: NodeProps<Node<StepData>>) {
   return props.data.level === "compact" ? <CompactNode {...props} /> : <CardNode {...props} />;
@@ -192,9 +191,7 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
 }
 
 function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<Edge<FlowEdgeData>>) {
-  // Along the layout's route, around other steps; straight lines with right angles otherwise.
-  const path =
-    data?.route && data.route.length > 1 ? routePath(data.route) : getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 0 })[0];
+  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   return <BaseEdge id={id} path={path} className={`flow-edge${data?.active ? " active" : ""}`} />;
 }
 
@@ -221,7 +218,6 @@ export function flowGraph(
   concerns: Map<string, number>,
   at: Map<string, Point>,
   groups: Group[] = [],
-  routes: Map<string, Point[]> = new Map(),
 ): { nodes: Node[]; edges: Edge[] } {
   const selectedGroup = selectedId ? stageGroups(pipeline, operators).get(selectedId) : undefined;
   const heads: Node[] = groups.map((g) => ({
@@ -278,7 +274,6 @@ export function flowGraph(
   const edges: Edge[] = pipeline.edges.map((e) => {
     const source = stepOf(e.from);
     const target = stepOf(e.to);
-    const route = routes.get(edgeId(e));
     return {
       id: edgeId(e),
       type: "flow",
@@ -286,7 +281,7 @@ export function flowGraph(
       target,
       sourceHandle: "out",
       targetHandle: "in",
-      data: { active: selectedId !== undefined && (source === selectedId || target === selectedId), ...(route ? { route } : {}) },
+      data: { active: selectedId !== undefined && (source === selectedId || target === selectedId) },
     };
   });
   return { nodes, edges };
@@ -305,7 +300,6 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
     pipeline: PipelineVersion;
     at?: Map<string, Point>;
     groups?: Group[];
-    routes?: Map<string, Point[]>;
     error?: string;
   }>();
   useEffect(() => {
@@ -321,7 +315,7 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
       },
       (id) => groups.get(id),
     ).then(
-      ({ nodes: at, groups, routes }) => live && setResult({ key, pipeline, at, groups, routes }),
+      ({ nodes: at, groups }) => live && setResult({ key, pipeline, at, groups }),
       (e: unknown) => live && setResult({ key, pipeline, error: e instanceof Error ? e.message : String(e) }),
     );
     return () => {
@@ -357,7 +351,7 @@ export function FlowCanvas() {
   const latest = latestByNode(attempts.data ?? []);
   if (positions?.error) return <p role="alert" className="error pad">Could not lay out the flow: {positions.error}</p>;
   if (!positions?.at) return <Loading text="Laying out the flow…" pad />;
-  const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups, positions.routes);
+  const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups);
   return (
     <div className="flow" aria-label="Flow canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
@@ -385,11 +379,10 @@ function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] 
     dragged.current.clear();
     setNodes(computed.nodes);
   };
-  const edges = withoutStaleRoutes(computed, nodes);
   return (
     <ReactFlow
       nodes={nodes}
-      edges={edges}
+      edges={computed.edges}
       onNodesChange={onNodesChange}
       onNodeDragStop={(_, node) => dragged.current.add(node.id)}
       nodeTypes={nodeTypes}
@@ -412,22 +405,6 @@ function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] 
       </Panel>
     </ReactFlow>
   );
-}
-
-/** A step moved off its laid-out place (dragged, or its stage dragged) makes the routes of its
- * connections stale: they are drawn as simple right angles until Tidy. */
-function withoutStaleRoutes(computed: { nodes: Node[]; edges: Edge[] }, shown: Node[]): Edge[] {
-  const placed = new Map(computed.nodes.map((n) => [n.id, n.position]));
-  const moved = new Set(
-    shown.filter((n) => placed.get(n.id)?.x !== n.position.x || placed.get(n.id)?.y !== n.position.y).map((n) => n.id),
-  );
-  for (const n of shown) if (n.parentId && moved.has(n.parentId)) moved.add(n.id);
-  if (moved.size === 0) return computed.edges;
-  return computed.edges.map((e) => {
-    if (!moved.has(e.source) && !moved.has(e.target)) return e;
-    const { route: _stale, ...data } = (e.data ?? {}) as FlowEdgeData;
-    return { ...e, data };
-  });
 }
 
 function ZoomControl({ tidy }: { tidy: () => void }) {

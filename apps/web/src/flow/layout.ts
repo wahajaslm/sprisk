@@ -18,10 +18,10 @@ const LAYERED = {
   "elk.layered.spacing.nodeNodeBetweenLayers": "90",
   "elk.spacing.nodeNode": "28",
   "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
-  // One layout for steps inside stages too, so every connection is routed around steps.
+  // One layout for steps inside stages too, placed as if each connection went around steps.
   "elk.hierarchyHandling": "INCLUDE_CHILDREN",
   "elk.edgeRouting": "ORTHOGONAL",
-  // Lines leaving one step share a trunk, and parallel lines keep apart, so they can be told apart.
+  // Leave room between steps for their connections.
   "elk.layered.mergeEdges": "true",
   "elk.spacing.edgeEdge": "14",
   "elk.layered.spacing.edgeEdgeBetweenLayers": "14",
@@ -31,14 +31,14 @@ const LAYERED = {
 /** The canvas id of a connection, the same in the layout and on the canvas. */
 export const edgeId = (e: { from: string; to: string }) => `${e.from}->${e.to}`;
 
-/** Where each step sits and how each connection runs: stages left to right by what they read,
- * a stage's steps together under its heading, connections in straight segments with right-angle
- * bends that go around steps (ELK's layered layout). View state only; never saved with the flow. */
+/** Where each step sits: stages left to right by what they read, a stage's steps together under
+ * its heading, rows kept straight and crossings low (ELK's layered layout, which places steps as
+ * if routing their connections). View state only; never saved with the flow. */
 export async function flowPositions(
   pipeline: PipelineVersion,
   sizeOf: (nodeId: string) => Size,
   groupOf: (nodeId: string) => string | undefined,
-): Promise<{ nodes: Map<string, Point>; groups: Group[]; routes: Map<string, Point[]> }> {
+): Promise<{ nodes: Map<string, Point>; groups: Group[] }> {
   const members = new Map<string, string[]>();
   const alone: string[] = [];
   for (const n of pipeline.nodes) {
@@ -53,7 +53,8 @@ export async function flowPositions(
       ...alone.map((id) => ({ id, ...sizeOf(id) })),
       ...[...members].map(([name, ids]) => ({
         id: `group:${name}`,
-        layoutOptions: { "elk.padding": `[top=${GROUP_HEAD},left=0,bottom=0,right=0]` },
+        // Room between a stage's steps, so the curve joining them is a gentle bend, not a hook.
+        layoutOptions: { "elk.padding": `[top=${GROUP_HEAD},left=0,bottom=0,right=0]`, "elk.layered.spacing.nodeNodeBetweenLayers": "64" },
         children: ids.map((id) => ({ id, ...sizeOf(id) })),
       })),
     ],
@@ -63,8 +64,6 @@ export async function flowPositions(
 
   const nodes = new Map<string, Point>();
   const groups: Group[] = [];
-  // A route's points are relative to the box that holds it (the flow, or a stage).
-  const offset = new Map<string, Point>([["flow", { x: 0, y: 0 }]]);
   for (const child of out.children ?? []) {
     const x = child.x ?? 0;
     const y = child.y ?? 0;
@@ -72,18 +71,11 @@ export async function flowPositions(
       nodes.set(child.id, { x, y });
       continue;
     }
-    offset.set(child.id, { x, y });
     const steps = child.children ?? [];
     for (const n of steps) nodes.set(n.id, { x: x + (n.x ?? 0), y: y + (n.y ?? 0) });
     groups.push({ id: child.id.slice("group:".length), count: steps.length, x, y, width: child.width ?? 0, height: child.height ?? 0 });
   }
-  const routes = new Map<string, Point[]>();
-  for (const edge of out.edges ?? []) {
-    const at = offset.get((edge as { container?: string }).container ?? "flow") ?? { x: 0, y: 0 };
-    const points = (edge.sections ?? []).flatMap((s) => [s.startPoint, ...(s.bendPoints ?? []), s.endPoint]);
-    routes.set(edge.id, points.map((p) => ({ x: p.x + at.x, y: p.y + at.y })));
-  }
-  return { nodes, groups, routes };
+  return { nodes, groups };
 }
 
 /** Steps at the layout's places, except steps the person dragged, which stay where they were
@@ -92,6 +84,3 @@ export function keepDragged<T extends { id: string; position: Point }>(computed:
   const at = new Map(shown.map((n) => [n.id, n.position]));
   return computed.map((n) => ({ ...n, position: dragged.has(n.id) ? (at.get(n.id) ?? n.position) : n.position }));
 }
-
-/** An SVG path along a route: straight segments, square corners like the rest of Studio. */
-export const routePath = (route: Point[]) => route.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");

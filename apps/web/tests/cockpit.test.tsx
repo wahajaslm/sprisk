@@ -194,21 +194,6 @@ describe("flow canvas", () => {
     expect(at.get("split")!.x + 168).toBeLessThan(at.get("model")!.x);
   });
 
-  it("routes every connection from a step's right side to the next step's left side, with right-angle bends", async () => {
-    const { edgeId, flowPositions } = await import("../src/flow/layout.ts");
-    const stage = (id: string) => (id === "model" || id === "score" ? "Model" : undefined);
-    const { nodes: at, routes } = await flowPositions(pipeline, () => ({ width: 168, height: 44 }), stage);
-    for (const e of pipeline.edges) {
-      const route = routes.get(edgeId(e))!;
-      const [from, to] = [at.get(e.from.split(".")[0]!)!, at.get(e.to.split(".")[0]!)!];
-      expect(route[0]!.x).toBeCloseTo(from.x + 168);
-      expect(route.at(-1)!.x).toBeCloseTo(to.x);
-      for (let i = 1; i < route.length; i++) {
-        const [a, b] = [route[i - 1]!, route[i]!];
-        expect(Math.abs(a.x - b.x) < 0.01 || Math.abs(a.y - b.y) < 0.01).toBe(true);
-      }
-    }
-  });
 
   it("groups steps of one stage only where they sit together in the flow", async () => {
     const { stageGroups } = await import("../src/flow/stages.ts");
@@ -233,15 +218,6 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
-  it("draws each connection along its route", async () => {
-    const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
-    const byRef = new Map(operators.map((o) => [o.id, o]));
-    const route = [{ x: 10, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 60 }];
-    const routes = new Map([["load.data->split.data", route]]);
-    const { edges } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), new Map(), [], routes);
-    expect(edges.find((e) => e.id === "load.data->split.data")?.data).toMatchObject({ route });
-    expect(edges.find((e) => e.id === "load.data->profile.data")?.data?.route).toBeUndefined();
-  });
 
   it("shows a heading with the step count above each stage", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
