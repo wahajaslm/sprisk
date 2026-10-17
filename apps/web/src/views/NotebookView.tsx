@@ -60,7 +60,10 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
   // Cell editors keep their own text (CodeInput fit). Adding, deleting or discarding cells
   // moves text between positions, so those remount every editor; typing does not.
   const [generation, setGeneration] = useState(0);
-  const steps = draft ?? notebookSteps(pipeline, operators);
+  const saved = notebookSteps(pipeline, operators);
+  const steps = draft ?? saved;
+  // Adding a cell and deleting it again leaves nothing to save.
+  const edited = draft !== undefined && JSON.stringify(draft) !== JSON.stringify(saved);
   const rows: Row[] = steps.flatMap((step, i) =>
     (step.kind === "cells" ? step.cells : [""]).map((_, j) => ({ at: { step: i, cell: j }, step, n: cellNumber(steps, { step: i, cell: j }) + 1 })),
   );
@@ -93,7 +96,7 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
     void cells.save(next, cellNumber(next, at));
   };
   const runAll = () => {
-    if (draft) return run(draft, { step: 0, cell: 0 });
+    if (edited) return run(steps, { step: 0, cell: 0 });
     startRun.mutate(pipeline.id, { onSuccess: (r) => showRun(pipeline.id, r.id) });
   };
 
@@ -152,7 +155,7 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
         </button>
         <Download pipeline={pipeline} operators={operators} />
         <span className="spacer" />
-        {draft && (
+        {edited && (
           <button type="button" className="nb-action" onClick={() => reshape(undefined)}>
             Discard edits
           </button>

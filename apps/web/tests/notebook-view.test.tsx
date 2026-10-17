@@ -137,6 +137,7 @@ describe("the notebook view of a flow (ADR-0035)", () => {
     act(() => cellOf(3).focus());
     await userEvent.keyboard("dd");
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Cell 3" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Discard edits" })).not.toBeInTheDocument();
     act(() => cellOf(2).focus());
     await userEvent.keyboard("{ArrowUp}");
     expect(cellOf(1)).toHaveFocus();
