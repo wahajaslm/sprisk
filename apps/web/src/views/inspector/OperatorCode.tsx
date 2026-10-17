@@ -12,7 +12,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 const ignore = () => undefined;
 
 /** Why a step may not carry its own code, mirroring the compiler (ADR-0028); undefined: it may. */
-function notEditable(operator: Operator): string | undefined {
+export function notEditable(operator: Operator): string | undefined {
   const properties = (operator.params_schema.properties ?? {}) as Record<string, Record<string, unknown>>;
   if (Object.values(properties).some((p) => p["x-sprisk-local-path"] === true)) {
     return "This step reads files, so its code stays the checked built-in one.";

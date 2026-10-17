@@ -15,7 +15,8 @@ import { useSaveCells } from "./useSaveCells.ts";
  * from its new code, as in the notebook view (ADR-0033). */
 export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVersion; nodeId: string; source: string }) {
   const [draft, setDraft] = useState(source);
-  const { saveAndRun, runSource } = useRunSource(pipeline, nodeId);
+  const saveAndRun = useSaveAndRun(useViewSelection().runId);
+  const showRun = useSelection((s) => s.showRun);
   const operators = useOperators();
   const byRef = new Map((operators.data ?? []).map((op) => [op.id, op]));
   const cells = useSaveCells(pipeline, byRef);
@@ -29,13 +30,19 @@ export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVer
       void cells.save(withSource(steps, nodeId, source), cellNumber(steps, { step: steps.findIndex((s) => s.nodeId === nodeId), cell: 0 }));
       return;
     }
-    runSource(source);
+    const version = setCodeSource(pipeline, nodeId, source);
+    saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
   };
   const problem = cells.problem ?? operators.error?.message ?? (saveAndRun.isError ? saveAndRun.error.message : undefined);
 
+  const overrides = Object.entries((pipeline.nodes.find((n) => n.id === nodeId)?.params.parameters ?? {}) as Record<string, unknown>);
   return (
     <div className="code-editor">
-      <Overrides pipeline={pipeline} nodeId={nodeId} />
+      {overrides.length > 0 && (
+        <p className="overrides">
+          Runs with {overrides.map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join(", ")} (set in Inputs). The code below is unchanged.
+        </p>
+      )}
       {/* Like VS Code's editor title bar: what this is on the left, Run on the right. */}
       <div className="code-actions">
         <span className="muted">Python · Shift+Enter runs · each run is saved as a new version</span>
@@ -53,27 +60,5 @@ export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVer
       ))}
       <CodeInput label={`Code for ${nodeId}`} value={draft} onChange={setDraft} onRun={run} />
     </div>
-  );
-}
-
-/** Save a v1 code step with new source as a new version, run it, and show it (ADR-0020). */
-export function useRunSource(pipeline: PipelineVersion, nodeId: string) {
-  const saveAndRun = useSaveAndRun(useViewSelection().runId);
-  const showRun = useSelection((s) => s.showRun);
-  const runSource = (source: string) => {
-    const version = setCodeSource(pipeline, nodeId, source);
-    saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
-  };
-  return { saveAndRun, runSource };
-}
-
-/** Exposed settings replace literals in a copy of the code; say so above the code. */
-export function Overrides({ pipeline, nodeId }: { pipeline: PipelineVersion; nodeId: string }) {
-  const overrides = Object.entries((pipeline.nodes.find((n) => n.id === nodeId)?.params.parameters ?? {}) as Record<string, unknown>);
-  if (overrides.length === 0) return null;
-  return (
-    <p className="overrides">
-      Runs with {overrides.map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join(", ")} (set in Inputs). The code below is unchanged.
-    </p>
   );
 }

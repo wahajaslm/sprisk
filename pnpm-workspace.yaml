@@ -1,5 +1,12 @@
 packages:
   - contracts/ts
   - apps/web
+allowBuilds:
+  '@fortawesome/fontawesome-free': false
 minimumReleaseAgeExclude:
   - jsdom@30.1.3
+# One React for the app and JupyterLab's widgets (ADR-0034): JupyterLab asks for React 18, and
+# a react-dom 18 next to React 19 crashes.
+overrides:
+  react: 19.3.1
+  react-dom: 19.3.1

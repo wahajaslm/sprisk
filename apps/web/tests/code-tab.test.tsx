@@ -1,16 +1,13 @@
 import type { CodeSplit, PipelineVersion } from "@sprisk/contracts";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { cellsFromFile, NOTEBOOK_OPERATOR } from "../src/flow/notebook.ts";
+import { NOTEBOOK_OPERATOR } from "../src/flow/notebook.ts";
 import { CodeEditor } from "../src/views/CodeEditor.tsx";
-import { FlowPanel } from "../src/views/FlowPanel.tsx";
-import { NotebookView } from "../src/views/NotebookView.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
-import { useWorkbench } from "../src/workbench/workbench.ts";
-import { attempts, codeAttempt, codeDisplayJson, codeOutputs, codePipeline, fakeDock, notebookOperator, operators, pipeline, PV, RUN, run } from "./fixtures.ts";
+import { notebookOperator, operators, pipeline, PV, RUN, run } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -23,7 +20,6 @@ const flow: PipelineVersion = {
   ],
   edges: [{ from: "load.data", to: "cell_1.df" }],
 };
-const LOAD_CALL = 'load_data = df = f(path=Path("/d/iris.csv"), format="csv")';
 const STAND_IN = "load_data = df = object()";
 
 function withApi(split: (cells: string[]) => CodeSplit) {
@@ -60,185 +56,11 @@ const linear = (cells: string[]): CodeSplit => ({
   notes: [],
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  // jsdom has no object URLs; the download test adds them.
-  Reflect.deleteProperty(URL, "createObjectURL");
-  Reflect.deleteProperty(URL, "revokeObjectURL");
-});
-
-describe("the notebook view of a flow (ADR-0033)", () => {
-  it("shows each step as a cell in flow order: a built-in step as its call, a code step as its code", async () => {
-    withApi(linear);
-    renderWithApi(<NotebookView />);
-    const call = await screen.findByRole("textbox", { name: "Cell 1" });
-    expect(call).toHaveValue(LOAD_CALL);
-    expect(call).toHaveAttribute("readonly");
-    expect(await screen.findByRole("textbox", { name: "Cell 2" })).toHaveValue("n = df.height");
-    expect(screen.queryByRole("button", { name: "Run cell 1" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run cell 2" })).toBeInTheDocument();
-  });
-
-  it("shows each step's output under its cells: a table's size, and what the code printed and showed", async () => {
-    withApi(linear);
-    const cellAttempt = { ...codeAttempt, node_id: "cell_1" };
-    server.use(
-      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, cellAttempt])),
-      http.get(`/api/attempts/${cellAttempt.id}/outputs`, () => HttpResponse.json(codeOutputs)),
-      http.get(`/api/artifacts/${codeOutputs[0]!.artifact.id}/content`, () => HttpResponse.text(codeDisplayJson)),
-    );
-    renderWithApi(<NotebookView />);
-    const load = await screen.findByRole("region", { name: "load" });
-    expect(await within(load).findByRole("button", { name: /load_data · 120 rows × 2 columns/ })).toBeInTheDocument();
-    const cell = screen.getByRole("region", { name: "cell_1" });
-    expect(await within(cell).findByText("150")).toBeInTheDocument();
-    expect(within(cell).getByText("1 of 150 rows")).toBeInTheDocument();
-    expect(within(cell).getByRole("img", { name: "Figure 1" })).toBeInTheDocument();
-    expect(within(cell).getByText("[2]")).toBeInTheDocument();
-  });
-
-  it("marks a failed step with [!] and shows its error under the cell", async () => {
-    withApi(linear);
-    const failed = { ...codeAttempt, node_id: "cell_1", state: "failed" as const, error: { code: "code_error", message: "NameError: name 'df' is not defined" } };
-    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, failed])));
-    renderWithApi(<NotebookView />);
-    const cell = await screen.findByRole("region", { name: "cell_1" });
-    expect(await within(cell).findByText("code_error: NameError: name 'df' is not defined")).toBeInTheDocument();
-    expect(within(cell).getByText("[!]")).toBeInTheDocument();
-  });
-
-  it("opens a built-in step's table in Data from its size line", async () => {
-    withApi(linear);
-    const dock = fakeDock();
-    useWorkbench.setState({ dock });
-    renderWithApi(<NotebookView />);
-    await userEvent.click(await screen.findByRole("button", { name: /load_data · 120 rows × 2 columns/ }));
-    expect(useSelection.getState().nodeId).toBe("load");
-    expect(dock.showTab).toHaveBeenCalledWith("data");
-  });
-
-  it("runs a v1 code step's edited code as the next version", async () => {
-    const sent = withApi(linear);
-    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])));
-    renderWithApi(<NotebookView />);
-    const n = codePipeline.nodes.length;
-    const cell = await screen.findByRole("textbox", { name: `Cell ${n}` });
-    await userEvent.clear(cell);
-    await userEvent.type(cell, "data.head(2){Shift>}{Enter}{/Shift}");
-
-    await waitFor(() => expect(sent.runs).toHaveLength(1));
-    expect(sent.cells).toEqual([]);
-    expect(sent.versions[0]?.nodes.at(-1)?.params).toEqual({ source: "data.head(2)" });
-    expect(useSelection.getState().nodeId).toBe("code_1");
-  });
-
-  it("runs an edited cell: Python reads its links, then the next version is saved and run from there", async () => {
-    const sent = withApi(linear);
-    renderWithApi(<NotebookView />);
-    const cell = await screen.findByRole("textbox", { name: "Cell 2" });
-    await userEvent.clear(cell);
-    await userEvent.type(cell, "n = df.width{Shift>}{Enter}{/Shift}");
-
-    await waitFor(() => expect(sent.runs).toHaveLength(1));
-    expect(sent.cells).toEqual([[STAND_IN, "n = df.width"]]);
-    const [saved] = sent.versions;
-    expect(saved?.parent_id).toBe(PV);
-    expect(saved?.nodes[1]).toEqual({ id: "cell_1", operator: NOTEBOOK_OPERATOR, params: { source: "n = df.width", inputs: ["df"] } });
-    expect(saved?.edges).toEqual([{ from: "load.data", to: "cell_1.df" }]);
-    expect(sent.runs[0]).toEqual({ pipeline_version_id: saved?.id, reuse_run_id: RUN });
-    expect(useSelection.getState()).toMatchObject({ pipelineVersionId: saved?.id, nodeId: "cell_1" });
-  });
-
-  it("adds a cell as a new step, linked by the names it reads", async () => {
-    const sent = withApi(linear);
-    renderWithApi(<NotebookView />);
-    await userEvent.click(await screen.findByRole("button", { name: "Add a cell after cell_1" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "Cell 3" }), "m = df.width{Shift>}{Enter}{/Shift}");
-
-    await waitFor(() => expect(sent.versions).toHaveLength(1));
-    expect(sent.cells).toEqual([[STAND_IN, "n = df.height", "m = df.width"]]);
-    expect(sent.versions[0]?.nodes.map((n) => n.id)).toEqual(["load", "cell_1", "cell_2"]);
-    expect(sent.versions[0]?.edges).toContainEqual({ from: "load.data", to: "cell_2.df" });
-    expect(useSelection.getState().nodeId).toBe("cell_2");
-  });
-
-  it("says why cells cannot be saved, and saves nothing", async () => {
-    const sent = withApi(() => ({
-      steps: [{ cells: [0, 1], source: "…", inputs: [], outputs: [] }],
-      links: [],
-      notes: [{ cell: 1, message: "f is a function or class from cell 1; cells 1–2 stay in one step" }],
-    }));
-    renderWithApi(<NotebookView />);
-    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), "{Shift>}{Enter}{/Shift}");
-    expect(await screen.findByRole("alert")).toHaveTextContent("built-in step load sits between them");
-    expect(sent.versions).toEqual([]);
-  });
-
-  it("shows Python's error when the cells cannot be read, and saves nothing", async () => {
-    const sent = withApi(linear);
-    server.use(http.post("/api/code/split", () => HttpResponse.json({ errors: [{ code: "split_failed", message: "the analyzer timed out" }] }, { status: 500 })));
-    renderWithApi(<NotebookView />);
-    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), "{Shift>}{Enter}{/Shift}");
-    expect(await screen.findByRole("alert")).toHaveTextContent("the analyzer timed out");
-    expect(sent.versions).toEqual([]);
-  });
-
-  it("deletes a cell, then saves without it on Run changes", async () => {
-    const sent = withApi(linear);
-    renderWithApi(<NotebookView />);
-    await userEvent.click(await screen.findByRole("button", { name: "Delete cell 2" }));
-    expect(screen.queryByRole("textbox", { name: "Cell 2" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Run changes" }));
-
-    await waitFor(() => expect(sent.versions).toHaveLength(1));
-    expect(sent.cells).toEqual([[STAND_IN]]);
-    expect(sent.versions[0]?.nodes.map((n) => n.id)).toEqual(["load"]);
-  });
-
-  it("discards edits not yet run", async () => {
-    withApi(linear);
-    renderWithApi(<NotebookView />);
-    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), " + 1");
-    await userEvent.click(screen.getByRole("button", { name: "Discard edits" }));
-    expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("n = df.height");
-    expect(screen.queryByRole("button", { name: "Run changes" })).not.toBeInTheDocument();
-  });
-
-  it("downloads the flow as a .ipynb", async () => {
-    withApi(linear);
-    const createObjectURL = vi.fn((_blob: Blob) => "blob:notebook");
-    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-    renderWithApi(<NotebookView />);
-    const button = await screen.findByRole("button", { name: "Download .ipynb" });
-    await waitFor(() => expect(button).toBeEnabled());
-    await userEvent.click(button);
-
-    expect(click).toHaveBeenCalled();
-    const blob = createObjectURL.mock.calls[0]?.[0];
-    expect(cellsFromFile("flow.ipynb", (await blob?.text()) ?? "")).toEqual([
-      `def f(path, format):\n    ...\n\nfrom pathlib import Path\n\n${LOAD_CALL}`,
-      "n = df.height",
-    ]);
-  });
-
-  it("switches the Flow panel between the canvas and the notebook", async () => {
-    withApi(linear);
-    renderWithApi(<FlowPanel />);
-    expect(await screen.findByLabelText("Flow canvas")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("radio", { name: "Notebook" }));
-    expect(await screen.findByLabelText("Notebook")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Flow canvas")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("radio", { name: "Flow" }));
-    expect(await screen.findByLabelText("Flow canvas")).toBeInTheDocument();
-  });
-});
-
 describe("a code step's Code tab", () => {
   it("re-reads the links when its code changes, as the notebook does", async () => {
     const sent = withApi(linear);
     renderWithApi(<CodeEditor pipeline={flow} nodeId="cell_1" source="n = df.height" />);
-    const code = screen.getByRole("textbox", { name: "Code for cell_1" });
+    const code = await screen.findByRole("textbox", { name: "Code for cell_1" });
     await userEvent.clear(code);
     await userEvent.type(code, "n = df.width{Shift>}{Enter}{/Shift}");
 

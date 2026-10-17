@@ -17,13 +17,14 @@ export function useSaveCells(pipeline: PipelineVersion, operators: Map<string, O
   const [problem, setProblem] = useState<string | undefined>();
   const [notes, setNotes] = useState<string[]>([]);
 
-  /** Saves `steps`, then shows the step that holds cell number `show` (counted from 0). */
-  const save = async (steps: NotebookStep[], show: number | undefined) => {
+  /** Saves `steps`, then shows the step that holds cell number `show` (counted from 0). `base`
+   * is the flow with the code its own-code cells now hold (default: the flow as saved). */
+  const save = async (steps: NotebookStep[], show: number | undefined, base: PipelineVersion = pipeline) => {
     setProblem(undefined);
     try {
-      const request = splitRequest(pipeline, operators, steps);
+      const request = splitRequest(base, operators, steps);
       const found = await split.mutateAsync(request.cells);
-      const { version, notes, cellNodes } = versionFromSplit(pipeline, operators, request, found);
+      const { version, notes, cellNodes } = versionFromSplit(base, operators, request, found);
       setNotes(notes);
       const run = await saveAndRun.mutateAsync(version);
       showRun(version.id, run.id, show === undefined ? undefined : cellNodes[show]);

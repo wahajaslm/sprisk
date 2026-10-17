@@ -144,6 +144,9 @@ function commands(api: DockviewApi) {
     },
     setEditing: (on: boolean) => syncTabBars(api, on),
     setSidebarVisible: (on: boolean) => api.getPanel("sidebar")?.group.api.setVisible(on),
+    setInspectorVisible: (on: boolean) => {
+      for (const group of api.groups) if (group.panels.some((p) => readTab(p.params) !== undefined)) group.api.setVisible(on);
+    },
   };
 }
 

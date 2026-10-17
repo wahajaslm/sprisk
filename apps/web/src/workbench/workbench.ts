@@ -18,6 +18,8 @@ export type DockCommands = {
   resetLayout: () => void;
   setEditing: (on: boolean) => void;
   setSidebarVisible: (on: boolean) => void;
+  /** The notebook shows each step's output under its cells, so it hides the Inspector tabs. */
+  setInspectorVisible: (on: boolean) => void;
 };
 
 type Workbench = {
@@ -38,7 +40,10 @@ export const useWorkbench = create<Workbench>((set, get) => ({
   editing: false,
   flowView: "canvas",
   dock: undefined,
-  setFlowView: (flowView) => set({ flowView }),
+  setFlowView: (flowView) => {
+    set({ flowView });
+    get().dock?.setInspectorVisible(flowView === "canvas");
+  },
   toggleActivity: (activity) => {
     const next = get().activity === activity ? undefined : activity;
     set({ activity: next });
