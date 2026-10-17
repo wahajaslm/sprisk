@@ -61,6 +61,8 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
                 }
             with _console() as printed:
                 result = fn(**values, **arguments)
+        except OperatorError:
+            raise  # already says what failed (a code step's code_error, with its line)
         except pl.exceptions.ColumnNotFoundError as e:
             raise OperatorError("missing_column", f"column not found: {_first_line(e)}") from e
         except ValueError as e:

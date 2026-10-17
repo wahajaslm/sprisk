@@ -390,3 +390,14 @@ def test_a_named_output_that_is_not_a_table_names_its_type(tmp_path: Path) -> No
 
     with pytest.raises(OperatorError, match="output lookup: expected a DataFrame, got dict"):
         adapt(op, NAMED)({"inputs": [], "outputs": ["lookup"]}, {}, staging(tmp_path))
+
+
+def test_an_operator_error_from_the_step_keeps_its_code_and_message(tmp_path: Path) -> None:
+    def op(data: pl.DataFrame, factor: float) -> pl.DataFrame:
+        raise OperatorError("code_error", "line 2: TypeError: bad")
+
+    with pytest.raises(OperatorError) as e:
+        adapt(op, ONE_TABLE)(
+            {"factor": 1}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+        )
+    assert (e.value.code, e.value.message) == ("code_error", "line 2: TypeError: bad")
