@@ -2,7 +2,7 @@ import type { CodeSplit, PipelineVersion } from "@sprisk/contracts";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { cellsFromFile, NOTEBOOK_OPERATOR } from "../src/flow/notebook.ts";
 import { CodeEditor } from "../src/views/CodeEditor.tsx";
@@ -59,6 +59,13 @@ const linear = (cells: string[]): CodeSplit => ({
   notes: [],
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+  // jsdom has no object URLs; the download test adds them.
+  Reflect.deleteProperty(URL, "createObjectURL");
+  Reflect.deleteProperty(URL, "revokeObjectURL");
+});
+
 describe("the notebook view of a flow (ADR-0033)", () => {
   it("shows each step as a cell in flow order: a built-in step as its call, a code step as its code", async () => {
     withApi(linear);
@@ -109,6 +116,36 @@ describe("the notebook view of a flow (ADR-0033)", () => {
     expect(sent.versions).toEqual([]);
   });
 
+  it("shows Python's error when the cells cannot be read, and saves nothing", async () => {
+    const sent = withApi(linear);
+    server.use(http.post("/api/code/split", () => HttpResponse.json({ errors: [{ code: "split_failed", message: "the analyzer timed out" }] }, { status: 500 })));
+    renderWithApi(<NotebookView />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), "{Shift>}{Enter}{/Shift}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("the analyzer timed out");
+    expect(sent.versions).toEqual([]);
+  });
+
+  it("deletes a cell, then saves without it on Run changes", async () => {
+    const sent = withApi(linear);
+    renderWithApi(<NotebookView />);
+    await userEvent.click(await screen.findByRole("button", { name: "Delete cell" }));
+    expect(screen.queryByRole("textbox", { name: "Cell 2" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Run changes" }));
+
+    await waitFor(() => expect(sent.versions).toHaveLength(1));
+    expect(sent.cells).toEqual([[STAND_IN]]);
+    expect(sent.versions[0]?.nodes.map((n) => n.id)).toEqual(["load"]);
+  });
+
+  it("discards edits not yet run", async () => {
+    withApi(linear);
+    renderWithApi(<NotebookView />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), " + 1");
+    await userEvent.click(screen.getByRole("button", { name: "Discard edits" }));
+    expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("n = df.height");
+    expect(screen.queryByRole("button", { name: "Run changes" })).not.toBeInTheDocument();
+  });
+
   it("downloads the flow as a .ipynb", async () => {
     withApi(linear);
     const createObjectURL = vi.fn((_blob: Blob) => "blob:notebook");
@@ -125,7 +162,6 @@ describe("the notebook view of a flow (ADR-0033)", () => {
       `def f(path, format):\n    ...\n\nfrom pathlib import Path\n\n${LOAD_CALL}`,
       "n = df.height",
     ]);
-    click.mockRestore();
   });
 
   it("switches the Flow panel between the canvas and the notebook", async () => {

@@ -112,6 +112,11 @@ describe("a flow as notebook cells", () => {
     ]);
   });
 
+  it("shows a step whose operator is not installed as a comment, not as code", () => {
+    const missing = { ...pipeline, nodes: [{ id: "old", operator: "sprisk.io.gone@1.0.0", params: {} }], edges: [] };
+    expect(notebookSteps(missing, ops)).toEqual([{ kind: "builtin", nodeId: "old", call: "# operator sprisk.io.gone@1.0.0 is not installed" }]);
+  });
+
   it("shows a v1 code step's code and the table it gets as data", () => {
     const steps = notebookSteps(codePipeline, ops);
     expect(steps.at(-1)).toEqual({ kind: "code", nodeId: "code_1", source: "print(data.height)\ndata.head(1)", data: "load_data" });
@@ -208,6 +213,41 @@ describe("edited cells become the next version", () => {
     expect(() => versionFromSplit(mixed, ops, request, split)).toThrow(
       "tidy is a function or class from cell 2; cells 2–5 stay in one step, but built-in step split sits between them. Move those cells next to each other.",
     );
+  });
+
+  it("refuses a name that stands for two built-in outputs, before anything is sent", () => {
+    const twice: PipelineVersion = {
+      ...pipeline,
+      nodes: [
+        { id: "a", operator: "sprisk.io.file_source@1.0.0", params: {} },
+        { id: "b", operator: "sprisk.io.file_source@1.0.0", params: {} },
+        { id: "cell_1", operator: NOTEBOOK_OPERATOR, params: { source: "x = df.height", inputs: ["df"] } },
+        { id: "cell_2", operator: NOTEBOOK_OPERATOR, params: { source: "y = df.width", inputs: ["df"] } },
+      ],
+      edges: [
+        { from: "a.data", to: "cell_1.df" },
+        { from: "b.data", to: "cell_2.df" },
+      ],
+    };
+    expect(() => splitRequest(twice, ops, notebookSteps(twice, ops))).toThrow(
+      "df names both a.data and b.data. Rename it in one of the cells that read it.",
+    );
+  });
+
+  it("refuses an edit that leaves a built-in step without an input", () => {
+    const renamed: CodeSplit = {
+      ...unchanged,
+      steps: [unchanged.steps[0]!, { ...unchanged.steps[1]!, outputs: [] }, { ...unchanged.steps[2]!, inputs: [] }, unchanged.steps[3]!],
+      links: [unchanged.links[0]!, unchanged.links[2]!],
+    };
+    expect(() => versionFromSplit(mixed, ops, request, renamed)).toThrow("step split reads clean, which no cell sets now");
+  });
+
+  it("says when Python's reply names cells or steps that do not exist", () => {
+    const badCell = { ...unchanged, steps: [...unchanged.steps, { cells: [9], source: "", inputs: [], outputs: [] }] };
+    expect(() => versionFromSplit(mixed, ops, request, badCell)).toThrow("the split names cell 9, which was not sent");
+    const badLink = { ...unchanged, links: [...unchanged.links, { from_step: 7, to_step: 3, name: "x" }] };
+    expect(() => versionFromSplit(mixed, ops, request, badLink)).toThrow("the split links step 7, which it did not return");
   });
 
   it("drops the analyzer's notes about built-in steps' stand-in lines", () => {

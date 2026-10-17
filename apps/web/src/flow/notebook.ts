@@ -139,7 +139,7 @@ function outputPorts(pipeline: PipelineVersion, operators: Operators, node: Node
 const inputsOf = (pipeline: PipelineVersion, nodeId: string) =>
   pipeline.edges.filter((e) => stepOf(e.to) === nodeId).map((e) => ({ port: portOf(e.to), name: outputName(pipeline, e.from) }));
 
-function nodeOf(pipeline: PipelineVersion, id: string): Node {
+export function nodeOf(pipeline: PipelineVersion, id: string): Node {
   const node = pipeline.nodes.find((n) => n.id === id);
   if (!node) throw new Error(`flow ${pipeline.id} has no step ${id}`);
   return node;
@@ -158,8 +158,9 @@ function python(value: unknown): string {
  * out by name, as the worker calls it (ADR-0022). */
 function callOf(pipeline: PipelineVersion, operators: Operators, node: Node): string {
   const operator = operators.get(node.operator);
-  const fn = node.code?.function ?? operator?.entrypoint.split(":")[1] ?? node.operator;
-  const properties = (operator?.params_schema["properties"] ?? {}) as Record<string, Record<string, unknown>>;
+  if (!operator) return `# operator ${node.operator} is not installed`;
+  const fn = node.code?.function ?? operator.entrypoint.split(":")[1] ?? node.operator;
+  const properties = (operator.params_schema["properties"] ?? {}) as Record<string, Record<string, unknown>>;
   const args = [
     ...inputsOf(pipeline, node.id).map((i) => `${i.port}=${i.name}`),
     ...Object.entries(node.params).map(([k, v]) => `${k}=${properties[k]?.["x-sprisk-local-path"] === true ? `Path(${python(v)})` : python(v)}`),
@@ -211,6 +212,9 @@ export type SplitRequest = { cells: string[]; origins: { nodeId: string | undefi
  * found too; it is never run. */
 export function splitRequest(pipeline: PipelineVersion, operators: Operators, steps: NotebookStep[]): SplitRequest {
   const request: SplitRequest = { cells: [], origins: [] };
+  // Python links a name to the latest line that sets it, so a name two outputs share would
+  // link a cell to the wrong one.
+  const owner = new Map<string, string>();
   for (const step of steps) {
     if (step.kind === "cells") {
       for (const cell of step.cells) {
@@ -221,7 +225,16 @@ export function splitRequest(pipeline: PipelineVersion, operators: Operators, st
     }
     const node = nodeOf(pipeline, step.nodeId);
     const reads = [...new Set(inputsOf(pipeline, node.id).map((i) => i.name))];
-    const sets = outputPorts(pipeline, operators, node).flatMap((p) => outputNames(pipeline, node.id, p));
+    const sets = outputPorts(pipeline, operators, node).flatMap((p) => {
+      const end = `${node.id}.${p}`;
+      const names = outputNames(pipeline, node.id, p);
+      for (const name of names) {
+        const other = owner.get(name);
+        if (other !== undefined && other !== end) throw new Error(`${name} names both ${other} and ${end}. Rename it in one of the cells that read it.`);
+        owner.set(name, end);
+      }
+      return names;
+    });
     const standIn = `object(${reads.join(", ")})`;
     request.cells.push(sets.length > 0 ? `${sets.join(" = ")} = ${standIn}` : standIn);
     request.origins.push({ nodeId: node.id, standIn: true });
@@ -258,7 +271,11 @@ export function versionFromSplit(
     return id;
   });
   const isStandIn = (k: number) => originOf(split.steps[k]?.cells[0] ?? -1).standIn;
-  const idOf = (k: number) => ids[k] ?? "";
+  const idOf = (k: number) => {
+    const id = ids[k];
+    if (id === undefined) throw new Error(`the split links step ${k}, which it did not return`);
+    return id;
+  };
 
   const nodes = split.steps.map((step, k): Node => {
     const id = idOf(k);
@@ -290,6 +307,12 @@ export function versionFromSplit(
     const toPorts = isStandIn(link.to_step) ? readingPorts(to, link.name) : [link.name];
     return toPorts.map((port) => ({ from: fromEnd, to: `${to}.${port}` }));
   });
+  // Rust would reject the version for the missing input; say which cell edit caused it.
+  for (const [k, id] of ids.entries()) {
+    if (!isStandIn(k)) continue;
+    const lost = inputsOf(base, id).find((i) => !edges.some((e) => e.to === `${id}.${i.port}`));
+    if (lost) throw new Error(`step ${id} reads ${lost.name}, which no cell sets now`);
+  }
 
   const notes = split.notes.filter((n) => !originOf(n.cell).standIn).map((n) => n.message);
   // The step each sent cell ended up in; a blank or import-only cell is in none.

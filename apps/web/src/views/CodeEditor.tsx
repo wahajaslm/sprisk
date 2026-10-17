@@ -20,12 +20,12 @@ export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVer
   const operators = useOperators();
   const byRef = new Map((operators.data ?? []).map((op) => [op.id, op]));
   const cells = useSaveCells(pipeline, byRef);
-  const byName = isNotebookStep(pipeline.nodes.find((n) => n.id === nodeId)?.operator ?? "");
-  const pending = saveAndRun.isPending || cells.pending || (byName && !operators.data);
+  const isNotebookCode = isNotebookStep(pipeline.nodes.find((n) => n.id === nodeId)?.operator ?? "");
+  const pending = saveAndRun.isPending || cells.pending || (isNotebookCode && operators.isPending);
 
   const run = (source: string) => {
     if (source === "" || pending) return;
-    if (byName) {
+    if (isNotebookCode) {
       const steps = notebookSteps(pipeline, byRef);
       void cells.save(withSource(steps, nodeId, source), cellNumber(steps, { step: steps.findIndex((s) => s.nodeId === nodeId), cell: 0 }));
       return;
@@ -33,7 +33,7 @@ export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVer
     const version = setCodeSource(pipeline, nodeId, source);
     saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
   };
-  const problem = cells.problem ?? (saveAndRun.isError ? saveAndRun.error.message : undefined);
+  const problem = cells.problem ?? operators.error?.message ?? (saveAndRun.isError ? saveAndRun.error.message : undefined);
 
   const overrides = Object.entries((pipeline.nodes.find((n) => n.id === nodeId)?.params.parameters ?? {}) as Record<string, unknown>);
   return (

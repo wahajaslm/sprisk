@@ -18,7 +18,7 @@ export function useSaveCells(pipeline: PipelineVersion, operators: Map<string, O
   const [notes, setNotes] = useState<string[]>([]);
 
   /** Saves `steps`, then shows the step that holds cell number `show` (counted from 0). */
-  const save = async (steps: NotebookStep[], show: number): Promise<boolean> => {
+  const save = async (steps: NotebookStep[], show: number | undefined) => {
     setProblem(undefined);
     try {
       const request = splitRequest(pipeline, operators, steps);
@@ -26,12 +26,10 @@ export function useSaveCells(pipeline: PipelineVersion, operators: Map<string, O
       const { version, notes, cellNodes } = versionFromSplit(pipeline, operators, request, found);
       setNotes(notes);
       const run = await saveAndRun.mutateAsync(version);
-      showRun(version.id, run.id, cellNodes[show]);
-      return true;
+      showRun(version.id, run.id, show === undefined ? undefined : cellNodes[show]);
     } catch (e) {
-      // Shown next to the cells; nothing was saved.
+      // Shown next to the cells, where the person can fix them.
       setProblem(e instanceof Error ? e.message : String(e));
-      return false;
     }
   };
   return { save, pending: split.isPending || saveAndRun.isPending, problem, notes };

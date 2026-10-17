@@ -7,6 +7,7 @@ import { latestByNode, statusOf } from "../flow/latest.ts";
 import {
   type CellAt,
   cellNumber,
+  nodeOf,
   type NotebookStep,
   notebookSteps,
   toIpynb,
@@ -47,7 +48,7 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
   const steps = draft ?? notebookSteps(pipeline, operators);
   const cells = useSaveCells(pipeline, operators);
   const run = (next: NotebookStep[], at?: CellAt) => {
-    if (!cells.pending) void cells.save(next, at ? cellNumber(next, at) : -1);
+    if (!cells.pending) void cells.save(next, at && cellNumber(next, at));
   };
   return (
     <div className="notebook" aria-label="Notebook">
@@ -109,7 +110,7 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
   );
 }
 
-type StepProps = { step: NotebookStep; pipeline: PipelineVersion; operators: Map<string, Operator> };
+type StepProps<S = NotebookStep> = { step: S; pipeline: PipelineVersion; operators: Map<string, Operator> };
 
 /** The step a cell belongs to: click to inspect it. Cells kept together say so. */
 function StepHead({ step, pipeline, operators, latest }: StepProps & { latest: Map<string, Attempt> }) {
@@ -135,11 +136,10 @@ function StepHead({ step, pipeline, operators, latest }: StepProps & { latest: M
 
 /** A built-in step: its call, and its code to read or edit (ADR-0028). A v1 code step: the
  * table it gets as `data`, and its code. */
-function OtherStep({ step, pipeline, operators }: StepProps) {
+function OtherStep({ step, pipeline, operators }: StepProps<Exclude<NotebookStep, { kind: "cells" }>>) {
   const [open, setOpen] = useState(false);
-  const node = pipeline.nodes.find((n) => n.id === step.nodeId);
-  const operator = operators.get(node?.operator ?? "");
-  if (!node) return null;
+  const node = nodeOf(pipeline, step.nodeId);
+  const operator = operators.get(node.operator);
   if (step.kind === "code") {
     return (
       <>
@@ -148,7 +148,6 @@ function OtherStep({ step, pipeline, operators }: StepProps) {
       </>
     );
   }
-  if (step.kind !== "builtin") return null;
   return (
     <>
       <pre className="code notebook-call">{step.call}</pre>
