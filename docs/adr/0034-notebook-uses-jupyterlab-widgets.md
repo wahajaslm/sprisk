@@ -1,5 +1,5 @@
 # ADR-0034: The notebook view is JupyterLab's own notebook, with sprisk as its kernel
-Status: Accepted
+Status: Superseded by ADR-0035
 Date: 2026-10-17
 Arch doc sections: §2A (Notebook views, notebook security), §14 (stack). Builds on ADR-0033 (one saved version, two views); replaces its hand-made notebook screen.
 

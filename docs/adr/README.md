@@ -35,7 +35,8 @@
 | [0031](0031-code-steps-link-by-variable-name.md) | Code steps link by variable name | Accepted |
 | [0032](0032-charts-come-only-from-code.md) | Charts come only from code: no Chart button | Accepted |
 | [0033](0033-notebook-view-of-a-flow.md) | A flow can be read and edited as a notebook | Accepted |
-| [0034](0034-notebook-uses-jupyterlab-widgets.md) | The notebook view is JupyterLab's own notebook, with sprisk as its kernel | Accepted |
+| [0034](0034-notebook-uses-jupyterlab-widgets.md) | The notebook view is JupyterLab's own notebook, with sprisk as its kernel | Superseded by ADR-0035 |
+| [0035](0035-notebook-looks-like-vs-code.md) | The notebook view is a VS Code-style notebook on Monaco | Accepted |
 
 ## Open questions (arch doc §17)
 
