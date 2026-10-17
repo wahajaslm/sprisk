@@ -28,6 +28,8 @@ class IntersectionObserverStub {
   }
 }
 Object.assign(globalThis, { IntersectionObserver: globalThis.IntersectionObserver ?? IntersectionObserverStub });
+// JupyterLab scrolls the active cell into view; jsdom lays nothing out and has no scrollTo.
+Element.prototype.scrollTo ??= () => undefined;
 // JupyterLab's notebook handles cell drags; jsdom has no DragEvent.
 class DragEventStub extends MouseEvent {}
 Object.assign(globalThis, { DragEvent: globalThis.DragEvent ?? DragEventStub });
