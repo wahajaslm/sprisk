@@ -16,3 +16,16 @@ export const GATE_NODE = "gate_b";
 /** A finished attempt with outputs: it ran and succeeded, or it reused a cached result. */
 export const hasOutputs = (attempt: Attempt | undefined) =>
   attempt?.state === "succeeded" || attempt?.state === "cache_hit";
+
+const STATUS: Record<string, { text: string; tone: string }> = {
+  succeeded: { text: "succeeded", tone: "done" },
+  cache_hit: { text: "cached", tone: "done" },
+  running: { text: "Running…", tone: "live" },
+  leased: { text: "Starting…", tone: "live" },
+  queued: { text: "Queued", tone: "idle" },
+  failed: { text: "failed", tone: "bad" },
+  timed_out: { text: "timed out", tone: "bad" },
+};
+
+/** An attempt's state in plain words, and the tone it is drawn in. */
+export const statusOf = (state: string) => STATUS[state] ?? { text: state, tone: "idle" };

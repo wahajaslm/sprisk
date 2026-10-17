@@ -1,5 +1,5 @@
 import type { PipelineVersion, Run } from "@sprisk/contracts";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getList, getOne, getText, postOne } from "./client.ts";
 
@@ -15,13 +15,16 @@ export const useOperators = () =>
   useQuery({ queryKey: ["operators"], queryFn: () => getList("Operator", "/operators"), staleTime: Infinity });
 
 /** A built-in operator's code. It changes only when the API restarts with new plugins. */
+export const operatorSourceQuery = (operatorRef: string) => ({
+  queryKey: ["operator_source", operatorRef],
+  queryFn: () => getOne("OperatorSource", `/operators/${encodeURIComponent(operatorRef)}/source`),
+  staleTime: Infinity,
+});
+
 export const useOperatorSource = (operatorRef: string | undefined) =>
-  useQuery({
-    queryKey: ["operator_source", operatorRef],
-    queryFn: () => getOne("OperatorSource", `/operators/${encodeURIComponent(operatorRef ?? "")}/source`),
-    enabled: operatorRef !== undefined,
-    staleTime: Infinity,
-  });
+  useQuery({ ...operatorSourceQuery(operatorRef ?? ""), enabled: operatorRef !== undefined });
+
+export const useOperatorSources = (operatorRefs: string[]) => useQueries({ queries: operatorRefs.map(operatorSourceQuery) });
 
 export const useRuns = (pipelineVersionId: string | undefined) =>
   useQuery({

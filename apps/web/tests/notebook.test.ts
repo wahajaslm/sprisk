@@ -2,6 +2,7 @@ import type { CodeSplit, PipelineVersion } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
 import {
+  cellNumber,
   cellsFromFile,
   flowFromSplit,
   NOTEBOOK_OPERATOR,
@@ -11,6 +12,10 @@ import {
   splitRequest,
   toIpynb,
   versionFromSplit,
+  withCell,
+  withNewCell,
+  withoutCell,
+  withSource,
 } from "../src/flow/notebook.ts";
 import { codePipeline, notebookOperator, operators, pipeline } from "./fixtures.ts";
 
@@ -143,7 +148,8 @@ describe("edited cells become the next version", () => {
   });
 
   it("gives back the same steps and links when nothing changed", () => {
-    const { version } = versionFromSplit(mixed, ops, request, unchanged);
+    const { version, cellNodes } = versionFromSplit(mixed, ops, request, unchanged);
+    expect(cellNodes).toEqual(["load", "cell_1", "cell_1", "split", "cell_2"]);
     expect(version.parent_id).toBe(mixed.id);
     expect(version.id).not.toBe(mixed.id);
     expect(version.nodes).toEqual(mixed.nodes);
@@ -207,6 +213,34 @@ describe("edited cells become the next version", () => {
   it("drops the analyzer's notes about built-in steps' stand-in lines", () => {
     const split = { ...unchanged, notes: [{ cell: 0, message: "cell 1 reads x" }, { cell: 4, message: "cell 5 reads y, which no earlier cell sets" }] };
     expect(versionFromSplit(mixed, ops, request, split).notes).toEqual(["cell 5 reads y, which no earlier cell sets"]);
+  });
+});
+
+describe("editing the notebook's cells", () => {
+  const steps = notebookSteps(mixed, ops);
+
+  it("changes one cell of a step", () => {
+    expect(withCell(steps, { step: 1, cell: 1 }, "clean = df")[1]).toEqual({ kind: "cells", nodeId: "cell_1", cells: ["def tidy(t):\n    return t.drop_nulls()", "clean = df"] });
+  });
+
+  it("adds an empty cell as a new step after a step", () => {
+    const added = withNewCell(steps, 0);
+    expect(added).toHaveLength(5);
+    expect(added[1]).toEqual({ kind: "cells", nodeId: undefined, cells: [""] });
+  });
+
+  it("removes a cell, and the step with its last cell", () => {
+    expect(withoutCell(steps, { step: 1, cell: 0 })[1]).toEqual({ kind: "cells", nodeId: "cell_1", cells: ["clean = tidy(df)"] });
+    expect(withoutCell(steps, { step: 3, cell: 0 }).map((s) => s.nodeId)).toEqual(["load", "cell_1", "split"]);
+  });
+
+  it("numbers cells across the notebook, a built-in step counting as one", () => {
+    expect(cellNumber(steps, { step: 1, cell: 1 })).toBe(2);
+    expect(cellNumber(steps, { step: 3, cell: 0 })).toBe(4);
+  });
+
+  it("replaces a code step's cells from its whole source", () => {
+    expect(withSource(steps, "cell_2", "a = 1\n# %%\nb = a")[3]).toEqual({ kind: "cells", nodeId: "cell_2", cells: ["a = 1", "b = a"] });
   });
 });
 

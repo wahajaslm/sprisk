@@ -52,7 +52,7 @@ vi.mock("../src/views/MonacoCode.tsx", () => ({
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 beforeEach(() => {
   useSelection.setState({ nav: "Flow", pipelineVersionId: undefined, runId: undefined, nodeId: undefined, compare: [] });
-  useWorkbench.setState({ activity: "steps", editing: false, dock: undefined });
+  useWorkbench.setState({ activity: "steps", editing: false, flowView: "canvas", dock: undefined });
   useCanvasDetail.setState({ level: "detail" });
   useResultLayout.setState({ layout: "inline" });
 });

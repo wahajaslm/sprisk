@@ -173,6 +173,36 @@ function callOf(pipeline: PipelineVersion, operators: Operators, node: Node): st
   return [`${result} = ${call}`, ...ports.map((p) => `${outputNames(pipeline, node.id, p).join(" = ")} = ${result}[${python(p)}]`)].join("\n");
 }
 
+/** Where a cell is: its step in notebook order, and its place in that step. */
+export type CellAt = { step: number; cell: number };
+
+/** A cell's number in the whole notebook, from 0, as POST /code/split numbers the cells. */
+export const cellNumber = (steps: NotebookStep[], at: CellAt) =>
+  steps.slice(0, at.step).reduce((n, s) => n + (s.kind === "cells" ? s.cells.length : 1), 0) + at.cell;
+
+const mapCells = (steps: NotebookStep[], step: number, change: (cells: string[]) => string[]) =>
+  steps.flatMap((s, i) => {
+    if (i !== step || s.kind !== "cells") return [s];
+    const cells = change(s.cells);
+    return cells.length > 0 ? [{ ...s, cells }] : [];
+  });
+
+export const withCell = (steps: NotebookStep[], at: CellAt, source: string) =>
+  mapCells(steps, at.step, (cells) => cells.map((c, j) => (j === at.cell ? source : c)));
+
+export const withoutCell = (steps: NotebookStep[], at: CellAt) => mapCells(steps, at.step, (cells) => cells.filter((_, j) => j !== at.cell));
+
+/** A new, empty cell after `step`; it becomes a step of its own when saved. */
+export const withNewCell = (steps: NotebookStep[], step: number): NotebookStep[] => [
+  ...steps.slice(0, step + 1),
+  { kind: "cells", nodeId: undefined, cells: [""] },
+  ...steps.slice(step + 1),
+];
+
+/** A code step's cells read again from its whole source, as the Code tab edits it. */
+export const withSource = (steps: NotebookStep[], nodeId: string, source: string) =>
+  steps.map((s) => (s.kind === "cells" && s.nodeId === nodeId ? { ...s, cells: splitOnMarkers(source) } : s));
+
 /** Cells sent to POST /code/split, in notebook order, and where each came from. */
 export type SplitRequest = { cells: string[]; origins: { nodeId: string | undefined; standIn: boolean }[] };
 
@@ -206,7 +236,7 @@ export function versionFromSplit(
   operators: Operators,
   request: SplitRequest,
   split: CodeSplit,
-): { version: PipelineVersion; notes: string[] } {
+): { version: PipelineVersion; notes: string[]; cellNodes: (string | undefined)[] } {
   const originOf = (cell: number) => {
     const origin = request.origins[cell];
     if (!origin) throw new Error(`the split names cell ${cell}, which was not sent`);
@@ -262,7 +292,9 @@ export function versionFromSplit(
   });
 
   const notes = split.notes.filter((n) => !originOf(n.cell).standIn).map((n) => n.message);
-  return { version: nextVersion(base, { nodes, edges }), notes };
+  // The step each sent cell ended up in; a blank or import-only cell is in none.
+  const cellNodes = request.cells.map((_, cell) => ids[split.steps.findIndex((s) => s.cells.includes(cell))]);
+  return { version: nextVersion(base, { nodes, edges }), notes, cellNodes };
 }
 
 function freshCellId(taken: Set<string>): string {

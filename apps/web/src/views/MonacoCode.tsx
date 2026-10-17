@@ -1,5 +1,6 @@
 import Editor, { loader, type OnMount } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
+import { useState } from "react";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 
 import type { CodeInputProps } from "./CodeInput.tsx";
@@ -25,12 +26,17 @@ monaco.editor.defineTheme("sprisk-studio", {
 });
 
 /** Monaco edits the code. It never runs it; running goes through the API (apps/web rules). */
-export default function MonacoCode({ value, onChange, onRun, label, readOnly = false }: CodeInputProps) {
+export default function MonacoCode({ value, onChange, onRun, label, readOnly = false, fit = false }: CodeInputProps) {
+  const [height, setHeight] = useState<number | undefined>(undefined);
   const mount: OnMount = (editor) => {
     editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => onRun(editor.getValue()));
+    if (!fit) return;
+    setHeight(editor.getContentHeight());
+    editor.onDidContentSizeChange((e) => setHeight(e.contentHeight));
   };
   return (
     <Editor
+      {...(fit && height !== undefined ? { height } : {})}
       language="python"
       theme="sprisk-studio"
       value={value}
@@ -46,6 +52,7 @@ export default function MonacoCode({ value, onChange, onRun, label, readOnly = f
         minimap: { enabled: false },
         bracketPairColorization: { enabled: false },
         scrollBeyondLastLine: false,
+        ...(fit ? { scrollbar: { alwaysConsumeMouseWheel: false }, lineNumbersMinChars: 3 } : {}),
         tabSize: 4,
         automaticLayout: true,
         padding: { top: 10 },

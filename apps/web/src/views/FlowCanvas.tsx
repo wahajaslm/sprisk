@@ -25,7 +25,7 @@ import { create } from "zustand";
 
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../api/hooks.ts";
 import { type RunChecks, useRunChecks } from "../api/checks.ts";
-import { GATE_NODE, hasOutputs, latestByNode } from "../flow/latest.ts";
+import { GATE_NODE, hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
@@ -79,17 +79,6 @@ function StageHead({ id, data }: NodeProps<Node<StageData>>) {
 
 /** An edge into or out of the selected step is drawn brighter. */
 type FlowEdgeData = { active: boolean };
-
-const STATUS: Record<string, { text: string; tone: string }> = {
-  succeeded: { text: "succeeded", tone: "done" },
-  cache_hit: { text: "cached", tone: "done" },
-  running: { text: "Running…", tone: "live" },
-  leased: { text: "Starting…", tone: "live" },
-  queued: { text: "Queued", tone: "idle" },
-  failed: { text: "failed", tone: "bad" },
-  timed_out: { text: "timed out", tone: "bad" },
-};
-const statusOf = (state: string) => STATUS[state] ?? { text: state, tone: "idle" };
 
 function StepNode(props: NodeProps<Node<StepData>>) {
   return props.data.level === "compact" ? <CompactNode {...props} /> : <CardNode {...props} />;
