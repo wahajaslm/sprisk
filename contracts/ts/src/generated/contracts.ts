@@ -318,11 +318,11 @@ export interface FigureSet {
  * via the `definition` "Figure".
  */
 export interface Figure {
-  library: "matplotlib" | "plotly";
-  format: "svg" | "plotly_json";
+  library: "matplotlib" | "plotly" | "altair";
+  format: "svg" | "plotly_json" | "vega_lite_json";
   title?: string;
   /**
-   * SVG markup, or a Plotly figure as JSON text.
+   * SVG markup, a Plotly figure as JSON text, or a Vega-Lite spec as JSON text (Altair).
    */
   content: string;
 }
@@ -340,14 +340,15 @@ export interface CodeDisplay {
  * via the `definition` "DisplayItem".
  */
 export interface DisplayItem {
-  kind: "text" | "table" | "image";
+  kind: "text" | "table" | "image" | "figure";
   /**
    * Present for kind text.
    */
   text?: string;
   table?: TablePage1;
+  figure?: Figure1;
   /**
-   * Present for kind image: a PNG, base64-encoded.
+   * Present for kind image: a PNG, base64-encoded. Written by older code steps; new ones write figures.
    */
   png_base64?: string;
   /**
@@ -370,6 +371,18 @@ export interface TablePage1 {
   total_columns: number;
   columns: TableColumn[];
   rows: TableRow[];
+}
+/**
+ * Present for kind figure: a plot the code drew, as SVG, Plotly or Vega-Lite (ADR-0024).
+ */
+export interface Figure1 {
+  library: "matplotlib" | "plotly" | "altair";
+  format: "svg" | "plotly_json" | "vega_lite_json";
+  title?: string;
+  /**
+   * SVG markup, a Plotly figure as JSON text, or a Vega-Lite spec as JSON text (Altair).
+   */
+  content: string;
 }
 /**
  * What a code step's run found about its interface (ADR-0021): names it reads, literal settings it could expose, and values it ends with. Suggestions, not a claim that arbitrary code is understood.

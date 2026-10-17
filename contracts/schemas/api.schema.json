@@ -163,10 +163,12 @@
       "additionalProperties": false,
       "required": ["library", "format", "content"],
       "properties": {
-        "library": { "type": "string", "enum": ["matplotlib", "plotly"] },
-        "format": { "type": "string", "enum": ["svg", "plotly_json"] },
+        "library": { "type": "string", "enum": ["matplotlib", "plotly",
+            "altair"] },
+        "format": { "type": "string", "enum": ["svg", "plotly_json",
+            "vega_lite_json"] },
         "title": { "type": "string" },
-        "content": { "type": "string", "description": "SVG markup, or a Plotly figure as JSON text." }
+        "content": { "type": "string", "description": "SVG markup, a Plotly figure as JSON text, or a Vega-Lite spec as JSON text (Altair)." }
       }
     },
     "CodeDisplay": {
@@ -198,7 +200,8 @@
           "enum": [
             "text",
             "table",
-            "image"
+            "image",
+            "figure"
           ]
         },
         "text": {
@@ -209,9 +212,13 @@
           "$ref": "#/$defs/TablePage",
           "description": "Present for kind table: the first rows only."
         },
+        "figure": {
+          "$ref": "#/$defs/Figure",
+          "description": "Present for kind figure: a plot the code drew, as SVG, Plotly or Vega-Lite (ADR-0024)."
+        },
         "png_base64": {
           "type": "string",
-          "description": "Present for kind image: a PNG, base64-encoded."
+          "description": "Present for kind image: a PNG, base64-encoded. Written by older code steps; new ones write figures."
         },
         "channel": {
           "type": "string",

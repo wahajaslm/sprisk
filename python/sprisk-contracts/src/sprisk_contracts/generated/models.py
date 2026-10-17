@@ -38,11 +38,13 @@ class TableRow(StrictModel):
 class Library(StrEnum):
     matplotlib = "matplotlib"
     plotly = "plotly"
+    altair = "altair"
 
 
 class Format(StrEnum):
     svg = "svg"
     plotly_json = "plotly_json"
+    vega_lite_json = "vega_lite_json"
 
 
 class Figure(StrictModel):
@@ -52,13 +54,19 @@ class Figure(StrictModel):
     library: Library
     format: Format
     title: str | None = None
-    content: Annotated[str, Field(description="SVG markup, or a Plotly figure as JSON text.")]
+    content: Annotated[
+        str,
+        Field(
+            description="SVG markup, a Plotly figure as JSON text, or a Vega-Lite spec as JSON text (Altair)."
+        ),
+    ]
 
 
 class Kind(StrEnum):
     text = "text"
     table = "table"
     image = "image"
+    figure = "figure"
 
 
 class Channel(StrEnum):
@@ -521,8 +529,17 @@ class DisplayItem(StrictModel):
     table: Annotated[
         TablePage | None, Field(description="Present for kind table: the first rows only.")
     ] = None
+    figure: Annotated[
+        Figure | None,
+        Field(
+            description="Present for kind figure: a plot the code drew, as SVG, Plotly or Vega-Lite (ADR-0024)."
+        ),
+    ] = None
     png_base64: Annotated[
-        str | None, Field(description="Present for kind image: a PNG, base64-encoded.")
+        str | None,
+        Field(
+            description="Present for kind image: a PNG, base64-encoded. Written by older code steps; new ones write figures."
+        ),
     ] = None
     channel: Annotated[
         Channel | None,

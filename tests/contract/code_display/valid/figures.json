@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "kind": "figure", "figure": { "library": "matplotlib", "format": "svg", "title": "Body mass", "content": "<svg xmlns='http://www.w3.org/2000/svg'></svg>" } },
+    { "kind": "figure", "figure": { "library": "plotly", "format": "plotly_json", "content": "{\"data\": [], \"layout\": {}}" } },
+    { "kind": "figure", "figure": { "library": "altair", "format": "vega_lite_json", "content": "{\"mark\": \"bar\"}" } }
+  ]
+}
