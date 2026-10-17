@@ -38,6 +38,12 @@
   --wash-strong: rgba(255, 255, 255, 0.09);
   --alert: #ff5c5c;
   --alert-wash: rgba(255, 92, 92, 0.08);
+  /* Step kinds (KindIcon outlines). Never red: red means a problem. */
+  --kind-source: #6cb6ff;
+  --kind-recipe: #56d4c4;
+  --kind-view: #b99cff;
+  --kind-decision: #e8b04c;
+  --kind-model: #7ed08a;
   /* VS Code's fonts: the system UI font, and the usual code fonts per platform. */
   --sans: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, Ubuntu, "Droid Sans", sans-serif;
   --mono: "SF Mono", Menlo, Monaco, Consolas, "Ubuntu Mono", "Droid Sans Mono", "Courier New", monospace;
@@ -600,3 +606,8 @@ p { margin: 0; }
 .nb-insert:hover::before { border-top-color: var(--line-strong); }
 .nb-insert button { position: relative; height: 20px; padding: 0 var(--space-2); border: 1px solid var(--line-strong); background: var(--canvas); color: var(--soft); font-size: var(--text-xs); opacity: 0; }
 .nb-insert:hover button, .nb-insert button:focus-visible { opacity: 1; }
+.kind-source { color: var(--kind-source); }
+.kind-recipe { color: var(--kind-recipe); }
+.kind-view { color: var(--kind-view); }
+.kind-decision { color: var(--kind-decision); }
+.kind-model { color: var(--kind-model); }

@@ -1,8 +1,9 @@
 import type { NodeKind } from "../flow/stages.ts";
 
-/** Kind glyphs from the Studio concept, 16px, stroked in currentColor. */
+/** Kind glyphs from the Studio concept, 16px, stroked in their kind's colour. */
 export function KindIcon({ kind, size = 16 }: { kind: NodeKind; size?: number }) {
-  const common = { width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.3, "aria-hidden": true } as const;
+  // Coloured by kind (cockpit.css --kind-*), so steps of one kind are easy to spot.
+  const common = { className: `kind-icon kind-${kind}`, width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.3, "aria-hidden": true } as const;
   switch (kind) {
     case "source":
       return (
