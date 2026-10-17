@@ -352,6 +352,10 @@ export interface DisplayItem {
    */
   png_base64?: string;
   /**
+   * The line of the step's code that showed it: a show() or display() call, or the last line. Absent when it was shown at the end of the run, or by older code steps.
+   */
+  line?: number;
+  /**
    * For printed text: which stream it came from. Absent for displayed values. Warnings arrive on stderr.
    */
   channel?: "stdout" | "stderr";

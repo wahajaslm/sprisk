@@ -541,6 +541,13 @@ class DisplayItem(StrictModel):
             description="Present for kind image: a PNG, base64-encoded. Written by older code steps; new ones write figures."
         ),
     ] = None
+    line: Annotated[
+        int | None,
+        Field(
+            description="The line of the step's code that showed it: a show() or display() call, or the last line. Absent when it was shown at the end of the run, or by older code steps.",
+            ge=0,
+        ),
+    ] = None
     channel: Annotated[
         Channel | None,
         Field(
