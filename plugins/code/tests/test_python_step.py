@@ -375,3 +375,24 @@ def test_only_tables_pass_between_steps_and_the_message_says_what_to_do() -> Non
     assert e.value.code == "code_error"
     assert "lookup is a dict, not a table" in e.value.message
     assert "one step" in e.value.message
+
+
+def test_each_plot_names_the_code_line_that_showed_it(
+    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
+) -> None:
+    source = (
+        "import matplotlib.pyplot as plt\n"
+        "plt.plot([1, 2])\n"
+        "plt.show()\n"
+        "def draw():\n"
+        "    display(plt.figure())\n"
+        "draw()\n"
+        "import plotly.express as px\n"
+        "px.histogram(x=[1, 2])"
+    )
+    items = run(write_parquet, clf_frame, out_dir, source).items
+    assert [(i.kind, i.line) for i in items] == [
+        ("figure", 3),
+        ("figure", 5),
+        ("figure", 8),
+    ]

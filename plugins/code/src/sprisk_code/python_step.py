@@ -3,10 +3,11 @@ import contextlib
 import io
 import json
 import reprlib
+import sys
 import traceback
 import warnings
 from collections.abc import Callable, Mapping
-from types import ModuleType, SimpleNamespace
+from types import FrameType, ModuleType, SimpleNamespace
 from typing import Any, TextIO
 
 import matplotlib
@@ -282,7 +283,7 @@ def _run(
     real_show = plt.show
 
     def show(*_: Any, **__: Any) -> None:
-        shown.open_figures()
+        shown.open_figures(_code_line())
 
     plt.show = show  # notebook-style: show() puts open figures here, in order
     plotly_io = _plotly_io()
@@ -313,9 +314,9 @@ def _run(
         if plotly_io:
             plotly_io.show = real_plotly_show
 
-    if value is not None:
-        shown.display(value)
-    shown.open_figures()
+    if value is not None and last is not None:
+        shown.show(value, last.body.lineno)
+    shown.open_figures(None)  # figures never shown by a line, as a notebook shows them at the end
     display = CodeDisplay.model_validate_json(json.dumps({"items": shown.items}))
     return display.model_dump(mode="json", exclude_none=True), namespace
 
@@ -347,7 +348,9 @@ class _Collector:
         # The stream whose printed text the last item holds; further prints to it extend it.
         self.printing: str | None = None
 
-    def _add(self, item: dict[str, Any]) -> None:
+    def _add(self, item: dict[str, Any], line: int | None = None) -> None:
+        if line is not None:
+            item["line"] = line
         self.printing = None
         if len(self.items) < MAX_ITEMS:
             self.items.append(item)
@@ -361,13 +364,18 @@ class _Collector:
         self.printing = channel
 
     def display(self, *values: Any) -> None:
+        """`display()` as the step's code calls it; each value names the line that called it."""
+        line = _code_line()
         for value in values:
-            if (frame := _as_polars(value)) is not None:
-                self._add({"kind": "table", "table": _table(frame)})
-            elif not self.figure(value):
-                self._add({"kind": "text", "text": _cut(repr(value), MAX_TEXT_CHARS)})
+            self.show(value, line)
 
-    def figure(self, value: Any) -> bool:
+    def show(self, value: Any, line: int | None) -> None:
+        if (frame := _as_polars(value)) is not None:
+            self._add({"kind": "table", "table": _table(frame)}, line)
+        elif not self.figure(value, line):
+            self._add({"kind": "text", "text": _cut(repr(value), MAX_TEXT_CHARS)}, line)
+
+    def figure(self, value: Any, line: int | None) -> bool:
         """Show `value` as a figure, as a notebook would; False when it is not one."""
         item = figure_item(value)
         if item is None:
@@ -382,9 +390,11 @@ class _Collector:
             )
         elif self.figures <= MAX_FIGURES and len(item["content"]) > MAX_FIGURE_BYTES:
             size = len(item["content"])
-            self._add({"kind": "text", "text": f"Figure {self.figures} not shown: {size} bytes."})
+            self._add(
+                {"kind": "text", "text": f"Figure {self.figures} not shown: {size} bytes."}, line
+            )
         elif self.figures <= MAX_FIGURES:
-            self._add({"kind": "figure", "figure": item})
+            self._add({"kind": "figure", "figure": item}, line)
         # A matplotlib figure, once shown, is closed, so the end of the run does not show it again.
         fig = getattr(value, "figure", value)
         if isinstance(fig, Figure):
@@ -402,9 +412,20 @@ class _Collector:
     ) -> None:
         self.text(warnings.formatwarning(message, category, filename, lineno, line), "stderr")
 
-    def open_figures(self) -> None:
+    def open_figures(self, line: int | None) -> None:
         for number in plt.get_fignums():
-            self.figure(plt.figure(number))
+            self.figure(plt.figure(number), line)
+
+
+def _code_line() -> int | None:
+    """The line of the step's own code that is running now: the innermost frame compiled from
+    it. None when called from outside that code."""
+    frame: FrameType | None = sys._getframe(1)
+    while frame is not None:
+        if frame.f_code.co_filename == FILENAME:
+            return frame.f_lineno
+        frame = frame.f_back
+    return None
 
 
 def _plotly_io() -> Any:
