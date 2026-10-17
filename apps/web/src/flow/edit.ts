@@ -11,7 +11,7 @@ data.describe()
 `;
 
 /** Versions are immutable: every edit is a new version with a fresh id (rule 5). */
-function nextVersion(base: PipelineVersion, change: Pick<PipelineVersion, "nodes" | "edges">): PipelineVersion {
+export function nextVersion(base: PipelineVersion, change: Pick<PipelineVersion, "nodes" | "edges">): PipelineVersion {
   return {
     ...base,
     ...change,

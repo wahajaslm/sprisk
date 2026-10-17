@@ -55,6 +55,19 @@ export const operators: Operator[] = [
   },
 ];
 
+/** The notebook-cell code step: its ports are variable names in its params (ADR-0031). */
+export const notebookOperator: Operator = {
+  ...op("sprisk.code.python@2.0.0", "analyzer", [], [["display", "diagnostics"], ["interface", "diagnostics"]]),
+  params_schema: {
+    type: "object",
+    properties: {
+      source: { type: "string" },
+      inputs: { type: "array", items: { type: "string" }, "x-sprisk-ports": "input" },
+      outputs: { type: "array", items: { type: "string" }, "x-sprisk-ports": "output" },
+    },
+  },
+};
+
 export const PV = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";
 export const RUN = "run_01JABCDEFGHJKMNPQRSTVWXYZ0";
 const NOW = "2026-10-16T10:00:00Z";
