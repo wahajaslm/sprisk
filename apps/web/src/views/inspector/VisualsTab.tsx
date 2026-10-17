@@ -5,6 +5,7 @@ import type { Read } from "../../api/code.ts";
 import { type ResultLayout, useResultLayout } from "../../workbench/detail.ts";
 import { useEscape } from "../../hooks/useEscape.ts";
 import { RowsTable } from "../RowsTable.tsx";
+import { FigureView } from "./FiguresTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 
 /** A code step's figures, in the order its code drew them (Node Framework §7). Only code
@@ -29,6 +30,14 @@ export function VisualsTab({ display }: { display: Read<CodeDisplay> }) {
       )}
       <section className={`code-output ${layout}`} aria-label="Visualizations">
         {items.map((item, i) => {
+          if (item.kind === "figure" && item.figure) {
+            figure += 1;
+            return (
+              <div key={i} className="result-tile">
+                <FigureView figure={item.figure} index={figure - 1} />
+              </div>
+            );
+          }
           if (item.kind === "image" && item.png_base64) {
             figure += 1;
             const label = `Figure ${figure}`;

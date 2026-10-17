@@ -750,6 +750,20 @@ describe("code step failures", () => {
     expect(screen.queryByRole("img")).toBeNull();
   });
 
+  it("draws a code step's plots as notebooks do: SVG pictures and live Plotly charts", async () => {
+    const display = {
+      items: [
+        { kind: "figure", figure: { library: "matplotlib", format: "svg", title: "Body mass", content: "<svg xmlns='http://www.w3.org/2000/svg'></svg>" } },
+        { kind: "figure", figure: { library: "plotly", format: "plotly_json", title: "counts", content: '{"data": [], "layout": {}}' } },
+      ],
+    };
+    await showCode(JSON.stringify(display));
+    await userEvent.click(await screen.findByRole("tab", { name: /Visualizations 2/ }));
+    const shown = await screen.findByRole("region", { name: "Visualizations" });
+    expect(within(shown).getByRole("img", { name: "Body mass" })).toHaveAttribute("src", expect.stringMatching(/^data:image\/svg\+xml/));
+    expect(await within(shown).findByRole("img", { name: "counts" })).toBeInTheDocument();
+  });
+
   it("does not download output above the cap", async () => {
     await showCode(codeDisplayJson, 10_000_000);
     expect(await screen.findByText(/Too large to draw here/)).toBeInTheDocument();

@@ -77,15 +77,21 @@ export function FigurePort({ attempt, port }: { attempt: Attempt | undefined; po
   );
 }
 
-function FigureView({ figure, index }: { figure: Figure; index: number }) {
+/** One figure, drawn by its format: an SVG picture, or a chart the browser draws live. Used
+ * for built-in steps' figure ports and for plots a code step showed. */
+export function FigureView({ figure, index }: { figure: Figure; index: number }) {
   const label = figure.title ?? `Figure ${index + 1}`;
-  if (figure.format === "svg") {
-    // As an image, so nothing inside the SVG runs (it is never inserted as markup).
-    return <img className="figure svg-figure" alt={label} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(figure.content)}`} />;
+  switch (figure.format) {
+    case "svg":
+      // As an image, so nothing inside the SVG runs (it is never inserted as markup).
+      return <img className="figure svg-figure" alt={label} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(figure.content)}`} />;
+    case "plotly_json":
+      return (
+        <Suspense fallback={<Loading text="Loading figure…" />}>
+          <PlotlyFigure json={figure.content} label={label} />
+        </Suspense>
+      );
+    case "vega_lite_json":
+      return <p className="muted">{label}: an Altair chart. Drawing Altair charts comes next.</p>;
   }
-  return (
-    <Suspense fallback={<Loading text="Loading figure…" />}>
-      <PlotlyFigure json={figure.content} label={label} />
-    </Suspense>
-  );
 }
