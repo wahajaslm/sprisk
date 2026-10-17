@@ -764,6 +764,16 @@ describe("code step failures", () => {
     expect(await within(shown).findByRole("img", { name: "counts" })).toBeInTheDocument();
   });
 
+  it("labels each plot with the code line that showed it", async () => {
+    const svg = (title: string) => ({ library: "matplotlib", format: "svg", title, content: "<svg xmlns='http://www.w3.org/2000/svg'></svg>" });
+    const display = { items: [{ kind: "figure", line: 2, figure: svg("a") }, { kind: "figure", figure: svg("b") }] };
+    await showCode(JSON.stringify(display));
+    await userEvent.click(await screen.findByRole("tab", { name: /Visualizations 2/ }));
+    const shown = await screen.findByRole("region", { name: "Visualizations" });
+    expect(within(shown).getByText("Plot 1 · line 2 · data.head(1)")).toBeInTheDocument();
+    expect(within(shown).getByText("Plot 2 · shown at the end")).toBeInTheDocument();
+  });
+
   it("does not download output above the cap", async () => {
     await showCode(codeDisplayJson, 10_000_000);
     expect(await screen.findByText(/Too large to draw here/)).toBeInTheDocument();

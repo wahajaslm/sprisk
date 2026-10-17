@@ -188,7 +188,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       );
     case "visuals":
       return isCode ? (
-        <VisualsTab display={display} />
+        <VisualsTab display={display} source={typeof node?.params.source === "string" ? node.params.source : undefined} />
       ) : (
         <FiguresTab
           attempt={done}

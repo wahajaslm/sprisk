@@ -11,7 +11,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 /** A code step's figures, in the order its code drew them (Node Framework §7). Only code
  * decides what is shown here (ADR-0032); tables it showed are in Data. Inline or as a grid;
  * switching never re-runs anything. */
-export function VisualsTab({ display }: { display: Read<CodeDisplay> }) {
+export function VisualsTab({ display, source }: { display: Read<CodeDisplay>; source: string | undefined }) {
   const { layout, setLayout } = useResultLayout();
   const [enlarged, setEnlarged] = useState<{ label: string; src: string } | undefined>();
   const items = display.status === "ready" ? display.value.items.filter((i) => i.kind !== "text" && i.kind !== "table") : [];
@@ -33,9 +33,10 @@ export function VisualsTab({ display }: { display: Read<CodeDisplay> }) {
           if (item.kind === "figure" && item.figure) {
             figure += 1;
             return (
-              <div key={i} className="result-tile">
+              <figure key={i} className="result-tile plot">
                 <FigureView figure={item.figure} index={figure - 1} />
-              </div>
+                <figcaption className="figure-caption">{plotCaption(figure, item.line, source)}</figcaption>
+              </figure>
             );
           }
           if (item.kind === "image" && item.png_base64) {
@@ -54,6 +55,16 @@ export function VisualsTab({ display }: { display: Read<CodeDisplay> }) {
       {enlarged && <Enlarged {...enlarged} onClose={() => setEnlarged(undefined)} />}
     </>
   );
+}
+
+const MAX_CAPTION_CODE = 60;
+
+/** Which line of the step's code showed a plot, e.g. "Plot 2 · line 5 · plt.show()". */
+export function plotCaption(n: number, line: number | undefined, source: string | undefined): string {
+  if (line === undefined) return `Plot ${n} · shown at the end`;
+  const code = source?.split("\n")[line - 1]?.trim() ?? "";
+  const cut = code.length > MAX_CAPTION_CODE ? `${code.slice(0, MAX_CAPTION_CODE)}…` : code;
+  return code ? `Plot ${n} · line ${line} · ${cut}` : `Plot ${n} · line ${line}`;
 }
 
 /** Figures the step drew, for the tab badge. Anything that is neither text nor a table counts,
