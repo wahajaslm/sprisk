@@ -46,8 +46,8 @@ describe("reading notebook cells (ADR-0031)", () => {
 describe("a flow from split cells", () => {
   const split: CodeSplit = {
     steps: [
-      { source: "df = load()", cells: [0], inputs: [], outputs: ["df"] },
-      { source: "n = len(df)", cells: [1, 2], inputs: ["df"], outputs: [] },
+      { source: "df = load()", cells: [0], parameters: [], inputs: [], outputs: ["df"] },
+      { source: "n = len(df)", cells: [1, 2], parameters: [], inputs: ["df"], outputs: [] },
     ],
     links: [{ from_step: 0, to_step: 1, name: "df" }],
     notes: [],
@@ -75,7 +75,7 @@ const mixed: PipelineVersion = {
     {
       id: "cell_1",
       operator: NOTEBOOK_OPERATOR,
-      params: { source: "def tidy(t):\n    return t.drop_nulls()\n\n# %%\nclean = tidy(df)", inputs: ["df"], outputs: ["clean"] },
+      params: { source: "def tidy(t):\n    return t.drop_nulls()\n\n# %%\nclean = tidy(df)", parameters: [], inputs: ["df"], outputs: ["clean"] },
     },
     { id: "split", operator: "sprisk.validation.random_split@1.0.0", params: { seed: 42 } },
     { id: "cell_2", operator: NOTEBOOK_OPERATOR, params: { source: "n = train.height", inputs: ["train"] } },
@@ -129,10 +129,10 @@ describe("edited cells become the next version", () => {
   // What Python returns for the unchanged cells (POST /code/split).
   const unchanged: CodeSplit = {
     steps: [
-      { cells: [0], source: "load_data = df = object()", inputs: [], outputs: ["df"] },
-      { cells: [1, 2], source: "def tidy(t):\n    return t.drop_nulls()\n\n# %%\nclean = tidy(df)", inputs: ["df"], outputs: ["clean"] },
-      { cells: [3], source: "split_train = train = split_test = object(clean)", inputs: ["clean"], outputs: ["train"] },
-      { cells: [4], source: "n = train.height", inputs: ["train"], outputs: [] },
+      { cells: [0], source: "load_data = df = object()", parameters: [], inputs: [], outputs: ["df"] },
+      { cells: [1, 2], source: "def tidy(t):\n    return t.drop_nulls()\n\n# %%\nclean = tidy(df)", parameters: [], inputs: ["df"], outputs: ["clean"] },
+      { cells: [3], source: "split_train = train = split_test = object(clean)", parameters: [], inputs: ["clean"], outputs: ["train"] },
+      { cells: [4], source: "n = train.height", parameters: [], inputs: ["train"], outputs: [] },
     ],
     links: [
       { from_step: 0, to_step: 1, name: "df" },
@@ -169,7 +169,7 @@ describe("edited cells become the next version", () => {
         ...unchanged.steps.slice(0, 2),
         { ...unchanged.steps[2]!, outputs: ["train", "split_test"] },
         unchanged.steps[3]!,
-        { cells: [5], source: "m = split_test.height", inputs: ["split_test"], outputs: [] },
+        { cells: [5], source: "m = split_test.height", parameters: [], inputs: ["split_test"], outputs: [] },
       ],
       links: [...unchanged.links, { from_step: 2, to_step: 4, name: "split_test" }],
       notes: [],
@@ -194,7 +194,7 @@ describe("edited cells become the next version", () => {
     ];
     const source = "def f(x):\n    return x\na = load()\n\n# %%\nb = f(a)";
     const split: CodeSplit = {
-      steps: [{ cells: [0, 1], source, inputs: [], outputs: [] }],
+      steps: [{ cells: [0, 1], source, parameters: [], inputs: [], outputs: [] }],
       links: [],
       notes: [{ cell: 1, message: "f is a function or class from cell 1; cells 1–2 stay in one step" }],
     };
@@ -206,7 +206,7 @@ describe("edited cells become the next version", () => {
 
   it("refuses cells that must run together across a built-in step", () => {
     const split: CodeSplit = {
-      steps: [unchanged.steps[0]!, { cells: [1, 2, 3, 4], source: "…", inputs: ["df"], outputs: [] }],
+      steps: [unchanged.steps[0]!, { cells: [1, 2, 3, 4], source: "…", parameters: [], inputs: ["df"], outputs: [] }],
       links: [{ from_step: 0, to_step: 1, name: "df" }],
       notes: [{ cell: 4, message: "tidy is a function or class from cell 2; cells 2–5 stay in one step" }],
     };
@@ -244,7 +244,7 @@ describe("edited cells become the next version", () => {
   });
 
   it("says when Python's reply names cells or steps that do not exist", () => {
-    const badCell = { ...unchanged, steps: [...unchanged.steps, { cells: [9], source: "", inputs: [], outputs: [] }] };
+    const badCell = { ...unchanged, steps: [...unchanged.steps, { cells: [9], source: "", parameters: [], inputs: [], outputs: [] }] };
     expect(() => versionFromSplit(mixed, ops, request, badCell)).toThrow("the split names cell 9, which was not sent");
     const badLink = { ...unchanged, links: [...unchanged.links, { from_step: 7, to_step: 3, name: "x" }] };
     expect(() => versionFromSplit(mixed, ops, request, badLink)).toThrow("the split links step 7, which it did not return");

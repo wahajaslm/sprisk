@@ -410,6 +410,28 @@
             "type": "string",
             "maxLength": 100000
           }
+        },
+        "together": {
+          "$ref": "#/$defs/CellRange",
+          "description": "Cells first..last (from 0) start as one step: the cells a person picked for Create node (ADR-0036). Absent: every cell starts alone."
+        }
+      }
+    },
+    "CellRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "first",
+        "last"
+      ],
+      "properties": {
+        "first": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
@@ -451,12 +473,20 @@
         "source",
         "cells",
         "inputs",
-        "outputs"
+        "outputs",
+        "parameters"
       ],
       "properties": {
         "source": {
           "type": "string",
           "description": "The step's code: its cells, with the imports and literals it uses from earlier cells copied in."
+        },
+        "parameters": {
+          "type": "array",
+          "description": "Top-level literals in the step's code, its own or copied in, that can be exposed as settings.",
+          "items": {
+            "$ref": "#/$defs/SplitParameter"
+          }
         },
         "cells": {
           "type": "array",
@@ -477,6 +507,35 @@
           "items": {
             "$ref": "#/$defs/PortName"
           }
+        }
+      }
+    },
+    "SplitParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
         }
       }
     },

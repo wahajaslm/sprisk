@@ -18,6 +18,11 @@ from sprisk_contracts import (
     CreateRun,
     FigureSet,
     MethodologyCheck,
+    NotebookExecute,
+    NotebookExecution,
+    NotebookKernelRequest,
+    NotebookVariables,
+    NotebookVersion,
     Operator,
     OperatorSource,
     PipelineVersion,
@@ -49,6 +54,11 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (CodeInterface, "code_interface"),
     (CodeSplitRequest, "code_split_request"),
     (CodeSplit, "code_split"),
+    (NotebookVersion, "notebook_version"),
+    (NotebookExecute, "notebook_execute"),
+    (NotebookExecution, "notebook_execution"),
+    (NotebookVariables, "notebook_variables"),
+    (NotebookKernelRequest, "notebook_kernel_request"),
 ]
 
 

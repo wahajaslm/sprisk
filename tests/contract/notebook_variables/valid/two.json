@@ -1,0 +1,7 @@
+{
+  "variables": [
+    { "name": "eligible", "defined": true, "type": "pandas.DataFrame", "table": true },
+    { "name": "model", "defined": true, "type": "sklearn.LogisticRegression", "table": false },
+    { "name": "later", "defined": false, "table": false }
+  ]
+}

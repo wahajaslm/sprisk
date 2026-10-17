@@ -25,6 +25,11 @@ export interface Entities {
   CodeSplit: C.CodeSplit;
   OperatorSource: C.OperatorSource;
   FigureSet: C.FigureSet;
+  NotebookVersion: C.NotebookVersion;
+  NotebookExecute: C.NotebookExecute;
+  NotebookExecution: C.NotebookExecution;
+  NotebookVariables: C.NotebookVariables;
+  NotebookKernelRequest: C.NotebookKernelRequest;
 }
 
 export class ContractError extends Error {}

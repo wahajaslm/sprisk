@@ -1,0 +1,6 @@
+{
+  "status": "error",
+  "execution_count": 3,
+  "outputs": [],
+  "error": { "name": "NameError", "message": "name 'df' is not defined", "traceback": ["Cell In[3], line 1", "NameError: name 'df' is not defined"] }
+}

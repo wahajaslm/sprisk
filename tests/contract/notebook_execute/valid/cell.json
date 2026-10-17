@@ -1,0 +1,1 @@
+{ "cell_id": "c3", "code": "import pandas as pd\ndf = pd.read_csv(DATA_PATH)" }

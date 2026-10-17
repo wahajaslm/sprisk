@@ -94,15 +94,24 @@ class Cell(RootModel[str]):
     root: Annotated[str, Field(max_length=100000)]
 
 
-class CodeSplitRequest(StrictModel):
+class CellRange(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    cells: list[Cell]
+    first: Annotated[int, Field(ge=0)]
+    last: Annotated[int, Field(ge=0)]
 
 
 class Cell1(RootModel[int]):
     root: Annotated[int, Field(ge=0)]
+
+
+class SplitParameter(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    value: int | float | str | bool
 
 
 class SplitNote(StrictModel):
@@ -162,6 +171,14 @@ class QuestionVersionId(RootModel[str]):
 
 class PipelineVersionId(RootModel[str]):
     root: Annotated[str, Field(pattern="^plv_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
+class NotebookId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^nb_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
+class NotebookVersionId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^nbv_[0-9A-HJKMNP-TV-Z]{26}$")]
 
 
 class RunId(RootModel[str]):
@@ -229,6 +246,79 @@ class Verdict(StrEnum):
     fail = "fail"
     warning = "warning"
     not_assessed = "not_assessed"
+
+
+class Kind1(StrEnum):
+    code = "code"
+    markdown = "markdown"
+
+
+class NotebookCellId(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="Stable within a notebook across versions, as in Jupyter's nbformat 4.5.",
+            pattern="^[A-Za-z0-9_-]{1,64}$",
+        ),
+    ]
+
+
+class NotebookExecute(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cell_id: NotebookCellId
+    code: Annotated[str, Field(max_length=100000)]
+
+
+class Status(StrEnum):
+    ok = "ok"
+    error = "error"
+    interrupted = "interrupted"
+    timed_out = "timed_out"
+
+
+class NotebookError(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    message: str
+    traceback: Annotated[list[str], Field(description="Plain text lines, colour codes removed.")]
+
+
+class NotebookVariable(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: PortName
+    defined: bool
+    type: Annotated[
+        str | None,
+        Field(description="Module and class, e.g. pandas.DataFrame. Absent when not defined."),
+    ] = None
+    table: Annotated[
+        bool,
+        Field(
+            description="A pandas or polars DataFrame: the one kind of value that crosses a node boundary today."
+        ),
+    ]
+
+
+class Op(StrEnum):
+    execute = "execute"
+    interrupt = "interrupt"
+    variables = "variables"
+    shutdown = "shutdown"
+
+
+class NotebookKernelRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    op: Op
+    code: Annotated[str | None, Field(max_length=100000)] = None
+    names: list[PortName] | None = None
 
 
 class CapabilityClass(StrEnum):
@@ -612,6 +702,19 @@ class CodeOutputCandidate(StrictModel):
     ] = None
 
 
+class CodeSplitRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cells: list[Cell]
+    together: Annotated[
+        CellRange | None,
+        Field(
+            description="Cells first..last (from 0) start as one step: the cells a person picked for Create node (ADR-0036). Absent: every cell starts alone."
+        ),
+    ] = None
+
+
 class SplitStep(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -620,6 +723,12 @@ class SplitStep(StrictModel):
         str,
         Field(
             description="The step's code: its cells, with the imports and literals it uses from earlier cells copied in."
+        ),
+    ]
+    parameters: Annotated[
+        list[SplitParameter],
+        Field(
+            description="Top-level literals in the step's code, its own or copied in, that can be exposed as settings."
         ),
     ]
     cells: Annotated[
@@ -692,6 +801,40 @@ class MethodologyCheck(StrictModel):
         ),
     ] = None
     created_at: Timestamp
+
+
+class NotebookCell(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: NotebookCellId
+    kind: Kind1
+    source: Annotated[str, Field(max_length=100000)]
+
+
+class NotebookExecution(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    status: Status
+    execution_count: Annotated[
+        int | None,
+        Field(
+            description="The kernel's count for this execution. Absent when the cell never got one (timed out before it started).",
+            ge=0,
+        ),
+    ] = None
+    outputs: list[DisplayItem]
+    error: Annotated[
+        NotebookError | None, Field(description="Present when status is error or interrupted.")
+    ] = None
+
+
+class NotebookVariables(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    variables: list[NotebookVariable]
 
 
 class Port(StrictModel):
@@ -837,6 +980,25 @@ class CodeSplit(StrictModel):
     steps: list[SplitStep]
     links: list[SplitLink]
     notes: list[SplitNote]
+
+
+class NotebookVersion(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.notebook_version/v1"]
+    id: NotebookVersionId
+    notebook_id: NotebookId
+    project_id: ProjectId
+    parent_id: Annotated[
+        NotebookVersionId | None,
+        Field(
+            description="Version this one was saved over. Absent for a notebook's first version."
+        ),
+    ] = None
+    title: Annotated[str, Field(max_length=200)]
+    cells: list[NotebookCell]
+    created_at: Timestamp
 
 
 class Operator(StrictModel):

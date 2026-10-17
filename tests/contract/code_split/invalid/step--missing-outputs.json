@@ -1,5 +1,14 @@
 {
-  "steps": [{ "source": "x = 1", "cells": [0], "inputs": [] }],
+  "steps": [
+    {
+      "source": "x = 1",
+      "cells": [
+        0
+      ],
+      "inputs": [],
+      "parameters": []
+    }
+  ],
   "links": [],
   "notes": []
 }

@@ -68,6 +68,16 @@ export type InvestigationId = string;
 export type QuestionVersionId = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookId".
+ */
+export type NotebookId = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookVersionId".
+ */
+export type NotebookVersionId = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RunId".
  */
 export type RunId = string;
@@ -100,6 +110,13 @@ export type CheckRef = string;
  * via the `definition` "Verdict".
  */
 export type Verdict = "pass" | "fail" | "warning" | "not_assessed";
+/**
+ * Stable within a notebook across versions, as in Jupyter's nbformat 4.5.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookCellId".
+ */
+export type NotebookCellId = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "CapabilityClass".
@@ -511,6 +528,22 @@ export interface CodeFileRead {
  */
 export interface CodeSplitRequest {
   cells: string[];
+  together?: CellRange;
+}
+/**
+ * Cells first..last (from 0) start as one step: the cells a person picked for Create node (ADR-0036). Absent: every cell starts alone.
+ */
+export interface CellRange {
+  first: number;
+  last: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CellRange".
+ */
+export interface CellRange1 {
+  first: number;
+  last: number;
 }
 /**
  * Code steps read from notebook cells (ADR-0031): each step's source, the cells it holds and the tables it reads and passes on, the links between steps, and notes for the person. A suggestion they confirm before a flow is made.
@@ -533,11 +566,23 @@ export interface SplitStep {
    */
   source: string;
   /**
+   * Top-level literals in the step's code, its own or copied in, that can be exposed as settings.
+   */
+  parameters: SplitParameter[];
+  /**
    * Indexes (from 0) of the cells this step holds.
    */
   cells: number[];
   inputs: PortName[];
   outputs: PortName[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SplitParameter".
+ */
+export interface SplitParameter {
+  name: string;
+  value: number | string | boolean;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -590,6 +635,118 @@ export interface MethodologyCheck {
    */
   limitations?: string;
   created_at: Timestamp;
+}
+/**
+ * One saved state of a notebook (ADR-0036): its ordered code and Markdown cells. Immutable; each save is a new version. Outputs are not saved: they belong to the session.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookVersion".
+ */
+export interface NotebookVersion {
+  schema_version: "sprisk.notebook_version/v1";
+  id: NotebookVersionId;
+  notebook_id: NotebookId;
+  project_id: ProjectId;
+  /**
+   * Version this one was saved over. Absent for a notebook's first version.
+   */
+  parent_id?: string;
+  title: string;
+  cells: NotebookCell[];
+  created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookCell".
+ */
+export interface NotebookCell {
+  id: NotebookCellId;
+  kind: "code" | "markdown";
+  source: string;
+}
+/**
+ * Run one cell's code in the notebook's session kernel (ADR-0036). Body of POST /notebooks/{id}/execute.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookExecute".
+ */
+export interface NotebookExecute {
+  cell_id: NotebookCellId;
+  code: string;
+}
+/**
+ * What one cell did in the session kernel: its execution count, what it printed and showed (capped, as a code step's display), and its error. Scratch, not provenance (ADR-0036).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookExecution".
+ */
+export interface NotebookExecution {
+  status: "ok" | "error" | "interrupted" | "timed_out";
+  /**
+   * The kernel's count for this execution. Absent when the cell never got one (timed out before it started).
+   */
+  execution_count?: number;
+  outputs: DisplayItem[];
+  error?: NotebookError;
+}
+/**
+ * Present when status is error or interrupted.
+ */
+export interface NotebookError {
+  name: string;
+  message: string;
+  /**
+   * Plain text lines, colour codes removed.
+   */
+  traceback: string[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookError".
+ */
+export interface NotebookError1 {
+  name: string;
+  message: string;
+  /**
+   * Plain text lines, colour codes removed.
+   */
+  traceback: string[];
+}
+/**
+ * Which names the session kernel holds and whether each is a table, so Create node can refuse an output that cannot cross a boundary (ADR-0036).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookVariables".
+ */
+export interface NotebookVariables {
+  variables: NotebookVariable[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookVariable".
+ */
+export interface NotebookVariable {
+  name: PortName;
+  defined: boolean;
+  /**
+   * Module and class, e.g. pandas.DataFrame. Absent when not defined.
+   */
+  type?: string;
+  /**
+   * A pandas or polars DataFrame: the one kind of value that crosses a node boundary today.
+   */
+  table: boolean;
+}
+/**
+ * Rust to the session host, one JSON line each (ADR-0036). execute needs code; variables needs names. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookKernelRequest".
+ */
+export interface NotebookKernelRequest {
+  op: "execute" | "interrupt" | "variables" | "shutdown";
+  code?: string;
+  names?: PortName[];
 }
 /**
  * Registered, versioned capability that a pipeline node runs (arch doc §5, §6).

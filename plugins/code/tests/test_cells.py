@@ -163,3 +163,31 @@ def test_a_deleted_name_is_not_passed_on() -> None:
     split = split_cells(["df = load()", "del df", "n = len(df)"])
     assert links(split) == []
     assert any("reads df, which no earlier cell sets" in n.message for n in split.notes)
+
+
+def test_each_step_lists_its_literals_as_parameters() -> None:
+    split = split_cells([LOAD, FILTER, SUMMARY])
+    assert [[(p.name, p.value) for p in s.parameters] for s in split.steps] == [
+        [],
+        [("min_age", 18)],
+        [],
+    ]
+
+
+def test_a_copied_literal_is_a_parameter_of_the_step_it_is_copied_into() -> None:
+    split = split_cells(["TOP_N = 10", "import pandas as pd\nshown = pd.DataFrame().head(TOP_N)"])
+    assert [(p.name, p.value) for p in split.steps[-1].parameters] == [("TOP_N", 10)]
+
+
+def test_cells_kept_together_start_as_one_step() -> None:
+    split = split_cells([LOAD, FILTER, SUMMARY], together=(0, 1))
+    assert cells(split) == [[0, 1], [2]]
+    assert names(split.steps[0].outputs) == ["filtered"]
+    assert names(split.steps[1].inputs) == ["filtered"]
+
+
+def test_cells_kept_together_read_tables_from_earlier_cells() -> None:
+    split = split_cells([LOAD, FILTER, SUMMARY], together=(1, 2))
+    assert cells(split) == [[0], [1, 2]]
+    assert names(split.steps[1].inputs) == ["df"]
+    assert names(split.steps[1].outputs) == []

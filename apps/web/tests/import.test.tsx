@@ -12,8 +12,8 @@ import { server } from "./server.ts";
 
 const split = {
   steps: [
-    { source: "df = load()", cells: [0], inputs: [], outputs: ["df"] },
-    { source: "n = len(df)", cells: [1], inputs: ["df"], outputs: [] },
+    { source: "df = load()", cells: [0], parameters: [], inputs: [], outputs: ["df"] },
+    { source: "n = len(df)", cells: [1], parameters: [], inputs: ["df"], outputs: [] },
   ],
   links: [{ from_step: 0, to_step: 1, name: "df" }],
   notes: [{ cell: 0, message: "cell 1 reads load, which no earlier cell sets" }],

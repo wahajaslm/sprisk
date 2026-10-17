@@ -8,7 +8,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, Attempt, AttemptOutput, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    CreateRun, FigureSet, MethodologyCheck, Operator, OperatorSource, PipelineVersion, Problem,
+    CreateRun, FigureSet, MethodologyCheck, NotebookExecute, NotebookExecution,
+    NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem,
     QuestionVersion, Run, TablePage, WorkerMessage, parse,
 };
 
@@ -62,6 +63,11 @@ const ENTITIES: &[&str] = &[
     "create_run",
     "figure_set",
     "methodology_check",
+    "notebook_execute",
+    "notebook_execution",
+    "notebook_kernel_request",
+    "notebook_variables",
+    "notebook_version",
     "operator",
     "operator_source",
     "pipeline_version",
@@ -176,4 +182,29 @@ fn code_split() {
 #[test]
 fn code_split_request() {
     check::<CodeSplitRequest>("code_split_request");
+}
+
+#[test]
+fn notebook_version() {
+    check::<NotebookVersion>("notebook_version");
+}
+
+#[test]
+fn notebook_execute() {
+    check::<NotebookExecute>("notebook_execute");
+}
+
+#[test]
+fn notebook_execution() {
+    check::<NotebookExecution>("notebook_execution");
+}
+
+#[test]
+fn notebook_variables() {
+    check::<NotebookVariables>("notebook_variables");
+}
+
+#[test]
+fn notebook_kernel_request() {
+    check::<NotebookKernelRequest>("notebook_kernel_request");
 }

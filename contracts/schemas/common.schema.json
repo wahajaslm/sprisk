@@ -35,6 +35,14 @@
       "type": "string",
       "pattern": "^plv_[0-9A-HJKMNP-TV-Z]{26}$"
     },
+    "NotebookId": {
+      "type": "string",
+      "pattern": "^nb_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "NotebookVersionId": {
+      "type": "string",
+      "pattern": "^nbv_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
     "RunId": {
       "type": "string",
       "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$"

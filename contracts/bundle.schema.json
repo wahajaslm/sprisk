@@ -476,6 +476,28 @@
             "type": "string",
             "maxLength": 100000
           }
+        },
+        "together": {
+          "$ref": "#/$defs/CellRange",
+          "description": "Cells first..last (from 0) start as one step: the cells a person picked for Create node (ADR-0036). Absent: every cell starts alone."
+        }
+      }
+    },
+    "CellRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "first",
+        "last"
+      ],
+      "properties": {
+        "first": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
@@ -517,12 +539,20 @@
         "source",
         "cells",
         "inputs",
-        "outputs"
+        "outputs",
+        "parameters"
       ],
       "properties": {
         "source": {
           "type": "string",
           "description": "The step's code: its cells, with the imports and literals it uses from earlier cells copied in."
+        },
+        "parameters": {
+          "type": "array",
+          "description": "Top-level literals in the step's code, its own or copied in, that can be exposed as settings.",
+          "items": {
+            "$ref": "#/$defs/SplitParameter"
+          }
         },
         "cells": {
           "type": "array",
@@ -543,6 +573,35 @@
           "items": {
             "$ref": "#/$defs/PortName"
           }
+        }
+      }
+    },
+    "SplitParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
         }
       }
     },
@@ -703,6 +762,14 @@
       "type": "string",
       "pattern": "^plv_[0-9A-HJKMNP-TV-Z]{26}$"
     },
+    "NotebookId": {
+      "type": "string",
+      "pattern": "^nb_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "NotebookVersionId": {
+      "type": "string",
+      "pattern": "^nbv_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
     "RunId": {
       "type": "string",
       "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$"
@@ -820,6 +887,236 @@
         "warning",
         "not_assessed"
       ]
+    },
+    "NotebookVersion": {
+      "title": "NotebookVersion",
+      "description": "One saved state of a notebook (ADR-0036): its ordered code and Markdown cells. Immutable; each save is a new version. Outputs are not saved: they belong to the session.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "notebook_id",
+        "project_id",
+        "title",
+        "cells",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.notebook_version/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/NotebookVersionId"
+        },
+        "notebook_id": {
+          "$ref": "#/$defs/NotebookId"
+        },
+        "project_id": {
+          "$ref": "#/$defs/ProjectId"
+        },
+        "parent_id": {
+          "$ref": "#/$defs/NotebookVersionId",
+          "description": "Version this one was saved over. Absent for a notebook's first version."
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NotebookCell"
+          }
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "NotebookCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NotebookCellId"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "code",
+            "markdown"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      }
+    },
+    "NotebookCellId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "Stable within a notebook across versions, as in Jupyter's nbformat 4.5."
+    },
+    "NotebookExecute": {
+      "title": "NotebookExecute",
+      "description": "Run one cell's code in the notebook's session kernel (ADR-0036). Body of POST /notebooks/{id}/execute.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell_id",
+        "code"
+      ],
+      "properties": {
+        "cell_id": {
+          "$ref": "#/$defs/NotebookCellId"
+        },
+        "code": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      }
+    },
+    "NotebookExecution": {
+      "title": "NotebookExecution",
+      "description": "What one cell did in the session kernel: its execution count, what it printed and showed (capped, as a code step's display), and its error. Scratch, not provenance (ADR-0036).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "outputs"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error",
+            "interrupted",
+            "timed_out"
+          ]
+        },
+        "execution_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The kernel's count for this execution. Absent when the cell never got one (timed out before it started)."
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DisplayItem"
+          }
+        },
+        "error": {
+          "$ref": "#/$defs/NotebookError",
+          "description": "Present when status is error or interrupted."
+        }
+      }
+    },
+    "NotebookError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "message",
+        "traceback"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "traceback": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Plain text lines, colour codes removed."
+        }
+      }
+    },
+    "NotebookVariables": {
+      "title": "NotebookVariables",
+      "description": "Which names the session kernel holds and whether each is a table, so Create node can refuse an output that cannot cross a boundary (ADR-0036).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variables"
+      ],
+      "properties": {
+        "variables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NotebookVariable"
+          }
+        }
+      }
+    },
+    "NotebookVariable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "defined",
+        "table"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/PortName"
+        },
+        "defined": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "description": "Module and class, e.g. pandas.DataFrame. Absent when not defined."
+        },
+        "table": {
+          "type": "boolean",
+          "description": "A pandas or polars DataFrame: the one kind of value that crosses a node boundary today."
+        }
+      }
+    },
+    "NotebookKernelRequest": {
+      "title": "NotebookKernelRequest",
+      "description": "Rust to the session host, one JSON line each (ADR-0036). execute needs code; variables needs names. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "execute",
+            "interrupt",
+            "variables",
+            "shutdown"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortName"
+          }
+        }
+      }
     },
     "Operator": {
       "title": "Operator",

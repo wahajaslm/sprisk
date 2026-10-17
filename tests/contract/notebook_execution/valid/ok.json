@@ -1,0 +1,8 @@
+{
+  "status": "ok",
+  "execution_count": 2,
+  "outputs": [
+    { "kind": "text", "text": "Loading data from sales_data.csv...\nLoaded 1250 rows\n", "channel": "stdout" },
+    { "kind": "text", "text": "1250" }
+  ]
+}

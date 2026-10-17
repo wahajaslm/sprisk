@@ -1,0 +1,1 @@
+{ "op": "variables", "names": ["__import__(\"os\")"] }

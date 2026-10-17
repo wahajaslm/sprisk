@@ -16,7 +16,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Literal
 
-from sprisk_code.discovery import scalar_literal
+from sprisk_code.discovery import literal_parameters, scalar_literal
 from sprisk_contracts import CodeSplit, CodeSplitRequest
 
 # import, literal: copied into the reader. function, container: keep definer and reader
@@ -47,12 +47,14 @@ class _Code:
     error: str | None = None
 
 
-def split_cells(cells: list[str]) -> CodeSplit:
+def split_cells(cells: list[str], together: tuple[int, int] | None = None) -> CodeSplit:
+    """`together`: cells first..last start as one step, the cells a person picked to make a
+    node from (ADR-0036). Other cells may still join it, by the same rules as any step."""
     kept = [(i, _without_magics(c)) for i, c in enumerate(cells) if c.strip()]
-    groups = [[i] for i, _ in kept]
     sources = dict(kept)
+    groups = _start_groups([i for i, _ in kept], together)
     notes: list[_Note] = []
-    codes = [_read(sources[i]) for i, _ in kept]
+    codes = [_read(CELL_JOIN.join(sources[i] for i in g)) for g in groups]
     while (merge := _first_merge(groups, codes)) is not None:
         start, end, message, cell = merge
         merged = [i for g in groups[start : end + 1] for i in g]
@@ -62,6 +64,16 @@ def split_cells(cells: list[str]) -> CodeSplit:
         codes[start : end + 1] = [_read(CELL_JOIN.join(sources[i] for i in merged))]
         notes.append((cell, message))
     return _steps(groups, codes, notes)
+
+
+def _start_groups(kept: list[int], together: tuple[int, int] | None) -> list[list[int]]:
+    if together is None:
+        return [[i] for i in kept]
+    first, last = together
+    picked = [i for i in kept if first <= i <= last]
+    before = [[i] for i in kept if i < first]
+    after = [[i] for i in kept if i > last]
+    return before + ([picked] if picked else []) + after
 
 
 def _without_magics(cell: str) -> str:
@@ -236,6 +248,7 @@ class _Step:
     source: str = ""
     inputs: list[str] = field(default_factory=list)
     outputs: list[str] = field(default_factory=list)
+    parameters: list[dict[str, object]] = field(default_factory=list)
 
 
 def _steps(groups: list[list[int]], codes: list[_Code], notes: list[_Note]) -> CodeSplit:
@@ -268,6 +281,11 @@ def _steps(groups: list[list[int]], codes: list[_Code], notes: list[_Note]) -> C
             links.append((i, j, name))
         header = "\n".join(dict.fromkeys(copied))
         step.source = f"{header}\n{code.source}" if header else code.source
+        if not code.error:
+            step.parameters = [
+                {"name": p.name, "value": ast.literal_eval(p.default_text)}
+                for p in literal_parameters(step.source)
+            ]
     position = {j: k for k, j in enumerate(by_group)}
     doc = {
         "steps": [vars(step) for step in by_group.values()],
@@ -281,7 +299,9 @@ def _steps(groups: list[list[int]], codes: list[_Code], notes: list[_Note]) -> C
 
 def main() -> None:
     request = CodeSplitRequest.model_validate_json(sys.stdin.read())
-    sys.stdout.write(split_cells([c.root for c in request.cells]).model_dump_json())
+    together = (request.together.first, request.together.last) if request.together else None
+    cells = [c.root for c in request.cells]
+    sys.stdout.write(split_cells(cells, together).model_dump_json())
 
 
 if __name__ == "__main__":

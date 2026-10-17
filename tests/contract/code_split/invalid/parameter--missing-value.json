@@ -1,0 +1,61 @@
+{
+  "steps": [
+    {
+      "source": "import pandas as pd\ndf = pd.read_csv(\"customers.csv\")",
+      "cells": [
+        0
+      ],
+      "inputs": [],
+      "outputs": [
+        "df"
+      ],
+      "parameters": []
+    },
+    {
+      "source": "min_age = 18\nfiltered = df[df[\"age\"] >= min_age]",
+      "cells": [
+        1
+      ],
+      "inputs": [
+        "df"
+      ],
+      "outputs": [
+        "filtered"
+      ],
+      "parameters": [
+        {
+          "name": "min_age"
+        }
+      ]
+    },
+    {
+      "source": "summary = filtered.describe()\nsummary",
+      "cells": [
+        2
+      ],
+      "inputs": [
+        "filtered"
+      ],
+      "outputs": [],
+      "parameters": []
+    }
+  ],
+  "links": [
+    {
+      "from_step": 0,
+      "to_step": 1,
+      "name": "df"
+    },
+    {
+      "from_step": 1,
+      "to_step": 2,
+      "name": "filtered"
+    }
+  ],
+  "notes": [
+    {
+      "cell": 2,
+      "message": "cell 3 reads lookup, which no earlier cell sets"
+    }
+  ]
+}

@@ -1,5 +1,11 @@
 {
   "steps": [],
-  "links": [{ "from_step": 0, "to_step": 1, "name": "X_train" }],
+  "links": [
+    {
+      "from_step": 0,
+      "to_step": 1,
+      "name": "X_train"
+    }
+  ],
   "notes": []
 }

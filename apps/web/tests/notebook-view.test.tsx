@@ -55,7 +55,7 @@ function withApi(split: (cells: string[]) => CodeSplit) {
 
 /** What Python reads in the cells: the stand-in sets df, every later cell reads it. */
 const linear = (cells: string[]): CodeSplit => ({
-  steps: cells.map((source, i) => ({ cells: [i], source, inputs: i === 0 ? [] : ["df"], outputs: i === 0 ? ["df"] : [] })),
+  steps: cells.map((source, i) => ({ cells: [i], source, parameters: [], inputs: i === 0 ? [] : ["df"], outputs: i === 0 ? ["df"] : [] })),
   links: cells.slice(1).map((_, i) => ({ from_step: 0, to_step: i + 1, name: "df" })),
   notes: [],
 });
@@ -237,7 +237,7 @@ describe("the notebook view of a flow (ADR-0035)", () => {
 
   it("says why cells cannot be saved, and saves nothing", async () => {
     const sent = withApi(() => ({
-      steps: [{ cells: [0, 1], source: "…", inputs: [], outputs: [] }],
+      steps: [{ cells: [0, 1], source: "…", parameters: [], inputs: [], outputs: [] }],
       links: [],
       notes: [{ cell: 1, message: "f is a function or class from cell 1; cells 1–2 stay in one step" }],
     }));

@@ -1,0 +1,11 @@
+{
+  "cells": [
+    "import pandas as pd\ndf = pd.read_csv(\"customers.csv\")",
+    "min_age = 18\nfiltered = df[df[\"age\"] >= min_age]",
+    "summary = filtered.describe()\nsummary"
+  ],
+  "together": {
+    "first": 1,
+    "last": 2
+  }
+}
