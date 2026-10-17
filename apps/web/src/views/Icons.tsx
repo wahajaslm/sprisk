@@ -146,3 +146,19 @@ export function PopOutIcon() {
     </svg>
   );
 }
+
+export function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+      <path d="M2 3h8M4.5 3V1.8h3V3M3 3l.6 7.2h4.8L9 3" />
+    </svg>
+  );
+}
+
+export function CodeIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+      <path d="M4 3L1.5 6 4 9M8 3l2.5 3L8 9" />
+    </svg>
+  );
+}

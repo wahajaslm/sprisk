@@ -548,21 +548,54 @@ p { margin: 0; }
 .flow-panel { display: flex; flex-direction: column; height: 100%; background: var(--canvas); }
 .flow-panel-bar { display: flex; align-items: center; padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--line-soft); }
 .flow-panel > .flow, .flow-panel > .notebook { flex: 1; min-height: 0; height: auto; }
-.notebook { overflow: auto; padding: var(--space-3) var(--space-4); }
-.notebook-bar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-xs); }
-.notebook-steps { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-/* The bar at the left brackets the cells of one step. */
-.notebook-step { display: flex; flex-direction: column; gap: var(--space-2); padding-left: var(--space-3); border-left: 2px solid var(--line); }
-.notebook-step.selected { border-left-color: var(--ink); }
-.notebook-step-head { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-xs); color: var(--muted); }
-.notebook-step-head button { padding: 0; border: 0; background: transparent; color: var(--soft); font: var(--text-xs) var(--mono); cursor: pointer; }
-.notebook-step-head button:hover { color: var(--ink); }
-.notebook-cell { display: grid; grid-template-columns: var(--space-8) 1fr; gap: var(--space-1) var(--space-2); align-items: start; }
-.cell-number { padding-top: var(--space-2); text-align: right; font: var(--text-xs) var(--mono); color: var(--faint); }
-.cell-actions { grid-column: 2; display: flex; gap: var(--space-2); }
-.code-input.fit { flex: none; min-height: 0; }
-.notebook .code-editor { height: auto; }
-.notebook .code-editor .code-input, .notebook-code .code-input { flex: none; height: 320px; }
-.notebook-call { padding: var(--space-2); background: var(--panel); border: 1px solid var(--line-soft); }
-.notebook-code summary { cursor: pointer; }
-.notebook-add { align-self: flex-start; }
+
+/* Notebook, laid out as Jupyter: [n] in a gutter, the code cell, its output underneath. */
+.notebook { --nb-gutter: 64px; overflow: auto; padding: 0 var(--space-6) var(--space-8) var(--space-2); }
+.nb-toolbar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); padding: var(--space-2) 0 var(--space-2) var(--nb-gutter); border-bottom: 1px solid var(--line-soft); background: var(--canvas); font-size: var(--text-xs); }
+.nb-tool { height: 24px; padding: 0 var(--space-2); border: 1px solid var(--line-strong); background: transparent; color: var(--soft); font-size: var(--text-xs); }
+.nb-tool:hover { color: var(--ink); background: var(--node-hover); }
+.nb-message { margin: var(--space-1) 0 var(--space-1) var(--nb-gutter); }
+.nb-step { position: relative; padding: var(--space-3) 0 var(--space-1); }
+/* As in VS Code, a bar at the left marks the selected cell. */
+.nb-step::after { content: ""; position: absolute; left: 0; top: var(--space-3); bottom: var(--space-1); width: 2px; }
+.nb-step:hover::after { background: var(--line-strong); }
+.nb-step.selected::after { background: var(--ink); }
+/* Cells that run as one step share a bracket in the gutter. */
+.nb-step.grouped::before { content: ""; position: absolute; left: calc(var(--nb-gutter) - 8px); top: var(--space-4); bottom: var(--space-2); width: 4px; border: 1px solid var(--line-strong); border-right: 0; }
+.nb-cell { display: grid; grid-template-columns: var(--nb-gutter) 1fr; align-items: start; }
+.nb-cell + .nb-cell { margin-top: var(--space-5); }
+.nb-gutter { display: flex; justify-content: flex-end; align-items: center; height: 40px; padding-right: var(--space-4); font: var(--text-xs) var(--mono); color: var(--ghost); }
+.nb-gutter.bad { color: var(--alert); }
+.nb-run { display: none; width: 24px; height: 24px; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--soft); }
+.nb-run:hover:not(:disabled) { background: var(--node-hover); color: var(--ink); }
+.nb-cell:hover .nb-run, .nb-cell:focus-within .nb-run { display: flex; }
+.nb-cell:hover .nb-run + .nb-count, .nb-cell:focus-within .nb-run + .nb-count { display: none; }
+.nb-body { position: relative; min-width: 0; border: 1px solid var(--line); }
+.nb-body:focus-within { border-color: var(--dim); }
+/* The cell's name and tools sit on its top border, as VS Code's cell toolbar does. */
+.nb-tools { position: absolute; top: -11px; right: var(--space-3); z-index: 2; display: flex; align-items: center; gap: var(--space-1); height: 20px; }
+.nb-tag { padding: 0 var(--space-1); background: var(--canvas); font: var(--text-xs) var(--mono); color: var(--ghost); }
+.nb-icon { display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--canvas); color: var(--muted); }
+.nb-icon:hover, .nb-icon.on { color: var(--ink); background: var(--node-hover); }
+.nb-cell:hover .nb-icon, .nb-cell:focus-within .nb-icon, .nb-icon.on { display: flex; }
+.code-input.fit { flex: none; min-height: 0; border: 0; background: transparent; }
+.nb-function { border-top: 1px solid var(--line); }
+.nb-function .code-editor { height: auto; gap: 0; }
+.nb-function .code-actions { padding: var(--space-2) var(--space-3); }
+.nb-function .code-input { flex: none; height: 360px; border: 0; border-top: 1px solid var(--line-soft); }
+.nb-out-row { display: grid; grid-template-columns: var(--nb-gutter) 1fr; }
+.nb-output { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding: var(--space-2) var(--space-3) 0; }
+.nb-output > * { max-width: 100%; }
+.nb-output .peek { width: 100%; overflow: auto; }
+.nb-output .figure, .nb-output .plotly-figure { width: 100%; max-width: 760px; }
+.nb-text { margin: 0; }
+.nb-text.stderr { width: 100%; padding: var(--space-1) var(--space-2); background: var(--alert-wash); color: var(--dim); }
+.nb-error { width: 100%; padding: var(--space-2) var(--space-3); background: var(--alert-wash); color: var(--alert); }
+.nb-table { padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--text-sm); cursor: pointer; }
+.nb-table:hover { color: var(--ink); text-decoration: underline; }
+/* Hover between two cells to add one there. */
+.nb-insert { position: relative; display: flex; align-items: center; justify-content: center; height: var(--space-4); margin-left: var(--nb-gutter); }
+.nb-insert::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid transparent; }
+.nb-insert:hover::before { border-top-color: var(--line-strong); }
+.nb-insert button { position: relative; height: 20px; padding: 0 var(--space-2); border: 1px solid var(--line-strong); background: var(--canvas); color: var(--soft); font-size: var(--text-xs); opacity: 0; }
+.nb-insert:hover button, .nb-insert button:focus-visible { opacity: 1; }

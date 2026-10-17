@@ -52,10 +52,25 @@ export default function MonacoCode({ value, onChange, onRun, label, readOnly = f
         minimap: { enabled: false },
         bracketPairColorization: { enabled: false },
         scrollBeyondLastLine: false,
-        ...(fit ? { scrollbar: { alwaysConsumeMouseWheel: false }, lineNumbersMinChars: 3 } : {}),
+        padding: { top: 10 },
+        // A notebook cell: as tall as its code, no line numbers, long lines wrapped.
+        ...(fit
+          ? {
+              lineNumbers: "off" as const,
+              folding: false,
+              glyphMargin: false,
+              lineDecorationsWidth: 12,
+              wordWrap: "on" as const,
+              renderLineHighlight: "none" as const,
+              overviewRulerLanes: 0,
+              overviewRulerBorder: false,
+              hideCursorInOverviewRuler: true,
+              padding: { top: 10, bottom: 10 },
+              scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const, alwaysConsumeMouseWheel: false },
+            }
+          : {}),
         tabSize: 4,
         automaticLayout: true,
-        padding: { top: 10 },
       }}
     />
   );

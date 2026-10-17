@@ -1,9 +1,11 @@
-import type { Attempt, Operator, PipelineVersion } from "@sprisk/contracts";
-import { useState } from "react";
+import type { Attempt, DisplayItem, Operator, PipelineVersion } from "@sprisk/contracts";
+import { type ReactNode, useState } from "react";
 
-import { useOperators, useOperatorSources, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
-import { isCodeOperator } from "../flow/edit.ts";
-import { latestByNode, statusOf } from "../flow/latest.ts";
+import { useCodeDisplay, useConsole } from "../api/code.ts";
+import { useOperators, useOperatorSources, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun, useTablePage } from "../api/hooks.ts";
+import { PARQUET } from "../api/media.ts";
+import { isCodeOperator, setCodeSource } from "../flow/edit.ts";
+import { hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import {
   type CellAt,
   cellNumber,
@@ -17,15 +19,18 @@ import {
 } from "../flow/notebook.ts";
 import { roleOf } from "../flow/stages.ts";
 import { useSelection } from "../workbench/selection.ts";
+import { useWorkbench } from "../workbench/workbench.ts";
 import { Loading } from "../components/ui/Loading.tsx";
-import { CodeEditor } from "./CodeEditor.tsx";
 import { CodeInput } from "./CodeInput.tsx";
+import { CodeIcon, PlayIcon, TrashIcon } from "./Icons.tsx";
+import { FigurePort, FigureView } from "./inspector/FiguresTab.tsx";
 import { OperatorCode } from "./inspector/OperatorCode.tsx";
-import { PlayIcon } from "./Icons.tsx";
+import { ShownTable } from "./inspector/VisualsTab.tsx";
 import { useSaveCells } from "./useSaveCells.ts";
 
-/** The selected flow as notebook cells (ADR-0033). It is the same saved version the canvas
- * shows: every edit here saves the next version, and the canvas follows. */
+/** The selected flow as a notebook (ADR-0033): cells with their outputs, as in Jupyter. It is
+ * the same saved version the canvas shows: every edit here saves the next version, and the
+ * canvas follows. */
 export function NotebookView() {
   const { pipelineVersionId, runId, nodeId } = useSelection();
   const versions = usePipelineVersions();
@@ -52,11 +57,15 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
   };
   return (
     <div className="notebook" aria-label="Notebook">
-      <div className="notebook-bar">
-        <span className="muted">Each cell is a step of the flow · Shift+Enter runs · each run is saved as a new version</span>
+      <div className="nb-toolbar">
+        <button type="button" className="nb-tool" onClick={() => setDraft(withNewCell(steps, steps.length - 1))}>
+          + Code
+        </button>
+        <span className="muted">Each cell is a step of the flow · Shift+Enter runs it</span>
         <span className="spacer" />
         {draft && (
           <>
+            <span className="muted">Edits not run yet</span>
             <button type="button" className="page-btn" onClick={() => setDraft(undefined)}>
               Discard edits
             </button>
@@ -68,97 +77,262 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
         )}
         <Download pipeline={pipeline} operators={operators} />
       </div>
-      {cells.problem && <p role="alert" className="error">{cells.problem}</p>}
+      {cells.problem && <p role="alert" className="error nb-message">{cells.problem}</p>}
       {cells.notes.map((note, i) => (
-        <p key={i} className="import-note">
+        <p key={i} className="import-note nb-message">
           {note}
         </p>
       ))}
-      <ol className="notebook-steps">
-        {steps.map((step, i) => (
-          <li key={step.nodeId ?? `new-${i}`} className={`notebook-step${step.nodeId !== undefined && step.nodeId === selected ? " selected" : ""}`}>
-            <StepHead step={step} pipeline={pipeline} operators={operators} latest={latest} />
-            {step.kind === "cells" ? (
-              step.cells.map((cell, j) => {
-                const at = { step: i, cell: j };
-                const n = cellNumber(steps, at) + 1;
-                return (
-                  <div key={j} className="notebook-cell">
-                    <span className="cell-number">[{n}]</span>
-                    <CodeInput fit label={`Cell ${n}`} value={cell} onChange={(v) => setDraft(withCell(steps, at, v))} onRun={(v) => run(withCell(steps, at, v), at)} />
-                    <div className="cell-actions">
-                      <button type="button" className="page-btn" disabled={cells.pending} onClick={() => run(steps, at)}>
-                        Run
-                      </button>
-                      <button type="button" className="page-btn" onClick={() => setDraft(withoutCell(steps, at))}>
-                        Delete cell
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <OtherStep step={step} pipeline={pipeline} operators={operators} />
-            )}
-            <button type="button" className="page-btn notebook-add" aria-label={`Add a cell after ${step.nodeId ?? "this cell"}`} onClick={() => setDraft(withNewCell(steps, i))}>
-              + Cell
-            </button>
-          </li>
-        ))}
-      </ol>
+      <AddCell label="Add a cell at the top" onAdd={() => setDraft(withNewCell(steps, -1))} />
+      {steps.map((step, i) => {
+        const attempt = step.nodeId === undefined ? undefined : latest.get(step.nodeId);
+        const shared = { step, index: i, steps, pipeline, operators, attempt };
+        return (
+          <div key={step.nodeId ?? `new-${i}`}>
+            <StepBlock {...shared} selected={step.nodeId !== undefined && step.nodeId === selected}>
+              {step.kind === "cells" ? (
+                step.cells.map((cell, j) => {
+                  const at = { step: i, cell: j };
+                  const n = cellNumber(steps, at) + 1;
+                  return (
+                    <Cell
+                      key={j}
+                      n={n}
+                      attempt={attempt}
+                      tag={j === 0 ? cellsTag(step) : undefined}
+                      pending={cells.pending}
+                      onRun={() => run(steps, at)}
+                      tools={
+                        <button type="button" className="nb-icon" aria-label={`Delete cell ${n}`} title="Delete cell" onClick={() => setDraft(withoutCell(steps, at))}>
+                          <TrashIcon />
+                        </button>
+                      }
+                    >
+                      <CodeInput fit label={`Cell ${n}`} value={cell} onChange={(v) => setDraft(withCell(steps, at, v))} onRun={(v) => run(withCell(steps, at, v), at)} />
+                    </Cell>
+                  );
+                })
+              ) : (
+                <OtherCell {...shared} n={cellNumber(steps, { step: i, cell: 0 }) + 1} />
+              )}
+            </StepBlock>
+            <AddCell label={`Add a cell after ${step.nodeId ?? "the new cell"}`} onAdd={() => setDraft(withNewCell(steps, i))} />
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-type StepProps<S = NotebookStep> = { step: S; pipeline: PipelineVersion; operators: Map<string, Operator> };
+const cellsTag = (step: Extract<NotebookStep, { kind: "cells" }>) =>
+  [step.nodeId ?? "new step", "Python", ...(step.cells.length > 1 ? [`${step.cells.length} cells, one step`] : [])].join(" · ");
 
-/** The step a cell belongs to: click to inspect it. Cells kept together say so. */
-function StepHead({ step, pipeline, operators, latest }: StepProps & { latest: Map<string, Attempt> }) {
+type StepProps = {
+  step: NotebookStep;
+  index: number;
+  steps: NotebookStep[];
+  pipeline: PipelineVersion;
+  operators: Map<string, Operator>;
+  attempt: Attempt | undefined;
+};
+
+/** One step: its cells, then what it printed, showed and drew. Clicking it selects the step,
+ * so the Inspector shows it too. Cells that run as one step share a bracket. */
+function StepBlock({ step, attempt, operators, pipeline, selected, children }: StepProps & { selected: boolean; children: ReactNode }) {
   const selectNode = useSelection((s) => s.selectNode);
-  if (step.nodeId === undefined) return <p className="notebook-step-head">new step · runs when saved</p>;
-  const operator = operators.get(pipeline.nodes.find((n) => n.id === step.nodeId)?.operator ?? "");
-  const attempt = latest.get(step.nodeId);
-  const status = attempt ? statusOf(attempt.state) : undefined;
-  const together = step.kind === "cells" && step.cells.length > 1 ? ` · ${step.cells.length} cells run as one step` : "";
+  const grouped = step.kind === "cells" && step.cells.length > 1;
   return (
-    <p className="notebook-step-head">
-      <button type="button" onClick={() => selectNode(step.nodeId)}>
-        {step.nodeId}
-      </button>
-      <span>
-        {operator ? roleOf(operator) : "Step"}
-        {together}
-      </span>
-      {status && <span className={`tone-${status.tone}`}>{status.text}</span>}
-    </p>
+    <section
+      className={`nb-step${selected ? " selected" : ""}${grouped ? " grouped" : ""}`}
+      aria-label={step.nodeId ?? "new step"}
+      onClick={() => step.nodeId !== undefined && selectNode(step.nodeId)}
+    >
+      {children}
+      <Outputs step={step} attempt={attempt} pipeline={pipeline} operators={operators} />
+    </section>
   );
 }
 
-/** A built-in step: its call, and its code to read or edit (ADR-0028). A v1 code step: the
- * table it gets as `data`, and its code. */
-function OtherStep({ step, pipeline, operators }: StepProps<Exclude<NotebookStep, { kind: "cells" }>>) {
-  const [open, setOpen] = useState(false);
+/** Jupyter's In [n]: blank before the step runs, * while it runs, ! when it failed. */
+function countLabel(attempt: Attempt | undefined, n: number): string {
+  if (!attempt) return " ";
+  const tone = statusOf(attempt.state).tone;
+  if (tone === "live" || tone === "idle") return "*";
+  return tone === "bad" ? "!" : String(n);
+}
+
+type CellProps = { n: number; attempt: Attempt | undefined; tag: string | undefined; pending: boolean; onRun?: () => void; tools?: ReactNode; children: ReactNode };
+
+/** A cell: run button and [n] in the gutter, the code, and its tools on hover. A built-in
+ * step has no run button: it runs with the flow (Run graph). */
+function Cell({ n, attempt, tag, pending, onRun, tools, children }: CellProps) {
+  const label = countLabel(attempt, n);
+  return (
+    <div className="nb-cell">
+      <div className={`nb-gutter${label === "!" ? " bad" : ""}`}>
+        {onRun && (
+          <button type="button" className="nb-run" aria-label={`Run cell ${n}`} title="Run cell (Shift+Enter)" disabled={pending} onClick={onRun}>
+            <PlayIcon />
+          </button>
+        )}
+        <span className="nb-count">[{label}]</span>
+      </div>
+      <div className="nb-body">
+        <div className="nb-tools">
+          {tag && <span className="nb-tag">{tag}</span>}
+          {tools}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const ignore = () => undefined;
+
+/** A built-in step: its call, read-only, with its code behind a toggle (editable there,
+ * ADR-0028). A v1 code step: its code, with the table it gets as `data`. */
+function OtherCell({ step, pipeline, operators, attempt, n }: StepProps & { n: number }) {
+  const [showCode, setShowCode] = useState(false);
+  const saveAndRun = useSaveAndRun(useSelection((s) => s.runId));
+  const showRun = useSelection((s) => s.showRun);
+  const [source, setSource] = useState(step.kind === "code" ? step.source : "");
+  if (step.kind === "cells") return null;
   const node = nodeOf(pipeline, step.nodeId);
   const operator = operators.get(node.operator);
   if (step.kind === "code") {
+    const run = (code: string) => {
+      if (code === "" || saveAndRun.isPending) return;
+      const version = setCodeSource(pipeline, node.id, code);
+      saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, node.id) });
+    };
     return (
-      <>
-        <pre className="code notebook-call">data = {step.data ?? "None"}</pre>
-        <CodeEditor pipeline={pipeline} nodeId={node.id} source={step.source} />
-      </>
+      <Cell n={n} attempt={attempt} tag={`${node.id} · Python · data = ${step.data ?? "None"}`} pending={saveAndRun.isPending} onRun={() => run(source)}>
+        {saveAndRun.isError && <p role="alert" className="error nb-message">{saveAndRun.error.message}</p>}
+        <CodeInput fit label={`Cell ${n}`} value={source} onChange={setSource} onRun={run} />
+      </Cell>
     );
   }
+  const tag = [node.id, operator ? roleOf(operator) : "missing", node.code ? "edited" : "built-in"].join(" · ");
+  const toggle = (
+    <button type="button" className={`nb-icon${showCode ? " on" : ""}`} aria-pressed={showCode} aria-label={`Code of ${node.id}`} title="Show its code" onClick={() => setShowCode(!showCode)}>
+      <CodeIcon />
+    </button>
+  );
   return (
-    <>
-      <pre className="code notebook-call">{step.call}</pre>
-      {operator && (
-        // The editor is made only when opened: one per built-in step would be heavy.
-        <details className="notebook-code" onToggle={(e) => setOpen(e.currentTarget.open)}>
-          <summary className="menu-meta">{node.code ? "Code · edited in this flow" : "Code"}</summary>
-          {open && <OperatorCode pipeline={pipeline} nodeId={node.id} operator={operator} />}
-        </details>
+    <Cell n={n} attempt={attempt} tag={tag} pending={false} tools={toggle}>
+      <CodeInput fit readOnly label={`Cell ${n}`} value={step.call} onChange={ignore} onRun={ignore} />
+      {showCode && operator && (
+        <div className="nb-function">
+          <OperatorCode pipeline={pipeline} nodeId={node.id} operator={operator} />
+        </div>
       )}
-    </>
+    </Cell>
+  );
+}
+
+/** What the step printed, showed and drew, under its cells as in a notebook. */
+function Outputs({ step, attempt, pipeline, operators }: Omit<StepProps, "index" | "steps">) {
+  if (!attempt || step.nodeId === undefined) return null;
+  if (attempt.error) {
+    return (
+      <Out>
+        <pre className="code nb-error">{`${attempt.error.code}: ${attempt.error.message}`}</pre>
+      </Out>
+    );
+  }
+  if (!hasOutputs(attempt)) return null;
+  if (step.kind !== "builtin") return <CodeOutputs attempt={attempt} />;
+  const operator = operators.get(nodeOf(pipeline, step.nodeId).operator);
+  return <BuiltinOutputs attempt={attempt} nodeId={step.nodeId} operator={operator} />;
+}
+
+const Out = ({ children }: { children: ReactNode }) => (
+  <div className="nb-out-row">
+    <span />
+    <div className="nb-output">{children}</div>
+  </div>
+);
+
+function CodeOutputs({ attempt }: { attempt: Attempt }) {
+  const display = useCodeDisplay(attempt);
+  if (display.status === "error") {
+    return (
+      <Out>
+        <p role="alert" className="error">{display.message}</p>
+      </Out>
+    );
+  }
+  if (display.status !== "ready" || display.value.items.length === 0) return null;
+  let figure = 0;
+  return (
+    <Out>
+      {display.value.items.map((item, i) => {
+        if (item.kind === "figure" && item.figure) return <FigureView key={i} figure={item.figure} index={figure++} />;
+        if (item.kind === "image" && item.png_base64) return <img key={i} className="figure" alt={`Figure ${++figure}`} src={`data:image/png;base64,${item.png_base64}`} />;
+        if (item.kind === "table") return <ShownTable key={i} item={item} index={i} />;
+        return <Printed key={i} item={item} />;
+      })}
+    </Out>
+  );
+}
+
+function Printed({ item }: { item: DisplayItem }) {
+  return <pre className={`code nb-text${item.channel === "stderr" ? " stderr" : ""}`}>{item.text ?? ""}</pre>;
+}
+
+/** A built-in step's prints, figures, and the size of each table it made. */
+function BuiltinOutputs({ attempt, nodeId, operator }: { attempt: Attempt; nodeId: string; operator: Operator | undefined }) {
+  const printed = useConsole(attempt);
+  const outputs = useOutputs(attempt.id);
+  const tables = (outputs.data ?? []).filter((o) => o.artifact.media_type === PARQUET);
+  const figurePorts = (operator?.outputs ?? []).filter((o) => o.kind === "figure").map((o) => o.name);
+  const texts = printed.status === "ready" ? printed.value.items.filter((i) => i.kind === "text") : [];
+  if (tables.length === 0 && figurePorts.length === 0 && texts.length === 0) return null;
+  return (
+    <Out>
+      {texts.map((item, i) => (
+        <Printed key={i} item={item} />
+      ))}
+      {tables.map((o) => (
+        <TableSize key={o.port} nodeId={nodeId} port={o.port} artifactId={o.artifact.id} />
+      ))}
+      {figurePorts.map((port) => (
+        <FigurePort key={port} attempt={attempt} port={port} />
+      ))}
+    </Out>
+  );
+}
+
+/** "load_data · 344 rows × 17 columns", from one row of the table. Opens it in Data. */
+function TableSize({ nodeId, port, artifactId }: { nodeId: string; port: string; artifactId: string }) {
+  const page = useTablePage(artifactId, 0, 1);
+  const selectNode = useSelection((s) => s.selectNode);
+  const dock = useWorkbench((s) => s.dock);
+  const size = page.data ? `${page.data.total_rows} rows × ${page.data.total_columns} columns` : page.isError ? page.error.message : "…";
+  return (
+    <button
+      type="button"
+      className="nb-table"
+      onClick={(e) => {
+        e.stopPropagation();
+        selectNode(nodeId);
+        dock?.showTab("data");
+      }}
+    >
+      <span className="mono">{`${nodeId}_${port}`}</span> · {size}
+    </button>
+  );
+}
+
+/** A thin line between cells; hover it to add a code cell there. */
+function AddCell({ label, onAdd }: { label: string; onAdd: () => void }) {
+  return (
+    <div className="nb-insert">
+      <button type="button" aria-label={label} onClick={onAdd}>
+        + Code
+      </button>
+    </div>
   );
 }
 

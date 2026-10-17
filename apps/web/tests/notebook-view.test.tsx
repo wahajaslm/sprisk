@@ -1,5 +1,5 @@
 import type { CodeSplit, PipelineVersion } from "@sprisk/contracts";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +9,7 @@ import { CodeEditor } from "../src/views/CodeEditor.tsx";
 import { FlowPanel } from "../src/views/FlowPanel.tsx";
 import { NotebookView } from "../src/views/NotebookView.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
-import { notebookOperator, operators, pipeline, PV, RUN, run } from "./fixtures.ts";
+import { attempts, codeAttempt, codeDisplayJson, codeOutputs, notebookOperator, operators, pipeline, PV, RUN, run } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -70,8 +70,30 @@ describe("the notebook view of a flow (ADR-0033)", () => {
   it("shows each step as a cell in flow order: a built-in step as its call, a code step as its code", async () => {
     withApi(linear);
     renderWithApi(<NotebookView />);
-    expect(await screen.findByText(LOAD_CALL)).toBeInTheDocument();
+    const call = await screen.findByRole("textbox", { name: "Cell 1" });
+    expect(call).toHaveValue(LOAD_CALL);
+    expect(call).toHaveAttribute("readonly");
     expect(await screen.findByRole("textbox", { name: "Cell 2" })).toHaveValue("n = df.height");
+    expect(screen.queryByRole("button", { name: "Run cell 1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run cell 2" })).toBeInTheDocument();
+  });
+
+  it("shows each step's output under its cells: a table's size, and what the code printed and showed", async () => {
+    withApi(linear);
+    const cellAttempt = { ...codeAttempt, node_id: "cell_1" };
+    server.use(
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, cellAttempt])),
+      http.get(`/api/attempts/${cellAttempt.id}/outputs`, () => HttpResponse.json(codeOutputs)),
+      http.get(`/api/artifacts/${codeOutputs[0]!.artifact.id}/content`, () => HttpResponse.text(codeDisplayJson)),
+    );
+    renderWithApi(<NotebookView />);
+    const load = await screen.findByRole("region", { name: "load" });
+    expect(await within(load).findByRole("button", { name: /load_data · 120 rows × 2 columns/ })).toBeInTheDocument();
+    const cell = screen.getByRole("region", { name: "cell_1" });
+    expect(await within(cell).findByText("150")).toBeInTheDocument();
+    expect(within(cell).getByText("1 of 150 rows")).toBeInTheDocument();
+    expect(within(cell).getByRole("img", { name: "Figure 1" })).toBeInTheDocument();
+    expect(within(cell).getByText("[2]")).toBeInTheDocument();
   });
 
   it("runs an edited cell: Python reads its links, then the next version is saved and run from there", async () => {
@@ -128,7 +150,7 @@ describe("the notebook view of a flow (ADR-0033)", () => {
   it("deletes a cell, then saves without it on Run changes", async () => {
     const sent = withApi(linear);
     renderWithApi(<NotebookView />);
-    await userEvent.click(await screen.findByRole("button", { name: "Delete cell" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete cell 2" }));
     expect(screen.queryByRole("textbox", { name: "Cell 2" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Run changes" }));
 
