@@ -9,7 +9,10 @@ export type CodeInputProps = {
   onRun: (value: string) => void;
   /** Built-in steps: read their code, never edit it. */
   readOnly?: boolean;
-  /** As tall as its code, as a notebook cell; otherwise it fills its box. */
+  /** As tall as its code, as a notebook cell; otherwise it fills its box. A fit editor keeps
+   * its own text while typing, and reads `value` only when it mounts: with many cells on a
+   * page, pushing each keystroke back in would drop fast keystrokes. Remount it (new key) to
+   * show other text. */
   fit?: boolean;
 };
 

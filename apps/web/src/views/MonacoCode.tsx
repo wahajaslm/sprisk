@@ -49,7 +49,7 @@ export default function MonacoCode({ value, onChange, onRun, label, readOnly = f
       {...(fit && height !== undefined ? { height } : {})}
       language="python"
       theme="sprisk-studio"
-      value={value}
+      {...(fit ? { defaultValue: value } : { value })}
       onChange={(v) => onChange(v ?? "")}
       onMount={mount}
       options={{

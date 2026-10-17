@@ -51,6 +51,13 @@ type NotebookProps = { pipeline: PipelineVersion; operators: Map<string, Operato
 
 function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
   const [draft, setDraft] = useState<NotebookStep[] | undefined>(undefined);
+  // Cell editors keep their own text (CodeInput fit). Adding, deleting or discarding cells
+  // moves text between positions, so those remount every editor; typing does not.
+  const [generation, setGeneration] = useState(0);
+  const reshape = (next: NotebookStep[] | undefined) => {
+    setDraft(next);
+    setGeneration((g) => g + 1);
+  };
   const steps = draft ?? notebookSteps(pipeline, operators);
   const cells = useSaveCells(pipeline, operators);
   const run = (next: NotebookStep[], at?: CellAt) => {
@@ -59,7 +66,7 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
   return (
     <div className="notebook" aria-label="Notebook">
       <div className="nb-toolbar">
-        <button type="button" className="nb-tool" onClick={() => setDraft(withNewCell(steps, steps.length - 1))}>
+        <button type="button" className="nb-tool" onClick={() => reshape(withNewCell(steps, steps.length - 1))}>
           + Code
         </button>
         <span className="muted">Each cell is a step of the flow · Shift+Enter runs it</span>
@@ -67,7 +74,7 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
         {draft && (
           <>
             <span className="muted">Edits not run yet</span>
-            <button type="button" className="page-btn" onClick={() => setDraft(undefined)}>
+            <button type="button" className="page-btn" onClick={() => reshape(undefined)}>
               Discard edits
             </button>
             <button type="button" className="run-code" disabled={cells.pending} onClick={() => run(draft)}>
@@ -84,12 +91,12 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
           {note}
         </p>
       ))}
-      <AddCell label="Add a cell at the top" onAdd={() => setDraft(withNewCell(steps, -1))} />
+      <AddCell label="Add a cell at the top" onAdd={() => reshape(withNewCell(steps, -1))} />
       {steps.map((step, i) => {
         const attempt = step.nodeId === undefined ? undefined : latest.get(step.nodeId);
         const shared = { step, index: i, steps, pipeline, operators, attempt };
         return (
-          <div key={step.nodeId ?? `new-${i}`}>
+          <div key={`${generation}/${step.nodeId ?? `new-${i}`}`}>
             <StepBlock {...shared} selected={step.nodeId !== undefined && step.nodeId === selected}>
               {step.kind === "cells" ? (
                 step.cells.map((cell, j) => {
@@ -104,7 +111,7 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
                       pending={cells.pending}
                       onRun={() => run(steps, at)}
                       tools={
-                        <button type="button" className="nb-icon" aria-label={`Delete cell ${n}`} title="Delete cell" onClick={() => setDraft(withoutCell(steps, at))}>
+                        <button type="button" className="nb-icon" aria-label={`Delete cell ${n}`} title="Delete cell" onClick={() => reshape(withoutCell(steps, at))}>
                           <TrashIcon />
                         </button>
                       }
@@ -117,7 +124,7 @@ function Notebook({ pipeline, operators, latest, selected }: NotebookProps) {
                 <OtherCell {...shared} n={cellNumber(steps, { step: i, cell: 0 }) + 1} />
               )}
             </StepBlock>
-            <AddCell label={`Add a cell after ${step.nodeId ?? "the new cell"}`} onAdd={() => setDraft(withNewCell(steps, i))} />
+            <AddCell label={`Add a cell after ${step.nodeId ?? "the new cell"}`} onAdd={() => reshape(withNewCell(steps, i))} />
           </div>
         );
       })}
