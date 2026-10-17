@@ -90,3 +90,10 @@ export async function flowPositions(
   }
   return { nodes, groups };
 }
+
+/** Steps at the layout's places, except steps the person dragged, which stay where they were
+ * dropped. With nothing dragged (Tidy), every step is where the layout puts it. */
+export function keepDragged<T extends { id: string; position: Point }>(computed: T[], shown: T[], dragged: ReadonlySet<string>): T[] {
+  const at = new Map(shown.map((n) => [n.id, n.position]));
+  return computed.map((n) => ({ ...n, position: dragged.has(n.id) ? (at.get(n.id) ?? n.position) : n.position }));
+}

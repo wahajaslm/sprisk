@@ -29,7 +29,7 @@ import { GATE_NODE, hasOutputs, latestByNode, statusOf } from "../flow/latest.ts
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
-import { flowPositions, GROUP_HEAD, type Group, type Point } from "../flow/layout.ts";
+import { flowPositions, GROUP_HEAD, type Group, keepDragged, type Point } from "../flow/layout.ts";
 import { kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
@@ -377,12 +377,13 @@ function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] 
   useEffect(() => dragged.current.clear(), [level]);
   const key = JSON.stringify(computed.nodes.map((n) => [n.id, n.data, n.position, n.parentId]));
   useEffect(() => {
-    setNodes((shown) => {
-      const at = new Map(shown.map((n) => [n.id, n.position]));
-      return computed.nodes.map((n) => ({ ...n, position: dragged.current.has(n.id) ? (at.get(n.id) ?? n.position) : n.position }));
-    });
+    setNodes((shown) => keepDragged(computed.nodes, shown, dragged.current));
     // `key` captures every change to the computed nodes and their layout.
   }, [key]);
+  const tidy = () => {
+    dragged.current.clear();
+    setNodes(computed.nodes);
+  };
   return (
     <ReactFlow
       nodes={nodes}
@@ -401,7 +402,7 @@ function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] 
     >
       <Background variant={BackgroundVariant.Dots} gap={20} size={1.4} color="rgba(255,255,255,0.18)" />
       <Panel position="bottom-left" className="canvas-controls">
-        <ZoomControl />
+        <ZoomControl tidy={tidy} />
         <DetailSwitch />
       </Panel>
       <Panel position="bottom-right">
@@ -411,7 +412,7 @@ function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] 
   );
 }
 
-function ZoomControl() {
+function ZoomControl({ tidy }: { tidy: () => void }) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const { zoom } = useViewport();
   return (
@@ -425,6 +426,18 @@ function ZoomControl() {
       </button>
       <button type="button" className="fit" onClick={() => void fitView({ padding: 0.25 })}>
         Fit
+      </button>
+      <button
+        type="button"
+        className="fit"
+        title="Put every step back where the layout places it, then fit"
+        onClick={() => {
+          tidy();
+          // After the moved steps are drawn, so the fit sees their new places.
+          requestAnimationFrame(() => void fitView({ padding: 0.25 }));
+        }}
+      >
+        Tidy
       </button>
     </div>
   );

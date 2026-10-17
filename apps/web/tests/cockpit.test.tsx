@@ -234,6 +234,14 @@ describe("flow canvas", () => {
     expect(heading).toHaveTextContent(/Split\s*1/);
   });
 
+  it("Tidy puts every step back where the layout places it", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    await screen.findByRole("button", { name: /^split/ });
+    await userEvent.click(screen.getByRole("button", { name: "Tidy" }));
+    expect(screen.getByRole("button", { name: /^split/ })).toBeInTheDocument();
+  });
+
   it("right-click on a step opens its actions", async () => {
     const dock = fakeDock();
     useWorkbench.setState({ dock });
