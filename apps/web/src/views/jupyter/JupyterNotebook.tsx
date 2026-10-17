@@ -3,7 +3,7 @@ import type * as nbformat from "@jupyterlab/nbformat";
 import type { ICodeCellModel } from "@jupyterlab/cells";
 import type { Notebook } from "@jupyterlab/notebook";
 import { Widget } from "@lumino/widgets";
-import { type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type MutableRefObject, useEffect, useRef, useState } from "react";
 
 import { useCodeDisplay, useConsole } from "../../api/code.ts";
 import { useFigureSet } from "../../api/figures.ts";
@@ -16,7 +16,7 @@ import { useSelection } from "../../workbench/selection.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { notEditable } from "../inspector/OperatorCode.tsx";
 import { useSaveCells } from "../useSaveCells.ts";
-import { type CellTag, fromCells, type FunctionCode, type ReadCell, toCells, withCellCode } from "./cells.ts";
+import { fromCells, type FunctionCode, readTag, type ReadCell, toCells, withCellCode } from "./cells.ts";
 import { displayOutputs, errorOutput, tableSizeOutput } from "./outputs.ts";
 import { NotebookToolbar } from "./Toolbar.tsx";
 import { createNotebook, type JupyterNotebook as Created, type NotebookHandlers } from "./widget.ts";
@@ -64,7 +64,7 @@ function Jupyter({ pipeline, operators, sources, latest, selected, place }: Prop
   const host = useRef<HTMLDivElement>(null);
   const [created, setCreated] = useState<Created | undefined>();
   const [problem, setProblem] = useState<string | undefined>();
-  const saved = useMemo(() => notebookSteps(pipeline, operators), [pipeline, operators]);
+  const saved = notebookSteps(pipeline, operators);
   const cells = useSaveCells(pipeline, operators);
   const selectNode = useSelection((s) => s.selectNode);
   const builtin = (node: PipelineVersion["nodes"][number]) => {
@@ -125,7 +125,7 @@ function Jupyter({ pipeline, operators, sources, latest, selected, place }: Prop
     made.notebook.activeCellIndex = Math.min(place.current.activeCell, made.notebook.widgets.length - 1);
     made.notebook.node.scrollTop = place.current.scrollTop;
     made.notebook.activeCellChanged.connect((_, cell) => {
-      const tag = cell ? tagOf(cell.model.getMetadata("sprisk")) : undefined;
+      const tag = cell ? readTag(cell.model.getMetadata("sprisk")) : undefined;
       if (tag) selectNode(tag.node);
     });
     setCreated(made);
@@ -148,10 +148,10 @@ function Jupyter({ pipeline, operators, sources, latest, selected, place }: Prop
   useEffect(() => {
     if (!created || selected === undefined) return;
     const { notebook } = created;
-    const active = notebook.activeCell ? tagOf(notebook.activeCell.model.getMetadata("sprisk")) : undefined;
+    const active = notebook.activeCell ? readTag(notebook.activeCell.model.getMetadata("sprisk")) : undefined;
     if (active?.node === selected) return;
     const index = notebook.widgets.findIndex((w) => {
-      const tag = tagOf(w.model.getMetadata("sprisk"));
+      const tag = readTag(w.model.getMetadata("sprisk"));
       return tag?.node === selected && tag.role !== "function";
     });
     if (index >= 0) notebook.activeCellIndex = index;
@@ -180,12 +180,7 @@ const readCells = (notebook: Notebook): ReadCell[] => (notebook.model?.sharedMod
 
 /** The cell's number in what POST /code/split receives: a built-in's code cell is not sent. */
 function requestIndex(cells: ReadCell[], active: number): number {
-  return cells.slice(0, active).filter((c) => tagOf(c.metadata["sprisk"])?.role !== "function").length;
-}
-
-function tagOf(value: unknown): CellTag | undefined {
-  if (typeof value !== "object" || value === null || !("node" in value) || !("role" in value)) return undefined;
-  return value as CellTag;
+  return cells.slice(0, active).filter((c) => readTag(c.metadata["sprisk"])?.role !== "function").length;
 }
 
 type StepProps = { notebook: Notebook; step: NotebookStep; attempt: Attempt | undefined; operators: Map<string, Operator>; pipeline: PipelineVersion };
@@ -235,7 +230,7 @@ function StepOutputs({ notebook, step, attempt, operators, pipeline }: StepProps
         <TableSize key={t.port} name={`${step.nodeId}_${t.port}`} artifactId={t.artifact.id} report={(out) => report(`table:${t.port}`, out)} />
       ))}
       {figurePorts.map((port) => (
-        <FigurePort key={port} attempt={done} port={port} report={(out) => report(`figure:${port}`, out)} />
+        <FigureOutputs key={port} attempt={done} port={port} report={(out) => report(`figure:${port}`, out)} />
       ))}
     </>
   );
@@ -248,7 +243,7 @@ function ownCells(notebook: Notebook, nodeId: string): { model: ICodeCellModel; 
   const found: { model: ICodeCellModel; number: number }[] = [];
   let number = 0;
   for (const widget of notebook.widgets) {
-    const tag = tagOf(widget.model.getMetadata("sprisk"));
+    const tag = readTag(widget.model.getMetadata("sprisk"));
     if (tag?.role === "function") continue;
     number += 1;
     if (tag?.node === nodeId && widget.model.type === "code") found.push({ model: widget.model as ICodeCellModel, number });
@@ -264,7 +259,7 @@ function TableSize({ name, artifactId, report }: { name: string; artifactId: str
   return null;
 }
 
-function FigurePort({ attempt, port, report }: { attempt: Attempt | undefined; port: string; report: (out: nbformat.IOutput[]) => void }) {
+function FigureOutputs({ attempt, port, report }: { attempt: Attempt | undefined; port: string; report: (out: nbformat.IOutput[]) => void }) {
   const set = useFigureSet(attempt, port);
   const out =
     set.status === "ready"
@@ -272,7 +267,7 @@ function FigurePort({ attempt, port, report }: { attempt: Attempt | undefined; p
       : set.status === "error"
         ? [stderr(set.message)]
         : set.status === "none" && attempt
-          ? [stderr(set.reason)]
+          ? [{ output_type: "display_data", data: { "text/plain": set.reason }, metadata: {} } satisfies nbformat.IDisplayData]
           : [];
   const key = JSON.stringify(out);
   useEffect(() => report(out), [key]);

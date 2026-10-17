@@ -12,6 +12,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@jupyterlab/apputils':
+        specifier: 4.6.11
+        version: 4.6.11
       '@jupyterlab/cells':
         specifier: 4.5.11
         version: 4.5.11(supports-color@7.2.0)

@@ -1,6 +1,7 @@
 import "@jupyterlab/theme-dark-extension/style/variables.css";
 import "@jupyterlab/notebook/style/index.js";
 
+import { Sanitizer } from "@jupyterlab/apputils";
 import {
   CodeMirrorEditorFactory,
   CodeMirrorMimeTypeService,
@@ -11,14 +12,13 @@ import {
 } from "@jupyterlab/codemirror";
 import type * as nbformat from "@jupyterlab/nbformat";
 import { Notebook, NotebookActions, NotebookModel, NotebookPanel, StaticNotebook } from "@jupyterlab/notebook";
-import { RenderMimeRegistry, standardRendererFactories } from "@jupyterlab/rendermime";
+import { errorRendererFactory, htmlRendererFactory, imageRendererFactory, RenderMimeRegistry, textRendererFactory } from "@jupyterlab/rendermime";
 import type { IRenderMime } from "@jupyterlab/rendermime-interfaces";
 import { CommandRegistry } from "@lumino/commands";
 import { Widget } from "@lumino/widgets";
-import type Plotly from "plotly.js-dist-min";
+import type { VisualizationSpec } from "vega-embed";
 
-import { themed } from "../plotlyTheme.ts";
-import { vegaOptions } from "../vegaOptions.ts";
+import type { PlotlyFigureJson } from "../drawPlotly.ts";
 import { PLOTLY_MIME, VEGALITE_MIME } from "./outputs.ts";
 
 /** What the notebook asks sprisk to do: the notebook itself never runs code (ADR-0034). */
@@ -46,7 +46,7 @@ export function createNotebook(cells: nbformat.ICodeCell[], handlers: NotebookHa
   });
   const editors = new CodeMirrorEditorFactory({ extensions, languages });
   const notebook = new Notebook({
-    rendermime: new RenderMimeRegistry({ initialFactories: [...standardRendererFactories, figureFactory(PLOTLY_MIME, drawPlotly), figureFactory(VEGALITE_MIME, drawVega)] }),
+    rendermime: outputRenderers(),
     contentFactory: new NotebookPanel.ContentFactory({ editorFactory: editors.newInlineEditor }),
     mimeTypeService: new CodeMirrorMimeTypeService(languages),
     notebookConfig: { ...StaticNotebook.defaultNotebookConfig, windowingMode: "none" },
@@ -106,11 +106,38 @@ function notebookCommands(notebook: Notebook, handlers: NotebookHandlers): Comma
   return commands;
 }
 
-type Draw = (node: HTMLElement, data: unknown) => Promise<void>;
+/** What outputs may show, all of it from sprisk's saved artifacts. Text never becomes links:
+ * printed dataset text could carry a `javascript:` URL (rule 7). No JavaScript, LaTeX or
+ * Markdown renderers: sprisk writes none, and cells added in the notebook would trust them. */
+function outputRenderers(): RenderMimeRegistry {
+  const sanitizer = new Sanitizer();
+  sanitizer.setAutolink(false);
+  return new RenderMimeRegistry({
+    sanitizer,
+    initialFactories: [
+      htmlRendererFactory,
+      imageRendererFactory,
+      errorRendererFactory,
+      textRendererFactory,
+      chartFactory("image/svg+xml", "jp-RenderedSVG", async () => drawSvg),
+      chartFactory(PLOTLY_MIME, "plotly-figure", async () => {
+        const { drawPlotly } = await import("../drawPlotly.ts");
+        return (node, data) => drawPlotly(node, data as PlotlyFigureJson);
+      }),
+      chartFactory(VEGALITE_MIME, "vega-figure", async () => {
+        const { drawVega } = await import("../drawVega.ts");
+        return (node, data) => drawVega(node, data as VisualizationSpec);
+      }),
+    ],
+  });
+}
 
-/** A JupyterLab output renderer for a chart sprisk already draws (ADR-0024). Safe: it draws the
- * chart's data and runs no code from it. */
-function figureFactory(mime: string, draw: Draw): IRenderMime.IRendererFactory {
+/** Draws into a node; returns the cleanup. */
+type Draw = (node: HTMLElement, data: unknown) => () => void;
+
+/** A JupyterLab output renderer for a figure sprisk draws as everywhere else (ADR-0024). Safe:
+ * it runs no code from the figure, so it draws in cells JupyterLab does not trust. */
+function chartFactory(mime: string, className: string, load: () => Promise<Draw>): IRenderMime.IRendererFactory {
   return {
     safe: true,
     mimeTypes: [mime],
@@ -118,22 +145,29 @@ function figureFactory(mime: string, draw: Draw): IRenderMime.IRendererFactory {
     createRenderer: () => {
       const widget = new Widget() as Widget & IRenderMime.IRenderer;
       widget.addClass("jp-RenderedFigure");
-      widget.renderModel = (model) => draw(widget.node, model.data[mime]);
+      widget.addClass(className);
+      let undo = () => undefined as void;
+      widget.renderModel = async (model) => {
+        const draw = await load();
+        undo();
+        undo = draw(widget.node, model.data[mime]);
+      };
+      const dispose = widget.dispose.bind(widget);
+      widget.dispose = () => {
+        undo();
+        dispose();
+      };
       return widget;
     },
   };
 }
 
-const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-
-const drawPlotly: Draw = async (node, data) => {
-  const { default: plotly } = await import("plotly.js-dist-min");
-  const figure = data as { data: Plotly.Data[]; layout?: Partial<Plotly.Layout> };
-  node.classList.add("plotly-figure");
-  await plotly.react(node, figure.data, { ...themed(figure.layout ?? {}, token), autosize: true }, { responsive: true, displaylogo: false });
-};
-
-const drawVega: Draw = async (node, data) => {
-  const { default: embed } = await import("vega-embed");
-  await embed(node, data as Parameters<typeof embed>[1], vegaOptions(token));
+/** An SVG as a picture, as the Inspector draws it: nothing inside it runs. */
+const drawSvg: Draw = (node, data) => {
+  const img = document.createElement("img");
+  img.className = "figure svg-figure";
+  img.alt = "Figure";
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(String(data))}`;
+  node.replaceChildren(img);
+  return () => img.remove();
 };

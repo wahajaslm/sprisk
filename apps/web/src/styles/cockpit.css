@@ -547,7 +547,7 @@ p { margin: 0; }
 /* ── Flow panel: the flow as a canvas or as notebook cells (ADR-0033) ── */
 .flow-panel { display: flex; flex-direction: column; height: 100%; background: var(--canvas); }
 .flow-panel-bar { display: flex; align-items: center; padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--line-soft); }
-.flow-panel > .flow, .flow-panel > .notebook { flex: 1; min-height: 0; height: auto; }
+.flow-panel > .flow { flex: 1; min-height: 0; height: auto; }
 
 .kind-icon.kind-source { color: var(--kind-source); }
 .kind-icon.kind-recipe { color: var(--kind-recipe); }

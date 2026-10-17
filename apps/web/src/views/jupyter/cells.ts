@@ -48,7 +48,7 @@ export function fromCells(cells: ReadCell[], saved: NotebookStep[]): { steps: No
     placed.add(key);
   };
   for (const { source, metadata } of cells) {
-    const tag = readTag(metadata);
+    const tag = readTag(metadata["sprisk"]);
     if (tag?.role === "function") {
       once(`function:${tag.node}`, tag.node);
       functions.set(tag.node, source);
@@ -68,8 +68,9 @@ export function fromCells(cells: ReadCell[], saved: NotebookStep[]): { steps: No
   return { steps, functions };
 }
 
-function readTag(metadata: Partial<nbformat.ICellMetadata>): CellTag | undefined {
-  const tag = metadata["sprisk"];
+/** The step a cell belongs to, from its `sprisk` metadata; undefined for a cell sprisk did not
+ * make (a new one). */
+export function readTag(tag: unknown): CellTag | undefined {
   if (typeof tag !== "object" || tag === null || !("node" in tag) || !("role" in tag)) return undefined;
   const { node, role } = tag as Record<string, unknown>;
   if (typeof node !== "string" || node === "" || !["cells", "code", "call", "function"].includes(String(role))) return undefined;

@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jupyterlab/apputils": "4.6.11",
     "@jupyterlab/cells": "4.5.11",
     "@jupyterlab/codemirror": "4.5.11",
     "@jupyterlab/nbformat": "4.5.11",

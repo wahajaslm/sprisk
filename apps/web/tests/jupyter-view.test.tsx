@@ -11,6 +11,9 @@ import { useSelection } from "../src/workbench/selection.ts";
 import { useWorkbench } from "../src/workbench/workbench.ts";
 import { attempts, codeAttempt, codeDisplayJson, codeOutputs, fakeDock, notebookOperator, operators, pipeline, PV, RUN, run } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
+
+// Charts need a real browser; the notebook's chart renderers call these.
+vi.mock("../src/views/drawPlotly.ts", () => ({ drawPlotly: vi.fn(() => () => undefined) }));
 import { server } from "./server.ts";
 
 /** load (built-in) → one notebook cell reading its table as df. */
@@ -48,6 +51,7 @@ function withApi(split: (cells: string[]) => CodeSplit | Response) {
       sent.runs.push(await request.json());
       return HttpResponse.json({ ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ9" }, { status: 202 });
     }),
+    http.get("/api/runs/run_01JABCDEFGHJKMNPQRSTVWXYZ9/attempts", () => HttpResponse.json([])),
   );
   useSelection.setState({ pipelineVersionId: PV, runId: RUN });
   return sent;
@@ -59,6 +63,14 @@ const linear = (cells: string[]): CodeSplit => ({
   links: cells.slice(1).map((_, i) => ({ from_step: 0, to_step: i + 1, name: "df" })),
   notes: [],
 });
+
+/** A key as a browser sends it, to the focused element. Lumino reads keyCode, which
+ * user-event leaves out. */
+function press(key: string, keyCode: number, shiftKey = false) {
+  act(() => {
+    document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key, keyCode, shiftKey, bubbles: true, cancelable: true }));
+  });
+}
 
 /** JupyterLab's cells as shown: prompt and source text. */
 async function shownCells(container: HTMLElement) {
@@ -100,6 +112,41 @@ describe("the flow in JupyterLab's notebook (ADR-0034)", () => {
     expect(cell?.querySelector(".jp-InputPrompt")).toHaveTextContent("[2]:");
   });
 
+  it("shows a code step's figure as a picture, and printed links as plain text (rule 7)", async () => {
+    withApi(linear);
+    const cellAttempt = { ...codeAttempt, node_id: "cell_1" };
+    const shown = JSON.stringify({
+      items: [
+        { kind: "text", text: "see javascript://%0aalert(document.domain)// or https://example.com\n" },
+        { kind: "figure", figure: { library: "matplotlib", format: "svg", content: "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>" } },
+        { kind: "figure", figure: { library: "plotly", format: "plotly_json", content: '{"data":[]}' } },
+      ],
+    });
+    server.use(
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, cellAttempt])),
+      http.get(`/api/attempts/${cellAttempt.id}/outputs`, () => HttpResponse.json(codeOutputs)),
+      http.get(`/api/artifacts/${codeOutputs[0]!.artifact.id}/content`, () => HttpResponse.text(shown)),
+    );
+    const { container } = renderWithApi(<JupyterNotebookView />);
+    const [, , cell] = await shownCells(container);
+    await waitFor(() => expect(cell?.querySelector(".jp-OutputArea img")).toBeInTheDocument());
+    const img = cell!.querySelector<HTMLImageElement>(".jp-OutputArea img")!;
+    expect(img.src.startsWith("data:image/svg+xml")).toBe(true);
+    expect(cell!.querySelector(".jp-OutputArea script")).toBeNull();
+    expect(cell!.querySelector(".jp-OutputArea a")).toBeNull();
+    expect(cell!.querySelector(".jp-OutputArea")).toHaveTextContent("javascript://%0aalert(document.domain)//");
+    await waitFor(() => expect(cell!.querySelector(".jp-RenderedFigure")).toBeInTheDocument());
+  });
+
+  it("marks a step that is running with [*]", async () => {
+    withApi(linear);
+    const running = { ...codeAttempt, node_id: "cell_1", state: "running" as const };
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, running])));
+    const { container } = renderWithApi(<JupyterNotebookView />);
+    const [, , cell] = await shownCells(container);
+    await waitFor(() => expect(cell?.querySelector(".jp-InputPrompt")).toHaveTextContent("[*]:"));
+  });
+
   it("shows a failed step as a Jupyter error under its cell", async () => {
     withApi(linear);
     const failed = { ...codeAttempt, node_id: "cell_1", state: "failed" as const, error: { code: "code_error", message: "NameError: name 'df' is not defined" } };
@@ -123,6 +170,23 @@ describe("the flow in JupyterLab's notebook (ADR-0034)", () => {
     expect(saved?.nodes).toEqual(flow.nodes);
     expect(sent.runs[0]).toEqual({ pipeline_version_id: saved?.id, reuse_run_id: RUN });
     expect(useSelection.getState()).toMatchObject({ pipelineVersionId: saved?.id, nodeId: "cell_1" });
+  });
+
+  it("runs with Shift+Enter, adds a cell with B and deletes it with D D, as in JupyterLab", async () => {
+    const sent = withApi(linear);
+    const { container } = renderWithApi(<JupyterNotebookView />);
+    const [, , cell] = await shownCells(container);
+    await userEvent.click(cell!.querySelector(".jp-InputPrompt")!);
+    press("b", 66);
+    expect(await shownCells(container)).toHaveLength(4);
+    press("d", 68);
+    press("d", 68);
+    await waitFor(() => expect(container.querySelectorAll(".jp-Cell")).toHaveLength(3));
+    // JupyterLab gives focus back on the next frame, which jsdom does not draw.
+    await userEvent.click(container.querySelectorAll(".jp-Cell .jp-InputPrompt")[2]!);
+    press("Enter", 13, true);
+    await waitFor(() => expect(sent.runs).toHaveLength(1));
+    expect(sent.cells).toEqual([[STAND_IN, "n = df.height"]]);
   });
 
   it("makes a cell added with + a new step", async () => {
