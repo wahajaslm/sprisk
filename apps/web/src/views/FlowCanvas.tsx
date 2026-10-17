@@ -29,7 +29,7 @@ import { GATE_NODE, hasOutputs, latestByNode, statusOf } from "../flow/latest.ts
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
-import { edgeId, flowPositions, GROUP_HEAD, type Group, keepDragged, type Point } from "../flow/layout.ts";
+import { flowPositions, GROUP_HEAD, type Group, keepDragged, type Point } from "../flow/layout.ts";
 import { kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
@@ -143,6 +143,8 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
         )}
       </span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
+      <Handle id="top" type="target" position={Position.Top} isConnectable={false} />
+      <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} />
     </button>
   );
 }
@@ -186,6 +188,8 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       {/* The node is as wide as its label, so outgoing lines start right after the text. */}
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       {/* Within a stage, lines run down from icon to icon. */}
+      <Handle id="top" type="target" position={Position.Top} isConnectable={false} style={{ left: ROUND_ICON / 2 }} />
+      <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} style={{ left: ROUND_ICON / 2 }} />
     </button>
   );
 }
@@ -194,6 +198,9 @@ function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
   const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   return <BaseEdge id={id} path={path} className={`flow-edge${data?.active ? " active" : ""}`} />;
 }
+
+/** Fit the flow to the panel with a thin margin, so steps stay readable. */
+const FIT = { padding: 0.08 };
 
 const nodeTypes = { step: StepNode, stage: StageHead };
 const edgeTypes = { flow: FlowEdge };
@@ -274,13 +281,14 @@ export function flowGraph(
   const edges: Edge[] = pipeline.edges.map((e) => {
     const source = stepOf(e.from);
     const target = stepOf(e.to);
+    const sameStage = groupOf.has(source) && groupOf.get(source) === groupOf.get(target);
     return {
-      id: edgeId(e),
+      id: `${e.from}->${e.to}`,
       type: "flow",
       source,
       target,
-      sourceHandle: "out",
-      targetHandle: "in",
+      sourceHandle: sameStage ? "down" : "out",
+      targetHandle: sameStage ? "top" : "in",
       data: { active: selectedId !== undefined && (source === selectedId || target === selectedId) },
     };
   });
@@ -388,7 +396,7 @@ function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] 
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
-      fitViewOptions={{ padding: 0.25 }}
+      fitViewOptions={FIT}
       nodesConnectable={false}
       minZoom={0.3}
       maxZoom={2}
@@ -419,7 +427,7 @@ function ZoomControl({ tidy }: { tidy: () => void }) {
       <button type="button" aria-label="Zoom in" onClick={() => void zoomIn()}>
         +
       </button>
-      <button type="button" className="fit" onClick={() => void fitView({ padding: 0.25 })}>
+      <button type="button" className="fit" onClick={() => void fitView(FIT)}>
         Fit
       </button>
       <button
@@ -429,7 +437,7 @@ function ZoomControl({ tidy }: { tidy: () => void }) {
         onClick={() => {
           tidy();
           // After the moved steps are drawn, so the fit sees their new places.
-          requestAnimationFrame(() => void fitView({ padding: 0.25 }));
+          requestAnimationFrame(() => void fitView(FIT));
         }}
       >
         Tidy

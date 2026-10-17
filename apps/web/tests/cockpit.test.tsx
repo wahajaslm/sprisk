@@ -186,14 +186,30 @@ describe("flow canvas", () => {
     }
   });
 
-  it("runs a stage's steps left to right in order, like the rest of the flow", async () => {
+  it("stacks a stage's steps top to bottom, while stages still run left to right", async () => {
     const { flowPositions } = await import("../src/flow/layout.ts");
     const stage = (id: string) => (id === "model" || id === "score" ? "Model" : undefined);
     const { nodes: at } = await flowPositions(pipeline, () => ({ width: 168, height: 44 }), stage);
-    expect(at.get("model")!.x + 168).toBeLessThan(at.get("score")!.x);
+    expect(at.get("model")!.x).toBe(at.get("score")!.x);
+    expect(at.get("model")!.y + 44).toBeLessThan(at.get("score")!.y);
     expect(at.get("split")!.x + 168).toBeLessThan(at.get("model")!.x);
   });
 
+  it("stacks a stage's steps in one column even when they do not read each other", async () => {
+    const { flowPositions } = await import("../src/flow/layout.ts");
+    const scores = ["score_a", "score_b", "score_c"];
+    const three = {
+      ...pipeline,
+      nodes: [pipeline.nodes[0]!, ...scores.map((id) => ({ id, operator: "sprisk.profile.summarize@1.0.0", params: {} }))],
+      edges: scores.map((id) => ({ from: "load.data", to: `${id}.data` })),
+    };
+    const stage = (id: string) => (scores.includes(id) ? "Evaluate" : undefined);
+    // Detail cards are tall: packing them for a pleasing shape would put them side by side.
+    const { nodes: at } = await flowPositions(three, () => ({ width: 232, height: 176 }), stage);
+    const [a, b, c] = scores.map((id) => at.get(id)!);
+    expect([b!.x, c!.x]).toEqual([a!.x, a!.x]);
+    expect(new Set([a!.y, b!.y, c!.y]).size).toBe(3);
+  });
 
   it("groups steps of one stage only where they sit together in the flow", async () => {
     const { stageGroups } = await import("../src/flow/stages.ts");
@@ -218,6 +234,14 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
+  it("links steps of one stage top to bottom, and stages side to side", async () => {
+    const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const { edges } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), new Map());
+    const edge = (from: string, to: string) => edges.find((e) => e.source === from && e.target === to)!;
+    expect(edge("load", "profile")).toMatchObject({ sourceHandle: "down", targetHandle: "top" });
+    expect(edge("load", "split")).toMatchObject({ sourceHandle: "out", targetHandle: "in" });
+  });
 
   it("shows a heading with the step count above each stage", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
