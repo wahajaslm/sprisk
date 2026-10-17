@@ -8,11 +8,11 @@ import pytest
 from conftest import WriteParquet
 
 from sprisk_code.python_step import (
-    MAX_TABLE_ROWS,
     python_step,
     python_step_v12,
     python_step_with_output,
 )
+from sprisk_code.shown import MAX_TABLE_ROWS
 from sprisk_contracts import CodeDisplay, CodeInterface
 from sprisk_workers.errors import OperatorError
 

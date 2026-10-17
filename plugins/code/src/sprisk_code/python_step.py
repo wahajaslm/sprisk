@@ -14,6 +14,16 @@ import matplotlib
 import polars as pl
 
 from sprisk_code.discovery import bind, file_reads, free_names, literal_parameters
+from sprisk_code.shown import (
+    MAX_FIGURE_BYTES,
+    MAX_FIGURES,
+    MAX_ITEMS,
+    MAX_TEXT_CHARS,
+    as_polars,
+    cut,
+    is_table,
+    table_page,
+)
 from sprisk_contracts import CodeDisplay, CodeInterface
 from sprisk_workers.errors import OperatorError
 from sprisk_workers.plain import figure_item
@@ -23,14 +33,6 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 FILENAME = "<code step>"
-MAX_TABLE_ROWS = 50
-MAX_TABLE_COLUMNS = 50
-MAX_CELL_CHARS = 500
-MAX_TEXT_CHARS = 20_000
-MAX_FIGURES = 12
-MAX_ITEMS = 100
-# SVG and chart JSON are text; a figure with very many points is noted, not shown.
-MAX_FIGURE_BYTES = 2 * 1024 * 1024
 
 
 def python_step(data: pl.DataFrame, source: str) -> dict[str, Any]:
@@ -95,7 +97,7 @@ def python_step_v2(
                 "code_error", f"the code does not set {name}, which a later step reads"
             )
         value = namespace[name]
-        if not _is_table(value):
+        if not is_table(value):
             raise OperatorError(
                 "code_error",
                 f"{name} is a {type(value).__name__}, not a table. Only tables pass between "
@@ -120,28 +122,6 @@ def _with_data(data: pl.DataFrame) -> tuple[dict[str, Any], list[pl.DataFrame]]:
         passed[:] = [df]
 
     return {"data": data, "pl": pl, "sprisk": SimpleNamespace(output=output)}, passed
-
-
-def _is_pandas(value: object, *names: str) -> bool:
-    # Checked by name: pandas is imported only by user code that made one.
-    kind = type(value)
-    return kind.__name__ in names and kind.__module__.split(".")[0] == "pandas"
-
-
-def _is_table(value: object) -> bool:
-    return isinstance(value, pl.DataFrame) or _is_pandas(value, "DataFrame")
-
-
-def _as_polars(value: object) -> pl.DataFrame | None:
-    """A table to summarise or show, whichever library made it."""
-    if isinstance(value, pl.Series):
-        return value.to_frame()
-    if isinstance(value, pl.DataFrame):
-        return value
-    if _is_pandas(value, "DataFrame", "Series"):
-        frame = pl.from_pandas(value)
-        return frame.to_frame() if isinstance(frame, pl.Series) else frame
-    return None
 
 
 def load_function(source: str, function: str) -> Callable[..., Any]:
@@ -255,9 +235,9 @@ def _candidate(name: str, value: object, chosen: bool) -> tuple[dict[str, Any], 
         "origin": "measured",
         "chosen": chosen,
     }
-    frame = _as_polars(value)
+    frame = as_polars(value)
     if frame is None:
-        doc["text"] = _cut(_VALUE_REPR.repr(value), MAX_VALUE_CHARS)
+        doc["text"] = cut(_VALUE_REPR.repr(value), MAX_VALUE_CHARS)
         return doc, {}
     doc["rows"], doc["columns"] = frame.height, frame.width
     nulls = frame.select(frame.columns[:MAX_FIELDS]).null_count().row(0)
@@ -265,7 +245,7 @@ def _candidate(name: str, value: object, chosen: bool) -> tuple[dict[str, Any], 
         {"name": n, "data_type": str(t), "null_count": c}
         for (n, t), c in zip(list(frame.schema.items())[:MAX_FIELDS], nulls, strict=True)
     ]
-    return doc, {"fields": fields, "sample": _table(frame, MAX_SAMPLE_ROWS)}
+    return doc, {"fields": fields, "sample": table_page(frame, MAX_SAMPLE_ROWS)}
 
 
 def _run(
@@ -358,7 +338,7 @@ class _Collector:
     def text(self, chunk: str, channel: str) -> None:
         if self.printing == channel and self.items:
             last = self.items[-1]
-            last["text"] = _cut(last["text"] + chunk, MAX_TEXT_CHARS)
+            last["text"] = cut(last["text"] + chunk, MAX_TEXT_CHARS)
             return
         self._add({"kind": "text", "text": chunk, "channel": channel})
         self.printing = channel
@@ -370,10 +350,10 @@ class _Collector:
             self.show(value, line)
 
     def show(self, value: Any, line: int | None) -> None:
-        if (frame := _as_polars(value)) is not None:
-            self._add({"kind": "table", "table": _table(frame)}, line)
+        if (frame := as_polars(value)) is not None:
+            self._add({"kind": "table", "table": table_page(frame)}, line)
         elif not self.figure(value, line):
-            self._add({"kind": "text", "text": _cut(repr(value), MAX_TEXT_CHARS)}, line)
+            self._add({"kind": "text", "text": cut(repr(value), MAX_TEXT_CHARS)}, line)
 
     def figure(self, value: Any, line: int | None) -> bool:
         """Show `value` as a figure, as a notebook would; False when it is not one."""
@@ -448,28 +428,3 @@ class _Stream(io.TextIOBase):
         if chunk:
             self.collector.text(chunk, self.channel)
         return len(chunk)
-
-
-def _table(df: pl.DataFrame, limit: int = MAX_TABLE_ROWS) -> dict[str, Any]:
-    shown = df.select(df.columns[:MAX_TABLE_COLUMNS]).head(limit)
-    rows = []
-    for row in shown.iter_rows():
-        missing = [i for i, v in enumerate(row) if v is None]
-        values = ["" if v is None else _cut(_text(v), MAX_CELL_CHARS) for v in row]
-        rows.append({"values": values, "missing": missing})
-    return {
-        "offset": 0,
-        "total_rows": df.height,
-        "total_columns": df.width,
-        "columns": [{"name": n, "data_type": str(t)} for n, t in shown.schema.items()],
-        "rows": rows,
-    }
-
-
-def _text(value: Any) -> str:
-    # Display only: six significant digits, like a notebook, not full float noise.
-    return f"{value:.6g}" if isinstance(value, float) else str(value)
-
-
-def _cut(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[:limit] + "…"
