@@ -43,33 +43,39 @@ export function useRunNodes(runs: Run[], nodeIds: string[]): Record<string, Node
     (attempts[r]?.data ?? []).filter((a) => a.node_id === node).sort((a, b) => a.number - b.number),
   );
   const producers = mine.map((list) => list.filter((a) => a.state === "succeeded" || a.state === "cache_hit").at(-1)?.id);
+  // Each id is read once: a list of queries must not repeat a key, and steps that have not run
+  // all share "no id".
+  const producerIds = unique(producers);
   const outputs = useQueries({
-    queries: producers.map((id) => ({
+    queries: producerIds.map((id) => ({
       queryKey: ["outputs", id],
-      queryFn: () => getList("AttemptOutput", `/attempts/${id ?? ""}/outputs`),
-      enabled: id !== undefined,
+      queryFn: () => getList("AttemptOutput", `/attempts/${id}/outputs`),
       staleTime: Infinity,
     })),
   });
-  const metricIds = outputs.map((o) => {
-    const a = o.data?.find((x) => x.artifact.media_type === "application/json")?.artifact;
+  const metricIds = producers.map((id) => {
+    const found = id === undefined ? undefined : outputs[producerIds.indexOf(id)]?.data;
+    const a = found?.find((x) => x.artifact.media_type === "application/json")?.artifact;
     return a && a.size_bytes <= MAX_INLINE_BYTES ? a.id : undefined;
   });
+  const textIds = unique(metricIds);
   const texts = useQueries({
-    queries: metricIds.map((id) => ({
+    queries: textIds.map((id) => ({
       queryKey: ["artifact-text", id],
-      queryFn: () => getText(`/artifacts/${id ?? ""}/content`),
-      enabled: id !== undefined,
+      queryFn: () => getText(`/artifacts/${id}/content`),
       staleTime: Infinity,
     })),
   });
   const result: Record<string, NodeInRun>[] = runs.map(() => ({}));
   pairs.forEach(({ r, node }, i) => {
     const row = result[r];
-    if (row) row[node] = { attempts: mine[i] ?? [], metrics: numbers(texts[i]?.data) };
+    const id = metricIds[i];
+    if (row) row[node] = { attempts: mine[i] ?? [], metrics: numbers(id === undefined ? undefined : texts[textIds.indexOf(id)]?.data) };
   });
   return result;
 }
+
+const unique = (ids: (string | undefined)[]): string[] => [...new Set(ids.filter((id): id is string => id !== undefined))];
 
 function numbers(text: string | undefined): Record<string, number> | undefined {
   if (text === undefined) return undefined;
