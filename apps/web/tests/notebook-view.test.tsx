@@ -9,7 +9,8 @@ import { CodeEditor } from "../src/views/CodeEditor.tsx";
 import { FlowPanel } from "../src/views/FlowPanel.tsx";
 import { NotebookView } from "../src/views/NotebookView.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
-import { attempts, codeAttempt, codeDisplayJson, codeOutputs, notebookOperator, operators, pipeline, PV, RUN, run } from "./fixtures.ts";
+import { useWorkbench } from "../src/workbench/workbench.ts";
+import { attempts, codeAttempt, codeDisplayJson, codeOutputs, codePipeline, fakeDock, notebookOperator, operators, pipeline, PV, RUN, run } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -94,6 +95,41 @@ describe("the notebook view of a flow (ADR-0033)", () => {
     expect(within(cell).getByText("1 of 150 rows")).toBeInTheDocument();
     expect(within(cell).getByRole("img", { name: "Figure 1" })).toBeInTheDocument();
     expect(within(cell).getByText("[2]")).toBeInTheDocument();
+  });
+
+  it("marks a failed step with [!] and shows its error under the cell", async () => {
+    withApi(linear);
+    const failed = { ...codeAttempt, node_id: "cell_1", state: "failed" as const, error: { code: "code_error", message: "NameError: name 'df' is not defined" } };
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, failed])));
+    renderWithApi(<NotebookView />);
+    const cell = await screen.findByRole("region", { name: "cell_1" });
+    expect(await within(cell).findByText("code_error: NameError: name 'df' is not defined")).toBeInTheDocument();
+    expect(within(cell).getByText("[!]")).toBeInTheDocument();
+  });
+
+  it("opens a built-in step's table in Data from its size line", async () => {
+    withApi(linear);
+    const dock = fakeDock();
+    useWorkbench.setState({ dock });
+    renderWithApi(<NotebookView />);
+    await userEvent.click(await screen.findByRole("button", { name: /load_data · 120 rows × 2 columns/ }));
+    expect(useSelection.getState().nodeId).toBe("load");
+    expect(dock.showTab).toHaveBeenCalledWith("data");
+  });
+
+  it("runs a v1 code step's edited code as the next version", async () => {
+    const sent = withApi(linear);
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([codePipeline])));
+    renderWithApi(<NotebookView />);
+    const n = codePipeline.nodes.length;
+    const cell = await screen.findByRole("textbox", { name: `Cell ${n}` });
+    await userEvent.clear(cell);
+    await userEvent.type(cell, "data.head(2){Shift>}{Enter}{/Shift}");
+
+    await waitFor(() => expect(sent.runs).toHaveLength(1));
+    expect(sent.cells).toEqual([]);
+    expect(sent.versions[0]?.nodes.at(-1)?.params).toEqual({ source: "data.head(2)" });
+    expect(useSelection.getState().nodeId).toBe("code_1");
   });
 
   it("runs an edited cell: Python reads its links, then the next version is saved and run from there", async () => {

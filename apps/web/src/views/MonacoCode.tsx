@@ -1,6 +1,6 @@
 import Editor, { loader, type OnMount } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 
 import type { CodeInputProps } from "./CodeInput.tsx";
@@ -28,8 +28,18 @@ monaco.editor.defineTheme("sprisk-studio", {
 /** Monaco edits the code. It never runs it; running goes through the API (apps/web rules). */
 export default function MonacoCode({ value, onChange, onRun, label, readOnly = false, fit = false }: CodeInputProps) {
   const [height, setHeight] = useState<number | undefined>(undefined);
+  // Bound once, at mount, so it calls the latest onRun through a ref. An action, not
+  // addCommand: Monaco shares addCommand keys across editors, so with many cells on a page
+  // Shift+Enter would run another cell.
+  const runRef = useRef(onRun);
+  runRef.current = onRun;
   const mount: OnMount = (editor) => {
-    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => onRun(editor.getValue()));
+    editor.addAction({
+      id: "sprisk.run",
+      label: "Run",
+      keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter],
+      run: () => runRef.current(editor.getValue()),
+    });
     if (!fit) return;
     setHeight(editor.getContentHeight());
     editor.onDidContentSizeChange((e) => setHeight(e.contentHeight));

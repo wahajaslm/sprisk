@@ -2,9 +2,9 @@ import type { Attempt, DisplayItem, Operator, PipelineVersion } from "@sprisk/co
 import { type ReactNode, useState } from "react";
 
 import { useCodeDisplay, useConsole } from "../api/code.ts";
-import { useOperators, useOperatorSources, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun, useTablePage } from "../api/hooks.ts";
+import { useOperators, useOperatorSources, useOutputs, usePipelineVersions, useRunAttempts, useTablePage } from "../api/hooks.ts";
 import { PARQUET } from "../api/media.ts";
-import { isCodeOperator, setCodeSource } from "../flow/edit.ts";
+import { isCodeOperator } from "../flow/edit.ts";
 import { hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import {
   type CellAt,
@@ -21,6 +21,7 @@ import { roleOf } from "../flow/stages.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { Loading } from "../components/ui/Loading.tsx";
+import { Overrides, useRunSource } from "./CodeEditor.tsx";
 import { CodeInput } from "./CodeInput.tsx";
 import { CodeIcon, PlayIcon, TrashIcon } from "./Icons.tsx";
 import { FigurePort, FigureView } from "./inspector/FiguresTab.tsx";
@@ -145,7 +146,9 @@ function StepBlock({ step, attempt, operators, pipeline, selected, children }: S
     <section
       className={`nb-step${selected ? " selected" : ""}${grouped ? " grouped" : ""}`}
       aria-label={step.nodeId ?? "new step"}
+      // Focus too: a cell reached by keyboard selects its step, as a click does.
       onClick={() => step.nodeId !== undefined && selectNode(step.nodeId)}
+      onFocus={() => step.nodeId !== undefined && selectNode(step.nodeId)}
     >
       {children}
       <Outputs step={step} attempt={attempt} pipeline={pipeline} operators={operators} />
@@ -194,20 +197,18 @@ const ignore = () => undefined;
  * ADR-0028). A v1 code step: its code, with the table it gets as `data`. */
 function OtherCell({ step, pipeline, operators, attempt, n }: StepProps & { n: number }) {
   const [showCode, setShowCode] = useState(false);
-  const saveAndRun = useSaveAndRun(useSelection((s) => s.runId));
-  const showRun = useSelection((s) => s.showRun);
+  const { saveAndRun, runSource } = useRunSource(pipeline, step.nodeId ?? "");
   const [source, setSource] = useState(step.kind === "code" ? step.source : "");
   if (step.kind === "cells") return null;
   const node = nodeOf(pipeline, step.nodeId);
   const operator = operators.get(node.operator);
   if (step.kind === "code") {
     const run = (code: string) => {
-      if (code === "" || saveAndRun.isPending) return;
-      const version = setCodeSource(pipeline, node.id, code);
-      saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, node.id) });
+      if (code !== "" && !saveAndRun.isPending) runSource(code);
     };
     return (
       <Cell n={n} attempt={attempt} tag={`${node.id} · Python · data = ${step.data ?? "None"}`} pending={saveAndRun.isPending} onRun={() => run(source)}>
+        <Overrides pipeline={pipeline} nodeId={node.id} />
         {saveAndRun.isError && <p role="alert" className="error nb-message">{saveAndRun.error.message}</p>}
         <CodeInput fit label={`Cell ${n}`} value={source} onChange={setSource} onRun={run} />
       </Cell>
@@ -271,7 +272,8 @@ function CodeOutputs({ attempt }: { attempt: Attempt }) {
         if (item.kind === "figure" && item.figure) return <FigureView key={i} figure={item.figure} index={figure++} />;
         if (item.kind === "image" && item.png_base64) return <img key={i} className="figure" alt={`Figure ${++figure}`} src={`data:image/png;base64,${item.png_base64}`} />;
         if (item.kind === "table") return <ShownTable key={i} item={item} index={i} />;
-        return <Printed key={i} item={item} />;
+        if (item.kind === "text") return <Printed key={i} item={item} />;
+        return <p key={i} role="alert" className="error">Output item {i + 1} ({item.kind}) has no content.</p>;
       })}
     </Out>
   );
@@ -287,6 +289,8 @@ function BuiltinOutputs({ attempt, nodeId, operator }: { attempt: Attempt; nodeI
   const outputs = useOutputs(attempt.id);
   const tables = (outputs.data ?? []).filter((o) => o.artifact.media_type === PARQUET);
   const figurePorts = (operator?.outputs ?? []).filter((o) => o.kind === "figure").map((o) => o.name);
+  if (printed.status === "error") return <Out><p role="alert" className="error">{printed.message}</p></Out>;
+  if (outputs.isError) return <Out><p role="alert" className="error">{outputs.error.message}</p></Out>;
   const texts = printed.status === "ready" ? printed.value.items.filter((i) => i.kind === "text") : [];
   if (tables.length === 0 && figurePorts.length === 0 && texts.length === 0) return null;
   return (

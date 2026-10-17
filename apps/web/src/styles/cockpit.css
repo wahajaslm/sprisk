@@ -564,20 +564,21 @@ p { margin: 0; }
 .nb-step.grouped::before { content: ""; position: absolute; left: calc(var(--nb-gutter) - 8px); top: var(--space-4); bottom: var(--space-2); width: 4px; border: 1px solid var(--line-strong); border-right: 0; }
 .nb-cell { display: grid; grid-template-columns: var(--nb-gutter) 1fr; align-items: start; }
 .nb-cell + .nb-cell { margin-top: var(--space-5); }
-.nb-gutter { display: flex; justify-content: flex-end; align-items: center; height: 40px; padding-right: var(--space-4); font: var(--text-xs) var(--mono); color: var(--ghost); }
+.nb-gutter { position: relative; display: flex; justify-content: flex-end; align-items: center; height: 40px; padding-right: var(--space-4); font: var(--text-xs) var(--mono); color: var(--ghost); }
 .nb-gutter.bad { color: var(--alert); }
-.nb-run { display: none; width: 24px; height: 24px; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--soft); }
+.nb-run { display: flex; position: absolute; right: var(--space-3); opacity: 0; width: 24px; height: 24px; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--soft); }
 .nb-run:hover:not(:disabled) { background: var(--node-hover); color: var(--ink); }
-.nb-cell:hover .nb-run, .nb-cell:focus-within .nb-run { display: flex; }
-.nb-cell:hover .nb-run + .nb-count, .nb-cell:focus-within .nb-run + .nb-count { display: none; }
+/* Hidden with opacity, not display, so Tab still reaches the cell's buttons. */
+.nb-cell:hover .nb-run, .nb-cell:focus-within .nb-run { opacity: 1; }
+.nb-cell:hover .nb-run + .nb-count, .nb-cell:focus-within .nb-run + .nb-count { opacity: 0; }
 .nb-body { position: relative; min-width: 0; border: 1px solid var(--line); }
 .nb-body:focus-within { border-color: var(--dim); }
 /* The cell's name and tools sit on its top border, as VS Code's cell toolbar does. */
 .nb-tools { position: absolute; top: -11px; right: var(--space-3); z-index: 2; display: flex; align-items: center; gap: var(--space-1); height: 20px; }
 .nb-tag { padding: 0 var(--space-1); background: var(--canvas); font: var(--text-xs) var(--mono); color: var(--ghost); }
-.nb-icon { display: none; width: 20px; height: 20px; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--canvas); color: var(--muted); }
+.nb-icon { display: flex; opacity: 0; width: 20px; height: 20px; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--canvas); color: var(--muted); }
 .nb-icon:hover, .nb-icon.on { color: var(--ink); background: var(--node-hover); }
-.nb-cell:hover .nb-icon, .nb-cell:focus-within .nb-icon, .nb-icon.on { display: flex; }
+.nb-cell:hover .nb-icon, .nb-cell:focus-within .nb-icon, .nb-icon.on, .nb-icon:focus-visible { opacity: 1; }
 .code-input.fit { flex: none; min-height: 0; border: 0; background: transparent; }
 .nb-function { border-top: 1px solid var(--line); }
 .nb-function .code-editor { height: auto; gap: 0; }
