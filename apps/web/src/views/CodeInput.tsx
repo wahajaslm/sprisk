@@ -16,6 +16,8 @@ export type CodeInputProps = {
   fit?: boolean;
   /** Esc, when no editor widget is open: a notebook leaves the editor for the cell. */
   onEscape?: () => void;
+  /** Ctrl/Cmd+Enter in a notebook: run and stay on the cell. Without it, it runs as Shift+Enter. */
+  onRunStay?: (value: string) => void;
 };
 
 const MonacoCode = lazy(() => import("./MonacoCode.tsx"));

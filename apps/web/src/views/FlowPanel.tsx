@@ -7,7 +7,6 @@ import { NotebookView } from "./NotebookView.tsx";
 // React Flow is heavy; load it only when the canvas first renders.
 const FlowCanvas = lazy(() => import("./FlowCanvas.tsx").then((m) => ({ default: m.FlowCanvas })));
 
-
 const LABEL: Record<FlowView, string> = { canvas: "Flow", notebook: "Notebook" };
 
 /** The flow as a canvas or as notebook cells: two views of one saved version (ADR-0033). */

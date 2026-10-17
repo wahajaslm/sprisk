@@ -22,8 +22,9 @@ import { useSaveCells } from "./useSaveCells.ts";
 /** Rows of a table a step made, shown under its cell, as a notebook shows `df.head()`. */
 const PREVIEW_ROWS = 5;
 
-/** Where the person was, kept across the rebuild a run's new version causes. */
-type Place = { scrollTop: number; active: number };
+/** Where the person was, kept across the rebuild a run's new version causes. `focus`: a run
+ * from the keyboard, so the cell it lands on takes the keys. */
+type Place = { scrollTop: number; active: number; focus: boolean };
 
 /** The selected flow as a notebook laid out as VS Code's notebook editor (ADR-0035). It is the
  * same saved version the canvas shows: running a cell saves the next version and runs it in
@@ -33,7 +34,7 @@ export function NotebookView() {
   const versions = usePipelineVersions();
   const operators = useOperators();
   const attempts = useRunAttempts(pipelineVersionId, runId);
-  const place = useRef<Place>({ scrollTop: 0, active: 0 });
+  const place = useRef<Place>({ scrollTop: 0, active: 0, focus: false });
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
   if (versions.isPending || operators.isPending) return <Loading text="Loading notebook…" pad />;
@@ -84,15 +85,16 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
   const select = (index: number, focus = false) => {
     const row = rows[index];
     if (!row) return;
+    pendingD.current = false;
     setActive(index);
     if (row.step.nodeId !== undefined) selectNode(row.step.nodeId);
     if (focus) cellNodes.current.get(index)?.focus();
   };
-  const run = (next: NotebookStep[], at: CellAt) => {
+  const run = (next: NotebookStep[], at: CellAt, advance = true) => {
     if (cells.pending) return;
-    // Shift+Enter moves on to the next cell, as in VS Code; the notebook is rebuilt for the new
-    // version, so remember where to come back.
-    place.current = { scrollTop: scroller.current?.scrollTop ?? 0, active: cellNumber(next, at) + 1 };
+    // Shift+Enter moves on to the next cell, Ctrl/Cmd+Enter stays, as in VS Code. The notebook
+    // is rebuilt for the new version, so remember where to come back.
+    place.current = { scrollTop: scroller.current?.scrollTop ?? 0, active: cellNumber(next, at) + (advance ? 1 : 0), focus: true };
     void cells.save(next, cellNumber(next, at));
   };
   const runAll = () => {
@@ -100,21 +102,37 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
     startRun.mutate(pipeline.id, { onSuccess: (r) => showRun(pipeline.id, r.id) });
   };
 
+  // Back where the person was after a run rebuilt the notebook, on the cell the run moved to.
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = place.current.scrollTop;
-  }, [place]);
+    if (!place.current.focus) return;
+    place.current.focus = false;
+    select(active, true);
+    // Once, when this version's notebook appears.
+  }, []);
 
-  // A step picked elsewhere (the canvas) selects its first cell.
+  // Adding or deleting cells remounts them (see `generation`); the selected one keeps the keys.
   useEffect(() => {
+    if (generation > 0) cellNodes.current.get(active)?.focus();
+    // `active` is set together with `generation`.
+  }, [generation]);
+
+  // A step picked elsewhere (the canvas) selects its first cell. Only a change counts: the
+  // step a run shows must not pull the active cell back from the one Shift+Enter moved to.
+  const lastSelected = useRef(selected);
+  useEffect(() => {
+    if (selected === lastSelected.current) return;
+    lastSelected.current = selected;
     if (selected === undefined || rows[active]?.step.nodeId === selected) return;
     const index = rows.findIndex((r) => r.step.nodeId === selected);
     if (index >= 0) setActive(index);
-    // Only a new selection moves the active cell; the rows follow from it.
   }, [selected]);
 
   // VS Code's keys for a selected cell whose editor is not focused.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!(e.target instanceof HTMLElement) || e.target.dataset["cell"] === undefined) return;
+    // Cmd+A, Ctrl+D and the like belong to the browser, not to the notebook.
+    if (e.altKey || ((e.ctrlKey || e.metaKey) && e.key !== "Enter")) return;
     const row = rows[active];
     if (!row) return;
     const key = e.key;
@@ -125,7 +143,7 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
       e.target.querySelector("textarea")?.focus();
     } else if (key === "Enter") {
       e.preventDefault();
-      if (row.step.kind === "cells") run(steps, row.at);
+      if (row.step.kind === "cells") run(steps, row.at, e.shiftKey);
     } else if (key === "ArrowUp" || key === "k") {
       e.preventDefault();
       select(Math.max(0, active - 1), true);
@@ -175,7 +193,8 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
         {steps.map((step, i) => {
           const attempt = step.nodeId === undefined ? undefined : latest.get(step.nodeId);
           const mine = rows.filter((r) => r.at.step === i);
-          const after = rows.indexOf(mine.at(-1) ?? mine[0]!) + 1;
+          const last = mine.at(-1);
+          const after = last ? rows.indexOf(last) + 1 : rows.length;
           return (
             <div key={`${generation}/${step.nodeId ?? `new-${i}`}`} className="nb-step" aria-label={step.nodeId ?? "new step"} role="group">
               {mine.map((row, j) => {
@@ -190,7 +209,7 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
                   onEscape: () => select(index, true),
                   outputs: j === mine.length - 1 ? <Outputs step={step} attempt={attempt} pipeline={pipeline} operators={operators} /> : null,
                 };
-                if (step.kind !== "cells") return <OtherCell key={j} {...shared} pipeline={pipeline} operators={operators} />;
+                if (step.kind !== "cells") return <OtherCell key={j} {...shared} step={step} pipeline={pipeline} operators={operators} />;
                 return (
                   <Cell
                     key={j}
@@ -209,7 +228,9 @@ function Notebook({ pipeline, operators, latest, selected, place }: NotebookProp
                       value={step.cells[row.at.cell] ?? ""}
                       onChange={(v) => setDraft(withCell(steps, row.at, v))}
                       onRun={(v) => run(withCell(steps, row.at, v), row.at)}
+                      onRunStay={(v) => run(withCell(steps, row.at, v), row.at, false)}
                       onEscape={() => select(index, true)}
+                      readOnly={cells.pending}
                     />
                   </Cell>
                 );
@@ -280,22 +301,25 @@ const ignore = () => undefined;
 
 /** A built-in step: its call, read-only, with its code behind the toolbar's code button
  * (editable there, ADR-0028). A v1 code step: its code, with the table it gets as `data`. */
-function OtherCell({ pipeline, operators, ...shared }: CellShared & { pipeline: PipelineVersion; operators: Map<string, Operator> }) {
-  const { step } = shared.row;
+type OtherStep = Exclude<NotebookStep, { kind: "cells" }>;
+
+function OtherCell({ step, pipeline, operators, ...shared }: CellShared & { step: OtherStep; pipeline: PipelineVersion; operators: Map<string, Operator> }) {
   const [showCode, setShowCode] = useState(false);
-  const { saveAndRun, runSource } = useRunSource(pipeline, step.nodeId ?? "");
+  const { saveAndRun, runSource } = useRunSource(pipeline, step.nodeId);
   const [source, setSource] = useState(step.kind === "code" ? step.source : "");
-  if (step.kind === "cells") return null;
+  const [empty, setEmpty] = useState(false);
   const node = nodeOf(pipeline, step.nodeId);
   const operator = operators.get(node.operator);
   if (step.kind === "code") {
     const run = (code: string) => {
-      if (code !== "" && !saveAndRun.isPending) runSource(code);
+      setEmpty(code.trim() === "");
+      if (code.trim() !== "" && !saveAndRun.isPending) runSource(code);
     };
     return (
       <Cell {...shared} label={`${node.id} · data = ${step.data ?? "None"} · Python`} pending={saveAndRun.isPending} onRun={() => run(source)}>
         <Overrides pipeline={pipeline} nodeId={node.id} />
         {saveAndRun.isError && <p role="alert" className="error nb-message">{saveAndRun.error.message}</p>}
+        {empty && <p role="alert" className="error nb-message">The cell is empty; write some code first.</p>}
         <CodeInput fit label={`Cell ${shared.row.n}`} value={source} onChange={setSource} onRun={run} onEscape={shared.onEscape} />
       </Cell>
     );

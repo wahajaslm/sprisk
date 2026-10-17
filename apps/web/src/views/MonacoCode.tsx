@@ -26,7 +26,7 @@ monaco.editor.defineTheme("sprisk-studio", {
 });
 
 /** Monaco edits the code. It never runs it; running goes through the API (apps/web rules). */
-export default function MonacoCode({ value, onChange, onRun, onEscape, label, readOnly = false, fit = false }: CodeInputProps) {
+export default function MonacoCode({ value, onChange, onRun, onRunStay, onEscape, label, readOnly = false, fit = false }: CodeInputProps) {
   const [height, setHeight] = useState<number | undefined>(undefined);
   // Bound once, at mount, so it calls the latest onRun through a ref. An action, not
   // addCommand: Monaco shares addCommand keys across editors, so with many cells on a page
@@ -35,13 +35,20 @@ export default function MonacoCode({ value, onChange, onRun, onEscape, label, re
   runRef.current = onRun;
   const escapeRef = useRef(onEscape);
   escapeRef.current = onEscape;
+  const stayRef = useRef(onRunStay);
+  stayRef.current = onRunStay;
   const mount: OnMount = (editor) => {
     editor.addAction({
       id: "sprisk.run",
       label: "Run",
-      // Shift+Enter and Ctrl/Cmd+Enter, as in VS Code's notebook.
-      keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter, monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter],
       run: () => runRef.current(editor.getValue()),
+    });
+    editor.addAction({
+      id: "sprisk.run-stay",
+      label: "Run and stay",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      run: () => (stayRef.current ?? runRef.current)(editor.getValue()),
     });
     if (onEscape) {
       editor.addAction({

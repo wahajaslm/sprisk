@@ -39,16 +39,20 @@ vi.mock("../src/views/VegaFigure.tsx", () => ({
 }));
 
 vi.mock("../src/views/MonacoCode.tsx", () => ({
-  default: ({ value, label, onChange, onRun, onEscape, readOnly }: CodeInputProps) =>
+  default: ({ value, label, onChange, onRun, onRunStay, onEscape, readOnly }: CodeInputProps) =>
     createElement("textarea", {
       "aria-label": label,
       value,
       readOnly,
       onChange: (e: { target: { value: string } }) => onChange(e.target.value),
-      onKeyDown: (e: { key: string; shiftKey: boolean; preventDefault: () => void; currentTarget: { value: string } }) => {
+      onKeyDown: (e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; preventDefault: () => void; currentTarget: { value: string } }) => {
         if (e.key === "Enter" && e.shiftKey) {
           e.preventDefault();
           onRun(e.currentTarget.value);
+        }
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          (onRunStay ?? onRun)(e.currentTarget.value);
         }
         if (e.key === "Escape") onEscape?.();
       },

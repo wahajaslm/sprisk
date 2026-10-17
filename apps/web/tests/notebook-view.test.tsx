@@ -115,6 +115,43 @@ describe("the notebook view of a flow (ADR-0035)", () => {
     expect(within(cell).getByText("failed")).toBeInTheDocument();
   });
 
+  it("moves to the next cell after Shift+Enter, and stays after Ctrl+Enter, as in VS Code", async () => {
+    const three: PipelineVersion = {
+      ...flow,
+      nodes: [...flow.nodes, { id: "cell_2", operator: NOTEBOOK_OPERATOR, params: { source: "m = df.width", inputs: ["df"] } }],
+      edges: [...flow.edges, { from: "load.data", to: "cell_2.df" }],
+    };
+    const sent = withApi(linear);
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([three, ...sent.versions])));
+    const { container } = renderWithApi(<NotebookView />);
+    const cellOf = (n: number) => container.querySelector<HTMLElement>(`[data-cell="${n}"]`);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), "{Shift>}{Enter}{/Shift}");
+    await waitFor(() => expect(sent.runs).toHaveLength(1));
+    await waitFor(() => expect(cellOf(3)).toHaveFocus());
+    expect(cellOf(3)).toHaveClass("active");
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 3" }), "{Control>}{Enter}{/Control}");
+    await waitFor(() => expect(sent.runs).toHaveLength(2));
+    await waitFor(() => expect(cellOf(3)).toHaveFocus());
+  });
+
+  it("selects the cell of a step picked on the canvas", async () => {
+    withApi(linear);
+    const { container } = renderWithApi(<NotebookView />);
+    await screen.findByRole("textbox", { name: "Cell 2" });
+    act(() => useSelection.setState({ nodeId: "cell_1" }));
+    await waitFor(() => expect(container.querySelector('[data-cell="2"]')).toHaveClass("active"));
+    act(() => useSelection.setState({ nodeId: "load" }));
+    await waitFor(() => expect(container.querySelector('[data-cell="1"]')).toHaveClass("active"));
+  });
+
+  it("shows a built-in step's code from its cell toolbar", async () => {
+    withApi(linear);
+    renderWithApi(<NotebookView />);
+    await userEvent.click(await screen.findByRole("button", { name: "Code of load" }));
+    expect(await screen.findByRole("textbox", { name: "Code of sprisk_io/file_source.py" })).toHaveValue("def f(path, format):\n    ...");
+  });
+
   it("runs the whole flow from Run All when nothing was edited", async () => {
     const sent = withApi(linear);
     renderWithApi(<NotebookView />);
@@ -134,10 +171,16 @@ describe("the notebook view of a flow (ADR-0035)", () => {
     await userEvent.keyboard("b");
     expect(await screen.findByRole("textbox", { name: "Cell 3" })).toBeInTheDocument();
     expect(cellOf(3)).toHaveClass("active");
-    act(() => cellOf(3).focus());
+    expect(cellOf(3)).toHaveFocus();
     await userEvent.keyboard("dd");
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Cell 3" })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Discard edits" })).not.toBeInTheDocument();
+    expect(cellOf(2)).toHaveFocus();
+    await userEvent.keyboard("a");
+    expect(await screen.findByRole("textbox", { name: "Cell 2" })).toHaveValue("");
+    expect(cellOf(2)).toHaveFocus();
+    await userEvent.keyboard("dd");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("n = df.height"));
     act(() => cellOf(2).focus());
     await userEvent.keyboard("{ArrowUp}");
     expect(cellOf(1)).toHaveFocus();
