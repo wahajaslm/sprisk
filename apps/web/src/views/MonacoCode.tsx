@@ -1,6 +1,6 @@
 import Editor, { loader, type OnMount } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 
 import type { CodeInputProps } from "./CodeInput.tsx";
@@ -26,25 +26,42 @@ monaco.editor.defineTheme("sprisk-studio", {
 });
 
 /** Monaco edits the code. It never runs it; running goes through the API (apps/web rules). */
-export default function MonacoCode({ value, onChange, onRun, label, readOnly = false }: CodeInputProps) {
+export default function MonacoCode({ value, onChange, onRun, onEscape, label, readOnly = false, fit = false }: CodeInputProps) {
+  const [height, setHeight] = useState<number | undefined>(undefined);
   // Bound once, at mount, so it calls the latest onRun through a ref. An action, not
   // addCommand: Monaco shares addCommand keys across editors, so with many cells on a page
   // Shift+Enter would run another cell.
   const runRef = useRef(onRun);
   runRef.current = onRun;
+  const escapeRef = useRef(onEscape);
+  escapeRef.current = onEscape;
   const mount: OnMount = (editor) => {
     editor.addAction({
       id: "sprisk.run",
       label: "Run",
-      keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter],
+      // Shift+Enter and Ctrl/Cmd+Enter, as in VS Code's notebook.
+      keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter, monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
       run: () => runRef.current(editor.getValue()),
     });
+    if (onEscape) {
+      editor.addAction({
+        id: "sprisk.leave",
+        label: "Leave the editor",
+        keybindings: [monaco.KeyCode.Escape],
+        precondition: "!suggestWidgetVisible && !findWidgetVisible && !parameterHintsVisible && !inSnippetMode",
+        run: () => escapeRef.current?.(),
+      });
+    }
+    if (!fit) return;
+    setHeight(editor.getContentHeight());
+    editor.onDidContentSizeChange((e) => setHeight(e.contentHeight));
   };
   return (
     <Editor
+      {...(fit && height !== undefined ? { height } : {})}
       language="python"
       theme="sprisk-studio"
-      value={value}
+      {...(fit ? { defaultValue: value } : { value })}
       onChange={(v) => onChange(v ?? "")}
       onMount={mount}
       options={{
@@ -58,6 +75,22 @@ export default function MonacoCode({ value, onChange, onRun, label, readOnly = f
         bracketPairColorization: { enabled: false },
         scrollBeyondLastLine: false,
         padding: { top: 10 },
+        // A notebook cell: as tall as its code, no line numbers, long lines wrapped.
+        ...(fit
+          ? {
+              lineNumbers: "off" as const,
+              folding: false,
+              glyphMargin: false,
+              lineDecorationsWidth: 12,
+              wordWrap: "on" as const,
+              renderLineHighlight: "none" as const,
+              overviewRulerLanes: 0,
+              overviewRulerBorder: false,
+              hideCursorInOverviewRuler: true,
+              padding: { top: 10, bottom: 10 },
+              scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const, alwaysConsumeMouseWheel: false },
+            }
+          : {}),
         tabSize: 4,
         automaticLayout: true,
       }}

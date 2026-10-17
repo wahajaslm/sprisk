@@ -2,11 +2,11 @@ import { lazy, Suspense } from "react";
 
 import { Loading } from "../components/ui/Loading.tsx";
 import { FLOW_VIEWS, type FlowView, useWorkbench } from "../workbench/workbench.ts";
+import { NotebookView } from "./NotebookView.tsx";
 
 // React Flow is heavy; load it only when the canvas first renders.
 const FlowCanvas = lazy(() => import("./FlowCanvas.tsx").then((m) => ({ default: m.FlowCanvas })));
-// JupyterLab's notebook is larger still; load it only when the notebook is first shown.
-const JupyterNotebook = lazy(() => import("./jupyter/JupyterNotebook.tsx"));
+
 
 const LABEL: Record<FlowView, string> = { canvas: "Flow", notebook: "Notebook" };
 
@@ -24,7 +24,7 @@ export function FlowPanel() {
           ))}
         </div>
       </div>
-      <Suspense fallback={<Loading text="Loading flow…" pad />}>{flowView === "canvas" ? <FlowCanvas /> : <JupyterNotebook />}</Suspense>
+      <Suspense fallback={<Loading text="Loading flow…" pad />}>{flowView === "canvas" ? <FlowCanvas /> : <NotebookView />}</Suspense>
     </div>
   );
 }

@@ -38,6 +38,9 @@
   --wash-strong: rgba(255, 255, 255, 0.09);
   --alert: #ff5c5c;
   --alert-wash: rgba(255, 92, 92, 0.08);
+  /* VS Code's focus blue and success green, for the notebook (ADR-0035). */
+  --nb-focus: #0078d4;
+  --nb-ok: #89d185;
   /* Step kinds (KindIcon outlines). Never red: red means a problem. */
   --kind-source: #6cb6ff;
   --kind-recipe: #56d4c4;
@@ -559,17 +562,65 @@ p { margin: 0; }
 .kind-mark.kind-view { color: var(--kind-view); }
 .kind-mark.kind-decision { color: var(--kind-decision); }
 .kind-mark.kind-model { color: var(--kind-model); }
-/* JupyterLab's notebook (ADR-0034): its own styles and dark theme; sprisk only sizes it. */
-.flow-panel > .jp-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--jp-layout-color0); }
-.jp-host { position: relative; flex: 1; min-height: 0; }
-.jp-host > .jp-box, .jp-box > .jp-Notebook { position: absolute; inset: 0; }
-.jp-box > .jp-Notebook { overflow: auto; }
-/* JupyterLab's toolbar and its stealth buttons are web components that lay themselves out;
-   this div and these buttons stand in for them with the same classes. */
-.jp-shell > .jp-Toolbar { display: flex; flex: none; align-items: center; }
-.jp-shell .jp-Toolbar-spacer { flex: 1; }
-.jp-shell .jp-ToolbarButtonComponent-icon svg { display: block; width: 16px; height: 16px; }
-.jp-shell .jp-ToolbarButtonComponent { display: flex; align-items: center; justify-content: center; height: 24px; min-width: 24px; padding: 0 var(--space-1); border: 0; border-radius: 2px; background: transparent; color: var(--jp-ui-font-color1); cursor: pointer; }
-.jp-shell .jp-ToolbarButtonComponent:hover { background: var(--jp-layout-color2); }
-.jp-Toolbar-kernelName { align-self: center; padding: 0 var(--space-2); color: var(--jp-ui-font-color1); font-size: var(--jp-ui-font-size1); }
-.jp-banner { margin: 0; padding: var(--space-1) var(--space-4); }
+/* Notebook, laid out as VS Code's notebook editor (ADR-0035). */
+.flow-panel > .notebook { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); }
+.nb-toolbar { display: flex; flex: none; align-items: center; gap: var(--space-1); height: 36px; padding: 0 var(--space-3); border-bottom: 1px solid var(--line-soft); font-size: var(--text-sm); }
+.nb-action { display: inline-flex; align-items: center; gap: var(--space-1); height: 24px; padding: 0 var(--space-2); border: 0; border-radius: 4px; background: transparent; color: var(--soft); font-size: var(--text-sm); cursor: pointer; }
+.nb-action:hover:not(:disabled) { background: var(--node-hover); color: var(--ink); }
+.nb-action:disabled { color: var(--ghost); cursor: default; }
+.nb-divider { width: 1px; height: 16px; margin: 0 var(--space-1); background: var(--line); }
+.nb-kernel { display: inline-flex; align-items: center; gap: var(--space-2); height: 24px; padding: 0 var(--space-2); border-radius: 4px; color: var(--soft); font-size: var(--text-sm); }
+.nb-kernel-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nb-ok); }
+/* Room to scroll the last cell up, as VS Code allows. */
+.nb-scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--space-2) var(--space-6) 40vh var(--space-2); }
+.nb-message { margin: var(--space-2) 0 var(--space-2) 44px; }
+.nb-note { color: var(--faint); font-size: var(--text-xs); }
+.nb-cell { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); padding: var(--space-1) 0; outline: none; }
+/* The focus indicator: a bar at the left of the selected cell. */
+.nb-cell::before { content: ""; position: absolute; left: 6px; top: var(--space-1); bottom: var(--space-1); width: 2px; border-radius: 1px; }
+.nb-cell:hover::before { background: var(--line-strong); }
+.nb-cell.active::before { background: var(--nb-focus); }
+.nb-gutter { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px; }
+/* Hidden with opacity, not display, so Tab still reaches it. */
+.nb-run { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 4px; background: transparent; color: var(--soft); opacity: 0; cursor: pointer; }
+.nb-cell:hover .nb-run, .nb-cell.active .nb-run, .nb-run:focus-visible { opacity: 1; }
+.nb-run:hover:not(:disabled) { background: var(--node-hover); color: var(--ink); }
+.nb-count { min-height: 16px; font: var(--text-xs) var(--mono); color: var(--ghost); }
+.nb-main { position: relative; min-width: 0; }
+.nb-editor { border: 1px solid var(--line-soft); border-radius: 4px; overflow: hidden; }
+.nb-cell.active .nb-editor { border-color: var(--line-strong); }
+.nb-cell .nb-editor:focus-within { border-color: var(--nb-focus); }
+.nb-status { display: flex; align-items: center; gap: var(--space-2); height: 22px; padding: 0 var(--space-1); font-size: var(--text-xs); color: var(--faint); }
+.nb-ok, .nb-bad { display: inline-flex; align-items: center; gap: var(--space-1); }
+.nb-ok { color: var(--nb-ok); }
+.nb-bad { color: var(--alert); }
+.nb-live { color: var(--soft); }
+/* The cell's tools float on its top edge, as VS Code's cell toolbar. */
+.nb-cell-toolbar { position: absolute; top: -13px; right: var(--space-3); z-index: 2; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); opacity: 0; }
+.nb-cell-toolbar:empty { display: none; }
+.nb-cell:hover .nb-cell-toolbar, .nb-cell.active .nb-cell-toolbar, .nb-cell-toolbar:focus-within { opacity: 1; }
+.nb-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: 3px; background: transparent; color: var(--soft); cursor: pointer; }
+.nb-icon:hover, .nb-icon.on { background: var(--node-hover); color: var(--ink); }
+.code-input.fit { flex: none; min-height: 0; border: 0; background: transparent; }
+.nb-function { margin-top: var(--space-1); border: 1px solid var(--line-soft); border-radius: 4px; overflow: hidden; }
+.nb-function .code-editor { height: auto; gap: 0; }
+.nb-function .code-actions { padding: var(--space-1) var(--space-2); }
+.nb-function .code-input { flex: none; height: 320px; border: 0; border-top: 1px solid var(--line-soft); }
+.nb-output { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding: var(--space-2) var(--space-1) var(--space-1); }
+.nb-output > * { max-width: 100%; }
+.nb-output .figure, .nb-output .plotly-figure, .nb-output .vega-figure { width: 100%; max-width: 760px; }
+.nb-output .peek { width: 100%; overflow: auto; }
+.nb-text { margin: 0; color: var(--soft); }
+.nb-text.stderr { width: 100%; padding: var(--space-1) var(--space-2); background: var(--alert-wash); }
+.nb-error { width: 100%; margin: 0; padding: var(--space-2) var(--space-3); background: var(--alert-wash); color: var(--alert); }
+.nb-table { width: 100%; margin: 0; overflow: auto; }
+.nb-table figcaption { margin-bottom: var(--space-1); font-size: var(--text-xs); color: var(--faint); }
+/* Hover between two cells to add one there, as VS Code's insertion toolbar. */
+.nb-insert { position: relative; display: flex; align-items: center; justify-content: center; height: 20px; margin-left: 44px; }
+.nb-insert::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid transparent; }
+.nb-insert:hover::before { border-top-color: var(--line); }
+.nb-insert button { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); height: 22px; padding: 0 var(--space-2); border: 1px solid var(--line-strong); border-radius: 4px; background: var(--raised); color: var(--soft); font-size: var(--text-xs); opacity: 0; cursor: pointer; }
+.nb-insert:hover button, .nb-insert button:focus-visible { opacity: 1; }
+.nb-insert button:hover { background: var(--node-hover); color: var(--ink); }
+.nb-spinner { width: 12px; height: 12px; border: 2px solid var(--line-strong); border-top-color: var(--soft); border-radius: 50%; animation: nb-spin 0.8s linear infinite; }
+@keyframes nb-spin { to { transform: rotate(360deg); } }

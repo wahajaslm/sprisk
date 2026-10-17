@@ -180,6 +180,25 @@ export type CellAt = { step: number; cell: number };
 export const cellNumber = (steps: NotebookStep[], at: CellAt) =>
   steps.slice(0, at.step).reduce((n, s) => n + (s.kind === "cells" ? s.cells.length : 1), 0) + at.cell;
 
+const mapCells = (steps: NotebookStep[], step: number, change: (cells: string[]) => string[]) =>
+  steps.flatMap((s, i) => {
+    if (i !== step || s.kind !== "cells") return [s];
+    const cells = change(s.cells);
+    return cells.length > 0 ? [{ ...s, cells }] : [];
+  });
+
+export const withCell = (steps: NotebookStep[], at: CellAt, source: string) =>
+  mapCells(steps, at.step, (cells) => cells.map((c, j) => (j === at.cell ? source : c)));
+
+export const withoutCell = (steps: NotebookStep[], at: CellAt) => mapCells(steps, at.step, (cells) => cells.filter((_, j) => j !== at.cell));
+
+/** A new, empty cell after `step`; it becomes a step of its own when saved. */
+export const withNewCell = (steps: NotebookStep[], step: number): NotebookStep[] => [
+  ...steps.slice(0, step + 1),
+  { kind: "cells", nodeId: undefined, cells: [""] },
+  ...steps.slice(step + 1),
+];
+
 /** A code step's cells read again from its whole source, as the Code tab edits it. */
 export const withSource = (steps: NotebookStep[], nodeId: string, source: string) =>
   steps.map((s) => (s.kind === "cells" && s.nodeId === nodeId ? { ...s, cells: splitOnMarkers(source) } : s));

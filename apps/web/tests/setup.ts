@@ -18,24 +18,6 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver = ResizeObserverStub;
-// JupyterLab's notebook subclasses IntersectionObserver when it loads; jsdom has none.
-class IntersectionObserverStub {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-  takeRecords() {
-    return [];
-  }
-}
-Object.assign(globalThis, { IntersectionObserver: globalThis.IntersectionObserver ?? IntersectionObserverStub });
-// JupyterLab scrolls the active cell into view; jsdom lays nothing out and has no scrollTo.
-Element.prototype.scrollTo ??= () => undefined;
-// JupyterLab's notebook handles cell drags; jsdom has no DragEvent.
-class DragEventStub extends MouseEvent {}
-Object.assign(globalThis, { DragEvent: globalThis.DragEvent ?? DragEventStub });
-// JupyterLab's editor reads the colour scheme; jsdom has no matchMedia.
-window.matchMedia ??= (query: string) =>
-  ({ matches: false, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }) as MediaQueryList;
 class DOMMatrixStub {
   m22 = 1;
 }
@@ -57,7 +39,7 @@ vi.mock("../src/views/VegaFigure.tsx", () => ({
 }));
 
 vi.mock("../src/views/MonacoCode.tsx", () => ({
-  default: ({ value, label, onChange, onRun, readOnly }: CodeInputProps) =>
+  default: ({ value, label, onChange, onRun, onEscape, readOnly }: CodeInputProps) =>
     createElement("textarea", {
       "aria-label": label,
       value,
@@ -68,6 +50,7 @@ vi.mock("../src/views/MonacoCode.tsx", () => ({
           e.preventDefault();
           onRun(e.currentTarget.value);
         }
+        if (e.key === "Escape") onEscape?.();
       },
     }),
 }));

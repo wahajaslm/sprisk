@@ -147,3 +147,59 @@ export function PopOutIcon() {
     </svg>
   );
 }
+
+export function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+      <path d="M2 3h8M4.5 3V1.8h3V3M3 3l.6 7.2h4.8L9 3" />
+    </svg>
+  );
+}
+
+export function CodeIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+      <path d="M4 3L1.5 6 4 9M8 3l2.5 3L8 9" />
+    </svg>
+  );
+}
+
+export function AddIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+      <path d="M8 3v10M3 8h10" />
+    </svg>
+  );
+}
+
+export function RunAllIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 3v10L8 8zM8 3v10l5.5-5z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function ExportIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+      <path d="M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10" />
+    </svg>
+  );
+}
+
+export function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M3 8.5l3 3 7-7" />
+    </svg>
+  );
+}
+
+export function CrossIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
