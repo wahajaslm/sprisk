@@ -37,6 +37,7 @@
 | [0033](0033-notebook-view-of-a-flow.md) | A flow can be read and edited as a notebook | Accepted |
 | [0034](0034-notebook-uses-jupyterlab-widgets.md) | The notebook view is JupyterLab's own notebook, with sprisk as its kernel | Superseded by ADR-0035 |
 | [0035](0035-notebook-looks-like-vs-code.md) | The notebook view is a VS Code-style notebook on Monaco | Accepted |
+| [0036](0036-session-notebook-and-published-node.md) | Notebooks run in a session; a node is made only when the person picks a boundary | Proposed |
 
 ## Open questions (arch doc §17)
 
