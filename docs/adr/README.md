@@ -34,6 +34,7 @@
 | [0030](0030-data-explores-variables-visualizations-shows-and-builds.md) | Data explores variables; Visualizations shows displays and builds charts | Accepted |
 | [0031](0031-code-steps-link-by-variable-name.md) | Code steps link by variable name | Accepted |
 | [0032](0032-charts-come-only-from-code.md) | Charts come only from code: no Chart button | Accepted |
+| [0033](0033-notebook-view-of-a-flow.md) | A flow can be read and edited as a notebook | Accepted |
 
 ## Open questions (arch doc §17)
 
