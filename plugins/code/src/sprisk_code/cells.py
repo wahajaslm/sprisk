@@ -29,6 +29,7 @@ RESERVED = {"display", "interface", "console"}
 PROVIDED = {"display"}
 BUILTINS = set(dir(builtins))
 MAGIC = re.compile(r"^\s*[%!]")
+CELL_JOIN = "\n\n# %%\n"
 NAME_RULE = "only lowercase names, not display, interface or console"
 IMPORTS_COPIED = "its imports are copied into the steps that use them"
 _Note = tuple[int, str]
@@ -56,8 +57,9 @@ def split_cells(cells: list[str]) -> CodeSplit:
         start, end, message, cell = merge
         merged = [i for g in groups[start : end + 1] for i in g]
         groups[start : end + 1] = [merged]
-        # Only the merged group changed; the rest keep what was read.
-        codes[start : end + 1] = [_read("\n\n".join(sources[i] for i in merged))]
+        # Only the merged group changed; the rest keep what was read. The cell marker keeps
+        # each cell visible in the notebook view (ADR-0033).
+        codes[start : end + 1] = [_read(CELL_JOIN.join(sources[i] for i in merged))]
         notes.append((cell, message))
     return _steps(groups, codes, notes)
 

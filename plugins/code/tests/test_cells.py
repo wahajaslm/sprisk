@@ -61,6 +61,13 @@ def test_a_function_used_later_keeps_its_cells_together() -> None:
     assert any("clean is a function" in n.message for n in split.notes)
 
 
+def test_cells_kept_together_stay_apart_in_the_source() -> None:
+    # The notebook view shows each cell of a step on its own (ADR-0033).
+    split = split_cells(["def clean(t):\n    return t", "out = clean(raw)"])
+    [step] = split.steps
+    assert step.source == "def clean(t):\n    return t\n\n# %%\nout = clean(raw)"
+
+
 def test_a_name_that_cannot_be_a_port_keeps_its_cells_together() -> None:
     split = split_cells(["X_train = load()", "model = fit(X_train)"])
     [step] = split.steps
