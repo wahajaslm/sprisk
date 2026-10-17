@@ -38,6 +38,7 @@ import { useSelection } from "../workbench/selection.ts";
 import { KindIcon, KindMark } from "./Icons.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 import { useEscape } from "../hooks/useEscape.ts";
+import { stepOf } from "../flow/ports.ts";
 
 
 type StepData = {
@@ -275,8 +276,8 @@ export function flowGraph(
   });
   const nodes = [...heads, ...steps];
   const edges: Edge[] = pipeline.edges.map((e) => {
-    const source = e.from.split(".")[0] ?? e.from;
-    const target = e.to.split(".")[0] ?? e.to;
+    const source = stepOf(e.from);
+    const target = stepOf(e.to);
     const sameStage = groupOf.has(source) && groupOf.get(source) === groupOf.get(target);
     return {
       id: `${e.from}->${e.to}`,

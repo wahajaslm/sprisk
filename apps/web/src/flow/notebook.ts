@@ -2,6 +2,7 @@ import type { CodeSplit, Operator, PipelineVersion } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
 import { isCodeOperator, nextVersion } from "./edit.ts";
+import { portOf, stepOf } from "./ports.ts";
 
 /** The code step whose ports are variable names (ADR-0031). */
 export const NOTEBOOK_OPERATOR = "sprisk.code.python@2.0.0";
@@ -79,8 +80,6 @@ type Operators = Map<string, Operator>;
 
 export const isNotebookStep = (ref: string) => ref.startsWith("sprisk.code.python@2.");
 
-const stepOf = (end: string) => end.split(".")[0] ?? end;
-const portOf = (end: string) => end.split(".")[1] ?? end;
 
 /** Steps in the order a notebook shows them (ADR-0033): each after the steps it reads, and
  * otherwise in saved order, so an imported notebook keeps its cell order. */

@@ -7,6 +7,7 @@ import { useOperators, useOutputs, usePipelineVersions, useRunAttempts, useSaveA
 import { PARQUET } from "../../api/media.ts";
 import { addCodeStep, isCodeOperator } from "../../flow/edit.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
+import { stepOf } from "../../flow/ports.ts";
 import { roleOf, shortName } from "../../flow/stages.ts";
 import { useInspectorDetail } from "../../workbench/detail.ts";
 import { useViewInstance, useViewSelection } from "../../workbench/instance.tsx";
@@ -65,7 +66,7 @@ export function useStep() {
   // Figure ports come from the manifest (ADR-0024): any step may draw.
   const figurePorts = (operator?.outputs ?? []).filter((o) => o.kind === "figure").map((o) => String(o.name));
   // Columns of the table this step reads, for settings that name a column.
-  const source = pipeline?.edges.find((e) => e.to.split(".")[0] === nodeId)?.from.split(".") ?? [];
+  const source = pipeline?.edges.find((e) => stepOf(e.to) === nodeId)?.from.split(".") ?? [];
   const producer = latestByNode(all).get(source[0] ?? "");
   const sourceOutputs = useOutputs(producer && hasOutputs(producer) ? producer.id : undefined);
   const sourceTable = sourceOutputs.data?.find((o) => o.port === source[1] && o.artifact.media_type === PARQUET)?.artifact.id;

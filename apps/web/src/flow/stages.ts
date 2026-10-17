@@ -1,4 +1,5 @@
 import type { Operator, PipelineVersion } from "@sprisk/contracts";
+import { stepOf } from "./ports.ts";
 
 /** Presentation grouping only (rule 9: layout is not provenance). */
 export const STAGES = ["Explore", "Split", "Clean", "Model", "Evaluate", "Unknown"] as const;
@@ -70,10 +71,9 @@ export function stageGroups(pipeline: PipelineVersion, operators: Map<string, Op
   const join = (a: string, b: string) => {
     if (stageName(a) !== undefined && stageName(a) === stageName(b)) parent.set(find(a), find(b));
   };
-  const node = (end: string) => end.split(".")[0] ?? end;
-  for (const e of pipeline.edges) join(node(e.from), node(e.to));
+  for (const e of pipeline.edges) join(stepOf(e.from), stepOf(e.to));
   const readers = new Map<string, string[]>();
-  for (const e of pipeline.edges) readers.set(node(e.from), [...(readers.get(node(e.from)) ?? []), node(e.to)]);
+  for (const e of pipeline.edges) readers.set(stepOf(e.from), [...(readers.get(stepOf(e.from)) ?? []), stepOf(e.to)]);
   for (const siblings of readers.values()) for (const a of siblings) for (const b of siblings) join(a, b);
   const groups = new Map<string, string>();
   for (const n of pipeline.nodes) {

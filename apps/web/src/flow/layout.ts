@@ -1,5 +1,6 @@
 import type { PipelineVersion } from "@sprisk/contracts";
 import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
+import { stepOf } from "./ports.ts";
 
 const elk = new ELK();
 
@@ -27,8 +28,7 @@ export async function flowPositions(
   sizeOf: (nodeId: string) => Size,
   groupOf: (nodeId: string) => string | undefined,
 ): Promise<{ nodes: Map<string, Point>; groups: Group[] }> {
-  const step = (end: string) => end.split(".")[0] ?? end;
-  const links = pipeline.edges.map((e) => ({ from: step(e.from), to: step(e.to) }));
+  const links = pipeline.edges.map((e) => ({ from: stepOf(e.from), to: stepOf(e.to) }));
 
   const members = new Map<string, string[]>();
   for (const n of pipeline.nodes) {

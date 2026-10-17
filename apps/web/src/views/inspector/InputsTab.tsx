@@ -11,6 +11,7 @@ import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { namedPorts } from "../../flow/notebook.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { isFileInput, settingsOf } from "./ParametersTab.tsx";
+import { portOf, stepOf } from "../../flow/ports.ts";
 
 type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator | undefined; attempts: Attempt[]; found: Read<CodeInterface> };
 
@@ -18,7 +19,7 @@ type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator | u
  * comes from and how big it is; and, for code, names it reads that nothing defines. */
 export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props) {
   const node = pipeline.nodes.find((n) => n.id === nodeId);
-  const incoming = pipeline.edges.filter((e) => e.to.split(".")[0] === nodeId);
+  const incoming = pipeline.edges.filter((e) => stepOf(e.to) === nodeId);
   const latest = latestByNode(attempts);
   const mine = latest.get(nodeId);
   // Declared ports first; an edge to a port the manifest does not list still shows.
@@ -26,7 +27,7 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
     ...(operator?.inputs ?? []),
     ...namedPorts(operator, node?.params, "input").map((name) => ({ name, kind: "table" as const })),
   ];
-  const extra = incoming.map((e) => e.to.split(".")[1] ?? "").filter((p) => !declared.some((d) => d.name === p));
+  const extra = incoming.map((e) => portOf(e.to)).filter((p) => !declared.some((d) => d.name === p));
   const inputs = [...declared.map((d) => ({ name: d.name, kind: d.kind as string })), ...extra.map((name) => ({ name, kind: "" }))];
   const outputs = [
     ...(operator?.outputs ?? []),
@@ -59,7 +60,7 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
         ) : (
           <ul className="input-list">
             {inputs.map((input) => {
-              const edge = incoming.find((e) => e.to.split(".")[1] === input.name);
+              const edge = incoming.find((e) => portOf(e.to) === input.name);
               const [from = "", fromPort = ""] = edge?.from.split(".") ?? [];
               const producer = latest.get(from);
               return (
