@@ -1,4 +1,3 @@
-import base64
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -39,13 +38,48 @@ def test_printed_text_comes_before_the_last_value(
     assert [(i.kind, i.text) for i in shown.items] == [("text", "60\n"), ("text", "42")]
 
 
-def test_matplotlib_figures_are_captured_as_png(
+def test_matplotlib_figures_are_captured_as_svg(
     write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
 ) -> None:
-    source = "import matplotlib.pyplot as plt\nplt.hist(data['x'].drop_nulls())\nNone"
-    [image] = run(write_parquet, clf_frame, out_dir, source).items
-    assert image.kind == "image" and image.png_base64 is not None
-    assert base64.b64decode(image.png_base64).startswith(b"\x89PNG")
+    source = "import matplotlib.pyplot as plt\nplt.plot([1, 2])\nplt.title('line')\nplt.show()"
+    [item] = run(write_parquet, clf_frame, out_dir, source).items
+    assert item.kind == "figure" and item.figure is not None
+    assert (item.figure.library.value, item.figure.format.value) == ("matplotlib", "svg")
+    assert "<svg" in item.figure.content and item.figure.title == "line"
+
+
+def test_a_plotly_figure_is_shown_live_from_show_or_as_the_last_value(
+    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
+) -> None:
+    source = (
+        "import plotly.express as px\n"
+        "fig = px.histogram(x=[1, 2, 2], title='counts')\n"
+        "fig.show()\n"
+        "fig"
+    )
+    items = run(write_parquet, clf_frame, out_dir, source).items
+    assert [(i.kind, i.figure.format.value if i.figure else None) for i in items] == [
+        ("figure", "plotly_json"),
+        ("figure", "plotly_json"),
+    ]
+    assert items[0].figure is not None and items[0].figure.title == "counts"
+
+
+def test_an_altair_chart_is_kept_as_vega_lite(
+    write_parquet: WriteParquet, clf_frame: pl.DataFrame, out_dir: Path
+) -> None:
+    # Recognised by its module, as the worker does; altair itself is not a dependency.
+    source = (
+        "class Chart:\n"
+        "    def to_json(self):\n"
+        '        return \'{"mark": "bar"}\'\n'
+        "Chart.__module__ = 'altair.vegalite.v5.api'\n"
+        "Chart()"
+    )
+    [item] = run(write_parquet, clf_frame, out_dir, source).items
+    assert item.figure is not None
+    assert (item.figure.library.value, item.figure.format.value) == ("altair", "vega_lite_json")
+    assert item.figure.content == '{"mark": "bar"}'
 
 
 def test_big_result_shows_only_the_first_rows(write_parquet: WriteParquet, out_dir: Path) -> None:
@@ -188,11 +222,11 @@ def test_output_keeps_the_order_it_happened_in(
         ("text", "first\n"),
         ("table", None),
         ("text", "second\n"),
-        ("image", None),
-        ("image", None),
+        ("figure", None),
+        ("figure", None),
         ("text", "'note'"),
         ("text", "60"),
-        ("image", None),
+        ("figure", None),
     ]
 
 
@@ -201,7 +235,7 @@ def test_a_figure_as_the_last_value_is_shown_once(
 ) -> None:
     source = "import matplotlib.pyplot as plt\nfig, ax = plt.subplots()\nfig"
     items = run(write_parquet, clf_frame, out_dir, source).items
-    assert [i.kind for i in items] == ["image"]
+    assert [i.kind for i in items] == ["figure"]
 
 
 def test_stderr_and_warnings_are_kept_apart_from_printed_text(

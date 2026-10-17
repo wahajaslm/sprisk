@@ -1,5 +1,4 @@
 import ast
-import base64
 import contextlib
 import io
 import json
@@ -16,6 +15,7 @@ import polars as pl
 from sprisk_code.discovery import bind, file_reads, free_names, literal_parameters
 from sprisk_contracts import CodeDisplay, CodeInterface
 from sprisk_workers.errors import OperatorError
+from sprisk_workers.plain import figure_item
 
 matplotlib.use("Agg")  # no display in a worker
 import matplotlib.pyplot as plt  # noqa: E402
@@ -28,7 +28,8 @@ MAX_CELL_CHARS = 500
 MAX_TEXT_CHARS = 20_000
 MAX_FIGURES = 12
 MAX_ITEMS = 100
-MAX_FIGURE_BYTES = 512 * 1024
+# SVG and chart JSON are text; a figure with very many points is noted, not shown.
+MAX_FIGURE_BYTES = 2 * 1024 * 1024
 
 
 def python_step(data: pl.DataFrame, source: str) -> dict[str, Any]:
@@ -284,6 +285,11 @@ def _run(
         shown.open_figures()
 
     plt.show = show  # notebook-style: show() puts open figures here, in order
+    plotly_io = _plotly_io()
+    real_plotly_show = plotly_io.show if plotly_io else None
+    if plotly_io:
+        # fig.show() would open a browser from the worker; in a notebook it shows the figure.
+        plotly_io.show = lambda fig, *_, **__: shown.display(fig)
     try:
         body, last = _split_last_expression(
             bind(source, values) if values else ast.parse(source, FILENAME)
@@ -304,6 +310,8 @@ def _run(
         raise OperatorError("code_error", _describe(e)) from e
     finally:
         plt.show = real_show
+        if plotly_io:
+            plotly_io.show = real_plotly_show
 
     if value is not None:
         shown.display(value)
@@ -354,34 +362,34 @@ class _Collector:
 
     def display(self, *values: Any) -> None:
         for value in values:
-            if isinstance(value, Figure):
-                self.figure(value)
-            elif (frame := _as_polars(value)) is not None:
+            if (frame := _as_polars(value)) is not None:
                 self._add({"kind": "table", "table": _table(frame)})
-            else:
+            elif not self.figure(value):
                 self._add({"kind": "text", "text": _cut(repr(value), MAX_TEXT_CHARS)})
 
-    def figure(self, fig: Figure) -> None:
+    def figure(self, value: Any) -> bool:
+        """Show `value` as a figure, as a notebook would; False when it is not one."""
+        item = figure_item(value)
+        if item is None:
+            return False
         self.figures += 1
-        if self.figures > MAX_FIGURES:
-            if self.figures == MAX_FIGURES + 1:
-                self._add(
-                    {
-                        "kind": "text",
-                        "text": f"More than {MAX_FIGURES} figures; the rest are not shown.",
-                    }
-                )
-        else:
-            buffer = io.BytesIO()
-            fig.savefig(buffer, format="png", dpi=96, bbox_inches="tight")
-            png = buffer.getvalue()
-            if len(png) > MAX_FIGURE_BYTES:
-                self._add(
-                    {"kind": "text", "text": f"Figure {self.figures} not shown: {len(png)} bytes."}
-                )
-            else:
-                self._add({"kind": "image", "png_base64": base64.b64encode(png).decode()})
-        plt.close(fig)
+        if self.figures == MAX_FIGURES + 1:
+            self._add(
+                {
+                    "kind": "text",
+                    "text": f"More than {MAX_FIGURES} figures; the rest are not shown.",
+                }
+            )
+        elif self.figures <= MAX_FIGURES and len(item["content"]) > MAX_FIGURE_BYTES:
+            size = len(item["content"])
+            self._add({"kind": "text", "text": f"Figure {self.figures} not shown: {size} bytes."})
+        elif self.figures <= MAX_FIGURES:
+            self._add({"kind": "figure", "figure": item})
+        # A matplotlib figure, once shown, is closed, so the end of the run does not show it again.
+        fig = getattr(value, "figure", value)
+        if isinstance(fig, Figure):
+            plt.close(fig)
+        return True
 
     def warning(
         self,
@@ -397,6 +405,15 @@ class _Collector:
     def open_figures(self) -> None:
         for number in plt.get_fignums():
             self.figure(plt.figure(number))
+
+
+def _plotly_io() -> Any:
+    """plotly.io, or None when plotly is not installed. Any: plotly ships no types."""
+    try:
+        import plotly.io
+    except ImportError:
+        return None
+    return plotly.io
 
 
 class _Stream(io.TextIOBase):

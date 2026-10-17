@@ -242,19 +242,33 @@ def _first_line(e: Exception) -> str:
 
 
 def _figure(port: str, figure: Any) -> dict[str, Any]:
-    """One figure as FigureSet JSON, recognised by its library (no import needed to check)."""
+    item = figure_item(figure)
+    if item is None:
+        raise _wrong(port, "a matplotlib, Plotly or Altair figure", figure)
+    return item
+
+
+def figure_item(figure: Any) -> dict[str, Any] | None:
+    """A figure as FigureSet JSON, or None when `figure` is not one. Recognised by its library,
+    so no plotting library is imported to check. matplotlib becomes SVG (a picture, as in a
+    notebook); Plotly and Altair stay data the browser draws live."""
     library = type(figure).__module__.split(".")[0]
     if library in ("matplotlib", "seaborn"):
         # seaborn returns Axes or grids; each knows its matplotlib figure.
         fig = getattr(figure, "figure", figure)
+        if not hasattr(fig, "savefig"):
+            return None
         buffer = io.StringIO()
         fig.savefig(buffer, format="svg", bbox_inches="tight")
         title = fig.get_suptitle() or next((a.get_title() for a in fig.axes if a.get_title()), "")
         return _item("matplotlib", "svg", buffer.getvalue(), title)
-    if library == "plotly":
-        layout_title = figure.layout.title.text
-        return _item("plotly", "plotly_json", figure.to_json(), layout_title)
-    raise _wrong(port, "a matplotlib or Plotly figure", figure)
+    if library == "plotly" and hasattr(figure, "to_json") and hasattr(figure, "layout"):
+        return _item("plotly", "plotly_json", figure.to_json(), figure.layout.title.text)
+    if library == "altair" and hasattr(figure, "to_json"):
+        spec = figure.to_json()
+        title = json.loads(spec).get("title")
+        return _item("altair", "vega_lite_json", spec, title if isinstance(title, str) else None)
+    return None
 
 
 def _item(library: str, format: str, content: str, title: str | None) -> dict[str, Any]:
