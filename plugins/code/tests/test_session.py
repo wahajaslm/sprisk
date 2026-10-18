@@ -5,11 +5,13 @@ import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from sprisk_code.session import Limits, Outputs, Session
-from sprisk_contracts import NotebookExecution, NotebookVariables
+from sprisk_contracts import NotebookExecutionEvent, NotebookVariables
+from sprisk_contracts.generated.models import ExecutionDone
 
 LIMITS = Limits(cell_seconds=20, memory_mb=2048)
 
@@ -153,6 +155,26 @@ def test_cells_share_one_kernel_and_count_their_runs(session: Session) -> None:
     assert [o.model_dump(exclude_none=True) for o in second.outputs] == [
         {"kind": "text", "text": "42"}
     ]
+
+
+def test_a_running_cell_reports_what_it_has_shown_so_far(session: Session) -> None:
+    seen: list[dict[str, object]] = []
+    done = session.execute(
+        "import time\nprint('first', flush=True)\ntime.sleep(1.5)\nprint('second')",
+        progress=seen.append,
+    )
+    assert done.status == "ok"
+    assert seen, "a running event came before the cell ended"
+    assert all(e["kind"] == "running" for e in seen)
+    texts = [[o["text"] for o in cast(list[dict[str, str]], e["outputs"])] for e in seen]
+    assert ["first\n"] in texts
+    assert [o.text for o in done.outputs] == ["first\nsecond\n"]
+
+
+def test_a_quick_cell_sends_no_running_events(session: Session) -> None:
+    seen: list[dict[str, object]] = []
+    session.execute("y = 1", progress=seen.append)
+    assert seen == []
 
 
 def test_a_table_shows_its_first_rows_after_what_was_printed(session: Session) -> None:
@@ -305,8 +327,9 @@ def test_the_host_answers_kernel_requests_one_json_line_each(tmp_path: Path) -> 
         timeout=60,
         check=True,
     )
-    execution, variables = done.stdout.splitlines()
-    assert NotebookExecution.model_validate_json(execution).status == "ok"
+    *events, variables = done.stdout.splitlines()
+    last = NotebookExecutionEvent.model_validate_json(events[-1]).root
+    assert isinstance(last, ExecutionDone) and last.execution.status == "ok"
     [found] = NotebookVariables.model_validate_json(variables).variables
     assert found.table
 

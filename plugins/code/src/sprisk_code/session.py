@@ -1,12 +1,14 @@
 """Session host (ADR-0036): one live ipykernel for one notebook.
 
 Rust starts it where workers run and writes one NotebookKernelRequest per line on stdin. It
-answers execute with a NotebookExecution line and variables with a NotebookVariables line on
-stdout; interrupt and shutdown get no answer. Interrupt is read while a cell runs.
+answers execute with NotebookExecutionEvent lines on stdout: `running` lines while the cell
+runs, then `done` (ADR-0041); variables with a NotebookVariables line. Interrupt and shutdown
+get no answer. Interrupt is read while a cell runs.
 
 Run as `python -m sprisk_code.session --cell-seconds 600 --memory-mb 4096`."""
 
 import ast
+import copy
 import json
 import queue
 import re
@@ -15,6 +17,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -29,11 +32,18 @@ from pydantic import ValidationError
 
 from sprisk_code.kernel_display import MANY, MIME
 from sprisk_code.shown import MAX_FIGURE_BYTES, MAX_FIGURES, MAX_ITEMS, MAX_TEXT_CHARS, cut
-from sprisk_contracts import NotebookExecution, NotebookKernelRequest, NotebookVariables
+from sprisk_contracts import (
+    NotebookExecution,
+    NotebookExecutionEvent,
+    NotebookKernelRequest,
+    NotebookVariables,
+)
 from sprisk_contracts.generated.models import DisplayItem, KernelExecute, KernelVariables
 
 STARTUP_SECONDS = 60
 POLL_SECONDS = 0.25
+# A running cell's outputs so far are sent at most this often, and only when they changed.
+PROGRESS_SECONDS = 0.3
 # After an interrupt, how long the kernel has to stop before it is restarted.
 GRACE_SECONDS = 5
 STARTUP = (
@@ -70,9 +80,12 @@ class Outputs:
         self.error: dict[str, Any] | None = None
         self.execution_count: int | None = None
         self.figures = 0
+        # Set by every message that changes what is shown; cleared when progress is sent.
+        self.changed = False
 
     def add(self, msg: dict[str, Any]) -> None:
         kind, content = msg["msg_type"], msg["content"]
+        self.changed = True
         if kind == "stream":
             self._text(content["text"], content["name"])
         elif kind in ("execute_result", "display_data"):
@@ -216,7 +229,11 @@ class Session:
         self.lost = _memory_error(self.limits.memory_mb)["message"]
         return True
 
-    def execute(self, code: str) -> NotebookExecution:
+    def execute(
+        self, code: str, progress: Callable[[dict[str, Any]], None] | None = None
+    ) -> NotebookExecution:
+        """Runs one cell. `progress` gets a running event with every output so far, while the
+        cell runs, when they changed and at most every PROGRESS_SECONDS."""
         out = Outputs()
         restarted = self.lost is not None
         if self.lost is not None:
@@ -225,7 +242,12 @@ class Session:
         msg_id = self.client.execute(code, store_history=True, allow_stdin=False)
         deadline = time.monotonic() + self.limits.cell_seconds
         timed_out = False
+        sent = time.monotonic()
         while True:
+            if progress is not None and out.changed and time.monotonic() - sent >= PROGRESS_SECONDS:
+                progress(_running(out))
+                out.changed = False
+                sent = time.monotonic()
             if self._memory_mb() > self.limits.memory_mb:
                 self._restart()
                 return _done("error", out, _memory_error(self.limits.memory_mb), restarted=True)
@@ -302,6 +324,14 @@ class Session:
             return 0.0
 
 
+def _running(out: Outputs) -> dict[str, Any]:
+    # A copy: the cell keeps adding to its outputs after this event is sent.
+    event: dict[str, Any] = {"kind": "running", "outputs": copy.deepcopy(out.items)}
+    if out.execution_count is not None:
+        event["execution_count"] = out.execution_count
+    return event
+
+
 def _done(
     status: str, out: Outputs, error: dict[str, Any] | None, restarted: bool = False
 ) -> NotebookExecution:
@@ -333,13 +363,26 @@ def serve(session: Session, requests: queue.Queue[NotebookKernelRequest]) -> Non
             session.check_idle_memory()
             continue
         if isinstance(request.root, KernelExecute):
-            answer: NotebookExecution | NotebookVariables = session.execute(request.root.code)
+            execution = session.execute(request.root.code, progress=_send_running)
+            done = {
+                "kind": "done",
+                "execution": execution.model_dump(mode="json", exclude_none=True),
+            }
+            _send(NotebookExecutionEvent.model_validate_json(json.dumps(done)))
         elif isinstance(request.root, KernelVariables):
-            answer = session.variables([n.root for n in request.root.names])
+            _send(session.variables([n.root for n in request.root.names]))
         else:
             return
-        sys.stdout.write(answer.model_dump_json(exclude_none=True) + "\n")
-        sys.stdout.flush()
+
+
+def _send_running(event: dict[str, Any]) -> None:
+    # Checked like every other line: the outputs come from the cell's own code.
+    _send(NotebookExecutionEvent.model_validate_json(json.dumps(event)))
+
+
+def _send(answer: NotebookExecutionEvent | NotebookVariables) -> None:
+    sys.stdout.write(answer.model_dump_json(exclude_none=True) + "\n")
+    sys.stdout.flush()
 
 
 def read(session: Session, requests: queue.Queue[NotebookKernelRequest]) -> None:
