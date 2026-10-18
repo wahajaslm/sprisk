@@ -150,6 +150,212 @@
         "digest": { "$ref": "#/$defs/ContentHash", "description": "The operator's implementation digest: the code that runs, and the code shown, are the same." }
       }
     },
+    "Dataset": {
+      "title": "Dataset",
+      "description": "A table a flow loads (ADR-0038), as listed by GET /datasets: the latest output of a source step. Tables with the same content are one dataset. Derived from run history; not yet an ingested Dataset entity (arch §4).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "operator",
+        "artifact",
+        "total_rows",
+        "total_columns",
+        "used_by"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The file name the source step reads, or the step's id when it reads no file."
+        },
+        "operator": {
+          "$ref": "#/$defs/OperatorRef"
+        },
+        "artifact": {
+          "$ref": "#/$defs/Artifact"
+        },
+        "total_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_columns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "used_by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DatasetUse"
+          }
+        }
+      }
+    },
+    "DatasetUse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pipeline_version_id",
+        "run_id",
+        "node_id"
+      ],
+      "properties": {
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "run_id": {
+          "$ref": "#/$defs/RunId",
+          "description": "The latest run of that version, whose source step loaded the table."
+        },
+        "node_id": {
+          "$ref": "#/$defs/NodeId"
+        }
+      }
+    },
+    "DatasetProfile": {
+      "title": "DatasetProfile",
+      "description": "A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: histograms have at most 20 bars, the missing-value map at most 40 row bands, the correlation at most 30 columns. No step reads it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_rows",
+        "total_columns",
+        "band_rows",
+        "columns",
+        "correlation"
+      ],
+      "properties": {
+        "total_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_columns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "band_rows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rows in each band of the missing-value map; the last band may hold fewer."
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ColumnProfile"
+          }
+        },
+        "correlation": {
+          "$ref": "#/$defs/Correlation"
+        }
+      }
+    },
+    "ColumnProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "data_type",
+        "missing",
+        "distinct",
+        "missing_by_band"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "data_type": {
+          "type": "string",
+          "description": "Polars data type name, for display only."
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "distinct": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Distinct values, not counting missing."
+        },
+        "missing_by_band": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Share of missing cells (0 to 1) in each row band, in row order."
+        },
+        "histogram": {
+          "$ref": "#/$defs/Histogram",
+          "description": "Absent when every value is missing."
+        }
+      }
+    },
+    "Histogram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "bars"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "bins",
+            "top_values"
+          ],
+          "description": "bins: equal-width bins of a numeric column. top_values: the most common values of any other column."
+        },
+        "bars": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HistogramBar"
+          }
+        }
+      }
+    },
+    "HistogramBar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "count"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "columns",
+        "values"
+      ],
+      "description": "Pearson correlation of numeric columns that vary, over rows where both are present. Empty when fewer than two qualify.",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "description": "Square, in the order of `columns`."
+        }
+      }
+    },
     "FigureSet": {
       "title": "FigureSet",
       "description": "Figures a step drew (ADR-0024), converted by the worker: matplotlib as SVG text, Plotly as its figure JSON text. GET /artifacts/{id}/figures returns the first ones from a figures or display report, without the tables a code step showed.",

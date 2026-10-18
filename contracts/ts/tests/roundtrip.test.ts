@@ -22,6 +22,8 @@ const entities: [keyof Entities, string][] = [
   ["CodeDisplay", "code_display"],
   ["OperatorSource", "operator_source"],
   ["FigureSet", "figure_set"],
+  ["Dataset", "dataset"],
+  ["DatasetProfile", "dataset_profile"],
   ["CodeInterface", "code_interface"],
   ["CodeSplitRequest", "code_split_request"],
   ["CodeSplit", "code_split"],

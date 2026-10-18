@@ -45,6 +45,13 @@ export type Timestamp = string;
  */
 export type OperatorRef = string;
 /**
+ * Node name, unique within a pipeline version.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NodeId".
+ */
+export type NodeId = string;
+/**
  * explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -86,13 +93,6 @@ export type RunId = string;
  * via the `definition` "WorkerId".
  */
 export type WorkerId = string;
-/**
- * Node name, unique within a pipeline version.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "NodeId".
- */
-export type NodeId = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodologyCheckId".
@@ -327,6 +327,114 @@ export interface OperatorSource {
    * The operator's implementation digest: the code that runs, and the code shown, are the same.
    */
   digest: string;
+}
+/**
+ * A table a flow loads (ADR-0038), as listed by GET /datasets: the latest output of a source step. Tables with the same content are one dataset. Derived from run history; not yet an ingested Dataset entity (arch §4).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Dataset".
+ */
+export interface Dataset {
+  /**
+   * The file name the source step reads, or the step's id when it reads no file.
+   */
+  name: string;
+  operator: OperatorRef;
+  artifact: Artifact;
+  total_rows: number;
+  total_columns: number;
+  used_by: DatasetUse[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DatasetUse".
+ */
+export interface DatasetUse {
+  pipeline_version_id: PipelineVersionId;
+  /**
+   * The latest run of that version, whose source step loaded the table.
+   */
+  run_id: string;
+  node_id: NodeId;
+}
+/**
+ * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: histograms have at most 20 bars, the missing-value map at most 40 row bands, the correlation at most 30 columns. No step reads it.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DatasetProfile".
+ */
+export interface DatasetProfile {
+  total_rows: number;
+  total_columns: number;
+  /**
+   * Rows in each band of the missing-value map; the last band may hold fewer.
+   */
+  band_rows: number;
+  columns: ColumnProfile[];
+  correlation: Correlation;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ColumnProfile".
+ */
+export interface ColumnProfile {
+  name: string;
+  /**
+   * Polars data type name, for display only.
+   */
+  data_type: string;
+  missing: number;
+  /**
+   * Distinct values, not counting missing.
+   */
+  distinct: number;
+  /**
+   * Share of missing cells (0 to 1) in each row band, in row order.
+   */
+  missing_by_band: number[];
+  histogram?: Histogram;
+}
+/**
+ * Absent when every value is missing.
+ */
+export interface Histogram {
+  /**
+   * bins: equal-width bins of a numeric column. top_values: the most common values of any other column.
+   */
+  kind: "bins" | "top_values";
+  bars: HistogramBar[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "HistogramBar".
+ */
+export interface HistogramBar {
+  label: string;
+  count: number;
+}
+/**
+ * Pearson correlation of numeric columns that vary, over rows where both are present. Empty when fewer than two qualify.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Correlation".
+ */
+export interface Correlation {
+  columns: string[];
+  /**
+   * Square, in the order of `columns`.
+   */
+  values: number[][];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Histogram".
+ */
+export interface Histogram1 {
+  /**
+   * bins: equal-width bins of a numeric column. top_values: the most common values of any other column.
+   */
+  kind: "bins" | "top_values";
+  bars: HistogramBar[];
 }
 /**
  * Figures a step drew (ADR-0024), converted by the worker: matplotlib as SVG text, Plotly as its figure JSON text. GET /artifacts/{id}/figures returns the first ones from a figures or display report, without the tables a code step showed.

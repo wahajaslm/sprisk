@@ -35,6 +35,27 @@ class TableRow(StrictModel):
     ]
 
 
+class Kind(StrEnum):
+    bins = "bins"
+    top_values = "top_values"
+
+
+class HistogramBar(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    label: str
+    count: Annotated[int, Field(ge=0)]
+
+
+class Correlation(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    columns: list[str]
+    values: Annotated[list[list[float]], Field(description="Square, in the order of `columns`.")]
+
+
 class Library(StrEnum):
     matplotlib = "matplotlib"
     plotly = "plotly"
@@ -62,7 +83,7 @@ class Figure(StrictModel):
     ]
 
 
-class Kind(StrEnum):
+class Kind1(StrEnum):
     text = "text"
     table = "table"
     image = "image"
@@ -248,7 +269,7 @@ class Verdict(StrEnum):
     not_assessed = "not_assessed"
 
 
-class Kind1(StrEnum):
+class Kind2(StrEnum):
     code = "code"
     markdown = "markdown"
 
@@ -631,6 +652,31 @@ class OperatorSource(StrictModel):
     ]
 
 
+class DatasetUse(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    pipeline_version_id: PipelineVersionId
+    run_id: Annotated[
+        RunId,
+        Field(description="The latest run of that version, whose source step loaded the table."),
+    ]
+    node_id: NodeId
+
+
+class Histogram(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Annotated[
+        Kind,
+        Field(
+            description="bins: equal-width bins of a numeric column. top_values: the most common values of any other column."
+        ),
+    ]
+    bars: list[HistogramBar]
+
+
 class FigureSet(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -642,7 +688,7 @@ class DisplayItem(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    kind: Kind
+    kind: Kind1
     text: Annotated[str | None, Field(description="Present for kind text.")] = None
     table: Annotated[
         TablePage | None, Field(description="Present for kind table: the first rows only.")
@@ -842,7 +888,7 @@ class NotebookCell(StrictModel):
         extra="forbid",
     )
     id: NotebookCellId
-    kind: Kind1
+    kind: Kind2
     source: Annotated[str, Field(max_length=100000)]
 
 
@@ -1009,6 +1055,40 @@ class AttemptOutput(StrictModel):
     artifact: Artifact
 
 
+class Dataset(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: Annotated[
+        str,
+        Field(
+            description="The file name the source step reads, or the step's id when it reads no file."
+        ),
+    ]
+    operator: OperatorRef
+    artifact: Artifact
+    total_rows: Annotated[int, Field(ge=0)]
+    total_columns: Annotated[int, Field(ge=0)]
+    used_by: list[DatasetUse]
+
+
+class ColumnProfile(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    data_type: Annotated[str, Field(description="Polars data type name, for display only.")]
+    missing: Annotated[int, Field(ge=0)]
+    distinct: Annotated[int, Field(description="Distinct values, not counting missing.", ge=0)]
+    missing_by_band: Annotated[
+        list[float],
+        Field(description="Share of missing cells (0 to 1) in each row band, in row order."),
+    ]
+    histogram: Annotated[
+        Histogram | None, Field(description="Absent when every value is missing.")
+    ] = None
+
+
 class CodeDisplay(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1162,3 +1242,20 @@ class WorkerMessage(
             title="WorkerMessage",
         ),
     ]
+
+
+class DatasetProfile(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    total_rows: Annotated[int, Field(ge=0)]
+    total_columns: Annotated[int, Field(ge=0)]
+    band_rows: Annotated[
+        int,
+        Field(
+            description="Rows in each band of the missing-value map; the last band may hold fewer.",
+            ge=0,
+        ),
+    ]
+    columns: list[ColumnProfile]
+    correlation: Correlation

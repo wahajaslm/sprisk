@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, Attempt, AttemptOutput, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    CreateRun, FigureSet, MethodologyCheck, NotebookExecute, NotebookExecution,
+    CreateRun, Dataset, DatasetProfile, FigureSet, MethodologyCheck, NotebookExecute, NotebookExecution,
     NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
     PipelineVersion, Problem, QuestionVersion, Run, TablePage, WorkerMessage, parse,
 };
@@ -61,6 +61,8 @@ const ENTITIES: &[&str] = &[
     "code_split",
     "code_split_request",
     "create_run",
+    "dataset",
+    "dataset_profile",
     "figure_set",
     "methodology_check",
     "notebook_execute",
@@ -157,6 +159,16 @@ fn table_page() {
 #[test]
 fn code_display() {
     check::<CodeDisplay>("code_display");
+}
+
+#[test]
+fn dataset() {
+    check::<Dataset>("dataset");
+}
+
+#[test]
+fn dataset_profile() {
+    check::<DatasetProfile>("dataset_profile");
 }
 
 #[test]
