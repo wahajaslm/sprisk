@@ -9,8 +9,8 @@ use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, Attempt, AttemptOutput, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
     CreateRun, FigureSet, MethodologyCheck, NotebookExecute, NotebookExecution,
-    NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem,
-    QuestionVersion, Run, TablePage, WorkerMessage, parse,
+    NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
+    PipelineVersion, Problem, QuestionVersion, Run, TablePage, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {

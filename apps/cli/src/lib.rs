@@ -101,6 +101,33 @@ pub async fn serve_on(
             Err(e) => eprintln!("could not start a worker ahead of the first run: {e}"),
         }
     });
+    let data_roots: Vec<PathBuf> = config
+        .data_roots
+        .iter()
+        .map(|r| {
+            r.canonicalize()
+                .with_context(|| format!("data root {}", r.display()))
+        })
+        .collect::<anyhow::Result<_>>()?;
+    // A notebook's kernel runs in the first data root, so relative paths in cells resolve there.
+    let kernel_dir = data_roots
+        .first()
+        .context("serve needs at least one data root")?
+        .clone();
+    let kernels = sprisk_api::Kernels::new(
+        vec![
+            config.python.display().to_string(),
+            "-m".into(),
+            "sprisk_code.session".into(),
+        ],
+        kernel_dir,
+        sprisk_api::KernelLimits {
+            cell_seconds: 600,
+            memory_mb: 4096,
+            idle: std::time::Duration::from_secs(30 * 60),
+            at_once: 4,
+        },
+    );
     let state = sprisk_api::AppState {
         store: Arc::new(sprisk_store::SqliteStore::open(&config.data_dir.join("sprisk.db")).await?),
         artifacts: Arc::new(sprisk_artifacts::ArtifactStore::local(
@@ -120,15 +147,16 @@ pub async fn serve_on(
             std::time::Duration::from_secs(10),
             2,
         ),
-        data_roots: config
-            .data_roots
-            .iter()
-            .map(|r| {
-                r.canonicalize()
-                    .with_context(|| format!("data root {}", r.display()))
-            })
-            .collect::<anyhow::Result<_>>()?,
+        data_roots,
+        kernels: kernels.clone(),
     };
+    tokio::spawn(async move {
+        let mut every = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            every.tick().await;
+            kernels.shut_idle().await;
+        }
+    });
     axum::serve(listener, sprisk_api::router(state)).await?;
     Ok(())
 }

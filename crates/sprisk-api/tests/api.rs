@@ -9,7 +9,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sprisk_api::{AppState, Splitter, router};
+use sprisk_api::{AppState, KernelLimits, Kernels, Splitter, router};
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{OperatorSource, parse};
 use sprisk_registry::Registry;
@@ -24,7 +24,16 @@ struct Api {
     _dir: tempfile::TempDir,
     app: Router,
     csv: PathBuf,
+    kernels: Kernels,
+    store: Arc<SqliteStore>,
 }
+
+const KERNEL_LIMITS: KernelLimits = KernelLimits {
+    cell_seconds: 20,
+    memory_mb: 2048,
+    idle: Duration::from_secs(600),
+    at_once: 2,
+};
 
 async fn api() -> Api {
     api_with_python(root().join(".venv/bin/python")).await
@@ -40,7 +49,20 @@ async fn api_with_python(python: PathBuf) -> Api {
 }
 
 async fn api_with(python: PathBuf, splitter: Splitter) -> Api {
+    api_with_kernels(python, splitter, KERNEL_LIMITS).await
+}
+
+async fn api_with_kernels(python: PathBuf, splitter: Splitter, limits: KernelLimits) -> Api {
     let dir = tempfile::tempdir().unwrap();
+    let kernels = Kernels::new(
+        vec![
+            python.display().to_string(),
+            "-m".into(),
+            "sprisk_code.session".into(),
+        ],
+        dir.path().to_owned(),
+        limits,
+    );
     let csv = dir.path().join("d.csv");
     std::fs::write(&csv, "x,y\n1,2\n3,4\n").unwrap();
     let root = root();
@@ -49,8 +71,9 @@ async fn api_with(python: PathBuf, splitter: Splitter) -> Api {
         .get("sprisk.methodology.supervised@1.0.0")
         .unwrap()
         .clone();
+    let store = Arc::new(SqliteStore::in_memory().await.unwrap());
     let state = AppState {
-        store: Arc::new(SqliteStore::in_memory().await.unwrap()),
+        store: store.clone(),
         artifacts: Arc::new(ArtifactStore::local(&dir.path().join("store")).unwrap()),
         registry: Arc::new(Registry::load_dir(&root.join("plugins")).unwrap()),
         gate: Some(gate),
@@ -67,11 +90,14 @@ async fn api_with(python: PathBuf, splitter: Splitter) -> Api {
         idle_worker: Default::default(),
         data_roots: vec![dir.path().canonicalize().unwrap()],
         splitter,
+        kernels: kernels.clone(),
     };
     Api {
         _dir: dir,
         app: router(state),
         csv,
+        kernels,
+        store,
     }
 }
 
@@ -681,4 +707,182 @@ async fn notebook_cells_become_a_flow_that_runs() {
     );
     let (_, page) = call(&api.app, "GET", &rows, None).await;
     assert_eq!(page["total_rows"], 1, "{page}");
+}
+
+const NOTEBOOK: &str = "nb_01JABCDEFGHJKMNPQRSTVWXYZ0";
+
+fn notebook_version(id: &str, notebook: &str, parent: Option<&str>) -> Value {
+    let mut version = json!({
+        "schema_version": "sprisk.notebook_version/v1",
+        "id": id,
+        "notebook_id": notebook,
+        "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "title": "Sales",
+        "cells": [{"id": "c1", "kind": "code", "source": "x = 1"}],
+        "created_at": "2026-10-18T10:00:00Z"
+    });
+    if let Some(parent) = parent {
+        version["parent_id"] = json!(parent);
+    }
+    version
+}
+
+async fn api_with_notebook(limits: KernelLimits) -> Api {
+    let python = root().join(".venv/bin/python");
+    let splitter = Splitter::new(vec![], Duration::from_secs(1), 1);
+    let api = api_with_kernels(python, splitter, limits).await;
+    let first = notebook_version("nbv_01JABCDEFGHJKMNPQRSTVWXYZ0", NOTEBOOK, None);
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(first)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    api
+}
+
+async fn execute(api: &Api, notebook: &str, code: &str) -> (StatusCode, Value) {
+    let uri = format!("/notebooks/{notebook}/execute");
+    call(
+        &api.app,
+        "POST",
+        &uri,
+        Some(json!({"cell_id": "c1", "code": code})),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn notebook_versions_are_saved_and_each_notebooks_latest_is_listed() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let second = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        NOTEBOOK,
+        Some("nbv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+    );
+    let (status, _) = call(&api.app, "POST", "/notebook_versions", Some(second.clone())).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, listed) = call(&api.app, "GET", "/notebooks", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed, json!([second.clone()]));
+    let uri = "/notebook_versions/nbv_01JABCDEFGHJKMNPQRSTVWXYZ1";
+    assert_eq!(call(&api.app, "GET", uri, None).await.1, second);
+}
+
+#[tokio::test]
+async fn a_notebook_version_must_be_saved_over_a_version_of_the_same_notebook() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let missing = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        NOTEBOOK,
+        Some("nbv_01JABCDEFGHJKMNPQRSTVWXYZ9"),
+    );
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(missing)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["errors"][0]["code"], "unknown_parent");
+
+    let other = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ2",
+        "nb_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        Some("nbv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+    );
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(other)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["errors"][0]["code"], "parent_in_other_notebook");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cells_of_a_notebook_share_one_kernel_and_each_run_is_audited() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let (status, first) = execute(
+        &api,
+        NOTEBOOK,
+        "import pandas as pd\nsales = pd.DataFrame({'a': [1]})",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    let (_, second) = execute(&api, NOTEBOOK, "len(sales)").await;
+    assert_eq!(second["status"], "ok", "{second}");
+    assert_eq!(second["outputs"], json!([{"kind": "text", "text": "1"}]));
+
+    let uri = format!("/notebooks/{NOTEBOOK}/variables?names=sales,later");
+    let (status, found) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert_eq!(found["variables"][0]["table"], true);
+    assert_eq!(found["variables"][1]["defined"], false);
+
+    let events = api.store.audit_events(NOTEBOOK).await.unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(
+        events[0].1.starts_with("cell c1 ran: ok, code sha256:"),
+        "{events:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn restart_clears_the_kernels_variables() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    execute(&api, NOTEBOOK, "kept = 1").await;
+    let uri = format!("/notebooks/{NOTEBOOK}/restart");
+    let (status, _) = call(&api.app, "POST", &uri, None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, after) = execute(&api, NOTEBOOK, "'kept' in dir()").await;
+    assert_eq!(after["outputs"][0]["text"], "False", "{after}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn interrupt_stops_the_running_cell_without_waiting_behind_it() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    execute(&api, NOTEBOOK, "import time").await;
+    let app = api.app.clone();
+    let interrupt = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        let uri = format!("/notebooks/{NOTEBOOK}/interrupt");
+        call(&app, "POST", &uri, None).await.0
+    });
+    let (_, done) = execute(&api, NOTEBOOK, "time.sleep(30)").await;
+    assert_eq!(interrupt.await.unwrap(), StatusCode::NO_CONTENT);
+    assert_eq!(done["status"], "interrupted", "{done}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn kernels_beyond_the_limit_are_refused() {
+    let limits = KernelLimits {
+        at_once: 1,
+        ..KERNEL_LIMITS
+    };
+    let api = api_with_notebook(limits).await;
+    let other = "nb_01JABCDEFGHJKMNPQRSTVWXYZ1";
+    let version = notebook_version("nbv_01JABCDEFGHJKMNPQRSTVWXYZ5", other, None);
+    call(&api.app, "POST", "/notebook_versions", Some(version)).await;
+    assert_eq!(execute(&api, NOTEBOOK, "1").await.0, StatusCode::OK);
+    let (status, body) = execute(&api, other, "1").await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(body["errors"][0]["code"], "too_many_kernels");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_idle_kernel_is_shut_down() {
+    let limits = KernelLimits {
+        idle: Duration::ZERO,
+        ..KERNEL_LIMITS
+    };
+    let api = api_with_notebook(limits).await;
+    execute(&api, NOTEBOOK, "kept = 1").await;
+    api.kernels.shut_idle().await;
+    let uri = format!("/notebooks/{NOTEBOOK}/variables?names=kept");
+    let (_, found) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(found["variables"][0]["defined"], false, "{found}");
+}
+
+#[tokio::test]
+async fn a_notebook_that_was_never_saved_cannot_run() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let (status, _) = execute(&api, "nb_01JABCDEFGHJKMNPQRSTVWXYZ7", "1").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn variable_names_must_be_port_names() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let uri = format!("/notebooks/{NOTEBOOK}/variables?names=__import__");
+    let (status, body) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
 }

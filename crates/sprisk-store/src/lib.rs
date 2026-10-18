@@ -5,8 +5,9 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, NotebookVersion, NotebookVersionId,
-    PipelineVersion, PipelineVersionId, Run, RunId, RunStatus, Timestamp, WorkerId,
+    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, NotebookId, NotebookVersion,
+    NotebookVersionId, PipelineVersion, PipelineVersionId, Run, RunId, RunStatus, Timestamp,
+    WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -133,6 +134,15 @@ impl SqliteStore {
                 .fetch_optional(&self.pool)
                 .await?;
         from_json(body, "notebook version", id.as_str())
+    }
+
+    pub async fn has_notebook(&self, id: &NotebookId) -> Result<bool, StoreError> {
+        let found: Option<i64> =
+            sqlx::query_scalar("SELECT 1 FROM notebook_versions WHERE notebook_id = ? LIMIT 1")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(found.is_some())
     }
 
     /// Each notebook's newest version, newest notebooks first, at most `limit`.

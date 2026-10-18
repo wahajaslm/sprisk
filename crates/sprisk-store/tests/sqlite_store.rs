@@ -584,3 +584,12 @@ async fn an_audit_event_is_appended_for_its_entity() {
         vec![(NOW.to_owned(), "cell c1 executed".to_owned())]
     );
 }
+
+#[tokio::test]
+async fn a_notebook_exists_once_a_version_of_it_is_saved() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let saved: NotebookVersion = fixture("notebook_version", "sales.json");
+    assert!(!store.has_notebook(&saved.notebook_id).await.unwrap());
+    store.insert_notebook_version(&saved).await.unwrap();
+    assert!(store.has_notebook(&saved.notebook_id).await.unwrap());
+}

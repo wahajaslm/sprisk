@@ -3,7 +3,9 @@
 
 use std::sync::Arc;
 
+mod kernel;
 mod split;
+pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use split::{SplitError, Splitter};
 
 use axum::body::Bytes;
@@ -13,10 +15,12 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
+use sha2::Digest;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, Operator, OperatorSource,
-    PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
+    ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, NotebookExecute,
+    NotebookExecution, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
+    OperatorSource, PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
 };
 use sprisk_graph::{CompileError, Plan, compile};
 use sprisk_registry::Registry;
@@ -39,6 +43,8 @@ pub struct AppState {
     pub data_roots: Vec<std::path::PathBuf>,
     /// Reads notebook cells into suggested code steps (ADR-0031).
     pub splitter: Splitter,
+    /// One live Python kernel per notebook being explored (ADR-0036).
+    pub kernels: Kernels,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -58,6 +64,13 @@ pub fn router(state: AppState) -> Router {
         .route("/artifacts/{id}", get(get_artifact))
         .route("/artifacts/{id}/content", get(get_artifact_content))
         .route("/artifacts/{id}/rows", get(get_artifact_rows))
+        .route("/notebook_versions", post(create_notebook_version))
+        .route("/notebook_versions/{id}", get(get_notebook_version))
+        .route("/notebooks", get(list_notebooks))
+        .route("/notebooks/{id}/execute", post(execute_cell))
+        .route("/notebooks/{id}/interrupt", post(interrupt_kernel))
+        .route("/notebooks/{id}/restart", post(restart_kernel))
+        .route("/notebooks/{id}/variables", get(kernel_variables))
         .layer(axum::middleware::from_fn(local_host_only))
         .with_state(state)
 }
@@ -154,6 +167,8 @@ enum ApiError {
     Registry(#[from] sprisk_registry::RegistryError),
     #[error(transparent)]
     Split(#[from] SplitError),
+    #[error(transparent)]
+    Kernel(#[from] KernelError),
     #[error("{0}")]
     Internal(String),
 }
@@ -199,6 +214,14 @@ impl IntoResponse for ApiError {
             ApiError::Split(SplitError::Busy) => (
                 StatusCode::TOO_MANY_REQUESTS,
                 vec![("split_busy", self.to_string())],
+            ),
+            ApiError::Kernel(KernelError::TooMany(_)) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                vec![("too_many_kernels", self.to_string())],
+            ),
+            ApiError::Kernel(KernelError::Stopped { .. }) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                vec![("kernel_stopped", self.to_string())],
             ),
             ApiError::Store(StoreError::Conflict(_)) => {
                 (StatusCode::CONFLICT, vec![("conflict", self.to_string())])
@@ -296,6 +319,128 @@ async fn split_code(
 ) -> Result<Json<CodeSplit>, ApiError> {
     let request: CodeSplitRequest = body(&text)?;
     Ok(Json(state.splitter.split(&request).await?))
+}
+
+async fn create_notebook_version(
+    State(state): State<AppState>,
+    text: String,
+) -> Result<(StatusCode, Json<NotebookVersion>), ApiError> {
+    let version: NotebookVersion = body(&text)?;
+    if let Some(parent) = &version.parent_id {
+        let saved = match state.store.get_notebook_version(parent).await {
+            Err(StoreError::NotFound { .. }) => {
+                return Err(ApiError::BadRequest {
+                    code: "unknown_parent",
+                    message: format!("parent notebook version {} does not exist", parent.as_str()),
+                });
+            }
+            other => other?,
+        };
+        if saved.notebook_id != version.notebook_id {
+            return Err(ApiError::BadRequest {
+                code: "parent_in_other_notebook",
+                message: format!(
+                    "parent {} belongs to notebook {}, not {}",
+                    parent.as_str(),
+                    saved.notebook_id.as_str(),
+                    version.notebook_id.as_str()
+                ),
+            });
+        }
+    }
+    state.store.insert_notebook_version(&version).await?;
+    Ok((StatusCode::CREATED, Json(version)))
+}
+
+async fn get_notebook_version(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Json<NotebookVersion>, ApiError> {
+    let version_id: NotebookVersionId = id(&raw)?;
+    Ok(Json(state.store.get_notebook_version(&version_id).await?))
+}
+
+async fn list_notebooks(
+    State(state): State<AppState>,
+    query: Query,
+) -> Result<Json<Vec<NotebookVersion>>, ApiError> {
+    Ok(Json(
+        state.store.latest_notebook_versions(limit(&query)?).await?,
+    ))
+}
+
+/// A notebook runs only once it is saved, so every kernel belongs to a known notebook.
+async fn saved_notebook(state: &AppState, raw: &str) -> Result<NotebookId, ApiError> {
+    let notebook: NotebookId = id(raw)?;
+    if !state.store.has_notebook(&notebook).await? {
+        return Err(ApiError::Store(StoreError::NotFound {
+            entity: "notebook",
+            id: raw.to_owned(),
+        }));
+    }
+    Ok(notebook)
+}
+
+async fn execute_cell(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    text: String,
+) -> Result<Json<NotebookExecution>, ApiError> {
+    let notebook = saved_notebook(&state, &raw).await?;
+    let request: NotebookExecute = body(&text)?;
+    let done = state.kernels.execute(&notebook, &request.code).await?;
+    // Scratch, not provenance (ADR-0036): the audit trail records that code ran, not its results.
+    let digest = hex::encode(sha2::Sha256::digest(request.code.as_bytes()));
+    let event = format!(
+        "cell {} ran: {}, code sha256:{digest}",
+        request.cell_id.as_str(),
+        done.status
+    );
+    state
+        .store
+        .append_audit(&sprisk_core::time::now(), notebook.as_str(), &event)
+        .await?;
+    Ok(Json(done))
+}
+
+async fn interrupt_kernel(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let notebook = saved_notebook(&state, &raw).await?;
+    state.kernels.interrupt(&notebook).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn restart_kernel(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let notebook = saved_notebook(&state, &raw).await?;
+    state.kernels.restart(&notebook).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `?names=a,b`: which names the kernel holds and whether each is a table.
+async fn kernel_variables(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    query: Query,
+) -> Result<Json<NotebookVariables>, ApiError> {
+    let notebook = saved_notebook(&state, &raw).await?;
+    let names: Vec<String> = query
+        .get("names")
+        .map(|n| n.split(',').map(str::to_owned).collect())
+        .unwrap_or_default();
+    for name in &names {
+        if name.parse::<sprisk_contracts::PortName>().is_err() {
+            return Err(ApiError::BadRequest {
+                code: "invalid_id",
+                message: format!("{name:?} is not a variable name a node can pass on"),
+            });
+        }
+    }
+    Ok(Json(state.kernels.variables(&notebook, &names).await?))
 }
 
 async fn get_operator_source(

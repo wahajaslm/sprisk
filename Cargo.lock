@@ -2390,9 +2390,12 @@ name = "sprisk-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "futures-util",
+ "hex",
  "http-body-util",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "sprisk-artifacts",
  "sprisk-contracts",
  "sprisk-core",
@@ -2403,6 +2406,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tower",
  "tracing",
  "ulid",
