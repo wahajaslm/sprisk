@@ -6,8 +6,11 @@ use std::sync::Arc;
 mod bounded;
 mod figures;
 mod kernel;
+mod profile;
 mod split;
+pub use bounded::ProcessError;
 pub use kernel::{KernelError, KernelLimits, Kernels};
+pub use profile::Profiler;
 pub use split::{SplitError, Splitter};
 
 use axum::body::Bytes;
@@ -19,9 +22,10 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, FigureSet, NotebookExecute,
-    NotebookExecution, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
-    OperatorSource, PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
+    ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, Dataset, DatasetProfile,
+    FigureSet, NotebookExecute, NotebookExecution, NotebookId, NotebookVariables, NotebookVersion,
+    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, Run,
+    RunId, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -45,6 +49,8 @@ pub struct AppState {
     pub data_roots: Vec<std::path::PathBuf>,
     /// Reads notebook cells into suggested code steps (ADR-0031).
     pub splitter: Splitter,
+    /// Profiles one table for the Datasets view (ADR-0038).
+    pub profiler: Profiler,
     /// One live Python kernel per notebook being explored (ADR-0036).
     pub kernels: Kernels,
 }
@@ -67,6 +73,8 @@ pub fn router(state: AppState) -> Router {
         .route("/artifacts/{id}/content", get(get_artifact_content))
         .route("/artifacts/{id}/rows", get(get_artifact_rows))
         .route("/artifacts/{id}/figures", get(get_artifact_figures))
+        .route("/artifacts/{id}/profile", get(get_artifact_profile))
+        .route("/datasets", get(list_datasets))
         .route("/notebook_versions", post(create_notebook_version))
         .route("/notebook_versions/{id}", get(get_notebook_version))
         .route("/notebooks", get(list_notebooks))
@@ -172,6 +180,8 @@ enum ApiError {
     Split(#[from] SplitError),
     #[error(transparent)]
     Kernel(#[from] KernelError),
+    #[error("profiling the table {0}")]
+    Profile(#[from] ProcessError),
     #[error("{0}")]
     Internal(String),
 }
@@ -217,6 +227,14 @@ impl IntoResponse for ApiError {
             ApiError::Split(SplitError::Busy) => (
                 StatusCode::TOO_MANY_REQUESTS,
                 vec![("split_busy", self.to_string())],
+            ),
+            ApiError::Profile(ProcessError::Timeout(_)) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                vec![("profile_timeout", self.to_string())],
+            ),
+            ApiError::Profile(ProcessError::Busy) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                vec![("profile_busy", self.to_string())],
             ),
             ApiError::Kernel(KernelError::TooMany(_)) => (
                 StatusCode::TOO_MANY_REQUESTS,
@@ -798,6 +816,99 @@ async fn get_artifact_figures(
     let set =
         figures::first_figures(report, limit as usize).map_err(|e| not_figures(e.to_string()))?;
     Ok(Json(set))
+}
+
+/// A descriptive profile of one table, computed by Python (ADR-0038). The browser gets
+/// counts and shares, never rows.
+async fn get_artifact_profile(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Json<DatasetProfile>, ApiError> {
+    let artifact_id: ArtifactId = id(&raw)?;
+    let artifact = state.store.get_artifact(&artifact_id).await?;
+    if artifact.media_type.as_str() != PARQUET {
+        return Err(ApiError::BadRequest {
+            code: "not_a_table",
+            message: format!(
+                "artifact {raw} is {}, not a table",
+                artifact.media_type.as_str()
+            ),
+        });
+    }
+    let uri = artifact.uri.as_str();
+    let path = url::Url::parse(uri)
+        .ok()
+        .and_then(|u| u.to_file_path().ok())
+        .ok_or_else(|| ApiError::BadRequest {
+            code: "not_local",
+            message: format!("artifact {raw} is at {uri}; only local tables can be profiled yet"),
+        })?;
+    Ok(Json(state.profiler.profile(&path).await?))
+}
+
+/// The tables flows load (ADR-0038): each source step's output in the latest run of the
+/// newest pipeline versions. Tables with the same content are one dataset, listed once with
+/// every step that loads it. Newest first.
+async fn list_datasets(
+    State(state): State<AppState>,
+    query: Query,
+) -> Result<Json<Vec<Dataset>>, ApiError> {
+    let versions = state
+        .store
+        .list_pipeline_versions(None, limit(&query)?)
+        .await?;
+    let mut sources = std::collections::HashMap::new();
+    for version in &versions {
+        for node in &version.nodes {
+            let Some(operator) = state.registry.get(node.operator.as_str()) else {
+                continue;
+            };
+            if operator.capability_class.to_string() != "source" {
+                continue;
+            }
+            let file = node.params.get("path").and_then(|p| p.as_str());
+            let name = file
+                .and_then(|p| std::path::Path::new(p).file_name())
+                .map_or_else(|| node.id.to_string(), |n| n.to_string_lossy().into_owned());
+            sources.insert(
+                (version.id.clone(), node.id.to_string()),
+                (name, &node.operator),
+            );
+        }
+    }
+    let ids: Vec<_> = versions.iter().map(|v| v.id.clone()).collect();
+    let mut datasets: Vec<serde_json::Value> = Vec::new();
+    let mut by_hash = std::collections::HashMap::new();
+    for output in state.store.latest_run_outputs(&ids).await? {
+        if output.artifact.media_type.as_str() != PARQUET {
+            continue;
+        }
+        let key = (output.pipeline_version_id.clone(), output.node_id.clone());
+        let Some((name, operator)) = sources.get(&key) else {
+            continue;
+        };
+        let hash = output.artifact.content_hash.to_string();
+        let at = match by_hash.get(&hash) {
+            Some(&at) => at,
+            None => {
+                let (rows, columns) = state.artifacts.table_shape(&hash).await?;
+                datasets.push(
+                    json!({"name": name, "operator": operator, "artifact": output.artifact,
+                    "total_rows": rows, "total_columns": columns, "used_by": []}),
+                );
+                by_hash.insert(hash, datasets.len() - 1);
+                datasets.len() - 1
+            }
+        };
+        if let Some(used_by) = datasets[at]["used_by"].as_array_mut() {
+            used_by.push(json!({"pipeline_version_id": output.pipeline_version_id,
+                "run_id": output.run_id, "node_id": output.node_id}));
+        }
+    }
+    let body = serde_json::Value::Array(datasets).to_string();
+    Ok(Json(
+        parse(&body).map_err(|e| ApiError::Internal(e.to_string()))?,
+    ))
 }
 
 #[cfg(test)]

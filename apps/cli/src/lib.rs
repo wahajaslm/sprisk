@@ -145,6 +145,16 @@ pub async fn serve_on(
             std::time::Duration::from_secs(10),
             2,
         ),
+        // A large table takes a while; the limit still stops a runaway (ADR-0038).
+        profiler: sprisk_api::Profiler::new(
+            vec![
+                config.python.display().to_string(),
+                "-m".into(),
+                "sprisk_profile.dataset".into(),
+            ],
+            std::time::Duration::from_secs(60),
+            2,
+        ),
         data_roots,
         kernels: kernels.clone(),
     };

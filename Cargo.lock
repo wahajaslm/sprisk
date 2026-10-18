@@ -2408,6 +2408,7 @@ dependencies = [
  "tower",
  "tracing",
  "ulid",
+ "url",
 ]
 
 [[package]]

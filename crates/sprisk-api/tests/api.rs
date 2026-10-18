@@ -9,7 +9,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sprisk_api::{AppState, KernelLimits, Kernels, Splitter, router};
+use sprisk_api::{AppState, KernelLimits, Kernels, Profiler, Splitter, router};
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{OperatorSource, parse};
 use sprisk_registry::Registry;
@@ -100,6 +100,15 @@ async fn api_with_kernel_host(
         idle_worker: Default::default(),
         data_roots: vec![dir.path().canonicalize().unwrap()],
         splitter,
+        profiler: Profiler::new(
+            vec![
+                python.display().to_string(),
+                "-m".into(),
+                "sprisk_profile.dataset".into(),
+            ],
+            Duration::from_secs(30),
+            2,
+        ),
         kernels: kernels.clone(),
     };
     Api {
@@ -1095,4 +1104,75 @@ async fn a_notebook_belongs_to_a_saved_flow_of_its_project() {
     linked["pipeline_version_id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ0");
     let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(linked)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+/// ADR-0038: the tables flows load, and a profile of one, without the table itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn datasets_list_the_tables_flows_load_and_profile_one() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (finished, _) = run_to_end(&api).await;
+    assert_eq!(finished["status"], "succeeded", "{finished}");
+
+    let (status, datasets) = call(&api.app, "GET", "/datasets", None).await;
+    assert_eq!(status, StatusCode::OK, "{datasets}");
+    assert_eq!(datasets.as_array().unwrap().len(), 1, "{datasets}");
+    let d = &datasets[0];
+    assert_eq!(
+        (
+            d["name"].as_str(),
+            d["total_rows"].as_u64(),
+            d["total_columns"].as_u64()
+        ),
+        (Some("d.csv"), Some(2), Some(2))
+    );
+    assert_eq!(
+        d["used_by"],
+        json!([{"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "run_id": finished["id"], "node_id": "load"}])
+    );
+
+    let profile = format!(
+        "/artifacts/{}/profile",
+        d["artifact"]["id"].as_str().unwrap()
+    );
+    let (status, body) = call(&api.app, "GET", &profile, None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["total_rows"], 2);
+    assert_eq!(body["columns"][0]["name"], "x");
+    assert_eq!(body["correlation"]["columns"], json!(["x", "y"]));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn only_a_table_can_be_profiled() {
+    let api = api().await;
+    call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    let (_, attempts) = run_to_end(&api).await;
+    let gate = attempts[0]["id"].as_str().unwrap();
+    let (_, outputs) = call(&api.app, "GET", &format!("/attempts/{gate}/outputs"), None).await;
+    let checks = outputs[0]["artifact"]["id"].as_str().unwrap();
+
+    let (status, body) = call(
+        &api.app,
+        "GET",
+        &format!("/artifacts/{checks}/profile"),
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "not_a_table");
 }
