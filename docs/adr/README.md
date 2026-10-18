@@ -42,6 +42,7 @@
 | [0038](0038-datasets-view.md) | The Datasets view lists the tables flows load and profiles them in Python | Accepted |
 | [0039](0039-role-views-and-run-report.md) | One flow, a view per role, and a run report | Accepted |
 | [0040](0040-layered-methodology-checks.md) | Methodology checks read the graph, the code, what ran, and the question | Accepted |
+| [0041](0041-notebook-delete-rename-and-streaming.md) | Notebooks can be deleted and renamed, and a cell's output shows while it runs | Accepted |
 
 ## Open questions (arch doc §17)
 
