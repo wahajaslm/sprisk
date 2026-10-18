@@ -234,10 +234,10 @@ describe("download as .ipynb", () => {
     const notebook = flowAsIpynb(mixed, ops, sources);
     expect(notebook.nbformat).toBe(4);
     expect(codeCells(notebook)).toEqual([
-      `def f(path, format):\n    ...\n\nfrom pathlib import Path\n\n${LOAD_CALL}`,
+      `def f(path, format):\n    ...\n\nfrom pathlib import Path\n\n${LOAD_CALL}\nload_data`,
       "def tidy(t):\n    return t.drop_nulls()",
       "clean = tidy(df)",
-      `def f(data, seed):\n    ...\n\n${SPLIT_CALL}`,
+      `def f(data, seed):\n    ...\n\n${SPLIT_CALL}\ndisplay(split_train, split_test)`,
       "n = train.height",
     ]);
   });
@@ -253,9 +253,9 @@ describe("download as .ipynb", () => {
       edges: [],
     };
     expect(codeCells(flowAsIpynb(twice, ops, sources))).toEqual([
-      "def f(path, format):\n    ...\n\na_data = f()",
-      "b_data = f()",
-      "def g():\n    ...\n\nc_data = g()",
+      "def f(path, format):\n    ...\n\na_data = f()\na_data",
+      "b_data = f()\nb_data",
+      "def g():\n    ...\n\nc_data = g()\nc_data",
     ]);
   });
 

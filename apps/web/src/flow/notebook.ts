@@ -274,7 +274,8 @@ export function flowAsIpynb(pipeline: PipelineVersion, operators: Operators, sou
     if (step.kind === "code") {
       return [[`data = ${step.data ?? "None"}`, step.source, `${node.id}_data = ${String(node.params["output"] ?? "data")}`].join("\n")];
     }
-    return [[codeToWrite(node, sources, written), step.call.includes("Path(") ? "from pathlib import Path" : undefined, step.call].filter((c) => c !== undefined).join("\n\n")];
+    const code = [codeToWrite(node, sources, written), step.call.includes("Path(") ? "from pathlib import Path" : undefined, step.call];
+    return [[code.filter((c) => c !== undefined).join("\n\n"), shownOf(pipeline, operators, node)].filter((c) => c !== undefined).join("\n")];
   });
   return {
     nbformat: 4,
@@ -285,6 +286,15 @@ export function flowAsIpynb(pipeline: PipelineVersion, operators: Operators, sou
       ...[...header, ...cells].map((source) => ({ cell_type: "code", metadata: {}, execution_count: null, outputs: [], source })),
     ],
   };
+}
+
+/** The last line of a built-in step's cell: what it made, so the cell shows it as a notebook
+ * shows a last value. A cell that ends in an assignment shows nothing. */
+function shownOf(pipeline: PipelineVersion, operators: Operators, node: Node): string | undefined {
+  if (!operators.has(node.operator)) return undefined;
+  const names = outputPorts(pipeline, operators, node).map((p) => `${node.id}_${p}`);
+  if (names.length === 0) return undefined;
+  return names.length === 1 ? names[0] : `display(${names.join(", ")})`;
 }
 
 /** A step's own code, or its operator's code the first time that operator appears. */
