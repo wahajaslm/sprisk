@@ -6,6 +6,7 @@
 | [adr/](adr/README.md) | Architecture decision records, one per decision. |
 | [research/](research/) | Research notes behind decisions, with sources. |
 | [design/](design/sprisk-studio.html) | sprisk Studio UI concept. Reference only, not a contract. |
+| [design/methodology-rules.md](design/methodology-rules.md) | Design of methodology rules and checks (ADR-0040, ADR-0042). |
 | [backlog.md](backlog.md) | Work deliberately deferred, with source and milestone. |
 
 ## Rules
