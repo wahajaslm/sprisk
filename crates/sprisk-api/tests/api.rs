@@ -1029,3 +1029,70 @@ async fn cells_kept_together_must_be_a_forward_range() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "invalid_cell_range");
 }
+
+/// A canvas card previews a step's first figure; the tables the step showed stay here.
+#[tokio::test(flavor = "multi_thread")]
+async fn figures_of_a_code_step_come_without_its_tables() {
+    let api = api().await;
+    let source = "import pandas as pd\nimport plotly.graph_objects as go\n\
+        display(pd.DataFrame({'a': [1, 2]}))\n\
+        display(go.Figure(go.Bar(y=[1, 2])))\n\
+        display(go.Figure(go.Bar(y=[3])))\n";
+    let mut version = pipeline(&api.csv);
+    version["nodes"] = json!([{"id": "draw", "operator": "sprisk.code.python@2.0.0",
+        "params": {"source": source}}]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(version)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
+    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
+    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
+    let mut finished = Value::Null;
+    for _ in 0..400 {
+        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
+        if body["status"] == "succeeded" || body["status"] == "failed" {
+            finished = body;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
+    assert_eq!(finished["status"], "succeeded", "{finished} {attempts}");
+    let draw = attempts
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["node_id"] == "draw")
+        .unwrap();
+    let uri = format!("/attempts/{}/outputs", draw["id"].as_str().unwrap());
+    let (_, outputs) = call(&api.app, "GET", &uri, None).await;
+    let artifact_of = |port: &str| {
+        outputs
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["port"] == port)
+            .unwrap()["artifact"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let figures = format!("/artifacts/{}/figures", artifact_of("display"));
+
+    let (status, set) = call(&api.app, "GET", &format!("{figures}?limit=1"), None).await;
+    assert_eq!(status, StatusCode::OK, "{set}");
+    assert_eq!(set["items"].as_array().unwrap().len(), 1, "{set}");
+    assert_eq!(set["items"][0]["format"], "plotly_json");
+    assert!(
+        !set.to_string().contains("total_rows"),
+        "a table came back: {set}"
+    );
+
+    let (status, body) = call(&api.app, "GET", &format!("{figures}?limit=0"), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_limit");
+
+    let interface = format!("/artifacts/{}/figures", artifact_of("interface"));
+    let (status, body) = call(&api.app, "GET", &interface, None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "not_figures");
+}

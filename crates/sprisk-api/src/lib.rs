@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+mod figures;
 mod kernel;
 mod split;
 pub use kernel::{KernelError, KernelLimits, Kernels};
@@ -17,7 +18,7 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, NotebookExecute,
+    ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, FigureSet, NotebookExecute,
     NotebookExecution, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
     OperatorSource, PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
 };
@@ -64,6 +65,7 @@ pub fn router(state: AppState) -> Router {
         .route("/artifacts/{id}", get(get_artifact))
         .route("/artifacts/{id}/content", get(get_artifact_content))
         .route("/artifacts/{id}/rows", get(get_artifact_rows))
+        .route("/artifacts/{id}/figures", get(get_artifact_figures))
         .route("/notebook_versions", post(create_notebook_version))
         .route("/notebook_versions/{id}", get(get_notebook_version))
         .route("/notebooks", get(list_notebooks))
@@ -742,6 +744,30 @@ async fn get_artifact_rows(
         .read_table_page(artifact.content_hash.as_str(), offset, limit)
         .await?;
     Ok(Json(page))
+}
+
+/// The first figures in a figures or display report. A card previews one figure without
+/// fetching the tables a code step showed beside it (ADR-0027).
+async fn get_artifact_figures(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    query: Query,
+) -> Result<Json<FigureSet>, ApiError> {
+    let artifact_id: ArtifactId = id(&raw)?;
+    let limit = limit(&query)?;
+    let artifact = state.store.get_artifact(&artifact_id).await?;
+    display_size(artifact.size_bytes, false)?;
+    let not_figures = || ApiError::BadRequest {
+        code: "not_figures",
+        message: format!("artifact {raw} is not figures or a code step's display"),
+    };
+    if artifact.media_type.as_str() != "application/json" {
+        return Err(not_figures());
+    }
+    let bytes = state.artifacts.get(artifact.content_hash.as_str()).await?;
+    let report = std::str::from_utf8(&bytes).map_err(|_| not_figures())?;
+    let set = figures::first_figures(report, limit as usize).map_err(|_| not_figures())?;
+    Ok(Json(set))
 }
 
 #[cfg(test)]

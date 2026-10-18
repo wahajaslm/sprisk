@@ -329,7 +329,7 @@ export interface OperatorSource {
   digest: string;
 }
 /**
- * Figures a step drew (ADR-0024), converted by the worker: matplotlib as SVG text, Plotly as its figure JSON text.
+ * Figures a step drew (ADR-0024), converted by the worker: matplotlib as SVG text, Plotly as its figure JSON text. GET /artifacts/{id}/figures returns the first ones from a figures or display report, without the tables a code step showed.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "FigureSet".
