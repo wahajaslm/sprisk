@@ -2,7 +2,7 @@
 name = "sprisk-code"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["sprisk-workers", "sprisk-contracts", "polars>=1.10", "matplotlib>=3.9", "pandas>=2.2"]
+dependencies = ["sprisk-workers", "sprisk-contracts", "polars>=1.10", "matplotlib>=3.9", "pandas>=2.2", "ipykernel>=6.29", "jupyter-client>=8.6", "psutil>=5.9", "typer>=0.12"]
 
 [tool.uv.sources]
 sprisk-workers = { workspace = true }
