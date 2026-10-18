@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+mod bounded;
 mod figures;
 mod kernel;
 mod split;
