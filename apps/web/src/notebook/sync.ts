@@ -1,7 +1,7 @@
 import type { CodeSplit, Edge, Node, NotebookCell, NotebookVersion, PipelineVersion } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
-import { nextVersion, timestamp } from "../flow/edit.ts";
+import { nextVersion, readersOf, timestamp } from "../flow/edit.ts";
 import { NOTEBOOK_OPERATOR } from "../flow/notebook.ts";
 import { portOf, stepOf } from "../flow/ports.ts";
 import { newCellId } from "./document.ts";
@@ -75,6 +75,21 @@ export function stepsIntoFlow({ base, projectId, notebook, split }: { base: Pipe
     return { version: { schema_version: "sprisk.pipeline_version/v1", id: `plv_${ulid()}`, project_id: projectId, ...next, created_at: timestamp() } };
   }
   return { version: nextVersion(base, next) };
+}
+
+/** The flow without this notebook's steps and their edges, for deleting the notebook (ADR-0041).
+ * Refused, naming the readers, while a step outside the notebook reads one of their outputs. */
+export function stepsOutOfFlow(base: PipelineVersion, notebookId: string): { version: PipelineVersion } | { unchanged: true } | { refused: string[] } {
+  const owned = new Set(base.nodes.filter(ownedBy(notebookId)).map((n) => n.id));
+  if (owned.size === 0) return { unchanged: true };
+  const readers = [...owned].flatMap((id) => readersOf(base, id)).filter((id) => !owned.has(id));
+  if (readers.length > 0) return { refused: [...new Set(readers)] };
+  return {
+    version: nextVersion(base, {
+      nodes: base.nodes.filter((n) => !owned.has(n.id)),
+      edges: base.edges.filter((e) => !owned.has(stepOf(e.from)) && !owned.has(stepOf(e.to))),
+    }),
+  };
 }
 
 /** Equal but for which notebook version the steps cite: saving the same cells again is no change. */

@@ -2,7 +2,7 @@ import type { CodeSplit, NotebookVersion, PipelineVersion } from "@sprisk/contra
 import { parse } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
-import { cellsFromFlow, stepsIntoFlow } from "../src/notebook/sync.ts";
+import { cellsFromFlow, stepsIntoFlow, stepsOutOfFlow } from "../src/notebook/sync.ts";
 import { pipeline } from "./fixtures.ts";
 
 const NB = "nb_01JAAAAAAAAAAAAAAAAAAAAAAA";
@@ -133,5 +133,31 @@ describe("a step edited on the canvas comes back to its cells (ADR-0037)", () =>
   it("adds a cell for each new # %% part of a step's code", () => {
     const cells = cellsFromFlow(withSource("sales_3", "TOP_N = 5\ntop = sales.head(TOP_N)\n\n# %%\nprint(top)"), notebook);
     expect(cells?.map((c) => c.source)).toEqual(["# Sales", "TOP_N = 5", notebook.cells[2]!.source, "top = sales.head(TOP_N)", "print(top)"]);
+  });
+});
+
+describe("a deleted notebook's steps leave its flow (ADR-0041)", () => {
+  const flow = synced(pipeline);
+
+  it("drops the notebook's steps and every edge into or between them, and keeps the rest", () => {
+    const base = { ...flow, edges: [...flow.edges, { from: "load.data", to: "sales_2.data" }] };
+    const done = stepsOutOfFlow(base, NB);
+    if (!("version" in done)) throw new Error(JSON.stringify(done));
+    expect(parse("PipelineVersion", done.version).parent_id).toBe(base.id);
+    expect(done.version.nodes).toEqual(pipeline.nodes);
+    expect(done.version.edges).toEqual(pipeline.edges);
+  });
+
+  it("refuses, naming each step outside the notebook that reads one of its outputs", () => {
+    const base: PipelineVersion = {
+      ...flow,
+      nodes: [...flow.nodes, { id: "report", operator: "sprisk.code.python@2.0.0", params: { source: "", inputs: ["sales"] } }],
+      edges: [...flow.edges, { from: "sales_2.sales", to: "report.sales" }, { from: "sales_3.sales", to: "report.top" }],
+    };
+    expect(stepsOutOfFlow(base, NB)).toEqual({ refused: ["report"] });
+  });
+
+  it("has nothing to change when the flow holds none of the notebook's steps", () => {
+    expect(stepsOutOfFlow(pipeline, NB)).toEqual({ unchanged: true });
   });
 });
