@@ -821,6 +821,7 @@ export interface Node {
   operator: OperatorRef;
   params: Params;
   code?: NodeCode;
+  from_notebook?: NodeSource;
 }
 /**
  * This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs.
@@ -836,12 +837,27 @@ export interface NodeCode {
   function: string;
 }
 /**
+ * The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook.
+ */
+export interface NodeSource {
+  notebook_version_id: NotebookVersionId;
+  cells: NotebookCellId[];
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Edge".
  */
 export interface Edge {
   from: PortRef;
   to: PortRef;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NodeSource".
+ */
+export interface NodeSource1 {
+  notebook_version_id: NotebookVersionId;
+  cells: NotebookCellId[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

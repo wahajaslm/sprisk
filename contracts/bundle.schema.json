@@ -1344,6 +1344,29 @@
         "code": {
           "$ref": "#/$defs/NodeCode",
           "description": "This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs."
+        },
+        "from_notebook": {
+          "$ref": "#/$defs/NodeSource",
+          "description": "The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook."
+        }
+      }
+    },
+    "NodeSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "notebook_version_id",
+        "cells"
+      ],
+      "properties": {
+        "notebook_version_id": {
+          "$ref": "#/$defs/NotebookVersionId"
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NotebookCellId"
+          }
         }
       }
     },

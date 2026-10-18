@@ -369,6 +369,14 @@ class Resources(StrictModel):
     timeout_seconds: Annotated[int, Field(ge=1)]
 
 
+class NodeSource(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    notebook_version_id: NotebookVersionId
+    cells: list[NotebookCellId]
+
+
 class NodeCode(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -857,6 +865,12 @@ class Node(StrictModel):
         NodeCode | None,
         Field(
             description="This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs."
+        ),
+    ] = None
+    from_notebook: Annotated[
+        NodeSource | None,
+        Field(
+            description="The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook."
         ),
     ] = None
 
