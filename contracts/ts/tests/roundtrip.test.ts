@@ -22,7 +22,7 @@ const entities: [keyof Entities, string][] = [
   ["CodeDisplay", "code_display"],
   ["OperatorSource", "operator_source"],
   ["FigureSet", "figure_set"],
-  ["Dataset", "dataset"],
+  ["LoadedTable", "loaded_table"],
   ["DatasetProfile", "dataset_profile"],
   ["CodeInterface", "code_interface"],
   ["CodeSplitRequest", "code_split_request"],

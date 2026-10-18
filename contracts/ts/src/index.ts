@@ -25,7 +25,7 @@ export interface Entities {
   CodeSplit: C.CodeSplit;
   OperatorSource: C.OperatorSource;
   FigureSet: C.FigureSet;
-  Dataset: C.Dataset;
+  LoadedTable: C.LoadedTable;
   DatasetProfile: C.DatasetProfile;
   NotebookVersion: C.NotebookVersion;
   NotebookExecute: C.NotebookExecute;

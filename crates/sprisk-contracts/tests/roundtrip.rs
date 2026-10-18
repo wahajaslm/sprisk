@@ -8,9 +8,10 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, Attempt, AttemptOutput, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    CreateRun, Dataset, DatasetProfile, FigureSet, MethodologyCheck, NotebookExecute, NotebookExecution,
-    NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
-    PipelineVersion, Problem, QuestionVersion, Run, TablePage, WorkerMessage, parse,
+    CreateRun, DatasetProfile, FigureSet, LoadedTable, MethodologyCheck, NotebookExecute,
+    NotebookExecution, NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator,
+    OperatorSource, PipelineVersion, Problem, QuestionVersion, Run, TablePage, WorkerMessage,
+    parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -61,9 +62,9 @@ const ENTITIES: &[&str] = &[
     "code_split",
     "code_split_request",
     "create_run",
-    "dataset",
     "dataset_profile",
     "figure_set",
+    "loaded_table",
     "methodology_check",
     "notebook_execute",
     "notebook_execution",
@@ -162,8 +163,8 @@ fn code_display() {
 }
 
 #[test]
-fn dataset() {
-    check::<Dataset>("dataset");
+fn loaded_table() {
+    check::<LoadedTable>("loaded_table");
 }
 
 #[test]

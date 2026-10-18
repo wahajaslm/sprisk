@@ -329,12 +329,12 @@ export interface OperatorSource {
   digest: string;
 }
 /**
- * A table a flow loads (ADR-0038), as listed by GET /datasets: the latest output of a source step. Tables with the same content are one dataset. Derived from run history; not yet an ingested Dataset entity (arch §4).
+ * A table a flow loads (ADR-0038), as listed by GET /loaded_tables: the latest output of a source step. Tables with the same content are one entry. Derived from run history; not the Dataset entity of arch §4, which keeps that name.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Dataset".
+ * via the `definition` "LoadedTable".
  */
-export interface Dataset {
+export interface LoadedTable {
   /**
    * The file name the source step reads, or the step's id when it reads no file.
    */
@@ -343,13 +343,15 @@ export interface Dataset {
   artifact: Artifact;
   total_rows: number;
   total_columns: number;
-  used_by: DatasetUse[];
+  used_by: LoadedTableUse[];
 }
 /**
+ * A step that loads the table, in the latest run of its version that loaded it.
+ *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "DatasetUse".
+ * via the `definition` "LoadedTableUse".
  */
-export interface DatasetUse {
+export interface LoadedTableUse {
   pipeline_version_id: PipelineVersionId;
   /**
    * The latest run of that version, whose source step loaded the table.
@@ -358,7 +360,7 @@ export interface DatasetUse {
   node_id: NodeId;
 }
 /**
- * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: histograms have at most 20 bars, the missing-value map at most 40 row bands, the correlation at most 30 columns. No step reads it.
+ * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bars, a missing-value map of at most 40 row bands, correlation of at most 30 columns. For people only: the AI planner and methodology checks never read it, since it covers held-out rows.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "DatasetProfile".
@@ -366,6 +368,10 @@ export interface DatasetUse {
 export interface DatasetProfile {
   total_rows: number;
   total_columns: number;
+  /**
+   * Rows the profile covers: all of them, or the first 1,000,000 of a larger table.
+   */
+  profiled_rows: number;
   /**
    * Rows in each band of the missing-value map; the last band may hold fewer.
    */
@@ -383,6 +389,9 @@ export interface ColumnProfile {
    * Polars data type name, for display only.
    */
   data_type: string;
+  /**
+   * Empty cells, NaN and infinity.
+   */
   missing: number;
   /**
    * Distinct values, not counting missing.
@@ -413,17 +422,27 @@ export interface HistogramBar {
   count: number;
 }
 /**
- * Pearson correlation of numeric columns that vary, over rows where both are present. Empty when fewer than two qualify.
+ * Pearson correlation of numeric columns that vary (at most 30). Each pair uses the rows where both are present; a pair with fewer than 10 such rows, or with no variation on them, is left out.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Correlation".
  */
 export interface Correlation {
   columns: string[];
+  pairs: CorrelationPair[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CorrelationPair".
+ */
+export interface CorrelationPair {
+  column_a: string;
+  column_b: string;
+  pearson: number;
   /**
-   * Square, in the order of `columns`.
+   * Rows where both columns are present.
    */
-  values: number[][];
+  rows: number;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

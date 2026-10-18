@@ -150,9 +150,9 @@
         "digest": { "$ref": "#/$defs/ContentHash", "description": "The operator's implementation digest: the code that runs, and the code shown, are the same." }
       }
     },
-    "Dataset": {
-      "title": "Dataset",
-      "description": "A table a flow loads (ADR-0038), as listed by GET /datasets: the latest output of a source step. Tables with the same content are one dataset. Derived from run history; not yet an ingested Dataset entity (arch §4).",
+    "LoadedTable": {
+      "title": "LoadedTable",
+      "description": "A table a flow loads (ADR-0038), as listed by GET /loaded_tables: the latest output of a source step. Tables with the same content are one entry. Derived from run history; not the Dataset entity of arch §4, which keeps that name.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -185,12 +185,12 @@
         "used_by": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/DatasetUse"
+            "$ref": "#/$defs/LoadedTableUse"
           }
         }
       }
     },
-    "DatasetUse": {
+    "LoadedTableUse": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -209,16 +209,18 @@
         "node_id": {
           "$ref": "#/$defs/NodeId"
         }
-      }
+      },
+      "description": "A step that loads the table, in the latest run of its version that loaded it."
     },
     "DatasetProfile": {
       "title": "DatasetProfile",
-      "description": "A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: histograms have at most 20 bars, the missing-value map at most 40 row bands, the correlation at most 30 columns. No step reads it.",
+      "description": "A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bars, a missing-value map of at most 40 row bands, correlation of at most 30 columns. For people only: the AI planner and methodology checks never read it, since it covers held-out rows.",
       "type": "object",
       "additionalProperties": false,
       "required": [
         "total_rows",
         "total_columns",
+        "profiled_rows",
         "band_rows",
         "columns",
         "correlation"
@@ -231,6 +233,11 @@
         "total_columns": {
           "type": "integer",
           "minimum": 0
+        },
+        "profiled_rows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rows the profile covers: all of them, or the first 1,000,000 of a larger table."
         },
         "band_rows": {
           "type": "integer",
@@ -268,7 +275,8 @@
         },
         "missing": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "Empty cells, NaN and infinity."
         },
         "distinct": {
           "type": "integer",
@@ -334,9 +342,9 @@
       "additionalProperties": false,
       "required": [
         "columns",
-        "values"
+        "pairs"
       ],
-      "description": "Pearson correlation of numeric columns that vary, over rows where both are present. Empty when fewer than two qualify.",
+      "description": "Pearson correlation of numeric columns that vary (at most 30). Each pair uses the rows where both are present; a pair with fewer than 10 such rows, or with no variation on them, is left out.",
       "properties": {
         "columns": {
           "type": "array",
@@ -344,15 +352,37 @@
             "type": "string"
           }
         },
-        "values": {
+        "pairs": {
           "type": "array",
           "items": {
-            "type": "array",
-            "items": {
-              "type": "number"
-            }
-          },
-          "description": "Square, in the order of `columns`."
+            "$ref": "#/$defs/CorrelationPair"
+          }
+        }
+      }
+    },
+    "CorrelationPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column_a",
+        "column_b",
+        "pearson",
+        "rows"
+      ],
+      "properties": {
+        "column_a": {
+          "type": "string"
+        },
+        "column_b": {
+          "type": "string"
+        },
+        "pearson": {
+          "type": "number"
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rows where both columns are present."
         }
       }
     },

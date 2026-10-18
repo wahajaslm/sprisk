@@ -48,12 +48,14 @@ class HistogramBar(StrictModel):
     count: Annotated[int, Field(ge=0)]
 
 
-class Correlation(StrictModel):
+class CorrelationPair(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    columns: list[str]
-    values: Annotated[list[list[float]], Field(description="Square, in the order of `columns`.")]
+    column_a: str
+    column_b: str
+    pearson: float
+    rows: Annotated[int, Field(description="Rows where both columns are present.", ge=0)]
 
 
 class Library(StrEnum):
@@ -652,7 +654,7 @@ class OperatorSource(StrictModel):
     ]
 
 
-class DatasetUse(StrictModel):
+class LoadedTableUse(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -675,6 +677,14 @@ class Histogram(StrictModel):
         ),
     ]
     bars: list[HistogramBar]
+
+
+class Correlation(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    columns: list[str]
+    pairs: list[CorrelationPair]
 
 
 class FigureSet(StrictModel):
@@ -1055,7 +1065,7 @@ class AttemptOutput(StrictModel):
     artifact: Artifact
 
 
-class Dataset(StrictModel):
+class LoadedTable(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1069,7 +1079,7 @@ class Dataset(StrictModel):
     artifact: Artifact
     total_rows: Annotated[int, Field(ge=0)]
     total_columns: Annotated[int, Field(ge=0)]
-    used_by: list[DatasetUse]
+    used_by: list[LoadedTableUse]
 
 
 class ColumnProfile(StrictModel):
@@ -1078,7 +1088,7 @@ class ColumnProfile(StrictModel):
     )
     name: str
     data_type: Annotated[str, Field(description="Polars data type name, for display only.")]
-    missing: Annotated[int, Field(ge=0)]
+    missing: Annotated[int, Field(description="Empty cells, NaN and infinity.", ge=0)]
     distinct: Annotated[int, Field(description="Distinct values, not counting missing.", ge=0)]
     missing_by_band: Annotated[
         list[float],
@@ -1250,6 +1260,13 @@ class DatasetProfile(StrictModel):
     )
     total_rows: Annotated[int, Field(ge=0)]
     total_columns: Annotated[int, Field(ge=0)]
+    profiled_rows: Annotated[
+        int,
+        Field(
+            description="Rows the profile covers: all of them, or the first 1,000,000 of a larger table.",
+            ge=0,
+        ),
+    ]
     band_rows: Annotated[
         int,
         Field(

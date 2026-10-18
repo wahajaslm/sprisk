@@ -71,15 +71,14 @@
       "bmi",
       "progression"
     ],
-    "values": [
-      [
-        1.0,
-        0.59
-      ],
-      [
-        0.59,
-        1.0
-      ]
+    "pairs": [
+      {
+        "column_a": "bmi",
+        "column_b": "progression",
+        "pearson": 0.59,
+        "rows": 439
+      }
     ]
-  }
+  },
+  "profiled_rows": 442
 }
