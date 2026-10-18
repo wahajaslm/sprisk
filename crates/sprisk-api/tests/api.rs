@@ -131,6 +131,26 @@ async fn call(app: &Router, method: &str, uri: &str, body: Option<Value>) -> (St
     (status, json)
 }
 
+/// Runs the saved version in a real Python worker and waits, bounded, until it ends.
+/// Returns the finished run (`Null` if it never ended) and its attempts.
+async fn run_to_end(api: &Api) -> (Value, Value) {
+    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
+    let (status, run) = call(&api.app, "POST", "/runs", Some(create)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
+    let mut finished = Value::Null;
+    for _ in 0..400 {
+        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
+        if body["status"] == "succeeded" || body["status"] == "failed" {
+            finished = body;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
+    (finished, attempts)
+}
+
 fn pipeline(csv: &Path) -> Value {
     json!({
         "schema_version": "sprisk.pipeline_version/v1",
@@ -231,24 +251,9 @@ async fn run_executes_in_the_background_and_reports_attempts_and_outputs() {
         Some(pipeline(&api.csv)),
     )
     .await;
-    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
-    let (status, run) = call(&api.app, "POST", "/runs", Some(create)).await;
-    assert_eq!(status, StatusCode::ACCEPTED);
-    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
-
-    // The run happens in a real Python worker; poll its status, bounded.
-    let mut finished = Value::Null;
-    for _ in 0..200 {
-        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
-        if body["status"] == "succeeded" || body["status"] == "failed" {
-            finished = body;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    let (finished, attempts) = run_to_end(&api).await;
     assert_eq!(finished["status"], "succeeded", "{finished}");
 
-    let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
     let nodes: Vec<_> = attempts
         .as_array()
         .unwrap()
@@ -302,18 +307,8 @@ async fn run_whose_worker_cannot_start_ends_failed() {
         Some(pipeline(&api.csv)),
     )
     .await;
-    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
-    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
-    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
-    let mut status = Value::Null;
-    for _ in 0..100 {
-        status = call(&api.app, "GET", &run_uri, None).await.1["status"].clone();
-        if status == "failed" {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    assert_eq!(status, "failed");
+    let (finished, _) = run_to_end(&api).await;
+    assert_eq!(finished["status"], "failed", "{finished}");
 }
 
 #[tokio::test]
@@ -382,16 +377,8 @@ async fn artifact_content_is_served_as_a_download_never_rendered() {
         Some(pipeline(&api.csv)),
     )
     .await;
-    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
-    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
-    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
-    for _ in 0..200 {
-        if call(&api.app, "GET", &run_uri, None).await.1["status"] == "succeeded" {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
+    let (finished, attempts) = run_to_end(&api).await;
+    assert_eq!(finished["status"], "succeeded", "{finished}");
     let load = attempts[1]["id"].as_str().unwrap();
     let (_, outputs) = call(&api.app, "GET", &format!("/attempts/{load}/outputs"), None).await;
     let artifact = outputs[0]["artifact"]["id"].as_str().unwrap();
@@ -683,19 +670,7 @@ async fn notebook_cells_become_a_flow_that_runs() {
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(version)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
-    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
-    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
-    let mut finished = Value::Null;
-    for _ in 0..400 {
-        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
-        if body["status"] == "succeeded" || body["status"] == "failed" {
-            finished = body;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
+    let (finished, attempts) = run_to_end(&api).await;
     assert_eq!(finished["status"], "succeeded", "{finished} {attempts}");
     let filter = attempts
         .as_array()
@@ -1043,19 +1018,7 @@ async fn figures_of_a_code_step_come_without_its_tables() {
         "params": {"source": source}}]);
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(version)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let create = json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"});
-    let (_, run) = call(&api.app, "POST", "/runs", Some(create)).await;
-    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
-    let mut finished = Value::Null;
-    for _ in 0..400 {
-        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
-        if body["status"] == "succeeded" || body["status"] == "failed" {
-            finished = body;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
+    let (finished, attempts) = run_to_end(&api).await;
     assert_eq!(finished["status"], "succeeded", "{finished} {attempts}");
     let draw = attempts
         .as_array()
