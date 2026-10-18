@@ -39,6 +39,7 @@
 | [0035](0035-notebook-looks-like-vs-code.md) | The notebook view is a VS Code-style notebook on Monaco | Accepted; run path replaced by ADR-0036 |
 | [0036](0036-session-notebook-and-published-node.md) | Notebooks run in a session; a node is made only when the person picks a boundary | Accepted |
 | [0037](0037-notebooks-belong-to-a-flow.md) | Notebooks belong to a flow and keep it in sync | Accepted |
+| [0038](0038-datasets-view.md) | The Datasets view lists the tables flows load and profiles them in Python | Accepted |
 
 ## Open questions (arch doc §17)
 
