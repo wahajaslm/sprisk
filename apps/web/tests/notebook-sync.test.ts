@@ -124,6 +124,12 @@ describe("a step edited on the canvas comes back to its cells (ADR-0037)", () =>
     expect(cells?.map((c) => c.id)).toEqual(["intro", "a", "b", "c"]);
   });
 
+  it("a magic line Python commented out in the step is not an edit", () => {
+    const magic = { ...notebook, cells: notebook.cells.map((c) => (c.id === "b" ? { ...c, source: "%matplotlib inline\n" + c.source } : c)) };
+    const flowWithMagic = withSource("sales_2", "# %matplotlib inline\n" + notebook.cells[2]!.source);
+    expect(cellsFromFlow(flowWithMagic, magic)).toBeUndefined();
+  });
+
   it("adds a cell for each new # %% part of a step's code", () => {
     const cells = cellsFromFlow(withSource("sales_3", "TOP_N = 5\ntop = sales.head(TOP_N)\n\n# %%\nprint(top)"), notebook);
     expect(cells?.map((c) => c.source)).toEqual(["# Sales", "TOP_N = 5", notebook.cells[2]!.source, "top = sales.head(TOP_N)", "print(top)"]);

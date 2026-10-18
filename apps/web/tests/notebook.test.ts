@@ -8,11 +8,9 @@ import {
   notebookSteps,
   type NotebookStep,
   splitRequest,
-  flowAsIpynb,
   versionFromSplit,
   withSource,
 } from "../src/flow/notebook.ts";
-import { cellsFromFile } from "../src/notebook/document.ts";
 import { codePipeline, notebookOperator, operators, pipeline } from "./fixtures.ts";
 
 const ops = new Map([...operators, notebookOperator].map((o) => [o.id, o]));
@@ -39,11 +37,6 @@ const mixed: PipelineVersion = {
 
 const LOAD_CALL = 'load_data = df = f(path=Path("/d/iris.csv"), format="csv")';
 const SPLIT_CALL = 'split_out = f(data=clean, seed=42)\nsplit_train = train = split_out["train"]\nsplit_test = split_out["test"]';
-/** The code cells of an exported notebook, read back as an import reads them. */
-const codeCells = (notebook: unknown) =>
-  cellsFromFile("flow.ipynb", JSON.stringify(notebook))
-    .filter((c) => c.kind === "code")
-    .map((c) => c.source);
 const byEnds = (edges: PipelineVersion["edges"]) => [...edges].sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));
 
 describe("notebook order (ADR-0033)", () => {
@@ -221,52 +214,5 @@ describe("editing the notebook's cells", () => {
 
   it("replaces a code step's cells from its whole source", () => {
     expect(withSource(steps, "cell_2", "a = 1\n# %%\nb = a")[3]).toEqual({ kind: "cells", nodeId: "cell_2", cells: ["a = 1", "b = a"] });
-  });
-});
-
-describe("download as .ipynb", () => {
-  const sources = new Map([
-    ["sprisk.io.file_source@1.0.0", "def f(path, format):\n    ..."],
-    ["sprisk.validation.random_split@1.0.0", "def f(data, seed):\n    ..."],
-  ]);
-
-  it("writes each cell, and a built-in step as its code plus its call", () => {
-    const notebook = flowAsIpynb(mixed, ops, sources);
-    expect(notebook.nbformat).toBe(4);
-    expect(codeCells(notebook)).toEqual([
-      `def f(path, format):\n    ...\n\nfrom pathlib import Path\n\n${LOAD_CALL}\nload_data`,
-      "def tidy(t):\n    return t.drop_nulls()",
-      "clean = tidy(df)",
-      `def f(data, seed):\n    ...\n\n${SPLIT_CALL}\ndisplay(split_train, split_test)`,
-      "n = train.height",
-    ]);
-  });
-
-  it("writes a built-in operator's code once, and a step's own code where it has it", () => {
-    const twice: PipelineVersion = {
-      ...pipeline,
-      nodes: [
-        { id: "a", operator: "sprisk.io.file_source@1.0.0", params: {} },
-        { id: "b", operator: "sprisk.io.file_source@1.0.0", params: {} },
-        { id: "c", operator: "sprisk.io.file_source@1.0.0", params: {}, code: { source: "def g():\n    ...", function: "g" } },
-      ],
-      edges: [],
-    };
-    expect(codeCells(flowAsIpynb(twice, ops, sources))).toEqual([
-      "def f(path, format):\n    ...\n\na_data = f()\na_data",
-      "b_data = f()\nb_data",
-      "def g():\n    ...\n\nc_data = g()\nc_data",
-    ]);
-  });
-
-  it("gives a v1 code step its input as data, with polars", () => {
-    const cells = codeCells(flowAsIpynb(codePipeline, ops, new Map(operators.map((o) => [o.id, "..."]))));
-    expect(cells[0]).toBe("import polars as pl");
-    // The code's own cell ends with its last line, so the notebook shows that value.
-    expect(cells.slice(-2)).toEqual(["data = load_data\nprint(data.height)\ndata.head(1)", "code_1_data = data"]);
-  });
-
-  it("says which operator's code is missing", () => {
-    expect(() => flowAsIpynb(mixed, ops, new Map())).toThrow("code of sprisk.io.file_source@1.0.0 is not loaded");
   });
 });

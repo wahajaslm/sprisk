@@ -1,4 +1,4 @@
-import type { CellRange, CodeSplitRequest, NotebookExecute, NotebookVersion } from "@sprisk/contracts";
+import type { CodeSplitRequest, NotebookExecute, NotebookVersion } from "@sprisk/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getList, getOne, postEmpty, postOne } from "./client.ts";
@@ -30,5 +30,5 @@ export const restartKernel = (notebookId: string) => postEmpty(`/notebooks/${not
 export const kernelVariables = (notebookId: string, names: string[]) =>
   getOne("NotebookVariables", `/notebooks/${notebookId}/variables?names=${names.join(",")}`);
 
-/** Python reads the code cells with the picked ones kept together (ADR-0036). Never runs them. */
-export const splitPicked = (cells: string[], together: CellRange) => postOne("CodeSplit", "/code/split", { cells, together } satisfies CodeSplitRequest);
+/** Python reads a notebook's code cells into steps (ADR-0031, ADR-0037). It never runs them. */
+export const splitNotebook = (cells: string[]) => postOne("CodeSplit", "/code/split", { cells } satisfies CodeSplitRequest);

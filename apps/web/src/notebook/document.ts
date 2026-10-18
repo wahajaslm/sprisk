@@ -12,8 +12,8 @@ export const newCellId = () => ulid().toLowerCase();
 /** Local mode's one project (the CLI's LOCAL_PROJECT), for a notebook made before any flow. */
 export const LOCAL_PROJECT = "prj_00000000000000000000000000";
 
-/** A new notebook: its first saved version (ADR-0036). */
-export function firstVersion(projectId: string, title: string, cells: NotebookCell[]): NotebookVersion {
+/** A new notebook: its first saved version, in the flow `flowVersionId` when there is one. */
+export function firstVersion(projectId: string, title: string, cells: NotebookCell[], flowVersionId?: string): NotebookVersion {
   return {
     schema_version: "sprisk.notebook_version/v1",
     id: `nbv_${ulid()}`,
@@ -21,12 +21,13 @@ export function firstVersion(projectId: string, title: string, cells: NotebookCe
     project_id: projectId,
     title,
     cells,
+    ...(flowVersionId ? { pipeline_version_id: flowVersionId } : {}),
     created_at: timestamp(),
   };
 }
 
 /** Versions are immutable: a save is a new version over the last one (rule 5). */
-export function nextNotebookVersion(base: NotebookVersion, change: Partial<Pick<NotebookVersion, "cells" | "title">>): NotebookVersion {
+export function nextNotebookVersion(base: NotebookVersion, change: Partial<Pick<NotebookVersion, "cells" | "title" | "pipeline_version_id">>): NotebookVersion {
   return { ...base, ...change, id: `nbv_${ulid()}`, parent_id: base.id, created_at: timestamp() };
 }
 

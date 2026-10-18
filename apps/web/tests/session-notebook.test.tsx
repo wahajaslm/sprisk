@@ -25,6 +25,7 @@ const sales: NotebookVersion = {
     { id: "filter", kind: "code", source: "eligible = customers[customers.n >= MIN]" },
     { id: "show", kind: "code", source: "eligible.describe()" },
   ],
+  pipeline_version_id: pipeline.id,
   created_at: "2026-10-18T12:00:00Z",
 };
 
@@ -67,7 +68,10 @@ function withApi(answer: (code: string, n: number) => NotebookExecution = (_, n)
           { source: "MIN = 10\neligible = customers[customers.n >= MIN]", cells: [2], parameters: [{ name: "MIN", value: 10 }], inputs: ["customers"], outputs: ["eligible", "model"] },
           { source: "eligible.describe()", cells: [3], parameters: [], inputs: ["eligible"], outputs: [] },
         ],
-        links: [],
+        links: [
+          { from_step: 1, to_step: 2, name: "customers" },
+          { from_step: 2, to_step: 3, name: "eligible" },
+        ],
         notes: [],
       });
     }),
@@ -166,6 +170,7 @@ describe("the session notebook (ADR-0036)", () => {
 
   it("Save writes the edited cells as a new version over the last one; running does not save", async () => {
     const sent = withApi();
+    useSelection.setState({ pipelineVersionId: pipeline.id });
     renderWithApi(<NotebooksPage />);
     await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), "0");
     await userEvent.click(screen.getByRole("button", { name: "Run cell 2" }));
@@ -188,75 +193,71 @@ describe("the session notebook (ADR-0036)", () => {
 
   it("a new notebook is saved before it can run", async () => {
     const sent = withApi();
+    useSelection.setState({ pipelineVersionId: pipeline.id });
     renderWithApi(<NotebooksPage />);
     await screen.findByRole("heading", { name: "Sales Analysis Notebook" });
     await userEvent.click(screen.getByRole("button", { name: "New notebook" }));
     await waitFor(() => expect(sent.saved).toHaveLength(1));
     expect(sent.saved[0]?.parent_id).toBeUndefined();
     expect(sent.saved[0]?.cells.map((c) => c.kind)).toEqual(["code"]);
+    // A new notebook joins the flow on screen.
+    expect(sent.saved[0]?.pipeline_version_id).toBe(pipeline.id);
   });
 
-  it("creates a node from picked cells: Python proposes, a non-table output is refused, the flow gets the node", async () => {
-    const sent = withApi();
-    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([{ ...pipeline, nodes: [...pipeline.nodes, { id: "customers", operator: "sprisk.code.python@2.0.0", params: { source: "customers = load()", outputs: ["customers"] } }] }])));
+  it("lists only the notebooks of the flow on screen", async () => {
+    withApi();
+    const elsewhere = { ...sales, notebook_id: "nb_01JAAAAAAAAAAAAAAAAAAAAAAZ", id: "nbv_01JAAAAAAAAAAAAAAAAAAAAAAZ", title: "Other flow's notebook", pipeline_version_id: "plv_01JAAAAAAAAAAAAAAAAAAAAAAZ" };
+    server.use(http.get("/api/notebooks", () => HttpResponse.json([elsewhere, sales])));
     useSelection.setState({ pipelineVersionId: pipeline.id });
     renderWithApi(<NotebooksPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Run cell 4" }));
-    await userEvent.click(screen.getByRole("group", { name: "Cell 4" }));
-    await userEvent.click(screen.getByRole("button", { name: "Create node from cells" }));
+    const list = await screen.findByRole("navigation", { name: "Notebooks" });
+    await within(list).findByRole("button", { name: "Sales analysis" });
+    expect(within(list).queryByRole("button", { name: "Other flow's notebook" })).toBeNull();
+  });
 
-    const dialog = await screen.findByRole("dialog", { name: "Create node" });
-    expect(sent.split[0]).toEqual({ cells: ["MIN = 10", "customers = load()", "eligible = customers[customers.n >= MIN]", "eligible.describe()"], together: { first: 2, last: 2 } });
-    expect(within(dialog).getByText("customers ← customers.customers")).toBeInTheDocument();
-    expect(within(dialog).getByRole("checkbox", { name: "MIN = 10" })).not.toBeChecked();
-    expect(within(dialog).getByRole("checkbox", { name: "eligible" })).toBeChecked();
-    const model = within(dialog).getByRole("checkbox", { name: "model" });
-    expect(model).toBeDisabled();
-    expect(within(dialog).getByText(/model is a sklearn.LogisticRegression, not a table/)).toBeInTheDocument();
-
-    await userEvent.click(within(dialog).getByRole("checkbox", { name: "MIN = 10" }));
-    await userEvent.clear(within(dialog).getByRole("textbox", { name: "Node name" }));
-    await userEvent.type(within(dialog).getByRole("textbox", { name: "Node name" }), "eligible");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Create node" }));
+  it("Save rebuilds the notebook's steps in its flow and shows that flow", async () => {
+    const sent = withApi();
+    useSelection.setState({ pipelineVersionId: pipeline.id });
+    renderWithApi(<NotebooksPage />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), "0");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(sent.versions).toHaveLength(1));
-    const node = sent.versions[0]?.nodes.at(-1);
-    expect(node?.params).toEqual({ source: "MIN = 10\neligible = customers[customers.n >= MIN]", inputs: ["customers"], outputs: ["eligible"], parameters: { MIN: 10 } });
-    expect(node?.from_notebook).toEqual({ notebook_version_id: sales.id, cells: ["filter"] });
-    expect(sent.versions[0]?.edges.at(-1)).toEqual({ from: "customers.customers", to: "eligible.customers" });
-    await waitFor(() => expect(useSelection.getState().nav).toBe("Flow"));
-    expect(useSelection.getState().pipelineVersionId).toBe(sent.versions[0]?.id);
+    expect(sent.saved[0]).toMatchObject({ parent_id: sales.id, pipeline_version_id: pipeline.id });
+    expect(sent.split[0]).toEqual({ cells: ["MIN = 100", "customers = load()", "eligible = customers[customers.n >= MIN]", "eligible.describe()"] });
+    const flow = sent.versions[0]!;
+    expect(flow.parent_id).toBe(pipeline.id);
+    const mine = flow.nodes.filter((n) => n.from_notebook?.notebook_id === NB);
+    expect(mine.map((n) => n.from_notebook?.cells)).toEqual([["params"], ["load"], ["filter"], ["show"]]);
+    expect(mine.every((n) => n.from_notebook?.notebook_version_id === sent.saved[0]!.id)).toBe(true);
+    await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(flow.id));
+    expect(await screen.findByText("Flow updated: 4 steps from this notebook.")).toBeInTheDocument();
   });
 
-  it("Create node asks the kernel again when a picked cell runs while it is open", async () => {
+  it("Run All runs the cells and brings the flow up to date", async () => {
     const sent = withApi();
-    let asked = 0;
-    server.use(
-      http.get(`/api/notebooks/${NB}/variables`, () => {
-        asked += 1;
-        return HttpResponse.json({ variables: [{ name: "eligible", defined: asked > 1, table: asked > 1, ...(asked > 1 ? { type: "pandas.DataFrame" } : {}) }, { name: "model", defined: false, table: false }] });
-      }),
-    );
+    useSelection.setState({ pipelineVersionId: pipeline.id });
     renderWithApi(<NotebooksPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Create node from cell 4" }));
-    const dialog = await screen.findByRole("dialog", { name: "Create node" });
-    expect(await within(dialog).findAllByText("Not run yet; its kind is checked when the node runs.")).toHaveLength(2);
-    await userEvent.click(screen.getByRole("button", { name: "Run cell 4" }));
-    await waitFor(() => expect(within(dialog).getAllByText("Not run yet; its kind is checked when the node runs.")).toHaveLength(1));
-    expect(sent.executed).toHaveLength(1);
+    await userEvent.click(await screen.findByRole("button", { name: "Run All" }));
+    await waitFor(() => expect(sent.executed).toHaveLength(4));
+    await waitFor(() => expect(sent.versions).toHaveLength(1));
   });
 
-  it("Shift+click picks a range of cells for one node", async () => {
+  it("a step's code edited on the canvas comes back into its cell", async () => {
     const sent = withApi();
+    const edited: PipelineVersion = {
+      ...pipeline,
+      nodes: [
+        ...pipeline.nodes,
+        { id: "sales_2", operator: "sprisk.code.python@2.0.0", params: { source: "customers = load(fresh=True)", outputs: ["customers"] }, from_notebook: { notebook_version_id: sales.id, notebook_id: NB, cells: ["load"] } },
+      ],
+    };
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([edited])));
+    useSelection.setState({ pipelineVersionId: pipeline.id });
     renderWithApi(<NotebooksPage />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("group", { name: "Cell 3" }));
-    await user.keyboard("{Shift>}");
-    await user.click(screen.getByRole("group", { name: "Cell 4" }));
-    await user.keyboard("{/Shift}");
-    await user.click(screen.getByRole("button", { name: "Create node from cells" }));
-    const dialog = await screen.findByRole("dialog", { name: "Create node" });
-    expect(sent.split[0]).toMatchObject({ together: { first: 1, last: 2 } });
-    expect(await within(dialog).findByText("Cell 3 has not run in this session.")).toBeInTheDocument();
+    await waitFor(() => expect(sent.saved).toHaveLength(1));
+    expect(sent.saved[0]?.cells.find((c) => c.id === "load")?.source).toBe("customers = load(fresh=True)");
+    expect(await screen.findByRole("textbox", { name: "Cell 3" })).toHaveValue("customers = load(fresh=True)");
+    expect(sent.versions).toEqual([]);
   });
 });

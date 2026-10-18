@@ -164,7 +164,7 @@ Initial deployments: (1) one Rust binary plus managed, trusted Python worker pro
 | `Assumption` | Explicit unverified or context-supplied proposition, with status and owner. | Versioned. |
 | `DecisionCase` / `DecisionRelease` | Alternatives, constraints, approval and frozen conditional action. | Case evolves; release immutable. |
 | `OutcomeObservation` | Later measurements tied to a release, treatment, evaluation plan and cohort. | Append-only correction-aware observations. |
-| `Notebook` / `NotebookVersion` | Ordered code and Markdown cells explored on a live kernel (ADR-0036). Its outputs are not saved. | Immutable versions. |
+| `Notebook` / `NotebookVersion` | Ordered code and Markdown cells explored on a live kernel (ADR-0036). Belongs to a flow; saving it rebuilds its steps there, and code edited on the flow comes back to it (ADR-0037). Its outputs are not saved. | Immutable versions. |
 | `AIPlanningSession` / `PipelineProposal` | Prompted context, model/provider, proposals, token costs and accepted changes. | Append-only proposals and tool actions. |
 
 Three linked graphs:

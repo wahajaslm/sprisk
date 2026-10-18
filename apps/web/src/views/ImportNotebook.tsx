@@ -5,6 +5,7 @@ import { usePipelineVersions } from "../api/hooks.ts";
 import { useSaveNotebook } from "../api/notebooks.ts";
 import { cellsFromFile, firstVersion, LOCAL_PROJECT } from "../notebook/document.ts";
 import { useEscape } from "../hooks/useEscape.ts";
+import { flowOf, flows } from "../flow/flows.ts";
 import { useSelection } from "../workbench/selection.ts";
 
 type Picked = { name: string; text: string };
@@ -18,6 +19,7 @@ export function ImportNotebook({ onClose }: { onClose: () => void }) {
   const versions = usePipelineVersions();
   const save = useSaveNotebook();
   const openNotebook = useSelection((s) => s.openNotebook);
+  const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
   useEscape(onClose);
 
   let cells: NotebookCell[] = [];
@@ -30,7 +32,9 @@ export function ImportNotebook({ onClose }: { onClose: () => void }) {
   const create = () => {
     setProblem(undefined);
     const title = file ? file.name.replace(/\.(ipynb|py)$/, "") : "Imported notebook";
-    const version = firstVersion(versions.data?.[0]?.project_id ?? LOCAL_PROJECT, title, cells);
+    // An imported notebook joins the flow on screen (ADR-0037).
+    const flow = flowOf(flows(versions.data ?? []), pipelineVersionId)?.head;
+    const version = firstVersion(flow?.project_id ?? LOCAL_PROJECT, title, cells, flow?.id);
     save.mutate(version, {
       onSuccess: (saved) => {
         openNotebook(saved.notebook_id);

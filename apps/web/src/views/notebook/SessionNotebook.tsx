@@ -1,25 +1,26 @@
-import type { NotebookCell, NotebookExecution, NotebookVersion } from "@sprisk/contracts";
-import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from "react";
+import type { NotebookCell, NotebookExecution, NotebookVersion, PipelineVersion } from "@sprisk/contracts";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 
-import { executeCell, interruptKernel, restartKernel, useSaveNotebook } from "../../api/notebooks.ts";
+import { useSavePipelineVersion } from "../../api/hooks.ts";
+import { executeCell, interruptKernel, restartKernel, splitNotebook, useSaveNotebook } from "../../api/notebooks.ts";
 import { newCellId, nextNotebookVersion, toIpynb } from "../../notebook/document.ts";
 import { ranOutOfOrder } from "../../notebook/node.ts";
 import { type Ran, useOutputs } from "../../notebook/outputs.ts";
+import { cellsFromFlow, stepsIntoFlow } from "../../notebook/sync.ts";
+import { useSelection } from "../../workbench/selection.ts";
 import { CodeInput } from "../CodeInput.tsx";
 import { AddIcon, CheckIcon, CrossIcon, ExportIcon, PlayIcon, RunAllIcon, TrashIcon } from "../Icons.tsx";
 import { CellOutputs } from "./CellOutputs.tsx";
-import { CreateNode } from "./CreateNode.tsx";
 
 type Queued = { id: string; code: string };
-type Range = { first: number; last: number };
 
 const EMPTY: Record<string, Ran> = {};
 
 /** A notebook on a live kernel, laid out as VS Code's notebook editor (ADR-0035, ADR-0036).
- * Cells share the kernel's state and run in the order the person chooses. Running changes no
- * flow; Create node does, from the cells the person picks. */
-export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
+ * Cells share the kernel's state and run in the order the person chooses. Save and Run All
+ * rebuild its steps in `flow`; code edited on the flow comes back into its cells (ADR-0037). */
+export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow: PipelineVersion | undefined }) {
   const notebookId = saved.notebook_id;
   const [cells, setCells] = useState(saved.cells);
   const [title, setTitle] = useState(saved.title);
@@ -27,13 +28,15 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
   // cells remounts them so each shows its own cell's text.
   const [generation, setGeneration] = useState(0);
   const [active, setActive] = useState(0);
-  const [anchor, setAnchor] = useState(0);
   const [editing, setEditing] = useState<ReadonlySet<string>>(new Set());
   const [running, setRunning] = useState<string | undefined>();
   const [queued, setQueued] = useState<string[]>([]);
   const [problem, setProblem] = useState<string | undefined>();
-  const [creating, setCreating] = useState<Range | undefined>();
-  const results = useOutputs((s) => s.byNotebook[notebookId]) ?? EMPTY;
+  const [news, setNews] = useState<string | undefined>();
+  // Cells as the flow's code has them, waiting for the person's choice over their unsaved edits.
+  const [incoming, setIncoming] = useState<NotebookCell[] | undefined>();
+  const savePipeline = useSavePipelineVersion();
+  const selectPipelineVersion = useSelection((s) => s.selectPipelineVersion);  const results = useOutputs((s) => s.byNotebook[notebookId]) ?? EMPTY;
   const setResult = useOutputs((s) => s.set);
   const clearResults = useOutputs((s) => s.clear);
   const save = useSaveNotebook();
@@ -44,8 +47,6 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
   const focusAfterRender = useRef(false);
 
   const edited = title !== saved.title || JSON.stringify(cells) !== JSON.stringify(saved.cells);
-  const picked: Range = { first: Math.min(anchor, active), last: Math.max(anchor, active) };
-  const pickedHasCode = cells.slice(picked.first, picked.last + 1).some((c) => c.kind === "code");
 
   useEffect(() => {
     if (!focusAfterRender.current) return;
@@ -59,14 +60,12 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
     setCells(change);
     setGeneration((g) => g + 1);
     setActive(nextActive);
-    setAnchor(nextActive);
     focusAfterRender.current = true;
   };
-  const select = (index: number, { extend = false, focus = false } = {}) => {
+  const select = (index: number, { focus = false } = {}) => {
     if (index < 0 || index >= cells.length) return;
     pendingD.current = false;
     setActive(index);
-    if (!extend) setAnchor(index);
     if (focus) cellNodes.current.get(index)?.focus();
   };
   const setSource = (index: number, source: string) => setCells((now) => now.map((c, i) => (i === index ? { ...c, source } : c)));
@@ -132,12 +131,65 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
     });
   };
   const current = (): NotebookVersion => ({ ...saved, title, cells });
-  const saveNow = async () => (edited ? save.mutateAsync(nextNotebookVersion(saved, { cells, title })) : saved);
+  const failed = (e: unknown) => setProblem(e instanceof Error ? e.message : String(e));
+  // The flow this notebook belongs to: the one it names, or the one on screen.
+  const inFlow = () => {
+    const id = saved.pipeline_version_id ?? flow?.id;
+    return id ? { pipeline_version_id: id } : {};
+  };
+
+  /** This notebook's steps rebuilt in its flow from `version`'s cells (ADR-0037). */
+  const syncFlow = async (version: NotebookVersion) => {
+    const split = await splitNotebook(version.cells.filter((c) => c.kind === "code").map((c) => c.source));
+    const done = stepsIntoFlow({ base: flow, projectId: version.project_id, notebook: version, split });
+    if ("refused" in done) return setProblem(done.refused);
+    if ("unchanged" in done) return;
+    const made = await savePipeline.mutateAsync(done.version);
+    selectPipelineVersion(made.id);
+    const steps = made.nodes.filter((n) => n.from_notebook?.notebook_id === version.notebook_id).length;
+    setNews(`Flow updated: ${steps} ${steps === 1 ? "step" : "steps"} from this notebook.`);
+    // A notebook's first flow: it belongs to it from now on.
+    if (!version.pipeline_version_id) await save.mutateAsync(nextNotebookVersion(version, { pipeline_version_id: made.id }));
+  };
+  const saveNow = async () => {
+    setProblem(undefined);
+    setIncoming(undefined);
+    try {
+      const version = edited ? await save.mutateAsync(nextNotebookVersion(saved, { cells, title, ...inFlow() })) : saved;
+      await syncFlow(version);
+    } catch (e) {
+      failed(e);
+    }
+  };
+  const runAll = () => {
+    enqueue(codeOf(0, cells.length));
+    void saveNow();
+  };
+
+  // Code edited on the flow comes back into the cells; unsaved edits are never overwritten.
+  useEffect(() => {
+    if (!flow) return;
+    const fromFlow = cellsFromFlow(flow, saved);
+    if (!fromFlow) return;
+    if (edited) {
+      setIncoming(fromFlow);
+      return;
+    }
+    takeFromFlow(fromFlow);
+    // Only when the flow or the saved notebook changes, not on each keystroke.
+  }, [flow?.id, saved.id]);
+
+  const takeFromFlow = (fromFlow: NotebookCell[]) => {
+    setIncoming(undefined);
+    reshape(() => fromFlow, active);
+    setNews("Cells updated from code edited on the flow.");
+    save.mutate(nextNotebookVersion(saved, { cells: fromFlow, ...inFlow() }), { onError: failed });
+  };
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
-      if (edited) void saveNow();
+      void saveNow();
       return;
     }
     if (!(e.target instanceof HTMLElement) || e.target.dataset["cell"] === undefined) return;
@@ -156,10 +208,10 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
       runCell(active, cell.source, e.shiftKey);
     } else if (key === "ArrowUp" || key === "k") {
       e.preventDefault();
-      select(active - 1, { extend: e.shiftKey, focus: true });
+      select(active - 1, { focus: true });
     } else if (key === "ArrowDown" || key === "j") {
       e.preventDefault();
-      select(active + 1, { extend: e.shiftKey, focus: true });
+      select(active + 1, { focus: true });
     } else if (key === "a") insert(active, "code");
     else if (key === "b") insert(active + 1, "code");
     else if (key === "m") setKind(active, "markdown");
@@ -182,7 +234,7 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
           <AddIcon /> Markdown
         </button>
         <span className="nb-divider" />
-        <button type="button" className="nb-action" onClick={() => enqueue(codeOf(0, cells.length))}>
+        <button type="button" className="nb-action" onClick={runAll}>
           <RunAllIcon /> Run All
         </button>
         <button type="button" className="nb-action" onClick={interrupt}>
@@ -194,24 +246,32 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
         <button type="button" className="nb-action" onClick={() => clearResults(notebookId)}>
           Clear All Outputs
         </button>
-        <span className="nb-divider" />
-        <button type="button" className="nb-action" disabled={!pickedHasCode} onClick={() => setCreating(picked)}>
-          Create node from cells
-        </button>
         <span className="spacer" />
-        <button type="button" className="nb-action" disabled={!edited || save.isPending} onClick={() => void saveNow()}>
+        <button type="button" className="nb-action" disabled={save.isPending || savePipeline.isPending} onClick={() => void saveNow()} title="Save, and rebuild this notebook's steps in the flow">
           {edited ? "Save" : "Saved"}
         </button>
         <button type="button" className="nb-action" onClick={() => download(current(), results)}>
           <ExportIcon /> Export
         </button>
-        <span className="nb-kernel" title="One live Python kernel for this notebook. Its results are scratch until a node is made from the cells.">
+        <span className="nb-kernel" title="One live Python kernel for this notebook. Its results are scratch; the flow runs the saved cells in its own workers.">
           <span className={`nb-kernel-dot${running ? " busy" : ""}`} /> Python 3 · {running ? "busy" : "idle"}
         </span>
       </div>
       <div className="nb-scroll" onKeyDown={onKeyDown}>
         <input className="nb-title" aria-label="Notebook title" value={title} onChange={(e) => setTitle(e.target.value)} />
         {(problem ?? save.error?.message) && <p role="alert" className="error nb-message">{problem ?? save.error?.message}</p>}
+        {news && <p className="nb-message nb-note">{news}</p>}
+        {incoming && (
+          <div role="alert" className="nb-message nb-incoming">
+            <span>The flow's code for this notebook changed while you have unsaved edits.</span>
+            <button type="button" className="page-btn" onClick={() => takeFromFlow(incoming)}>
+              Use the flow's code
+            </button>
+            <button type="button" className="page-btn" onClick={() => setIncoming(undefined)}>
+              Keep mine
+            </button>
+          </div>
+        )}
         {outOfOrder && (
           <p className="nb-message nb-note">Cells ran out of order: the kernel's state may not match reading the notebook from the top.</p>
         )}
@@ -222,22 +282,16 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
           const result = ran?.result;
           const stale = ran !== undefined && ran.code !== cell.source;
           const state = running === cell.id ? "running" : queued.includes(cell.id) ? "queued" : undefined;
-          const inPick = index >= picked.first && index <= picked.last && picked.first !== picked.last;
-          const onMouseDown = (e: MouseEvent) => {
-            // Shift+click picks a range of cells, not a range of the page's text.
-            if (e.shiftKey) e.preventDefault();
-            select(index, { extend: e.shiftKey });
-          };
           return (
             <div key={`${generation}/${cell.id}`}>
               <div
-                className={`nb-cell${index === active ? " active" : ""}${inPick ? " picked" : ""}`}
+                className={`nb-cell${index === active ? " active" : ""}`}
                 role="group"
                 aria-label={`Cell ${n}`}
                 tabIndex={-1}
                 data-cell={n}
                 ref={(el) => void (el ? cellNodes.current.set(index, el) : cellNodes.current.delete(index))}
-                onMouseDown={onMouseDown}
+                onMouseDown={() => select(index)}
               >
                 <div className="nb-gutter">
                   {cell.kind === "code" && (
@@ -252,11 +306,6 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
                     {cell.kind === "code" && (
                       <button type="button" className="nb-icon" title="Execute Above Cells" aria-label={`Run cells above ${n}`} onClick={() => enqueue(codeOf(0, index))}>
                         <RunAllIcon />
-                      </button>
-                    )}
-                    {cell.kind === "code" && (
-                      <button type="button" className="nb-icon" title="Create node from this cell" aria-label={`Create node from cell ${n}`} onClick={() => setCreating({ first: index, last: index })}>
-                        <AddIcon />
                       </button>
                     )}
                     <button type="button" className="nb-icon" title="Delete Cell" aria-label={`Delete cell ${n}`} onClick={() => remove(index)}>
@@ -294,7 +343,6 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
           );
         })}
       </div>
-      {creating && <CreateNode notebookId={notebookId} cells={cells} range={creating} results={results} saveNotebook={saveNow} onClose={() => setCreating(undefined)} />}
     </div>
   );
 }

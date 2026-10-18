@@ -106,7 +106,7 @@ export function cellsFromFlow(flow: PipelineVersion, notebook: NotebookVersion):
     const earlier = new Set(cells.slice(0, first).flatMap((c) => (c.kind === "code" ? c.source.split("\n").map((l) => l.trim()) : [])));
     const parts = source.split(CELL_MARKER).map((p) => p.trim());
     parts[0] = withoutCopied(parts[0] ?? "", earlier);
-    const now = ids.map((id) => cells.find((c) => c.id === id)?.source.trim());
+    const now = ids.map((id) => asInStep(cells.find((c) => c.id === id)?.source ?? ""));
     if (parts.length === ids.length && parts.every((p, i) => p === now[i])) continue;
     changed = true;
     const replaced = new Map(ids.map((id, i) => [id, parts[i]]));
@@ -121,6 +121,14 @@ export function cellsFromFlow(flow: PipelineVersion, notebook: NotebookVersion):
   }
   return changed ? cells : undefined;
 }
+
+/** A cell as the analyzer puts it in a step: IPython magics (`%`, `!`) become comments. */
+const asInStep = (source: string) =>
+  source
+    .split("\n")
+    .map((line) => (/^\s*[%!]/.test(line) ? `# ${line.trim()}` : line))
+    .join("\n")
+    .trim();
 
 function withoutCopied(part: string, earlier: Set<string>) {
   const lines = part.split("\n");
