@@ -18,7 +18,14 @@ Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (
   - Its possible decisions.
   - Each decision's action: an existing operator and its params, and where it goes (`before_split`, or `fit_on: train`).
 - **The logic is one pure Python function:** `decide(observation, settings) -> (decision, reason)`. No rule language. Same inputs, same output.
-- **Rules in a pack run in a fixed order** (a chain). Each rule reads the profile as left by the rules before it. There is no general rule engine.
+- **Every rule declares `stage`, `needs`, `decides` and `source`.**
+  - `stage`: one of question, data, cleaning, split, features, models, evaluation, reporting. Stages run in that order.
+  - `needs`: facts and earlier decisions it reads (e.g. `question.time_column`). Inside a stage, rules run in the order `needs` implies (`networkx` topological order). A need that is missing or only inferred makes the rule ask, never guess.
+  - `decides`: what it owns (e.g. `split.method`). **One owner per decision**; two rules claiming the same one are refused when packs load.
+  - `source`: the published guidance it follows (e.g. scikit-learn "Common pitfalls", TRIPOD+AI, REFORMS).
+- **The question picks the packs.** `QuestionVersion.task` and its facts select which packs apply: a time-series question never runs a rule meant for random splits.
+- **Defaults follow current best practice.** A weaker option stays available but needs a reason, like an override.
+- **Each rule has a matching Gate B check** (ADR-0040) where one is possible: the rule builds it right, the check catches it built wrong by any route.
 - **Evaluation runs as a worker Attempt**, like Gate B. It reads the profile artifact and returns the decision table. Moving a setting re-evaluates only the function, never the flow.
 - **New immutable entity `MethodologyDecision`** (contract via `/new-contract`): rule ref, dataset version, profile artifact, settings, one row per subject (observation, decision, reason), overrides (decision, reason, who), and the resulting `pipeline_version_id`. A change of setting or override makes a new record (rule 5).
 - **Overrides need a reason.** Hard constraints in the manifest (e.g. `fit_on: train`) cannot be overridden.
@@ -28,7 +35,7 @@ Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (
 - **UI: a `decisions` view type.** Settings on top, the decision table below (close calls marked), an override per row, Apply with a diff of the flow.
 - **First pack `methodology/cleaning`, two rules in order:**
   1. `cleaning.missing_markers`: which text means missing (default `NA`, empty). Action: `file_source.missing_values`.
-  2. `cleaning.missing_values`: drop above a threshold (default 20%), otherwise fill. Action: `select_columns` before the split; `impute` after it, fit on train.
+  2. `cleaning.missing_values`: default fills inside cross-validation, fit on train rows, and adds a "was missing" column. Dropping a column above a threshold (e.g. 20%) is an option that needs a reason. Actions: `impute` after the split, fit on train; `select_columns` before the split for a drop.
 
 ## Alternatives considered
 - **A rule language (YAML conditions).** Rejected: a second language to learn, test and debug. Python functions are tested like any code.
@@ -42,7 +49,12 @@ Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (
 - Good: a new rule is a new folder; no changes to Rust, the compiler or the UI (§15.1).
 - Bad: `impute` fills numbers only today (`median`, `mean`, `zero`). Text columns need a `most_frequent` method first.
 - Bad: rules see only what the profile measures. A rule needing more (e.g. missingness by target) needs a profile field first.
-- Bad: a fixed chain cannot express rules that depend on each other both ways. Accepted until a real case needs it.
+- Bad: rules that depend on each other both ways cannot be expressed; `needs` must form no cycle. Accepted until a real case needs it.
+- Bad: rule quality depends on expert review. Each rule version needs a named reviewer before it ships.
+
+## Later packs (each its own change)
+- Cross-cutting: fairness by subgroup, uncertainty, multiple testing, sample size, distribution shift, privacy (PII), reproducibility.
+- By field: clinical (TRIPOD+AI, survival), time series and finance (no look-ahead), spatial (spatial CV), omics (many features, batch effects), surveys (weights), text and images (near-duplicates across splits), causal and A/B (confounders).
 
 ## Validation
 - Fixture tests: penguins (`NA` markers, `Comments` 84% missing) gives the expected decision table at 20% and at 3%; an override is kept with its reason.
