@@ -164,7 +164,7 @@ def test_a_matplotlib_plot_is_an_svg_figure(session: Session) -> None:
 
 
 def test_a_plotly_figure_shows_once_as_a_value_or_with_show(session: Session) -> None:
-    session.execute("import plotly.graph_objects as go\nfig = go.Figure(go.Bar(x=[1, 2], y=[3, 4]))")
+    session.execute("import plotly.graph_objects as go\nfig = go.Figure(go.Bar(y=[3, 4]))")
     for code in ["fig", "fig.show()"]:
         done = session.execute(code)
         assert done.status == "ok", done.error
