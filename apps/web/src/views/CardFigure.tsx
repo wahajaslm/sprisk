@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { useFirstFigure } from "../api/figures.ts";
+import { MAX_FIGURE_BYTES, useFirstFigure } from "../api/figures.ts";
 import { useOutputs } from "../api/hooks.ts";
 import { FigureView } from "./inspector/FiguresTab.tsx";
 
@@ -8,7 +8,9 @@ import { FigureView } from "./inspector/FiguresTab.tsx";
  * no figure keeps what its card showed before (`fallback`). Only that figure is fetched. */
 export function CardFigure({ attemptId, port, fact, fallback }: { attemptId: string; port: string; fact: ReactNode; fallback: ReactNode }) {
   const outputs = useOutputs(attemptId);
-  const artifactId = outputs.data?.find((o) => o.port === port)?.artifact.id;
+  const artifact = outputs.data?.find((o) => o.port === port)?.artifact;
+  // A report over the figure cap is never read, so its figure is not drawn here (ADR-0029).
+  const artifactId = artifact && artifact.size_bytes <= MAX_FIGURE_BYTES ? artifact.id : undefined;
   const first = useFirstFigure(artifactId);
   if (outputs.isError) return <Problem message={outputs.error.message} />;
   if (outputs.isPending) return <Skeleton />;

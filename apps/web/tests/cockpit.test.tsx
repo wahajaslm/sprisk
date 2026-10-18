@@ -591,7 +591,7 @@ describe("node previews", () => {
 
   /** A code step (as in the example flows) whose display report holds a table; returns what
    * the canvas asked for. */
-  function codeStepDrawing(figures: () => Response) {
+  function codeStepDrawing(figures: () => Response, sizeBytes = 900) {
     const asked: string[] = [];
     const display = codeOutputs[0]!.artifact.id;
     const nodes = codePipeline.nodes.map((n) => (n.id === "code_1" ? { ...n, operator: "sprisk.code.python@2.0.0" } : n));
@@ -599,7 +599,9 @@ describe("node previews", () => {
       http.get("/api/pipeline_versions", () => HttpResponse.json([{ ...codePipeline, nodes }])),
       http.get("/api/operators", () => HttpResponse.json([...operators, notebookOperator])),
       http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
-      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () => HttpResponse.json(codeOutputs)),
+      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () =>
+        HttpResponse.json([{ ...codeOutputs[0]!, artifact: { ...codeOutputs[0]!.artifact, size_bytes: sizeBytes } }]),
+      ),
       http.get(`/api/artifacts/${display}/content`, () => {
         asked.push("content");
         return HttpResponse.text(codeDisplayJson);
@@ -627,6 +629,13 @@ describe("node previews", () => {
     codeStepDrawing(() => HttpResponse.json({ items: [] }));
     const card = await screen.findByRole("button", { name: /^code_1/ });
     await waitFor(() => expect(card).toHaveTextContent("output saved"));
+  });
+
+  it("does not fetch a figure from a report above the figure cap", async () => {
+    const asked = codeStepDrawing(() => HttpResponse.json({ items: [plotly("Target")] }), 10_000_000);
+    const card = await screen.findByRole("button", { name: /^code_1/ });
+    await waitFor(() => expect(card).toHaveTextContent("output saved"));
+    expect(asked).toEqual([]);
   });
 
   it("says why the figure could not be read", async () => {

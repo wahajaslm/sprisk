@@ -6,7 +6,7 @@ import { getOne } from "./client.ts";
 import { type Read, useReport } from "./code.ts";
 
 /** Figures can carry many points; still capped, like code output (rule 9). */
-const MAX_FIGURE_BYTES = 8 * 1024 * 1024;
+export const MAX_FIGURE_BYTES = 8 * 1024 * 1024;
 
 /** The figures one step drew on one `figure` port (ADR-0024). */
 export const useFigureSet = (attempt: Attempt | undefined, port: string): Read<FigureSet> =>
