@@ -95,7 +95,8 @@ export function distributions(profile: DatasetProfile, color: Color): Figure {
         showarrow: false,
         font: { size: 11 },
       })),
-      ...Object.fromEntries(shown.map((_, i) => [`xaxis${axis(i)}`, { showticklabels: false }])),
+      // Every axis is declared, so the theme reaches each chart's grid (plotlyTheme.ts).
+      ...Object.fromEntries(shown.flatMap((_, i) => [[`xaxis${axis(i)}`, { showticklabels: false }], [`yaxis${axis(i)}`, { nticks: 4 }]])),
     },
   };
 }

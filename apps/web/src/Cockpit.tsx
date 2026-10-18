@@ -1,4 +1,5 @@
 import { Copilot } from "./views/Copilot.tsx";
+import { DatasetsPage } from "./views/datasets/DatasetsPage.tsx";
 import { Experiments } from "./views/Experiments.tsx";
 import { StepTabLabel } from "./views/inspector/step.tsx";
 import { ComingView, Placeholder } from "./views/Placeholder.tsx";
@@ -14,7 +15,6 @@ import { useSelection } from "./workbench/selection.ts";
 const views = { sidebar: Sidebar, flow: FlowPanel, copilot: Copilot, "step-tab": StepTab, placeholder: Placeholder };
 
 const COMING = {
-  Datasets: "Every dataset with origin, rows, columns, quality and where the flow uses it; column profiles from Profile.",
   Deploy: "Production and staging models, canary traffic, latency and drift.",
 } as const;
 
@@ -31,6 +31,8 @@ export function Cockpit() {
           <Experiments />
         ) : nav === "Notebooks" ? (
           <NotebooksPage />
+        ) : nav === "Datasets" ? (
+          <DatasetsPage />
         ) : (
           <ComingView title={nav} shows={COMING[nav]} />
         )}

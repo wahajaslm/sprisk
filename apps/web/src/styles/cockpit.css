@@ -466,6 +466,31 @@ p { margin: 0; }
 .exp-table input[type="checkbox"] { accent-color: var(--ink); }
 .exp-table .num { text-align: right; }
 .exp-table .changed { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Datasets (ADR-0038): the tables flows load, then one table's profile. */
+.datasets { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; background: var(--canvas); overflow: hidden; }
+.ds-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); }
+.ds-filter { width: 260px; max-width: 100%; height: 30px; padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: 0; background: transparent; color: var(--ink); }
+.ds-body { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: auto; }
+.ds-list { max-height: 40vh; overflow: auto; border-bottom: 1px solid var(--line); }
+.ds-name { padding: 0; border: 0; background: transparent; color: var(--ink); font: 500 var(--text-sm) var(--mono); cursor: pointer; text-align: left; }
+.ds-used { color: var(--muted); max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.ds-detail { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 0; }
+.ds-summary { padding: var(--space-5); border-right: 1px solid var(--line); display: grid; align-content: start; gap: var(--space-3); }
+.ds-summary h2 { margin: 0; font-size: var(--text-lg); font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.ds-summary p { margin: 0; }
+.ds-summary dl { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-sm); }
+.ds-summary dt { color: var(--muted); }
+.ds-summary dd { margin: 0; text-align: right; color: var(--soft); font-family: var(--mono); }
+.ds-note { white-space: normal; }
+.ds-profile { display: grid; align-content: start; gap: var(--space-4); padding: var(--space-4) var(--space-5); min-width: 0; }
+.ds-missing { display: flex; align-items: center; gap: var(--space-2); }
+.ds-missing-bar { width: 120px; height: 6px; background: var(--wash-strong); overflow: hidden; }
+.ds-missing-bar span { display: block; height: 100%; }
+.ds-missing-bar .warn { background: var(--alert); }
+.ds-shape { width: 120px; height: 18px; }
+.ds-plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--space-3); }
+.ds-plots .plotly-figure { min-height: 320px; }
 .status-failed { color: var(--alert); }
 .metric-cell { display: inline-flex; align-items: center; gap: var(--space-2); font: var(--text-sm) var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
 .dots { position: relative; width: 84px; height: 6px; background-image: radial-gradient(var(--ghost) 1px, transparent 1.2px); background-size: 4px 6px; }

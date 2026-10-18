@@ -39,6 +39,8 @@ describe("dataset profile figures", () => {
     expect(fig.data).toHaveLength(2);
     expect(fig.data.map((t) => (t as { xaxis: string }).xaxis)).toEqual(["x", "x2"]);
     expect(fig.layout.grid).toMatchObject({ rows: 1, columns: 2, pattern: "independent" });
+    // Declared, so the theme can colour every chart's grid.
+    expect(fig.layout).toHaveProperty("yaxis2");
   });
 
   it("shows dataset text as text: markup in a column name is escaped", () => {
