@@ -48,9 +48,8 @@ CV_SPLITTERS = frozenset(
 FIT_METHODS = frozenset({"fit", "fit_transform", "partial_fit"})
 
 LIMITATIONS = (
-    "Reads code steps by their syntax only. Not followed: fits inside functions, `with` "
-    "targets, loops over CV fold indices, and libraries other than scikit-learn. A built-in "
-    "step's own code is not read; its outputs carry the tags of its inputs."
+    "Reads the code without running it. It cannot see fits inside functions, loops over "
+    "cross-validation folds, or libraries other than scikit-learn."
 )
 
 type Tag = Literal["train", "holdout", "fitted"]
@@ -99,11 +98,11 @@ class _Step:
             self._note_leak(
                 call,
                 "fitted",
-                "passes rows a fitting transform already learned from to cross-validation",
+                "passes already-scaled or already-selected rows to cross-validation",
             )
         if method not in FIT_METHODS or not call.args:
             return
-        self._note_leak(call, "holdout", "fits on holdout rows")
+        self._note_leak(call, "holdout", "learns from test-set rows")
         first = self._tags_of(call.args[0])
         if cls in FITTING_TRANSFORMERS and not first & {"train", "holdout"}:
             self.unsplit_fits.append((call.lineno, cls, ast.unparse(call.args[0])))
@@ -225,14 +224,14 @@ def code_leakage(pipeline: PipelineVersion, check_id: str, now: str) -> Methodol
     if finding:
         return _result(pipeline, check_id, now, Verdict.fail, *finding)
     if unread:
-        rationale = f"Could not read the code of {', '.join(unread)}; it does not parse."
+        rationale = f"Could not read the code of {', '.join(unread)}; it has a syntax error."
         return _result(pipeline, check_id, now, Verdict.not_assessed, rationale, unread)
     if not split_nodes:
-        rationale = "Found no split or cross-validation, so no fit can leak across one."
+        rationale = "There is no split in the flow, so there is no test set to protect."
         return _result(pipeline, check_id, now, Verdict.not_assessed, rationale, code_nodes)
     rationale = (
-        f"Read code steps {', '.join(code_nodes)}: no fit uses holdout rows, no "
-        "cross-validation gets pre-fitted rows, and no transform learns from unsplit rows."
+        f"Read the code of {', '.join(code_nodes)}. No model learns from the test set, and "
+        "no scaling or feature selection happens before the split."
     )
     return _result(pipeline, check_id, now, Verdict.pass_, rationale, code_nodes)
 
@@ -252,9 +251,9 @@ def _first_finding(
             if related:
                 where = "this step" if related == [node] else ", ".join(related)
                 return (
-                    f"{node} line {line}: {cls} learns from {data}, rows that are not a "
-                    f"split's train rows, and {where} splits them. Fit it on the train rows, "
-                    "or put it in a Pipeline under cross-validation.",
+                    f"{node} line {line}: {cls} learns from {data} before the data is split "
+                    f"({where}), so it sees the test rows. Fit it on the training rows, or put "
+                    "it in a Pipeline inside cross-validation.",
                     sorted({node, *related}),
                 )
     return None

@@ -26,8 +26,8 @@ FITTING_TRANSFORMS = frozenset(
 )
 
 LIMITATIONS = (
-    "Checks one pipeline version only; selection across versions that reuse the same "
-    "split is not detected."
+    "Looks at this version of the flow only. If earlier versions compared models on the "
+    "same test set, this check cannot see it."
 )
 
 
@@ -65,7 +65,10 @@ def split_leakage(
         if op_of[node].capability_class == CapabilityClass.estimator:
             fitted_on = sorted(holdouts & nx.ancestors(graph, node))
             if fitted_on:
-                rationale = f"{node} is fit on data derived from holdout {fitted_on[0]}."
+                rationale = (
+                    f"{node} learns from the test set ({fitted_on[0]}). "
+                    "A model may only learn from training rows."
+                )
                 cited = [node, fitted_on[0].split(".")[0]]
                 return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
 
@@ -89,16 +92,17 @@ def split_leakage(
         if len(models) > 1:
             cited = sorted({holdout.split(".")[0], *(e for evs in models.values() for e in evs)})
             rationale = (
-                f"Holdout {holdout} scores {len(models)} non-baseline models "
-                f"({', '.join(sorted(models))}); choosing between them uses the holdout."
+                f"The test set ({holdout}) is used to compare {len(models)} models "
+                f"({', '.join(sorted(models))}). Picking the winner on the test set makes its "
+                "score look better than it is. Compare models with cross-validation on the "
+                "training rows, then score only the chosen one on the test set."
             )
             return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
 
     examined = sorted({*evaluators, *(h.split(".")[0] for h in holdouts)})
     rationale = (
-        f"Examined evaluators {', '.join(evaluators)} against holdouts "
-        f"{', '.join(sorted(holdouts)) or 'none'}: each holdout scores at most one "
-        "non-baseline model, and no estimator is fit on a holdout."
+        f"The test set ({', '.join(sorted(holdouts)) or 'none'}) scores at most one model "
+        "besides the baseline, and no model learns from it."
     )
     return _result(pipeline, check_id, now, Verdict.pass_, rationale, examined)
 
@@ -159,21 +163,21 @@ def _fit_problem(
         (nx.ancestors(cut, train_src) | {train_src.split(".")[0]}) if train_src in cut else set()
     )
     if holdouts & train_lineage:
-        where = f"holdout {sorted(holdouts & train_lineage)[0]}"
+        where = f"the test set ({sorted(holdouts & train_lineage)[0]})"
     elif not fed_by or sources & reach:
-        where = f"rows that did not pass through a split's train port ({train_src})"
+        where = f"rows that were never split ({train_src})"
     else:
         test_lineage = nx.ancestors(graph, test_src) | {test_src}
         own = {h for h in holdouts if h.split(".")[0] in fed_by}
         if own & test_lineage:
             return None
         return (
-            f"{node}.test must come from the holdout of the split that feeds {node}.train; "
+            f"{node} gets its test rows from a different split than its training rows; "
             f"it comes from {test_src}.",
             sorted({node, test_src.split(".")[0]}),
         )
     return (
-        f"{node} learns its statistics from {where}; fit it on a split's train rows.",
+        f"{node} learns its settings from {where}. Fit it on the training rows only.",
         sorted({node, train_src.split(".")[0]}),
     )
 
