@@ -3,10 +3,12 @@ import type { NotebookExecution } from "@sprisk/contracts";
 import { FigureView } from "../inspector/FiguresTab.tsx";
 import { ShownTable } from "../inspector/VisualsTab.tsx";
 
+/** Whether a run left anything to show: outputs, an error, or a time limit hit. */
+export const hasOutputs = (result: NotebookExecution) => result.outputs.length > 0 || result.error !== undefined || result.status === "timed_out";
+
 /** What one run of a cell printed, showed and drew, then its error, as a notebook shows them. */
 export function CellOutputs({ result }: { result: NotebookExecution }) {
   let figure = 0;
-  if (result.outputs.length === 0 && !result.error && result.status !== "timed_out") return null;
   return (
     <div className="nb-output">
       {result.outputs.map((item, i) => {

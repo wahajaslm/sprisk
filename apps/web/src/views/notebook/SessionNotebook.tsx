@@ -4,18 +4,20 @@ import Markdown, { defaultUrlTransform } from "react-markdown";
 
 import { useSavePipelineVersion } from "../../api/hooks.ts";
 import { executeCell, interruptKernel, restartKernel, splitNotebook, useSaveNotebook } from "../../api/notebooks.ts";
+import { type CellPart, type Folded, useCollapsed } from "../../notebook/collapsed.ts";
 import { newCellId, nextNotebookVersion, toIpynb } from "../../notebook/document.ts";
 import { ranOutOfOrder } from "../../notebook/node.ts";
 import { type Ran, useOutputs } from "../../notebook/outputs.ts";
 import { cellsFromFlow, stepsIntoFlow } from "../../notebook/sync.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { CodeInput } from "../CodeInput.tsx";
-import { AddIcon, CheckIcon, CrossIcon, ExportIcon, PlayIcon, RunAllIcon, TrashIcon } from "../Icons.tsx";
-import { CellOutputs } from "./CellOutputs.tsx";
+import { AddIcon, CheckIcon, Chevron, CrossIcon, ExportIcon, PlayIcon, RunAllIcon, TrashIcon } from "../Icons.tsx";
+import { CellOutputs, hasOutputs } from "./CellOutputs.tsx";
 
 type Queued = { id: string; code: string };
 
 const EMPTY: Record<string, Ran> = {};
+const NOTHING_FOLDED: Record<string, Folded> = {};
 
 /** A notebook on a live kernel, laid out as VS Code's notebook editor (ADR-0035, ADR-0036).
  * Cells share the kernel's state and run in the order the person chooses. Save and Run All
@@ -39,6 +41,9 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
   const selectPipelineVersion = useSelection((s) => s.selectPipelineVersion);  const results = useOutputs((s) => s.byNotebook[notebookId]) ?? EMPTY;
   const setResult = useOutputs((s) => s.set);
   const clearResults = useOutputs((s) => s.clear);
+  const folds = useCollapsed((s) => s.byNotebook[notebookId]) ?? NOTHING_FOLDED;
+  const toggleFold = useCollapsed((s) => s.toggle);
+  const foldOutputs = useCollapsed((s) => s.setOutputsCollapsed);
   const save = useSaveNotebook();
   const pending = useRef<Queued[]>([]);
   const looping = useRef(false);
@@ -216,6 +221,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
     else if (key === "b") insert(active + 1, "code");
     else if (key === "m") setKind(active, "markdown");
     else if (key === "y") setKind(active, "code");
+    else if (key === "o" && cell.kind === "code") toggleFold(notebookId, cell.id, "output");
     else if (key === "d") {
       // D twice deletes, as in VS Code; one D alone does nothing.
       if (deleting) remove(active);
@@ -245,6 +251,12 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
         </button>
         <button type="button" className="nb-action" onClick={() => clearResults(notebookId)}>
           Clear All Outputs
+        </button>
+        <button type="button" className="nb-action" onClick={() => foldOutputs(notebookId, codeCellIds(cells), true)}>
+          Collapse All Outputs
+        </button>
+        <button type="button" className="nb-action" onClick={() => foldOutputs(notebookId, codeCellIds(cells), false)}>
+          Expand All Outputs
         </button>
         <span className="spacer" />
         <button type="button" className="nb-action" disabled={save.isPending || savePipeline.isPending} onClick={() => void saveNow()} title="Save, and rebuild this notebook's steps in the flow">
@@ -282,6 +294,8 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
           const result = ran?.result;
           const stale = ran !== undefined && ran.code !== cell.source;
           const state = running === cell.id ? "running" : queued.includes(cell.id) ? "queued" : undefined;
+          const folded = folds[cell.id] ?? {};
+          const fold = (part: CellPart) => ({ part, n, collapsed: folded[part] === true, onToggle: () => toggleFold(notebookId, cell.id, part) });
           return (
             <div key={`${generation}/${cell.id}`}>
               <div
@@ -303,6 +317,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
                 </div>
                 <div className="nb-main">
                   <div className="nb-cell-toolbar">
+                    <Fold look="chevron" {...fold("input")} />
                     {cell.kind === "code" && (
                       <button type="button" className="nb-icon" title="Execute Above Cells" aria-label={`Run cells above ${n}`} onClick={() => enqueue(codeOf(0, index))}>
                         <RunAllIcon />
@@ -312,30 +327,51 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
                       <TrashIcon />
                     </button>
                   </div>
-                  {cell.kind === "markdown" && !editing.has(cell.id) ? (
-                    <div className="nb-markdown" onDoubleClick={() => setEditing((now) => new Set(now).add(cell.id))}>
-                      {cell.source.trim() === "" ? <p className="muted">Empty Markdown cell. Double-click to edit.</p> : <Markdown urlTransform={markdownUrl}>{cell.source}</Markdown>}
-                    </div>
-                  ) : (
-                    <div className="nb-editor">
-                      <CodeInput
-                        fit
-                        label={`Cell ${n}`}
-                        value={cell.source}
-                        onChange={(v) => setSource(index, v)}
-                        onRun={(v) => runCell(index, v, true)}
-                        onRunStay={(v) => runCell(index, v, false)}
-                        onEscape={() => select(index, { focus: true })}
-                      />
-                    </div>
-                  )}
+                  <div className="nb-part">
+                    <Fold look="bar" {...fold("input")} />
+                    {folded.input ? (
+                      <p className="nb-folded">
+                        <span className="nb-folded-text">{firstLine(cell.source)}</span>
+                        <span aria-hidden="true">…</span>
+                      </p>
+                    ) : cell.kind === "markdown" && !editing.has(cell.id) ? (
+                      <div className="nb-markdown" onDoubleClick={() => setEditing((now) => new Set(now).add(cell.id))}>
+                        {cell.source.trim() === "" ? <p className="muted">Empty Markdown cell. Double-click to edit.</p> : <Markdown urlTransform={markdownUrl}>{cell.source}</Markdown>}
+                      </div>
+                    ) : (
+                      <div className="nb-editor">
+                        <CodeInput
+                          fit
+                          label={`Cell ${n}`}
+                          value={cell.source}
+                          onChange={(v) => setSource(index, v)}
+                          onRun={(v) => runCell(index, v, true)}
+                          onRunStay={(v) => runCell(index, v, false)}
+                          onEscape={() => select(index, { focus: true })}
+                        />
+                      </div>
+                    )}
+                  </div>
                   <div className="nb-status">
                     {cell.kind === "code" && <Status state={state} result={result} />}
                     {cell.kind === "code" && stale && !state && <span className="nb-live">Changed since it ran</span>}
                     <span className="spacer" />
                     <span>{cell.kind === "code" ? "Python" : "Markdown"}</span>
                   </div>
-                  {cell.kind === "code" && result && <CellOutputs result={result} />}
+                  {cell.kind === "code" && result && hasOutputs(result) && (
+                    <div className="nb-part">
+                      <Fold look="bar" {...fold("output")} />
+                      <Fold look="chevron" {...fold("output")} />
+                      {folded.output ? (
+                        <p className="nb-folded nb-output-folded">
+                          <span>Outputs are collapsed</span>
+                          <span aria-hidden="true">…</span>
+                        </p>
+                      ) : (
+                        <CellOutputs result={result} />
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <AddCells onAdd={(kind) => insert(index + 1, kind)} />
@@ -344,6 +380,31 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
         })}
       </div>
     </div>
+  );
+}
+
+const codeCellIds = (cells: NotebookCell[]) => cells.flatMap((c) => (c.kind === "code" ? [c.id] : []));
+
+const firstLine = (source: string) => source.split("\n").find((line) => line.trim() !== "") ?? "";
+
+/** Folds one part of a cell, as VS Code does: the bar in the gutter for the mouse, the chevron
+ * for the keyboard and screen readers too. The bar is a mouse target only, so each part is
+ * announced and tabbed to once. */
+function Fold({ look, part, n, collapsed, onToggle }: { look: "bar" | "chevron"; part: CellPart; n: number; collapsed: boolean; onToggle: () => void }) {
+  const label = `${collapsed ? "Expand" : "Collapse"} ${part} of cell ${n}`;
+  return (
+    <button
+      type="button"
+      className={look === "bar" ? "nb-fold-bar" : `nb-icon nb-fold nb-fold-${part}`}
+      tabIndex={look === "bar" ? -1 : undefined}
+      aria-hidden={look === "bar" ? true : undefined}
+      aria-expanded={!collapsed}
+      aria-label={label}
+      title={label}
+      onClick={onToggle}
+    >
+      {look === "chevron" && <Chevron />}
+    </button>
   );
 }
 

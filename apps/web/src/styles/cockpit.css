@@ -601,10 +601,22 @@ p { margin: 0; }
 .nb-message { margin: var(--space-2) 0 var(--space-2) 44px; }
 .nb-note { color: var(--faint); font-size: var(--text-xs); }
 .nb-cell { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); padding: var(--space-1) 0; outline: none; }
-/* The focus indicator: a bar at the left of the selected cell. */
-.nb-cell::before { content: ""; position: absolute; left: 6px; top: var(--space-1); bottom: var(--space-1); width: 2px; border-radius: 1px; }
-.nb-cell:hover::before { background: var(--line-strong); }
-.nb-cell.active::before { background: var(--nb-focus); }
+/* The focus indicator, as VS Code's: a bar at the left of each part of the selected cell.
+   Clicking it folds that part; the wide button around the thin line is the click target. */
+.nb-part { position: relative; }
+.nb-fold-bar { position: absolute; left: -41px; top: 0; bottom: 0; width: 8px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.nb-fold-bar::before { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; border-radius: 1px; }
+.nb-cell:hover .nb-fold-bar::before { background: var(--line-strong); }
+.nb-cell.active .nb-fold-bar::before { background: var(--nb-focus); }
+.nb-fold-bar:hover::before { background: var(--soft); }
+.nb-fold svg { transition: transform 0.1s; }
+.nb-fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
+/* The output's chevron sits in the gutter beside it; hidden with opacity so Tab still reaches it. */
+.nb-fold-output { position: absolute; left: -33px; top: var(--space-1); opacity: 0; }
+.nb-cell:hover .nb-fold-output, .nb-cell.active .nb-fold-output, .nb-fold-output:focus-visible { opacity: 1; }
+.nb-folded { display: flex; align-items: center; gap: var(--space-2); height: 26px; margin: 0; padding: 0 var(--space-3); border: 1px solid var(--line-soft); border-radius: 4px; font: var(--text-sm) var(--mono); color: var(--faint); }
+.nb-folded-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nb-output-folded { border: 0; padding: 0 var(--space-1); font-family: inherit; font-size: var(--text-xs); }
 .nb-gutter { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px; }
 /* Hidden with opacity, not display, so Tab still reaches it. */
 .nb-run { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 4px; background: transparent; color: var(--soft); opacity: 0; cursor: pointer; }

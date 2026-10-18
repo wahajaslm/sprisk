@@ -274,3 +274,108 @@ describe("the session notebook (ADR-0036)", () => {
     expect(sent.versions).toEqual([]);
   });
 });
+
+describe("collapsing cells, as VS Code does (ADR-0035)", () => {
+  const drawn = (_: string, n: number): NotebookExecution => ({
+    status: "ok",
+    execution_count: n,
+    outputs: [
+      { kind: "text", text: `out ${n}` },
+      { kind: "figure", figure: { library: "matplotlib", format: "svg", content: "<svg/>", title: `Chart ${n}` } },
+    ],
+  });
+  // Each part folds from the bar in the gutter (a mouse target, hidden from screen readers) or
+  // the chevron (the one control a screen reader announces).
+  const bar = (group: HTMLElement, name: string) => within(group).getAllByTitle(name).find((b) => b.getAttribute("aria-hidden") === "true")!;
+  const chevron = (group: HTMLElement, name: string) => within(group).getByRole("button", { name });
+  const requestsDuring = async (act: () => Promise<void>) => {
+    const urls: string[] = [];
+    const listen = ({ request }: { request: Request }) => void urls.push(request.url);
+    server.events.on("request:start", listen);
+    await act();
+    server.events.removeListener("request:start", listen);
+    return urls;
+  };
+
+  it("collapses a cell's input to its first line and expands it again", async () => {
+    withApi();
+    renderWithApi(<NotebooksPage />);
+    await screen.findByRole("heading", { name: "Sales Analysis Notebook" });
+    const intro = screen.getByRole("group", { name: "Cell 1" });
+    await userEvent.click(chevron(intro, "Collapse input of cell 1"));
+    expect(screen.queryByRole("heading", { name: "Sales Analysis Notebook" })).not.toBeInTheDocument();
+    expect(within(intro).getByText("# Sales Analysis Notebook")).toBeInTheDocument();
+    expect(within(intro).getByText("…")).toBeInTheDocument();
+    const expand = chevron(intro, "Expand input of cell 1");
+    expect(expand).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(expand);
+    expect(screen.getByRole("heading", { name: "Sales Analysis Notebook" })).toBeInTheDocument();
+  });
+
+  it("the bar in the gutter collapses a code cell's input; its code stays as typed", async () => {
+    withApi();
+    renderWithApi(<NotebooksPage />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), "0");
+    const params = screen.getByRole("group", { name: "Cell 2" });
+    await userEvent.click(bar(params, "Collapse input of cell 2"));
+    expect(screen.queryByRole("textbox", { name: "Cell 2" })).not.toBeInTheDocument();
+    expect(within(params).getByText("MIN = 100")).toBeInTheDocument();
+    await userEvent.click(bar(params, "Expand input of cell 2"));
+    expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("MIN = 100");
+  });
+
+  it("collapses a cell's output without running or fetching anything, and draws it again on expand", async () => {
+    const sent = withApi(drawn);
+    renderWithApi(<NotebooksPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
+    await screen.findByText("out 1");
+    const params = screen.getByRole("group", { name: "Cell 2" });
+    const urls = await requestsDuring(async () => {
+      await userEvent.click(bar(params, "Collapse output of cell 2"));
+      expect(screen.queryByText("out 1")).not.toBeInTheDocument();
+      expect(screen.queryByRole("img", { name: "Chart 1" })).not.toBeInTheDocument();
+      expect(within(params).getByText("Outputs are collapsed")).toBeInTheDocument();
+      await userEvent.click(chevron(params, "Expand output of cell 2"));
+      expect(screen.getByText("out 1")).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "Chart 1" })).toBeInTheDocument();
+    });
+    expect(urls).toEqual([]);
+    expect(sent.executed).toHaveLength(1);
+  });
+
+  it("a cell that ran with nothing to show has no output to fold", async () => {
+    withApi((_, n) => ({ status: "ok", execution_count: n, outputs: [] }));
+    renderWithApi(<NotebooksPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
+    const params = screen.getByRole("group", { name: "Cell 2" });
+    await within(params).findByText("[1]");
+    expect(within(params).queryByTitle("Collapse output of cell 2")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Collapse All Outputs" }));
+    expect(screen.queryByText("Outputs are collapsed")).not.toBeInTheDocument();
+  });
+
+  it("Collapse All Outputs hides every output and Expand All Outputs shows them again", async () => {
+    withApi();
+    renderWithApi(<NotebooksPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Run All" }));
+    await screen.findByText("out 4");
+    await userEvent.click(screen.getByRole("button", { name: "Collapse All Outputs" }));
+    for (const n of [1, 2, 3, 4]) expect(screen.queryByText(`out ${n}`)).not.toBeInTheDocument();
+    expect(screen.getAllByText("Outputs are collapsed")).toHaveLength(4);
+    await userEvent.click(screen.getByRole("button", { name: "Expand All Outputs" }));
+    for (const n of [1, 2, 3, 4]) expect(screen.getByText(`out ${n}`)).toBeInTheDocument();
+  });
+
+  it("O toggles the selected cell's output in command mode, as in JupyterLab", async () => {
+    withApi();
+    renderWithApi(<NotebooksPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
+    await screen.findByText("out 1");
+    await userEvent.type(cell(2), "{Escape}");
+    await userEvent.keyboard("o");
+    expect(screen.queryByText("out 1")).not.toBeInTheDocument();
+    expect(cell(2)).toHaveValue("MIN = 10");
+    await userEvent.keyboard("o");
+    expect(screen.getByText("out 1")).toBeInTheDocument();
+  });
+});

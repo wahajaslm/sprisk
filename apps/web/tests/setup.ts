@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 import type { CodeInputProps } from "../src/views/CodeInput.tsx";
 
 import { useCanvasDetail, useInspectorDetail, useResultLayout } from "../src/workbench/detail.ts";
+import { useCollapsed } from "../src/notebook/collapsed.ts";
 import { useOutputs } from "../src/notebook/outputs.ts";
 import { useSelection } from "../src/workbench/selection.ts";
 import { useWorkbench } from "../src/workbench/workbench.ts";
@@ -64,6 +65,7 @@ beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 beforeEach(() => {
   useSelection.setState({ nav: "Flow", pipelineVersionId: undefined, runId: undefined, nodeId: undefined, notebookId: undefined, compare: [] });
   useOutputs.setState({ byNotebook: {} });
+  useCollapsed.setState({ byNotebook: {} });
   useWorkbench.setState({ activity: "steps", editing: false, dock: undefined });
   useCanvasDetail.setState({ level: "detail" });
   useResultLayout.setState({ layout: "inline" });
