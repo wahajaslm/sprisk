@@ -360,6 +360,13 @@ p { margin: 0; }
 .card-body { display: grid; align-content: start; gap: var(--space-2); padding: var(--space-2) var(--space-2) 0; min-height: 0; overflow: hidden; }
 .card-fact { font: var(--text-sm) var(--mono); color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-fact .node-fact { font-size: var(--text-sm); color: var(--soft); }
+.card-fact:empty { display: none; }
+/* A step's first figure fills what the card body has left; clicks go to the card. */
+.card-body:has(> .card-preview) { grid-template-rows: minmax(0, 1fr); align-content: stretch; padding-bottom: var(--space-1); }
+.card-preview { display: flex; flex-direction: column; gap: var(--space-1); min-height: 0; }
+.card-figure { flex: 1; min-height: 0; overflow: hidden; pointer-events: none; }
+.card-figure .plotly-figure { min-height: 0; height: 100%; }
+.card-figure .svg-figure { height: 100%; object-fit: contain; }
 .card-status { display: flex; align-items: center; gap: var(--space-2); height: 26px; padding: 0 var(--space-2); font: var(--text-sm) var(--mono); white-space: nowrap; }
 .card-status .dot { width: 5px; height: 5px; }
 .card-concern { margin-left: auto; color: var(--alert); }

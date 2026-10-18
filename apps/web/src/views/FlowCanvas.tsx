@@ -28,9 +28,10 @@ import { type RunChecks, useRunChecks } from "../api/checks.ts";
 import { GATE_NODE, hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
+import { CardFigure } from "./CardFigure.tsx";
 import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
 import { flowPositions, GROUP_HEAD, type Group, keepDragged, type Point } from "../flow/layout.ts";
-import { kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
+import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -56,6 +57,8 @@ type StepData = {
   edited: boolean;
   state: string;
   attemptId?: string;
+  /** The output port holding the step's figures, if it draws any. */
+  figurePort?: string;
   /** Methodology checks citing this step that did not pass. */
   concerns: number;
   level: DetailLevel;
@@ -114,25 +117,19 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
         </span>
       </span>
       <span className="card-body">
-        {/* In Detail, an evaluator's metric is drawn large below; do not repeat it. */}
-        {!(data.level === "detail" && data.isEvaluator) && (
-        <span className="card-fact">
-          {data.attemptId ? (
-            <NodeFact attemptId={data.attemptId} operator={data.operatorRef} isEvaluator={data.isEvaluator} status="output saved" />
-          ) : (
-            <span className="muted">no output yet</span>
-          )}
-        </span>
-        )}
-        {data.level === "detail" && data.attemptId && (
-          <NodeVisual
+        {data.attemptId && data.figurePort ? (
+          <CardFigure
             attemptId={data.attemptId}
-            operator={data.operatorRef}
-            capability={data.capability}
-            params={data.params}
-            pipelineVersionId={data.pipelineVersionId}
-            nodeId={data.id}
+            port={data.figurePort}
+            fact={
+              <span className="card-fact">
+                <NodeFact attemptId={data.attemptId} operator={data.operatorRef} isEvaluator={data.isEvaluator} status="" />
+              </span>
+            }
+            fallback={<CardSummary data={data} />}
           />
+        ) : (
+          <CardSummary data={data} />
         )}
       </span>
       <span className={`card-status tone-${status.tone}`}>
@@ -146,6 +143,35 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
       <Handle id="top" type="target" position={Position.Top} isConnectable={false} />
       <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} />
     </button>
+  );
+}
+
+/** What a card shows of a step that drew no figure: a fact about its output and a small
+ * picture of it. */
+function CardSummary({ data }: { data: StepData }) {
+  return (
+    <>
+      {/* In Detail, an evaluator's metric is drawn large below; do not repeat it. */}
+      {!(data.level === "detail" && data.isEvaluator) && (
+        <span className="card-fact">
+          {data.attemptId ? (
+            <NodeFact attemptId={data.attemptId} operator={data.operatorRef} isEvaluator={data.isEvaluator} status="output saved" />
+          ) : (
+            <span className="muted">no output yet</span>
+          )}
+        </span>
+      )}
+      {data.level === "detail" && data.attemptId && (
+        <NodeVisual
+          attemptId={data.attemptId}
+          operator={data.operatorRef}
+          capability={data.capability}
+          params={data.params}
+          pipelineVersionId={data.pipelineVersionId}
+          nodeId={data.id}
+        />
+      )}
+    </>
   );
 }
 
@@ -273,6 +299,7 @@ export function flowGraph(
         edited: node.code !== undefined,
         state: latest.get(id)?.state ?? "not run",
         ...(hasOutputs(latest.get(id)) ? { attemptId: latest.get(id)?.id } : {}),
+        ...(op && figurePortOf(op) ? { figurePort: figurePortOf(op) } : {}),
         selected: id === selectedId,
       },
     };

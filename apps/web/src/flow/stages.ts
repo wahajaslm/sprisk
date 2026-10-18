@@ -1,4 +1,5 @@
 import type { Operator, PipelineVersion } from "@sprisk/contracts";
+import { isCodeOperator } from "./edit.ts";
 import { stepOf } from "./ports.ts";
 
 /** Presentation grouping only (rule 9: layout is not provenance). */
@@ -52,6 +53,11 @@ const ROLE: Record<Operator["capability_class"], string> = {
 
 /** What a step is for, in plain words: "Transform", "Model". Code steps say "Code". */
 export const roleOf = (operator: Operator) => (operator.id.startsWith("sprisk.code.") ? "Code" : ROLE[operator.capability_class]);
+
+/** The output port that holds a step's figures: a code step's display, else its first
+ * `figure` port (ADR-0024). Undefined when the step draws nothing. */
+export const figurePortOf = (operator: Operator): string | undefined =>
+  isCodeOperator(operator.id) ? "display" : operator.outputs.find((o) => o.kind === "figure")?.name;
 
 /** Heading groups on the canvas: steps of one stage share a heading only where they sit
  * together in the flow (one reads the other, or both read the same step). Otherwise the

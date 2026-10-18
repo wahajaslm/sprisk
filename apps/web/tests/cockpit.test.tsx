@@ -22,6 +22,7 @@ import {
   codeOutputs,
   codePipeline,
   loadOutputs,
+  notebookOperator,
   operators,
   pipeline,
   profilePage,
@@ -586,6 +587,52 @@ describe("node previews", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     expect((await screen.findAllByText("test 120 × 2"))[0]).toBeInTheDocument();
+  });
+
+  /** A code step (as in the example flows) whose display report holds a table; returns what
+   * the canvas asked for. */
+  function codeStepDrawing(figures: () => Response) {
+    const asked: string[] = [];
+    const display = codeOutputs[0]!.artifact.id;
+    const nodes = codePipeline.nodes.map((n) => (n.id === "code_1" ? { ...n, operator: "sprisk.code.python@2.0.0" } : n));
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([{ ...codePipeline, nodes }])),
+      http.get("/api/operators", () => HttpResponse.json([...operators, notebookOperator])),
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, codeAttempt])),
+      http.get(`/api/attempts/${codeAttempt.id}/outputs`, () => HttpResponse.json(codeOutputs)),
+      http.get(`/api/artifacts/${display}/content`, () => {
+        asked.push("content");
+        return HttpResponse.text(codeDisplayJson);
+      }),
+      http.get(`/api/artifacts/${display}/figures`, ({ request }) => {
+        asked.push(`figures${new URL(request.url).search}`);
+        return figures();
+      }),
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    return asked;
+  }
+  const plotly = (title: string) => ({ library: "plotly", format: "plotly_json", title, content: '{"data": [], "layout": {}}' });
+
+  it("previews a step's first figure on its card, fetching only that figure and never the tables", async () => {
+    const asked = codeStepDrawing(() => HttpResponse.json({ items: [plotly("Target")] }));
+    const card = await screen.findByRole("button", { name: /^code_1/ });
+    expect(await within(card).findByRole("img", { name: "Target" })).toBeInTheDocument();
+    expect(card).not.toHaveTextContent("output saved");
+    expect(asked).toEqual(["figures?limit=1"]);
+  });
+
+  it("keeps the card as it was when the step drew no figure", async () => {
+    codeStepDrawing(() => HttpResponse.json({ items: [] }));
+    const card = await screen.findByRole("button", { name: /^code_1/ });
+    await waitFor(() => expect(card).toHaveTextContent("output saved"));
+  });
+
+  it("says why the figure could not be read", async () => {
+    codeStepDrawing(() => HttpResponse.json({ errors: [{ code: "not_figures", message: "not figures" }] }, { status: 422 }));
+    const card = await screen.findByRole("button", { name: /^code_1/ });
+    expect(await within(card).findByRole("alert")).toHaveTextContent("not_figures");
   });
 });
 
