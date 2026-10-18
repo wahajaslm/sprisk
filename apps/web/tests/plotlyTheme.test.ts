@@ -1,3 +1,4 @@
+import type Plotly from "plotly.js-dist-min";
 import { describe, expect, it } from "vitest";
 
 import { thumbnail, themed } from "../src/views/plotlyTheme.ts";
@@ -7,6 +8,11 @@ describe("Plotly figures in the Studio theme", () => {
     const layout = themed({ yaxis: { title: { text: "Sample Number" } } }, () => "#000");
     expect(layout.yaxis).toMatchObject({ automargin: true, title: { text: "Sample Number" } });
     expect(layout.xaxis).toMatchObject({ automargin: true });
+  });
+
+  it("themes every subplot's axes, not only the first", () => {
+    const layout = themed({ xaxis2: { title: { text: "age" } }, yaxis3: {} } as Partial<Plotly.Layout>, () => "#123");
+    expect(layout).toMatchObject({ xaxis2: { gridcolor: "#123", title: { text: "age" } }, yaxis3: { gridcolor: "#123" } });
   });
 
   it("draws a card preview bare: no title, legend, axis labels or colour bar, thin margins", () => {

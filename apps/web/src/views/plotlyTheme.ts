@@ -10,7 +10,13 @@ export function themed(layout: Partial<Plotly.Layout>, color: (token: string) =>
     plot_bgcolor: "rgba(0,0,0,0)",
     font: { color: color("--soft"), family: color("--sans"), size: 12 },
     colorway: [color("--soft"), color("--dim"), color("--muted"), color("--alert")],
-    // Python's axis titles and settings stay; only the colours and margins change.
+    // Python's axis titles and settings stay; only the colours and margins change. Subplots
+    // have their own axes (xaxis2, yaxis3, …), themed the same.
+    ...Object.fromEntries(
+      Object.entries(layout)
+        .filter(([key]) => /^[xy]axis\d+$/.test(key))
+        .map(([key, value]) => [key, { ...(value as object), ...axis }]),
+    ),
     xaxis: { ...layout.xaxis, ...axis },
     yaxis: { ...layout.yaxis, ...axis },
     margin: layout.margin ?? { l: 56, r: 24, t: 44, b: 48 },
