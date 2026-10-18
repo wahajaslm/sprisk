@@ -15,13 +15,13 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
-use sha2::Digest;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, NotebookExecute,
     NotebookExecution, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
     OperatorSource, PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
 };
+use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
 use sprisk_registry::Registry;
 use sprisk_scheduler::{ProcessWorkers, Scheduler, Settings};
@@ -285,8 +285,62 @@ async fn create_pipeline_version(
             other => other?,
         };
     }
+    check_notebook_sources(&state, &pipeline).await?;
     state.store.insert_pipeline_version(&pipeline).await?;
     Ok((StatusCode::CREATED, Json(pipeline)))
+}
+
+/// A node made from notebook cells (ADR-0036) cites saved cells of a notebook in the same
+/// project. The version is immutable, so a citation that is wrong now stays wrong.
+async fn check_notebook_sources(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+) -> Result<(), ApiError> {
+    let refused = |code: &'static str, message: String| ApiError::BadRequest { code, message };
+    for node in &pipeline.nodes {
+        let Some(from) = &node.from_notebook else {
+            continue;
+        };
+        let at = format!("node {}", node.id.as_str());
+        let cited = match state
+            .store
+            .get_notebook_version(&from.notebook_version_id)
+            .await
+        {
+            Err(StoreError::NotFound { .. }) => {
+                let id = from.notebook_version_id.as_str();
+                return Err(refused(
+                    "unknown_notebook_version",
+                    format!("{at}: notebook version {id} does not exist"),
+                ));
+            }
+            other => other?,
+        };
+        if cited.project_id != pipeline.project_id {
+            return Err(refused(
+                "notebook_in_other_project",
+                format!("{at}: its notebook is in another project"),
+            ));
+        }
+        if from.cells.is_empty() {
+            return Err(refused(
+                "no_notebook_cells",
+                format!("{at}: it names no notebook cells"),
+            ));
+        }
+        if let Some(missing) = from
+            .cells
+            .iter()
+            .find(|c| !cited.cells.iter().any(|saved| saved.id == **c))
+        {
+            let (cell, version) = (missing.as_str(), cited.id.as_str());
+            return Err(refused(
+                "unknown_notebook_cell",
+                format!("{at}: notebook version {version} has no cell {cell}"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 type Query = axum::extract::Query<std::collections::HashMap<String, String>>;
@@ -318,6 +372,14 @@ async fn split_code(
     text: String,
 ) -> Result<Json<CodeSplit>, ApiError> {
     let request: CodeSplitRequest = body(&text)?;
+    if let Some(range) = &request.together
+        && range.first > range.last
+    {
+        return Err(ApiError::BadRequest {
+            code: "invalid_cell_range",
+            message: format!("cells {}..{} run backwards", range.first, range.last),
+        });
+    }
     Ok(Json(state.splitter.split(&request).await?))
 }
 
@@ -336,6 +398,12 @@ async fn create_notebook_version(
             }
             other => other?,
         };
+        if saved.project_id != version.project_id {
+            return Err(ApiError::BadRequest {
+                code: "parent_in_other_project",
+                message: format!("parent {} is in another project", parent.as_str()),
+            });
+        }
         if saved.notebook_id != version.notebook_id {
             return Err(ApiError::BadRequest {
                 code: "parent_in_other_notebook",
@@ -347,6 +415,11 @@ async fn create_notebook_version(
                 ),
             });
         }
+    } else if state.store.has_notebook(&version.notebook_id).await? {
+        return Err(ApiError::Store(StoreError::Conflict(format!(
+            "notebook {} already has a first version; save over its latest one",
+            version.notebook_id.as_str()
+        ))));
     }
     state.store.insert_notebook_version(&version).await?;
     Ok((StatusCode::CREATED, Json(version)))
@@ -388,19 +461,24 @@ async fn execute_cell(
 ) -> Result<Json<NotebookExecution>, ApiError> {
     let notebook = saved_notebook(&state, &raw).await?;
     let request: NotebookExecute = body(&text)?;
-    let done = state.kernels.execute(&notebook, &request.code).await?;
-    // Scratch, not provenance (ADR-0036): the audit trail records that code ran, not its results.
-    let digest = hex::encode(sha2::Sha256::digest(request.code.as_bytes()));
-    let event = format!(
-        "cell {} ran: {}, code sha256:{digest}",
-        request.cell_id.as_str(),
-        done.status
-    );
-    state
-        .store
-        .append_audit(&sprisk_core::time::now(), notebook.as_str(), &event)
-        .await?;
-    Ok(Json(done))
+    // Scratch, not provenance (ADR-0036): the audit trail records that code ran and how it
+    // ended, never its results. Written before the cell runs, so code that runs is audited
+    // even when the caller goes away or the kernel dies.
+    let cell = request.cell_id.as_str();
+    let hash = sprisk_artifacts::content_hash(request.code.as_bytes());
+    let at = notebook.as_str();
+    let started = format!("cell {cell} started, code {hash}");
+    state.store.append_audit(&now(), at, &started).await?;
+    let done = state.kernels.execute(&notebook, &request.code).await;
+    let ended = match &done {
+        Ok(done) => match done.execution_count {
+            Some(n) => format!("cell {cell} ended: {}, execution {n}", done.status),
+            None => format!("cell {cell} ended: {}", done.status),
+        },
+        Err(e) => format!("cell {cell} ended: kernel stopped ({e})"),
+    };
+    state.store.append_audit(&now(), at, &ended).await?;
+    Ok(Json(done?))
 }
 
 async fn interrupt_kernel(

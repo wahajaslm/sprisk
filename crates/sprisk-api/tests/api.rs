@@ -53,16 +53,26 @@ async fn api_with(python: PathBuf, splitter: Splitter) -> Api {
 }
 
 async fn api_with_kernels(python: PathBuf, splitter: Splitter, limits: KernelLimits) -> Api {
+    let host = session_host(&python);
+    api_with_kernel_host(python, splitter, limits, host).await
+}
+
+fn session_host(python: &Path) -> Vec<String> {
+    vec![
+        python.display().to_string(),
+        "-m".into(),
+        "sprisk_code.session".into(),
+    ]
+}
+
+async fn api_with_kernel_host(
+    python: PathBuf,
+    splitter: Splitter,
+    limits: KernelLimits,
+    host: Vec<String>,
+) -> Api {
     let dir = tempfile::tempdir().unwrap();
-    let kernels = Kernels::new(
-        vec![
-            python.display().to_string(),
-            "-m".into(),
-            "sprisk_code.session".into(),
-        ],
-        dir.path().to_owned(),
-        limits,
-    );
+    let kernels = Kernels::new(host, dir.path().to_owned(), limits);
     let csv = dir.path().join("d.csv");
     std::fs::write(&csv, "x,y\n1,2\n3,4\n").unwrap();
     let root = root();
@@ -728,9 +738,13 @@ fn notebook_version(id: &str, notebook: &str, parent: Option<&str>) -> Value {
 }
 
 async fn api_with_notebook(limits: KernelLimits) -> Api {
+    api_with_notebook_host(limits, session_host(&root().join(".venv/bin/python"))).await
+}
+
+async fn api_with_notebook_host(limits: KernelLimits, host: Vec<String>) -> Api {
     let python = root().join(".venv/bin/python");
     let splitter = Splitter::new(vec![], Duration::from_secs(1), 1);
-    let api = api_with_kernels(python, splitter, limits).await;
+    let api = api_with_kernel_host(python, splitter, limits, host).await;
     let first = notebook_version("nbv_01JABCDEFGHJKMNPQRSTVWXYZ0", NOTEBOOK, None);
     let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(first)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -808,10 +822,21 @@ async fn cells_of_a_notebook_share_one_kernel_and_each_run_is_audited() {
     assert_eq!(found["variables"][0]["table"], true);
     assert_eq!(found["variables"][1]["defined"], false);
 
-    let events = api.store.audit_events(NOTEBOOK).await.unwrap();
-    assert_eq!(events.len(), 2);
+    let events: Vec<String> = api
+        .store
+        .audit_events(NOTEBOOK)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(_, event)| event)
+        .collect();
+    assert_eq!(events.len(), 4, "{events:?}");
     assert!(
-        events[0].1.starts_with("cell c1 ran: ok, code sha256:"),
+        events[0].starts_with("cell c1 started, code sha256:"),
+        "{events:?}"
+    );
+    assert!(
+        events[1].starts_with("cell c1 ended: ok, execution "),
         "{events:?}"
     );
 }
@@ -830,14 +855,19 @@ async fn restart_clears_the_kernels_variables() {
 #[tokio::test(flavor = "multi_thread")]
 async fn interrupt_stops_the_running_cell_without_waiting_behind_it() {
     let api = api_with_notebook(KERNEL_LIMITS).await;
-    execute(&api, NOTEBOOK, "import time").await;
+    execute(&api, NOTEBOOK, "import pathlib, time").await;
     let app = api.app.clone();
+    let started = api._dir.path().join("started");
     let interrupt = tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(1500)).await;
+        // Interrupt once the cell has started, never by guessing how long that takes.
+        while !started.exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         let uri = format!("/notebooks/{NOTEBOOK}/interrupt");
         call(&app, "POST", &uri, None).await.0
     });
-    let (_, done) = execute(&api, NOTEBOOK, "time.sleep(30)").await;
+    let cell = "pathlib.Path('started').touch()\ntime.sleep(30)";
+    let (_, done) = execute(&api, NOTEBOOK, cell).await;
     assert_eq!(interrupt.await.unwrap(), StatusCode::NO_CONTENT);
     assert_eq!(done["status"], "interrupted", "{done}");
 }
@@ -901,4 +931,101 @@ async fn an_abandoned_request_does_not_answer_the_next_one() {
     );
     let next = api.kernels.execute(&notebook, "'next'").await.unwrap();
     assert_eq!(next.outputs[0].text.as_deref(), Some("'next'"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cell_whose_kernel_dies_is_still_audited() {
+    let python = root().join(".venv/bin/python").display().to_string();
+    let host = vec![
+        python,
+        "-c".into(),
+        "import sys; sys.stdin.readline()".into(),
+    ];
+    let api = api_with_notebook_host(KERNEL_LIMITS, host).await;
+    let (status, body) = execute(&api, NOTEBOOK, "1").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    let events = api.store.audit_events(NOTEBOOK).await.unwrap();
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert!(events[0].1.starts_with("cell c1 started, code sha256:"));
+    assert!(
+        events[1].1.starts_with("cell c1 ended: kernel stopped"),
+        "{events:?}"
+    );
+}
+
+fn node_from_notebook(api: &Api, from: Value) -> Value {
+    let mut version = pipeline(&api.csv);
+    version["nodes"][0]["from_notebook"] = from;
+    version
+}
+
+async fn submit(api: &Api, version: Value) -> (StatusCode, Value) {
+    call(&api.app, "POST", "/pipeline_versions", Some(version)).await
+}
+
+#[tokio::test]
+async fn a_node_must_cite_saved_cells_of_a_notebook_in_its_project() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let saved = "nbv_01JABCDEFGHJKMNPQRSTVWXYZ0";
+    let cases = [
+        (
+            json!({"notebook_version_id": "nbv_01JABCDEFGHJKMNPQRSTVWXYZ9", "cells": ["c1"]}),
+            "unknown_notebook_version",
+        ),
+        (
+            json!({"notebook_version_id": saved, "cells": ["c9"]}),
+            "unknown_notebook_cell",
+        ),
+        (
+            json!({"notebook_version_id": saved, "cells": []}),
+            "no_notebook_cells",
+        ),
+    ];
+    for (from, code) in cases {
+        let (status, body) = submit(&api, node_from_notebook(&api, from)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["errors"][0]["code"], code);
+    }
+    let mut elsewhere = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ3",
+        "nb_01JABCDEFGHJKMNPQRSTVWXYZ3",
+        None,
+    );
+    elsewhere["project_id"] = json!("prj_01JABCDEFGHJKMNPQRSTVWXYZ9");
+    call(&api.app, "POST", "/notebook_versions", Some(elsewhere)).await;
+    let from = json!({"notebook_version_id": "nbv_01JABCDEFGHJKMNPQRSTVWXYZ3", "cells": ["c1"]});
+    let (status, body) = submit(&api, node_from_notebook(&api, from)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "notebook_in_other_project");
+
+    let from = json!({"notebook_version_id": saved, "cells": ["c1"]});
+    let (status, body) = submit(&api, node_from_notebook(&api, from)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
+async fn a_notebook_keeps_its_project_and_its_one_first_version() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let mut moved = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        NOTEBOOK,
+        Some("nbv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+    );
+    moved["project_id"] = json!("prj_01JABCDEFGHJKMNPQRSTVWXYZ9");
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(moved)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "parent_in_other_project");
+
+    let second_root = notebook_version("nbv_01JABCDEFGHJKMNPQRSTVWXYZ2", NOTEBOOK, None);
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(second_root)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+}
+
+#[tokio::test]
+async fn cells_kept_together_must_be_a_forward_range() {
+    let api = api().await;
+    let cells = json!({"cells": ["a = 1", "b = a"], "together": {"first": 1, "last": 0}});
+    let (status, body) = call(&api.app, "POST", "/code/split", Some(cells)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_cell_range");
 }

@@ -10,11 +10,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
-use sprisk_contracts::{NotebookExecution, NotebookId, NotebookVariables, parse};
+use sprisk_contracts::{
+    NotebookExecution, NotebookId, NotebookKernelRequest, NotebookVariables, parse,
+};
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::Mutex;
@@ -47,6 +49,8 @@ pub enum KernelError {
         "the kernel for notebook {notebook} stopped answering ({why}); it was shut down and its variables are gone"
     )]
     Stopped { notebook: String, why: String },
+    #[error("invalid kernel request: {0}")]
+    Request(String),
 }
 
 /// The command that starts a session host, where it runs, its limits, and the live kernels.
@@ -75,22 +79,29 @@ impl Kernel {
         stdin.flush().await
     }
 
+    // A poisoned clock still holds a valid time; nothing else is guarded by it.
     fn touch(&self) {
-        if let Ok(mut last) = self.last_used.lock() {
-            *last = Instant::now();
-        }
+        *self
+            .last_used
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Instant::now();
     }
 
     fn idle_for(&self) -> Duration {
         self.last_used
             .lock()
-            .map(|last| last.elapsed())
-            .unwrap_or_default()
+            .unwrap_or_else(PoisonError::into_inner)
+            .elapsed()
     }
 
     /// Ask the host to shut its kernel down, then wait for it; it is killed if it does not stop.
     async fn close(&self, notebook: &str) {
-        if let Err(e) = self.send(r#"{"op":"shutdown"}"#).await {
+        let shutdown = kernel_request(serde_json::json!({"op": "shutdown"}));
+        let sent = match shutdown {
+            Ok(line) => self.send(&line).await,
+            Err(e) => Err(std::io::Error::other(e.to_string())),
+        };
+        if let Err(e) = sent {
             tracing::warn!(notebook, error = %e, "kernel host gone before shutdown");
             return;
         }
@@ -123,11 +134,11 @@ impl Kernels {
         notebook: &NotebookId,
         code: &str,
     ) -> Result<NotebookExecution, KernelError> {
+        let request = kernel_request(serde_json::json!({"op": "execute", "code": code}))?;
         let kernel = self.kernel(notebook).await?;
-        let request = serde_json::json!({"op": "execute", "code": code}).to_string();
         let wait = Duration::from_secs(self.limits.cell_seconds) + MARGIN;
         let line = self.request(notebook, &kernel, &request, wait).await?;
-        self.answer(notebook, &line).await
+        self.answer(notebook, &kernel, &line).await
     }
 
     /// Which of `names` the notebook's kernel holds. A notebook with no kernel holds none, and
@@ -137,6 +148,7 @@ impl Kernels {
         notebook: &NotebookId,
         names: &[String],
     ) -> Result<NotebookVariables, KernelError> {
+        let request = kernel_request(serde_json::json!({"op": "variables", "names": names}))?;
         let running = self.live.lock().await.get(notebook.as_str()).cloned();
         let Some(kernel) = running else {
             let none: Vec<_> = names
@@ -144,13 +156,12 @@ impl Kernels {
                 .map(|n| serde_json::json!({"name": n, "defined": false, "table": false}))
                 .collect();
             let doc = serde_json::json!({ "variables": none }).to_string();
-            return self.answer(notebook, &doc).await;
+            return parse(&doc).map_err(|e| KernelError::Request(e.to_string()));
         };
-        let request = serde_json::json!({"op": "variables", "names": names}).to_string();
         let line = self
             .request(notebook, &kernel, &request, VARIABLES_WAIT)
             .await?;
-        self.answer(notebook, &line).await
+        self.answer(notebook, &kernel, &line).await
     }
 
     /// Stop the cell running now, if any. Not queued behind it.
@@ -159,8 +170,9 @@ impl Kernels {
         let Some(kernel) = running else {
             return Ok(());
         };
-        if let Err(e) = kernel.send(r#"{"op":"interrupt"}"#).await {
-            self.stop(notebook.as_str()).await;
+        let request = kernel_request(serde_json::json!({"op": "interrupt"}))?;
+        if let Err(e) = kernel.send(&request).await {
+            self.stop_failed(notebook, &kernel).await;
             return Err(stopped(notebook, e));
         }
         Ok(())
@@ -260,7 +272,7 @@ impl Kernels {
     async fn exchange(
         &self,
         notebook: &NotebookId,
-        kernel: &Kernel,
+        kernel: &Arc<Kernel>,
         request: &str,
         wait: Duration,
     ) -> Result<String, KernelError> {
@@ -280,7 +292,7 @@ impl Kernels {
         match answer {
             Ok(line) => Ok(line),
             Err(why) => {
-                self.stop(notebook.as_str()).await;
+                self.stop_failed(notebook, kernel).await;
                 Err(stopped(notebook, why))
             }
         }
@@ -289,12 +301,13 @@ impl Kernels {
     async fn answer<T: serde::de::DeserializeOwned>(
         &self,
         notebook: &NotebookId,
+        kernel: &Arc<Kernel>,
         line: &str,
     ) -> Result<T, KernelError> {
         match parse(line) {
             Ok(answer) => Ok(answer),
             Err(e) => {
-                self.stop(notebook.as_str()).await;
+                self.stop_failed(notebook, kernel).await;
                 Err(stopped(notebook, format!("invalid answer: {e}")))
             }
         }
@@ -306,6 +319,32 @@ impl Kernels {
             kernel.close(notebook).await;
         }
     }
+
+    /// Shut down the kernel that failed, unless it was already replaced: a late failure of a
+    /// restarted kernel must not stop the fresh one.
+    async fn stop_failed(&self, notebook: &NotebookId, failed: &Arc<Kernel>) {
+        let removed = {
+            let mut live = self.live.lock().await;
+            let current = live
+                .get(notebook.as_str())
+                .is_some_and(|k| Arc::ptr_eq(k, failed));
+            if current {
+                live.remove(notebook.as_str())
+            } else {
+                None
+            }
+        };
+        if let Some(kernel) = removed {
+            kernel.close(notebook.as_str()).await;
+        }
+    }
+}
+
+/// A request line, checked against the contract before it is sent.
+fn kernel_request(value: serde_json::Value) -> Result<String, KernelError> {
+    let request: NotebookKernelRequest =
+        parse(&value.to_string()).map_err(|e| KernelError::Request(e.to_string()))?;
+    serde_json::to_string(&request).map_err(|e| KernelError::Request(e.to_string()))
 }
 
 fn stopped(notebook: &NotebookId, why: impl ToString) -> KernelError {
