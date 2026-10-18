@@ -30,6 +30,8 @@ pub enum StoreError {
     BadCacheEntry(String),
     #[error("invalid timestamp {0}")]
     BadTimestamp(String),
+    #[error("stored id {0:?} is not valid")]
+    BadId(String),
     #[error("database: {0}")]
     Db(sqlx::Error),
 }
@@ -43,7 +45,7 @@ impl From<sqlx::Error> for StoreError {
     }
 }
 
-/// One output committed in a pipeline version's latest run, with the step that made it.
+/// One output a step committed, with the run and version it belongs to.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunOutput {
     pub pipeline_version_id: PipelineVersionId,
@@ -497,22 +499,27 @@ impl SqliteStore {
             .collect()
     }
 
-    /// Every output committed in the latest run of each of `versions`, in one query.
-    pub async fn latest_run_outputs(
+    /// Each step's outputs from the latest run of its version that committed any, for every
+    /// one of `versions`, in one query. A newer run still going does not hide them.
+    pub async fn latest_outputs(
         &self,
         versions: &[PipelineVersionId],
     ) -> Result<Vec<RunOutput>, StoreError> {
         let ids = serde_json::to_string(&versions.iter().map(|v| v.as_str()).collect::<Vec<_>>())?;
         let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
-            "SELECT r.pipeline_version_id, r.id, a.node_id, o.port, art.body \
-             FROM runs r \
-             JOIN attempts a ON a.run_id = r.id \
+            "WITH latest AS ( \
+                 SELECT r.pipeline_version_id AS version, a.node_id AS node, max(r.id) AS run \
+                 FROM runs r \
+                 JOIN attempts a ON a.run_id = r.id \
+                 JOIN attempt_outputs o ON o.attempt_id = a.id \
+                 WHERE r.pipeline_version_id IN (SELECT value FROM json_each(?)) \
+                 GROUP BY r.pipeline_version_id, a.node_id) \
+             SELECT l.version, l.run, l.node, o.port, art.body \
+             FROM latest l \
+             JOIN attempts a ON a.run_id = l.run AND a.node_id = l.node \
              JOIN attempt_outputs o ON o.attempt_id = a.id \
              JOIN artifacts art ON art.id = o.artifact_id \
-             WHERE r.id IN (SELECT max(id) FROM runs \
-                 WHERE pipeline_version_id IN (SELECT value FROM json_each(?)) \
-                 GROUP BY pipeline_version_id) \
-             ORDER BY r.id DESC, a.node_id, o.port",
+             ORDER BY l.run DESC, l.node, o.port",
         )
         .bind(ids)
         .fetch_all(&self.pool)
@@ -520,8 +527,8 @@ impl SqliteStore {
         rows.into_iter()
             .map(|(version, run, node_id, port, body)| {
                 Ok(RunOutput {
-                    pipeline_version_id: stored_id(version)?,
-                    run_id: stored_id(run)?,
+                    pipeline_version_id: version.parse().map_err(|_| StoreError::BadId(version))?,
+                    run_id: run.parse().map_err(|_| StoreError::BadId(run))?,
                     node_id,
                     port,
                     artifact: serde_json::from_str(&body)?,
@@ -635,11 +642,6 @@ fn run_finished(status: RunStatus) -> bool {
 }
 
 /// Parse `(id, body)` rows; a bad body names its entity and id.
-/// An id read from a column, checked like any wire id.
-fn stored_id<T: DeserializeOwned>(raw: String) -> Result<T, StoreError> {
-    Ok(serde_json::from_value(serde_json::Value::String(raw))?)
-}
-
 fn parse_all<T: DeserializeOwned>(
     rows: Vec<(String, String)>,
     entity: &'static str,
