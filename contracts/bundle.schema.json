@@ -1272,13 +1272,16 @@
     },
     "NotebookExecutionEvent": {
       "title": "NotebookExecutionEvent",
-      "description": "One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`.",
+      "description": "One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`, or `failed` when the kernel stopped answering after the stream began (earlier failures are an HTTP error).",
       "oneOf": [
         {
           "$ref": "#/$defs/ExecutionRunning"
         },
         {
           "$ref": "#/$defs/ExecutionDone"
+        },
+        {
+          "$ref": "#/$defs/ExecutionFailed"
         }
       ]
     },
@@ -1326,6 +1329,25 @@
         },
         "execution": {
           "$ref": "#/$defs/NotebookExecution"
+        }
+      }
+    },
+    "ExecutionFailed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "problem"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "failed"
+          ]
+        },
+        "problem": {
+          "$ref": "#/$defs/Problem"
         }
       }
     },

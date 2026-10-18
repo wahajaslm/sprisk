@@ -118,12 +118,12 @@ export type Verdict = "pass" | "fail" | "warning" | "not_assessed";
  */
 export type NotebookCellId = string;
 /**
- * One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`.
+ * One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`, or `failed` when the kernel stopped answering after the stream began (earlier failures are an HTTP error).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "NotebookExecutionEvent".
  */
-export type NotebookExecutionEvent = ExecutionRunning | ExecutionDone;
+export type NotebookExecutionEvent = ExecutionRunning | ExecutionDone | ExecutionFailed;
 /**
  * Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with NotebookExecutionEvent lines ending in `done` (ADR-0041) and variables with NotebookVariables; interrupt and shutdown get no answer.
  *
@@ -875,6 +875,14 @@ export interface ExecutionRunning {
 export interface ExecutionDone {
   kind: "done";
   execution: NotebookExecution;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionFailed".
+ */
+export interface ExecutionFailed {
+  kind: "failed";
+  problem: Problem;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

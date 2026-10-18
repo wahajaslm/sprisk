@@ -949,6 +949,14 @@ class ExecutionDone(StrictModel):
     execution: NotebookExecution
 
 
+class ExecutionFailed(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["failed"]
+    problem: Problem
+
+
 class NotebookVariables(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1178,11 +1186,11 @@ class NotebookVersion(StrictModel):
     created_at: Timestamp
 
 
-class NotebookExecutionEvent(RootModel[ExecutionRunning | ExecutionDone]):
+class NotebookExecutionEvent(RootModel[ExecutionRunning | ExecutionDone | ExecutionFailed]):
     root: Annotated[
-        ExecutionRunning | ExecutionDone,
+        ExecutionRunning | ExecutionDone | ExecutionFailed,
         Field(
-            description="One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`.",
+            description="One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`, or `failed` when the kernel stopped answering after the stream began (earlier failures are an HTTP error).",
             title="NotebookExecutionEvent",
         ),
     ]
