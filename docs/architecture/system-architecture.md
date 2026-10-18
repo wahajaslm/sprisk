@@ -77,7 +77,7 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 
 The **Workbench View Registry** is independent of the **Operator/Capability Registry**:
 
-- `ViewType`: stable view type ID, renderer, accepted artifact/context kinds, available actions and serialization version; e.g. `workflow`, `dataset`, `distribution`, `correlation`, `experiment-comparison`, `model-diagnostics`, `evidence`, `code`, `notebook`, `run-report` (ADR-0039), `ai-investigation`, `question-brief`, `outcomes`, `logs`.
+- `ViewType`: stable view type ID, renderer, accepted artifact/context kinds, available actions and serialization version; e.g. `workflow`, `dataset`, `distribution`, `correlation`, `experiment-comparison`, `model-diagnostics`, `evidence`, `code`, `notebook`, `run-report` (ADR-0039), `decisions` (ADR-0042), `ai-investigation`, `question-brief`, `outcomes`, `logs`.
 - `ViewInstance`: unique instance ID, type, title, context references (`project_id`, `investigation_id`, and optional `node_id`, `artifact_id`, `run_id`, `experiment_id`), user-controlled settings and `follow_selection` versus `pinned` mode.
 - `WorkspaceLayout`: separately versioned UI-only dock topology and geometry (groups, tabs, pane sizes, active view), saved as a per-user/per-project preference; layout migration is independent of scientific schema migrations. Role presets (analyst, data scientist, ML engineer, reviewer) are layout defaults only, never permissions (ADR-0039).
 - `WorkbenchContext`: current project, active investigation, selected node/artifact/run and synchronized filters. Events are typed; a view can follow selection, pin a snapshot, or compare two references side-by-side.
@@ -159,6 +159,7 @@ Initial deployments: (1) one Rust binary plus managed, trusted Python worker pro
 | `Run` / `Step` / `Attempt` | A run executes one pipeline version against inputs. Each node is a step; each try of a step is an attempt. | Append-only history plus transactionally maintained current status. |
 | `Artifact` | Content-addressed output with declared schema and source. | Immutable bytes and metadata. |
 | `ExperimentStudy` / `Trial` | Evaluation protocol, search space, candidate configurations, results. | Study state mutable; trial records immutable at completion. |
+| `MethodologyDecision` | A rule's decision table for one dataset version: settings, one decision and reason per subject, overrides with reason and owner, and the flow version it built (ADR-0042). | Immutable; a new setting or override is a new record. |
 | `MethodologyCheck` | Rule verdict, version, rationale, observed evidence and limitations. | Immutable per check execution. |
 | `Finding` / `EvidenceClaim` | Proposition, supporting/contradicting sources, uncertainty and scope. | Versioned, not overwritten. |
 | `Assumption` | Explicit unverified or context-supplied proposition, with status and owner. | Versioned. |
@@ -265,6 +266,8 @@ GOAL_RECEIVED
 Three autonomy modes: `assist` (proposals), `execute_approved` (can run approved plan within budget), `bounded_autonomous` (may propose/run permitted experimental versions but not production side effects). All use the same graph compiler.
 
 ## 8. Methodology and scientific validity
+
+**Rules that decide (ADR-0042):** methodology rules observe the profile and confirmed facts, decide per subject with a reason, and build steps through the normal API. Each declares its stage, needs, what it decides (one owner per decision) and its published source. Gates below then check what was built.
 
 **Gate A — structural:** Rust compiler verifies valid graph types, references, execution permissions and physical resource constraints.
 

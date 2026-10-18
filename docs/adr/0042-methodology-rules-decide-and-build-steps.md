@@ -1,5 +1,5 @@
 # ADR-0042: Methodology rules observe, decide, and build steps
-Status: Proposed
+Status: Accepted
 Date: 2026-10-18
 Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (methodology), §15.1. Builds on ADR-0017, ADR-0037, ADR-0038, ADR-0040.
 
