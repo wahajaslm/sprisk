@@ -1,5 +1,5 @@
 # ADR-0031: Code steps link by variable name
-Status: Accepted
+Status: Accepted; importing a notebook now makes a notebook, not a flow (ADR-0036). The analyzer stays.
 Date: 2026-10-16
 Arch doc sections: §5 (typed pipeline IR), §9 (runs, caching), §11 (contracts). Builds on ADR-0020, 0021, 0026, 0030. Node Framework spec §5, §8.3, Scenario A.
 

@@ -34,10 +34,10 @@
 | [0030](0030-data-explores-variables-visualizations-shows-and-builds.md) | Data explores variables; Visualizations shows displays and builds charts | Accepted |
 | [0031](0031-code-steps-link-by-variable-name.md) | Code steps link by variable name | Accepted |
 | [0032](0032-charts-come-only-from-code.md) | Charts come only from code: no Chart button | Accepted |
-| [0033](0033-notebook-view-of-a-flow.md) | A flow can be read and edited as a notebook | Accepted |
+| [0033](0033-notebook-view-of-a-flow.md) | A flow can be read and edited as a notebook | Superseded by ADR-0036 |
 | [0034](0034-notebook-uses-jupyterlab-widgets.md) | The notebook view is JupyterLab's own notebook, with sprisk as its kernel | Superseded by ADR-0035 |
-| [0035](0035-notebook-looks-like-vs-code.md) | The notebook view is a VS Code-style notebook on Monaco | Accepted |
-| [0036](0036-session-notebook-and-published-node.md) | Notebooks run in a session; a node is made only when the person picks a boundary | Proposed |
+| [0035](0035-notebook-looks-like-vs-code.md) | The notebook view is a VS Code-style notebook on Monaco | Accepted; run path replaced by ADR-0036 |
+| [0036](0036-session-notebook-and-published-node.md) | Notebooks run in a session; a node is made only when the person picks a boundary | Accepted |
 
 ## Open questions (arch doc §17)
 

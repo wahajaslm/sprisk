@@ -1,5 +1,5 @@
 # ADR-0035: The notebook view is a VS Code-style notebook on Monaco
-Status: Accepted
+Status: Accepted; its run path (every run saves a flow version) is replaced by ADR-0036. The editor stays.
 Date: 2026-10-17
 Arch doc sections: §2A (Notebook views). Supersedes ADR-0034. Keeps ADR-0033 (one saved version, two views).
 

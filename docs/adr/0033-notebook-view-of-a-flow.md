@@ -1,5 +1,5 @@
 # ADR-0033: A flow can be read and edited as a notebook
-Status: Accepted; its notebook screen is replaced by ADR-0034 (the one-version model stays)
+Status: Superseded by ADR-0036 (notebooks run in a session; nodes are made from picked cells)
 Date: 2026-10-17
 Arch doc sections: §2A (Notebook views, notebook security), §5 (typed pipeline IR). Builds on ADR-0028, 0031.
 

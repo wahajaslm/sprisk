@@ -67,7 +67,7 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 | Components / styling | Radix UI primitives, shadcn/ui patterns, tokenized design system | **Chosen direction**; no bundled dashboard theme or AI-specific visual styling requirements. |
 | Tables and analytics | AG Grid Community; FINOS Perspective where useful | Community license baseline, advanced grid/pivot capabilities reviewed before implementation. Do not assume AG Grid Enterprise features are free. |
 | Charts | Apache ECharts (general); Plotly.js through scientific visualization adapters | Both are **candidate adapters**, not mandatory dependencies of every view. Use a renderer registry; limit loaded libraries per view. |
-| Code and notebooks | Monaco Editor; Jupyter-compatible kernel protocol if/when notebooks require real execution | Monaco edits code; execution remains in authorized Python workers, never directly in browser components. |
+| Code and notebooks | Monaco Editor; a Jupyter kernel (`ipykernel` driven by `jupyter_client`) per open notebook, started by Rust (ADR-0036) | Monaco edits code; the browser only calls the Rust API. Session results are scratch; nodes made from notebook cells run in authorized Python workers. |
 | Data fetching & view state | TanStack Query for API/cache; Zustand for local UI context | Server-side scientific state remains with Rust metadata/artifacts, not in UI state. |
 | Desktop | Browser against localhost Rust API; Tauri later | Must prove local Python runtime installation and window/process lifecycles before packaging. |
 
@@ -102,7 +102,7 @@ flowchart LR
 - **Data locality:** API pagination, projection/filter pushdown, aggregates, sampling and streamed results; never transfer a whole multi-GB dataset for a view. Visualizations reference versioned artifacts and query specs.
 - **Lifecycle & performance:** lazy-load heavy panels (React Flow, Monaco, scientific chart libraries); resize-aware renderers, visibility-aware refresh, window virtualization, and controlled caching. Hidden tabs must not eagerly recompute expensive diagnostics.
 - **Detached windows:** popout documents complicate editor/chart bindings, event routing, credential scoping and native desktop packaging. Test before guaranteeing cross-window behavior.
-- **Notebook security:** a code editor is not a compute permission. Notebook/code executions go through the same Rust authorization, worker isolation, artifacts and provenance contracts as graphical workflows.
+- **Notebook security:** a code editor is not a compute permission. A notebook cell runs only through the Rust API, in a kernel Rust starts with a per-cell time limit, a memory cap, an idle shutdown and a cap on live kernels; each execution is audited by its code hash (ADR-0036). Session results are scratch, never artifacts or evidence. A node made from cells goes through the same authorization, worker isolation, artifacts and provenance contracts as any graphical workflow.
 - **Extensions:** frontend plugins register view *types*, not executable analytical capabilities. Rendering a result produced by a new backend operator should work through a default artifact inspector even without a custom visualizer.
 
 ### Frontend proof-of-concept gate
@@ -164,6 +164,7 @@ Initial deployments: (1) one Rust binary plus managed, trusted Python worker pro
 | `Assumption` | Explicit unverified or context-supplied proposition, with status and owner. | Versioned. |
 | `DecisionCase` / `DecisionRelease` | Alternatives, constraints, approval and frozen conditional action. | Case evolves; release immutable. |
 | `OutcomeObservation` | Later measurements tied to a release, treatment, evaluation plan and cohort. | Append-only correction-aware observations. |
+| `Notebook` / `NotebookVersion` | Ordered code and Markdown cells explored on a live kernel (ADR-0036). Its outputs are not saved. | Immutable versions. |
 | `AIPlanningSession` / `PipelineProposal` | Prompted context, model/provider, proposals, token costs and accepted changes. | Append-only proposals and tool actions. |
 
 Three linked graphs:
@@ -279,7 +280,7 @@ Pipelines are not uniformly deterministic: record environment digest, package ve
 
 ### Attempt state
 
-`CREATED → VALIDATED → QUEUED → LEASED → RUNNING → UPLOADING → SUCCEEDED`, with `FAILED`, `CANCELLED`, `TIMED_OUT`, `SKIPPED`, and `CACHE_HIT` outcomes. Retries are new `Attempt` records (not silent replacement of old attempts).
+`CREATED → VALIDATED → QUEUED → LEASED → RUNNING → UPLOADING → SUCCEEDED`, with `FAILED`, `CANCELLED`, `TIMED_OUT`, `SKIPPED`, and `CACHE_HIT` outcomes. Retries are new `Attempt` records (not silent replacement of old attempts). A notebook cell run in a session kernel is not a run or an attempt: it leaves an audit event, not history (ADR-0036).
 
 ### Local lifecycle
 
@@ -342,7 +343,7 @@ GET    /v1/investigations/{id}/evidence
 GET    /v1/investigations/{id}/brief
 ```
 
-A local worker protocol needs at least `Handshake(version, capabilities)`, `LeaseAttempt`, `Heartbeat`, `Progress`, `ArtifactManifest`, `Complete`, `Fail`, `Cancel`, and `Acknowledge`. Use bounded structured messages over stdio IPC or local sockets. Workers must not modify Rust's metadata tables directly; artifact writes are mediated by scoped access and commit validation.
+A local worker protocol needs at least `Handshake(version, capabilities)`, `LeaseAttempt`, `Heartbeat`, `Progress`, `ArtifactManifest`, `Complete`, `Fail`, `Cancel`, and `Acknowledge`. Use bounded structured messages over stdio IPC or local sockets. Workers must not modify Rust's metadata tables directly; artifact writes are mediated by scoped access and commit validation. A notebook's session host takes `NotebookKernelRequest` lines (`execute`, `interrupt`, `variables`, `shutdown`) and answers with `NotebookExecution` or `NotebookVariables` (ADR-0036).
 
 **Important distinction:** the AI planner's tool interface uses the **same API/core capabilities** as an expert CLI or SDK. No shadow execution logic or private route for an agent.
 
