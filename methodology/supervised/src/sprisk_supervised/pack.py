@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from ulid import ULID
 
 from sprisk_contracts import Operator, PipelineVersion
+from sprisk_supervised.code_leakage import code_leakage
 from sprisk_supervised.split_leakage import CheckInputError, split_leakage
 from sprisk_workers.errors import OperatorError
 
@@ -20,7 +21,10 @@ def run(pipeline: Any, operators: list[Any]) -> list[dict[str, Any]]:
     by_ref = {op.id.root: op for op in known}
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
-        results = [split_leakage(version, by_ref, f"mck_{ULID()}", now)]
+        results = [
+            split_leakage(version, by_ref, f"mck_{ULID()}", now),
+            code_leakage(version, f"mck_{ULID()}", now),
+        ]
     except CheckInputError as e:
         raise OperatorError("invalid_check_input", str(e)) from e
     return [r.model_dump(mode="json", exclude_none=True) for r in results]
