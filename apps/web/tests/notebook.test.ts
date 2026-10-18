@@ -262,7 +262,8 @@ describe("download as .ipynb", () => {
   it("gives a v1 code step its input as data, with polars", () => {
     const cells = codeCells(flowAsIpynb(codePipeline, ops, new Map(operators.map((o) => [o.id, "..."]))));
     expect(cells[0]).toBe("import polars as pl");
-    expect(cells.at(-1)).toBe("data = load_data\nprint(data.height)\ndata.head(1)\ncode_1_data = data");
+    // The code's own cell ends with its last line, so the notebook shows that value.
+    expect(cells.slice(-2)).toEqual(["data = load_data\nprint(data.height)\ndata.head(1)", "code_1_data = data"]);
   });
 
   it("says which operator's code is missing", () => {

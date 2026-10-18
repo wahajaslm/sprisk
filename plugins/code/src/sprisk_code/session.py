@@ -27,7 +27,7 @@ from jupyter_client.manager import KernelManager
 from jupyter_client.provisioning.local_provisioner import LocalProvisioner
 from pydantic import ValidationError
 
-from sprisk_code.kernel_display import MIME
+from sprisk_code.kernel_display import MANY, MIME
 from sprisk_code.shown import MAX_FIGURE_BYTES, MAX_FIGURES, MAX_ITEMS, MAX_TEXT_CHARS, cut
 from sprisk_contracts import NotebookExecution, NotebookKernelRequest, NotebookVariables
 from sprisk_contracts.generated.models import DisplayItem, KernelExecute, KernelVariables
@@ -76,11 +76,11 @@ class Outputs:
         if kind == "stream":
             self._text(content["text"], content["name"])
         elif kind in ("execute_result", "display_data"):
-            item = _item(content["data"])
-            if item is not None and item["kind"] in ("figure", "image"):
-                self._figure(item)
-            elif item is not None:
-                self._add(item)
+            for item in _items(content["data"]):
+                if item["kind"] in ("figure", "image"):
+                    self._figure(item)
+                else:
+                    self._add(item)
         elif kind == "execute_input":
             self.execution_count = content["execution_count"]
         elif kind == "error":
@@ -121,6 +121,15 @@ class Outputs:
             last["text"] = cut(last["text"] + chunk, MAX_TEXT_CHARS)
         else:
             self._add({"kind": "text", "text": cut(chunk, MAX_TEXT_CHARS), "channel": channel})
+
+
+def _items(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """What a display bundle shows: each item of a list, or its one best form."""
+    many = data.get(MANY)
+    if isinstance(many, list):
+        return [i for i in many if isinstance(i, dict)]
+    item = _item(data)
+    return [] if item is None else [item]
 
 
 def _item(data: dict[str, Any]) -> dict[str, Any] | None:

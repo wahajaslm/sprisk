@@ -100,6 +100,13 @@ def test_outputs_are_capped() -> None:
     assert str(out.items[0]["text"]).endswith("…")
 
 
+def test_a_list_display_adds_each_item() -> None:
+    out = Outputs()
+    items = [{"kind": "text", "text": "a"}, {"kind": "image", "png_base64": "iVBOR"}]
+    out.add(iopub("display_data", data={"application/vnd.sprisk.displays+json": items}))
+    assert out.items == items
+
+
 def test_figures_past_the_cap_are_noted_not_shown() -> None:
     out = Outputs()
     for _ in range(15):
@@ -171,6 +178,20 @@ def test_a_plotly_figure_shows_once_as_a_value_or_with_show(session: Session) ->
         assert [o.kind for o in done.outputs] == ["figure"]
         figure = done.outputs[0].figure
         assert figure is not None and figure.format == "plotly_json"
+
+
+def test_a_list_of_figures_and_tables_shows_each_one(session: Session) -> None:
+    done = session.execute(
+        "import plotly.graph_objects as go, polars as pl\n"
+        "[go.Figure(go.Bar(y=[1])), go.Figure(go.Bar(y=[2])), pl.DataFrame({'a': [1]})]"
+    )
+    assert done.status == "ok", done.error
+    assert [o.kind for o in done.outputs] == ["figure", "figure", "table"]
+
+
+def test_a_list_of_other_values_shows_as_text(session: Session) -> None:
+    done = session.execute("[1, 'a']")
+    assert [(o.kind, o.text) for o in done.outputs] == [("text", "[1, 'a']")]
 
 
 def test_an_error_is_reported_and_the_kernel_keeps_its_state(session: Session) -> None:

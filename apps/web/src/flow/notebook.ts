@@ -272,7 +272,7 @@ export function flowAsIpynb(pipeline: PipelineVersion, operators: Operators, sou
     if (step.kind === "cells") return step.cells;
     const node = nodeOf(pipeline, step.nodeId);
     if (step.kind === "code") {
-      return [[`data = ${step.data ?? "None"}`, step.source, `${node.id}_data = ${String(node.params["output"] ?? "data")}`].join("\n")];
+      return [`data = ${step.data ?? "None"}\n${step.source}`, `${node.id}_data = ${String(node.params["output"] ?? "data")}`];
     }
     const code = [codeToWrite(node, sources, written), step.call.includes("Path(") ? "from pathlib import Path" : undefined, step.call];
     return [[code.filter((c) => c !== undefined).join("\n\n"), shownOf(pipeline, operators, node)].filter((c) => c !== undefined).join("\n")];
