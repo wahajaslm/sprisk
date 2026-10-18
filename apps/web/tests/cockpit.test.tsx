@@ -981,7 +981,7 @@ describe("code step interface (ADR-0021)", () => {
   /** Data's own tab of everything the code ended with, beside its tables. */
   async function openVariables() {
     await openCode("Data");
-    await userEvent.click(await screen.findByRole("tab", { name: "variables" }));
+    await userEvent.click(await screen.findByRole("tab", { name: /^variables/ }));
   }
 
   it("Inputs lists the names the code reads, marking names nothing defines", async () => {
@@ -1060,12 +1060,49 @@ describe("code step interface (ADR-0021)", () => {
     await userEvent.click(within(variables).getByRole("tab", { name: /^wide/ }));
     expect(within(variables).getByText("First 1 of 900 fields.")).toBeInTheDocument();
 
+    // A dict is neither a table nor a plain value: it waits under Other.
+    await userEvent.click(within(variables).getByRole("button", { name: "Other (1)" }));
     await userEvent.click(within(variables).getByRole("tab", { name: /^lookup/ }));
     expect(within(variables).getByText("{'a': 1}")).toBeInTheDocument();
 
     // Only a DataFrame can be passed on to the next step.
     const values = screen.getByRole("region", { name: "Values in your code" });
     expect(within(values).queryByRole("radio", { name: /ages/ })).toBeNull();
+  });
+
+  it("Data names each tab: tables passed on, tables the code showed by their code, then variables", async () => {
+    const page = { ...tablePage(0, 1), total_rows: 3 };
+    server.use(
+      http.get(`/api/artifacts/${codeOutputs[0]!.artifact.id}/content`, () =>
+        HttpResponse.text(JSON.stringify({ items: [{ kind: "table", table: page, label: "summary" }, { kind: "table", table: page }] })),
+      ),
+    );
+    withInterface({
+      ...report,
+      outputs: [
+        { name: "out", type: "polars.DataFrame", rows: 120, columns: 2, origin: "measured", chosen: true },
+        { name: "summary", type: "pandas.DataFrame", rows: 4, columns: 4, origin: "measured", chosen: false },
+        { name: "best", type: "str", origin: "measured", chosen: false, text: "'ridge'" },
+        { name: "folds", type: "sklearn.KFold", origin: "measured", chosen: false, text: "KFold(n_splits=5)" },
+        { name: "sizes", type: "numpy.ndarray", origin: "measured", chosen: false, text: "array([66, 132])" },
+      ],
+    });
+    await openCode("Data");
+    const strip = await screen.findByRole("tablist", { name: "Outputs" });
+    await waitFor(() => expect(within(strip).getAllByRole("tab").map((t) => t.textContent)).toEqual(["data", "summary shown", "shown 2", "variables 4"]));
+
+    await userEvent.click(within(strip).getByRole("tab", { name: /^variables/ }));
+    const variables = await screen.findByRole("region", { name: "Variables" });
+    // A table with a tab of its own is not listed again.
+    expect(within(variables).queryByRole("tab", { name: /^summary/ })).toBeNull();
+    expect(within(variables).getByText("summary has its own tab above.")).toBeInTheDocument();
+    expect(within(variables).getByRole("tab", { name: /^out/ })).toHaveTextContent("→ next steps");
+    expect(within(variables).getByText("Tables")).toBeInTheDocument();
+    expect(within(variables).getByText("Values")).toBeInTheDocument();
+    // Helpers and arrays wait behind Other until asked for.
+    expect(within(variables).queryByRole("tab", { name: /^folds/ })).toBeNull();
+    await userEvent.click(within(variables).getByRole("button", { name: "Other (2)" }));
+    expect(within(variables).getByRole("tab", { name: /^folds/ })).toBeInTheDocument();
   });
 
   it("a notebook step passes on by name: no pass-on choice, named outputs listed (ADR-0031)", async () => {
@@ -1123,17 +1160,17 @@ describe("node detail switch", () => {
     );
   }
 
-  it("a step with several tables shows one sub-tab per table in Data", async () => {
+  it("a step with several tables shows one sub-tab per table in Data, in the order its operator lists them", async () => {
     withSplitOutputs();
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
     const tables = await screen.findByRole("tablist", { name: "Outputs" });
-    expect(within(tables).getAllByRole("tab").map((t) => t.textContent)).toEqual(["test", "train"]);
-    expect(await screen.findByRole("region", { name: "Table · test" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Table · train" })).toBeNull();
-    await userEvent.click(within(tables).getByRole("tab", { name: "train" }));
+    await waitFor(() => expect(within(tables).getAllByRole("tab").map((t) => t.textContent)).toEqual(["train", "test"]));
     expect(await screen.findByRole("region", { name: "Table · train" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Table · test" })).toBeNull();
+    await userEvent.click(within(tables).getByRole("tab", { name: "test" }));
+    expect(await screen.findByRole("region", { name: "Table · test" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Table · train" })).toBeNull();
   });
 
   it("shows round steps with name and state in Compact and full cards in Detail; there is no Summary", async () => {

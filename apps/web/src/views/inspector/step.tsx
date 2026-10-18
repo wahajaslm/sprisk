@@ -17,7 +17,8 @@ import { PinIcon } from "../Icons.tsx";
 import { FiguresTab } from "./FiguresTab.tsx";
 import { ViewControls } from "./ViewControls.tsx";
 import { ChecksTab, concerns } from "./ChecksTab.tsx";
-import { CodeData } from "./CodeData.tsx";
+import { namedPorts } from "../../flow/notebook.ts";
+import { PassOn } from "./CodeData.tsx";
 import { ConsoleTab, consoleProblems } from "./ConsoleTab.tsx";
 import { DataTab } from "./DataTab.tsx";
 import { HistoryTab } from "./HistoryTab.tsx";
@@ -189,7 +190,8 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
             explore={step.explore}
             figurePorts={step.figurePorts}
             shown={shownTables(display)}
-            variables={isCode && pipeline && node ? <CodeData pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} /> : undefined}
+            portOrder={[...(operator?.outputs ?? []).map((o) => o.name), ...namedPorts(operator, node?.params, "output")]}
+            code={isCode && pipeline && node ? { found, passOn: <PassOn pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} /> } : undefined}
           />
         </>
       );

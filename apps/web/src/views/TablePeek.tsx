@@ -4,7 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type ReactNode, useRef } from "react";
 
 import { tablePageQuery, useTablePage } from "../api/hooks.ts";
-import { isText } from "./RowsTable.tsx";
+import { Cell, isText } from "./RowsTable.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 
 const PAGE_ROWS = 100;
@@ -80,9 +80,7 @@ function ScrollRows({ artifactId, label, head }: { artifactId: string; label: st
                   ) : row.missing.includes(col) ? (
                     <td key={c.name} className="missing" aria-label="missing">∅</td>
                   ) : (
-                    <td key={c.name} className={isText(c.data_type) ? "text" : undefined}>
-                      {row.values[col]}
-                    </td>
+                    <Cell key={c.name} value={row.values[col]} dataType={c.data_type} />
                   ),
                 )}
               </tr>

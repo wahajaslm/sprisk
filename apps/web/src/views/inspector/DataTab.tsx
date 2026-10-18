@@ -1,7 +1,8 @@
 import * as Tabs from "@radix-ui/react-tabs";
-import type { Attempt, AttemptOutput, DisplayItem } from "@sprisk/contracts";
+import type { Attempt, AttemptOutput, CodeInterface, DisplayItem } from "@sprisk/contracts";
 import type { ReactNode } from "react";
 
+import type { Read } from "../../api/code.ts";
 import { useArtifactText, useOutputs } from "../../api/hooks.ts";
 import { MAX_INLINE_BYTES, PARQUET } from "../../api/media.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
@@ -10,6 +11,7 @@ import { useInspectorDetail } from "../../workbench/detail.ts";
 import { ColumnProfile } from "../ColumnProfile.tsx";
 import { formatMetric } from "../NodeFact.tsx";
 import { TablePeek } from "../TablePeek.tsx";
+import { Variables } from "./Variables.tsx";
 import { ShownTable } from "./VisualsTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 
@@ -29,23 +31,27 @@ type Props = {
   figurePorts: string[];
   /** Tables a code step showed; they count as data even when it passes nothing on. */
   shown: DisplayItem[];
-  /** A code step's variables: a tab of their own after its tables (ADR-0030). */
-  variables?: ReactNode;
+  /** The step's output ports in the order its operator lists them (train before test). */
+  portOrder: string[];
+  /** A code step's variables (ADR-0030), and for older code steps the choice of what passes on. */
+  code?: { found: Read<CodeInterface>; passOn?: ReactNode } | undefined;
 };
 
 /** What the step produces, drawn for people: tables, metrics, the model. Code steps also
  * show every variable they ended with and choose what they pass on (ADR-0030). Charts are
  * made in Visualizations. */
-export function DataTab({ attempt, operator, capability, previous, explore, figurePorts, shown, variables }: Props) {
+export function DataTab({ attempt, operator, capability, previous, explore, figurePorts, shown, portOrder, code }: Props) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
   if (outputs.isPending) return <Loading />;
   if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
   // Console output is shown in Console, for every step (ADR-0025).
-  const data = outputs.data.filter(
-    (o) => o.port !== "console" && !figurePorts.includes(o.port) && !(isCodeOperator(operator) && REPORT_PORTS.includes(o.port)),
-  );
+  const rank = (port: string) => (portOrder.includes(port) ? portOrder.indexOf(port) : portOrder.length);
+  const data = outputs.data
+    .filter((o) => o.port !== "console" && !figurePorts.includes(o.port) && !(isCodeOperator(operator) && REPORT_PORTS.includes(o.port)))
+    .sort((a, b) => rank(a.port) - rank(b.port));
   const parts: Part[] = [
+    // What the step passes on, then what its code showed, named by the code that showed it.
     ...data.map((o) => ({
       key: o.port,
       label: o.port,
@@ -53,14 +59,20 @@ export function DataTab({ attempt, operator, capability, previous, explore, figu
     })),
     ...shown.map((item, i) => ({
       key: `shown-${i}`,
-      label: `shown ${i + 1}`,
+      label: item.label ? (
+        <>
+          {item.label} <span className="tab-meta">shown</span>
+        </>
+      ) : (
+        `shown ${i + 1}`
+      ),
       body: (
-        <section className="output" aria-label={`Shown table ${i + 1}`}>
+        <section className="output" aria-label={item.label ? `Shown table ${item.label}` : `Shown table ${i + 1}`}>
           <ShownTable item={item} index={i} />
         </section>
       ),
     })),
-    ...(variables ? [{ key: "variables", label: "variables", body: variables }] : []),
+    ...(code ? [variablesPart(code, [...data.map((o) => o.port), ...shown.flatMap((i) => (i.label ? [i.label] : []))])] : []),
   ];
   return (
     <div className="outputs">
@@ -71,7 +83,31 @@ export function DataTab({ attempt, operator, capability, previous, explore, figu
   );
 }
 
-type Part = { key: string; label: string; body: ReactNode };
+type Part = { key: string; label: ReactNode; body: ReactNode };
+
+/** Everything the code ended with, except what already has a tab above: no table twice. */
+function variablesPart({ found, passOn }: NonNullable<Props["code"]>, tabbed: string[]): Part {
+  if (found.status !== "ready") {
+    const body = found.status === "error" ? <p role="alert" className="error">{found.message}</p> : <Loading />;
+    return { key: "variables", label: "variables", body };
+  }
+  const listed = found.value.outputs.filter((v) => !tabbed.includes(v.name));
+  const omitted = found.value.outputs.filter((v) => tabbed.includes(v.name)).map((v) => v.name);
+  return {
+    key: "variables",
+    label: (
+      <>
+        variables <span className="tab-meta">{listed.length}</span>
+      </>
+    ),
+    body: (
+      <div className="code-data">
+        {passOn}
+        <Variables found={listed} omitted={omitted} />
+      </div>
+    ),
+  };
+}
 
 /** Several tables or results: one at a time, picked by name. */
 function SubTabs({ parts }: { parts: Part[] }) {

@@ -2,6 +2,18 @@ import type { TablePage } from "@sprisk/contracts";
 
 export const isText = (dataType: string) => /Utf8|String|Dictionary|Categorical/.test(dataType);
 
+/** A cell as people read it: a float to six significant digits, as a notebook prints it, with
+ * the full value on hover. Everything else as stored. */
+export function Cell({ value, dataType }: { value: string | undefined; dataType: string }) {
+  const number = /Float|Decimal/.test(dataType) ? Number(value) : Number.NaN;
+  const short = Number.isFinite(number) ? String(Number(number.toPrecision(6))) : value;
+  return (
+    <td className={isText(dataType) ? "text" : undefined} title={short !== value ? value : undefined}>
+      {short}
+    </td>
+  );
+}
+
 /** One page of rows as a table. Missing cells are marked, not left blank. */
 export function RowsTable({ page, label }: { page: TablePage; label: string }) {
   const first = page.offset + 1;
@@ -27,9 +39,7 @@ export function RowsTable({ page, label }: { page: TablePage; label: string }) {
                 row.missing.includes(col) ? (
                   <td key={col} className="missing" aria-label="missing">∅</td>
                 ) : (
-                  <td key={col} className={isText(page.columns[col]?.data_type ?? "") ? "text" : undefined}>
-                    {value}
-                  </td>
+                  <Cell key={col} value={value} dataType={page.columns[col]?.data_type ?? ""} />
                 ),
               )}
             </tr>

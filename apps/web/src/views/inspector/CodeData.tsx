@@ -4,25 +4,18 @@ import { useState } from "react";
 import type { Read } from "../../api/code.ts";
 import { NOTEBOOK_OPERATOR } from "../../flow/notebook.ts";
 import { useRunEdit } from "./useRunEdit.ts";
-import { Variables } from "./Variables.tsx";
 
 type Props = { pipeline: PipelineVersion; nodeId: string; params: Record<string, unknown>; found: Read<CodeInterface> };
 
-/** For a code step: the variables it ended with, and which table it passes on. */
-export function CodeData({ pipeline, nodeId, params, found }: Props) {
-  if (found.status === "error") return <p role="alert" className="error">{found.message}</p>;
+/** For an older code step: which of its tables passes on. A notebook step passes on the names
+ * later steps read (ADR-0031), so it has nothing to pick. */
+export function PassOn({ pipeline, nodeId, params, found }: Props) {
   if (found.status !== "ready") return null;
-  // A notebook step passes on the names later steps read (ADR-0031); there is nothing to pick.
-  const byName = pipeline.nodes.find((n) => n.id === nodeId)?.operator === NOTEBOOK_OPERATOR;
-  return (
-    <div className="code-data">
-      {!byName && <PassOn key={JSON.stringify(found.value.outputs)} pipeline={pipeline} nodeId={nodeId} params={params} found={found.value} />}
-      <Variables found={found.value.outputs} />
-    </div>
-  );
+  if (pipeline.nodes.find((n) => n.id === nodeId)?.operator === NOTEBOOK_OPERATOR) return null;
+  return <PassOnChoice key={JSON.stringify(found.value.outputs)} pipeline={pipeline} nodeId={nodeId} params={params} found={found.value} />;
 }
 
-function PassOn({ pipeline, nodeId, params, found }: Omit<Props, "found"> & { found: CodeInterface }) {
+function PassOnChoice({ pipeline, nodeId, params, found }: Omit<Props, "found"> & { found: CodeInterface }) {
   const saved = typeof params.output === "string" ? params.output : "";
   const [output, setOutput] = useState(saved);
   const edit = useRunEdit(pipeline, nodeId);

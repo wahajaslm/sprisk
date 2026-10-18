@@ -493,9 +493,17 @@ p { margin: 0; }
 .tab-data .code-data > .found { flex: none; margin: 0 var(--space-4) var(--space-2); }
 .variables { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); border-top: 1px solid var(--line-soft); }
 .variable-tabs { display: flex; flex-direction: column; min-height: 0; overflow: auto; padding: var(--space-1) 0; border-right: 1px solid var(--line-soft); }
-.variable { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-3); border: 0; border-left: 2px solid transparent; border-radius: 0; background: transparent; color: var(--soft); font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.variable { display: flex; align-items: baseline; gap: var(--space-2); padding: var(--space-1) var(--space-3); border: 0; border-left: 2px solid transparent; border-radius: 0; background: transparent; color: var(--soft); font-size: var(--text-sm); text-align: left; cursor: pointer; }
 .variable:hover { background: var(--node-hover); color: var(--ink); }
 .variable[data-state="active"] { border-left-color: var(--ink); background: var(--wash); color: var(--ink); }
+.variable-group { display: flex; flex-direction: column; }
+.variable-group-title { margin: var(--space-2) var(--space-3) 2px; padding: 0; border: 0; background: transparent; font: 500 var(--text-xs) var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); text-align: left; }
+.variable-group-title.toggle { cursor: pointer; }
+.variable-group-title.toggle:hover { color: var(--ink); }
+.variable-note { margin: var(--space-1) var(--space-3); font-size: var(--text-xs); color: var(--faint); }
+.variable-out { font: var(--text-xs) var(--mono); color: var(--soft); white-space: nowrap; }
+.variable .found-meta { margin-left: auto; }
+.tab-meta { margin-left: 2px; font-size: var(--text-xs); color: var(--faint); }
 .variable-panel { min-width: 0; min-height: 0; overflow: auto; padding: var(--space-2) var(--space-4); }
 .variable-panel[data-state="inactive"] { display: none; }
 .variable-detail { display: grid; gap: var(--space-2); }
