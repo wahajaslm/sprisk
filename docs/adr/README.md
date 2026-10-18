@@ -38,6 +38,7 @@
 | [0034](0034-notebook-uses-jupyterlab-widgets.md) | The notebook view is JupyterLab's own notebook, with sprisk as its kernel | Superseded by ADR-0035 |
 | [0035](0035-notebook-looks-like-vs-code.md) | The notebook view is a VS Code-style notebook on Monaco | Accepted; run path replaced by ADR-0036 |
 | [0036](0036-session-notebook-and-published-node.md) | Notebooks run in a session; a node is made only when the person picks a boundary | Accepted |
+| [0037](0037-notebooks-belong-to-a-flow.md) | Notebooks belong to a flow and keep it in sync | Accepted |
 
 ## Open questions (arch doc §17)
 

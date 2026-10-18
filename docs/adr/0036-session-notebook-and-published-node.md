@@ -1,5 +1,5 @@
 # ADR-0036: Notebooks run in a session; a node is made only when the person picks a boundary
-Status: Accepted
+Status: Accepted; running a notebook now updates its flow, and Create node is replaced (ADR-0037)
 Date: 2026-10-18
 Arch doc sections: §2A (Code and notebooks, Notebook security), §4 (domain model), §9 (runs), §11 (worker protocol), §12 (trust boundaries). Node Framework §8.3. Supersedes ADR-0033 and the run path of ADR-0035. Changes ADR-0031's import rule.
 
