@@ -1,0 +1,1 @@
+{ "kind": "running", "execution_count": 3, "outputs": [{ "kind": "text", "text": "epoch 1\n", "channel": "stdout" }] }

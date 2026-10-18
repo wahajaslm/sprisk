@@ -30,6 +30,7 @@ export interface Entities {
   NotebookVersion: C.NotebookVersion;
   NotebookExecute: C.NotebookExecute;
   NotebookExecution: C.NotebookExecution;
+  NotebookExecutionEvent: C.NotebookExecutionEvent;
   NotebookVariables: C.NotebookVariables;
   NotebookKernelRequest: C.NotebookKernelRequest;
 }

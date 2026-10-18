@@ -22,6 +22,7 @@ from sprisk_contracts import (
     MethodologyCheck,
     NotebookExecute,
     NotebookExecution,
+    NotebookExecutionEvent,
     NotebookKernelRequest,
     NotebookVariables,
     NotebookVersion,
@@ -61,6 +62,7 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (NotebookVersion, "notebook_version"),
     (NotebookExecute, "notebook_execute"),
     (NotebookExecution, "notebook_execution"),
+    (NotebookExecutionEvent, "notebook_execution_event"),
     (NotebookVariables, "notebook_variables"),
     (NotebookKernelRequest, "notebook_kernel_request"),
 ]

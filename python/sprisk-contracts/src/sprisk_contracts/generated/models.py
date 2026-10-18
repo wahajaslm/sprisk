@@ -926,6 +926,29 @@ class NotebookExecution(StrictModel):
     ] = None
 
 
+class ExecutionRunning(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["running"]
+    execution_count: Annotated[
+        int | None,
+        Field(description="The kernel's count for this execution, once it has one.", ge=0),
+    ] = None
+    outputs: Annotated[
+        list[DisplayItem],
+        Field(description="Every output so far, not only the new ones, capped as in the result."),
+    ]
+
+
+class ExecutionDone(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["done"]
+    execution: NotebookExecution
+
+
 class NotebookVariables(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -939,7 +962,7 @@ class NotebookKernelRequest(
     root: Annotated[
         KernelExecute | KernelInterrupt | KernelVariables | KernelShutdown,
         Field(
-            description="Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.",
+            description="Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with NotebookExecutionEvent lines ending in `done` (ADR-0041) and variables with NotebookVariables; interrupt and shutdown get no answer.",
             title="NotebookKernelRequest",
         ),
     ]
@@ -1153,6 +1176,16 @@ class NotebookVersion(StrictModel):
     title: Annotated[str, Field(max_length=200)]
     cells: list[NotebookCell]
     created_at: Timestamp
+
+
+class NotebookExecutionEvent(RootModel[ExecutionRunning | ExecutionDone]):
+    root: Annotated[
+        ExecutionRunning | ExecutionDone,
+        Field(
+            description="One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`.",
+            title="NotebookExecutionEvent",
+        ),
+    ]
 
 
 class Operator(StrictModel):

@@ -1270,6 +1270,65 @@
         }
       }
     },
+    "NotebookExecutionEvent": {
+      "title": "NotebookExecutionEvent",
+      "description": "One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ExecutionRunning"
+        },
+        {
+          "$ref": "#/$defs/ExecutionDone"
+        }
+      ]
+    },
+    "ExecutionRunning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "outputs"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "running"
+          ]
+        },
+        "execution_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The kernel's count for this execution, once it has one."
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DisplayItem"
+          },
+          "description": "Every output so far, not only the new ones, capped as in the result."
+        }
+      }
+    },
+    "ExecutionDone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "execution"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "done"
+          ]
+        },
+        "execution": {
+          "$ref": "#/$defs/NotebookExecution"
+        }
+      }
+    },
     "NotebookError": {
       "type": "object",
       "additionalProperties": false,
@@ -1338,7 +1397,7 @@
     },
     "NotebookKernelRequest": {
       "title": "NotebookKernelRequest",
-      "description": "Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.",
+      "description": "Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with NotebookExecutionEvent lines ending in `done` (ADR-0041) and variables with NotebookVariables; interrupt and shutdown get no answer.",
       "oneOf": [
         {
           "$ref": "#/$defs/KernelExecute"

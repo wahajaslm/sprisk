@@ -118,7 +118,14 @@ export type Verdict = "pass" | "fail" | "warning" | "not_assessed";
  */
 export type NotebookCellId = string;
 /**
- * Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.
+ * One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookExecutionEvent".
+ */
+export type NotebookExecutionEvent = ExecutionRunning | ExecutionDone;
+/**
+ * Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with NotebookExecutionEvent lines ending in `done` (ADR-0041) and variables with NotebookVariables; interrupt and shutdown get no answer.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "NotebookKernelRequest".
@@ -845,6 +852,29 @@ export interface NotebookError {
    * Plain text lines, colour codes removed.
    */
   traceback: string[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionRunning".
+ */
+export interface ExecutionRunning {
+  kind: "running";
+  /**
+   * The kernel's count for this execution, once it has one.
+   */
+  execution_count?: number;
+  /**
+   * Every output so far, not only the new ones, capped as in the result.
+   */
+  outputs: DisplayItem[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ExecutionDone".
+ */
+export interface ExecutionDone {
+  kind: "done";
+  execution: NotebookExecution;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
