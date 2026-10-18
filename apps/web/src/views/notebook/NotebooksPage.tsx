@@ -1,13 +1,10 @@
 import { useNotebooks, useSaveNotebook } from "../../api/notebooks.ts";
 import { usePipelineVersions } from "../../api/hooks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { firstVersion, newCellId } from "../../notebook/document.ts";
+import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { AddIcon } from "../Icons.tsx";
 import { SessionNotebook } from "./SessionNotebook.tsx";
-
-/** Local mode's one project (the CLI's LOCAL_PROJECT), for a first notebook with no flow yet. */
-const LOCAL_PROJECT = "prj_00000000000000000000000000";
 
 /** The Notebooks page (ADR-0018, ADR-0036): saved notebooks, and the open one on its kernel. */
 export function NotebooksPage() {

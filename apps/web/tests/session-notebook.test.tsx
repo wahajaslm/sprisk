@@ -19,7 +19,7 @@ const sales: NotebookVersion = {
   project_id: "prj_00000000000000000000000000",
   title: "Sales analysis",
   cells: [
-    { id: "intro", kind: "markdown", source: "# Sales Analysis Notebook\n\nMonthly sales. <script>alert(1)</script>" },
+    { id: "intro", kind: "markdown", source: "# Sales Analysis Notebook\n\nMonthly sales. <script>alert(1)</script> ![beacon](https://tracker.example/b.png) ![chart](data:image/png;base64,iVBOR)" },
     { id: "params", kind: "code", source: "MIN = 10" },
     { id: "load", kind: "code", source: "customers = load()" },
     { id: "filter", kind: "code", source: "eligible = customers[customers.n >= MIN]" },
@@ -99,6 +99,32 @@ describe("the session notebook (ADR-0036)", () => {
     const { container } = renderWithApi(<NotebooksPage />);
     await screen.findByRole("heading", { name: "Sales Analysis Notebook" });
     expect(container.querySelector("script")).toBeNull();
+  });
+
+  it("never loads an image from the network for a Markdown cell", async () => {
+    withApi();
+    renderWithApi(<NotebooksPage />);
+    await screen.findByRole("heading", { name: "Sales Analysis Notebook" });
+    expect(screen.queryByRole("img", { name: "beacon" })?.getAttribute("src") ?? "").not.toContain("tracker.example");
+    expect(screen.getByRole("img", { name: "chart" })).toHaveAttribute("src", "data:image/png;base64,iVBOR");
+  });
+
+  it("marks a cell edited since it ran, and a kernel restart clears every other result", async () => {
+    withApi((code, n) =>
+      code === "boom"
+        ? { status: "error", execution_count: n, outputs: [], error: { name: "MemoryLimit", message: "restarted", traceback: [] }, kernel_restarted: true }
+        : { status: "ok", execution_count: n, outputs: [{ kind: "text", text: `out ${n}` }] },
+    );
+    renderWithApi(<NotebooksPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
+    await screen.findByText("out 1");
+    await userEvent.type(cell(2), "0");
+    expect(screen.getByText("Changed since it ran")).toBeInTheDocument();
+    await userEvent.clear(cell(3));
+    await userEvent.type(cell(3), "boom");
+    await userEvent.click(screen.getByRole("button", { name: "Run cell 3" }));
+    await screen.findByText("MemoryLimit: restarted");
+    expect(screen.queryByText("out 1")).not.toBeInTheDocument();
   });
 
   it("Shift+Enter runs the cell in the kernel, shows its output and count, and moves on", async () => {
@@ -181,7 +207,7 @@ describe("the session notebook (ADR-0036)", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Create node" });
     expect(sent.split[0]).toEqual({ cells: ["MIN = 10", "customers = load()", "eligible = customers[customers.n >= MIN]", "eligible.describe()"], together: { first: 2, last: 2 } });
-    expect(within(dialog).getByText("customers")).toBeInTheDocument();
+    expect(within(dialog).getByText("customers ← customers.customers")).toBeInTheDocument();
     expect(within(dialog).getByRole("checkbox", { name: "MIN = 10" })).not.toBeChecked();
     expect(within(dialog).getByRole("checkbox", { name: "eligible" })).toBeChecked();
     const model = within(dialog).getByRole("checkbox", { name: "model" });
@@ -211,7 +237,8 @@ describe("the session notebook (ADR-0036)", () => {
     await user.click(screen.getByRole("group", { name: "Cell 4" }));
     await user.keyboard("{/Shift}");
     await user.click(screen.getByRole("button", { name: "Create node from cells" }));
-    await screen.findByRole("dialog", { name: "Create node" });
+    const dialog = await screen.findByRole("dialog", { name: "Create node" });
     expect(sent.split[0]).toMatchObject({ together: { first: 1, last: 2 } });
+    expect(await within(dialog).findByText("Cell 3 has not run in this session.")).toBeInTheDocument();
   });
 });

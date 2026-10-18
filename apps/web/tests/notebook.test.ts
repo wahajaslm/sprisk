@@ -8,7 +8,7 @@ import {
   notebookSteps,
   type NotebookStep,
   splitRequest,
-  toIpynb,
+  flowAsIpynb,
   versionFromSplit,
   withSource,
 } from "../src/flow/notebook.ts";
@@ -231,7 +231,7 @@ describe("download as .ipynb", () => {
   ]);
 
   it("writes each cell, and a built-in step as its code plus its call", () => {
-    const notebook = toIpynb(mixed, ops, sources);
+    const notebook = flowAsIpynb(mixed, ops, sources);
     expect(notebook.nbformat).toBe(4);
     expect(codeCells(notebook)).toEqual([
       `def f(path, format):\n    ...\n\nfrom pathlib import Path\n\n${LOAD_CALL}`,
@@ -252,7 +252,7 @@ describe("download as .ipynb", () => {
       ],
       edges: [],
     };
-    expect(codeCells(toIpynb(twice, ops, sources))).toEqual([
+    expect(codeCells(flowAsIpynb(twice, ops, sources))).toEqual([
       "def f(path, format):\n    ...\n\na_data = f()",
       "b_data = f()",
       "def g():\n    ...\n\nc_data = g()",
@@ -260,12 +260,12 @@ describe("download as .ipynb", () => {
   });
 
   it("gives a v1 code step its input as data, with polars", () => {
-    const cells = codeCells(toIpynb(codePipeline, ops, new Map(operators.map((o) => [o.id, "..."]))));
+    const cells = codeCells(flowAsIpynb(codePipeline, ops, new Map(operators.map((o) => [o.id, "..."]))));
     expect(cells[0]).toBe("import polars as pl");
     expect(cells.at(-1)).toBe("data = load_data\nprint(data.height)\ndata.head(1)\ncode_1_data = data");
   });
 
   it("says which operator's code is missing", () => {
-    expect(() => toIpynb(mixed, ops, new Map())).toThrow("code of sprisk.io.file_source@1.0.0 is not loaded");
+    expect(() => flowAsIpynb(mixed, ops, new Map())).toThrow("code of sprisk.io.file_source@1.0.0 is not loaded");
   });
 });

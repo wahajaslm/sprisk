@@ -9,6 +9,9 @@ const CELL_MARKER = /^# %%(.*)$/;
 
 export const newCellId = () => ulid().toLowerCase();
 
+/** Local mode's one project (the CLI's LOCAL_PROJECT), for a notebook made before any flow. */
+export const LOCAL_PROJECT = "prj_00000000000000000000000000";
+
 /** A new notebook: its first saved version (ADR-0036). */
 export function firstVersion(projectId: string, title: string, cells: NotebookCell[]): NotebookVersion {
   return {
@@ -81,7 +84,12 @@ export function toIpynb(version: NotebookVersion, outputs: Map<string, NotebookE
   return {
     nbformat: 4,
     nbformat_minor: 5,
-    metadata: { kernelspec: { name: "python3", display_name: "Python 3", language: "python" }, language_info: { name: "python" } },
+    metadata: {
+      kernelspec: { name: "python3", display_name: "Python 3", language: "python" },
+      language_info: { name: "python" },
+      // Outputs come from a live session: scratch, not a record of a run (ADR-0036).
+      sprisk: { outputs: "session scratch" },
+    },
     cells: version.cells.map((cell) => {
       if (cell.kind === "markdown") return { id: cell.id, cell_type: "markdown", metadata: {}, source: cell.source };
       const done = outputs.get(cell.id);

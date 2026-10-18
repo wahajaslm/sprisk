@@ -1,17 +1,24 @@
 import type { NotebookExecution } from "@sprisk/contracts";
 import { create } from "zustand";
 
-/** Each cell's last result in this browser session (ADR-0036). Scratch: never saved, never
+/** What one cell last ran in the kernel, and what came of it. */
+export type Ran = { code: string; result: NotebookExecution };
+
+/** Each cell's last run in this browser session (ADR-0036). Scratch: never saved, never
  * provenance; kept here so leaving the Notebooks page does not lose it. */
 type Outputs = {
-  byNotebook: Record<string, Record<string, NotebookExecution>>;
-  set: (notebookId: string, cellId: string, result: NotebookExecution) => void;
+  byNotebook: Record<string, Record<string, Ran>>;
+  set: (notebookId: string, cellId: string, ran: Ran) => void;
   clear: (notebookId: string) => void;
 };
 
 export const useOutputs = create<Outputs>((set) => ({
   byNotebook: {},
-  set: (notebookId, cellId, result) =>
-    set((s) => ({ byNotebook: { ...s.byNotebook, [notebookId]: { ...s.byNotebook[notebookId], [cellId]: result } } })),
+  // A restarted kernel holds nothing: every other cell's result no longer describes it.
+  set: (notebookId, cellId, ran) =>
+    set((s) => {
+      const kept = ran.result.kernel_restarted ? {} : s.byNotebook[notebookId];
+      return { byNotebook: { ...s.byNotebook, [notebookId]: { ...kept, [cellId]: ran } } };
+    }),
   clear: (notebookId) => set((s) => ({ byNotebook: { ...s.byNotebook, [notebookId]: {} } })),
 }));

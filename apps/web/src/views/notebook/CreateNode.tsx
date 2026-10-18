@@ -1,10 +1,11 @@
-import type { NotebookCell, NotebookExecution, NotebookVariable, NotebookVersion } from "@sprisk/contracts";
+import type { NotebookCell, NotebookExecution, NotebookVariable, NotebookVersion, PipelineVersion } from "@sprisk/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { useOperators, usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
+import { usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
 import { kernelVariables, splitPicked } from "../../api/notebooks.ts";
-import { addNode, type Proposal, proposeNode } from "../../notebook/node.ts";
+import { addNode, bindInputs, type Proposal, proposeNode, sessionWarnings } from "../../notebook/node.ts";
+import type { Ran } from "../../notebook/outputs.ts";
 import { useEscape } from "../../hooks/useEscape.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
@@ -14,7 +15,7 @@ type Props = {
   cells: NotebookCell[];
   /** The picked cells, by position in the notebook. */
   range: { first: number; last: number };
-  results: Record<string, NotebookExecution>;
+  results: Record<string, Ran>;
   /** Saves the notebook if it has edits; the node cites the saved version. */
   saveNotebook: () => Promise<NotebookVersion>;
   onClose: () => void;
@@ -56,7 +57,8 @@ export function CreateNode({ notebookId, cells, range, results, saveNotebook, on
           <Confirm
             proposal={proposal.data.proposal}
             variables={proposal.data.variables}
-            shown={picked.flatMap((c) => results[c.cell.id]?.outputs ?? [])}
+            shown={picked.flatMap((c) => results[c.cell.id]?.result.outputs ?? [])}
+            warnings={sessionWarnings(cells, range.first, range.last, results, (i) => i + 1)}
             cellIds={picked.map((c) => c.cell.id)}
             saveNotebook={saveNotebook}
             onClose={onClose}
@@ -77,6 +79,7 @@ export function CreateNode({ notebookId, cells, range, results, saveNotebook, on
 
 type ConfirmProps = {
   proposal: Proposal;
+  warnings: string[];
   variables: NotebookVariable[];
   shown: NotebookExecution["outputs"];
   cellIds: string[];
@@ -84,7 +87,7 @@ type ConfirmProps = {
   onClose: () => void;
 };
 
-function Confirm({ proposal, variables, shown, cellIds, saveNotebook, onClose }: ConfirmProps) {
+function Confirm({ proposal, warnings, variables, shown, cellIds, saveNotebook, onClose }: ConfirmProps) {
   const kindOf = new Map(variables.map((v) => [v.name, v]));
   // Only tables cross a node boundary today; a value of another kind cannot be passed on.
   const blocked = (name: string) => {
@@ -95,7 +98,6 @@ function Confirm({ proposal, variables, shown, cellIds, saveNotebook, onClose }:
   const [exposed, setExposed] = useState(() => new Set<string>());
   const [nodeId, setNodeId] = useState(() => proposal.outputs.find((o) => !blocked(o)) ?? "notebook_node");
   const versions = usePipelineVersions();
-  const operators = useOperators();
   const onScreen = useSelection((s) => s.pipelineVersionId);
   const flow = versions.data?.find((v) => v.id === onScreen) ?? versions.data?.[0];
   const [target, setTarget] = useState<string | undefined>();
@@ -118,7 +120,6 @@ function Confirm({ proposal, variables, shown, cellIds, saveNotebook, onClose }:
       const done = addNode({
         base,
         projectId: base?.project_id ?? notebook.project_id,
-        operators: new Map((operators.data ?? []).map((op) => [op.id, op])),
         proposal,
         nodeId,
         outputs: [...outputs],
@@ -159,9 +160,14 @@ function Confirm({ proposal, variables, shown, cellIds, saveNotebook, onClose }:
           <option value={NEW_FLOW}>A new flow</option>
         </select>
       </label>
+      {[...warnings, ...proposal.notes].map((w) => (
+        <p key={w} className="import-note">
+          {w}
+        </p>
+      ))}
       <section className="node-contract" aria-label="Contract">
         <h3>Inputs</h3>
-        {proposal.inputs.length === 0 ? <p className="muted">None: the cells read no table from earlier cells.</p> : <ul>{proposal.inputs.map((name) => <li key={name} className="mono">{name}</li>)}</ul>}
+        <Inputs base={chosen === NEW_FLOW ? undefined : flow} inputs={proposal.inputs} />
         <h3>Parameters</h3>
         {proposal.parameters.length === 0 ? (
           <p className="muted">None.</p>
@@ -205,6 +211,22 @@ function Confirm({ proposal, variables, shown, cellIds, saveNotebook, onClose }:
         </button>
       </div>
     </>
+  );
+}
+
+/** Each input and the step of the flow that will give it to the node, or why none can. */
+function Inputs({ base, inputs }: { base: PipelineVersion | undefined; inputs: string[] }) {
+  if (inputs.length === 0) return <p className="muted">None: the cells read no table from earlier cells.</p>;
+  const bound = bindInputs(base, inputs);
+  if ("refused" in bound) return <p className="error">{bound.refused}</p>;
+  return (
+    <ul>
+      {bound.links.map((l) => (
+        <li key={l.name} className="mono">
+          {l.name} ← {l.from}
+        </li>
+      ))}
+    </ul>
   );
 }
 

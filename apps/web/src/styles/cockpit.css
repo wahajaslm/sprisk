@@ -515,8 +515,6 @@ p { margin: 0; }
 .lightbox figcaption { display: flex; justify-content: space-between; align-items: center; font: var(--text-xs) var(--mono); color: var(--soft); }
 .import-panel { display: grid; gap: var(--space-2); width: min(640px, 92vw); max-height: 90vh; overflow: auto; padding: var(--space-4); background: var(--raised); border: 1px solid var(--line-strong); font: var(--text-sm) var(--sans); color: var(--soft); }
 .import-panel textarea { min-height: 160px; resize: vertical; padding: var(--space-2); border: 1px solid var(--line-strong); border-radius: 0; background: var(--canvas); color: var(--ink); font: var(--text-xs) var(--mono); }
-.import-steps { margin: 0; padding-left: var(--space-5); display: grid; gap: var(--space-1); }
-.import-step { display: grid; gap: 2px; }
 .import-note { margin: 0; font-size: var(--text-xs); color: var(--faint); }
 .overrides { margin: 0; font: var(--text-xs) var(--mono); color: var(--soft); padding: var(--space-2) var(--space-2); border: 1px solid var(--line); border-radius: 0; background: var(--wash); }
 .tabs button.muted-tab, .step-tab-label.muted-tab { color: var(--ghost); }

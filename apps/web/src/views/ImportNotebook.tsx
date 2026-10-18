@@ -3,12 +3,9 @@ import { useState } from "react";
 
 import { usePipelineVersions } from "../api/hooks.ts";
 import { useSaveNotebook } from "../api/notebooks.ts";
-import { cellsFromFile, firstVersion } from "../notebook/document.ts";
+import { cellsFromFile, firstVersion, LOCAL_PROJECT } from "../notebook/document.ts";
 import { useEscape } from "../hooks/useEscape.ts";
 import { useSelection } from "../workbench/selection.ts";
-
-/** Local mode's one project (the CLI's LOCAL_PROJECT), for a notebook before any flow. */
-const LOCAL_PROJECT = "prj_00000000000000000000000000";
 
 type Picked = { name: string; text: string };
 

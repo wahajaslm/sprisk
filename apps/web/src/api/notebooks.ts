@@ -1,4 +1,4 @@
-import type { CellRange, NotebookVersion } from "@sprisk/contracts";
+import type { CellRange, CodeSplitRequest, NotebookExecute, NotebookVersion } from "@sprisk/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getList, getOne, postEmpty, postOne } from "./client.ts";
@@ -20,7 +20,7 @@ export function useSaveNotebook() {
 
 /** Run one cell's code in the notebook's kernel. Its result is scratch, kept only on screen. */
 export const executeCell = (notebookId: string, cellId: string, code: string) =>
-  postOne("NotebookExecution", `/notebooks/${notebookId}/execute`, { cell_id: cellId, code });
+  postOne("NotebookExecution", `/notebooks/${notebookId}/execute`, { cell_id: cellId, code } satisfies NotebookExecute);
 
 export const interruptKernel = (notebookId: string) => postEmpty(`/notebooks/${notebookId}/interrupt`);
 
@@ -31,4 +31,4 @@ export const kernelVariables = (notebookId: string, names: string[]) =>
   getOne("NotebookVariables", `/notebooks/${notebookId}/variables?names=${names.join(",")}`);
 
 /** Python reads the code cells with the picked ones kept together (ADR-0036). Never runs them. */
-export const splitPicked = (cells: string[], together: CellRange) => postOne("CodeSplit", "/code/split", { cells, together });
+export const splitPicked = (cells: string[], together: CellRange) => postOne("CodeSplit", "/code/split", { cells, together } satisfies CodeSplitRequest);

@@ -3,8 +3,8 @@ import { useState } from "react";
 import { useOperators, useOperatorSources, usePipelineVersions } from "../../api/hooks.ts";
 import { useSaveNotebook } from "../../api/notebooks.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
-import { toIpynb } from "../../flow/notebook.ts";
-import { cellsFromFile, firstVersion } from "../../notebook/document.ts";
+import { flowAsIpynb } from "../../flow/notebook.ts";
+import { firstVersion, newCellId } from "../../notebook/document.ts";
 import { useSelection } from "../../workbench/selection.ts";
 
 /** The flow on screen as a new notebook, to explore on a kernel (ADR-0036). Built-in steps
@@ -26,7 +26,11 @@ export function OpenAsNotebook() {
     try {
       const loaded = new Map(refs.flatMap((ref, i) => (sources[i]?.data ? [[ref, sources[i].data.text] as const] : [])));
       const ops = new Map(operators.data.map((op) => [op.id, op]));
-      const cells = cellsFromFile("flow.ipynb", JSON.stringify(toIpynb(pipeline, ops, loaded)));
+      const cells = flowAsIpynb(pipeline, ops, loaded).cells.map((c) => ({
+        id: newCellId(),
+        kind: c.cell_type === "markdown" ? ("markdown" as const) : ("code" as const),
+        source: c.source,
+      }));
       save.mutate(firstVersion(pipeline.project_id, `Flow ${pipeline.id}`, cells), {
         onSuccess: (saved) => openNotebook(saved.notebook_id),
         onError: (e) => setProblem(e.message),

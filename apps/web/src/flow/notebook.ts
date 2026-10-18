@@ -1,5 +1,4 @@
 import type { CodeSplit, Operator, PipelineVersion } from "@sprisk/contracts";
-import { ulid } from "ulid";
 
 import { isCodeOperator, nextVersion } from "./edit.ts";
 import { portOf, stepOf } from "./ports.ts";
@@ -264,7 +263,7 @@ const SPRISK_OUTPUT = `class sprisk:
 
 /** The flow as a Jupyter notebook (nbformat 4). A built-in step is its code, written once per
  * operator, plus its call; `sources` holds each built-in operator's code. */
-export function toIpynb(pipeline: PipelineVersion, operators: Operators, sources: Map<string, string>) {
+export function flowAsIpynb(pipeline: PipelineVersion, operators: Operators, sources: Map<string, string>) {
   const steps = notebookSteps(pipeline, operators);
   const written = new Set<string>();
   const v1 = steps.filter((s) => s.kind === "code");

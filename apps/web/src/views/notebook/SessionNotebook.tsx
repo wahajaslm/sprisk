@@ -1,10 +1,11 @@
 import type { NotebookCell, NotebookExecution, NotebookVersion } from "@sprisk/contracts";
 import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from "react";
-import Markdown from "react-markdown";
+import Markdown, { defaultUrlTransform } from "react-markdown";
 
 import { executeCell, interruptKernel, restartKernel, useSaveNotebook } from "../../api/notebooks.ts";
 import { newCellId, nextNotebookVersion, toIpynb } from "../../notebook/document.ts";
-import { useOutputs } from "../../notebook/outputs.ts";
+import { ranOutOfOrder } from "../../notebook/node.ts";
+import { type Ran, useOutputs } from "../../notebook/outputs.ts";
 import { CodeInput } from "../CodeInput.tsx";
 import { AddIcon, CheckIcon, CrossIcon, ExportIcon, PlayIcon, RunAllIcon, TrashIcon } from "../Icons.tsx";
 import { CellOutputs } from "./CellOutputs.tsx";
@@ -13,7 +14,7 @@ import { CreateNode } from "./CreateNode.tsx";
 type Queued = { id: string; code: string };
 type Range = { first: number; last: number };
 
-const EMPTY: Record<string, NotebookExecution> = {};
+const EMPTY: Record<string, Ran> = {};
 
 /** A notebook on a live kernel, laid out as VS Code's notebook editor (ADR-0035, ADR-0036).
  * Cells share the kernel's state and run in the order the person chooses. Running changes no
@@ -93,7 +94,7 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
       setRunning(next.id);
       try {
         const result = await executeCell(notebookId, next.id, next.code);
-        setResult(notebookId, next.id, result);
+        setResult(notebookId, next.id, { code: next.code, result });
         if (result.status !== "ok") pending.current = [];
       } catch (e) {
         setProblem(e instanceof Error ? e.message : String(e));
@@ -217,7 +218,9 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
         <AddCells onAdd={(kind) => insert(0, kind)} />
         {cells.map((cell, index) => {
           const n = index + 1;
-          const result = results[cell.id];
+          const ran = results[cell.id];
+          const result = ran?.result;
+          const stale = ran !== undefined && ran.code !== cell.source;
           const state = running === cell.id ? "running" : queued.includes(cell.id) ? "queued" : undefined;
           const inPick = index >= picked.first && index <= picked.last && picked.first !== picked.last;
           const onMouseDown = (e: MouseEvent) => select(index, { extend: e.shiftKey });
@@ -258,7 +261,7 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
                   </div>
                   {cell.kind === "markdown" && !editing.has(cell.id) ? (
                     <div className="nb-markdown" onDoubleClick={() => setEditing((now) => new Set(now).add(cell.id))}>
-                      {cell.source.trim() === "" ? <p className="muted">Empty Markdown cell. Double-click to edit.</p> : <Markdown>{cell.source}</Markdown>}
+                      {cell.source.trim() === "" ? <p className="muted">Empty Markdown cell. Double-click to edit.</p> : <Markdown urlTransform={markdownUrl}>{cell.source}</Markdown>}
                     </div>
                   ) : (
                     <div className="nb-editor">
@@ -275,6 +278,7 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
                   )}
                   <div className="nb-status">
                     {cell.kind === "code" && <Status state={state} result={result} />}
+                    {cell.kind === "code" && stale && !state && <span className="nb-live">Changed since it ran</span>}
                     <span className="spacer" />
                     <span>{cell.kind === "code" ? "Python" : "Markdown"}</span>
                   </div>
@@ -305,10 +309,11 @@ function Status({ state, result }: { state: "running" | "queued" | undefined; re
   return <span className="nb-bad"><CrossIcon /> {text}</span>;
 }
 
-/** True when a cell lower down ran before one above it: state may come from a later cell. */
-function ranOutOfOrder(cells: NotebookCell[], results: Record<string, NotebookExecution>) {
-  const counts = cells.flatMap((c) => (results[c.id]?.execution_count === undefined ? [] : [results[c.id]?.execution_count ?? 0]));
-  return counts.some((n, i) => i > 0 && n < (counts[i - 1] ?? 0));
+/** A notebook may come from anyone: its images load only from the notebook itself (data:),
+ * never from the network, where an image is a beacon that reports who opened it. */
+function markdownUrl(url: string, key: string) {
+  if (key === "src") return url.startsWith("data:image/") ? url : "";
+  return defaultUrlTransform(url);
 }
 
 /** Between two cells; hover to add a code or Markdown cell there, as in VS Code. */
@@ -325,8 +330,14 @@ function AddCells({ onAdd }: { onAdd: (kind: NotebookCell["kind"]) => void }) {
   );
 }
 
-function download(version: NotebookVersion, results: Record<string, NotebookExecution>) {
-  const notebook = toIpynb(version, new Map(Object.entries(results)));
+/** The notebook as .ipynb. Only outputs of the code as it reads now go with it: a result of
+ * code edited since would pair the cell with what other code did. */
+function download(version: NotebookVersion, results: Record<string, Ran>) {
+  const fresh = version.cells.flatMap((c) => {
+    const ran = results[c.id];
+    return ran && ran.code === c.source ? [[c.id, ran.result] as const] : [];
+  });
+  const notebook = toIpynb(version, new Map(fresh));
   const url = URL.createObjectURL(new Blob([JSON.stringify(notebook, null, 1)], { type: "application/x-ipynb+json" }));
   const link = document.createElement("a");
   link.href = url;
