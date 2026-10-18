@@ -8,13 +8,14 @@ const color = (token: string) => `var(${token})`;
 const profile: DatasetProfile = {
   total_rows: 100,
   total_columns: 3,
+  profiled_rows: 100,
   band_rows: 50,
   columns: [
     { name: "bmi", data_type: "Float64", missing: 3, distinct: 90, missing_by_band: [0.06, 0], histogram: { kind: "bins", bars: [{ label: "18–22", count: 40 }, { label: "22–27", count: 57 }] } },
     { name: "<b>sex</b>", data_type: "String", missing: 0, distinct: 2, missing_by_band: [0, 0], histogram: { kind: "top_values", bars: [{ label: "F", count: 52 }, { label: "M", count: 48 }] } },
     { name: "empty", data_type: "Float64", missing: 100, distinct: 0, missing_by_band: [1, 1] },
   ],
-  correlation: { columns: ["bmi", "y"], values: [[1, -0.4], [-0.4, 1]] },
+  correlation: { columns: ["bmi", "y", "z"], pairs: [{ column_a: "bmi", column_b: "y", pearson: -0.4, rows: 97 }] },
 };
 
 describe("dataset profile figures", () => {
@@ -27,9 +28,13 @@ describe("dataset profile figures", () => {
     expect(map.colorscale.at(-1)).toEqual([1, "var(--alert)"]);
   });
 
-  it("draws the correlation field from -1 to 1, red for negative", () => {
-    const [field] = correlationField(profile, color).data as [{ z: number[][]; zmin: number; zmax: number; colorscale: [number, string][] }];
-    expect(field.z).toEqual([[1, -0.4], [-0.4, 1]]);
+  it("draws the correlation field from -1 to 1, red for negative, with a gap where a pair has no value", () => {
+    const [field] = correlationField(profile, color).data as [{ z: (number | null)[][]; zmin: number; zmax: number; colorscale: [number, string][] }];
+    expect(field.z).toEqual([
+      [1, -0.4, null],
+      [-0.4, 1, null],
+      [null, null, 1],
+    ]);
     expect([field.zmin, field.zmax]).toEqual([-1, 1]);
     expect(field.colorscale[0]).toEqual([0, "var(--alert)"]);
   });

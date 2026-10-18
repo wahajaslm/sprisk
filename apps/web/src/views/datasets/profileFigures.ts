@@ -43,12 +43,16 @@ export function missingMap(profile: DatasetProfile, color: Color): Figure {
 
 /** Pearson correlation of the numeric columns, from -1 (red) through 0 to 1 (white). */
 export function correlationField(profile: DatasetProfile, color: Color): Figure {
-  const names = profile.correlation.columns.map(text);
+  const { columns, pairs } = profile.correlation;
+  const value = new Map(pairs.flatMap((p) => [[`${p.column_a}\u0000${p.column_b}`, p.pearson], [`${p.column_b}\u0000${p.column_a}`, p.pearson]]));
+  // A pair with too few shared rows has no value: a gap, not a made-up number.
+  const z = columns.map((a) => columns.map((b) => (a === b ? 1 : (value.get(`${a}\u0000${b}`) ?? null))));
+  const names = columns.map(text);
   return {
     data: [
       {
         type: "heatmap",
-        z: profile.correlation.values,
+        z,
         x: names,
         y: names,
         zmin: -1,

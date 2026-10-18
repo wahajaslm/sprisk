@@ -1,7 +1,7 @@
-import type { Dataset, PipelineVersion } from "@sprisk/contracts";
+import type { LoadedTable, PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
 
-import { useDatasets } from "../../api/datasets.ts";
+import { useLoadedTables } from "../../api/datasets.ts";
 import { usePipelineVersions } from "../../api/hooks.ts";
 import { flows } from "../../flow/flows.ts";
 import { flowName } from "../../flow/labels.ts";
@@ -11,7 +11,7 @@ import { DatasetDetail } from "./DatasetDetail.tsx";
 
 /** Every table the flows load, and a profile of the one picked (ADR-0038). */
 export function DatasetsPage() {
-  const datasets = useDatasets();
+  const datasets = useLoadedTables();
   const versions = usePipelineVersions();
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
@@ -20,7 +20,7 @@ export function DatasetsPage() {
   const list = datasets.data;
   const shown = list.filter((d) => d.name.toLowerCase().includes(filter.trim().toLowerCase()));
   const current = shown.find((d) => d.artifact.id === picked) ?? shown[0];
-  const usedBy = (d: Dataset) => uses(d, versions.data ?? []);
+  const usedBy = (d: LoadedTable) => uses(d, versions.data ?? []);
   return (
     <main className="datasets">
       <header className="exp-head ds-head">
@@ -70,7 +70,7 @@ export function DatasetsPage() {
 }
 
 /** "iris.csv · load" for each flow and step that loads the table, once each. */
-function uses(dataset: Dataset, versions: PipelineVersion[]): string[] {
+function uses(dataset: LoadedTable, versions: PipelineVersion[]): string[] {
   const all = flows(versions);
   const named = dataset.used_by.map((u) => {
     const flow = all.find((f) => f.ids.includes(u.pipeline_version_id));

@@ -1,4 +1,4 @@
-import type { ColumnProfile, Dataset, DatasetProfile } from "@sprisk/contracts";
+import type { ColumnProfile, DatasetProfile, LoadedTable } from "@sprisk/contracts";
 import { lazy, Suspense } from "react";
 
 import { useDatasetProfile } from "../../api/datasets.ts";
@@ -10,7 +10,7 @@ import { correlationField, distributions, missingMap } from "./profileFigures.ts
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
 /** One table: what it is, who loads it, each column, and three pictures of its values. */
-export function DatasetDetail({ dataset, usedBy }: { dataset: Dataset; usedBy: string[] }) {
+export function DatasetDetail({ dataset, usedBy }: { dataset: LoadedTable; usedBy: string[] }) {
   const profile = useDatasetProfile(dataset.artifact.id);
   const showRun = useSelection((s) => s.showRun);
   const setNav = useSelection((s) => s.setNav);
@@ -47,8 +47,10 @@ export function DatasetDetail({ dataset, usedBy }: { dataset: Dataset; usedBy: s
             Open in Flow
           </button>
         )}
+        {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
         <p className="nv-note ds-note">
-          Profiled over every row as loaded, including rows a flow holds out. Flows explore their training rows only.
+          Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
+          Missing counts empty cells, NaN and infinity.
         </p>
       </aside>
       <div className="ds-profile">
@@ -58,10 +60,8 @@ export function DatasetDetail({ dataset, usedBy }: { dataset: Dataset; usedBy: s
           <Loading text="Profiling the table…" />
         ) : (
           <>
-            {profile.data.columns.length < profile.data.total_columns && (
-              <p className="muted">Showing the first {profile.data.columns.length} of {profile.data.total_columns} columns.</p>
-            )}
-            <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.total_rows} />
+            <Partial profile={profile.data} />
+            <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
             <Plots profile={profile.data} />
           </>
         )}
@@ -143,8 +143,25 @@ function Plots({ profile }: { profile: DatasetProfile }) {
   );
 }
 
+/** A large table is profiled in part; say which part. */
+function Partial({ profile }: { profile: DatasetProfile }) {
+  const notes = [];
+  if (profile.profiled_rows < profile.total_rows)
+    notes.push(`Profiled the first ${profile.profiled_rows.toLocaleString()} of ${profile.total_rows.toLocaleString()} rows.`);
+  if (profile.columns.length < profile.total_columns)
+    notes.push(`Showing the first ${profile.columns.length} of ${profile.total_columns} columns.`);
+  const numeric = profile.columns.filter((c) => c.histogram?.kind === "bins" && c.distinct > 1).length;
+  if (profile.correlation.columns.length < numeric)
+    notes.push(`The correlation field shows the first ${profile.correlation.columns.length} of ${numeric} numeric columns.`);
+  return notes.map((note) => (
+    <p key={note} className="muted">
+      {note}
+    </p>
+  ));
+}
+
 function missingShare(profile: DatasetProfile): number {
-  const cells = profile.total_rows * profile.columns.length;
+  const cells = profile.profiled_rows * profile.columns.length;
   return cells === 0 ? 0 : profile.columns.reduce((sum, c) => sum + c.missing, 0) / cells;
 }
 

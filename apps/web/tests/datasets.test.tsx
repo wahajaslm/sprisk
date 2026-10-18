@@ -1,4 +1,4 @@
-import type { Dataset, DatasetProfile } from "@sprisk/contracts";
+import type { DatasetProfile, LoadedTable } from "@sprisk/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -10,7 +10,7 @@ import { PV, RUN, loadOutputs } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
-const iris: Dataset = {
+const iris: LoadedTable = {
   name: "iris.csv",
   operator: "sprisk.io.file_source@1.0.0",
   artifact: loadOutputs[0]!.artifact,
@@ -18,7 +18,7 @@ const iris: Dataset = {
   total_columns: 3,
   used_by: [{ pipeline_version_id: PV, run_id: RUN, node_id: "load" }],
 };
-const penguins: Dataset = {
+const penguins: LoadedTable = {
   ...iris,
   name: "penguins.csv",
   artifact: { ...iris.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY55" },
@@ -28,13 +28,14 @@ const penguins: Dataset = {
 const profile: DatasetProfile = {
   total_rows: 120,
   total_columns: 3,
+  profiled_rows: 120,
   band_rows: 3,
   columns: [
     { name: "sepal_length", data_type: "Float64", missing: 6, distinct: 35, missing_by_band: [0, 0.5], histogram: { kind: "bins", bars: [{ label: "4.3–5", count: 50 }, { label: "5–7.9", count: 64 }] } },
     { name: "species", data_type: "String", missing: 0, distinct: 3, missing_by_band: [0, 0], histogram: { kind: "top_values", bars: [{ label: "setosa", count: 40 }] } },
     { name: "petal_width", data_type: "Float64", missing: 0, distinct: 22, missing_by_band: [0, 0], histogram: { kind: "bins", bars: [{ label: "0.1–2.5", count: 120 }] } },
   ],
-  correlation: { columns: ["sepal_length", "petal_width"], values: [[1, 0.82], [0.82, 1]] },
+  correlation: { columns: ["sepal_length", "petal_width"], pairs: [{ column_a: "sepal_length", column_b: "petal_width", pearson: 0.82, rows: 114 }] },
 };
 
 /** Serves the datasets and a profile; returns every path the page asked for. */
@@ -43,7 +44,7 @@ function serve(datasets: () => Response = () => HttpResponse.json([iris, penguin
   server.events.on("request:start", ({ request }) => {
     asked.push(new URL(request.url).pathname);
   });
-  server.use(http.get("/api/datasets", datasets), http.get("/api/artifacts/:id/profile", profiled));
+  server.use(http.get("/api/loaded_tables", datasets), http.get("/api/artifacts/:id/profile", profiled));
   renderWithApi(<DatasetsPage />);
   return asked;
 }
@@ -85,9 +86,15 @@ describe("datasets", () => {
     expect(screen.getByRole("img", { name: "Distributions" })).toBeInTheDocument();
   });
 
-  it("says the profile covers every row, including any a flow holds out", async () => {
+  it("says the profile includes held-out rows and is for looking, not for choosing", async () => {
     serve();
-    expect(await screen.findByText(/including rows a flow holds out/)).toBeInTheDocument();
+    expect(await screen.findByText(/including held-out test rows/)).toHaveTextContent("not to choose features, transforms or models");
+  });
+
+  it("says when a large table was profiled only in part", async () => {
+    serve(undefined, () => HttpResponse.json({ ...profile, total_rows: 5_000_000, profiled_rows: 1_000_000, total_columns: 250 }));
+    expect(await screen.findByText(/first 1,000,000 of 5,000,000 rows/)).toBeInTheDocument();
+    expect(screen.getByText(/first 3 of 250 columns/)).toBeInTheDocument();
   });
 
   it("shows another dataset's profile when it is picked", async () => {
@@ -99,7 +106,7 @@ describe("datasets", () => {
   it("never asks for a table's rows or content: only the list and the profile", async () => {
     const asked = serve();
     await screen.findByRole("img", { name: "Distributions" });
-    expect(asked.every((p) => p === "/api/datasets" || p.endsWith("/profile") || p === "/api/pipeline_versions")).toBe(true);
+    expect(asked.every((p) => p === "/api/loaded_tables" || p.endsWith("/profile") || p === "/api/pipeline_versions")).toBe(true);
   });
 
   it("opens the step that loads it in the flow", async () => {
@@ -113,7 +120,12 @@ describe("datasets", () => {
     expect(await screen.findByText(/No datasets yet/)).toBeInTheDocument();
   });
 
-  it("shows why the list or a profile could not be read", async () => {
+  it("shows why the list could not be read", async () => {
+    serve(() => HttpResponse.json({ errors: [{ code: "not_found", message: "gone" }] }, { status: 500 }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("not_found");
+  });
+
+  it("shows why a profile could not be read", async () => {
     serve(undefined, () => HttpResponse.json({ errors: [{ code: "profile_timeout", message: "took too long" }] }, { status: 422 }));
     expect(await screen.findByRole("alert")).toHaveTextContent("profile_timeout");
   });
