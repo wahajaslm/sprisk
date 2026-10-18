@@ -26,15 +26,31 @@ NUMERIC = (
 def distributions(data: pl.DataFrame) -> dict[str, Any]:
     """Equal-width histograms of numeric columns and their pairwise Pearson correlation,
     aggregated by DuckDB. Charts draw only these."""
+    numeric = numeric_columns(data)
+    histograms = histogram_bins(data, numeric)
+    return {
+        "histograms": histograms,
+        "correlation": correlations(data, numeric),
+        "figures": [_figure(histograms, numeric)],
+    }
+
+
+def numeric_columns(data: pl.DataFrame) -> list[str]:
     with duckdb.connect() as con:
         con.register("t", data)
-        numeric = [
+        return [
             name
             for name, dtype, *_ in con.sql("DESCRIBE t").fetchall()
             if dtype.startswith(NUMERIC)
         ]
-        histograms = pl.DataFrame(
-            [row for name in numeric for row in _histogram(con, name)],
+
+
+def histogram_bins(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
+    """`BINS` equal-width bins per column; one bin for a constant column, none for an empty one."""
+    with duckdb.connect() as con:
+        con.register("t", data)
+        return pl.DataFrame(
+            [row for name in columns for row in _histogram(con, name)],
             schema={
                 "column_name": pl.String,
                 "bin_lower": pl.Float64,
@@ -43,16 +59,17 @@ def distributions(data: pl.DataFrame) -> dict[str, Any]:
             },
             orient="row",
         )
-        correlation = pl.DataFrame(
-            _correlations(con, numeric),
+
+
+def correlations(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
+    """Pearson correlation of each pair of `columns`, once per pair."""
+    with duckdb.connect() as con:
+        con.register("t", data)
+        return pl.DataFrame(
+            _correlations(con, columns),
             schema={"column_a": pl.String, "column_b": pl.String, "pearson": pl.Float64},
             orient="row",
         )
-    return {
-        "histograms": histograms,
-        "correlation": correlation,
-        "figures": [_figure(histograms, numeric)],
-    }
 
 
 def _figure(histograms: pl.DataFrame, numeric: list[str]) -> go.Figure:
