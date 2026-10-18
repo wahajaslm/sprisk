@@ -79,8 +79,8 @@ export function FigurePort({ attempt, port }: { attempt: Attempt | undefined; po
 }
 
 /** One figure, drawn by its format: an SVG picture, or a chart the browser draws live. Used
- * for built-in steps' figure ports and for plots a code step showed. */
-export function FigureView({ figure, index }: { figure: Figure; index: number }) {
+ * for built-in steps' figure ports, plots a code step showed, and small on canvas cards. */
+export function FigureView({ figure, index, small = false }: { figure: Figure; index: number; small?: boolean }) {
   const label = figure.title ?? `Figure ${index + 1}`;
   switch (figure.format) {
     case "svg":
@@ -89,7 +89,7 @@ export function FigureView({ figure, index }: { figure: Figure; index: number })
     case "plotly_json":
       return (
         <Suspense fallback={<Loading text="Loading figure…" />}>
-          <PlotlyFigure json={figure.content} label={label} />
+          <PlotlyFigure json={figure.content} label={label} small={small} />
         </Suspense>
       );
     case "vega_lite_json":

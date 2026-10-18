@@ -16,3 +16,22 @@ export function themed(layout: Partial<Plotly.Layout>, color: (token: string) =>
     margin: layout.margin ?? { l: 56, r: 24, t: 44, b: 48 },
   };
 }
+
+type Figure = { data: Plotly.Data[]; layout: Partial<Plotly.Layout> };
+
+/** A themed figure cut down for a canvas card: just the marks and the grid. Words, legends
+ * and colour bars cannot be read at that size; the Inspector shows them. */
+export function thumbnail({ data, layout }: Figure): Figure {
+  const { title: _title, ...rest } = layout;
+  const bare = { showticklabels: false, automargin: false, title: { text: "" } };
+  return {
+    data: data.map((trace) => ({ ...trace, showscale: false }) as Plotly.Data),
+    layout: {
+      ...rest,
+      showlegend: false,
+      xaxis: { ...layout.xaxis, ...bare },
+      yaxis: { ...layout.yaxis, ...bare },
+      margin: { l: 2, r: 2, t: 2, b: 2 },
+    },
+  };
+}
