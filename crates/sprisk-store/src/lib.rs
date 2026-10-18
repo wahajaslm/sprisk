@@ -43,6 +43,16 @@ impl From<sqlx::Error> for StoreError {
     }
 }
 
+/// One output committed in a pipeline version's latest run, with the step that made it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunOutput {
+    pub pipeline_version_id: PipelineVersionId,
+    pub run_id: RunId,
+    pub node_id: String,
+    pub port: String,
+    pub artifact: Artifact,
+}
+
 pub struct SqliteStore {
     pool: SqlitePool,
 }
@@ -487,6 +497,39 @@ impl SqliteStore {
             .collect()
     }
 
+    /// Every output committed in the latest run of each of `versions`, in one query.
+    pub async fn latest_run_outputs(
+        &self,
+        versions: &[PipelineVersionId],
+    ) -> Result<Vec<RunOutput>, StoreError> {
+        let ids = serde_json::to_string(&versions.iter().map(|v| v.as_str()).collect::<Vec<_>>())?;
+        let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
+            "SELECT r.pipeline_version_id, r.id, a.node_id, o.port, art.body \
+             FROM runs r \
+             JOIN attempts a ON a.run_id = r.id \
+             JOIN attempt_outputs o ON o.attempt_id = a.id \
+             JOIN artifacts art ON art.id = o.artifact_id \
+             WHERE r.id IN (SELECT max(id) FROM runs \
+                 WHERE pipeline_version_id IN (SELECT value FROM json_each(?)) \
+                 GROUP BY pipeline_version_id) \
+             ORDER BY r.id DESC, a.node_id, o.port",
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter()
+            .map(|(version, run, node_id, port, body)| {
+                Ok(RunOutput {
+                    pipeline_version_id: stored_id(version)?,
+                    run_id: stored_id(run)?,
+                    node_id,
+                    port,
+                    artifact: serde_json::from_str(&body)?,
+                })
+            })
+            .collect()
+    }
+
     /// Change a run's status and audit it. A finished run never changes; finishing sets `finished_at`.
     pub async fn set_run_status(
         &self,
@@ -592,6 +635,11 @@ fn run_finished(status: RunStatus) -> bool {
 }
 
 /// Parse `(id, body)` rows; a bad body names its entity and id.
+/// An id read from a column, checked like any wire id.
+fn stored_id<T: DeserializeOwned>(raw: String) -> Result<T, StoreError> {
+    Ok(serde_json::from_value(serde_json::Value::String(raw))?)
+}
+
 fn parse_all<T: DeserializeOwned>(
     rows: Vec<(String, String)>,
     entity: &'static str,

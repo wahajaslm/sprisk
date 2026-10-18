@@ -593,3 +593,39 @@ async fn a_notebook_exists_once_a_version_of_it_is_saved() {
     store.insert_notebook_version(&saved).await.unwrap();
     assert!(store.has_notebook(&saved.notebook_id).await.unwrap());
 }
+
+#[tokio::test]
+async fn outputs_of_each_versions_latest_run_are_listed_with_their_step() {
+    let (store, attempt, artifact) = cached_success().await;
+    let version = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap();
+    let other = "plv_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+
+    let rows = store.latest_run_outputs(&[version, other]).await.unwrap();
+
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(
+        row.pipeline_version_id.as_str(),
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+    );
+    assert_eq!(row.run_id, attempt.run_id);
+    assert_eq!(row.node_id, attempt.node_id.as_str());
+    assert_eq!((row.port.as_str(), &row.artifact), ("train", &artifact));
+}
+
+#[tokio::test]
+async fn a_newer_run_of_a_version_replaces_the_older_one() {
+    let (store, _, _) = cached_success().await;
+    let version: sprisk_contracts::PipelineVersionId =
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap();
+    let newer = run_with_id("run_01JABCDEFGHJKMNPQRSTVWXYZ9", version.as_str());
+    store.insert_run(&newer).await.unwrap();
+
+    assert!(
+        store
+            .latest_run_outputs(&[version])
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
