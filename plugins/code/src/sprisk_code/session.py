@@ -26,7 +26,7 @@ from jupyter_client.manager import KernelManager
 from jupyter_client.provisioning.local_provisioner import LocalProvisioner
 
 from sprisk_code.kernel_display import MIME
-from sprisk_code.shown import MAX_ITEMS, MAX_TEXT_CHARS, cut
+from sprisk_code.shown import MAX_FIGURES, MAX_ITEMS, MAX_TEXT_CHARS, cut
 from sprisk_contracts import NotebookExecution, NotebookKernelRequest, NotebookVariables
 
 STARTUP_SECONDS = 60
@@ -63,6 +63,7 @@ class Outputs:
         self.items: list[dict[str, Any]] = []
         self.error: dict[str, Any] | None = None
         self.execution_count: int | None = None
+        self.figures = 0
 
     def add(self, msg: dict[str, Any]) -> None:
         kind, content = msg["msg_type"], msg["content"]
@@ -70,7 +71,9 @@ class Outputs:
             self._text(content["text"], content["name"])
         elif kind in ("execute_result", "display_data"):
             item = _item(content["data"])
-            if item is not None:
+            if item is not None and item["kind"] in ("figure", "image"):
+                self._figure(item)
+            elif item is not None:
                 self._add(item)
         elif kind == "execute_input":
             self.execution_count = content["execution_count"]
@@ -82,6 +85,14 @@ class Outputs:
             }
         elif kind == "clear_output":
             self.items.clear()
+
+    def _figure(self, item: dict[str, Any]) -> None:
+        self.figures += 1
+        if self.figures <= MAX_FIGURES:
+            self._add(item)
+        elif self.figures == MAX_FIGURES + 1:
+            note = f"More than {MAX_FIGURES} figures; the rest are not shown."
+            self._add({"kind": "text", "text": note})
 
     def _add(self, item: dict[str, Any]) -> None:
         if len(self.items) < MAX_ITEMS:

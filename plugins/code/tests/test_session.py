@@ -103,6 +103,15 @@ def test_outputs_are_capped() -> None:
     assert str(items(out)[0]["text"]).endswith("…")
 
 
+def test_figures_past_the_cap_are_noted_not_shown() -> None:
+    out = Outputs()
+    for _ in range(15):
+        out.add(iopub("display_data", data={"image/png": "iVBOR"}))
+    kinds = [str(i["kind"]) for i in items(out)]
+    assert kinds == ["image"] * 12 + ["text"]
+    assert items(out)[-1]["text"] == "More than 12 figures; the rest are not shown."
+
+
 @pytest.fixture(scope="module")
 def session(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Session]:
     started = Session(LIMITS, tmp_path_factory.mktemp("kernel"))
