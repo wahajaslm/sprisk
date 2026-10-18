@@ -34,6 +34,7 @@ FIGURES = [
 
 def install(shell: Any) -> None:
     """`shell` is the kernel's IPython shell. Any: IPython ships no types for it."""
+    _plotly_as_data()
     formatter = shell.display_formatter.mimebundle_formatter
     for module, name in TABLES:
         formatter.for_type_by_name(module, name, _table)
@@ -56,3 +57,13 @@ def _figure(value: object, include: object = None, exclude: object = None) -> di
         size = len(item["content"])
         return {MIME: {"kind": "text", "text": f"Figure not shown: {size} bytes."}}
     return {MIME: {"kind": "figure", "figure": item}}
+
+
+def _plotly_as_data() -> None:
+    """A Plotly figure displays itself (as a value or with `fig.show()`); make it send its
+    figure as data, which the notebook draws, never HTML or a browser tab."""
+    try:
+        import plotly.io
+    except ImportError:
+        return
+    plotly.io.renderers.default = "plotly_mimetype"

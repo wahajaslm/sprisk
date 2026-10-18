@@ -163,6 +163,16 @@ def test_a_matplotlib_plot_is_an_svg_figure(session: Session) -> None:
     assert figures[0].format == "svg"
 
 
+def test_a_plotly_figure_shows_once_as_a_value_or_with_show(session: Session) -> None:
+    session.execute("import plotly.graph_objects as go\nfig = go.Figure(go.Bar(x=[1, 2], y=[3, 4]))")
+    for code in ["fig", "fig.show()"]:
+        done = session.execute(code)
+        assert done.status == "ok", done.error
+        assert [o.kind for o in done.outputs] == ["figure"]
+        figure = done.outputs[0].figure
+        assert figure is not None and figure.format == "plotly_json"
+
+
 def test_an_error_is_reported_and_the_kernel_keeps_its_state(session: Session) -> None:
     session.execute("kept = 7")
     failed = session.execute("undefined_name + 1")
