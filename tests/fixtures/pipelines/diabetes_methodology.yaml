@@ -1,0 +1,249 @@
+# A supervised-learning methodology, step by step, on the diabetes data (regression).
+#  1. Split first: a 25% holdout is sealed before anything looks at the data or fits.
+#  2. Explore the training rows only.
+#  3. Compare candidate models by 5-fold cross-validation on the training rows only. Scaling
+#     sits inside each model's pipeline, so it is fit on each fold's training part.
+#  4. Fit the selected model on all training rows; score the holdout once.
+#  5. Check the residuals. A mean baseline is scored on the same holdout for reference.
+# Predictive associations only: nothing here says what causes progression.
+# $DATASETS is replaced with an absolute path.
+nodes:
+  - { id: load, operator: sprisk.io.file_source@1.0.0, params: { path: $DATASETS/diabetes.csv, format: csv } }
+  - { id: split, operator: sprisk.validation.random_split@1.0.0, params: { test_fraction: 0.25, seed: 42 } }
+  - { id: profile, operator: sprisk.profile.summarize@1.0.0, params: {} }
+  - { id: baseline, operator: sprisk.ml.dummy_baseline@1.0.0, params: { target: progression, features: [age, sex, bmi, bp, s1, s2, s3, s4, s5, s6], task: regression } }
+  - { id: score_baseline, operator: sprisk.ml.evaluate@1.0.0, params: { target: progression, task: regression } }
+  - id: explore
+    operator: sprisk.code.python@2.0.0
+    params:
+      inputs: [train]
+      source: |
+        # Exploration on training rows only: the holdout stays unseen until the end.
+        import plotly.graph_objects as go
+
+        frame = train.to_pandas()
+        target = "progression"
+        features = [c for c in frame.columns if c != target]
+
+        fig = go.Figure(go.Histogram(x=frame[target], nbinsx=30))
+        fig.update_layout(title="Target: disease progression after one year", bargap=0.08)
+        fig.update_xaxes(title="progression")
+        fig.update_yaxes(title="patients")
+        display(fig)
+
+        # One scale for every feature, so spread and outliers compare directly.
+        z = (frame[features] - frame[features].mean()) / frame[features].std()
+        fig = go.Figure([go.Box(y=z[c], name=c, boxpoints="outliers", marker={"size": 3}, line={"width": 1}) for c in features])
+        fig.update_layout(title="Feature spread, standardised", showlegend=False)
+        fig.update_yaxes(title="z-score")
+        display(fig)
+
+        corr = frame.corr().round(2)
+        fig = go.Figure(go.Heatmap(
+            z=corr.values, x=list(corr.columns), y=list(corr.columns), zmin=-1, zmax=1,
+            colorscale=[[0, "#ff5c5c"], [0.5, "#171717"], [1, "#f2f2f2"]],
+            text=corr.values, texttemplate="%{text}",
+        ))
+        fig.update_layout(title="Correlation field (Pearson)")
+        fig.update_yaxes(autorange="reversed")
+        display(fig)
+
+        strongest = corr[target].drop(target).abs().idxmax()
+        fig = go.Figure(go.Scatter(x=frame[strongest], y=frame[target], mode="markers", marker={"size": 4, "opacity": 0.6}))
+        fig.update_layout(title=f"Strongest single association: {strongest}")
+        fig.update_xaxes(title=strongest)
+        fig.update_yaxes(title=target)
+        display(fig)
+        corr[target].drop(target).sort_values()
+  - id: compare_models
+    operator: sprisk.code.python@2.0.0
+    params:
+      inputs: [train]
+      outputs: [cv_scores]
+      parameters: { SEED: 42, FOLDS: 5 }
+      source: |
+        # Model selection by cross-validation on training rows only. Each candidate is a full
+        # pipeline, so scaling is fit inside each fold and never sees that fold's validation part.
+        import numpy as np
+        import pandas as pd
+        import plotly.graph_objects as go
+        from sklearn.dummy import DummyRegressor
+        from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+        from sklearn.linear_model import Ridge
+        from sklearn.model_selection import KFold, cross_validate, learning_curve
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        SEED = 42
+        FOLDS = 5
+        frame = train.to_pandas()
+        X, y = frame.drop(columns="progression"), frame["progression"]
+        candidates = {
+            "mean baseline": DummyRegressor(),
+            "ridge": make_pipeline(StandardScaler(), Ridge(alpha=1.0)),
+            "random forest": RandomForestRegressor(n_estimators=300, min_samples_leaf=5, random_state=SEED),
+            "gradient boosting": GradientBoostingRegressor(n_estimators=200, max_depth=2, learning_rate=0.05, random_state=SEED),
+        }
+        folds = KFold(n_splits=FOLDS, shuffle=True, random_state=SEED)
+
+        rows = []
+        for name, model in candidates.items():
+            scores = cross_validate(model, X, y, cv=folds, scoring=("neg_root_mean_squared_error", "r2"))
+            for fold in range(FOLDS):
+                rmse = -scores["test_neg_root_mean_squared_error"][fold]
+                rows.append({"model": name, "fold": fold + 1, "rmse": rmse, "r2": scores["test_r2"][fold]})
+        cv_scores = pd.DataFrame(rows)
+        summary = (
+            cv_scores.groupby("model", sort=False)
+            .agg(mean_rmse=("rmse", "mean"), sd_rmse=("rmse", "std"), mean_r2=("r2", "mean"))
+            .reset_index()
+        )
+        best = summary.loc[summary.mean_rmse.idxmin(), "model"]
+
+        fig = go.Figure([
+            go.Scatter(x=g.fold, y=g.rmse, mode="lines+markers", name=m, marker={"size": 6})
+            for m, g in cv_scores.groupby("model", sort=False)
+        ])
+        fig.update_layout(title=f"RMSE in each of {FOLDS} validation folds")
+        fig.update_xaxes(title="fold", dtick=1)
+        fig.update_yaxes(title="RMSE")
+        display(fig)
+
+        fig = go.Figure(go.Bar(x=summary.model, y=summary.mean_rmse, error_y={"type": "data", "array": summary.sd_rmse}))
+        fig.update_layout(title=f"Mean CV RMSE ± 1 sd. Selected: {best}")
+        fig.update_yaxes(title="RMSE")
+        display(fig)
+
+        sizes, fit_scores, valid_scores = learning_curve(
+            candidates[best], X, y, cv=folds, train_sizes=np.linspace(0.2, 1.0, 6),
+            scoring="neg_root_mean_squared_error",
+        )
+        fig = go.Figure()
+        for label, score in (("training", -fit_scores), ("validation", -valid_scores)):
+            mean, sd = score.mean(axis=1), score.std(axis=1)
+            fig.add_trace(go.Scatter(
+                x=np.r_[sizes, sizes[::-1]], y=np.r_[mean + sd, (mean - sd)[::-1]],
+                fill="toself", line={"width": 0}, opacity=0.25, showlegend=False, hoverinfo="skip",
+            ))
+            fig.add_trace(go.Scatter(x=sizes, y=mean, mode="lines+markers", name=label))
+        fig.update_layout(title=f"Learning curve: {best}")
+        fig.update_xaxes(title="training rows")
+        fig.update_yaxes(title="RMSE")
+        display(fig)
+        summary
+  - id: final_model
+    operator: sprisk.code.python@2.0.0
+    params:
+      inputs: [train, test, cv_scores]
+      outputs: [holdout]
+      source: |
+        # Fit the model cross-validation selected on all training rows, then score the holdout
+        # once. Nothing below changes the choice.
+        import plotly.graph_objects as go
+        from sklearn.dummy import DummyRegressor
+        from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+        from sklearn.inspection import permutation_importance
+        from sklearn.linear_model import Ridge
+        from sklearn.metrics import mean_absolute_error, r2_score, root_mean_squared_error
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        SEED = 42
+        candidates = {
+            "mean baseline": DummyRegressor(),
+            "ridge": make_pipeline(StandardScaler(), Ridge(alpha=1.0)),
+            "random forest": RandomForestRegressor(n_estimators=300, min_samples_leaf=5, random_state=SEED),
+            "gradient boosting": GradientBoostingRegressor(n_estimators=200, max_depth=2, learning_rate=0.05, random_state=SEED),
+        }
+        best = cv_scores.groupby("model").rmse.mean().idxmin()
+        fit_rows, held_out = train.to_pandas(), test.to_pandas()
+        X_fit, y_fit = fit_rows.drop(columns="progression"), fit_rows["progression"]
+        X_test, y_test = held_out.drop(columns="progression"), held_out["progression"]
+
+        model = candidates[best].fit(X_fit, y_fit)
+        predicted = model.predict(X_test)
+        print(f"Selected by cross-validation: {best}")
+        print(
+            f"Holdout, {len(y_test)} rows: RMSE {root_mean_squared_error(y_test, predicted):.1f}, "
+            f"MAE {mean_absolute_error(y_test, predicted):.1f}, R² {r2_score(y_test, predicted):.3f}"
+        )
+        holdout = X_test.assign(actual=y_test.to_numpy(), predicted=predicted, residual=y_test.to_numpy() - predicted)
+
+        low, high = min(y_test.min(), predicted.min()), max(y_test.max(), predicted.max())
+        fig = go.Figure([
+            go.Scatter(x=y_test, y=predicted, mode="markers", name="patients", marker={"size": 5, "opacity": 0.7}),
+            go.Scatter(x=[low, high], y=[low, high], mode="lines", name="perfect", line={"dash": "dash", "width": 1}),
+        ])
+        fig.update_layout(title=f"Holdout: predicted against actual ({best})")
+        fig.update_xaxes(title="actual progression")
+        fig.update_yaxes(title="predicted progression")
+        display(fig)
+
+        # How much the holdout error grows when one feature is shuffled. Predictive, not causal.
+        shuffled = permutation_importance(model, X_test, y_test, n_repeats=20, random_state=SEED, scoring="neg_root_mean_squared_error")
+        order = shuffled.importances_mean.argsort()
+        fig = go.Figure(go.Bar(
+            x=shuffled.importances_mean[order], y=X_test.columns[order], orientation="h",
+            error_x={"type": "data", "array": shuffled.importances_std[order]},
+        ))
+        fig.update_layout(title="Permutation importance on the holdout (RMSE increase)")
+        fig.update_xaxes(title="RMSE increase when shuffled")
+        display(fig)
+  - id: diagnostics
+    operator: sprisk.code.python@2.0.0
+    params:
+      inputs: [holdout]
+      source: |
+        # Residual checks on the holdout: bias, shape and where the model errs most.
+        import numpy as np
+        import pandas as pd
+        import plotly.graph_objects as go
+        from scipy import stats
+
+        frame = holdout
+
+        fig = go.Figure([
+            go.Scatter(x=frame.predicted, y=frame.residual, mode="markers", marker={"size": 5, "opacity": 0.7}, name="residual"),
+            go.Scatter(x=[frame.predicted.min(), frame.predicted.max()], y=[0, 0], mode="lines", line={"dash": "dash", "width": 1}, name="zero"),
+        ])
+        fig.update_layout(title="Residuals against predictions", showlegend=False)
+        fig.update_xaxes(title="predicted progression")
+        fig.update_yaxes(title="actual − predicted")
+        display(fig)
+
+        (theoretical, ordered), (slope, intercept, _) = stats.probplot(frame.residual, dist="norm")
+        fig = go.Figure([
+            go.Scatter(x=theoretical, y=ordered, mode="markers", marker={"size": 5}, name="residuals"),
+            go.Scatter(x=theoretical, y=slope * theoretical + intercept, mode="lines", line={"dash": "dash", "width": 1}, name="normal"),
+        ])
+        fig.update_layout(title="Normal Q-Q plot of residuals", showlegend=False)
+        fig.update_xaxes(title="theoretical quantile")
+        fig.update_yaxes(title="residual")
+        display(fig)
+
+        fig = go.Figure(go.Histogram(x=frame.residual, nbinsx=25))
+        fig.update_layout(title="Residual distribution", bargap=0.08)
+        fig.update_xaxes(title="actual − predicted")
+        fig.update_yaxes(title="patients")
+        display(fig)
+
+        bands = pd.qcut(frame.predicted, 5)
+        error = frame.residual.abs().groupby(bands, observed=True).mean()
+        fig = go.Figure(go.Bar(x=[f"{b.left:.0f}–{b.right:.0f}" for b in error.index], y=error.to_numpy()))
+        fig.update_layout(title="Mean absolute error by prediction band (quintiles)")
+        fig.update_xaxes(title="predicted progression")
+        fig.update_yaxes(title="mean |residual|")
+        display(fig)
+        print(f"Mean residual {frame.residual.mean():.1f} (0 means no overall bias)")
+edges:
+  - { from: load.data, to: split.data }
+  - { from: split.train, to: profile.data }
+  - { from: split.train, to: explore.train }
+  - { from: split.train, to: baseline.train }
+  - { from: baseline.model, to: score_baseline.model }
+  - { from: split.test, to: score_baseline.test }
+  - { from: split.train, to: compare_models.train }
+  - { from: split.train, to: final_model.train }
+  - { from: split.test, to: final_model.test }
+  - { from: compare_models.cv_scores, to: final_model.cv_scores }
+  - { from: final_model.holdout, to: diagnostics.holdout }

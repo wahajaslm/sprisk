@@ -253,3 +253,63 @@ async fn worker_killed_mid_run_is_replaced_and_nothing_false_is_committed() {
         "a new worker started"
     );
 }
+
+/// The display a code step recorded: what it printed, showed and drew.
+async fn display(client: &Client, run: &sprisk_contracts::RunId, node: &str) -> Vec<Value> {
+    let attempts = client.attempts(run).await.unwrap();
+    let attempt = attempts
+        .iter()
+        .find(|a| a.node_id.as_str() == node && a.state == AttemptState::Succeeded)
+        .unwrap_or_else(|| panic!("{node} did not succeed"));
+    let outputs = client.outputs(&attempt.id).await.unwrap();
+    let shown = outputs
+        .iter()
+        .find(|o| o.port.as_str() == "display")
+        .unwrap();
+    let doc: Value =
+        serde_json::from_str(&client.content(&shown.artifact.id).await.unwrap()).unwrap();
+    doc["items"].as_array().unwrap().clone()
+}
+
+fn figures(items: &[Value]) -> usize {
+    items.iter().filter(|i| i["kind"] == "figure").count()
+}
+
+/// The example methodology: split first, explore and select on training rows only, score the
+/// holdout once. Every analysis step draws what it found.
+#[tokio::test(flavor = "multi_thread")]
+async fn diabetes_methodology_selects_by_cross_validation_and_draws_each_step() {
+    let data = tempfile::tempdir().unwrap();
+    let client = server(data.path(), None).await;
+
+    let run = run_to_end(&client, "diabetes_methodology").await;
+
+    assert_eq!(
+        run.status,
+        RunStatus::Succeeded,
+        "{}",
+        client.report(&run.id).await.unwrap()
+    );
+    for (node, drawn) in [
+        ("explore", 4),
+        ("compare_models", 3),
+        ("final_model", 2),
+        ("diagnostics", 4),
+    ] {
+        let items = display(&client, &run.id, node).await;
+        assert_eq!(figures(&items), drawn, "{node}: {items:?}");
+    }
+    let printed: Vec<String> = display(&client, &run.id, "final_model")
+        .await
+        .iter()
+        .filter_map(|i| i["text"].as_str().map(str::to_owned))
+        .collect();
+    assert!(
+        printed
+            .iter()
+            .any(|t| t.contains("Selected by cross-validation")),
+        "{printed:?}"
+    );
+    let baseline = metrics(&client, &run.id, "score_baseline").await;
+    assert!(baseline["rmse"].as_f64().unwrap() > 60.0, "{baseline}");
+}
