@@ -24,14 +24,22 @@ const MAX_COLUMNS: usize = 100;
 const MAX_CELL_CHARS: usize = 500;
 
 impl ArtifactStore {
-    /// Rows `offset..offset + limit` of a Parquet artifact as display text. Reads only the
-    /// footer and the row groups it needs, never the whole object.
-    pub async fn read_table_page(
+    /// Rows and columns of a Parquet artifact, read from its footer alone.
+    pub async fn table_shape(&self, content_hash: &str) -> Result<(u64, u64), StoreError> {
+        let builder = self.open_table(content_hash).await?;
+        let num_rows = builder.metadata().file_metadata().num_rows();
+        let rows = u64::try_from(num_rows).map_err(|_| StoreError::NotATable {
+            hash: content_hash.to_owned(),
+            reason: format!("footer reports {num_rows} rows"),
+        })?;
+        Ok((rows, builder.schema().fields().len() as u64))
+    }
+
+    /// A reader of a Parquet artifact with its footer read, and nothing else yet.
+    async fn open_table(
         &self,
         content_hash: &str,
-        offset: u64,
-        limit: u32,
-    ) -> Result<TablePage, StoreError> {
+    ) -> Result<ParquetRecordBatchStreamBuilder<ObjectReader>, StoreError> {
         let key = object_key(parse_hash(content_hash)?);
         let size = match self.objects.head(&key).await {
             Ok(meta) => meta.size,
@@ -45,13 +53,27 @@ impl ArtifactStore {
             key,
             size,
         };
+        ParquetRecordBatchStreamBuilder::new(reader)
+            .await
+            .map_err(|e| StoreError::NotATable {
+                hash: content_hash.to_owned(),
+                reason: e.to_string(),
+            })
+    }
+
+    /// Rows `offset..offset + limit` of a Parquet artifact as display text. Reads only the
+    /// footer and the row groups it needs, never the whole object.
+    pub async fn read_table_page(
+        &self,
+        content_hash: &str,
+        offset: u64,
+        limit: u32,
+    ) -> Result<TablePage, StoreError> {
         let not_a_table = |reason: String| StoreError::NotATable {
             hash: content_hash.to_owned(),
             reason,
         };
-        let builder = ParquetRecordBatchStreamBuilder::new(reader)
-            .await
-            .map_err(|e| not_a_table(e.to_string()))?;
+        let builder = self.open_table(content_hash).await?;
         let num_rows = builder.metadata().file_metadata().num_rows();
         let total_rows = u64::try_from(num_rows)
             .map_err(|_| not_a_table(format!("footer reports {num_rows} rows")))?;

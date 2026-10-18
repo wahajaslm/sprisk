@@ -138,3 +138,19 @@ async fn wide_table_returns_only_its_first_columns() {
     assert_eq!(page.rows[0].values.len(), 100);
     assert_eq!(page.columns[99].name, "c99");
 }
+
+#[tokio::test]
+async fn shape_comes_from_the_footer() {
+    let (_dir, store, hash) = committed(&parquet_bytes()).await;
+
+    assert_eq!(store.table_shape(&hash).await.unwrap(), (250, 2));
+}
+
+#[tokio::test]
+async fn shape_of_bytes_that_are_not_parquet_is_refused() {
+    let (_dir, store, hash) = committed(b"not a table").await;
+
+    let err = store.table_shape(&hash).await.unwrap_err();
+
+    assert!(matches!(err, StoreError::NotATable { .. }), "{err}");
+}
