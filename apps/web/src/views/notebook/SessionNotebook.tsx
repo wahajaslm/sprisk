@@ -1,4 +1,4 @@
-import type { NotebookCell, NotebookExecution, NotebookVersion, PipelineVersion } from "@sprisk/contracts";
+import type { DisplayItem, NotebookCell, NotebookExecution, NotebookVersion, PipelineVersion } from "@sprisk/contracts";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 
@@ -12,7 +12,7 @@ import { cellsFromFlow, stepsIntoFlow } from "../../notebook/sync.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { CodeInput } from "../CodeInput.tsx";
 import { AddIcon, CheckIcon, Chevron, CrossIcon, ExportIcon, PlayIcon, RunAllIcon, TrashIcon } from "../Icons.tsx";
-import { CellOutputs, hasOutputs } from "./CellOutputs.tsx";
+import { CellOutputs, hasOutputs, OutputItems } from "./CellOutputs.tsx";
 
 type Queued = { id: string; code: string };
 
@@ -33,6 +33,8 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
   const [editing, setEditing] = useState<ReadonlySet<string>>(new Set());
   const [running, setRunning] = useState<string | undefined>();
   const [queued, setQueued] = useState<string[]>([]);
+  // What the running cell has shown so far (ADR-0041); its result replaces it when it ends.
+  const [live, setLive] = useState<{ cellId: string; outputs: DisplayItem[] }>();
   const [problem, setProblem] = useState<string | undefined>();
   const [news, setNews] = useState<string | undefined>();
   // Cells as the flow's code has them, waiting for the person's choice over their unsaved edits.
@@ -97,7 +99,8 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
       setQueued(pending.current.map((q) => q.id));
       setRunning(next.id);
       try {
-        const result = await executeCell(notebookId, next.id, next.code);
+        const cellId = next.id;
+        const result = await executeCell(notebookId, cellId, next.code, (outputs) => setLive({ cellId, outputs }));
         setResult(notebookId, next.id, { code: next.code, result });
         if (result.status !== "ok") pending.current = [];
       } catch (e) {
@@ -106,6 +109,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
       }
     }
     setRunning(undefined);
+    setLive(undefined);
     setQueued([]);
     looping.current = false;
   };
@@ -358,7 +362,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
                     <span className="spacer" />
                     <span>{cell.kind === "code" ? "Python" : "Markdown"}</span>
                   </div>
-                  {cell.kind === "code" && result && hasOutputs(result) && (
+                  {cell.kind === "code" && ((state === "running" && live?.cellId === cell.id) || (result && hasOutputs(result))) && (
                     <div className="nb-part">
                       <Fold look="bar" {...fold("output")} />
                       <Fold look="chevron" {...fold("output")} />
@@ -367,8 +371,12 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
                           <span>Outputs are collapsed</span>
                           <span aria-hidden="true">…</span>
                         </p>
+                      ) : state === "running" && live?.cellId === cell.id ? (
+                        <div className="nb-output">
+                          <OutputItems items={live.outputs} />
+                        </div>
                       ) : (
-                        <CellOutputs result={result} />
+                        result && <CellOutputs result={result} />
                       )}
                     </div>
                   )}

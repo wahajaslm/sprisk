@@ -141,6 +141,62 @@ describe("the session notebook (ADR-0036)", () => {
     await waitFor(() => expect(screen.getByRole("group", { name: "Cell 3" })).toHaveClass("active"));
   });
 
+  /** Answers execute as a stream (ADR-0041): each line once `release` lets it through. */
+  function streamed(...lines: object[]) {
+    const gates = lines.map(() => {
+      let open = () => {};
+      const opened = new Promise<void>((resolve) => (open = resolve));
+      return { opened, open };
+    });
+    const accepts: (string | null)[] = [];
+    withApi();
+    server.use(
+      http.post(`/api/notebooks/${NB}/execute`, ({ request }) => {
+        accepts.push(request.headers.get("accept"));
+        const body = new ReadableStream({
+          async start(controller) {
+            for (const [i, line] of lines.entries()) {
+              await gates[i]!.opened;
+              controller.enqueue(new TextEncoder().encode(JSON.stringify(line) + "\n"));
+            }
+            controller.close();
+          },
+        });
+        return new HttpResponse(body, { headers: { "content-type": "application/x-ndjson" } });
+      }),
+    );
+    return { release: (i: number) => gates[i]!.open(), accepts };
+  }
+
+  it("shows what a running cell printed before it ends, then its whole output", async () => {
+    const { release, accepts } = streamed(
+      { kind: "running", execution_count: 1, outputs: [{ kind: "text", text: "epoch 1\n", channel: "stdout" }] },
+      { kind: "done", execution: { status: "ok", execution_count: 1, outputs: [{ kind: "text", text: "epoch 1\nepoch 2\n", channel: "stdout" }] } },
+    );
+    renderWithApi(<NotebooksPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
+    release(0);
+    const running = screen.getByRole("group", { name: "Cell 2" });
+    expect(await within(running).findByText("epoch 1")).toBeInTheDocument();
+    expect(within(running).getByText("Running")).toBeInTheDocument();
+    release(1);
+    expect(await within(running).findByText(/epoch 1\s+epoch 2/)).toBeInTheDocument();
+    await waitFor(() => expect(within(running).queryByText("Running")).toBeNull());
+    expect(accepts).toEqual(["application/x-ndjson"]);
+  });
+
+  it("says why a cell stopped when its kernel failed mid-run", async () => {
+    const { release } = streamed(
+      { kind: "running", outputs: [] },
+      { kind: "failed", problem: { errors: [{ code: "kernel_stopped", message: "the kernel stopped answering" }] } },
+    );
+    renderWithApi(<NotebooksPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
+    release(0);
+    release(1);
+    expect(await screen.findByRole("alert")).toHaveTextContent("kernel_stopped: the kernel stopped answering");
+  });
+
   it("shows a cell's error with its name, message and traceback", async () => {
     withApi(() => ({ status: "error", execution_count: 1, outputs: [], error: { name: "NameError", message: "name 'load' is not defined", traceback: ["Cell In[1], line 1"] } }));
     renderWithApi(<NotebooksPage />);

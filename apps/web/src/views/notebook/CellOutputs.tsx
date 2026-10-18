@@ -1,4 +1,4 @@
-import type { NotebookExecution } from "@sprisk/contracts";
+import type { DisplayItem, NotebookExecution } from "@sprisk/contracts";
 
 import { FigureView } from "../inspector/FiguresTab.tsx";
 import { ShownTable } from "../inspector/VisualsTab.tsx";
@@ -8,16 +8,9 @@ export const hasOutputs = (result: NotebookExecution) => result.outputs.length >
 
 /** What one run of a cell printed, showed and drew, then its error, as a notebook shows them. */
 export function CellOutputs({ result }: { result: NotebookExecution }) {
-  let figure = 0;
   return (
     <div className="nb-output">
-      {result.outputs.map((item, i) => {
-        if (item.kind === "figure" && item.figure) return <FigureView key={i} figure={item.figure} index={figure++} />;
-        if (item.kind === "image" && item.png_base64) return <img key={i} className="figure" alt={`Figure ${++figure}`} src={`data:image/png;base64,${item.png_base64}`} />;
-        if (item.kind === "table") return <ShownTable key={i} item={item} index={i} />;
-        if (item.kind === "text") return <pre key={i} className={`code nb-text${item.channel === "stderr" ? " stderr" : ""}`}>{item.text ?? ""}</pre>;
-        return <p key={i} role="alert" className="error">Output {i + 1} ({item.kind}) has no content.</p>;
-      })}
+      <OutputItems items={result.outputs} />
       {result.status === "timed_out" && <p role="alert" className="error">The cell ran past its time limit and was stopped.</p>}
       {result.error && (
         <div className="nb-error" role="alert">
@@ -27,4 +20,16 @@ export function CellOutputs({ result }: { result: NotebookExecution }) {
       )}
     </div>
   );
+}
+
+/** What a cell printed, showed and drew, in order; also what a running cell has shown so far. */
+export function OutputItems({ items }: { items: DisplayItem[] }) {
+  let figure = 0;
+  return items.map((item, i) => {
+    if (item.kind === "figure" && item.figure) return <FigureView key={i} figure={item.figure} index={figure++} />;
+    if (item.kind === "image" && item.png_base64) return <img key={i} className="figure" alt={`Figure ${++figure}`} src={`data:image/png;base64,${item.png_base64}`} />;
+    if (item.kind === "table") return <ShownTable key={i} item={item} index={i} />;
+    if (item.kind === "text") return <pre key={i} className={`code nb-text${item.channel === "stderr" ? " stderr" : ""}`}>{item.text ?? ""}</pre>;
+    return <p key={i} role="alert" className="error">Output {i + 1} ({item.kind}) has no content.</p>;
+  });
 }

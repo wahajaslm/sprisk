@@ -23,7 +23,27 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
   throw new ApiError(response.status, problemText(body) ?? `${response.status} ${response.statusText}`);
 }
 
-function problemText(body: unknown): string | undefined {
+/** A POST answered as JSON lines when the server can stream (ADR-0041), else as JSON. */
+export async function postStreamed(path: string, body: unknown): Promise<Response> {
+  const headers = { "content-type": "application/json", accept: "application/x-ndjson" };
+  return request(path, { method: "POST", headers, body: JSON.stringify(body) });
+}
+
+/** Each JSON line of a streamed answer, as it arrives. */
+export async function* jsonLines(response: Response): AsyncGenerator<unknown> {
+  if (!response.body) return;
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffered = "";
+  for (let read = await reader.read(); !read.done; read = await reader.read()) {
+    buffered += read.value;
+    const lines = buffered.split("\n");
+    buffered = lines.pop() ?? "";
+    for (const line of lines) if (line.trim() !== "") yield JSON.parse(line);
+  }
+  if (buffered.trim() !== "") yield JSON.parse(buffered);
+}
+
+export function problemText(body: unknown): string | undefined {
   try {
     return parse("Problem", body)
       .errors.map((e) => `${e.code}: ${e.message}`)
