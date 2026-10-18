@@ -373,21 +373,14 @@ describe("inspector", () => {
     expect(screen.queryByText(/Evaluate · /)).toBeNull();
   });
 
-  it("History has its own switch for technical details", async () => {
-    renderWithApi(<Inspector />);
-    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
-    await userEvent.click(await screen.findByRole("tab", { name: /History/ }));
-    const history = await screen.findByRole("table", { name: "Runs of this step" });
-    await userEvent.click(screen.getByRole("checkbox", { name: "Technical" }));
-    expect(within(history).getByRole("columnheader", { name: "Run id" })).toBeInTheDocument();
-  });
-
-  it("technical details show media types and hashes only when switched on", async () => {
+  it("Data and History have no Technical switch", async () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
     await screen.findByRole("group", { name: "accuracy" });
-    await userEvent.click(screen.getByRole("checkbox", { name: "Technical" }));
-    expect(screen.getByText(/application\/json · 80 bytes/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Technical" })).toBeNull();
+    await userEvent.click(await screen.findByRole("tab", { name: /History/ }));
+    await screen.findByRole("table", { name: "Runs of this step" });
+    expect(screen.queryByRole("checkbox", { name: "Technical" })).toBeNull();
   });
 
   it("History tab lists the run and, below, every attempt with its error", async () => {

@@ -27,16 +27,6 @@ export const useCanvasDetail = create<CanvasDetail>()(
   }),
 );
 
-type InspectorDetail = { technical: boolean; setTechnical: (technical: boolean) => void };
-
-/** Whether the Inspector shows technical details: media types, sizes, hashes, attempt ids. */
-export const useInspectorDetail = create<InspectorDetail>()(
-  persist((set) => ({ technical: false, setTechnical: (technical) => set({ technical }) }), {
-    name: "sprisk.inspector-detail",
-    storage: createJSONStorage(() => localStorage),
-  }),
-);
-
 export type ResultLayout = "inline" | "grid";
 type ResultLayoutState = { layout: ResultLayout; setLayout: (layout: ResultLayout) => void };
 

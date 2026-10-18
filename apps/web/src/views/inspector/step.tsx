@@ -9,7 +9,6 @@ import { addCodeStep, isCodeOperator } from "../../flow/edit.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { stepOf } from "../../flow/ports.ts";
 import { shortName } from "../../flow/stages.ts";
-import { useInspectorDetail } from "../../workbench/detail.ts";
 import { useViewInstance, useViewSelection } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { CodeEditor } from "../CodeEditor.tsx";
@@ -114,7 +113,6 @@ export function StepErrors({ step }: { step: Step }) {
 
 /** What one tab shows for the step; the same body in the Inspector and in its own panel. */
 export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): ReactNode {
-  const { technical } = useInspectorDetail();
   const { pipeline, node, nodeId, operator, done, isCode, display, found } = step;
   if (!nodeId) return null;
   switch (tab) {

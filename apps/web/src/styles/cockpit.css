@@ -409,8 +409,6 @@ p { margin: 0; }
 .detail-switch button[aria-checked="true"], .detail-switch button[data-state="active"] { background: var(--wash-strong); color: var(--ink); }
 
 /* ── Inspector tabs ─────────────────────────────────── */
-.tech-switch { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--muted); cursor: pointer; white-space: nowrap; }
-.tech-switch input { accent-color: var(--ink); margin: 0; }
 .output-title { font-size: var(--text-sm); font-weight: 500; color: var(--soft); margin: 0 0 var(--space-2); }
 .output-head .output-title { margin-bottom: var(--space-2); }
 .tech { font: var(--text-xs) var(--mono); color: var(--faint); margin: 0 0 var(--space-2); overflow-wrap: anywhere; }

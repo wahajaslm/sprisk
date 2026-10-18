@@ -7,14 +7,12 @@ import { useArtifactText, useOutputs } from "../../api/hooks.ts";
 import { MAX_INLINE_BYTES, PARQUET } from "../../api/media.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { isProfileOperator } from "../../flow/stages.ts";
-import { useInspectorDetail } from "../../workbench/detail.ts";
 import { ColumnProfile } from "../ColumnProfile.tsx";
 import { formatMetric } from "../NodeFact.tsx";
 import { TablePeek } from "../TablePeek.tsx";
 import { Variables } from "./Variables.tsx";
 import { ShownTable } from "./VisualsTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { TechSwitch } from "./TechSwitch.tsx";
 
 export type Explore = ((port: string) => void) | undefined;
 
@@ -77,9 +75,6 @@ export function DataTab({ attempt, operator, capability, previous, explore, figu
   ];
   return (
     <div className="outputs">
-      <div className="tab-settings">
-        <TechSwitch />
-      </div>
       {parts.length === 0 && <p className="muted">This step produces no data.</p>}
       {parts.length === 1 && parts[0]!.body}
       {parts.length > 1 && <SubTabs parts={parts} />}
@@ -164,7 +159,6 @@ function Output({
   previous: Props["previous"];
   explore: Explore;
 }) {
-  const technical = useInspectorDetail((s) => s.technical);
   const isJson = view === "json" || view === "metrics";
   const small = output.artifact.size_bytes <= MAX_INLINE_BYTES;
   const text = useArtifactText(isJson && small ? output.artifact.id : undefined);
@@ -177,7 +171,6 @@ function Output({
           port={output.port}
           actions={(columns) => (
             <>
-              {technical && <span className="tech">{a.content_hash.slice(0, 19)}… · {a.id}</span>}
               {explore && (
                 <button type="button" className="page-btn" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)}>
                   Explore in code
@@ -190,11 +183,6 @@ function Output({
       <>
       <div className="output-head">
         <p className="output-title">{TITLE[view](output.port)}</p>
-        {technical && (
-          <p className="tech">
-            {a.media_type} · {a.size_bytes} bytes · {a.content_hash.slice(0, 19)}… · {a.id}
-          </p>
-        )}
       </div>
       {isJson && !small ? (
         <p className="muted">Output too large to show here ({a.size_bytes} bytes).</p>
@@ -209,7 +197,7 @@ function Output({
       ) : view === "model" ? (
         <p className="muted">A fitted scikit-learn model, saved for the steps that use it.</p>
       ) : (
-        <p className="muted">Saved output. Turn on technical details to see its type and hash.</p>
+        <p className="muted">Saved output, used by the steps that read it.</p>
       )}
       </>
       )}
