@@ -118,6 +118,13 @@ export type Verdict = "pass" | "fail" | "warning" | "not_assessed";
  */
 export type NotebookCellId = string;
 /**
+ * Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookKernelRequest".
+ */
+export type NotebookKernelRequest = KernelExecute | KernelInterrupt | KernelVariables | KernelShutdown;
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "CapabilityClass".
  */
@@ -688,6 +695,10 @@ export interface NotebookExecution {
   execution_count?: number;
   outputs: DisplayItem[];
   error?: NotebookError;
+  /**
+   * Present and true when the kernel restarted before or during this cell (memory cap, crash, stuck interrupt): every variable is gone. Absent otherwise.
+   */
+  kernel_restarted?: boolean;
 }
 /**
  * Present when status is error or interrupted.
@@ -738,15 +749,34 @@ export interface NotebookVariable {
   table: boolean;
 }
 /**
- * Rust to the session host, one JSON line each (ADR-0036). execute needs code; variables needs names. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.
- *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "NotebookKernelRequest".
+ * via the `definition` "KernelExecute".
  */
-export interface NotebookKernelRequest {
-  op: "execute" | "interrupt" | "variables" | "shutdown";
-  code?: string;
-  names?: PortName[];
+export interface KernelExecute {
+  op: "execute";
+  code: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "KernelInterrupt".
+ */
+export interface KernelInterrupt {
+  op: "interrupt";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "KernelVariables".
+ */
+export interface KernelVariables {
+  op: "variables";
+  names: PortName[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "KernelShutdown".
+ */
+export interface KernelShutdown {
+  op: "shutdown";
 }
 /**
  * Registered, versioned capability that a pipeline node runs (arch doc §5, §6).

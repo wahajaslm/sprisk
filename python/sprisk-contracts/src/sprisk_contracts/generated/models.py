@@ -305,20 +305,34 @@ class NotebookVariable(StrictModel):
     ]
 
 
-class Op(StrEnum):
-    execute = "execute"
-    interrupt = "interrupt"
-    variables = "variables"
-    shutdown = "shutdown"
-
-
-class NotebookKernelRequest(StrictModel):
+class KernelExecute(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    op: Op
-    code: Annotated[str | None, Field(max_length=100000)] = None
-    names: list[PortName] | None = None
+    op: Literal["execute"]
+    code: Annotated[str, Field(max_length=100000)]
+
+
+class KernelInterrupt(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    op: Literal["interrupt"]
+
+
+class KernelVariables(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    op: Literal["variables"]
+    names: list[PortName]
+
+
+class KernelShutdown(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    op: Literal["shutdown"]
 
 
 class CapabilityClass(StrEnum):
@@ -836,6 +850,12 @@ class NotebookExecution(StrictModel):
     error: Annotated[
         NotebookError | None, Field(description="Present when status is error or interrupted.")
     ] = None
+    kernel_restarted: Annotated[
+        bool | None,
+        Field(
+            description="Present and true when the kernel restarted before or during this cell (memory cap, crash, stuck interrupt): every variable is gone. Absent otherwise."
+        ),
+    ] = None
 
 
 class NotebookVariables(StrictModel):
@@ -843,6 +863,18 @@ class NotebookVariables(StrictModel):
         extra="forbid",
     )
     variables: list[NotebookVariable]
+
+
+class NotebookKernelRequest(
+    RootModel[KernelExecute | KernelInterrupt | KernelVariables | KernelShutdown]
+):
+    root: Annotated[
+        KernelExecute | KernelInterrupt | KernelVariables | KernelShutdown,
+        Field(
+            description="Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.",
+            title="NotebookKernelRequest",
+        ),
+    ]
 
 
 class Port(StrictModel):

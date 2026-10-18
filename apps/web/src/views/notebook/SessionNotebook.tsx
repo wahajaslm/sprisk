@@ -52,8 +52,10 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
     cellNodes.current.get(active)?.focus();
   });
 
-  const reshape = (next: NotebookCell[], nextActive: number) => {
-    setCells(next);
+  // Built from the cells as they are now, not as this render saw them: the editor can call in
+  // before its last keystrokes have re-rendered, and a stale list would drop them.
+  const reshape = (change: (now: NotebookCell[]) => NotebookCell[], nextActive: number) => {
+    setCells(change);
     setGeneration((g) => g + 1);
     setActive(nextActive);
     setAnchor(nextActive);
@@ -70,10 +72,11 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
   const insert = (at: number, kind: NotebookCell["kind"]) => {
     const cell = { id: newCellId(), kind, source: "" };
     if (kind === "markdown") setEditing((now) => new Set(now).add(cell.id));
-    reshape([...cells.slice(0, at), cell, ...cells.slice(at)], at);
+    reshape((now) => [...now.slice(0, at), cell, ...now.slice(at)], at);
   };
-  const remove = (index: number) => reshape(cells.filter((_, i) => i !== index), Math.max(0, Math.min(index, cells.length - 2)));
-  const setKind = (index: number, kind: NotebookCell["kind"]) => reshape(cells.map((c, i) => (i === index ? { ...c, kind } : c)), index);
+  const remove = (index: number) =>
+    reshape((now) => now.filter((_, i) => i !== index), Math.max(0, Math.min(index, cells.length - 2)));
+  const setKind = (index: number, kind: NotebookCell["kind"]) => reshape((now) => now.map((c, i) => (i === index ? { ...c, kind } : c)), index);
 
   /** Cells run one at a time, in the order asked, as Jupyter queues them. An error stops the
    * rest of the queue. */

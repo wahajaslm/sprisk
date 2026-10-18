@@ -18,23 +18,20 @@ def iopub(msg_type: str, **content: object) -> dict[str, object]:
     return {"msg_type": msg_type, "content": content}
 
 
-def items(outputs: Outputs) -> list[dict[str, object]]:
-    return outputs.items
-
-
 def test_printed_chunks_on_one_stream_join_into_one_item() -> None:
     out = Outputs()
     out.add(iopub("stream", name="stdout", text="Loading...\n"))
     out.add(iopub("stream", name="stdout", text="Loaded 3 rows\n"))
     out.add(iopub("stream", name="stderr", text="careful\n"))
-    assert items(out) == [
+    assert out.items == [
         {"kind": "text", "text": "Loading...\nLoaded 3 rows\n", "channel": "stdout"},
         {"kind": "text", "text": "careful\n", "channel": "stderr"},
     ]
 
 
 def test_sprisk_display_wins_over_plain_text_and_html() -> None:
-    table = {"kind": "table", "table": {"offset": 0}}
+    page = {"offset": 0, "total_rows": 0, "total_columns": 0, "columns": [], "rows": []}
+    table = {"kind": "table", "table": page}
     out = Outputs()
     out.add(
         iopub(
@@ -46,13 +43,13 @@ def test_sprisk_display_wins_over_plain_text_and_html() -> None:
             },
         )
     )
-    assert items(out) == [table]
+    assert out.items == [table]
 
 
 def test_html_alone_is_never_shown_only_its_plain_text() -> None:
     out = Outputs()
     out.add(iopub("display_data", data={"text/html": "<b>x</b>", "text/plain": "x"}))
-    assert items(out) == [{"kind": "text", "text": "x"}]
+    assert out.items == [{"kind": "text", "text": "x"}]
 
 
 def test_a_png_is_an_image_and_plotly_json_is_a_figure() -> None:
@@ -60,9 +57,9 @@ def test_a_png_is_an_image_and_plotly_json_is_a_figure() -> None:
     out.add(iopub("display_data", data={"image/png": "iVBOR", "text/plain": "<Figure>"}))
     figure = {"data": [], "layout": {"title": {"text": "Sales"}}}
     out.add(iopub("display_data", data={"application/vnd.plotly.v1+json": figure}))
-    assert items(out)[0] == {"kind": "image", "png_base64": "iVBOR"}
-    assert items(out)[1]["kind"] == "figure"
-    assert items(out)[1]["figure"] == {
+    assert out.items[0] == {"kind": "image", "png_base64": "iVBOR"}
+    assert out.items[1]["kind"] == "figure"
+    assert out.items[1]["figure"] == {
         "library": "plotly",
         "format": "plotly_json",
         "content": json.dumps(figure),
@@ -91,7 +88,7 @@ def test_clear_output_removes_what_was_shown() -> None:
     out.add(iopub("stream", name="stdout", text="10%"))
     out.add(iopub("clear_output", wait=False))
     out.add(iopub("stream", name="stdout", text="100%"))
-    assert items(out) == [{"kind": "text", "text": "100%", "channel": "stdout"}]
+    assert out.items == [{"kind": "text", "text": "100%", "channel": "stdout"}]
 
 
 def test_outputs_are_capped() -> None:
@@ -99,17 +96,38 @@ def test_outputs_are_capped() -> None:
     out.add(iopub("stream", name="stdout", text="x" * 30_000))
     for i in range(200):
         out.add(iopub("display_data", data={"text/plain": str(i)}))
-    assert len(items(out)) == 100
-    assert str(items(out)[0]["text"]).endswith("…")
+    assert len(out.items) == 100
+    assert str(out.items[0]["text"]).endswith("…")
 
 
 def test_figures_past_the_cap_are_noted_not_shown() -> None:
     out = Outputs()
     for _ in range(15):
         out.add(iopub("display_data", data={"image/png": "iVBOR"}))
-    kinds = [str(i["kind"]) for i in items(out)]
+    kinds = [str(i["kind"]) for i in out.items]
     assert kinds == ["image"] * 12 + ["text"]
-    assert items(out)[-1]["text"] == "More than 12 figures; the rest are not shown."
+    assert out.items[-1]["text"] == "More than 12 figures; the rest are not shown."
+
+
+def test_a_shown_value_too_large_or_malformed_is_noted_not_sent() -> None:
+    out = Outputs()
+    big = {"kind": "text", "text": "x" * 3_000_000}
+    out.add(iopub("display_data", data={"application/vnd.sprisk.display+json": big}))
+    out.add(iopub("display_data", data={"application/vnd.sprisk.display+json": {"kind": "bogus"}}))
+    out.add(iopub("display_data", data={"image/png": "i" * 3_000_000}))
+    out.add(
+        iopub("display_data", data={"application/vnd.plotly.v1+json": {"data": ["x" * 3_000_000]}})
+    )
+    assert [i["kind"] for i in out.items] == ["text", "text", "text", "text"]
+    assert all(len(json.dumps(i)) < 1000 for i in out.items)
+    assert "could not be shown" in str(out.items[1]["text"])
+
+
+def test_an_error_message_and_traceback_are_capped() -> None:
+    out = Outputs()
+    out.add(iopub("error", ename="E", evalue="m" * 50_000, traceback=["t" * 50_000] * 500))
+    assert out.error is not None
+    assert len(json.dumps(out.error)) < 150_000
 
 
 @pytest.fixture(scope="module")
@@ -164,10 +182,47 @@ def test_variables_say_which_names_are_tables(session: Session) -> None:
 
 
 def test_interrupt_stops_a_running_cell(session: Session) -> None:
-    threading.Timer(1.0, session.interrupt).start()
-    done = session.execute("import time\ntime.sleep(30)")
+    marker = session.cwd / "started"
+    marker.unlink(missing_ok=True)
+
+    def interrupt_once_started() -> None:
+        while not marker.exists():
+            time.sleep(0.01)
+        session.interrupt()
+
+    threading.Thread(target=interrupt_once_started, daemon=True).start()
+    done = session.execute("import pathlib, time\npathlib.Path('started').touch()\ntime.sleep(30)")
     assert done.status == "interrupted"
     assert session.execute("1 + 1").outputs[0].text == "2"
+
+
+def test_the_kernel_runs_on_this_python(session: Session) -> None:
+    done = session.execute("import sys\nsys.executable")
+    assert done.outputs[0].text == repr(sys.executable)
+
+
+def test_memory_used_while_idle_restarts_the_kernel_and_the_next_cell_says_so(
+    tmp_path: Path,
+) -> None:
+    small = Session(Limits(cell_seconds=20, memory_mb=400), tmp_path)
+    try:
+        small.execute(
+            "import threading, time\n"
+            "def grow():\n"
+            "    time.sleep(0.3)\n"
+            "    globals()['big'] = b'x' * 600_000_000\n"
+            "    time.sleep(30)\n"
+            "threading.Thread(target=grow, daemon=True).start()"
+        )
+        deadline = time.monotonic() + 15
+        while not small.check_idle_memory() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        done = small.execute("'big' in dir()")
+        assert done.kernel_restarted
+        assert done.outputs[0].channel == "stderr" and "400 MB" in str(done.outputs[0].text)
+        assert done.outputs[-1].text == "False"
+    finally:
+        small.shutdown()
 
 
 def test_a_cell_over_its_time_limit_is_stopped(tmp_path: Path) -> None:
@@ -190,6 +245,7 @@ def test_a_kernel_over_its_memory_cap_is_restarted_and_says_so(tmp_path: Path) -
         assert done.status == "error"
         assert done.error is not None and done.error.name == "MemoryLimit"
         assert "400 MB" in done.error.message
+        assert done.kernel_restarted
         assert small.execute("'kept' in dir()").outputs[0].text == "False"
     finally:
         small.shutdown()

@@ -1,0 +1,9 @@
+{
+  "status": "error",
+  "execution_count": 7,
+  "outputs": [
+    { "kind": "table", "table": { "offset": 0, "total_rows": 1, "total_columns": 1, "columns": [{ "name": "a", "data_type": "Int64" }], "rows": [{ "values": ["1"], "missing": [] }] } }
+  ],
+  "error": { "name": "MemoryLimit", "message": "the kernel used over 4096 MB and was restarted; its variables are gone", "traceback": [] },
+  "kernel_restarted": true
+}

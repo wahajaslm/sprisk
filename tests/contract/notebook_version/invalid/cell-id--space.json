@@ -1,0 +1,26 @@
+{
+  "schema_version": "sprisk.notebook_version/v1",
+  "id": "nbv_01JAAAAAAAAAAAAAAAAAAAAAAB",
+  "notebook_id": "nb_01JAAAAAAAAAAAAAAAAAAAAAAA",
+  "project_id": "prj_00000000000000000000000000",
+  "parent_id": "nbv_01JAAAAAAAAAAAAAAAAAAAAAAA",
+  "title": "Sales analysis",
+  "cells": [
+    {
+      "id": "has space",
+      "kind": "markdown",
+      "source": "# Sales Analysis Notebook"
+    },
+    {
+      "id": "c2",
+      "kind": "code",
+      "source": "DATA_PATH = \"sales_data.csv\"\nTOP_N = 10"
+    },
+    {
+      "id": "c3",
+      "kind": "code",
+      "source": "import pandas as pd\ndf = pd.read_csv(DATA_PATH)"
+    }
+  ],
+  "created_at": "2026-10-18T12:00:00Z"
+}

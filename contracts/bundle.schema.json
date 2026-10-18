@@ -1019,6 +1019,10 @@
         "error": {
           "$ref": "#/$defs/NotebookError",
           "description": "Present when status is error or interrupted."
+        },
+        "kernel_restarted": {
+          "type": "boolean",
+          "description": "Present and true when the kernel restarted before or during this cell (memory cap, crash, stuck interrupt): every variable is gone. Absent otherwise."
         }
       }
     },
@@ -1090,7 +1094,43 @@
     },
     "NotebookKernelRequest": {
       "title": "NotebookKernelRequest",
-      "description": "Rust to the session host, one JSON line each (ADR-0036). execute needs code; variables needs names. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.",
+      "description": "Rust to the session host, one JSON line each (ADR-0036). Tagged by `op`. The host answers execute with a NotebookExecution and variables with NotebookVariables; interrupt and shutdown get no answer.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/KernelExecute"
+        },
+        {
+          "$ref": "#/$defs/KernelInterrupt"
+        },
+        {
+          "$ref": "#/$defs/KernelVariables"
+        },
+        {
+          "$ref": "#/$defs/KernelShutdown"
+        }
+      ]
+    },
+    "KernelExecute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "code"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "execute"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      }
+    },
+    "KernelInterrupt": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1100,21 +1140,45 @@
         "op": {
           "type": "string",
           "enum": [
-            "execute",
-            "interrupt",
-            "variables",
-            "shutdown"
+            "interrupt"
           ]
-        },
-        "code": {
+        }
+      }
+    },
+    "KernelVariables": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "names"
+      ],
+      "properties": {
+        "op": {
           "type": "string",
-          "maxLength": 100000
+          "enum": [
+            "variables"
+          ]
         },
         "names": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/PortName"
           }
+        }
+      }
+    },
+    "KernelShutdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "shutdown"
+          ]
         }
       }
     },

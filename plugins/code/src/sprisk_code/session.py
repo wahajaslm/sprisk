@@ -1,6 +1,6 @@
 """Session host (ADR-0036): one live ipykernel for one notebook.
 
-Rust starts it in the data root and writes one NotebookKernelRequest per line on stdin. It
+Rust starts it where workers run and writes one NotebookKernelRequest per line on stdin. It
 answers execute with a NotebookExecution line and variables with a NotebookVariables line on
 stdout; interrupt and shutdown get no answer. Interrupt is read while a cell runs.
 
@@ -22,12 +22,15 @@ from typing import Annotated, Any
 import psutil
 import typer
 from jupyter_client.blocking.client import BlockingKernelClient
+from jupyter_client.kernelspec import KernelSpec, KernelSpecManager
 from jupyter_client.manager import KernelManager
 from jupyter_client.provisioning.local_provisioner import LocalProvisioner
+from pydantic import ValidationError
 
 from sprisk_code.kernel_display import MIME
-from sprisk_code.shown import MAX_FIGURES, MAX_ITEMS, MAX_TEXT_CHARS, cut
+from sprisk_code.shown import MAX_FIGURE_BYTES, MAX_FIGURES, MAX_ITEMS, MAX_TEXT_CHARS, cut
 from sprisk_contracts import NotebookExecution, NotebookKernelRequest, NotebookVariables
+from sprisk_contracts.generated.models import DisplayItem, KernelExecute, KernelVariables
 
 STARTUP_SECONDS = 60
 POLL_SECONDS = 0.25
@@ -44,6 +47,9 @@ TYPE_OF = "type({0}).__module__.split('.')[0] + '.' + type({0}).__qualname__"
 TABLE_TYPES = {"pandas.DataFrame", "polars.DataFrame"}
 SHUTDOWN = NotebookKernelRequest.model_validate_json('{"op": "shutdown"}')
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+# The last lines of a traceback say where it failed; the first are the cell's own frames.
+MAX_TRACEBACK_LINES = 100
+MAX_TRACEBACK_LINE_CHARS = 1000
 
 
 @dataclass(frozen=True)
@@ -78,10 +84,11 @@ class Outputs:
         elif kind == "execute_input":
             self.execution_count = content["execution_count"]
         elif kind == "error":
+            lines = content["traceback"][-MAX_TRACEBACK_LINES:]
             self.error = {
-                "name": content["ename"],
-                "message": content["evalue"],
-                "traceback": [ANSI.sub("", line) for line in content["traceback"]],
+                "name": cut(content["ename"], MAX_TRACEBACK_LINE_CHARS),
+                "message": cut(content["evalue"], MAX_TEXT_CHARS),
+                "traceback": [cut(ANSI.sub("", line), MAX_TRACEBACK_LINE_CHARS) for line in lines],
             }
         elif kind == "clear_output":
             self.items.clear()
@@ -95,8 +102,18 @@ class Outputs:
             self._add({"kind": "text", "text": note})
 
     def _add(self, item: dict[str, Any]) -> None:
-        if len(self.items) < MAX_ITEMS:
-            self.items.append(item)
+        """Every item is checked: the cell's own code can emit any display bundle."""
+        if len(self.items) >= MAX_ITEMS:
+            return
+        text = json.dumps(item)
+        try:
+            DisplayItem.model_validate_json(text)
+        except ValidationError:
+            item = {"kind": "text", "text": "An output could not be shown: it is not a display."}
+        size = len(text)
+        if size > MAX_FIGURE_BYTES:
+            item = {"kind": "text", "text": f"An output of {size} bytes is too large to show."}
+        self.items.append(item)
 
     def _text(self, chunk: str, channel: str) -> None:
         last = self.items[-1] if self.items else None
@@ -126,22 +143,37 @@ def _item(data: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+class _ThisPython(KernelSpecManager):
+    """The kernel runs on the Python this host runs on, the one workers use. Never a `python3`
+    kernelspec found in the person's Jupyter folders, which may be another environment."""
+
+    def get_kernel_spec(self, kernel_name: str) -> KernelSpec:
+        argv = [sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}"]
+        return KernelSpec(argv=argv, display_name="Python 3 (sprisk)", language="python")
+
+
 class Session:
     """One kernel, its client, and the limits it runs under."""
 
     def __init__(self, limits: Limits, cwd: Path) -> None:
         self.limits = limits
         self.cwd = cwd
+        # Set when the kernel restarted between cells; the next cell's answer says so.
+        self.lost: str | None = None
         self._start()
 
     def _start(self) -> None:
         # IPC: local sockets in a private directory, not open TCP ports. The path is absolute
-        # because the kernel runs in the data root, not where this host started.
+        # because the kernel runs in `cwd`, not where this host started.
         self.sockets = Path(tempfile.mkdtemp(prefix="sprisk-kernel-"))
         self.manager = KernelManager(
-            kernel_name="python3", transport="ipc", ip=str(self.sockets / "kernel")
+            kernel_spec_manager=_ThisPython(),
+            kernel_name="sprisk",
+            transport="ipc",
+            ip=str(self.sockets / "kernel"),
         )
-        self.manager.start_kernel(cwd=str(self.cwd))
+        # The kernel's own stdout is not this host's: that is the pipe Rust reads answers from.
+        self.manager.start_kernel(cwd=str(self.cwd), stdout=sys.stderr)
         self.client: BlockingKernelClient = self.manager.blocking_client()
         self.client.start_channels()
         try:
@@ -166,19 +198,32 @@ class Session:
     def interrupt(self) -> None:
         self.manager.interrupt_kernel()
 
+    def check_idle_memory(self) -> bool:
+        """Between cells: a thread a cell started can keep growing. True when it went over the
+        cap and the kernel was restarted."""
+        if self._memory_mb() <= self.limits.memory_mb:
+            return False
+        self._restart()
+        self.lost = _memory_error(self.limits.memory_mb)["message"]
+        return True
+
     def execute(self, code: str) -> NotebookExecution:
-        msg_id = self.client.execute(code, store_history=True, allow_stdin=False)
         out = Outputs()
+        restarted = self.lost is not None
+        if self.lost is not None:
+            out.add({"msg_type": "stream", "content": {"name": "stderr", "text": self.lost + "\n"}})
+            self.lost = None
+        msg_id = self.client.execute(code, store_history=True, allow_stdin=False)
         deadline = time.monotonic() + self.limits.cell_seconds
         timed_out = False
         while True:
             if self._memory_mb() > self.limits.memory_mb:
                 self._restart()
-                return _done("error", out, _memory_error(self.limits.memory_mb))
+                return _done("error", out, _memory_error(self.limits.memory_mb), restarted=True)
             if time.monotonic() > deadline:
                 if timed_out:
                     self._restart()
-                    return _done("timed_out", out, None)
+                    return _done("timed_out", out, None, restarted=True)
                 self.interrupt()
                 timed_out = True
                 deadline = time.monotonic() + GRACE_SECONDS
@@ -187,19 +232,23 @@ class Session:
             except queue.Empty:
                 if not self.manager.is_alive():
                     self._restart()
-                    return _done("error", out, _died())
+                    return _done("error", out, _died(), restarted=True)
                 continue
             if msg["parent_header"].get("msg_id") != msg_id:
                 continue
             if msg["msg_type"] == "status" and msg["content"]["execution_state"] == "idle":
                 break
             out.add(msg)
-        self._reply(msg_id)
+        try:
+            self._reply(msg_id)
+        except KernelError:
+            self._restart()
+            return _done("error", out, _died(), restarted=True)
         if timed_out:
-            return _done("timed_out", out, None)
+            return _done("timed_out", out, None, restarted=restarted)
         if out.error is not None and out.error["name"] == "KeyboardInterrupt":
-            return _done("interrupted", out, out.error)
-        return _done("error" if out.error else "ok", out, out.error)
+            return _done("interrupted", out, out.error, restarted=restarted)
+        return _done("error" if out.error else "ok", out, out.error, restarted=restarted)
 
     def variables(self, names: list[str]) -> NotebookVariables:
         msg_id = self.client.execute(
@@ -244,12 +293,16 @@ class Session:
             return 0.0
 
 
-def _done(status: str, out: Outputs, error: dict[str, Any] | None) -> NotebookExecution:
+def _done(
+    status: str, out: Outputs, error: dict[str, Any] | None, restarted: bool = False
+) -> NotebookExecution:
     doc: dict[str, Any] = {"status": status, "outputs": out.items}
     if out.execution_count is not None:
         doc["execution_count"] = out.execution_count
     if error is not None:
         doc["error"] = error
+    if restarted:
+        doc["kernel_restarted"] = True
     return NotebookExecution.model_validate_json(json.dumps(doc))
 
 
@@ -265,11 +318,15 @@ def _died() -> dict[str, Any]:
 
 def serve(session: Session, requests: queue.Queue[NotebookKernelRequest]) -> None:
     while True:
-        request = requests.get()
-        if request.op == "execute":
-            answer: NotebookExecution | NotebookVariables = session.execute(request.code or "")
-        elif request.op == "variables":
-            answer = session.variables([n.root for n in request.names or []])
+        try:
+            request = requests.get(timeout=POLL_SECONDS)
+        except queue.Empty:
+            session.check_idle_memory()
+            continue
+        if isinstance(request.root, KernelExecute):
+            answer: NotebookExecution | NotebookVariables = session.execute(request.root.code)
+        elif isinstance(request.root, KernelVariables):
+            answer = session.variables([n.root for n in request.root.names])
         else:
             return
         sys.stdout.write(answer.model_dump_json(exclude_none=True) + "\n")
@@ -281,7 +338,7 @@ def read(session: Session, requests: queue.Queue[NotebookKernelRequest]) -> None
     try:
         for line in sys.stdin:
             request = NotebookKernelRequest.model_validate_json(line)
-            if request.op == "interrupt":
+            if request.root.op == "interrupt":
                 session.interrupt()
             else:
                 requests.put(request)
