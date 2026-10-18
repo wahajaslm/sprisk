@@ -662,6 +662,10 @@ export interface NotebookVersion {
    * Version this one was saved over. Absent for a notebook's first version.
    */
   parent_id?: string;
+  /**
+   * The flow version this notebook was made in or last synced into (ADR-0037). The notebook belongs to that flow and its later versions. Absent: not in a flow yet.
+   */
+  pipeline_version_id?: string;
   title: string;
   cells: NotebookCell[];
   created_at: Timestamp;
@@ -875,6 +879,10 @@ export interface NodeCode {
  */
 export interface NodeSource {
   notebook_version_id: NotebookVersionId;
+  /**
+   * The notebook these cells belong to, so saving it again rebuilds its steps (ADR-0037). Absent on nodes made before.
+   */
+  notebook_id?: string;
   cells: NotebookCellId[];
 }
 /**
@@ -891,6 +899,10 @@ export interface Edge {
  */
 export interface NodeSource1 {
   notebook_version_id: NotebookVersionId;
+  /**
+   * The notebook these cells belong to, so saving it again rebuilds its steps (ADR-0037). Absent on nodes made before.
+   */
+  notebook_id?: string;
   cells: NotebookCellId[];
 }
 /**

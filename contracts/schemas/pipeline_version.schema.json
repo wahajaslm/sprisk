@@ -38,6 +38,7 @@
       "required": ["notebook_version_id", "cells"],
       "properties": {
         "notebook_version_id": { "$ref": "#/$defs/NotebookVersionId" },
+        "notebook_id": { "$ref": "#/$defs/NotebookId", "description": "The notebook these cells belong to, so saving it again rebuilds its steps (ADR-0037). Absent on nodes made before." },
         "cells": { "type": "array", "items": { "$ref": "#/$defs/NotebookCellId" } }
       }
     },

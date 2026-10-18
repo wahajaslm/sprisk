@@ -926,6 +926,10 @@
           "$ref": "#/$defs/NotebookVersionId",
           "description": "Version this one was saved over. Absent for a notebook's first version."
         },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId",
+          "description": "The flow version this notebook was made in or last synced into (ADR-0037). The notebook belongs to that flow and its later versions. Absent: not in a flow yet."
+        },
         "title": {
           "type": "string",
           "maxLength": 200
@@ -1429,6 +1433,10 @@
       "properties": {
         "notebook_version_id": {
           "$ref": "#/$defs/NotebookVersionId"
+        },
+        "notebook_id": {
+          "$ref": "#/$defs/NotebookId",
+          "description": "The notebook these cells belong to, so saving it again rebuilds its steps (ADR-0037). Absent on nodes made before."
         },
         "cells": {
           "type": "array",

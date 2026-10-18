@@ -6,9 +6,22 @@
   "parent_id": "nbv_01JAAAAAAAAAAAAAAAAAAAAAAA",
   "title": "Sales analysis",
   "cells": [
-    { "id": "c1", "kind": "markdown", "source": "# Sales Analysis Notebook" },
-    { "id": "c2", "kind": "code", "source": "DATA_PATH = \"sales_data.csv\"\nTOP_N = 10" },
-    { "id": "c3", "kind": "code", "source": "import pandas as pd\ndf = pd.read_csv(DATA_PATH)" }
+    {
+      "id": "c1",
+      "kind": "markdown",
+      "source": "# Sales Analysis Notebook"
+    },
+    {
+      "id": "c2",
+      "kind": "code",
+      "source": "DATA_PATH = \"sales_data.csv\"\nTOP_N = 10"
+    },
+    {
+      "id": "c3",
+      "kind": "code",
+      "source": "import pandas as pd\ndf = pd.read_csv(DATA_PATH)"
+    }
   ],
-  "created_at": "2026-10-18T12:00:00Z"
+  "created_at": "2026-10-18T12:00:00Z",
+  "pipeline_version_id": "plv_01JAAAAAAAAAAAAAAAAAAAAAAA"
 }

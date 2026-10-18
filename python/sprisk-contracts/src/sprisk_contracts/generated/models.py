@@ -388,6 +388,12 @@ class NodeSource(StrictModel):
         extra="forbid",
     )
     notebook_version_id: NotebookVersionId
+    notebook_id: Annotated[
+        NotebookId | None,
+        Field(
+            description="The notebook these cells belong to, so saving it again rebuilds its steps (ADR-0037). Absent on nodes made before."
+        ),
+    ] = None
     cells: list[NotebookCellId]
 
 
@@ -1046,6 +1052,12 @@ class NotebookVersion(StrictModel):
         NotebookVersionId | None,
         Field(
             description="Version this one was saved over. Absent for a notebook's first version."
+        ),
+    ] = None
+    pipeline_version_id: Annotated[
+        PipelineVersionId | None,
+        Field(
+            description="The flow version this notebook was made in or last synced into (ADR-0037). The notebook belongs to that flow and its later versions. Absent: not in a flow yet."
         ),
     ] = None
     title: Annotated[str, Field(max_length=200)]

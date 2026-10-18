@@ -318,6 +318,17 @@ async fn check_notebook_sources(
             }
             other => other?,
         };
+        if from
+            .notebook_id
+            .as_ref()
+            .is_some_and(|n| *n != cited.notebook_id)
+        {
+            let version = cited.id.as_str();
+            return Err(refused(
+                "wrong_notebook",
+                format!("{at}: notebook version {version} belongs to another notebook"),
+            ));
+        }
         if cited.project_id != pipeline.project_id {
             return Err(refused(
                 "notebook_in_other_project",
@@ -422,6 +433,23 @@ async fn create_notebook_version(
             "notebook {} already has a first version; save over its latest one",
             version.notebook_id.as_str()
         ))));
+    }
+    if let Some(flow) = &version.pipeline_version_id {
+        let saved = match state.store.get_pipeline_version(flow).await {
+            Err(StoreError::NotFound { .. }) => {
+                return Err(ApiError::BadRequest {
+                    code: "unknown_flow",
+                    message: format!("flow version {} does not exist", flow.as_str()),
+                });
+            }
+            other => other?,
+        };
+        if saved.project_id != version.project_id {
+            return Err(ApiError::BadRequest {
+                code: "flow_in_other_project",
+                message: format!("flow version {} is in another project", flow.as_str()),
+            });
+        }
     }
     state.store.insert_notebook_version(&version).await?;
     Ok((StatusCode::CREATED, Json(version)))

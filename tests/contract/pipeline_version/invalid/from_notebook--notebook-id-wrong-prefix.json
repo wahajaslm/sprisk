@@ -1,0 +1,34 @@
+{
+  "schema_version": "sprisk.pipeline_version/v1",
+  "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "parent_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "nodes": [
+    {
+      "id": "eligible",
+      "operator": "sprisk.code.python@2.0.0",
+      "params": {
+        "source": "eligible = customers[customers['age'] >= minimum_age]",
+        "inputs": [
+          "customers"
+        ],
+        "outputs": [
+          "eligible"
+        ],
+        "parameters": {
+          "minimum_age": 18
+        }
+      },
+      "from_notebook": {
+        "notebook_version_id": "nbv_01JAAAAAAAAAAAAAAAAAAAAAAB",
+        "cells": [
+          "c3",
+          "c4"
+        ],
+        "notebook_id": "nbv_01JAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  ],
+  "edges": [],
+  "created_at": "2026-10-15T10:00:00Z"
+}

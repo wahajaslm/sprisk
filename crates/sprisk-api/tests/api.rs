@@ -1059,3 +1059,40 @@ async fn figures_of_a_code_step_come_without_its_tables() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "not_figures");
 }
+
+#[tokio::test]
+async fn a_node_naming_its_notebook_must_name_the_notebook_of_its_version() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let wrong = json!({"notebook_version_id": "nbv_01JABCDEFGHJKMNPQRSTVWXYZ0", "notebook_id": "nb_01JABCDEFGHJKMNPQRSTVWXYZ9", "cells": ["c1"]});
+    let (status, body) = submit(&api, node_from_notebook(&api, wrong)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "wrong_notebook");
+    let right = json!({"notebook_version_id": "nbv_01JABCDEFGHJKMNPQRSTVWXYZ0", "notebook_id": NOTEBOOK, "cells": ["c1"]});
+    let (status, body) = submit(&api, node_from_notebook(&api, right)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
+async fn a_notebook_belongs_to_a_saved_flow_of_its_project() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let mut unknown = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        NOTEBOOK,
+        Some("nbv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+    );
+    unknown["pipeline_version_id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ9");
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(unknown)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "unknown_flow");
+
+    let (status, _) = submit(&api, pipeline(&api.csv)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let mut linked = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ2",
+        NOTEBOOK,
+        Some("nbv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+    );
+    linked["pipeline_version_id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(linked)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
