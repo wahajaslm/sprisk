@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 import type { CodeInputProps } from "../src/views/CodeInput.tsx";
 
 import { useCanvasDetail, useResultLayout } from "../src/workbench/detail.ts";
+import { useOutputs } from "../src/notebook/outputs.ts";
 import { useSelection } from "../src/workbench/selection.ts";
 import { useWorkbench } from "../src/workbench/workbench.ts";
 
@@ -61,8 +62,9 @@ vi.mock("../src/views/MonacoCode.tsx", () => ({
 
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 beforeEach(() => {
-  useSelection.setState({ nav: "Flow", pipelineVersionId: undefined, runId: undefined, nodeId: undefined, compare: [] });
-  useWorkbench.setState({ activity: "steps", editing: false, flowView: "canvas", dock: undefined });
+  useSelection.setState({ nav: "Flow", pipelineVersionId: undefined, runId: undefined, nodeId: undefined, notebookId: undefined, compare: [] });
+  useOutputs.setState({ byNotebook: {} });
+  useWorkbench.setState({ activity: "steps", editing: false, dock: undefined });
   useCanvasDetail.setState({ level: "detail" });
   useResultLayout.setState({ layout: "inline" });
 });

@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   cellNumber,
-  cellsFromFile,
-  flowFromSplit,
   NOTEBOOK_OPERATOR,
   notebookOrder,
   notebookSteps,
@@ -12,58 +10,10 @@ import {
   splitRequest,
   toIpynb,
   versionFromSplit,
-  withCell,
-  withNewCell,
-  withoutCell,
   withSource,
 } from "../src/flow/notebook.ts";
+import { cellsFromFile } from "../src/notebook/document.ts";
 import { codePipeline, notebookOperator, operators, pipeline } from "./fixtures.ts";
-
-describe("reading notebook cells (ADR-0031)", () => {
-  it("takes the code cells of a .ipynb, joining each cell's lines", () => {
-    const notebook = JSON.stringify({
-      nbformat: 4,
-      cells: [
-        { cell_type: "markdown", source: ["# Title"] },
-        { cell_type: "code", source: ["import pandas as pd\n", "df = pd.read_csv('a.csv')"], outputs: [] },
-        { cell_type: "code", source: "df.head()", outputs: [] },
-      ],
-    });
-    expect(cellsFromFile("analysis.ipynb", notebook)).toEqual(["import pandas as pd\ndf = pd.read_csv('a.csv')", "df.head()"]);
-  });
-
-  it("says plainly when a .ipynb is not a notebook", () => {
-    expect(() => cellsFromFile("x.ipynb", "{}")).toThrow("x.ipynb is not a Jupyter notebook: it has no cells");
-    expect(() => cellsFromFile("x.ipynb", "not json")).toThrow(/x.ipynb is not a Jupyter notebook/);
-  });
-
-  it("splits pasted code on # %% markers, or keeps it as one cell", () => {
-    expect(cellsFromFile("cells.py", "# %%\na = 1\n# %% Filter\nb = a\n")).toEqual(["a = 1", "b = a"]);
-    expect(cellsFromFile("pasted", "a = 1\nb = a")).toEqual(["a = 1\nb = a"]);
-  });
-});
-
-describe("a flow from split cells", () => {
-  const split: CodeSplit = {
-    steps: [
-      { source: "df = load()", cells: [0], parameters: [], inputs: [], outputs: ["df"] },
-      { source: "n = len(df)", cells: [1, 2], parameters: [], inputs: ["df"], outputs: [] },
-    ],
-    links: [{ from_step: 0, to_step: 1, name: "df" }],
-    notes: [],
-  };
-
-  it("makes one code step per split step, linked by name, as a new flow", () => {
-    const version = flowFromSplit(split, "prj_00000000000000000000000000");
-    expect(version.parent_id).toBeUndefined();
-    expect(version.project_id).toBe("prj_00000000000000000000000000");
-    expect(version.nodes).toEqual([
-      { id: "cell_1", operator: NOTEBOOK_OPERATOR, params: { source: "df = load()", outputs: ["df"] } },
-      { id: "cell_2", operator: NOTEBOOK_OPERATOR, params: { source: "n = len(df)", inputs: ["df"] } },
-    ]);
-    expect(version.edges).toEqual([{ from: "cell_1.df", to: "cell_2.df" }]);
-  });
-});
 
 const ops = new Map([...operators, notebookOperator].map((o) => [o.id, o]));
 
@@ -75,7 +25,7 @@ const mixed: PipelineVersion = {
     {
       id: "cell_1",
       operator: NOTEBOOK_OPERATOR,
-      params: { source: "def tidy(t):\n    return t.drop_nulls()\n\n# %%\nclean = tidy(df)", parameters: [], inputs: ["df"], outputs: ["clean"] },
+      params: { source: "def tidy(t):\n    return t.drop_nulls()\n\n# %%\nclean = tidy(df)", inputs: ["df"], outputs: ["clean"] },
     },
     { id: "split", operator: "sprisk.validation.random_split@1.0.0", params: { seed: 42 } },
     { id: "cell_2", operator: NOTEBOOK_OPERATOR, params: { source: "n = train.height", inputs: ["train"] } },
@@ -89,6 +39,11 @@ const mixed: PipelineVersion = {
 
 const LOAD_CALL = 'load_data = df = f(path=Path("/d/iris.csv"), format="csv")';
 const SPLIT_CALL = 'split_out = f(data=clean, seed=42)\nsplit_train = train = split_out["train"]\nsplit_test = split_out["test"]';
+/** The code cells of an exported notebook, read back as an import reads them. */
+const codeCells = (notebook: unknown) =>
+  cellsFromFile("flow.ipynb", JSON.stringify(notebook))
+    .filter((c) => c.kind === "code")
+    .map((c) => c.source);
 const byEnds = (edges: PipelineVersion["edges"]) => [...edges].sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));
 
 describe("notebook order (ADR-0033)", () => {
@@ -259,21 +214,6 @@ describe("edited cells become the next version", () => {
 describe("editing the notebook's cells", () => {
   const steps = notebookSteps(mixed, ops);
 
-  it("changes one cell of a step", () => {
-    expect(withCell(steps, { step: 1, cell: 1 }, "clean = df")[1]).toEqual({ kind: "cells", nodeId: "cell_1", cells: ["def tidy(t):\n    return t.drop_nulls()", "clean = df"] });
-  });
-
-  it("adds an empty cell as a new step after a step", () => {
-    const added = withNewCell(steps, 0);
-    expect(added).toHaveLength(5);
-    expect(added[1]).toEqual({ kind: "cells", nodeId: undefined, cells: [""] });
-  });
-
-  it("removes a cell, and the step with its last cell", () => {
-    expect(withoutCell(steps, { step: 1, cell: 0 })[1]).toEqual({ kind: "cells", nodeId: "cell_1", cells: ["clean = tidy(df)"] });
-    expect(withoutCell(steps, { step: 3, cell: 0 }).map((s) => s.nodeId)).toEqual(["load", "cell_1", "split"]);
-  });
-
   it("numbers cells across the notebook, a built-in step counting as one", () => {
     expect(cellNumber(steps, { step: 1, cell: 1 })).toBe(2);
     expect(cellNumber(steps, { step: 3, cell: 0 })).toBe(4);
@@ -293,7 +233,7 @@ describe("download as .ipynb", () => {
   it("writes each cell, and a built-in step as its code plus its call", () => {
     const notebook = toIpynb(mixed, ops, sources);
     expect(notebook.nbformat).toBe(4);
-    expect(cellsFromFile("flow.ipynb", JSON.stringify(notebook))).toEqual([
+    expect(codeCells(notebook)).toEqual([
       `def f(path, format):\n    ...\n\nfrom pathlib import Path\n\n${LOAD_CALL}`,
       "def tidy(t):\n    return t.drop_nulls()",
       "clean = tidy(df)",
@@ -312,7 +252,7 @@ describe("download as .ipynb", () => {
       ],
       edges: [],
     };
-    expect(cellsFromFile("flow.ipynb", JSON.stringify(toIpynb(twice, ops, sources)))).toEqual([
+    expect(codeCells(toIpynb(twice, ops, sources))).toEqual([
       "def f(path, format):\n    ...\n\na_data = f()",
       "b_data = f()",
       "def g():\n    ...\n\nc_data = g()",
@@ -320,7 +260,7 @@ describe("download as .ipynb", () => {
   });
 
   it("gives a v1 code step its input as data, with polars", () => {
-    const cells = cellsFromFile("flow.ipynb", JSON.stringify(toIpynb(codePipeline, ops, new Map(operators.map((o) => [o.id, "..."])))));
+    const cells = codeCells(toIpynb(codePipeline, ops, new Map(operators.map((o) => [o.id, "..."]))));
     expect(cells[0]).toBe("import polars as pl");
     expect(cells.at(-1)).toBe("data = load_data\nprint(data.height)\ndata.head(1)\ncode_1_data = data");
   });

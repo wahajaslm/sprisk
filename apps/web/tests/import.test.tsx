@@ -1,97 +1,78 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import type { NotebookVersion } from "@sprisk/contracts";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
-import { TopBar } from "../src/views/TopBar.tsx";
 import { ImportNotebook } from "../src/views/ImportNotebook.tsx";
+import { TopBar } from "../src/views/TopBar.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
-import { pipeline, run } from "./fixtures.ts";
+import { pipeline } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
-const split = {
-  steps: [
-    { source: "df = load()", cells: [0], parameters: [], inputs: [], outputs: ["df"] },
-    { source: "n = len(df)", cells: [1], parameters: [], inputs: ["df"], outputs: [] },
-  ],
-  links: [{ from_step: 0, to_step: 1, name: "df" }],
-  notes: [{ cell: 0, message: "cell 1 reads load, which no earlier cell sets" }],
-};
-
 function withApi() {
-  const sent: { cells?: unknown; versions: { nodes: { id: string }[]; edges: unknown[] }[]; runs: unknown[] } = { versions: [], runs: [] };
+  const sent: { saved: NotebookVersion[]; runs: unknown[] } = { saved: [], runs: [] };
   server.use(
-    http.post("/api/code/split", async ({ request }) => {
-      sent.cells = ((await request.json()) as { cells: unknown }).cells;
-      return HttpResponse.json(split);
-    }),
-    http.post("/api/pipeline_versions", async ({ request }) => {
-      const body = (await request.json()) as (typeof sent.versions)[number];
-      sent.versions.push(body);
+    http.post("/api/notebook_versions", async ({ request }) => {
+      const body = (await request.json()) as NotebookVersion;
+      sent.saved.push(body);
       return HttpResponse.json(body, { status: 201 });
     }),
-    http.post("/api/runs", async ({ request }) => {
-      sent.runs.push(await request.json());
-      return HttpResponse.json({ ...run, id: "run_01JABCDEFGHJKMNPQRSTVWXYZ9" }, { status: 202 });
+    http.post("/api/notebooks/:id/execute", () => {
+      sent.runs.push("execute");
+      return HttpResponse.json({ status: "ok", outputs: [] });
     }),
   );
   return sent;
 }
 
-describe("import a notebook (ADR-0031)", () => {
-  it("reads pasted cells, shows the steps, links and code, then creates the flow without running it", async () => {
+describe("import a notebook (ADR-0036)", () => {
+  it("makes pasted cells a new notebook and opens it, without running anything", async () => {
     const sent = withApi();
     const onClose = vi.fn();
     renderWithApi(<ImportNotebook onClose={onClose} />);
     await userEvent.type(screen.getByRole("textbox", { name: "Cells" }), "# %%{enter}df = load(){enter}# %%{enter}n = len(df)");
-    await userEvent.click(screen.getByRole("button", { name: "Read cells" }));
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
 
-    const steps = await screen.findByRole("list", { name: "Steps" });
-    expect(sent.cells).toEqual(["df = load()", "n = len(df)"]);
-    expect(within(steps).getAllByRole("listitem")[1]).toHaveTextContent("reads df from step 1");
-    expect(within(steps).getAllByRole("listitem")[0]).toHaveTextContent("passes on df");
-    expect(screen.getByText("cell 1 reads load, which no earlier cell sets")).toBeInTheDocument();
-    expect(within(steps).getByText("n = len(df)")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Create flow" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    const [version] = sent.versions;
-    expect(version?.nodes.map((n) => n.id)).toEqual(["cell_1", "cell_2"]);
-    expect(version?.edges).toEqual([{ from: "cell_1.df", to: "cell_2.df" }]);
-    // Someone else's notebook runs only when the person presses Run graph.
+    const [saved] = sent.saved;
+    expect(saved?.parent_id).toBeUndefined();
+    expect(saved?.cells.map((c) => [c.kind, c.source])).toEqual([
+      ["code", "df = load()"],
+      ["code", "n = len(df)"],
+    ]);
+    // Someone else's notebook runs only when the person runs its cells.
     expect(sent.runs).toEqual([]);
-    expect(useSelection.getState()).toMatchObject({ pipelineVersionId: (version as unknown as { id: string }).id, runId: undefined });
+    expect(useSelection.getState()).toMatchObject({ nav: "Notebooks", notebookId: saved?.notebook_id });
   });
 
-  it("reads the code cells of a .ipynb file", async () => {
+  it("keeps a .ipynb file's code and Markdown cells and names the notebook after the file", async () => {
     const sent = withApi();
     renderWithApi(<ImportNotebook onClose={() => {}} />);
-    const notebook = JSON.stringify({ cells: [{ cell_type: "code", source: ["a = 1"] }, { cell_type: "markdown", source: "x" }] });
-    await userEvent.upload(screen.getByLabelText("Notebook file"), new File([notebook], "a.ipynb"));
-    await userEvent.click(screen.getByRole("button", { name: "Read cells" }));
-    await screen.findByRole("list", { name: "Steps" });
-    expect(sent.cells).toEqual(["a = 1"]);
+    const notebook = JSON.stringify({ cells: [{ cell_type: "markdown", source: "# Sales" }, { cell_type: "code", source: ["a = 1"] }] });
+    await userEvent.upload(screen.getByLabelText("Notebook file"), new File([notebook], "sales_analysis.ipynb"));
+    expect(await screen.findByText("2 cells: 1 code, 1 Markdown.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(sent.saved).toHaveLength(1));
+    expect(sent.saved[0]?.title).toBe("sales_analysis");
+    expect(sent.saved[0]?.cells.map((c) => c.kind)).toEqual(["markdown", "code"]);
   });
 
   it("shows why a file is not a notebook", async () => {
     withApi();
     renderWithApi(<ImportNotebook onClose={() => {}} />);
     await userEvent.upload(screen.getByLabelText("Notebook file"), new File(["{}"], "bad.ipynb"));
-    await userEvent.click(screen.getByRole("button", { name: "Read cells" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("bad.ipynb is not a Jupyter notebook: it has no cells");
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
   });
 
-  it("shows why the cells could not be read", async () => {
-    server.use(
-      http.post("/api/code/split", () =>
-        HttpResponse.json({ errors: [{ code: "split_timeout", message: "reading the cells took longer than 10s" }] }, { status: 422 }),
-      ),
-    );
+  it("shows why the notebook could not be saved", async () => {
+    server.use(http.post("/api/notebook_versions", () => HttpResponse.json({ errors: [{ code: "conflict", message: "conflict: UNIQUE" }] }, { status: 409 })));
     renderWithApi(<ImportNotebook onClose={() => {}} />);
     await userEvent.type(screen.getByRole("textbox", { name: "Cells" }), "a = 1");
-    await userEvent.click(screen.getByRole("button", { name: "Read cells" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("reading the cells took longer than 10s");
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("conflict: UNIQUE");
   });
 
   it("opens from the flow menu", async () => {

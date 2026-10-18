@@ -54,3 +54,8 @@ export async function postOne<K extends keyof Entities>(entity: K, path: string,
   const init = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
   return parse(entity, await (await request(path, init)).json());
 }
+
+/** A POST answered with no body (204), e.g. interrupt a kernel. */
+export async function postEmpty(path: string): Promise<void> {
+  await request(path, { method: "POST" });
+}

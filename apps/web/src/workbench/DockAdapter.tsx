@@ -129,14 +129,6 @@ function PanelToolbar({ api, Toolbar }: { api: PanelApi; Toolbar: FunctionCompon
   );
 }
 
-/** Groups of Inspector tabs; never one that also holds the Flow panel, which shows the notebook. */
-function setInspectorVisible(api: DockviewApi, on: boolean): void {
-  for (const group of api.groups) {
-    const tabs = group.panels.some((p) => readTab(p.params) !== undefined);
-    if (tabs && !group.panels.some((p) => p.id === "flow")) group.api.setVisible(on);
-  }
-}
-
 function commands(api: DockviewApi) {
   return {
     openTab: (tab: InspectorTab) => reopenTab(api, tab),
@@ -149,11 +141,9 @@ function commands(api: DockviewApi) {
       api.clear();
       addDefaultLayout(api);
       syncTabBars(api, useWorkbench.getState().editing);
-      setInspectorVisible(api, useWorkbench.getState().flowView === "canvas");
     },
     setEditing: (on: boolean) => syncTabBars(api, on),
     setSidebarVisible: (on: boolean) => api.getPanel("sidebar")?.group.api.setVisible(on),
-    setInspectorVisible: (on: boolean) => setInspectorVisible(api, on),
   };
 }
 

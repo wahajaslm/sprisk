@@ -4,9 +4,6 @@ import type { InspectorTab } from "./inspectorTabs.ts";
 
 export const ACTIVITIES = ["steps", "runs", "views"] as const;
 
-/** How the Flow panel shows the flow: as a canvas or as notebook cells (ADR-0033). */
-export const FLOW_VIEWS = ["canvas", "notebook"] as const;
-export type FlowView = (typeof FLOW_VIEWS)[number];
 export type Activity = (typeof ACTIVITIES)[number];
 
 /** What the dock can do, registered by DockAdapter so nothing else imports dockview. */
@@ -18,17 +15,13 @@ export type DockCommands = {
   resetLayout: () => void;
   setEditing: (on: boolean) => void;
   setSidebarVisible: (on: boolean) => void;
-  /** The notebook shows each step's output under its cells, so it hides the Inspector tabs. */
-  setInspectorVisible: (on: boolean) => void;
 };
 
 type Workbench = {
   /** Sidebar content; undefined means the sidebar is collapsed (VS Code behaviour). */
   activity: Activity | undefined;
   editing: boolean;
-  flowView: FlowView;
   dock: DockCommands | undefined;
-  setFlowView: (view: FlowView) => void;
   toggleActivity: (activity: Activity) => void;
   toggleEditing: () => void;
   attachDock: (dock: DockCommands | undefined) => void;
@@ -38,12 +31,7 @@ type Workbench = {
 export const useWorkbench = create<Workbench>((set, get) => ({
   activity: "steps",
   editing: false,
-  flowView: "canvas",
   dock: undefined,
-  setFlowView: (flowView) => {
-    set({ flowView });
-    get().dock?.setInspectorVisible(flowView === "canvas");
-  },
   toggleActivity: (activity) => {
     const next = get().activity === activity ? undefined : activity;
     set({ activity: next });

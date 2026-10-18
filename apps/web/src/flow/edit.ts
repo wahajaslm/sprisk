@@ -11,6 +11,9 @@ const STARTER = `# \`data\` is the input table as a polars DataFrame (\`pl\` is 
 data.describe()
 `;
 
+/** Now, in the contract's timestamp form: UTC, whole seconds. */
+export const timestamp = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
 /** Versions are immutable: every edit is a new version with a fresh id (rule 5). */
 export function nextVersion(base: PipelineVersion, change: Pick<PipelineVersion, "nodes" | "edges">): PipelineVersion {
   return {
@@ -18,7 +21,7 @@ export function nextVersion(base: PipelineVersion, change: Pick<PipelineVersion,
     ...change,
     id: `plv_${ulid()}`,
     parent_id: base.id,
-    created_at: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+    created_at: timestamp(),
   };
 }
 

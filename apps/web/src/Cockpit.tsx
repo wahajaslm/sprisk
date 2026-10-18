@@ -4,6 +4,7 @@ import { StepTabLabel, StepToolbar } from "./views/inspector/step.tsx";
 import { ComingView, Placeholder } from "./views/Placeholder.tsx";
 import { ActivityBar } from "./views/ActivityBar.tsx";
 import { FlowPanel } from "./views/FlowPanel.tsx";
+import { NotebooksPage } from "./views/notebook/NotebooksPage.tsx";
 import { Sidebar } from "./views/Sidebar.tsx";
 import { StepTab } from "./views/StepTab.tsx";
 import { TopBar } from "./views/TopBar.tsx";
@@ -14,7 +15,6 @@ const views = { sidebar: Sidebar, flow: FlowPanel, copilot: Copilot, "step-tab":
 
 const COMING = {
   Datasets: "Every dataset with origin, rows, columns, quality and where the flow uses it; column profiles from Profile.",
-  Notebooks: "Notebook cells that run through the same workers, with Add to Flow.",
   Deploy: "Production and staging models, canary traffic, latency and drift.",
 } as const;
 
@@ -29,6 +29,8 @@ export function Cockpit() {
           <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} toolbars={{ "step-tab": StepToolbar }} />
         ) : nav === "Experiments" ? (
           <Experiments />
+        ) : nav === "Notebooks" ? (
+          <NotebooksPage />
         ) : (
           <ComingView title={nav} shows={COMING[nav]} />
         )}

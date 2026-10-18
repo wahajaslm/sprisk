@@ -9,7 +9,10 @@ type Selection = {
   pipelineVersionId: string | undefined;
   runId: string | undefined;
   nodeId: string | undefined;
+  /** The notebook open on the Notebooks page (ADR-0036). */
+  notebookId: string | undefined;
   setNav: (nav: Nav) => void;
+  openNotebook: (id: string) => void;
   selectPipelineVersion: (id: string) => void;
   selectRun: (id: string | undefined) => void;
   selectNode: (id: string | undefined) => void;
@@ -25,7 +28,9 @@ export const useSelection = create<Selection>((set) => ({
   pipelineVersionId: undefined,
   runId: undefined,
   nodeId: undefined,
+  notebookId: undefined,
   setNav: (nav) => set({ nav }),
+  openNotebook: (id) => set({ notebookId: id, nav: "Notebooks" }),
   selectPipelineVersion: (id) => set({ pipelineVersionId: id, runId: undefined, nodeId: undefined }),
   selectRun: (id) => set({ runId: id }),
   selectNode: (id) => set({ nodeId: id }),
