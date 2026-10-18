@@ -50,6 +50,8 @@ type StepData = {
   params: Record<string, unknown>;
   pipelineVersionId: string;
   isEvaluator: boolean;
+  /** An evaluator's metrics port: its headline metric is read from there. */
+  metricsPort?: string;
   kind: NodeKind;
   /** What the step is for, in plain words: "Transform". */
   role: string;
@@ -123,7 +125,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
             port={data.figurePort}
             fact={
               <span className="card-fact">
-                <NodeFact attemptId={data.attemptId} operator={data.operatorRef} isEvaluator={data.isEvaluator} status="" />
+                <NodeFact attemptId={data.attemptId} operator={data.operatorRef} metricsPort={data.metricsPort} status="" />
               </span>
             }
             fallback={<CardSummary data={data} />}
@@ -155,7 +157,7 @@ function CardSummary({ data }: { data: StepData }) {
       {!(data.level === "detail" && data.isEvaluator) && (
         <span className="card-fact">
           {data.attemptId ? (
-            <NodeFact attemptId={data.attemptId} operator={data.operatorRef} isEvaluator={data.isEvaluator} status="output saved" />
+            <NodeFact attemptId={data.attemptId} operator={data.operatorRef} metricsPort={data.metricsPort} status="output saved" />
           ) : (
             <span className="muted">no output yet</span>
           )}
@@ -169,10 +171,17 @@ function CardSummary({ data }: { data: StepData }) {
           params={data.params}
           pipelineVersionId={data.pipelineVersionId}
           nodeId={data.id}
+          metricsPort={data.metricsPort}
         />
       )}
     </>
   );
+}
+
+/** An evaluator's metrics port, if it has one; absent otherwise (no undefined in node data). */
+function metricsPortOf(op: Operator): { metricsPort?: string } {
+  const port = op.outputs.find((o) => o.kind === "metrics")?.name;
+  return port === undefined ? {} : { metricsPort: String(port) };
 }
 
 /** Width of the round icon in Compact (.round-icon). */
@@ -292,6 +301,7 @@ export function flowGraph(
         params: node.params,
         pipelineVersionId: pipeline.id,
         isEvaluator: op?.capability_class === "evaluator",
+        ...(op?.capability_class === "evaluator" ? metricsPortOf(op) : {}),
         concerns: concerns.get(id) ?? 0,
         level,
         kind: op ? kindOf(op) : "recipe",

@@ -14,11 +14,13 @@ type FactProps = { status: string };
 export function NodeFact({
   attemptId,
   operator,
-  isEvaluator,
+  metricsPort,
   status,
-}: FactProps & { attemptId: string; operator: string; isEvaluator: boolean }) {
+}: FactProps & { attemptId: string; operator: string; metricsPort: string | undefined }) {
   const outputs = useOutputs(attemptId);
   const first = outputs.data?.[0]?.artifact;
+  // Outputs are listed by port name, so an evaluator's metrics are found by port, not position.
+  const metrics = metricsPort ? outputs.data?.find((o) => o.port === metricsPort)?.artifact : undefined;
   if (first?.media_type === PARQUET) {
     const many = (outputs.data?.length ?? 0) > 1;
     const size = isProfileOperator(operator)
@@ -28,8 +30,8 @@ export function NodeFact({
         : (rows: number, cols: number) => `${rows} rows × ${cols} cols`;
     return <TableSize artifactId={first.id} status={status} size={size} />;
   }
-  if (isEvaluator && first?.media_type === "application/json" && first.size_bytes <= MAX_INLINE_BYTES) {
-    return <Headline artifactId={first.id} status={status} />;
+  if (metrics?.media_type === "application/json" && metrics.size_bytes <= MAX_INLINE_BYTES) {
+    return <Headline artifactId={metrics.id} status={status} />;
   }
   return <>{status}</>;
 }

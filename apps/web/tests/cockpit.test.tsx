@@ -655,6 +655,35 @@ describe("node previews", () => {
     expect(asked).toEqual([]);
   });
 
+  /** The real evaluator: it draws figures too, and its outputs are listed by port name. */
+  function evaluatorDrawing(figures: { items: ReturnType<typeof plotly>[] }) {
+    const metrics = scoreOutputs[0]!;
+    const drawn = { port: "figures", artifact: { ...metrics.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY77" } };
+    const evaluate = operators.find((o) => o.id === "sprisk.ml.evaluate@1.0.0")!;
+    const withFigures = { ...evaluate, outputs: [...evaluate.outputs, { name: "figures", kind: "figure" as const }] };
+    server.use(
+      http.get("/api/operators", () => HttpResponse.json(operators.map((o) => (o === evaluate ? withFigures : o)))),
+      http.get(`/api/attempts/${scoreAttempt.id}/outputs`, () => HttpResponse.json([drawn, metrics])),
+      http.get(`/api/artifacts/${drawn.artifact.id}/figures`, () => HttpResponse.json(figures)),
+      http.get(`/api/artifacts/${drawn.artifact.id}/content`, () => HttpResponse.json({ items: [plotly("Predicted against actual")] })),
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+  }
+
+  it("shows an evaluator's metric above its figure, whatever order its outputs come in", async () => {
+    evaluatorDrawing({ items: [plotly("Predicted against actual")] });
+    const score = await screen.findByRole("button", { name: /^score/ });
+    expect(await within(score).findByRole("img", { name: "Predicted against actual" })).toBeInTheDocument();
+    await waitFor(() => expect(score).toHaveTextContent(/accuracy 0\.947/));
+  });
+
+  it("shows an evaluator's metric when it drew no figure, whatever order its outputs come in", async () => {
+    evaluatorDrawing({ items: [] });
+    const score = await screen.findByRole("button", { name: /^score/ });
+    await waitFor(() => expect(score).toHaveTextContent(/0\.947\s*accuracy/));
+  });
+
   it("says why the figure could not be read", async () => {
     codeStepDrawing(() => HttpResponse.json({ errors: [{ code: "not_figures", message: "not figures" }] }, { status: 422 }));
     const card = await screen.findByRole("button", { name: /^code_1/ });

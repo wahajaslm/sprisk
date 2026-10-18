@@ -18,6 +18,8 @@ export type VisualFor = {
   params: Record<string, unknown>;
   pipelineVersionId: string | undefined;
   nodeId: string;
+  /** An evaluator's metrics port. */
+  metricsPort: string | undefined;
 };
 
 /** A small picture of a step's main output, chosen from what the step produced. */
@@ -106,7 +108,7 @@ const typeGlyph = (t: string) => (/Float|Int|Decimal/.test(t) ? "#" : /Utf8|Stri
 
 function MetricTrend(props: VisualFor) {
   const outputs = useOutputs(props.attemptId);
-  const text = useArtifactText(outputs.data?.[0]?.artifact.id);
+  const text = useArtifactText(outputs.data?.find((o) => o.port === props.metricsPort)?.artifact.id);
   const metric = text.data === undefined ? undefined : headlineMetric(text.data);
   const trend = useNodeHistory(props.pipelineVersionId, props.nodeId)
     .map((h) => h.metrics?.[metric?.name ?? ""])
