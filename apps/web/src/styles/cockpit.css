@@ -508,7 +508,9 @@ p { margin: 0; }
 .figure-button:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
 .code-output.inline .figure-button { max-width: 640px; }
 .figure-button .figure { display: block; width: 100%; border-radius: 0; }
-.plot { margin: 0; display: grid; gap: var(--space-1); }
+/* One column the width of the tile, never of the drawing inside: a plot drawn wider (before a
+   layout switch) must shrink to it. */
+.plot { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
 .figure-caption { font: var(--text-xs) var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lightbox { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: var(--space-8); background: rgba(0, 0, 0, 0.75); }
 .lightbox figure { margin: 0; display: grid; gap: var(--space-2); max-width: min(1100px, 92vw); max-height: 90vh; }
