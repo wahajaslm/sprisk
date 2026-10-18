@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { StepTabLabel, StepToolbar } from "../src/views/inspector/step.tsx";
+import { StepTabLabel } from "../src/views/inspector/step.tsx";
 import { StepTab } from "../src/views/StepTab.tsx";
 import { ViewInstance } from "../src/workbench/instance.tsx";
 import { readTab } from "../src/workbench/inspectorTabs.ts";
@@ -16,37 +16,50 @@ describe("each Inspector tab is its own dock panel", () => {
   it("follows the selection", async () => {
     renderWithApi(
       <ViewInstance pin={undefined} setPin={vi.fn()} tab="history">
-        <StepToolbar />
         <StepTab />
       </ViewInstance>,
     );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
     expect(await screen.findByRole("table", { name: "Runs of this step" })).toHaveTextContent("2 attempts");
-    expect(screen.getByText("split")).toBeInTheDocument();
   });
 
-  it("a pinned panel keeps its step when the selection moves", async () => {
+  it("a pinned panel keeps its step when the selection moves, and its tab names that step", async () => {
+    const pin = { runId: RUN, nodeId: "split" };
     renderWithApi(
-      <ViewInstance pin={{ runId: RUN, nodeId: "split" }} setPin={vi.fn()} tab="history">
-        <StepToolbar />
-        <StepTab />
-      </ViewInstance>,
+      <>
+        <ViewInstance pin={pin} setPin={vi.fn()} tab="history">
+          <StepTabLabel />
+        </ViewInstance>
+        <ViewInstance pin={pin} setPin={vi.fn()} tab="history">
+          <StepTab />
+        </ViewInstance>
+      </>,
     );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
     expect(await screen.findByRole("table", { name: "Runs of this step" })).toHaveTextContent("2 attempts");
-    await waitFor(() => expect(screen.getByText("split")).toBeInTheDocument());
+    expect(screen.getByText(/History/)).toHaveTextContent("History · split");
+    expect(screen.getByRole("button", { name: "Unpin History" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("pins a panel to the shown run and step", async () => {
+  it("pins a panel to the shown run and step from the pin on its tab", async () => {
     const setPin = vi.fn();
     renderWithApi(
       <ViewInstance pin={undefined} setPin={setPin} tab="console">
-        <StepToolbar />
+        <StepTabLabel />
       </ViewInstance>,
     );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
-    await userEvent.click(await screen.findByRole("button", { name: /Pin/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Pin Console to this run and step" }));
     expect(setPin).toHaveBeenCalledWith({ runId: RUN, nodeId: "split" });
+  });
+
+  it("a tab has no pin before there is a run to pin to", () => {
+    renderWithApi(
+      <ViewInstance pin={undefined} setPin={vi.fn()} tab="console">
+        <StepTabLabel />
+      </ViewInstance>,
+    );
+    expect(screen.queryByRole("button", { name: /Pin/ })).toBeNull();
   });
 
   it("the dock tab label is muted when there is nothing to show", async () => {

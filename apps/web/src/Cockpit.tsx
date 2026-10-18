@@ -1,6 +1,6 @@
 import { Copilot } from "./views/Copilot.tsx";
 import { Experiments } from "./views/Experiments.tsx";
-import { StepTabLabel, StepToolbar } from "./views/inspector/step.tsx";
+import { StepTabLabel } from "./views/inspector/step.tsx";
 import { ComingView, Placeholder } from "./views/Placeholder.tsx";
 import { ActivityBar } from "./views/ActivityBar.tsx";
 import { FlowPanel } from "./views/FlowPanel.tsx";
@@ -26,7 +26,7 @@ export function Cockpit() {
       <div className="workspace">
         <ActivityBar />
         {nav === "Flow" ? (
-          <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} toolbars={{ "step-tab": StepToolbar }} />
+          <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} />
         ) : nav === "Experiments" ? (
           <Experiments />
         ) : nav === "Notebooks" ? (

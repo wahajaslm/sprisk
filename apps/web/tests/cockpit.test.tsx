@@ -365,6 +365,23 @@ describe("inspector", () => {
     expect(useSelection.getState()).toMatchObject({ nav: "Experiments", compare: [older.id, RUN] });
   });
 
+  it("the tab line holds only the tabs: no step name, state or settings", async () => {
+    renderWithApi(<Inspector setPin={vi.fn()} />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
+    await screen.findByRole("group", { name: "accuracy" });
+    expect(screen.getByRole("tablist", { name: "Inspector" })).not.toHaveTextContent("score");
+    expect(screen.queryByText(/Evaluate · /)).toBeNull();
+  });
+
+  it("History has its own switch for technical details", async () => {
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
+    await userEvent.click(await screen.findByRole("tab", { name: /History/ }));
+    const history = await screen.findByRole("table", { name: "Runs of this step" });
+    await userEvent.click(screen.getByRole("checkbox", { name: "Technical" }));
+    expect(within(history).getByRole("columnheader", { name: "Run id" })).toBeInTheDocument();
+  });
+
   it("technical details show media types and hashes only when switched on", async () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
@@ -1375,14 +1392,14 @@ describe("pinned inspector", () => {
     renderWithApi(<Inspector pin={{ runId: RUN, nodeId: "score" }} setPin={vi.fn()} />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
     expect(within(await screen.findByRole("group", { name: "accuracy" })).getByText("0.947")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Pinned/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Unpin Data" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("pins to the current run and step", async () => {
     const setPin = vi.fn();
     renderWithApi(<Inspector setPin={setPin} />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
-    await userEvent.click(await screen.findByRole("button", { name: /Pin/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Pin History to this run and step" }));
     expect(setPin).toHaveBeenCalledWith({ runId: RUN, nodeId: "score" });
   });
 });

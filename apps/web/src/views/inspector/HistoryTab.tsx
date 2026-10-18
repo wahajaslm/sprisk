@@ -2,6 +2,7 @@ import type { NodeRun } from "../../api/history.ts";
 import { useInspectorDetail } from "../../workbench/detail.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { formatMetric } from "../NodeFact.tsx";
+import { TechSwitch } from "./TechSwitch.tsx";
 
 const STATE_TEXT: Record<string, string> = {
   succeeded: "✓ ran",
@@ -21,6 +22,9 @@ export function HistoryTab({ history, runId, metric }: { history: NodeRun[]; run
   const shown = history.find((h) => h.run.id === runId);
   return (
     <div className="history">
+      <div className="tab-settings">
+        <TechSwitch />
+      </div>
       <table className="history-table" aria-label="Runs of this step">
         <thead>
           <tr>

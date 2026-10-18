@@ -8,7 +8,7 @@ import { PARQUET } from "../../api/media.ts";
 import { addCodeStep, isCodeOperator } from "../../flow/edit.ts";
 import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { stepOf } from "../../flow/ports.ts";
-import { roleOf, shortName } from "../../flow/stages.ts";
+import { shortName } from "../../flow/stages.ts";
 import { useInspectorDetail } from "../../workbench/detail.ts";
 import { useViewInstance, useViewSelection } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
@@ -29,9 +29,6 @@ import { type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
 import { shownTables, VisualsTab, visualCount } from "./VisualsTab.tsx";
 
 const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
-
-/** Attempt states in the words people use. */
-const STATE_WORDS: Record<string, string> = { cache_hit: "cached", timed_out: "timed out" };
 
 /** Everything the Inspector tabs show about the step this panel follows or is pinned to. */
 export function useStep() {
@@ -105,63 +102,6 @@ export function useStep() {
 }
 
 export type Step = ReturnType<typeof useStep>;
-
-/** The step's name, kind and state, plus the run when the panel is pinned. */
-export function StepMeta({ step }: { step: Step }) {
-  const { pin } = useViewInstance();
-  const { operator, nodeId, attempts, runId, latest } = step;
-  const state = attempts.isPending && runId ? "loading" : latest ? (STATE_WORDS[latest.state] ?? latest.state.replace("_", " ")) : "not run";
-  return (
-    <>
-      <span className="sel-label">{nodeId}</span>
-      <span className="sel-meta">
-        {operator ? roleOf(operator) : ""} · {state}
-        {pin ? ` · run ${pin.runId.slice(-8)}` : ""}
-      </span>
-    </>
-  );
-}
-
-export function PinButton({ step }: { step: Step }) {
-  const { pin, setPin } = useViewInstance();
-  const { runId, nodeId } = step;
-  if (!setPin || !runId) return null;
-  return (
-    <button
-      type="button"
-      className={`pin${pin ? " on" : ""}`}
-      aria-pressed={pin !== undefined}
-      title={pin ? "Unpin: follow the selection again" : "Pin this panel to this run and step"}
-      onClick={() => setPin(pin ? undefined : { runId, nodeId })}
-    >
-      <PinIcon />
-      {pin ? "Pinned" : "Pin"}
-    </button>
-  );
-}
-
-/** The active step tab's controls, shown at the right of the dock tab bar. */
-export function StepToolbar() {
-  const step = useStep();
-  if (!step.nodeId) return null;
-  return (
-    <div className="step-toolbar">
-      <StepMeta step={step} />
-      <TechSwitch />
-      <PinButton step={step} />
-    </div>
-  );
-}
-
-export function TechSwitch() {
-  const { technical, setTechnical } = useInspectorDetail();
-  return (
-    <label className="tech-switch">
-      <input type="checkbox" checked={technical} onChange={(e) => setTechnical(e.target.checked)} />
-      Technical
-    </label>
-  );
-}
 
 export function StepErrors({ step }: { step: Step }) {
   return (
@@ -253,7 +193,7 @@ function tabMark(tab: InspectorTab, step: Step): TabMark {
 
 /** A tab's dock label with its badge, e.g. "Checks ⚠ 2". */
 export function StepTabLabel() {
-  const { tab } = useViewInstance();
+  const { tab, pin } = useViewInstance();
   const step = useStep();
   if (!tab) return <span>Unknown tab</span>;
   const mark = step.nodeId ? tabMark(tab, step) : {};
@@ -263,12 +203,41 @@ export function StepTabLabel() {
       aria-label={tab === "checks" && step.concernCount > 0 ? `Checks, ${step.concernCount} to review` : undefined}
     >
       {TAB_LABEL[tab]}
+      {/* The selected step is not named on the tab line; a pinned tab names the step it keeps. */}
+      {pin && <span className="tab-pinned-step"> · {pin.nodeId}</span>}
       {mark.badge && (
         <>
           {" "}
           <span className={`tab-badge${mark.alert ? " alert" : ""}`}>{mark.badge}</span>
         </>
       )}
+      <TabPin label={TAB_LABEL[tab]} runId={step.runId} nodeId={step.nodeId} />
     </span>
+  );
+}
+
+/** A small pin on the tab, shown on hover and while pinned (VS Code). A pinned tab keeps its
+ * run and step when the selection moves. */
+function TabPin({ label, runId, nodeId }: { label: string; runId: string | undefined; nodeId: string | undefined }) {
+  const { pin, setPin } = useViewInstance();
+  if (!setPin || (!pin && (!runId || !nodeId))) return null;
+  const toggle = () => setPin(pin || !runId || !nodeId ? undefined : { runId, nodeId });
+  return (
+    <button
+      type="button"
+      className={`tab-pin${pin ? " on" : ""}`}
+      aria-pressed={pin !== undefined}
+      aria-label={pin ? `Unpin ${label}` : `Pin ${label} to this run and step`}
+      title={pin ? `Pinned to ${pin.nodeId}: click to follow the selection again` : "Pin this tab to this run and step"}
+      // The tab itself selects and drags; the pin only pins.
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        toggle();
+      }}
+    >
+      <PinIcon />
+    </button>
   );
 }

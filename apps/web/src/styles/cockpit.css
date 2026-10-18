@@ -108,8 +108,13 @@ p { margin: 0; }
 /* ── Dock: Studio regions, no tab bars ───────────────── */
 .dock-tab { display: flex; align-items: center; gap: var(--space-2); height: 100%; padding: 0 var(--space-2); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
 .tab-actions { height: 100%; display: flex; align-items: center; gap: 2px; padding: 0 var(--space-2); }
-.step-toolbar { display: flex; align-items: center; gap: var(--space-3); margin-right: var(--space-2); min-width: 0; }
-.step-toolbar .pin { height: 24px; }
+/* A pin on each step tab: shown on hover or focus, and kept while pinned (VS Code). */
+.tab-pin { display: inline-grid; place-items: center; vertical-align: middle; width: 18px; height: 18px; margin-left: 2px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); opacity: 0; cursor: pointer; }
+.dock-tab:hover .tab-pin, .tab-pin:focus-visible, .tab-pin.on { opacity: 1; }
+.tab-pin:hover { color: var(--ink); }
+.tab-pin.on { color: var(--soft); }
+.tab-pinned-step { color: var(--muted); font-weight: 400; }
+.tab-settings { display: flex; justify-content: flex-end; }
 .step-pane { height: 100%; background: var(--panel); }
 /* Data and Code fill the tab edge to edge; the table and editor scroll inside it, so their
    scrollbars sit at the panel's edges. */
@@ -233,9 +238,6 @@ p { margin: 0; }
 .tabs button { height: 26px; padding: 0 var(--space-3); border: 0; border-radius: 0; background: transparent; color: var(--quiet); font-weight: 500; white-space: nowrap; }
 .tabs button[data-state="active"] { background: var(--wash-strong); color: var(--ink); }
 .sel-label { font-weight: 500; white-space: nowrap; }
-.pin { display: flex; align-items: center; gap: var(--space-2); height: 26px; padding: 0 var(--space-2); border: 1px solid var(--line-strong); border-radius: 0; background: transparent; color: var(--muted); font-size: var(--text-sm); }
-.pin:hover { color: var(--ink); }
-.pin.on { color: var(--ground); background: var(--ink); border-color: var(--ink); }
 .sel-meta { font: var(--text-xs) var(--sans); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane { min-height: 0; overflow: auto; }
 .pane.columns { display: grid; grid-template-columns: minmax(200px, 0.55fr) minmax(0, 2fr); }

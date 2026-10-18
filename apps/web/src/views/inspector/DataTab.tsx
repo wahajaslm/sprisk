@@ -14,6 +14,7 @@ import { TablePeek } from "../TablePeek.tsx";
 import { Variables } from "./Variables.tsx";
 import { ShownTable } from "./VisualsTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
+import { TechSwitch } from "./TechSwitch.tsx";
 
 export type Explore = ((port: string) => void) | undefined;
 
@@ -76,6 +77,9 @@ export function DataTab({ attempt, operator, capability, previous, explore, figu
   ];
   return (
     <div className="outputs">
+      <div className="tab-settings">
+        <TechSwitch />
+      </div>
       {parts.length === 0 && <p className="muted">This step produces no data.</p>}
       {parts.length === 1 && parts[0]!.body}
       {parts.length > 1 && <SubTabs parts={parts} />}

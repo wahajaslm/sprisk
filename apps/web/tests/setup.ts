@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 import type { CodeInputProps } from "../src/views/CodeInput.tsx";
 
-import { useCanvasDetail, useResultLayout } from "../src/workbench/detail.ts";
+import { useCanvasDetail, useInspectorDetail, useResultLayout } from "../src/workbench/detail.ts";
 import { useOutputs } from "../src/notebook/outputs.ts";
 import { useSelection } from "../src/workbench/selection.ts";
 import { useWorkbench } from "../src/workbench/workbench.ts";
@@ -67,6 +67,7 @@ beforeEach(() => {
   useWorkbench.setState({ activity: "steps", editing: false, dock: undefined });
   useCanvasDetail.setState({ level: "detail" });
   useResultLayout.setState({ layout: "inline" });
+  useInspectorDetail.setState({ technical: false });
 });
 afterEach(() => {
   cleanup();
