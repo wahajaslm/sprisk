@@ -786,6 +786,39 @@ async fn a_notebook_version_must_be_saved_over_a_version_of_the_same_notebook() 
     assert_eq!(body["errors"][0]["code"], "parent_in_other_notebook");
 }
 
+#[tokio::test]
+async fn a_deleted_notebook_is_not_listed_and_its_history_stays_readable() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let mut removed = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        NOTEBOOK,
+        Some("nbv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+    );
+    removed["removed"] = json!(true);
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(removed)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (status, listed) = call(&api.app, "GET", "/notebooks", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed, json!([]));
+    let uri = "/notebook_versions/nbv_01JABCDEFGHJKMNPQRSTVWXYZ0";
+    assert_eq!(call(&api.app, "GET", uri, None).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn only_a_notebook_that_exists_can_be_deleted() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let mut removed = notebook_version(
+        "nbv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        "nb_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        None,
+    );
+    removed["removed"] = json!(true);
+    let (status, body) = call(&api.app, "POST", "/notebook_versions", Some(removed)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["errors"][0]["code"], "removed_without_parent");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn cells_of_a_notebook_share_one_kernel_and_each_run_is_audited() {
     let api = api_with_notebook(KERNEL_LIMITS).await;

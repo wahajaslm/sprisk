@@ -570,6 +570,34 @@ async fn notebooks_list_each_notebooks_latest_version_newest_first() {
 }
 
 #[tokio::test]
+async fn a_notebook_whose_latest_version_is_removed_is_not_listed() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let a1 = notebook_version(
+        "nbv_01JA0000000000000000000001",
+        "nb_01JA000000000000000000000A",
+    );
+    let b1 = notebook_version(
+        "nbv_01JA0000000000000000000002",
+        "nb_01JA000000000000000000000B",
+    );
+    let mut b2 = notebook_version(
+        "nbv_01JA0000000000000000000003",
+        "nb_01JA000000000000000000000B",
+    );
+    b2.parent_id = Some(b1.id.clone());
+    b2.removed = Some(true);
+    for version in [&a1, &b1, &b2] {
+        store.insert_notebook_version(version).await.unwrap();
+    }
+
+    assert_eq!(
+        store.latest_notebook_versions(1).await.unwrap(),
+        vec![a1.clone()]
+    );
+    assert_eq!(store.get_notebook_version(&b1.id).await.unwrap(), b1);
+}
+
+#[tokio::test]
 async fn an_audit_event_is_appended_for_its_entity() {
     let store = SqliteStore::in_memory().await.unwrap();
     store

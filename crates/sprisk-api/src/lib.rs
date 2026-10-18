@@ -429,6 +429,15 @@ async fn create_notebook_version(
     text: String,
 ) -> Result<(StatusCode, Json<NotebookVersion>), ApiError> {
     let version: NotebookVersion = body(&text)?;
+    if version.removed == Some(true) && version.parent_id.is_none() {
+        return Err(ApiError::BadRequest {
+            code: "removed_without_parent",
+            message: format!(
+                "notebook {} cannot be deleted in its first version",
+                version.notebook_id.as_str()
+            ),
+        });
+    }
     if let Some(parent) = &version.parent_id {
         let saved = match state.store.get_notebook_version(parent).await {
             Err(StoreError::NotFound { .. }) => {

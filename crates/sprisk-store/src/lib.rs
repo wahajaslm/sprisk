@@ -158,6 +158,7 @@ impl SqliteStore {
     }
 
     /// Each notebook's newest version, newest notebooks first, at most `limit`.
+    /// A notebook whose newest version is removed (ADR-0041) is left out.
     pub async fn latest_notebook_versions(
         &self,
         limit: u32,
@@ -165,6 +166,7 @@ impl SqliteStore {
         let rows: Vec<(String, String)> = sqlx::query_as(
             "SELECT id, body FROM notebook_versions v WHERE id = \
              (SELECT MAX(id) FROM notebook_versions WHERE notebook_id = v.notebook_id) \
+             AND json_extract(body, '$.removed') IS NOT 1 \
              ORDER BY id DESC LIMIT ?",
         )
         .bind(limit)
