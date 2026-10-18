@@ -1,5 +1,5 @@
 # ADR-0040: Methodology checks read the graph, the code, what ran, and the question
-Status: Proposed
+Status: Accepted
 Date: 2026-10-18
 Arch doc sections: §4 (`QuestionVersion`, `MethodologyCheck`, `Assumption`), §8 (Gates B and C), §9. Builds on ADR-0015, ADR-0017, ADR-0037.
 
@@ -20,14 +20,14 @@ Arch doc sections: §4 (`QuestionVersion`, `MethodologyCheck`, `Assumption`), §
 - **A rule uses a fact only when its origin is `explicit`, `measured` or `confirmed`.** An `inferred` fact (AI or heuristic) leaves the rule `not_assessed` until a person confirms it (rule 3).
 - **Four layers, one verdict type.** Every layer writes `MethodologyCheck` records:
   1. **Plan** (exists): rules on the graph, in Gate B before the first step.
-  2. **Code**: the same Gate B rules also read the code of code steps, by AST only, never by running it. They look for fits on data that does not come from a split's train output.
+  2. **Code**: Gate B rules also read the source of code steps, by AST only, never by running it. They look for fits on data that does not come from a split's train output.
   3. **Runtime**: the worker records a fingerprint of the rows each scikit-learn `fit` received, and each split records its holdout rows. A check after the step compares them. Any overlap is a FAIL, however the code was written.
   4. **Claim** (Gate C): before a release, causal wording on a predictive result fails.
 - **`MethodologyCheck` gains `evidence`:** the Attempt ids and artifact hashes the verdict rests on. Contract change through `/new-contract`.
 - **Overrides.** A FAIL on a universal rule cannot be waived. A WARNING can be waived by a named person with a reason, scoped to one pipeline version. The waiver is an `Assumption` and shows on any release.
 - **Rules are built test-first from bad pipelines.** Each rule ships with fixtures: a pipeline that must FAIL, one that must PASS, one that must return `not_assessed`. These fixtures are the library of known mistakes.
 - **Rules never call an LLM.** They are deterministic. The AI may explain a check or suggest a fact; it never sets a verdict.
-- **First rules, in order:** code-layer `split_leakage`; `group_leakage` (needs `unit_of_analysis`); runtime fit fingerprints; `temporal_order` (needs `time_column`).
+- **First rules, in order:** `code_leakage` (the code layer of `split_leakage`); `group_leakage` (needs `unit_of_analysis`); runtime fit fingerprints; `temporal_order` (needs `time_column`).
 
 ## Alternatives considered
 - **Only graph rules; require built-in operators for splits and fits.** Rejected: people write plain Python in notebooks (ADR-0036).
@@ -51,4 +51,4 @@ Arch doc sections: §4 (`QuestionVersion`, `MethodologyCheck`, `Assumption`), §
 
 ## Arch doc edits
 - §8 Gate B: add the code and runtime layers and the fact-origin rule.
-- §4 `MethodologyCheck`: add evidence (Attempt ids, artifact hashes).
+- §4 `MethodologyCheck` already names observed evidence; only the contract lacks the field.

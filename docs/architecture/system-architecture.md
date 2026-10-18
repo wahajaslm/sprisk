@@ -77,9 +77,9 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 
 The **Workbench View Registry** is independent of the **Operator/Capability Registry**:
 
-- `ViewType`: stable view type ID, renderer, accepted artifact/context kinds, available actions and serialization version; e.g. `workflow`, `dataset`, `distribution`, `correlation`, `experiment-comparison`, `model-diagnostics`, `evidence`, `code`, `notebook`, `ai-investigation`, `question-brief`, `outcomes`, `logs`.
+- `ViewType`: stable view type ID, renderer, accepted artifact/context kinds, available actions and serialization version; e.g. `workflow`, `dataset`, `distribution`, `correlation`, `experiment-comparison`, `model-diagnostics`, `evidence`, `code`, `notebook`, `run-report` (ADR-0039), `ai-investigation`, `question-brief`, `outcomes`, `logs`.
 - `ViewInstance`: unique instance ID, type, title, context references (`project_id`, `investigation_id`, and optional `node_id`, `artifact_id`, `run_id`, `experiment_id`), user-controlled settings and `follow_selection` versus `pinned` mode.
-- `WorkspaceLayout`: separately versioned UI-only dock topology and geometry (groups, tabs, pane sizes, active view), saved as a per-user/per-project preference; layout migration is independent of scientific schema migrations.
+- `WorkspaceLayout`: separately versioned UI-only dock topology and geometry (groups, tabs, pane sizes, active view), saved as a per-user/per-project preference; layout migration is independent of scientific schema migrations. Role presets (analyst, data scientist, ML engineer, reviewer) are layout defaults only, never permissions (ADR-0039).
 - `WorkbenchContext`: current project, active investigation, selected node/artifact/run and synchronized filters. Events are typed; a view can follow selection, pin a snapshot, or compare two references side-by-side.
 - `Inspector`: nine tabs for the selected step, named and ordered as fixed: Code, Data, Visualizations, Console, Inputs, Parameters, Checks, Performance, History. What fills each tab is read from the step's code (ADR-0025). Data is a variable explorer; Visualizations shows only what the code drew (ADR-0030, ADR-0032). Checks, Performance and History come from sprisk, not from the step.
 - `Visualization`: view configuration (chart type, metric/field references, transforms, selection/filter settings, provenance reference) consumed by pluggable renderers. This is not a raw dataframe or arbitrary chart execution script.
@@ -268,7 +268,7 @@ Three autonomy modes: `assist` (proposals), `execute_approved` (can run approved
 
 **Gate A — structural:** Rust compiler verifies valid graph types, references, execution permissions and physical resource constraints.
 
-**Gate B — scientific:** Python validators evaluate question-to-method suitability, sample/label validity, leakage/fit scopes, chronology, group constraints, metrics, baseline and evaluation design. Return `PASS | FAIL | WARNING | NOT_ASSESSED` with version, explanation, and citations to artifacts or metadata. Hard rules block execution/release as configured.
+**Gate B — scientific:** Python validators evaluate question-to-method suitability, sample/label validity, leakage/fit scopes, chronology, group constraints, metrics, baseline and evaluation design. Return `PASS | FAIL | WARNING | NOT_ASSESSED` with version, explanation, and citations to artifacts or metadata. Hard rules block execution/release as configured. Rules read the graph, the source of code steps (AST only) and, after a step, what its fits actually received (ADR-0040). A rule uses a `QuestionVersion` fact only when it is explicit, measured or confirmed; an inferred fact leaves it `NOT_ASSESSED`.
 
 **Gate C — evidence:** Findings must cite completed artifacts/results and distinguish prediction, association, causal evidence, simulated economics and observed impact. Unsupported claims never become approved conclusions solely because an LLM says so.
 

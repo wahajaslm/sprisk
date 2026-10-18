@@ -1,5 +1,5 @@
 # ADR-0039: One flow, a view per role, and a run report
-Status: Proposed
+Status: Accepted
 Date: 2026-10-18
 Arch doc sections: §2A (Workbench object model), §4 (domain model), §8 (Gate C/D), §9 (runs). Builds on ADR-0030, ADR-0036, ADR-0037.
 
