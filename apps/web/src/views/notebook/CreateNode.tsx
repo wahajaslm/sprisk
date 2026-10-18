@@ -31,7 +31,8 @@ export function CreateNode({ notebookId, cells, range, results, saveNotebook, on
   const picked = code.filter((c) => c.at >= range.first && c.at <= range.last);
   const together = { first: code.indexOf(picked[0]!), last: code.indexOf(picked.at(-1)!) };
   const proposal = useQuery({
-    queryKey: ["create-node", notebookId, code.map((c) => c.cell.source), together],
+    // A picked cell that runs again may change what the kernel holds, so it asks again.
+    queryKey: ["create-node", notebookId, code.map((c) => c.cell.source), together, picked.map((c) => results[c.cell.id]?.result.execution_count ?? 0)],
     queryFn: async () => {
       const split = await splitPicked(code.map((c) => c.cell.source), together);
       const found = proposeNode(split, together.first, together.last, (i) => (code[i]?.at ?? i) + 1);

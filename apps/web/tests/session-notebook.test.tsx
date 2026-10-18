@@ -228,6 +228,24 @@ describe("the session notebook (ADR-0036)", () => {
     expect(useSelection.getState().pipelineVersionId).toBe(sent.versions[0]?.id);
   });
 
+  it("Create node asks the kernel again when a picked cell runs while it is open", async () => {
+    const sent = withApi();
+    let asked = 0;
+    server.use(
+      http.get(`/api/notebooks/${NB}/variables`, () => {
+        asked += 1;
+        return HttpResponse.json({ variables: [{ name: "eligible", defined: asked > 1, table: asked > 1, ...(asked > 1 ? { type: "pandas.DataFrame" } : {}) }, { name: "model", defined: false, table: false }] });
+      }),
+    );
+    renderWithApi(<NotebooksPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create node from cell 4" }));
+    const dialog = await screen.findByRole("dialog", { name: "Create node" });
+    expect(await within(dialog).findAllByText("Not run yet; its kind is checked when the node runs.")).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: "Run cell 4" }));
+    await waitFor(() => expect(within(dialog).getAllByText("Not run yet; its kind is checked when the node runs.")).toHaveLength(1));
+    expect(sent.executed).toHaveLength(1);
+  });
+
   it("Shift+click picks a range of cells for one node", async () => {
     const sent = withApi();
     renderWithApi(<NotebooksPage />);
