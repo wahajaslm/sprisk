@@ -19,4 +19,9 @@ describe("saved layouts", () => {
     expect(restoreLayout("{not json")).toBeUndefined();
     expect(restoreLayout(null)).toBeUndefined();
   });
+
+  it("a v3 layout, saved while the Notebook view could hide the Inspector, is not restored", () => {
+    const hidden = { grid: { root: { type: "branch", data: [{ type: "leaf", data: { id: "2", views: ["data"] }, visible: false }] } }, panels: {} };
+    expect(restoreLayout(JSON.stringify({ version: 3, dock: hidden }))).toBeUndefined();
+  });
 });

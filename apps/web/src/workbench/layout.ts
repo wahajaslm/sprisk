@@ -1,6 +1,8 @@
 /** Saved dock layouts are UI preference only (arch §2A), versioned apart from scientific schemas. */
 // v2: the left panel became the activity sidebar. v3: the Inspector became one dock panel per tab.
-export const LAYOUT_VERSION = 3;
+// v4: the Flow panel no longer has a Notebook view; v3 layouts saved with it kept the Inspector
+// hidden (ADR-0036).
+export const LAYOUT_VERSION = 4;
 export const LAYOUT_KEY = "sprisk.layout";
 
 /** View types the cockpit can render. Anything else in a saved layout becomes a placeholder. */
