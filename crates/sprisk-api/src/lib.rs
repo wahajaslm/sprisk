@@ -23,9 +23,9 @@ use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     ArtifactId, AttemptId, CapabilityClass, CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile,
-    FigureSet, LoadedTable, LoadedTableUse, NotebookExecute, NotebookExecution, NotebookId,
-    NotebookVariables, NotebookVersion, NotebookVersionId, Operator, OperatorSource,
-    PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
+    FigureSet, LoadedTable, LoadedTableUse, NotebookExecute, NotebookExecution,
+    NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
+    Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -186,9 +186,11 @@ enum ApiError {
     Internal(String),
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let (status, errors) = match &self {
+impl ApiError {
+    /// The status and `Problem` body this error answers with; a streamed cell's failure line
+    /// carries the same body (ADR-0041).
+    fn problem(&self) -> (StatusCode, serde_json::Value) {
+        let (status, errors) = match self {
             ApiError::BadRequest { code, message } => {
                 let status = if matches!(*code, "invalid_id" | "invalid_limit" | "invalid_offset") {
                     StatusCode::BAD_REQUEST
@@ -256,6 +258,13 @@ impl IntoResponse for ApiError {
             }
         };
         let body = json!({"errors": errors.iter().map(|(code, message)| json!({"code": code, "message": message})).collect::<Vec<_>>()});
+        (status, body)
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (status, body) = self.problem();
         // Validate our own error shape through the contract before sending it.
         match parse::<Problem>(&body.to_string()) {
             Ok(problem) => (status, Json(problem)).into_response(),
@@ -506,28 +515,125 @@ async fn saved_notebook(state: &AppState, raw: &str) -> Result<NotebookId, ApiEr
 async fn execute_cell(
     State(state): State<AppState>,
     Path(raw): Path<String>,
+    headers: axum::http::HeaderMap,
     text: String,
-) -> Result<Json<NotebookExecution>, ApiError> {
+) -> Result<Response, ApiError> {
     let notebook = saved_notebook(&state, &raw).await?;
     let request: NotebookExecute = body(&text)?;
     // Scratch, not provenance (ADR-0036): the audit trail records that code ran and how it
     // ended, never its results. Written before the cell runs, so code that runs is audited
     // even when the caller goes away or the kernel dies.
-    let cell = request.cell_id.as_str();
+    let cell = request.cell_id.as_str().to_owned();
     let hash = sprisk_artifacts::content_hash(request.code.as_bytes());
-    let at = notebook.as_str();
     let started = format!("cell {cell} started, code {hash}");
-    state.store.append_audit(&now(), at, &started).await?;
-    let done = state.kernels.execute(&notebook, &request.code).await;
-    let ended = match &done {
+    state
+        .store
+        .append_audit(&now(), notebook.as_str(), &started)
+        .await?;
+    let streamed = headers
+        .get(header::ACCEPT)
+        .and_then(|a| a.to_str().ok())
+        .is_some_and(|a| a.contains(NDJSON));
+    if !streamed {
+        let done = state.kernels.execute(&notebook, &request.code).await;
+        audit_end(&state, &notebook, &cell, &done).await?;
+        return Ok(Json(done?).into_response());
+    }
+    let (to, mut running) = tokio::sync::mpsc::channel(16);
+    let task_state = state.clone();
+    let cell_task = tokio::spawn(async move {
+        let done = task_state
+            .kernels
+            .execute_with(&notebook, &request.code, Some(to))
+            .await;
+        // Audited here, so the end is written even when the browser has gone.
+        audit_end(&task_state, &notebook, &cell, &done).await?;
+        done.map_err(ApiError::from)
+    });
+    let Some(first) = running.recv().await else {
+        // It ended before any output: a failure is a plain HTTP error, as without streaming.
+        let done = finished(cell_task).await?;
+        return Ok(ndjson(futures_util::stream::iter([done_line(done)])));
+    };
+    let lines = futures_util::stream::unfold(
+        (Some(first), running, Some(cell_task)),
+        |(first, mut running, task)| async move {
+            if let Some(event) = first {
+                return Some((event_line(&event), (None, running, task)));
+            }
+            if let Some(event) = running.recv().await {
+                return Some((event_line(&event), (None, running, task)));
+            }
+            let line = match finished(task?).await {
+                Ok(done) => done_line(done),
+                Err(e) => failed_line(&e),
+            };
+            Some((line, (None, running, None)))
+        },
+    );
+    Ok(ndjson(lines))
+}
+
+const NDJSON: &str = "application/x-ndjson";
+
+async fn audit_end(
+    state: &AppState,
+    notebook: &NotebookId,
+    cell: &str,
+    done: &Result<NotebookExecution, KernelError>,
+) -> Result<(), ApiError> {
+    let ended = match done {
         Ok(done) => match done.execution_count {
             Some(n) => format!("cell {cell} ended: {}, execution {n}", done.status),
             None => format!("cell {cell} ended: {}", done.status),
         },
         Err(e) => format!("cell {cell} ended: kernel stopped ({e})"),
     };
-    state.store.append_audit(&now(), at, &ended).await?;
-    Ok(Json(done?))
+    Ok(state
+        .store
+        .append_audit(&now(), notebook.as_str(), &ended)
+        .await?)
+}
+
+async fn finished(
+    task: tokio::task::JoinHandle<Result<NotebookExecution, ApiError>>,
+) -> Result<NotebookExecution, ApiError> {
+    task.await
+        .map_err(|e| ApiError::Internal(format!("cell task: {e}")))?
+}
+
+/// One line of the stream. Every line is a contract value.
+fn event_line(event: &NotebookExecutionEvent) -> String {
+    serde_json::to_string(event).map_or_else(|e| internal_line(&e.to_string()), |l| l + "\n")
+}
+
+fn done_line(done: NotebookExecution) -> String {
+    checked_line(json!({"kind": "done", "execution": done}))
+}
+
+fn failed_line(error: &ApiError) -> String {
+    tracing::error!(%error, "streamed cell failed");
+    checked_line(json!({"kind": "failed", "problem": error.problem().1}))
+}
+
+fn checked_line(value: serde_json::Value) -> String {
+    match parse::<NotebookExecutionEvent>(&value.to_string()) {
+        Ok(event) => event_line(&event),
+        Err(e) => internal_line(&e.to_string()),
+    }
+}
+
+fn internal_line(why: &str) -> String {
+    tracing::error!(why, "invalid stream line");
+    r#"{"kind":"failed","problem":{"errors":[{"code":"internal","message":"internal error"}]}}"#
+        .to_owned()
+        + "\n"
+}
+
+fn ndjson(lines: impl futures_util::Stream<Item = String> + Send + 'static) -> Response {
+    use futures_util::StreamExt;
+    let body = axum::body::Body::from_stream(lines.map(Ok::<_, std::convert::Infallible>));
+    ([(header::CONTENT_TYPE, NDJSON)], body).into_response()
 }
 
 async fn interrupt_kernel(

@@ -2,7 +2,8 @@
 //!
 //! The host (`python -m sprisk_code.session`) holds the live kernel and enforces the per-cell
 //! time limit and memory cap. Requests to one kernel run one at a time; an interrupt goes
-//! straight through. Results are scratch: they are returned, never stored as artifacts.
+//! straight through. Results are scratch: they are returned, never stored as artifacts. A
+//! running cell's outputs so far come as running events (ADR-0041).
 //!
 //! Kernels live in this process, so a second API replica would not see them. That is the known
 //! cost in ADR-0036 until kernel hosts are leased like workers.
@@ -15,11 +16,12 @@ use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use sprisk_contracts::{
-    NotebookExecution, NotebookId, NotebookKernelRequest, NotebookVariables, parse,
+    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookKernelRequest,
+    NotebookVariables, parse,
 };
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
 use tokio_util::codec::{FramedRead, LinesCodec};
 
 /// A cell's display is capped in Python (12 figures of at most 2 MB, 100 items).
@@ -134,11 +136,74 @@ impl Kernels {
         notebook: &NotebookId,
         code: &str,
     ) -> Result<NotebookExecution, KernelError> {
+        self.execute_with(notebook, code, None).await
+    }
+
+    /// As `execute`, and every running event goes to `running` as it comes. A receiver that
+    /// went away does not stop the cell: its answer is still read to the end.
+    pub async fn execute_with(
+        &self,
+        notebook: &NotebookId,
+        code: &str,
+        running: Option<mpsc::Sender<NotebookExecutionEvent>>,
+    ) -> Result<NotebookExecution, KernelError> {
         let request = kernel_request(serde_json::json!({"op": "execute", "code": code}))?;
         let kernel = self.kernel(notebook).await?;
         let wait = Duration::from_secs(self.limits.cell_seconds) + MARGIN;
-        let line = self.request(notebook, &kernel, &request, wait).await?;
-        self.answer(notebook, &kernel, &line).await
+        let (this, id) = (self.clone(), notebook.clone());
+        // Its own task, like `request`: a caller that gives up cannot leave lines unread.
+        tokio::spawn(async move { this.run_cell(&id, &kernel, &request, wait, running).await })
+            .await
+            .map_err(|e| stopped(notebook, e))?
+    }
+
+    /// Send one execute request and read its event lines until `done`, within `wait` in all.
+    async fn run_cell(
+        &self,
+        notebook: &NotebookId,
+        kernel: &Arc<Kernel>,
+        request: &str,
+        wait: Duration,
+        running: Option<mpsc::Sender<NotebookExecutionEvent>>,
+    ) -> Result<NotebookExecution, KernelError> {
+        let mut stdout = kernel.stdout.lock().await;
+        kernel.touch();
+        let deadline = tokio::time::Instant::now() + wait;
+        let mut answer = kernel.send(request).await.map_err(|e| e.to_string());
+        let done = loop {
+            if let Err(why) = answer {
+                break Err(why);
+            }
+            let line = match tokio::time::timeout_at(deadline, stdout.next()).await {
+                Ok(Some(Ok(line))) => line,
+                Ok(Some(Err(e))) => break Err(e.to_string()),
+                Ok(None) => break Err("the kernel host exited".into()),
+                Err(_) => break Err(format!("no answer in {wait:?}")),
+            };
+            match parse::<NotebookExecutionEvent>(&line) {
+                Ok(NotebookExecutionEvent::Done(done)) => break Ok(done.execution),
+                Ok(event @ NotebookExecutionEvent::Running(_)) => {
+                    if let Some(to) = &running {
+                        // The browser may have gone; the cell's lines are still read.
+                        let _ = to.send(event).await;
+                    }
+                    answer = Ok(());
+                }
+                Ok(NotebookExecutionEvent::Failed(_)) => {
+                    break Err("the host sent a failure, which only Rust sends".into());
+                }
+                Err(e) => break Err(format!("invalid answer: {e}")),
+            }
+        };
+        kernel.touch();
+        drop(stdout);
+        match done {
+            Ok(execution) => Ok(execution),
+            Err(why) => {
+                self.stop_failed(notebook, kernel).await;
+                Err(stopped(notebook, why))
+            }
+        }
     }
 
     /// Which of `names` the notebook's kernel holds. A notebook with no kernel holds none, and

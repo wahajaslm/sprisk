@@ -1203,3 +1203,95 @@ fn fs_fixture(entity: &str, name: &str) -> String {
     )
     .unwrap()
 }
+
+/// POSTs a cell asking for the stream (ADR-0041). Returns the status, each line as JSON, and
+/// how long before the end the first bytes came.
+async fn execute_streamed(api: &Api, code: &str) -> (StatusCode, Vec<Value>, Duration) {
+    use tower::ServiceExt;
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/notebooks/{NOTEBOOK}/execute"))
+        .header("content-type", "application/json")
+        .header("accept", "application/x-ndjson")
+        .header("host", "127.0.0.1:7420")
+        .body(Body::from(
+            json!({"cell_id": "c1", "code": code}).to_string(),
+        ))
+        .unwrap();
+    let response = api.app.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let mut body = response.into_body();
+    let (mut bytes, mut first) = (Vec::new(), None);
+    while let Some(frame) = body.frame().await {
+        if let Ok(data) = frame.unwrap().into_data() {
+            first.get_or_insert_with(std::time::Instant::now);
+            bytes.extend_from_slice(&data);
+        }
+    }
+    let ahead = first.map_or(Duration::ZERO, |t| t.elapsed());
+    let text = String::from_utf8(bytes).unwrap();
+    let lines = text
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    (status, lines, ahead)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn asked_for_a_stream_a_running_cell_shows_its_output_as_it_comes() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let code = "import time\nprint('first', flush=True)\ntime.sleep(2)\nprint('second')";
+
+    let (status, lines, ahead) = execute_streamed(&api, code).await;
+
+    assert_eq!(status, StatusCode::OK, "{lines:?}");
+    let running = lines.iter().find(|l| l["kind"] == "running").unwrap();
+    assert_eq!(running["outputs"][0]["text"], "first\n");
+    let done = lines.last().unwrap();
+    assert_eq!(done["kind"], "done");
+    assert_eq!(done["execution"]["outputs"][0]["text"], "first\nsecond\n");
+    assert!(
+        ahead >= Duration::from_secs(1),
+        "first bytes only {ahead:?} before the end"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_kernel_that_stops_mid_stream_ends_it_with_a_failure() {
+    let python = root().join(".venv/bin/python").display().to_string();
+    let host = vec![
+        python,
+        "-c".into(),
+        "import sys; sys.stdin.readline(); print('{\"kind\": \"running\", \"outputs\": []}', flush=True)"
+            .into(),
+    ];
+    let api = api_with_notebook_host(KERNEL_LIMITS, host).await;
+
+    let (status, lines, _) = execute_streamed(&api, "1").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[1]["kind"], "failed");
+    assert_eq!(lines[1]["problem"]["errors"][0]["code"], "kernel_stopped");
+    let events = api.store.audit_events(NOTEBOOK).await.unwrap();
+    assert!(
+        events[1].1.starts_with("cell c1 ended: kernel stopped"),
+        "{events:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_kernel_that_stops_before_any_output_is_an_http_error_even_when_streaming() {
+    let python = root().join(".venv/bin/python").display().to_string();
+    let host = vec![
+        python,
+        "-c".into(),
+        "import sys; sys.stdin.readline()".into(),
+    ];
+    let api = api_with_notebook_host(KERNEL_LIMITS, host).await;
+
+    let (status, lines, _) = execute_streamed(&api, "1").await;
+
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{lines:?}");
+    assert_eq!(lines[0]["errors"][0]["code"], "kernel_stopped");
+}
