@@ -1,28 +1,28 @@
+import * as Tabs from "@radix-ui/react-tabs";
 import type { CodeOutputCandidate } from "@sprisk/contracts";
-import { useState } from "react";
 
 import { RowsTable } from "../RowsTable.tsx";
 
 /** Every variable the code ended with, one at a time (ADR-0030). Only the capped summary the
  * worker wrote reaches the browser, never a whole value (rule 9). */
 export function Variables({ found }: { found: CodeOutputCandidate[] }) {
-  const [picked, setPicked] = useState(found[0]?.name);
-  const shown = found.find((v) => v.name === picked) ?? found[0];
-  if (!shown) return null;
+  const first = found[0];
+  if (!first) return null;
   return (
-    <section className="variables" aria-label="Variables">
-      <p className="found-label">Variables</p>
-      <ul className="variable-list">
+    <Tabs.Root className="variables" orientation="vertical" defaultValue={first.name} aria-label="Variables" role="region">
+      <Tabs.List className="variable-tabs" aria-label="Variables">
         {found.map((v) => (
-          <li key={v.name}>
-            <button type="button" className="variable" aria-pressed={v.name === shown.name} onClick={() => setPicked(v.name)}>
-              <span className="mono">{v.name}</span> <span className="found-meta">{summary(v)}</span>
-            </button>
-          </li>
+          <Tabs.Trigger key={v.name} value={v.name} className="variable">
+            <span className="mono">{v.name}</span> <span className="found-meta">{summary(v)}</span>
+          </Tabs.Trigger>
         ))}
-      </ul>
-      <Variable key={shown.name} v={shown} />
-    </section>
+      </Tabs.List>
+      {found.map((v) => (
+        <Tabs.Content key={v.name} value={v.name} className="variable-panel">
+          <Variable v={v} />
+        </Tabs.Content>
+      ))}
+    </Tabs.Root>
   );
 }
 

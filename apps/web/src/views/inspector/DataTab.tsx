@@ -29,12 +29,14 @@ type Props = {
   figurePorts: string[];
   /** Tables a code step showed; they count as data even when it passes nothing on. */
   shown: DisplayItem[];
+  /** A code step's variables: a tab of their own after its tables (ADR-0030). */
+  variables?: ReactNode;
 };
 
 /** What the step produces, drawn for people: tables, metrics, the model. Code steps also
  * show every variable they ended with and choose what they pass on (ADR-0030). Charts are
  * made in Visualizations. */
-export function DataTab({ attempt, operator, capability, previous, explore, figurePorts, shown, children }: Props & { children?: ReactNode }) {
+export function DataTab({ attempt, operator, capability, previous, explore, figurePorts, shown, variables }: Props) {
   const outputs = useOutputs(attempt?.id);
   if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
   if (outputs.isPending) return <Loading />;
@@ -58,13 +60,13 @@ export function DataTab({ attempt, operator, capability, previous, explore, figu
         </section>
       ),
     })),
+    ...(variables ? [{ key: "variables", label: "variables", body: variables }] : []),
   ];
   return (
     <div className="outputs">
       {parts.length === 0 && <p className="muted">This step produces no data.</p>}
       {parts.length === 1 && parts[0]!.body}
       {parts.length > 1 && <SubTabs parts={parts} />}
-      {children}
     </div>
   );
 }

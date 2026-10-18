@@ -978,6 +978,12 @@ describe("code step interface (ADR-0021)", () => {
     await userEvent.click(await screen.findByRole("tab", { name: tab }));
   }
 
+  /** Data's own tab of everything the code ended with, beside its tables. */
+  async function openVariables() {
+    await openCode("Data");
+    await userEvent.click(await screen.findByRole("tab", { name: "variables" }));
+  }
+
   it("Inputs lists the names the code reads, marking names nothing defines", async () => {
     withInterface();
     await openCode("Inputs");
@@ -1010,7 +1016,7 @@ describe("code step interface (ADR-0021)", () => {
 
   it("Data chooses which value the code passes on", async () => {
     const posted = withInterface();
-    await openCode("Data");
+    await openVariables();
     const values = await screen.findByRole("region", { name: "Values in your code" });
     await userEvent.click(within(values).getByRole("radio", { name: /out · 120 rows × 2 cols/ }));
     await userEvent.click(within(values).getByRole("button", { name: "Pass this on and run" }));
@@ -1039,20 +1045,22 @@ describe("code step interface (ADR-0021)", () => {
         { name: "lookup", type: "dict", origin: "measured", chosen: false, text: "{'a': 1}" },
       ],
     });
-    await openCode("Data");
+    await openVariables();
     const variables = await screen.findByRole("region", { name: "Variables" });
-    await userEvent.click(within(variables).getByRole("button", { name: /^out/ }));
+    // Many variables: each is a tab of its own, beside the one shown.
+    expect(within(variables).getByRole("tablist", { name: "Variables" })).toHaveAttribute("aria-orientation", "vertical");
+    await userEvent.click(within(variables).getByRole("tab", { name: /^out/ }));
     const fields = within(variables).getByRole("table", { name: "Fields of out" });
     expect(within(fields).getByText("city").closest("tr")).toHaveTextContent(/city\s*String\s*3/);
     expect(within(variables).getByRole("table", { name: "First rows of out" })).toHaveTextContent("Oslo");
 
-    await userEvent.click(within(variables).getByRole("button", { name: /^ages/ }));
+    await userEvent.click(within(variables).getByRole("tab", { name: /^ages/ }));
     expect(within(variables).getByText(/first rows were not kept/)).toBeInTheDocument();
 
-    await userEvent.click(within(variables).getByRole("button", { name: /^wide/ }));
+    await userEvent.click(within(variables).getByRole("tab", { name: /^wide/ }));
     expect(within(variables).getByText("First 1 of 900 fields.")).toBeInTheDocument();
 
-    await userEvent.click(within(variables).getByRole("button", { name: /^lookup/ }));
+    await userEvent.click(within(variables).getByRole("tab", { name: /^lookup/ }));
     expect(within(variables).getByText("{'a': 1}")).toBeInTheDocument();
 
     // Only a DataFrame can be passed on to the next step.
@@ -1080,7 +1088,7 @@ describe("code step interface (ADR-0021)", () => {
     };
     server.use(http.get("/api/operators", () => HttpResponse.json([...operators, notebookOperator])));
     withInterface(report, notebook);
-    await openCode("Data");
+    await openVariables();
     await screen.findByRole("region", { name: "Variables" });
     expect(screen.queryByRole("region", { name: "Values in your code" })).toBeNull();
 

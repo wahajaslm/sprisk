@@ -181,9 +181,16 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       return (
         <>
           {step.saveAndRun.isError && <p role="alert" className="error">{step.saveAndRun.error.message}</p>}
-          <DataTab attempt={done} operator={node?.operator} capability={operator?.capability_class} previous={step.previous} explore={step.explore} figurePorts={step.figurePorts} shown={shownTables(display)}>
-            {isCode && pipeline && node && <CodeData pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} />}
-          </DataTab>
+          <DataTab
+            attempt={done}
+            operator={node?.operator}
+            capability={operator?.capability_class}
+            previous={step.previous}
+            explore={step.explore}
+            figurePorts={step.figurePorts}
+            shown={shownTables(display)}
+            variables={isCode && pipeline && node ? <CodeData pipeline={pipeline} nodeId={nodeId} params={node.params} found={found} /> : undefined}
+          />
         </>
       );
     case "visuals":

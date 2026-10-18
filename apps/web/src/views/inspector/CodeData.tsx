@@ -15,10 +15,10 @@ export function CodeData({ pipeline, nodeId, params, found }: Props) {
   // A notebook step passes on the names later steps read (ADR-0031); there is nothing to pick.
   const byName = pipeline.nodes.find((n) => n.id === nodeId)?.operator === NOTEBOOK_OPERATOR;
   return (
-    <>
-      <Variables found={found.value.outputs} />
+    <div className="code-data">
       {!byName && <PassOn key={JSON.stringify(found.value.outputs)} pipeline={pipeline} nodeId={nodeId} params={params} found={found.value} />}
-    </>
+      <Variables found={found.value.outputs} />
+    </div>
   );
 }
 
