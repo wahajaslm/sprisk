@@ -40,6 +40,8 @@
 | [0036](0036-session-notebook-and-published-node.md) | Notebooks run in a session; a node is made only when the person picks a boundary | Accepted |
 | [0037](0037-notebooks-belong-to-a-flow.md) | Notebooks belong to a flow and keep it in sync | Accepted |
 | [0038](0038-datasets-view.md) | The Datasets view lists the tables flows load and profiles them in Python | Accepted |
+| [0039](0039-role-views-and-run-report.md) | One flow, a view per role, and a run report | Proposed |
+| [0040](0040-layered-methodology-checks.md) | Methodology checks read the graph, the code, what ran, and the question | Proposed |
 
 ## Open questions (arch doc §17)
 
