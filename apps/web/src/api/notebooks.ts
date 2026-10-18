@@ -7,13 +7,17 @@ import { ApiError, getList, getOne, jsonLines, postEmpty, postOne, postStreamed,
 /** Each notebook's latest saved version (ADR-0036). */
 export const useNotebooks = () => useQuery({ queryKey: ["notebooks"], queryFn: () => getList("NotebookVersion", "/notebooks?limit=200") });
 
-/** Save a notebook version; the list shows it in place of the notebook's older one. */
+/** Save a notebook version; the list shows it in place of the notebook's older one, or drops
+ * the notebook when the version removes it (ADR-0041). */
 export function useSaveNotebook() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (version: NotebookVersion) => postOne("NotebookVersion", "/notebook_versions", version),
     onSuccess: (saved) => {
-      client.setQueryData<NotebookVersion[]>(["notebooks"], (list) => [saved, ...(list ?? []).filter((v) => v.notebook_id !== saved.notebook_id)]);
+      client.setQueryData<NotebookVersion[]>(["notebooks"], (list) => {
+        const others = (list ?? []).filter((v) => v.notebook_id !== saved.notebook_id);
+        return saved.removed ? others : [saved, ...others];
+      });
       void client.invalidateQueries({ queryKey: ["notebooks"] });
     },
   });

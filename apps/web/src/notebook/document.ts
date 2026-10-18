@@ -27,7 +27,7 @@ export function firstVersion(projectId: string, title: string, cells: NotebookCe
 }
 
 /** Versions are immutable: a save is a new version over the last one (rule 5). */
-export function nextNotebookVersion(base: NotebookVersion, change: Partial<Pick<NotebookVersion, "cells" | "title" | "pipeline_version_id">>): NotebookVersion {
+export function nextNotebookVersion(base: NotebookVersion, change: Partial<Pick<NotebookVersion, "cells" | "title" | "pipeline_version_id" | "removed">>): NotebookVersion {
   return { ...base, ...change, id: `nbv_${ulid()}`, parent_id: base.id, created_at: timestamp() };
 }
 

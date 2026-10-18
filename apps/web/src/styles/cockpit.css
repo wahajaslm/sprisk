@@ -692,9 +692,18 @@ p { margin: 0; }
 .notebooks-list { flex: none; width: 220px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-2); border-right: 1px solid var(--line); background: var(--panel); overflow: auto; }
 .notebooks-list ul { margin: 0; padding: 0; list-style: none; }
 .notebooks-heading { margin: var(--space-3) var(--space-2) 2px; font: 500 var(--text-xs) var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); }
-.notebooks-list li button { width: 100%; padding: var(--space-1) var(--space-2); border: 0; background: transparent; color: var(--soft); font-size: var(--text-sm); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.notebooks-list li button:hover { background: var(--node-hover); color: var(--ink); }
-.notebooks-list li button[aria-current="true"] { background: var(--node-selected); color: var(--ink); }
+.nb-item-row { position: relative; display: flex; align-items: center; }
+.nb-item-open { flex: 1; min-width: 0; padding: var(--space-1) var(--space-2); border: 0; background: transparent; color: var(--soft); font-size: var(--text-sm); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-item-row:hover .nb-item-open { background: var(--node-hover); color: var(--ink); }
+.nb-item-open[aria-current="true"] { background: var(--node-selected); color: var(--ink); }
+.nb-item-title { flex: 1; min-width: 0; padding: 3px var(--space-2); border: 1px solid var(--nb-focus); background: var(--canvas); color: var(--ink); font-size: var(--text-sm); outline: none; }
+/* Shown on hover or keyboard focus only; still in the tab order. */
+.nb-item-actions { position: absolute; right: 2px; display: flex; opacity: 0; }
+.nb-item-row:hover .nb-item-actions, .nb-item-row:focus-within .nb-item-actions { opacity: 1; }
+.nb-item-actions .nb-icon { width: 20px; height: 20px; }
+.nb-item-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); color: var(--soft); font-size: var(--text-sm); }
+.nb-item-confirm span { flex-basis: 100%; }
+.nb-item .error { margin: 2px var(--space-2); font-size: var(--text-sm); }
 .nb-title { display: block; width: calc(100% - 44px); margin: var(--space-2) 0 var(--space-2) 44px; padding: var(--space-1) 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ink); font-size: var(--text-lg); }
 .nb-title:hover, .nb-title:focus { border-bottom-color: var(--line-strong); outline: none; }
 .nb-kernel-dot.busy { background: var(--nb-focus); }

@@ -156,6 +156,14 @@ export function TrashIcon() {
   );
 }
 
+export function RenameIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 10l.5-2.5L8 2l2 2-5.5 5.5zM7 3l2 2" />
+    </svg>
+  );
+}
+
 export function CodeIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">

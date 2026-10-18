@@ -1,5 +1,3 @@
-import type { NotebookVersion } from "@sprisk/contracts";
-
 import { useNotebooks, useSaveNotebook } from "../../api/notebooks.ts";
 import { usePipelineVersions } from "../../api/hooks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
@@ -7,6 +5,7 @@ import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.
 import { flowOf, flows } from "../../flow/flows.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { AddIcon } from "../Icons.tsx";
+import { NotebookList } from "./NotebookList.tsx";
 import { SessionNotebook } from "./SessionNotebook.tsx";
 
 /** The Notebooks page (ADR-0018, ADR-0036): the notebooks of the flow on screen (ADR-0037),
@@ -39,11 +38,11 @@ export function NotebooksPage() {
           <AddIcon /> New notebook
         </button>
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
-        <NotebookList label="This flow's notebooks" notebooks={mine} open={open?.notebook_id} onOpen={openNotebook} />
+        <NotebookList label="This flow's notebooks" notebooks={mine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
         {loose.length > 0 && (
           <>
             <p className="notebooks-heading">Not in a flow yet</p>
-            <NotebookList label="Not in a flow yet" notebooks={loose} open={open?.notebook_id} onOpen={openNotebook} />
+            <NotebookList label="Not in a flow yet" notebooks={loose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
           </>
         )}
       </nav>
@@ -53,19 +52,5 @@ export function NotebooksPage() {
         <p className="muted pad">This flow has no notebooks yet. Make one, or import a .ipynb.</p>
       )}
     </div>
-  );
-}
-
-function NotebookList({ label, notebooks, open, onOpen }: { label: string; notebooks: NotebookVersion[]; open: string | undefined; onOpen: (id: string) => void }) {
-  return (
-    <ul aria-label={label}>
-      {notebooks.map((v) => (
-        <li key={v.notebook_id}>
-          <button type="button" aria-current={v.notebook_id === open} onClick={() => onOpen(v.notebook_id)}>
-            {v.title}
-          </button>
-        </li>
-      ))}
-    </ul>
   );
 }
