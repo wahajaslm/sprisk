@@ -1,6 +1,7 @@
-//! One short Python process per request, with a time limit, capped output and a cap on how
-//! many run at once, so requests cannot pile up processes. The process is the boundary for
-//! hostile input (the cell splitter, ADR-0031; the dataset profiler, ADR-0038).
+//! One short Python process per request, with a time limit, capped output, a cap on how many
+//! run at once and a cleared environment, so requests cannot pile up processes and hostile
+//! input never sits in the server (the cell splitter, ADR-0031; the dataset profiler,
+//! ADR-0038). It bounds the work; it is not a sandbox.
 
 use std::process::Stdio;
 use std::sync::Arc;
@@ -12,6 +13,9 @@ use tokio::sync::Semaphore;
 
 const MAX_OUTPUT_BYTES: u64 = 8 << 20;
 const MAX_ERROR_BYTES: u64 = 16 << 10;
+/// The only variables the process inherits: it reads untrusted input, so the server's keys
+/// and tokens stay out of it.
+const PASSED_ENV: &[&str] = &["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"];
 
 #[derive(Clone, Debug)]
 pub struct BoundedProcess {
@@ -64,6 +68,12 @@ impl BoundedProcess {
             .ok_or_else(|| ProcessError::Failed("no command configured".into()))?;
         let mut child = Command::new(program)
             .args(args)
+            .env_clear()
+            .envs(
+                PASSED_ENV
+                    .iter()
+                    .filter_map(|k| Some((k, std::env::var_os(k)?))),
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -96,5 +106,23 @@ impl BoundedProcess {
         }
         written.and(read_out).and(read_err).map_err(failed)?;
         String::from_utf8(out).map_err(|e| ProcessError::Failed(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The process reads untrusted files; the server's own environment (keys, tokens) stays out.
+    #[tokio::test]
+    async fn the_process_gets_only_the_few_variables_python_needs() {
+        let env = BoundedProcess::new("test", vec!["env".into()], Duration::from_secs(5), 1);
+        let printed = env.run(Vec::new()).await.unwrap_or_default();
+        let names: Vec<&str> = printed
+            .lines()
+            .filter_map(|l| l.split('=').next())
+            .collect();
+        assert!(!names.is_empty());
+        assert!(names.iter().all(|n| PASSED_ENV.contains(n)), "{names:?}");
     }
 }

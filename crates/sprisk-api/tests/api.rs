@@ -1108,7 +1108,7 @@ async fn a_notebook_belongs_to_a_saved_flow_of_its_project() {
 
 /// ADR-0038: the tables flows load, and a profile of one, without the table itself.
 #[tokio::test(flavor = "multi_thread")]
-async fn datasets_list_the_tables_flows_load_and_profile_one() {
+async fn the_tables_flows_load_are_listed_and_one_is_profiled() {
     let api = api().await;
     let (status, body) = call(
         &api.app,
@@ -1121,7 +1121,7 @@ async fn datasets_list_the_tables_flows_load_and_profile_one() {
     let (finished, _) = run_to_end(&api).await;
     assert_eq!(finished["status"], "succeeded", "{finished}");
 
-    let (status, datasets) = call(&api.app, "GET", "/datasets", None).await;
+    let (status, datasets) = call(&api.app, "GET", "/loaded_tables", None).await;
     assert_eq!(status, StatusCode::OK, "{datasets}");
     assert_eq!(datasets.as_array().unwrap().len(), 1, "{datasets}");
     let d = &datasets[0];
@@ -1148,6 +1148,7 @@ async fn datasets_list_the_tables_flows_load_and_profile_one() {
     assert_eq!(body["total_rows"], 2);
     assert_eq!(body["columns"][0]["name"], "x");
     assert_eq!(body["correlation"]["columns"], json!(["x", "y"]));
+    assert_eq!(body["profiled_rows"], 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1175,4 +1176,30 @@ async fn only_a_table_can_be_profiled() {
 
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "not_a_table");
+}
+
+#[tokio::test]
+async fn a_table_not_on_this_machine_is_not_profiled_yet() {
+    let api = api().await;
+    let mut artifact: sprisk_contracts::Artifact =
+        parse(&fs_fixture("artifact", "parquet-with-schema.json")).unwrap();
+    artifact.uri = "s3://bucket/t.parquet".parse().unwrap();
+    api.store.insert_artifact(&artifact).await.unwrap();
+
+    let uri = format!("/artifacts/{}/profile", artifact.id.as_str());
+    let (status, body) = call(&api.app, "GET", &uri, None).await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "not_local");
+}
+
+fn fs_fixture(entity: &str, name: &str) -> String {
+    std::fs::read_to_string(
+        root()
+            .join("tests/contract")
+            .join(entity)
+            .join("valid")
+            .join(name),
+    )
+    .unwrap()
 }

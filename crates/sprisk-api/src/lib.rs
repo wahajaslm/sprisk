@@ -22,10 +22,10 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactId, AttemptId, CodeSplit, CodeSplitRequest, CreateRun, Dataset, DatasetProfile,
-    FigureSet, NotebookExecute, NotebookExecution, NotebookId, NotebookVariables, NotebookVersion,
-    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, Run,
-    RunId, parse,
+    ArtifactId, AttemptId, CapabilityClass, CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile,
+    FigureSet, LoadedTable, LoadedTableUse, NotebookExecute, NotebookExecution, NotebookId,
+    NotebookVariables, NotebookVersion, NotebookVersionId, Operator, OperatorSource,
+    PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -74,7 +74,7 @@ pub fn router(state: AppState) -> Router {
         .route("/artifacts/{id}/rows", get(get_artifact_rows))
         .route("/artifacts/{id}/figures", get(get_artifact_figures))
         .route("/artifacts/{id}/profile", get(get_artifact_profile))
-        .route("/datasets", get(list_datasets))
+        .route("/loaded_tables", get(list_loaded_tables))
         .route("/notebook_versions", post(create_notebook_version))
         .route("/notebook_versions/{id}", get(get_notebook_version))
         .route("/notebooks", get(list_notebooks))
@@ -846,13 +846,13 @@ async fn get_artifact_profile(
     Ok(Json(state.profiler.profile(&path).await?))
 }
 
-/// The tables flows load (ADR-0038): each source step's output in the latest run of the
-/// newest pipeline versions. Tables with the same content are one dataset, listed once with
-/// every step that loads it. Newest first.
-async fn list_datasets(
+/// The tables flows load (ADR-0038): each source step's latest output in the newest pipeline
+/// versions. Tables with the same content are listed once, with every step that loads them.
+/// Newest first.
+async fn list_loaded_tables(
     State(state): State<AppState>,
     query: Query,
-) -> Result<Json<Vec<Dataset>>, ApiError> {
+) -> Result<Json<Vec<LoadedTable>>, ApiError> {
     let versions = state
         .store
         .list_pipeline_versions(None, limit(&query)?)
@@ -860,55 +860,53 @@ async fn list_datasets(
     let mut sources = std::collections::HashMap::new();
     for version in &versions {
         for node in &version.nodes {
-            let Some(operator) = state.registry.get(node.operator.as_str()) else {
-                continue;
-            };
-            if operator.capability_class.to_string() != "source" {
+            let source = state
+                .registry
+                .get(node.operator.as_str())
+                .is_some_and(|op| op.capability_class == CapabilityClass::Source);
+            if !source {
                 continue;
             }
             let file = node.params.get("path").and_then(|p| p.as_str());
             let name = file
                 .and_then(|p| std::path::Path::new(p).file_name())
                 .map_or_else(|| node.id.to_string(), |n| n.to_string_lossy().into_owned());
-            sources.insert(
-                (version.id.clone(), node.id.to_string()),
-                (name, &node.operator),
-            );
+            sources.insert((version.id.clone(), node.id.to_string()), (name, node));
         }
     }
     let ids: Vec<_> = versions.iter().map(|v| v.id.clone()).collect();
-    let mut datasets: Vec<serde_json::Value> = Vec::new();
-    let mut by_hash = std::collections::HashMap::new();
-    for output in state.store.latest_run_outputs(&ids).await? {
+    let mut tables: Vec<LoadedTable> = Vec::new();
+    let mut by_hash: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for output in state.store.latest_outputs(&ids).await? {
         if output.artifact.media_type.as_str() != PARQUET {
             continue;
         }
         let key = (output.pipeline_version_id.clone(), output.node_id.clone());
-        let Some((name, operator)) = sources.get(&key) else {
+        let Some((name, node)) = sources.get(&key) else {
             continue;
         };
-        let hash = output.artifact.content_hash.to_string();
-        let at = match by_hash.get(&hash) {
-            Some(&at) => at,
-            None => {
-                let (rows, columns) = state.artifacts.table_shape(&hash).await?;
-                datasets.push(
-                    json!({"name": name, "operator": operator, "artifact": output.artifact,
-                    "total_rows": rows, "total_columns": columns, "used_by": []}),
-                );
-                by_hash.insert(hash, datasets.len() - 1);
-                datasets.len() - 1
-            }
+        let used = LoadedTableUse {
+            pipeline_version_id: output.pipeline_version_id,
+            run_id: output.run_id,
+            node_id: node.id.clone(),
         };
-        if let Some(used_by) = datasets[at]["used_by"].as_array_mut() {
-            used_by.push(json!({"pipeline_version_id": output.pipeline_version_id,
-                "run_id": output.run_id, "node_id": output.node_id}));
+        let hash = output.artifact.content_hash.to_string();
+        if let Some(&at) = by_hash.get(&hash) {
+            tables[at].used_by.push(used);
+            continue;
         }
+        let (total_rows, total_columns) = state.artifacts.table_shape(&hash).await?;
+        by_hash.insert(hash, tables.len());
+        tables.push(LoadedTable {
+            name: name.clone(),
+            operator: node.operator.clone(),
+            artifact: output.artifact,
+            total_rows,
+            total_columns,
+            used_by: vec![used],
+        });
     }
-    let body = serde_json::Value::Array(datasets).to_string();
-    Ok(Json(
-        parse(&body).map_err(|e| ApiError::Internal(e.to_string()))?,
-    ))
+    Ok(Json(tables))
 }
 
 #[cfg(test)]
