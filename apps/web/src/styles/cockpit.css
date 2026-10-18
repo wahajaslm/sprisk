@@ -654,6 +654,7 @@ p { margin: 0; }
 .notebooks-page { flex: 1; min-width: 0; display: flex; min-height: 0; }
 .notebooks-list { flex: none; width: 220px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-2); border-right: 1px solid var(--line); background: var(--panel); overflow: auto; }
 .notebooks-list ul { margin: 0; padding: 0; list-style: none; }
+.notebooks-heading { margin: var(--space-3) var(--space-2) 2px; font: 500 var(--text-xs) var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); }
 .notebooks-list li button { width: 100%; padding: var(--space-1) var(--space-2); border: 0; background: transparent; color: var(--soft); font-size: var(--text-sm); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notebooks-list li button:hover { background: var(--node-hover); color: var(--ink); }
 .notebooks-list li button[aria-current="true"] { background: var(--node-selected); color: var(--ink); }

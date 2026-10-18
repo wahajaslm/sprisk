@@ -215,6 +215,19 @@ describe("the session notebook (ADR-0036)", () => {
     expect(within(list).queryByRole("button", { name: "Other flow's notebook" })).toBeNull();
   });
 
+  it("lists notebooks made before flows had notebooks apart; saving one adds it to the flow on screen", async () => {
+    const sent = withApi();
+    const { pipeline_version_id: _, ...unlinked } = sales;
+    server.use(http.get("/api/notebooks", () => HttpResponse.json([unlinked])));
+    useSelection.setState({ pipelineVersionId: pipeline.id });
+    renderWithApi(<NotebooksPage />);
+    const loose = await screen.findByRole("list", { name: "Not in a flow yet" });
+    await userEvent.click(within(loose).getByRole("button", { name: "Sales analysis" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Saved" }));
+    await waitFor(() => expect(sent.versions).toHaveLength(1));
+    expect(sent.saved.at(-1)?.pipeline_version_id).toBe(sent.versions[0]?.id ?? pipeline.id);
+  });
+
   it("Save rebuilds the notebook's steps in its flow and shows that flow", async () => {
     const sent = withApi();
     useSelection.setState({ pipelineVersionId: pipeline.id });

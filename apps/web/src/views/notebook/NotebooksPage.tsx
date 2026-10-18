@@ -1,3 +1,5 @@
+import type { NotebookVersion } from "@sprisk/contracts";
+
 import { useNotebooks, useSaveNotebook } from "../../api/notebooks.ts";
 import { usePipelineVersions } from "../../api/hooks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
@@ -21,7 +23,9 @@ export function NotebooksPage() {
   const flow = flowOf(flows(versions.data ?? []), pipelineVersionId);
   // With no flow yet, the notebooks not in one; otherwise those of this flow's versions.
   const mine = notebooks.data.filter((v) => (flow ? v.pipeline_version_id !== undefined && flow.ids.includes(v.pipeline_version_id) : v.pipeline_version_id === undefined));
-  const open = mine.find((v) => v.notebook_id === openId) ?? mine[0];
+  // Made before notebooks belonged to flows: shown apart; saving one adds it to this flow.
+  const loose = flow ? notebooks.data.filter((v) => v.pipeline_version_id === undefined) : [];
+  const open = [...mine, ...loose].find((v) => v.notebook_id === openId) ?? mine[0];
   const create = () => {
     const projectId = flow?.head.project_id ?? LOCAL_PROJECT;
     const version = firstVersion(projectId, `Notebook ${mine.length + 1}`, [{ id: newCellId(), kind: "code", source: "" }], flow?.head.id);
@@ -35,15 +39,13 @@ export function NotebooksPage() {
           <AddIcon /> New notebook
         </button>
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
-        <ul>
-          {mine.map((v) => (
-            <li key={v.notebook_id}>
-              <button type="button" aria-current={v.notebook_id === open?.notebook_id} onClick={() => openNotebook(v.notebook_id)}>
-                {v.title}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <NotebookList label="This flow's notebooks" notebooks={mine} open={open?.notebook_id} onOpen={openNotebook} />
+        {loose.length > 0 && (
+          <>
+            <p className="notebooks-heading">Not in a flow yet</p>
+            <NotebookList label="Not in a flow yet" notebooks={loose} open={open?.notebook_id} onOpen={openNotebook} />
+          </>
+        )}
       </nav>
       {open ? (
         <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
@@ -51,5 +53,19 @@ export function NotebooksPage() {
         <p className="muted pad">This flow has no notebooks yet. Make one, or import a .ipynb.</p>
       )}
     </div>
+  );
+}
+
+function NotebookList({ label, notebooks, open, onOpen }: { label: string; notebooks: NotebookVersion[]; open: string | undefined; onOpen: (id: string) => void }) {
+  return (
+    <ul aria-label={label}>
+      {notebooks.map((v) => (
+        <li key={v.notebook_id}>
+          <button type="button" aria-current={v.notebook_id === open} onClick={() => onOpen(v.notebook_id)}>
+            {v.title}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
