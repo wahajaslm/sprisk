@@ -757,16 +757,17 @@ async fn get_artifact_figures(
     let limit = limit(&query)?;
     let artifact = state.store.get_artifact(&artifact_id).await?;
     display_size(artifact.size_bytes, false)?;
-    let not_figures = || ApiError::BadRequest {
+    let not_figures = |why: String| ApiError::BadRequest {
         code: "not_figures",
-        message: format!("artifact {raw} is not figures or a code step's display"),
+        message: format!("artifact {raw} is {why}"),
     };
     if artifact.media_type.as_str() != "application/json" {
-        return Err(not_figures());
+        return Err(not_figures(artifact.media_type.to_string()));
     }
     let bytes = state.artifacts.get(artifact.content_hash.as_str()).await?;
-    let report = std::str::from_utf8(&bytes).map_err(|_| not_figures())?;
-    let set = figures::first_figures(report, limit as usize).map_err(|_| not_figures())?;
+    let report = std::str::from_utf8(&bytes).map_err(|e| not_figures(format!("not text: {e}")))?;
+    let set =
+        figures::first_figures(report, limit as usize).map_err(|e| not_figures(e.to_string()))?;
     Ok(Json(set))
 }
 

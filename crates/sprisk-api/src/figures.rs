@@ -3,19 +3,28 @@
 
 use sprisk_contracts::{CodeDisplay, FigureSet};
 
-/// The report is not figures and not a code step's display.
+/// The report is not figures and not a code step's display; says why it is neither.
 #[derive(Debug, thiserror::Error)]
-#[error("not figures or a code step's display")]
-pub struct NotFigures;
+#[error("not figures ({figures}) and not a code step's display ({display})")]
+pub struct NotFigures {
+    figures: String,
+    display: String,
+}
 
 /// The first `limit` figures in a report, in the order the step drew them.
 pub fn first_figures(report: &str, limit: usize) -> Result<FigureSet, NotFigures> {
-    if let Ok(set) = sprisk_contracts::parse::<FigureSet>(report) {
-        let items = set.items.into_iter().take(limit).collect();
-        return Ok(FigureSet { items });
-    }
+    let figures = match sprisk_contracts::parse::<FigureSet>(report) {
+        Ok(set) => {
+            let items = set.items.into_iter().take(limit).collect();
+            return Ok(FigureSet { items });
+        }
+        Err(e) => e.to_string(),
+    };
     // A Figure has no `kind` and a display item needs one, so a report parses as one or neither.
-    let display = sprisk_contracts::parse::<CodeDisplay>(report).map_err(|_| NotFigures)?;
+    let display = sprisk_contracts::parse::<CodeDisplay>(report).map_err(|e| NotFigures {
+        figures,
+        display: e.to_string(),
+    })?;
     let items = display
         .items
         .into_iter()
@@ -71,5 +80,15 @@ mod tests {
     #[test]
     fn other_json_is_refused() {
         assert!(first_figures(r#"{"accuracy": 0.9}"#, 1).is_err());
+    }
+
+    #[test]
+    fn a_refusal_says_what_did_not_parse() {
+        let bad = json!({"library": "plotly", "format": "png", "content": "{}"});
+        let report = json!({"items": [bad]}).to_string();
+        let Err(refused) = first_figures(&report, 1) else {
+            panic!("a figure in an unknown format was accepted");
+        };
+        assert!(refused.to_string().contains("png"), "{refused}");
     }
 }
