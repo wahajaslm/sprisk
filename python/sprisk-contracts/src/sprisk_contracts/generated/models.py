@@ -653,6 +653,12 @@ class DisplayItem(StrictModel):
             description="Present for kind image: a PNG, base64-encoded. Written by older code steps; new ones write figures."
         ),
     ] = None
+    label: Annotated[
+        str | None,
+        Field(
+            description="The code that was shown, as written: a name such as summary, or an expression such as df.head(). Absent for printed text, figures shown at the end, and older code steps."
+        ),
+    ] = None
     line: Annotated[
         int | None,
         Field(

@@ -139,6 +139,7 @@ def load_function(source: str, function: str) -> Callable[..., Any]:
     return step
 
 
+MAX_LABEL_CHARS = 80
 PROVIDED = ("data",)
 # Tools the step itself puts in scope; reading them is not an input.
 TOOLS = ("pl", "sprisk", "display")
@@ -272,9 +273,9 @@ def _run(
         # fig.show() would open a browser from the worker; in a notebook it shows the figure.
         plotly_io.show = lambda fig, *_, **__: shown.display(fig)
     try:
-        body, last = _split_last_expression(
-            bind(source, values) if values else ast.parse(source, FILENAME)
-        )
+        module = bind(source, values) if values else ast.parse(source, FILENAME)
+        shown.labels = _display_labels(module)
+        body, last = _split_last_expression(module)
         with (
             contextlib.redirect_stdout(_Stream(shown, "stdout")),
             contextlib.redirect_stderr(_Stream(shown, "stderr")),
@@ -295,10 +296,26 @@ def _run(
             plotly_io.show = real_plotly_show
 
     if value is not None and last is not None:
-        shown.show(value, last.body.lineno)
+        shown.show(value, last.body.lineno, _label(last.body))
     shown.open_figures(None)  # figures never shown by a line, as a notebook shows them at the end
     display = CodeDisplay.model_validate_json(json.dumps({"items": shown.items}))
     return display.model_dump(mode="json", exclude_none=True), namespace
+
+
+def _label(node: ast.expr) -> str:
+    return cut(ast.unparse(node), MAX_LABEL_CHARS)
+
+
+def _display_labels(module: ast.Module) -> dict[int, list[str]]:
+    """The code of each value passed to `display(...)`, by the line of the call, so a shown
+    table is named by what the person wrote."""
+    return {
+        node.lineno: [_label(a) for a in node.args]
+        for node in ast.walk(module)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "display"
+    }
 
 
 def _split_last_expression(module: ast.Module) -> tuple[ast.Module, ast.Expression | None]:
@@ -325,12 +342,16 @@ class _Collector:
     def __init__(self) -> None:
         self.items: list[dict[str, Any]] = []
         self.figures = 0
+        # The code of each display() argument, by line: what a shown value is called.
+        self.labels: dict[int, list[str]] = {}
         # The stream whose printed text the last item holds; further prints to it extend it.
         self.printing: str | None = None
 
-    def _add(self, item: dict[str, Any], line: int | None = None) -> None:
+    def _add(self, item: dict[str, Any], line: int | None = None, label: str | None = None) -> None:
         if line is not None:
             item["line"] = line
+        if label is not None:
+            item["label"] = label
         self.printing = None
         if len(self.items) < MAX_ITEMS:
             self.items.append(item)
@@ -346,14 +367,15 @@ class _Collector:
     def display(self, *values: Any) -> None:
         """`display()` as the step's code calls it; each value names the line that called it."""
         line = _code_line()
-        for value in values:
-            self.show(value, line)
+        labels = self.labels.get(line, []) if line is not None else []
+        for i, value in enumerate(values):
+            self.show(value, line, labels[i] if i < len(labels) else None)
 
-    def show(self, value: Any, line: int | None) -> None:
+    def show(self, value: Any, line: int | None, label: str | None = None) -> None:
         if (frame := as_polars(value)) is not None:
-            self._add({"kind": "table", "table": table_page(frame)}, line)
+            self._add({"kind": "table", "table": table_page(frame)}, line, label)
         elif not self.figure(value, line):
-            self._add({"kind": "text", "text": cut(repr(value), MAX_TEXT_CHARS)}, line)
+            self._add({"kind": "text", "text": cut(repr(value), MAX_TEXT_CHARS)}, line, label)
 
     def figure(self, value: Any, line: int | None) -> bool:
         """Show `value` as a figure, as a notebook would; False when it is not one."""

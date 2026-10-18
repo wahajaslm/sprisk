@@ -396,3 +396,24 @@ def test_each_plot_names_the_code_line_that_showed_it(
         ("figure", 5),
         ("figure", 8),
     ]
+
+
+def test_a_shown_table_is_labelled_with_the_code_that_showed_it() -> None:
+    from sprisk_code.python_step import python_step_v2
+
+    source = "summary = raw\nextra = raw\ndisplay(extra, raw.head(1))\nsummary"
+    out = python_step_v2({"raw": pl.DataFrame({"x": [1, 2]})}, source, None, [])
+    shown = CodeDisplay.model_validate_json(json.dumps(out["display"]))
+    assert [(i.kind, i.label) for i in shown.items] == [
+        ("table", "extra"),
+        ("table", "raw.head(1)"),
+        ("table", "summary"),
+    ]
+
+
+def test_printed_text_has_no_label() -> None:
+    from sprisk_code.python_step import python_step_v2
+
+    out = python_step_v2({}, "print('hi')", None, [])
+    shown = CodeDisplay.model_validate_json(json.dumps(out["display"]))
+    assert [i.label for i in shown.items] == [None]

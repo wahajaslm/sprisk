@@ -376,6 +376,10 @@ export interface DisplayItem {
    */
   png_base64?: string;
   /**
+   * The code that was shown, as written: a name such as summary, or an expression such as df.head(). Absent for printed text, figures shown at the end, and older code steps.
+   */
+  label?: string;
+  /**
    * The line of the step's code that showed it: a show() or display() call, or the last line. Absent when it was shown at the end of the run, or by older code steps.
    */
   line?: number;

@@ -274,6 +274,10 @@
           "type": "string",
           "description": "Present for kind image: a PNG, base64-encoded. Written by older code steps; new ones write figures."
         },
+        "label": {
+          "type": "string",
+          "description": "The code that was shown, as written: a name such as summary, or an expression such as df.head(). Absent for printed text, figures shown at the end, and older code steps."
+        },
         "line": {
           "type": "integer",
           "minimum": 0,

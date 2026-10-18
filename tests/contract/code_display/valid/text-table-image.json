@@ -30,7 +30,8 @@
             "missing": []
           }
         ]
-      }
+      },
+      "label": "summary"
     },
     {
       "kind": "image",
