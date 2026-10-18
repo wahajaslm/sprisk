@@ -223,7 +223,11 @@ export function SessionNotebook({ saved }: { saved: NotebookVersion }) {
           const stale = ran !== undefined && ran.code !== cell.source;
           const state = running === cell.id ? "running" : queued.includes(cell.id) ? "queued" : undefined;
           const inPick = index >= picked.first && index <= picked.last && picked.first !== picked.last;
-          const onMouseDown = (e: MouseEvent) => select(index, { extend: e.shiftKey });
+          const onMouseDown = (e: MouseEvent) => {
+            // Shift+click picks a range of cells, not a range of the page's text.
+            if (e.shiftKey) e.preventDefault();
+            select(index, { extend: e.shiftKey });
+          };
           return (
             <div key={`${generation}/${cell.id}`}>
               <div

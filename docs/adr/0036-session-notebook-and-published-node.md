@@ -16,9 +16,9 @@ Arch doc sections: §2A (Code and notebooks, Notebook security), §4 (domain mod
   - **Published node:** a `sprisk.code.python@2.0.0` step in a `PipelineVersion`. It runs isolated in a worker, gets only its declared inputs and writes typed artifacts. Nothing about it changes.
 - **A notebook is its own saved document.** New entities `Notebook` / `NotebookVersion`: ordered code and Markdown cells, each with a stable cell id. Each save is a new immutable version (rule 5). Outputs are not part of it.
 - **The kernel is `ipykernel`, driven by `jupyter_client`** in a Python session host (`python -m sprisk_code.session`). Rust starts it, stops it and checks every request (rule 4, §2A Notebook security). The browser talks only to the Rust API. Rust sends one JSON line per request over stdio, as to workers. A cell's result comes back in the HTTP answer when the cell ends; streaming output while it runs comes later. Kernel and host talk over IPC sockets in a private directory, not TCP ports.
-- **Limits on every kernel:** one per notebook, at most 4 at once, 10 minutes per cell, a 4 GB memory cap (measured with `psutil`; over it the kernel restarts and says so), shutdown after 30 idle minutes, interrupt and restart.
+- **Limits on every kernel:** one per notebook, at most 4 at once, 10 minutes per cell, a 4 GB memory cap, shutdown after 30 idle minutes, interrupt and restart. Memory is measured with `psutil` every quarter second, during and between cells; over the cap the kernel restarts and the next answer says so. It is a poll, not an OS limit: a very fast spike can pass it.
 - **File access:** the kernel runs in the API's working directory, where workers run, so a relative path reads the same file in the session and in the node made from it. It is a local process with the person's own file access. That is the same trust as a code step today (§12: a trusted local subprocess, not a sandbox). Scoped reads through an SDK come with hosted mode.
-- **Session results are scratch.** They are not `Run`s, `Attempt`s or `Artifact`s, and the UI labels them so. Each execution appends an audit event (when, cell id, status, code hash). Outputs sent to the browser are bounded: first rows of a table, figure size limits (ADR-0029). The browser never runs code (rule 9).
+- **Session results are scratch.** They are not `Run`s, `Attempt`s or `Artifact`s, and the UI labels them so. Each execution appends two audit events: when it starts (cell id, code hash) and when it ends (status and execution count, or why the kernel stopped). Outputs sent to the browser are bounded: first rows of a table, figure size limits (ADR-0029). The browser never runs code (rule 9).
 - **Making a node is explicit: "Create node from cells".** The person selects cells. The existing analyzer (`POST /code/split`, reads but never runs) proposes:
   - Inputs: tables, by variable name.
   - Parameters: top-level literals (`TOP_N = 10`).
@@ -45,6 +45,11 @@ Arch doc sections: §2A (Code and notebooks, Notebook security), §4 (domain mod
 - Bad: two new dependencies (`ipykernel`, `jupyter_client`) and a new contract entity.
 - Bad: session results cannot be cited as evidence until they are published as a node and run.
 - Bad: the Flow | Notebook switch and its tests are removed.
+- Known gaps, each for its own change:
+  - The API has no authentication; any local process can run cells (as it can already submit code steps).
+  - Cell code can read and write `.sprisk/`, the store, when it sits under the working directory (code steps can too).
+  - The leakage check (`split_leakage`) does not look inside code nodes, so a node made from cells is not checked for holdout use.
+  - Create node binds inputs to notebook-made steps by name; it warns, but does not prove, that the session's values came from those steps.
 
 ## Arch doc edits (made)
 - §2A stack table, "Code and notebooks": the kernel protocol is now used; name the session host and Rust relay.
@@ -57,6 +62,7 @@ Arch doc sections: §2A (Code and notebooks, Notebook security), §4 (domain mod
 - Python tests: state persists across cells; the count increments; interrupt; restart clears state; the time limit fires; the memory cap fails loudly.
 - Rust tests: an unauthorized execute is refused; the idle kernel shuts down; audit events are appended.
 - Contract round-trip for `NotebookVersion`.
-- Create-node test: on the sales notebook, cells 2–3 give inputs `df`, parameters `START_DATE`, `END_DATE`, outputs the filtered table. The node run in a worker matches the session's table.
+- Create-node tests: the proposal for picked cells; refusal when other cells must join; inputs bound only to notebook-made steps; warnings for unrun, edited and out-of-order cells.
+- Browser (done 2026-10-18): a new notebook loads `sales_data.csv`, computes the top products and draws them; cells 2–3 become a node in a new flow; Run graph succeeds with the same table.
 - Refusal test: a model crossing the boundary is refused with its name and type.
 - Browser: run cells out of order and see `[n]` follow; add a Markdown cell; create a node; run the flow.
