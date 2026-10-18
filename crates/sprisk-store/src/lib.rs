@@ -5,8 +5,8 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, PipelineVersion, PipelineVersionId,
-    Run, RunId, RunStatus, Timestamp, WorkerId,
+    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, NotebookVersion, NotebookVersionId,
+    PipelineVersion, PipelineVersionId, Run, RunId, RunStatus, Timestamp, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -105,6 +105,63 @@ impl SqliteStore {
                 .fetch_optional(&self.pool)
                 .await?;
         from_json(body, "pipeline version", id.as_str())
+    }
+
+    pub async fn insert_notebook_version(
+        &self,
+        version: &NotebookVersion,
+    ) -> Result<(), StoreError> {
+        sqlx::query(
+            "INSERT INTO notebook_versions (id, notebook_id, project_id, body) VALUES (?, ?, ?, ?)",
+        )
+        .bind(version.id.as_str())
+        .bind(version.notebook_id.as_str())
+        .bind(version.project_id.as_str())
+        .bind(to_json(version)?)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_notebook_version(
+        &self,
+        id: &NotebookVersionId,
+    ) -> Result<NotebookVersion, StoreError> {
+        let body: Option<String> =
+            sqlx::query_scalar("SELECT body FROM notebook_versions WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        from_json(body, "notebook version", id.as_str())
+    }
+
+    /// Each notebook's newest version, newest notebooks first, at most `limit`.
+    pub async fn latest_notebook_versions(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<NotebookVersion>, StoreError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM notebook_versions v WHERE id = \
+             (SELECT MAX(id) FROM notebook_versions WHERE notebook_id = v.notebook_id) \
+             ORDER BY id DESC LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        parse_all(rows, "notebook version")
+    }
+
+    /// Append to the audit trail outside a run, e.g. a notebook cell executed (ADR-0036).
+    pub async fn append_audit(
+        &self,
+        at: &str,
+        entity_id: &str,
+        event: &str,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        audit(&mut tx, at, entity_id, event).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     pub async fn insert_run(&self, run: &Run) -> Result<(), StoreError> {

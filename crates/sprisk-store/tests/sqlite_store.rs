@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
-use sprisk_contracts::{Artifact, Attempt, AttemptState, Run, RunStatus, parse};
+use sprisk_contracts::{Artifact, Attempt, AttemptState, NotebookVersion, Run, RunStatus, parse};
 use sprisk_store::{SqliteStore, StoreError};
 
 const NOW: &str = "2026-10-15T10:00:30Z";
@@ -516,5 +516,71 @@ async fn a_run_s_result_for_a_step_is_found_by_its_definition_key() {
             .await
             .unwrap(),
         None
+    );
+}
+
+fn notebook_version(id: &str, notebook: &str) -> NotebookVersion {
+    let mut version: NotebookVersion = fixture("notebook_version", "first-empty.json");
+    version.id = id.parse().unwrap();
+    version.notebook_id = notebook.parse().unwrap();
+    version
+}
+
+#[tokio::test]
+async fn notebook_version_round_trips() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let saved: NotebookVersion = fixture("notebook_version", "sales.json");
+    store.insert_notebook_version(&saved).await.unwrap();
+    assert_eq!(store.get_notebook_version(&saved.id).await.unwrap(), saved);
+}
+
+#[tokio::test]
+async fn unknown_notebook_version_is_not_found() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let missing = "nbv_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    assert!(matches!(
+        store.get_notebook_version(&missing).await,
+        Err(StoreError::NotFound { .. })
+    ));
+}
+
+#[tokio::test]
+async fn notebooks_list_each_notebooks_latest_version_newest_first() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let a1 = notebook_version(
+        "nbv_01JA0000000000000000000001",
+        "nb_01JA000000000000000000000A",
+    );
+    let b1 = notebook_version(
+        "nbv_01JA0000000000000000000002",
+        "nb_01JA000000000000000000000B",
+    );
+    let a2 = notebook_version(
+        "nbv_01JA0000000000000000000003",
+        "nb_01JA000000000000000000000A",
+    );
+    for version in [&a1, &b1, &a2] {
+        store.insert_notebook_version(version).await.unwrap();
+    }
+
+    let latest = store.latest_notebook_versions(10).await.unwrap();
+
+    assert_eq!(latest, vec![a2.clone(), b1]);
+    assert_eq!(store.latest_notebook_versions(1).await.unwrap(), vec![a2]);
+}
+
+#[tokio::test]
+async fn an_audit_event_is_appended_for_its_entity() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    store
+        .append_audit(NOW, "nb_01JA000000000000000000000A", "cell c1 executed")
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .audit_events("nb_01JA000000000000000000000A")
+            .await
+            .unwrap(),
+        vec![(NOW.to_owned(), "cell c1 executed".to_owned())]
     );
 }
