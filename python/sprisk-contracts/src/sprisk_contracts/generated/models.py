@@ -1184,6 +1184,12 @@ class NotebookVersion(StrictModel):
     title: Annotated[str, Field(max_length=200)]
     cells: list[NotebookCell]
     created_at: Timestamp
+    removed: Annotated[
+        bool | None,
+        Field(
+            description="Present and true: the notebook was deleted in this version (ADR-0041). It is no longer listed; its history stays readable. Absent otherwise."
+        ),
+    ] = None
 
 
 class NotebookExecutionEvent(RootModel[ExecutionRunning | ExecutionDone | ExecutionFailed]):

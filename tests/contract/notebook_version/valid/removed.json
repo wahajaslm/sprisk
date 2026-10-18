@@ -1,0 +1,11 @@
+{
+  "schema_version": "sprisk.notebook_version/v1",
+  "id": "nbv_01JAAAAAAAAAAAAAAAAAAAAAAC",
+  "notebook_id": "nb_01JAAAAAAAAAAAAAAAAAAAAAAA",
+  "project_id": "prj_00000000000000000000000000",
+  "parent_id": "nbv_01JAAAAAAAAAAAAAAAAAAAAAAB",
+  "title": "Sales analysis",
+  "cells": [],
+  "created_at": "2026-10-18T13:00:00Z",
+  "removed": true
+}

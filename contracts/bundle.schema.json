@@ -1178,6 +1178,10 @@
         },
         "created_at": {
           "$ref": "#/$defs/Timestamp"
+        },
+        "removed": {
+          "type": "boolean",
+          "description": "Present and true: the notebook was deleted in this version (ADR-0041). It is no longer listed; its history stays readable. Absent otherwise."
         }
       }
     },

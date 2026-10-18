@@ -803,6 +803,10 @@ export interface NotebookVersion {
   title: string;
   cells: NotebookCell[];
   created_at: Timestamp;
+  /**
+   * Present and true: the notebook was deleted in this version (ADR-0041). It is no longer listed; its history stays readable. Absent otherwise.
+   */
+  removed?: boolean;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
