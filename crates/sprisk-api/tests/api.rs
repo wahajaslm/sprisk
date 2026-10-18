@@ -886,3 +886,19 @@ async fn variable_names_must_be_port_names() {
     let (status, body) = call(&api.app, "GET", &uri, None).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
 }
+
+/// A browser that gives up on a cell must not leave its late answer for the next request.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_abandoned_request_does_not_answer_the_next_one() {
+    let api = api_with_notebook(KERNEL_LIMITS).await;
+    let notebook: sprisk_contracts::NotebookId = NOTEBOOK.parse().unwrap();
+    api.kernels.execute(&notebook, "import time").await.unwrap();
+    let slow = api.kernels.execute(&notebook, "time.sleep(2)\n'slow'");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(500), slow)
+            .await
+            .is_err()
+    );
+    let next = api.kernels.execute(&notebook, "'next'").await.unwrap();
+    assert_eq!(next.outputs[0].text.as_deref(), Some("'next'"));
+}

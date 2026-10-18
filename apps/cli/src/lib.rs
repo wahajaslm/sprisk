@@ -109,11 +109,9 @@ pub async fn serve_on(
                 .with_context(|| format!("data root {}", r.display()))
         })
         .collect::<anyhow::Result<_>>()?;
-    // A notebook's kernel runs in the first data root, so relative paths in cells resolve there.
-    let kernel_dir = data_roots
-        .first()
-        .context("serve needs at least one data root")?
-        .clone();
+    // A notebook's kernel runs where workers run, so a relative path in a cell reads the same
+    // file in the session and in the node made from it (ADR-0036).
+    let kernel_dir = std::env::current_dir().context("read the working directory")?;
     let kernels = sprisk_api::Kernels::new(
         vec![
             config.python.display().to_string(),

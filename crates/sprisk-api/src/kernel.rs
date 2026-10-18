@@ -236,9 +236,28 @@ impl Kernels {
         })
     }
 
-    /// One request and its one answer line. Any failure shuts the kernel down: its state is
-    /// unknown, so it is not reused.
+    /// One request and its one answer line. It runs in its own task, so a caller that gives up
+    /// (a closed browser tab) cannot leave the answer unread for the next request. Any failure
+    /// shuts the kernel down: its state is unknown, so it is not reused.
     async fn request(
+        &self,
+        notebook: &NotebookId,
+        kernel: &Arc<Kernel>,
+        request: &str,
+        wait: Duration,
+    ) -> Result<String, KernelError> {
+        let (this, id, kernel, request) = (
+            self.clone(),
+            notebook.clone(),
+            kernel.clone(),
+            request.to_owned(),
+        );
+        tokio::spawn(async move { this.exchange(&id, &kernel, &request, wait).await })
+            .await
+            .map_err(|e| stopped(notebook, e))?
+    }
+
+    async fn exchange(
         &self,
         notebook: &NotebookId,
         kernel: &Kernel,
