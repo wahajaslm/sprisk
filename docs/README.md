@@ -2,7 +2,8 @@
 
 | Folder | What it holds |
 | --- | --- |
-| [architecture/](architecture/system-architecture.md) | System architecture baseline. The source of truth. |
+| [architecture/](architecture/sprisk-enterprise-platform-design-v2.md) | Enterprise v2 architecture target and core-first delivery sequence. |
+| [architecture integration map](architecture/architecture-integration-map.md) | Verified repository capabilities, gaps and implementation order. |
 | [adr/](adr/README.md) | Architecture decision records, one per decision. |
 | [research/](research/) | Research notes behind decisions, with sources. |
 | [design/](design/sprisk-studio.html) | sprisk Studio UI concept. Reference only, not a contract. |
@@ -11,7 +12,7 @@
 
 ## Rules
 
-- The architecture doc changes only through an ADR.
+- Architecture changes are reconciled through ADRs; the integration map records mismatches between design and implementation.
 - Area-specific engineering rules live in each folder's `CLAUDE.md`.
 - New docs go in the folder above that fits. Add a line here if you create a new folder.
 - Anything deferred goes in `backlog.md`. No TODOs in code.

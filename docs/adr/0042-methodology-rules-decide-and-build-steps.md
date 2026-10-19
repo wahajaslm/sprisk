@@ -31,8 +31,8 @@ Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (
 - **Overrides need a reason.** Hard constraints in the manifest (e.g. `fit_on: train`) cannot be overridden.
 - **Apply builds steps through the normal API.** Rust turns the decisions into a new `PipelineVersion` using the manifest's actions, compiles it and runs Gate B. Rules get no private route (rule 4). The AI, later, uses the same path.
 - **The rule owns only the steps it made.** Each generated node names its decision. If a person edits such a step on the canvas, it stops being the rule's, as with notebook steps (ADR-0037).
-- **New data never changes a flow by itself.** The rule re-evaluates on the new profile. If any decision differs, the Decisions view shows the change and waits for Apply.
-- **UI: a `decisions` view type.** Settings on top, the decision table below (close calls marked), an override per row, Apply with a diff of the flow.
+- **New data never changes a flow by itself.** The rule re-evaluates on the new profile. If any decision differs, the affected node's inspector shows the change and waits for Apply.
+- **UI: decisions live with the affected flow step first.** The selected node's inspector shows settings, decision rows, evidence, overrides, and Apply with a graph diff. `Checks` shows the matching verification rule and links it to the applied decision. A later advanced `methodology-workflow` projection may summarize decisions across the investigation, but it is not a standalone executable graph or a prerequisite for the first slice.
 - **First pack `methodology/cleaning`, two rules in order:**
   1. `cleaning.missing_markers`: which text means missing (default `NA`, empty). Action: `file_source.missing_values`.
   2. `cleaning.missing_values`: default fills inside cross-validation, fit on train rows, and adds a "was missing" column. Dropping a column above a threshold (e.g. 20%) is an option that needs a reason. Actions: `impute` after the split, fit on train; `select_columns` before the split for a drop.
@@ -65,4 +65,4 @@ Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (
 ## Arch doc edits
 - §4: add `MethodologyDecision`.
 - §8: add "rules that decide" alongside Gates A–D.
-- §2A `ViewType` list: add `decisions`.
+- §2A: use the selected node inspector and its existing Checks dock for the first slice; reserve an advanced derived methodology-workflow projection for later.

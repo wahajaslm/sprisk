@@ -1,6 +1,6 @@
 # ADR-0019: Methodology guides pipeline decisions without becoming a separate workflow
 
-Status: Proposed (under discussion)
+Status: Accepted for the core interaction; advanced cross-investigation projection deferred
 Date: 2026-10-16
 Arch doc sections: §4, §5, §6, §7, §8, §15, §16
 Related: ADR-0015, ADR-0016, ADR-0018
@@ -282,9 +282,10 @@ The default sequence is:
 9. Compare with earlier runs when desired
 ```
 
-The UI does not require a methodology dashboard. An advanced methodology view
-may later expose project defaults, rule explanations, and version history, but
-it is not part of the basic workflow.
+The UI does not require a methodology dashboard. An advanced methodology workflow
+may later expose project defaults, rule explanations, version history and a derived
+cross-investigation graph, but it is not part of the basic workflow and never becomes
+a second executable graph.
 
 ### 12. Backend workflow
 

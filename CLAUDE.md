@@ -1,13 +1,12 @@
 # sprisk
 
 Local-first, AI-native platform for scientific data investigation.
-Source of truth: [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) ("arch doc"). Read the relevant section before designing anything.
+Architecture target: [docs/architecture/sprisk-enterprise-platform-design-v2.md](docs/architecture/sprisk-enterprise-platform-design-v2.md) ("arch doc"). Reconcile it with [docs/architecture/architecture-integration-map.md](docs/architecture/architecture-integration-map.md) before implementing a design target.
 [docs/design/sprisk-studio.html](docs/design/sprisk-studio.html) is a UI concept reference only. It is not a contract.
 
 ## Status
 
-Current milestone: **M2 — AI-created pipeline** (arch doc §16). M1 closed 2026-10-16 (two datasets end to end, worker-kill recovery). M0 closed 2026-10-15. Scoped worker access (`staging_uri`, input URIs) added to `LeaseAttempt` 2026-10-16.
-Do not build ahead of the current milestone without asking.
+Current milestone: **M0 — repository reconciliation for the core workbench** (v2 §21). Existing execution work remains usable, but it does not establish that question, methodology decision or evidence contracts exist. External auth, hosted storage and other platform integrations are deferred until the local core acceptance gate.
 
 ## Layout (arch doc §14)
 

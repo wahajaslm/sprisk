@@ -94,12 +94,12 @@ Real fixture `tests/fixtures/datasets/penguins_raw.csv`, 344 rows, 17 columns.
 ```
         Python (worker)                  Rust (control plane)              Web
  ┌───────────────────────────┐   ┌──────────────────────────────┐   ┌──────────────┐
- │ Profile (ADR-0038)        │   │ Stores MethodologyDecision   │   │ Decisions    │
- │        ↓                  │   │        ↓                     │   │ view:        │
- │ Rules, stage by stage:    │──▶│ Apply → new PipelineVersion  │◀─▶│ settings     │
- │ decide(obs, settings)     │   │ through the normal API       │   │ table        │
- │  → decision + reason      │   │        ↓                     │   │ overrides    │
- │                           │   │ Compile + Gate B checks      │   │ Apply + diff │
+ │ Profile (ADR-0038)        │   │ Stores MethodologyDecision   │   │ Selected     │
+ │        ↓                  │   │        ↓                     │   │ node         │
+ │ Rules, stage by stage:    │──▶│ Apply → new PipelineVersion  │◀─▶│ inspector:   │
+ │ decide(obs, settings)     │   │ through the normal API       │   │ decision     │
+ │  → decision + reason      │   │        ↓                     │   │ evidence     │
+ │                           │   │ Compile + Gate B checks      │   │ Apply/checks │
  └───────────────────────────┘   └──────────────────────────────┘   └──────────────┘
 ```
 
@@ -110,7 +110,7 @@ Real fixture `tests/fixtures/datasets/penguins_raw.csv`, 344 rows, 17 columns.
 | Decision record | Rust store, `MethodologyDecision` contract | New |
 | Apply | Rust: decisions → steps → new flow version | New, uses the existing create path |
 | Compile and check | Rust compiler, Gate B | Exists (ADR-0040) |
-| Decisions view | Web | New |
+| Node inspector decision surface + linked Checks | Web | New |
 
 Hard project rules this keeps:
 
@@ -228,7 +228,7 @@ A new setting or override is a new record. Nothing is edited in place.
 
 1. A new dataset version is profiled.
 2. Rules rerun on the new profile.
-3. Same decisions: nothing to do. Different: the Decisions view shows what changed and waits. The flow is never changed silently.
+3. Same decisions: nothing to do. Different: the affected node's inspector shows what changed and waits. The flow is never changed silently.
 
 **Hand edits**
 
@@ -291,7 +291,7 @@ Each step is test-first, using penguins as the fixture.
 | 3 | `impute` gains `most_frequent` for text columns | `plugins/clean` |
 | 4 | Pack loader: stage, needs, one owner per decision | Python |
 | 5 | Evaluate, store and Apply endpoints; build steps; compile; Gate B | Rust |
-| 6 | Decisions view: settings, table, overrides, Apply with diff | Web |
+| 6 | Node inspector: settings, decision table, evidence, overrides, Apply with diff, and linked Checks | Web |
 | 7 | Second rule (outliers) with no changes outside its folder | Proof |
 | 8 | Split pack (random, group, time), then evaluation pack | Next packs |
 
