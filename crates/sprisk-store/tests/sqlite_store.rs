@@ -657,3 +657,57 @@ async fn a_newer_run_that_has_not_made_the_step_s_outputs_keeps_the_older_ones()
         (&attempt.run_id, &artifact)
     );
 }
+
+/// A contract fixture with some fields replaced, so linked records agree on their ids.
+fn fixture_with<T: DeserializeOwned>(entity: &str, name: &str, fields: serde_json::Value) -> T {
+    let mut value: serde_json::Value = fixture(entity, name);
+    for (key, field) in fields.as_object().unwrap() {
+        value[key] = field.clone();
+    }
+    parse(&value.to_string()).unwrap()
+}
+
+/// A store holding one question, a base pipeline, a proposal for it and the applied decision.
+async fn store_with_decision() -> (SqliteStore, sprisk_contracts::MethodologyDecision) {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let question: sprisk_contracts::QuestionVersion = fixture_with(
+        "question_version",
+        "classification-all-fields.json",
+        serde_json::json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    store.insert_question_version(&question).await.unwrap();
+    let base: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    store.insert_pipeline_version(&base).await.unwrap();
+    let proposal: sprisk_contracts::DecisionProposal = fixture("decision_proposal", "split.json");
+    store.insert_methodology_proposal(&proposal).await.unwrap();
+    let applied: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1"}),
+    );
+    let decision: sprisk_contracts::MethodologyDecision =
+        fixture("methodology_decision", "applied.json");
+    store
+        .apply_methodology_decision(&decision, &applied, "key-0001")
+        .await
+        .unwrap();
+    (store, decision)
+}
+
+#[tokio::test]
+async fn methodology_decisions_are_found_by_their_ids_and_unknown_ids_are_left_out() {
+    let (store, decision) = store_with_decision().await;
+    let unknown: sprisk_contracts::MethodologyDecisionId =
+        "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+
+    let found = store
+        .methodology_decisions(&[decision.id.clone(), unknown])
+        .await
+        .unwrap();
+
+    assert_eq!(found, vec![decision]);
+}

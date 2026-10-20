@@ -6,9 +6,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, ArtifactId, Attempt, AttemptId, AttemptState, DecisionProposal, InvestigationId,
-    MethodologyDecision, MethodologyProposalId, NotebookId, NotebookVersion, NotebookVersionId,
-    PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus,
-    Timestamp, WorkerId,
+    MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, NotebookId, NotebookVersion,
+    NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Run,
+    RunId, RunStatus, Timestamp, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -209,6 +209,22 @@ impl SqliteStore {
         let rows: Vec<(String, String)> = sqlx::query_as(
             "SELECT id, body FROM methodology_decisions WHERE (?1 IS NULL OR pipeline_version_id = ?1) ORDER BY id DESC",
         ).bind(pipeline.map(|id| id.as_str())).fetch_all(&self.pool).await?;
+        parse_all(rows, "methodology decision")
+    }
+
+    /// The decisions with these ids, in id order. An unknown id is left out.
+    pub async fn methodology_decisions(
+        &self,
+        ids: &[MethodologyDecisionId],
+    ) -> Result<Vec<MethodologyDecision>, StoreError> {
+        let ids = serde_json::to_string(&ids.iter().map(|id| id.as_str()).collect::<Vec<_>>())?;
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM methodology_decisions \
+             WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id",
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
         parse_all(rows, "methodology decision")
     }
 
