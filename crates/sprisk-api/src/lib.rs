@@ -863,11 +863,11 @@ fn rule_for(operator: &str) -> Option<(&'static str, RuleInput)> {
             QuestionOnly,
         ),
         "sprisk.clean.impute" | "sprisk.clean.drop_missing" => {
-            ("methodology.supervised.missingness@1.0.0", TrainProfile)
+            ("methodology.supervised.missingness@1.1.0", TrainProfile)
         }
-        "sprisk.clean.scale" => ("methodology.supervised.feature_scaling@1.0.0", TrainProfile),
+        "sprisk.clean.scale" => ("methodology.supervised.feature_scaling@2.0.0", TrainProfile),
         "sprisk.clean.clip_outliers" => (
-            "methodology.supervised.outlier_treatment@1.0.0",
+            "methodology.supervised.outlier_treatment@2.0.0",
             TrainProfile,
         ),
         _ => return None,

@@ -1,7 +1,7 @@
 {
   "schema_version": "sprisk.decision_proposal/v1",
   "id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
-  "rule": "methodology.supervised.feature_scaling@1.0.0",
+  "rule": "methodology.supervised.feature_scaling@2.0.0",
   "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
   "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
   "subject_node_id": "scale",

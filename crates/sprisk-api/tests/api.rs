@@ -1681,7 +1681,7 @@ async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     assert_eq!(
         proposal["rule"],
-        "methodology.supervised.feature_scaling@1.0.0"
+        "methodology.supervised.feature_scaling@2.0.0"
     );
     assert_eq!(proposal["recommended_alternative_id"], "robust_scaling");
     let robust = proposal["alternatives"]

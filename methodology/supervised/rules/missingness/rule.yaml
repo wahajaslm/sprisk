@@ -2,7 +2,7 @@
 # Sprisk Methodology Rule: Missingness & Imputation Strategy
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.missingness@1.0.0
+id: methodology.supervised.missingness@1.1.0
 name: "Missing Data Treatment Strategy"
 stage: cleaning
 decides: cleaning.missingness_strategy

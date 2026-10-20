@@ -69,3 +69,9 @@ Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (
 
 ## Amendments
 - 2026-10-20: The `MethodologyRule` contract (`sprisk.methodology_rule/v1`) uses the names already in the rule packs: `provenance` for `source`, and `settings_schema` per alternative for the rule's settings. `needs` is optional until rules declare it. There is no `subject` field yet. Action fields (`type`, `fit_on`, `placement`) are free strings until the actions are reviewed. They become enums then, so a typo in a hard constraint cannot pass.
+- 2026-10-20: **A rule's version changes with anything that can change its decisions**, so a recorded decision names the logic that made it (rule 5).
+  - Major: an alternative is removed or renamed. A recorded alternative id must keep one meaning.
+  - Minor: anything else that can change a decision: what the rule reads, a threshold, a condition, `decide()`.
+  - Patch: wording of a reason, label or description only.
+  - The catalog keeps one version of each rule. A stored proposal from an older version still applies, since Apply reads the proposal and not the rule; resolving again uses the current version.
+  - First use: `feature_scaling` 2.0.0 (`none_tree_models` became `no_scaling`), `outlier_treatment` 2.0.0 (`clip_mean_sd` became `clip_iqr_fence`), `missingness` 1.1.0 (reads `flow.models_fill_gaps`).

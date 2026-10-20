@@ -2,7 +2,7 @@
 # Sprisk Methodology Rule: Numerical Feature Scaling
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.feature_scaling@1.0.0
+id: methodology.supervised.feature_scaling@2.0.0
 name: "Feature Scaling Strategy"
 stage: features
 decides: features.scaling_strategy

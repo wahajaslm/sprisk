@@ -2,7 +2,7 @@
 # Sprisk Methodology Rule: Outlier Treatment & Robustness
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.outlier_treatment@1.0.0
+id: methodology.supervised.outlier_treatment@2.0.0
 name: "Outlier Treatment Strategy"
 stage: cleaning
 decides: cleaning.outlier_strategy

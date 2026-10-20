@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from sprisk_contracts import RuleObservation
 from sprisk_workers.rule import load_decide
 
@@ -18,18 +20,19 @@ def decide(
     settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     pack, rule = pack_rule.split("/")
+    folder = PACKS / pack / "rules" / rule
     observation = RuleObservation.model_validate_json(
         json.dumps(
             {
                 "schema_version": "sprisk.rule_observation/v1",
-                "rule": f"methodology.{pack}.{rule}@1.0.0",
+                "rule": yaml.safe_load((folder / "rule.yaml").read_text())["id"],
                 "facts": {k: {"value": v, "origin": o} for k, (v, o) in (facts or {}).items()},
                 "profile": profile or {},
                 "settings": settings or {},
             }
         )
     )
-    decision = load_decide(PACKS / pack / "rules" / rule / "rule.py")(observation)
+    decision = load_decide(folder / "rule.py")(observation)
     result: dict[str, Any] = json.loads(decision.model_dump_json())
     return result
 
