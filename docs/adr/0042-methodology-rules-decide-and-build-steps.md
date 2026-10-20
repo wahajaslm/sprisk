@@ -76,3 +76,4 @@ Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (
   - The catalog keeps one version of each rule. A stored proposal from an older version still applies, since Apply reads the proposal and not the rule; resolving again uses the current version.
   - First use: `feature_scaling` 2.0.0 (`none_tree_models` became `no_scaling`), `outlier_treatment` 2.0.0 (`clip_mean_sd` became `clip_iqr_fence`), `missingness` 1.1.0 (reads `flow.models_fill_gaps`).
 - 2026-10-20: **`action.type` is an enum** (`RuleActionType`) of the eleven types the packs use. Rust builds effects for `replace_node` and `remove_node` (ADR-0043); a misspelled type now fails when the pack loads instead of passing as a silent no-op. The other action fields stay free strings.
+- 2026-10-20: ADR-0045 makes every field of an active rule's manifest used by the system: `status`, `applies_to`, `reads` and `examples`; `condition` and `observes` stay only in drafts.

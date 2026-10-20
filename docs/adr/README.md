@@ -46,6 +46,7 @@
 | [0042](0042-methodology-rules-decide-and-build-steps.md) | Methodology rules observe, decide, and build steps | Accepted |
 | [0043](0043-a-decision-can-remove-a-step.md) | A methodology decision can remove a step | Accepted |
 | [0044](0044-model-shortlist-and-cross-validated-selection.md) | Models are shortlisted by a rule and chosen by cross-validation | Accepted |
+| [0045](0045-rule-manifests-hold-only-what-the-system-uses.md) | A rule manifest holds only what the system uses | Accepted |
 
 ## Open questions (arch doc §17)
 
