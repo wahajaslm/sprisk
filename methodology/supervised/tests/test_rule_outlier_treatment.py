@@ -180,9 +180,15 @@ def test_a_family_with_no_written_reason_fails_loudly() -> None:
         run(MANY, flow("neural", "all", "all"))
 
 
-def test_keeping_values_is_not_offered_while_another_step_reads_the_output() -> None:
+def test_keeping_values_asks_first_while_another_step_reads_the_output() -> None:
     d = run(MANY, {**FOREST, **readers("profile")})
     keep = alternative(d, "none_tree_or_clean")
-    assert keep["applicability"] == "not_applicable"
+    assert keep["applicability"] == "needs_fact"
     assert "profile" in keep["reason"]
-    assert d["recommended_alternative_id"] == "clip_iqr_fence"
+    assert d["recommended_alternative_id"] == "none_tree_or_clean"
+
+
+def test_a_profile_reading_few_outliers_does_not_make_the_rule_clip() -> None:
+    few = column("income", iqr=1.0, outlier_share=0.01)
+    d = run(few, readers("summary"))
+    assert d["recommended_alternative_id"] == "none_tree_or_clean"

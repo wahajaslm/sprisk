@@ -141,11 +141,11 @@ def test_a_hidden_model_alone_is_not_said_to_fill_no_gaps() -> None:
     assert "known to fill" in alternative(d, "pass_through")["reason"]
 
 
-def test_passing_gaps_is_not_offered_while_another_step_reads_the_output() -> None:
+def test_passing_gaps_asks_first_while_another_step_reads_the_output() -> None:
     d = run(column("age", missing_share=0.1, skewness=0.2), {**FOREST, **readers("knn")})
-    assert alternative(d, "pass_through")["applicability"] == "not_applicable"
+    assert alternative(d, "pass_through")["applicability"] == "needs_fact"
     assert "knn" in alternative(d, "pass_through")["reason"]
-    assert d["recommended_alternative_id"] == "impute_mean"
+    assert d["recommended_alternative_id"] == "pass_through"
 
 
 def test_passing_gaps_says_the_models_fill_replaces_this_steps_fill() -> None:
@@ -153,12 +153,11 @@ def test_passing_gaps_says_the_models_fill_replaces_this_steps_fill() -> None:
     assert "replaces this step's mean fill" in alternative(d, "pass_through")["reason"]
 
 
-def test_a_zero_fill_asks_before_the_models_fill_replaces_it() -> None:
+def test_a_zero_fill_asks_before_any_other_fill_replaces_it() -> None:
     d = run(column("age", missing_share=0.1, skewness=0.2), {**FOREST, **step(method="zero")})
-    passing = alternative(d, "pass_through")
-    assert passing["applicability"] == "needs_fact"
-    assert "zero" in passing["reason"]
-    assert d["recommended_alternative_id"] != "pass_through"
+    for id in ("pass_through", "impute_mean", "impute_median"):
+        assert alternative(d, id)["applicability"] == "needs_fact", id
+        assert "zero" in alternative(d, id)["reason"], id
 
 
 def test_a_column_that_may_be_the_target_asks_before_any_fill() -> None:

@@ -37,7 +37,7 @@ observes:
     description: "Whether all, some or none of the models downstream fill gaps themselves on the train rows, from their manifests. Absent when no model is downstream."
     required: false
   - fact: flow.other_readers
-    description: "Other steps that read this step's output directly (a code or profile step), joined by ', '. While any exist, removing the step is not offered: it would change what they see."
+    description: "The analysis or code steps downstream, which read this step's output, joined by ', '. While any exist, an alternative that removes the step asks first: removing it changes what they see."
     required: false
   - fact: step.method
     description: "This step's own method, as set. A zero fill may carry meaning, so replacing it asks first."
@@ -56,7 +56,7 @@ alternatives:
   - id: drop_rows
     label: Drop Rows With Missing Values
     description: Remove every row with a gap in these columns, in train and test alike.
-    condition: question.target (confirmed or inferred) is among the columns, OR (a column is not numeric AND removing this step is not applicable)
+    condition: question.target (confirmed or inferred) is among the columns, OR (a column is not numeric AND flow.models_fill_gaps != 'all')
     rationale: A missing target must never be filled. Text columns cannot be imputed yet. Dropping rows
       shrinks the data and can bias it if gaps are not random.
     action:
@@ -65,7 +65,7 @@ alternatives:
   - id: impute_median
     label: Median Imputation (train rows)
     description: Fill each gap with the column's median over the train rows only.
-    condition: question.target is not inferred among the columns AND column_data_type == 'numerical' AND column_skewness > skewness_threshold
+    condition: question.target is not inferred among the columns AND column_data_type == 'numerical' AND column_skewness > skewness_threshold; asks first when step.method == 'zero'
     rationale: Skewed values pull the mean; the median is robust to them. The impute step cannot add a missing-indicator
       column yet, so an informative gap loses that signal.
     action:
@@ -74,7 +74,7 @@ alternatives:
   - id: impute_mean
     label: Mean Imputation
     description: Fill each gap with the column's mean over the train rows only.
-    condition: question.target is not inferred among the columns AND column_data_type == 'numerical' AND column_skewness <= skewness_threshold
+    condition: question.target is not inferred among the columns AND column_data_type == 'numerical' AND column_skewness <= skewness_threshold; asks first when step.method == 'zero'
     rationale: For roughly symmetric values. It shrinks variance and weakens correlations, more so as the
       missing share grows.
     action:
@@ -101,7 +101,7 @@ alternatives:
   - id: pass_through
     label: No Imputation Here (Models Fill Their Own Gaps)
     description: Leave the gaps for the models downstream, which fill numbers and text themselves.
-    condition: flow.models_fill_gaps == 'all' AND question.target (confirmed or inferred) is not among the columns AND flow.other_readers is absent AND step.method != 'zero'
+    condition: flow.models_fill_gaps == 'all' AND question.target (confirmed or inferred) is not among the columns; asks first while flow.other_readers is present or step.method == 'zero'
     rationale: Each model downstream fits its fill on its train rows only, so filling here first adds
       nothing. A target with gaps still means dropping rows, since a label is never filled.
     action:

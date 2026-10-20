@@ -10,6 +10,7 @@ from typing import Any
 from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_workers.rule import (
     applicable,
+    ask_readers,
     authoritative,
     decision,
     flow_evidence,
@@ -18,7 +19,6 @@ from sprisk_workers.rule import (
     measured,
     needs_fact,
     not_applicable,
-    other_readers,
     profile_evidence,
     question_evidence,
     required,
@@ -54,13 +54,25 @@ def decide(observation: RuleObservation) -> RuleDecision:
     text_gaps = f"The impute step fills numbers only; {', '.join(text)} is text."
     blocked = target_gaps if has_target else text_gaps if text else None
     ask = confirm if may_be_target else None
+    method_now = flow_fact(observation, "step.method")
+
+    def asks(method: str) -> str | None:
+        if ask:
+            return ask
+        if method_now == "zero":
+            return (
+                "This step fills gaps with zero, which may mean 'none' here. Confirm that a "
+                f"{method} fill may replace it."
+            )
+        return None
+
     median = _impute(
         "impute_median",
         "Some columns are skewed, which pulls the mean; the median is robust to that.",
         "median",
         columns,
         blocked,
-        ask,
+        asks("median"),
     )
     mean = _impute(
         "impute_mean",
@@ -68,7 +80,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
         "mean",
         columns,
         blocked,
-        ask,
+        asks("mean"),
     )
     drop_rows = applicable(
         "drop_rows",
@@ -89,19 +101,16 @@ def decide(observation: RuleObservation) -> RuleDecision:
         if mostly_empty
         else "No column is mostly empty.",
     )
-    readers = other_readers(observation)
     if has_target:
         pass_through = not_applicable("pass_through", target_gaps)
     elif ask:
         pass_through = needs_fact("pass_through", ask)
-    elif readers:
-        pass_through = not_applicable("pass_through", readers)
     else:
-        pass_through = _pass_through(fills, flow_fact(observation, "step.method"))
+        pass_through = ask_readers(observation, _pass_through(fills, method_now))
 
     if has_target or may_be_target:
         recommended = "drop_rows"
-    elif pass_through["applicability"] == "applicable":
+    elif pass_through["applicability"] != "not_applicable":
         recommended = "pass_through"
     elif text:
         recommended = "drop_rows"

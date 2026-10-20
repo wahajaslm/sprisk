@@ -572,3 +572,19 @@ fn the_steps_own_text_settings_are_facts_so_a_rule_knows_what_it_does_now() {
     assert_eq!(facts["step.method"]["origin"], "explicit");
     assert!(facts.get("step.columns").is_none());
 }
+
+#[test]
+fn an_analysis_step_behind_a_model_still_reads_the_columns() {
+    let pipeline = flow(
+        &[
+            ("clip", "clean.clip_outliers"),
+            ("db", "clustering.dbscan"),
+            ("summary", "profile.summarize"),
+        ],
+        &[("clip.train", "db.data"), ("db.clusters", "summary.data")],
+    );
+    assert_eq!(
+        facts_of(&pipeline, "clip")["flow.other_readers"]["value"],
+        "summary"
+    );
+}

@@ -60,8 +60,8 @@ pub fn observation(
 /// - `flow.models_hidden`: whether `all`, `some` or `none` of the models are hidden;
 /// - `flow.models_fill_gaps`, `flow.models_standardize`: whether `all`, `some` or `none` of
 ///   them do that preparation themselves. A hidden model counts as doing none;
-/// - `flow.other_readers`: other steps that read the columns directly (a code or profile
-///   step), sorted and joined by `, `. Removing the step would change what they see;
+/// - `flow.other_readers`: the analysis or code steps downstream, which read the columns,
+///   sorted and joined by `, `. Removing the step would change what they see;
 /// - `step.<name>`: each text setting of the step itself, as set, so a rule knows what it
 ///   does now.
 ///
@@ -139,8 +139,8 @@ struct Downstream<'a> {
     seen: Vec<&'a OperatorModel>,
     /// How many models are reached through a step that does not.
     hidden: usize,
-    /// Other steps that read the columns directly: not models, preparation or evaluators.
-    /// Removing the step would change what they see.
+    /// Analysis or code steps that read the columns. Removing the step would change what
+    /// they see.
     readers: BTreeSet<String>,
 }
 
@@ -187,10 +187,8 @@ fn downstream<'a>(
                 } else {
                     seen.insert(next, model);
                 }
-            } else if !behind
-                && !keeps(node)
-                && operator.capability_class != CapabilityClass::Evaluator
-            {
+            } else if operator.capability_class == CapabilityClass::Analyzer {
+                // An analysis or code step reads the columns, even behind another step.
                 readers.insert(node.id.as_str().to_owned());
             }
             // A model's output may carry the columns on (a clustering step adds a label to

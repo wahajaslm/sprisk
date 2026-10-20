@@ -133,9 +133,9 @@ def test_a_flat_iqr_column_is_left_out_of_robust_scaling_not_the_heavy_one() -> 
     assert "Left out: flag has no IQR spread" in robust["reason"]
 
 
-def test_no_scaling_is_not_offered_while_another_step_reads_the_output() -> None:
+def test_no_scaling_asks_first_while_another_step_reads_the_output() -> None:
     d = run(LIGHT, {**FOREST, **readers("knn")})
     none = alternative(d, "no_scaling")
-    assert none["applicability"] == "not_applicable"
+    assert none["applicability"] == "needs_fact"
     assert "knn" in none["reason"]
-    assert d["recommended_alternative_id"] == "standard_scaling"
+    assert d["recommended_alternative_id"] == "no_scaling"

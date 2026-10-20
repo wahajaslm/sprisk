@@ -10,6 +10,7 @@ from typing import Any
 from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_workers.rule import (
     applicable,
+    ask_readers,
     decision,
     flow_evidence,
     flow_fact,
@@ -17,7 +18,6 @@ from sprisk_workers.rule import (
     measured,
     model_families,
     not_applicable,
-    other_readers,
     profile_evidence,
     step_columns,
 )
@@ -52,7 +52,6 @@ def decide(observation: RuleObservation) -> RuleDecision:
         or outliers.get(c, 0.0) >= s["outlier_share_threshold"]
     ]
     no_effect = _no_effect(families, hidden, standardize)
-    blocked = other_readers(observation)
 
     if text or flat:
         why = (
@@ -81,18 +80,14 @@ def decide(observation: RuleObservation) -> RuleDecision:
             else "Available, but outliers inflate the SD and squash the other values.",
             {"columns": columns, "method": "z_score"},
         )
-    none = (
-        not_applicable("no_scaling", blocked)
-        if blocked
-        else _no_scaling(families, hidden, standardize, no_effect)
-    )
+    none = ask_readers(observation, _no_scaling(families, hidden, standardize, no_effect))
     maxabs = not_applicable("maxabs_scaling_sparse", "The scale step has no max-abs method.")
 
     evidence = flow_evidence(observation, [FAMILIES, HIDDEN, STANDARDIZE, READERS])
     evidence += [profile_evidence(f"{c} excess kurtosis", f"{v:.2f}") for c, v in kurtosis.items()]
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in outliers.items()]
     evidence += [profile_evidence(f"{c} IQR", "0") for c in flat_iqr]
-    if no_effect and not blocked:
+    if no_effect:
         recommended = "no_scaling"
     elif heavy:
         recommended = "robust_scaling"

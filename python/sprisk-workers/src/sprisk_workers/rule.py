@@ -120,12 +120,17 @@ def flow_fact(observation: RuleObservation, name: str) -> str | None:
     return None if fact is None else fact.value
 
 
-def other_readers(observation: RuleObservation) -> str | None:
-    """Why removing the step is not safe: the other steps that read its output, if any."""
+def ask_readers(observation: RuleObservation, alternative: dict[str, Any]) -> dict[str, Any]:
+    """An applicable alternative that removes the step, made to ask first while an analysis or
+    code step reads the step's output: removing it changes what that step sees."""
     readers = flow_fact(observation, "flow.other_readers")
-    if readers is None:
-        return None
-    return f"{readers} also reads this step's output; removing the step would change what it sees."
+    if readers is None or alternative["applicability"] != "applicable":
+        return alternative
+    return needs_fact(
+        alternative["id"],
+        f"{alternative['reason']} Confirm first: {readers} also reads this step's output, and "
+        "removing the step changes what it sees.",
+    )
 
 
 def model_families(observation: RuleObservation) -> set[str]:

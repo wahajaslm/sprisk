@@ -7,6 +7,7 @@ from typing import Any
 from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_workers.rule import (
     applicable,
+    ask_readers,
     authoritative,
     decision,
     flow_evidence,
@@ -15,7 +16,6 @@ from sprisk_workers.rule import (
     model_families,
     needs_fact,
     not_applicable,
-    other_readers,
     profile_evidence,
     question_evidence,
     step_columns,
@@ -68,12 +68,10 @@ def decide(observation: RuleObservation) -> RuleDecision:
             f" {target} is the target: its outliers pull squared-error fits, trees included, "
             "but clipping it would change the labels."
         )
-    blocked = other_readers(observation)
     # Removing the clip step needs no params (ADR-0043).
-    keep = (
-        not_applicable("none_tree_or_clean", blocked)
-        if blocked
-        else {"id": "none_tree_or_clean", "applicability": "applicable", "reason": keep_reason}
+    keep = ask_readers(
+        observation,
+        {"id": "none_tree_or_clean", "applicability": "applicable", "reason": keep_reason},
     )
     if maybe_target in columns:
         clip = needs_fact(
@@ -97,12 +95,11 @@ def decide(observation: RuleObservation) -> RuleDecision:
         evidence += question_evidence(observation, weighed)
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in share.items()]
     evidence += [profile_evidence(f"{c} IQR", "0") for c in flat]
-    wants_clip = many and not unpulled and maybe_target not in columns
-    # With keeping blocked, the clip step as it stands is the choice left.
-    keep_blocked = blocked and clip["applicability"] == "applicable"
     return decision(
         observation,
-        "clip_iqr_fence" if wants_clip or keep_blocked else "none_tree_or_clean",
+        "clip_iqr_fence"
+        if many and not unpulled and maybe_target not in columns
+        else "none_tree_or_clean",
         [keep, clip, isolation],
         evidence,
     )
