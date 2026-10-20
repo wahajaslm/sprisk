@@ -351,7 +351,7 @@ Architecturally represent source triggers, microbatch boundaries, watermark/late
 
 # 11. Experiments, evaluation and optimization
 
-**Study** = comparable candidate pipelines under an explicit protocol. **TrialSpec** = immutable configuration. **TrialAttempt** = actual worker run/retry. **TrialResult** = accepted attempt's evidence. **SelectionDecision** = authorized choice, not a sorting operation.
+**Study** (ADR-0044: a TrialSpec is a cross-validate step and its attempt; SelectionDecision is the select step's output) = = comparable candidate pipelines under an explicit protocol. **TrialSpec** = immutable configuration. **TrialAttempt** = actual worker run/retry. **TrialResult** = accepted attempt's evidence. **SelectionDecision** = authorized choice, not a sorting operation.
 
 | Contract | Required contents |
 |---|---|

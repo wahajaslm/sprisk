@@ -45,6 +45,7 @@
 | [0041](0041-notebook-delete-rename-and-streaming.md) | Notebooks can be deleted and renamed, and a cell's output shows while it runs | Accepted |
 | [0042](0042-methodology-rules-decide-and-build-steps.md) | Methodology rules observe, decide, and build steps | Accepted |
 | [0043](0043-a-decision-can-remove-a-step.md) | A methodology decision can remove a step | Accepted |
+| [0044](0044-model-shortlist-and-cross-validated-selection.md) | Models are shortlisted by a rule and chosen by cross-validation | Accepted |
 
 ## Open questions (arch doc §17)
 
