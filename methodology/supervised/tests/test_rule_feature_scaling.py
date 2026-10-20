@@ -97,7 +97,6 @@ def test_no_model_downstream_is_scaled_as_before_and_says_so() -> None:
 def test_a_model_behind_a_step_the_rules_cannot_see_keeps_scaling_in_play() -> None:
     d = run(LIGHT, flow("tree_ensemble", "some", "some", hidden="some"))
     assert d["recommended_alternative_id"] == "standard_scaling", "seen trees do not vouch for it"
-    assert d["recommended_alternative_id"] == "standard_scaling"
     assert "known to standardise" in alternative(d, "no_scaling")["reason"]
 
 

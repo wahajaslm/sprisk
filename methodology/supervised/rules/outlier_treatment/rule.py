@@ -115,7 +115,8 @@ def _keep_reason(
         return "Few values fall outside the IQR fences: keep them as they are."
     if hidden is None:
         return "Keeps every value. Whether outliers matter is unclear: no model is downstream yet."
-    pulls = [PULLED[f] for f in sorted(families) if f in PULLED]
+    # A family in neither table raises: a new family needs its reason written first.
+    pulls = [PULLED[f] for f in sorted(families) if f not in UNPULLED]
     if hidden != "none":
         pulls.append(BEHIND)
     return f"Keeps every value, but {'; '.join(pulls)}."

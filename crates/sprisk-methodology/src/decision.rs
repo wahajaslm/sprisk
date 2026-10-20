@@ -255,7 +255,8 @@ pub fn without_node(
 }
 
 /// The proposal for `node_id`: each decided alternative with the manifest's label and
-/// description, and, where applicable, a `replace_node` effect with the manifest's operator.
+/// description, and, where applicable, its effect: `replace_node` with the manifest's
+/// operator, or `remove_node` when the manifest's action says so (ADR-0043).
 pub fn proposal(
     rule: &MethodologyRule,
     decision: &RuleDecision,

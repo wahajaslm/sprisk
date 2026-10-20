@@ -1094,7 +1094,7 @@ class RuleObservation(StrictModel):
     facts: Annotated[
         dict[str, Fact],
         Field(
-            description="Facts by name: question facts, e.g. question.time_column, and facts read from the flow, e.g. flow.model_family."
+            description="Facts by name: question facts, e.g. question.time_column, and facts read from the flow, e.g. flow.model_families. A fact that lists several values joins them, sorted, with ', '."
         ),
     ]
     profile: Annotated[

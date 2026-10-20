@@ -1,5 +1,6 @@
 from typing import Any
 
+import pytest
 from rule_harness import CLUSTERING, FOREST, LINEAR, alternative, column, decide, flow
 
 RULE = "supervised/outlier_treatment"
@@ -172,3 +173,8 @@ def test_the_task_is_evidence_only_when_it_was_weighed() -> None:
     }
     d = run(quiet, REGRESSION)
     assert not any(e["label"] == "Task" for e in d["evidence"])
+
+
+def test_a_family_with_no_written_reason_fails_loudly() -> None:
+    with pytest.raises(KeyError):
+        run(MANY, flow("neural", "all", "all"))
