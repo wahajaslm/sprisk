@@ -827,7 +827,7 @@ export interface RuleObservation {
   schema_version: "sprisk.rule_observation/v1";
   rule: MethodologyRuleRef;
   /**
-   * Question facts by name, e.g. question.time_column.
+   * Facts by name: question facts, e.g. question.time_column, and facts read from the flow, e.g. flow.model_family.
    */
   facts: {
     [k: string]: Fact;
@@ -893,7 +893,7 @@ export interface Params1 {
  * via the `definition` "MethodologyEvidence".
  */
 export interface MethodologyEvidence {
-  kind: "question_fact" | "profile_fact" | "policy" | "user_reason";
+  kind: "question_fact" | "profile_fact" | "flow_fact" | "policy" | "user_reason";
   label: string;
   value: string;
   origin: Origin;

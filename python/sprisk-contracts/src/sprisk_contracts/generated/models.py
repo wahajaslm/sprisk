@@ -447,6 +447,7 @@ class MethodologyRuleSource(StrictModel):
 class Kind2(StrEnum):
     question_fact = "question_fact"
     profile_fact = "profile_fact"
+    flow_fact = "flow_fact"
     policy = "policy"
     user_reason = "user_reason"
 
@@ -1129,7 +1130,10 @@ class RuleObservation(StrictModel):
     schema_version: Literal["sprisk.rule_observation/v1"]
     rule: MethodologyRuleRef
     facts: Annotated[
-        dict[str, Fact], Field(description="Question facts by name, e.g. question.time_column.")
+        dict[str, Fact],
+        Field(
+            description="Facts by name: question facts, e.g. question.time_column, and facts read from the flow, e.g. flow.model_family."
+        ),
     ]
     profile: Annotated[
         dict[str, float | str | bool], Field(description="Measured profile values by name.")

@@ -1098,7 +1098,7 @@
         },
         "facts": {
           "type": "object",
-          "description": "Question facts by name, e.g. question.time_column.",
+          "description": "Facts by name: question facts, e.g. question.time_column, and facts read from the flow, e.g. flow.model_family.",
           "additionalProperties": {
             "$ref": "#/$defs/Fact"
           }
@@ -1497,6 +1497,7 @@
           "enum": [
             "question_fact",
             "profile_fact",
+            "flow_fact",
             "policy",
             "user_reason"
           ]

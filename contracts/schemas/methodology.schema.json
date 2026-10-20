@@ -22,7 +22,7 @@
         },
         "facts": {
           "type": "object",
-          "description": "Question facts by name, e.g. question.time_column.",
+          "description": "Facts by name: question facts, e.g. question.time_column, and facts read from the flow, e.g. flow.model_family.",
           "additionalProperties": {
             "$ref": "#/$defs/Fact"
           }
@@ -377,7 +377,7 @@
       "additionalProperties": false,
       "required": ["kind", "label", "value", "origin"],
       "properties": {
-        "kind": { "type": "string", "enum": ["question_fact", "profile_fact", "policy", "user_reason"] },
+        "kind": { "type": "string", "enum": ["question_fact", "profile_fact", "flow_fact", "policy", "user_reason"] },
         "label": { "type": "string", "minLength": 1 },
         "value": { "type": "string", "minLength": 1 },
         "origin": { "$ref": "#/$defs/Origin" },
