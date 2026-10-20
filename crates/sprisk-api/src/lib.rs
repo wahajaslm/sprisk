@@ -863,8 +863,9 @@ async fn propose_split(
 }
 
 const SPLIT_RULE: &str = "methodology.supervised.data_split@1.0.0";
+const CLUSTERING_RULE: &str = "methodology.unsupervised.clustering_algorithm@1.0.0";
 
-/// The split rule's proposal for `node_id`, decided by its Python `decide()`.
+/// The split rule's proposal for a split step.
 async fn decide_split(
     state: &AppState,
     question: &QuestionVersion,
@@ -892,11 +893,37 @@ async fn decide_split(
             node_id.to_owned(),
         )));
     }
-    let rule = state.rules.rule(SPLIT_RULE)?;
+    decide_by_rule(
+        state,
+        SPLIT_RULE,
+        question,
+        pipeline,
+        node_id,
+        proposal_id,
+        at,
+    )
+    .await
+}
+
+/// A rule's proposal for `node_id`, decided by the rule's Python `decide()` (ADR-0042).
+async fn decide_by_rule(
+    state: &AppState,
+    rule_ref: &str,
+    question: &QuestionVersion,
+    pipeline: &PipelineVersion,
+    node_id: &str,
+    proposal_id: &str,
+    at: &str,
+) -> Result<DecisionProposal, ApiError> {
+    let not_applicable = |error: sprisk_methodology::ResolveError| ApiError::BadRequest {
+        code: "methodology_not_applicable",
+        message: error.to_string(),
+    };
+    let rule = state.rules.rule(rule_ref)?;
     let observation = sprisk_methodology::observation(rule, question).map_err(not_applicable)?;
     let decision = state
         .rule_runner
-        .decide(state.rules.module(SPLIT_RULE)?, &observation)
+        .decide(state.rules.module(rule_ref)?, &observation)
         .await
         .map_err(ApiError::Rule)?;
     sprisk_methodology::proposal(
@@ -939,22 +966,22 @@ async fn propose_node_methodology(
     let at = now();
 
     let proposal = if node.operator.as_str().contains("split@") {
-        Ok(decide_split(&state, &question, &pipeline, &node_id, &proposal_id, &at).await?)
+        decide_split(&state, &question, &pipeline, &node_id, &proposal_id, &at).await?
     } else if node.operator.as_str().contains("clustering.")
         || node.operator.as_str().contains("kmeans")
         || node.operator.as_str().contains("dbscan")
         || node.operator.as_str().contains("gmm")
     {
-        sprisk_methodology::resolve_clustering(
+        decide_by_rule(
+            &state,
+            CLUSTERING_RULE,
             &question,
             &pipeline,
             &node_id,
             &proposal_id,
             &at,
-            None,
-            false,
-            false,
         )
+        .await?
     } else if ["impute@", "drop_missing@", "scale@", "clip_outliers@"]
         .iter()
         .any(|op| node.operator.as_str().contains(op))
@@ -976,11 +1003,7 @@ async fn propose_node_methodology(
                 node.operator.as_str()
             ),
         });
-    }
-    .map_err(|error| ApiError::BadRequest {
-        code: "methodology_not_applicable",
-        message: error.to_string(),
-    })?;
+    };
 
     let value =
         serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;

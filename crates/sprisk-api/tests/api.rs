@@ -1524,14 +1524,21 @@ async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["recommended_alternative_id"], "kmeans");
-    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        proposal["recommended_alternative_id"],
+        "kmeans_centroid_clustering"
+    );
+    assert_eq!(
+        proposal["rule"],
+        "methodology.unsupervised.clustering_algorithm@1.0.0"
+    );
+    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 4);
 
     let uri = format!(
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
-    let request = json!({ "alternative_id": "dbscan", "idempotency_key": "test-apply-dbscan" });
+    let request = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-apply-dbscan" });
     let (status, applied) = call(&api.app, "POST", &uri, Some(request.clone())).await;
     assert_eq!(status, StatusCode::CREATED, "{applied}");
     assert_eq!(

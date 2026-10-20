@@ -40,6 +40,14 @@ observes:
 policy_thresholds:
   hierarchical_max_samples: 10000
   large_dataset_kmeans_cutoff: 50000
+  # Defaults, not measurements: the cluster count and neighbourhood rules check them.
+  n_clusters: 3
+  n_init: 10
+  max_iter: 300
+  seed: 42
+  eps: 0.5
+  min_samples: 5
+  covariance_type: full
 
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------
@@ -68,10 +76,6 @@ alternatives:
     action:
       type: replace_node
       operator: sprisk.clustering.kmeans@1.0.0
-      params:
-        n_clusters: "{settings.n_clusters}"
-        n_init: "{settings.n_init}"
-        max_iter: "{settings.max_iter}"
 
   - id: dbscan_density_clustering
     label: "DBSCAN Density-Based Spatial Clustering"
@@ -96,9 +100,6 @@ alternatives:
     action:
       type: replace_node
       operator: sprisk.clustering.dbscan@1.0.0
-      params:
-        eps: "{settings.eps}"
-        min_samples: "{settings.min_samples}"
 
   - id: hierarchical_agglomerative
     label: "Hierarchical Agglomerative Clustering (Ward Linkage)"
@@ -120,9 +121,6 @@ alternatives:
     action:
       type: replace_node
       operator: sprisk.clustering.hierarchical@1.0.0
-      params:
-        n_clusters: "{settings.n_clusters}"
-        linkage: "{settings.linkage}"
 
   - id: gaussian_mixture_models
     label: "Gaussian Mixture Models (EM Soft Probabilities)"
@@ -144,9 +142,6 @@ alternatives:
     action:
       type: replace_node
       operator: sprisk.clustering.gmm@1.0.0
-      params:
-        n_components: "{settings.n_components}"
-        covariance_type: "{settings.covariance_type}"
 
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------

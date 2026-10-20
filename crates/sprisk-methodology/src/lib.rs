@@ -10,7 +10,6 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{DecisionProposal, PipelineVersion, QuestionVersion, parse};
 
-pub const CLUSTERING_RULE: &str = "unsupervised.clustering_algorithm@1.0.0";
 pub const MISSINGNESS_RULE: &str = "supervised.missingness@1.0.0";
 pub const SCALING_RULE: &str = "supervised.feature_scaling@1.0.0";
 pub const OUTLIER_RULE: &str = "supervised.outlier_treatment@1.0.0";
@@ -33,84 +32,6 @@ pub enum ResolveError {
     Contract(#[from] sprisk_contracts::ContractError),
     #[error("could not serialize proposal input: {0}")]
     Json(#[from] serde_json::Error),
-}
-
-pub fn resolve_clustering(
-    question: &QuestionVersion,
-    pipeline: &PipelineVersion,
-    node_id: &str,
-    proposal_id: &str,
-    created_at: &str,
-    expected_geometry: Option<&str>,
-    soft_membership: bool,
-    has_noise: bool,
-) -> Result<DecisionProposal, ResolveError> {
-    let _node = pipeline
-        .nodes
-        .iter()
-        .find(|node| node.id.as_str() == node_id)
-        .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
-
-    let mut evidence = Vec::new();
-    if let Some(geom) = expected_geometry {
-        evidence.push(json!({"kind":"question_fact","label":"Cluster Geometry","value":geom,"origin":"confirmed"}));
-    }
-    if soft_membership {
-        evidence.push(json!({"kind":"question_fact","label":"Soft Membership","value":"true","origin":"confirmed"}));
-    }
-    if has_noise {
-        evidence.push(json!({"kind":"question_fact","label":"Noise Tolerance","value":"true","origin":"confirmed"}));
-    }
-
-    let kmeans = json!({
-        "id":"kmeans",
-        "label":"K-Means++ Centroid Clustering",
-        "description":"Partition observations into K convex Voronoi cells minimizing within-cluster inertia.",
-        "applicability":"applicable",
-        "reason": if expected_geometry == Some("non_convex") { "Available as a baseline, but assumes spherical convex clusters." } else { "Compact convex clusters without extreme background noise." },
-        "effect":{"kind":"replace_node","node_id":node_id,"operator":"sprisk.clustering.kmeans@1.0.0","params":{"n_clusters":3,"n_init":10,"max_iter":300}}
-    });
-
-    let dbscan = json!({
-        "id":"dbscan",
-        "label":"DBSCAN Density-Based Spatial Clustering",
-        "description":"Discover arbitrary non-convex clusters and isolate noise points into label -1.",
-        "applicability":"applicable",
-        "reason": if has_noise || expected_geometry == Some("non_convex") { "Recommended for non-spherical geometries or isolating noisy background points." } else { "Available density-based alternative." },
-        "effect":{"kind":"replace_node","node_id":node_id,"operator":"sprisk.clustering.dbscan@1.0.0","params":{"eps":0.5,"min_samples":5}}
-    });
-
-    let gmm = json!({
-        "id":"gmm",
-        "label":"Gaussian Mixture Models (EM Soft Probabilities)",
-        "description":"Fit a mixture of K multivariate Gaussian distributions with calibrated posterior probabilities.",
-        "applicability":"applicable",
-        "reason": if soft_membership { "Recommended: outputs calibrated probabilistic memberships for borderline samples." } else { "Available probabilistic clustering alternative." },
-        "effect":{"kind":"replace_node","node_id":node_id,"operator":"sprisk.clustering.gmm@1.0.0","params":{"n_components":3,"covariance_type":"full"}}
-    });
-
-    let recommended = if has_noise || expected_geometry == Some("non_convex") {
-        "dbscan"
-    } else if soft_membership {
-        "gmm"
-    } else {
-        "kmeans"
-    };
-
-    let fingerprint_input =
-        json!({"rule":CLUSTERING_RULE,"question":question,"pipeline":pipeline,"node_id":node_id});
-    let fingerprint = format!(
-        "sha256:{}",
-        hex::encode(Sha256::digest(serde_json::to_vec(&fingerprint_input)?))
-    );
-    let value = json!({
-        "schema_version":"sprisk.decision_proposal/v1", "id":proposal_id, "rule":CLUSTERING_RULE,
-        "question_version_id":question.id, "pipeline_version_id":pipeline.id,
-        "subject_node_id":node_id, "evidence":evidence,
-        "alternatives":[kmeans, dbscan, gmm],
-        "recommended_alternative_id":recommended, "fingerprint":fingerprint, "created_at":created_at
-    });
-    Ok(parse(&serde_json::to_string(&value)?)?)
 }
 
 pub fn resolve_missingness(
@@ -687,79 +608,6 @@ mod tests {
             "created_at": "2026-10-15T10:00:00Z"
         });
         parse(&val.to_string()).unwrap()
-    }
-
-    #[test]
-    fn test_resolve_clustering_kmeans_default() {
-        let question = make_test_question("exploration", None);
-        let pipeline = make_test_pipeline("cluster_1", "sprisk.clustering.kmeans@1.0.0");
-        let proposal = resolve_clustering(
-            &question,
-            &pipeline,
-            "cluster_1",
-            "mpr_01JABCDEFGHJKMNPQRSTVWXYZ3",
-            "2026-10-15T10:00:00Z",
-            Some("convex_spherical"),
-            false,
-            false,
-        )
-        .unwrap();
-        assert_eq!(
-            proposal
-                .recommended_alternative_id
-                .as_ref()
-                .map(|x| x.as_str()),
-            Some("kmeans")
-        );
-        assert_eq!(proposal.alternatives.len(), 3);
-    }
-
-    #[test]
-    fn test_resolve_clustering_dbscan_recommended_for_noise() {
-        let question = make_test_question("exploration", None);
-        let pipeline = make_test_pipeline("cluster_1", "sprisk.clustering.kmeans@1.0.0");
-        let proposal = resolve_clustering(
-            &question,
-            &pipeline,
-            "cluster_1",
-            "mpr_01JABCDEFGHJKMNPQRSTVWXYZ4",
-            "2026-10-15T10:00:00Z",
-            Some("non_convex"),
-            false,
-            true,
-        )
-        .unwrap();
-        assert_eq!(
-            proposal
-                .recommended_alternative_id
-                .as_ref()
-                .map(|x| x.as_str()),
-            Some("dbscan")
-        );
-    }
-
-    #[test]
-    fn test_resolve_clustering_gmm_recommended_for_soft_memberships() {
-        let question = make_test_question("exploration", None);
-        let pipeline = make_test_pipeline("cluster_1", "sprisk.clustering.kmeans@1.0.0");
-        let proposal = resolve_clustering(
-            &question,
-            &pipeline,
-            "cluster_1",
-            "mpr_01JABCDEFGHJKMNPQRSTVWXYZ5",
-            "2026-10-15T10:00:00Z",
-            None,
-            true,
-            false,
-        )
-        .unwrap();
-        assert_eq!(
-            proposal
-                .recommended_alternative_id
-                .as_ref()
-                .map(|x| x.as_str()),
-            Some("gmm")
-        );
     }
 
     #[test]
