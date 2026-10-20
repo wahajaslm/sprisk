@@ -11,10 +11,12 @@ use sprisk_cli::{Client, ServeConfig, pipeline_from_yaml, serve_on};
 use sprisk_contracts::{AttemptState, RunStatus};
 
 const NOW: &str = "2026-10-16T10:00:00Z";
-const NODES: [&str; 9] = [
+/// Every step, plus the control plane's checks: Gate B and the split's rows (ADR-0040).
+const NODES: [&str; 10] = [
     "baseline",
     "distributions",
     "gate_b",
+    "gate_split",
     "load",
     "model",
     "profile",
