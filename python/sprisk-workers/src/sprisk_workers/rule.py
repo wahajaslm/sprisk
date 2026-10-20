@@ -5,16 +5,66 @@ prints the RuleDecision. Rust picks the module from the loaded rule catalog.
 """
 
 import importlib.util
+import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
 from sprisk_contracts import RuleDecision, RuleObservation
+from sprisk_contracts.generated.models import Fact
 from sprisk_workers.errors import RuleError
 
 Decide = Callable[[RuleObservation], RuleDecision]
+
+
+def authoritative(fact: Fact | None) -> str | None:
+    """A fact's value when it may decide: an inferred fact only asks, never decides."""
+    if fact is None or fact.origin.value == "inferred":
+        return None
+    return fact.value
+
+
+def applicable(id: str, reason: str, params: dict[str, Any]) -> dict[str, Any]:
+    return {"id": id, "applicability": "applicable", "reason": reason, "params": params}
+
+
+def needs_fact(id: str, reason: str) -> dict[str, Any]:
+    return {"id": id, "applicability": "needs_fact", "reason": reason}
+
+
+def not_applicable(id: str, reason: str) -> dict[str, Any]:
+    return {"id": id, "applicability": "not_applicable", "reason": reason}
+
+
+def decision(
+    observation: RuleObservation,
+    recommended: str,
+    alternatives: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+) -> RuleDecision:
+    return RuleDecision.model_validate_json(
+        json.dumps(
+            {
+                "schema_version": "sprisk.rule_decision/v1",
+                "rule": observation.rule.root,
+                "recommended_alternative_id": recommended,
+                "alternatives": alternatives,
+                "evidence": evidence,
+            }
+        )
+    )
+
+
+def question_evidence(observation: RuleObservation, labels: dict[str, str]) -> list[dict[str, Any]]:
+    """The question facts a rule read, as evidence, in `labels` order."""
+    return [
+        {"kind": "question_fact", "label": label, "value": f.value, "origin": f.origin.value}
+        for name, label in labels.items()
+        if (f := observation.facts.get(name)) is not None
+    ]
 
 
 def load_decide(module_path: Path) -> Decide:

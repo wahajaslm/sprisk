@@ -4,11 +4,14 @@ Cluster counts, eps and seeds are settings, not measurements: each reason says s
 names the rule that should check the value.
 """
 
-import json
-from typing import Any
-
 from sprisk_contracts import RuleDecision, RuleObservation
-from sprisk_contracts.generated.models import Fact
+from sprisk_workers.rule import (
+    applicable,
+    authoritative,
+    decision,
+    not_applicable,
+    question_evidence,
+)
 
 LABELS = {
     "question.expected_cluster_geometry": "Expected cluster geometry",
@@ -20,11 +23,11 @@ LABELS = {
 def decide(observation: RuleObservation) -> RuleDecision:
     facts = observation.facts
     s = observation.settings
-    geometry = _authoritative(facts.get("question.expected_cluster_geometry"))
-    soft = _authoritative(facts.get("question.soft_clustering_required")) == "true"
-    noise = _authoritative(facts.get("question.noise_points_expected")) == "true"
+    geometry = authoritative(facts.get("question.expected_cluster_geometry"))
+    soft = authoritative(facts.get("question.soft_clustering_required")) == "true"
+    noise = authoritative(facts.get("question.noise_points_expected")) == "true"
 
-    kmeans = _applicable(
+    kmeans = applicable(
         "kmeans_centroid_clustering",
         f"Baseline for compact, convex clusters. K = {s['n_clusters']} is a setting, "
         "not measured: check it with the cluster count rule.",
@@ -35,16 +38,16 @@ def decide(observation: RuleObservation) -> RuleDecision:
             "seed": s["seed"],
         },
     )
-    dbscan = _applicable(
+    dbscan = applicable(
         "dbscan_density_clustering",
         f"Finds non-convex clusters and leaves noise unassigned. eps = {s['eps']} is a "
         "setting, not measured: check it with the neighbourhood rule.",
         {"eps": s["eps"], "min_samples": s["min_samples"]},
     )
-    hierarchical = _not_applicable(
+    hierarchical = not_applicable(
         "hierarchical_agglomerative", "No hierarchical clustering operator is installed."
     )
-    gmm = _applicable(
+    gmm = applicable(
         "gaussian_mixture_models",
         f"Gives each row a probability per cluster. {s['n_clusters']} components is a "
         "setting, not measured: check it with the cluster count rule.",
@@ -62,33 +65,9 @@ def decide(observation: RuleObservation) -> RuleDecision:
     else:
         recommended = "kmeans_centroid_clustering"
 
-    evidence = [
-        {"kind": "question_fact", "label": label, "value": f.value, "origin": f.origin.value}
-        for name, label in LABELS.items()
-        if (f := facts.get(name)) is not None
-    ]
-    return RuleDecision.model_validate_json(
-        json.dumps(
-            {
-                "schema_version": "sprisk.rule_decision/v1",
-                "rule": observation.rule.root,
-                "recommended_alternative_id": recommended,
-                "alternatives": [kmeans, dbscan, hierarchical, gmm],
-                "evidence": evidence,
-            }
-        )
+    return decision(
+        observation,
+        recommended,
+        [kmeans, dbscan, hierarchical, gmm],
+        question_evidence(observation, LABELS),
     )
-
-
-def _authoritative(fact: Fact | None) -> str | None:
-    if fact is None or fact.origin.value == "inferred":
-        return None
-    return fact.value
-
-
-def _applicable(id: str, reason: str, params: dict[str, Any]) -> dict[str, Any]:
-    return {"id": id, "applicability": "applicable", "reason": reason, "params": params}
-
-
-def _not_applicable(id: str, reason: str) -> dict[str, Any]:
-    return {"id": id, "applicability": "not_applicable", "reason": reason}

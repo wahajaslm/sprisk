@@ -4,11 +4,15 @@ Only confirmed, explicit or measured facts decide. An inferred column makes its 
 ask for confirmation instead of guessing.
 """
 
-import json
-from typing import Any
-
 from sprisk_contracts import RuleDecision, RuleObservation
-from sprisk_contracts.generated.models import Fact
+from sprisk_workers.rule import (
+    applicable,
+    authoritative,
+    decision,
+    needs_fact,
+    not_applicable,
+    question_evidence,
+)
 
 LABELS = {
     "question.target": "Target",
@@ -23,40 +27,40 @@ def decide(observation: RuleObservation) -> RuleDecision:
     settings = observation.settings
     fraction = settings["default_test_fraction"]
     seed = settings["default_seed"]
-    time = _authoritative(facts.get("question.time_column"))
-    entity = _authoritative(facts.get("question.entity_column"))
-    target = _authoritative(facts.get("question.target"))
-    task = _authoritative(facts.get("question.task"))
+    time = authoritative(facts.get("question.time_column"))
+    entity = authoritative(facts.get("question.entity_column"))
+    target = authoritative(facts.get("question.target"))
+    task = authoritative(facts.get("question.task"))
 
     temporal = (
-        _applicable(
+        applicable(
             "temporal",
             "A confirmed time column sets the prediction chronology: train on earlier rows.",
             {"time_column": time, "test_fraction": fraction},
         )
         if time
-        else _needs("temporal", "Confirm the time column before it can order the split.")
+        else needs_fact("temporal", "Confirm the time column before it can order the split.")
     )
     entity_group = (
-        _applicable(
+        applicable(
             "entity_group",
             "A confirmed entity key keeps each entity wholly in train or in test.",
             {"group_column": entity, "test_fraction": fraction, "seed": seed},
         )
         if entity
-        else _needs("entity_group", "Confirm the entity column before it can group the split.")
+        else needs_fact("entity_group", "Confirm the entity column before it can group the split.")
     )
     if task == "classification" and target:
-        stratified = _applicable(
+        stratified = applicable(
             "stratified_random",
             "Keeps each class's share the same in train and test.",
             {"stratify": target, "test_fraction": fraction, "seed": seed},
         )
     else:
-        stratified = _not_applicable(
+        stratified = not_applicable(
             "stratified_random", "Stratifying needs a confirmed classification target."
         )
-    simple = _applicable(
+    simple = applicable(
         "simple_random",
         "Shuffles rows with a fixed seed. It ignores any time or entity boundary.",
         {"test_fraction": fraction, "seed": seed},
@@ -71,37 +75,9 @@ def decide(observation: RuleObservation) -> RuleDecision:
     else:
         recommended = "simple_random"
 
-    evidence = [
-        {"kind": "question_fact", "label": label, "value": f.value, "origin": f.origin.value}
-        for name, label in LABELS.items()
-        if (f := facts.get(name)) is not None
-    ]
-    return RuleDecision.model_validate_json(
-        json.dumps(
-            {
-                "schema_version": "sprisk.rule_decision/v1",
-                "rule": observation.rule.root,
-                "recommended_alternative_id": recommended,
-                "alternatives": [temporal, entity_group, stratified, simple],
-                "evidence": evidence,
-            }
-        )
+    return decision(
+        observation,
+        recommended,
+        [temporal, entity_group, stratified, simple],
+        question_evidence(observation, LABELS),
     )
-
-
-def _authoritative(fact: Fact | None) -> str | None:
-    if fact is None or fact.origin.value == "inferred":
-        return None
-    return fact.value
-
-
-def _applicable(id: str, reason: str, params: dict[str, Any]) -> dict[str, Any]:
-    return {"id": id, "applicability": "applicable", "reason": reason, "params": params}
-
-
-def _needs(id: str, reason: str) -> dict[str, Any]:
-    return {"id": id, "applicability": "needs_fact", "reason": reason}
-
-
-def _not_applicable(id: str, reason: str) -> dict[str, Any]:
-    return {"id": id, "applicability": "not_applicable", "reason": reason}
