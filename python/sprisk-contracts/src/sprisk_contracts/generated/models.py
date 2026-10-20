@@ -336,84 +336,12 @@ class Observes1(StrictModel):
     required: bool
 
 
-class Action(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    type: Annotated[str, Field(min_length=1)]
-    operator: Annotated[
-        str | None,
-        Field(
-            description="Operator the action builds; may name one not yet registered.", min_length=1
-        ),
-    ] = None
-    placement: Annotated[str | None, Field(min_length=1)] = None
-    fit_on: Annotated[str | None, Field(min_length=1)] = None
-    apply_to: Annotated[str | None, Field(min_length=1)] = None
-    params: Annotated[
-        dict[str, Any] | None,
-        Field(
-            description="Operator params; '{settings.x}' strings are filled from the alternative's settings."
-        ),
-    ] = None
-
-
-class Alternative1(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
-    label: Annotated[str, Field(min_length=1)]
-    description: Annotated[str, Field(min_length=1)]
-    condition: Annotated[
-        str,
-        Field(
-            description="Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042)."
-        ),
-    ]
-    rationale: Annotated[str, Field(min_length=1)]
-    settings_schema: Annotated[
-        dict[str, Any] | None, Field(description="JSON Schema for this alternative's settings.")
-    ] = None
-    action: Action
-
-
 class Verification(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     check_id: Annotated[str, Field(min_length=1)]
     invariant: Annotated[str, Field(min_length=1)]
-
-
-class MethodologyRule(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.methodology_rule/v1"]
-    id: MethodologyRuleRef
-    name: Annotated[str, Field(min_length=1)]
-    stage: MethodologyStage
-    needs: Annotated[
-        list[Need] | None,
-        Field(
-            description="Facts and earlier decisions this rule reads, e.g. question.time_column; they order rules inside a stage (ADR-0042)."
-        ),
-    ] = None
-    decides: Annotated[
-        str,
-        Field(
-            description="The one decision this rule owns; unique across loaded packs.",
-            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
-        ),
-    ]
-    provenance: Provenance
-    observes: list[Observes | Observes1]
-    policy_thresholds: Annotated[
-        dict[str, Any], Field(description="Default thresholds the rule decides with.")
-    ]
-    alternatives: Annotated[list[Alternative1], Field(min_length=1)]
-    verification: Verification
 
 
 class Language(StrEnum):
@@ -450,6 +378,20 @@ class Kind2(StrEnum):
     flow_fact = "flow_fact"
     policy = "policy"
     user_reason = "user_reason"
+
+
+class RuleActionType(StrEnum):
+    replace_node = "replace_node"
+    remove_node = "remove_node"
+    insert_step = "insert_step"
+    pass_through = "pass_through"
+    update_estimator_params = "update_estimator_params"
+    configure_clustering_cardinality = "configure_clustering_cardinality"
+    configure_clustering_distance = "configure_clustering_distance"
+    configure_dbscan_params = "configure_dbscan_params"
+    configure_evaluation_params = "configure_evaluation_params"
+    emit_methodology_limitation = "emit_methodology_limitation"
+    enforce_compiler_invariant = "enforce_compiler_invariant"
 
 
 class GraphEffect1(StrictModel):
@@ -1162,6 +1104,78 @@ class RuleObservation(StrictModel):
         dict[str, Any],
         Field(description="The rule's settings: policy thresholds with any overrides."),
     ]
+
+
+class Action(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: RuleActionType
+    operator: Annotated[
+        str | None,
+        Field(
+            description="Operator the action builds; may name one not yet registered.", min_length=1
+        ),
+    ] = None
+    placement: Annotated[str | None, Field(min_length=1)] = None
+    fit_on: Annotated[str | None, Field(min_length=1)] = None
+    apply_to: Annotated[str | None, Field(min_length=1)] = None
+    params: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="Operator params; '{settings.x}' strings are filled from the alternative's settings."
+        ),
+    ] = None
+
+
+class Alternative1(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    label: Annotated[str, Field(min_length=1)]
+    description: Annotated[str, Field(min_length=1)]
+    condition: Annotated[
+        str,
+        Field(
+            description="Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042)."
+        ),
+    ]
+    rationale: Annotated[str, Field(min_length=1)]
+    settings_schema: Annotated[
+        dict[str, Any] | None, Field(description="JSON Schema for this alternative's settings.")
+    ] = None
+    action: Action
+
+
+class MethodologyRule(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.methodology_rule/v1"]
+    id: MethodologyRuleRef
+    name: Annotated[str, Field(min_length=1)]
+    stage: MethodologyStage
+    needs: Annotated[
+        list[Need] | None,
+        Field(
+            description="Facts and earlier decisions this rule reads, e.g. question.time_column; they order rules inside a stage (ADR-0042)."
+        ),
+    ] = None
+    decides: Annotated[
+        str,
+        Field(
+            description="The one decision this rule owns; unique across loaded packs.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ]
+    provenance: Provenance
+    observes: list[Observes | Observes1]
+    policy_thresholds: Annotated[
+        dict[str, Any], Field(description="Default thresholds the rule decides with.")
+    ]
+    alternatives: Annotated[list[Alternative1], Field(min_length=1)]
+    verification: Verification
 
 
 class MethodologyEvidence(StrictModel):

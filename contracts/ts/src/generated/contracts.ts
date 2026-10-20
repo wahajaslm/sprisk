@@ -119,6 +119,24 @@ export type MethodologyRuleRef = string;
 export type MethodologyStage =
   "question" | "data" | "cleaning" | "split" | "features" | "models" | "evaluation" | "reporting";
 /**
+ * What choosing an alternative does to the flow. Rust builds graph effects for replace_node and remove_node (ADR-0043); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuleActionType".
+ */
+export type RuleActionType =
+  | "replace_node"
+  | "remove_node"
+  | "insert_step"
+  | "pass_through"
+  | "update_estimator_params"
+  | "configure_clustering_cardinality"
+  | "configure_clustering_distance"
+  | "configure_dbscan_params"
+  | "configure_evaluation_params"
+  | "emit_methodology_limitation"
+  | "enforce_compiler_invariant";
+/**
  * Typed mutation previewed and compiled before it can create a pipeline version.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -983,7 +1001,7 @@ export interface MethodologyRule {
        */
       settings_schema?: {};
       action: {
-        type: string;
+        type: RuleActionType;
         /**
          * Operator the action builds; may name one not yet registered.
          */
@@ -1011,7 +1029,7 @@ export interface MethodologyRule {
        */
       settings_schema?: {};
       action: {
-        type: string;
+        type: RuleActionType;
         /**
          * Operator the action builds; may name one not yet registered.
          */

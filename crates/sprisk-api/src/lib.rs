@@ -26,11 +26,11 @@ use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
     CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
-    InvestigationId, LoadedTable, LoadedTableUse, MethodologyDecision, MethodologyProposalId,
-    MethodologyRule, MethodologyRuleSource, NotebookExecute, NotebookExecution,
-    NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
-    Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
-    QuestionVersionId, Run, RunId, parse,
+    GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyDecision,
+    MethodologyProposalId, MethodologyRule, MethodologyRuleSource, NotebookExecute,
+    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion,
+    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem,
+    QuestionVersion, QuestionVersionId, Run, RunId, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -1152,34 +1152,42 @@ fn materialize_effect(
             code: "no_effect",
             message: "this alternative cannot be applied until its facts are resolved".into(),
         })?;
-    let node_id = effect["node_id"]
-        .as_str()
-        .ok_or_else(|| ApiError::Internal("effect has no node id".into()))?;
+    let effect: GraphEffect = serde_json::from_value(effect.clone())
+        .map_err(|error| ApiError::Internal(format!("stored effect is invalid: {error}")))?;
     let mut value =
         serde_json::to_value(base).map_err(|error| ApiError::Internal(error.to_string()))?;
     value["id"] = json!(pipeline_id);
     value["parent_id"] = json!(base.id);
     value["created_at"] = json!(at);
-    if effect["kind"] == "remove_node" {
-        let (nodes, edges) =
-            sprisk_methodology::without_node(base, node_id).map_err(|e| ApiError::BadRequest {
-                code: "cannot_remove_step",
-                message: e.to_string(),
-            })?;
-        value["nodes"] = json!(nodes);
-        value["edges"] = json!(edges);
-        return parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()));
+    match effect {
+        GraphEffect::RemoveNode { node_id } => {
+            let (nodes, edges) =
+                sprisk_methodology::without_node(base, node_id.as_str()).map_err(|e| {
+                    ApiError::BadRequest {
+                        code: "cannot_remove_step",
+                        message: e.to_string(),
+                    }
+                })?;
+            value["nodes"] = json!(nodes);
+            value["edges"] = json!(edges);
+        }
+        GraphEffect::ReplaceNode {
+            node_id,
+            operator,
+            params,
+        } => {
+            let node = value["nodes"]
+                .as_array_mut()
+                .and_then(|nodes| nodes.iter_mut().find(|node| node["id"] == node_id.as_str()))
+                .ok_or_else(|| ApiError::BadRequest {
+                    code: "stale_proposal",
+                    message: format!("node {} is no longer present", node_id.as_str()),
+                })?;
+            node["operator"] = json!(operator);
+            node["params"] = json!(params);
+            node["methodology_decision_id"] = json!(decision_id);
+        }
     }
-    let node = value["nodes"]
-        .as_array_mut()
-        .and_then(|nodes| nodes.iter_mut().find(|node| node["id"] == node_id))
-        .ok_or_else(|| ApiError::BadRequest {
-            code: "stale_proposal",
-            message: format!("node {node_id} is no longer present"),
-        })?;
-    node["operator"] = effect["operator"].clone();
-    node["params"] = effect["params"].clone();
-    node["methodology_decision_id"] = json!(decision_id);
     parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()))
 }
 

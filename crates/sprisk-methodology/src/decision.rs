@@ -9,7 +9,8 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
     DatasetProfile, DecisionProposal, Edge, MethodologyRule, ModelPreparation, Node, Operator,
-    OperatorModel, PipelineVersion, PortRef, QuestionVersion, RuleDecision, RuleObservation, parse,
+    OperatorModel, PipelineVersion, PortRef, QuestionVersion, RuleActionType, RuleDecision,
+    RuleDecisionAlternativesItemApplicability, RuleObservation, parse,
 };
 
 use crate::ResolveError;
@@ -282,8 +283,11 @@ pub fn proposal(
             "applicability": decided.applicability,
             "reason": decided.reason,
         });
-        let applicable = decided.applicability.to_string() == "applicable";
-        if declared.action.type_.as_str() == "remove_node" {
+        let applicable = matches!(
+            decided.applicability,
+            RuleDecisionAlternativesItemApplicability::Applicable
+        );
+        if declared.action.type_ == RuleActionType::RemoveNode {
             if applicable {
                 built["effect"] = json!({ "kind": "remove_node", "node_id": node_id });
             }

@@ -296,7 +296,7 @@
                 ],
                 "additionalProperties": false,
                 "properties": {
-                  "type": { "type": "string", "minLength": 1 },
+                  "type": { "$ref": "#/$defs/RuleActionType" },
                   "operator": { "type": "string", "minLength": 1, "description": "Operator the action builds; may name one not yet registered." },
                   "placement": { "type": "string", "minLength": 1 },
                   "fit_on": { "type": "string", "minLength": 1 },
@@ -383,6 +383,23 @@
         "origin": { "$ref": "#/$defs/Origin" },
         "artifact_id": { "$ref": "#/$defs/ArtifactId" }
       }
+    },
+    "RuleActionType": {
+      "type": "string",
+      "description": "What choosing an alternative does to the flow. Rust builds graph effects for replace_node and remove_node (ADR-0043); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.",
+      "enum": [
+        "replace_node",
+        "remove_node",
+        "insert_step",
+        "pass_through",
+        "update_estimator_params",
+        "configure_clustering_cardinality",
+        "configure_clustering_distance",
+        "configure_dbscan_params",
+        "configure_evaluation_params",
+        "emit_methodology_limitation",
+        "enforce_compiler_invariant"
+      ]
     },
     "GraphEffect": {
       "description": "Typed mutation previewed and compiled before it can create a pipeline version.",
