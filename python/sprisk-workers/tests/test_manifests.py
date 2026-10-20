@@ -106,7 +106,10 @@ inputs: [{{ name: train, kind: table }}]
 outputs: [{{ name: model, kind: model }}]
 params_schema:
   type: object
-  properties: {{ target: {{ type: string }}, features: {{ type: array }}, task: {{ type: string }} }}
+  properties:
+    target: {{ type: string }}
+    features: {{ type: array }}
+    task: {{ type: string }}
 effects: pure
 network: none
 resources: {{ cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }}
