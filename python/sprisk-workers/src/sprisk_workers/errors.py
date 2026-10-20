@@ -17,3 +17,7 @@ class OperatorError(WorkerError):
 
 class ManifestError(WorkerError):
     """An operator manifest is invalid or its entrypoint cannot be loaded."""
+
+
+class RuleError(WorkerError):
+    """A methodology rule could not be loaded, or read or returned an invalid message."""
