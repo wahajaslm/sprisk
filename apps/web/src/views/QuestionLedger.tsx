@@ -5,6 +5,7 @@ import { usePipelineVersions, useSavePipelineVersion } from "../api/hooks.ts";
 import { useQuestionVersions, useSaveQuestionVersion } from "../api/questions.ts";
 import { timestamp } from "../flow/edit.ts";
 import { useSelection } from "../workbench/selection.ts";
+import { PageHeader } from "../components/ui/PageHeader.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 
 const EXAMPLE = {
@@ -35,14 +36,12 @@ export function QuestionLedger() {
 
   return (
     <main className="ledger">
-      <header className="ledger-head">
-        <div>
-          <p className="eyebrow">Investigation Atlas</p>
-          <h1>Question ledger</h1>
-          <p className="muted">What this analysis is trying to establish, preserved as immutable revisions.</p>
-        </div>
-        <button type="button" className="page-btn" onClick={() => setEditing("new")}>New question</button>
-      </header>
+      <PageHeader
+        eyebrow="Investigation Atlas"
+        title="Question ledger"
+        description="What this analysis is trying to establish, preserved as immutable revisions."
+        actions={<button type="button" className="page-btn" onClick={() => setEditing("new")}>New question</button>}
+      />
       {questions.isError && <p role="alert" className="error pad">{questions.error.message}</p>}
       {pipelines.isError && <p role="alert" className="error pad">{pipelines.error.message}</p>}
       {questions.isPending ? <Loading text="Loading question ledger…" pad /> : (

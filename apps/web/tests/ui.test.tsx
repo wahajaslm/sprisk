@@ -38,3 +38,11 @@ it("renders a row as a button with a title, a note and a state", () => {
   expect(row).toHaveAttribute("aria-current", "true");
   expect(row).toHaveTextContent(/today.*succeeded/);
 });
+
+it("a page header names the page, says what it is for and holds its actions", async () => {
+  const { PageHeader } = await import("../src/components/ui/PageHeader.tsx");
+  render(<PageHeader eyebrow="Atlas" title="Question ledger" description="What this analysis asks." actions={<button type="button">New</button>} />);
+  expect(screen.getByRole("heading", { level: 1, name: "Question ledger" })).toBeInTheDocument();
+  expect(screen.getByText("What this analysis asks.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
+});

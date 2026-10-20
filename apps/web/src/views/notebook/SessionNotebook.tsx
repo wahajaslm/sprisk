@@ -392,14 +392,14 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
         <button type="button" className="nb-action" onClick={restart}>
           Restart
         </button>
-        <button type="button" className="nb-action" onClick={() => clearResults(notebookId)}>
-          Clear All Outputs
+        <button type="button" className="nb-action" aria-label="Clear All Outputs" title="Clear All Outputs" onClick={() => clearResults(notebookId)}>
+          Clear
         </button>
-        <button type="button" className="nb-action" onClick={() => foldOutputs(notebookId, codeCellIds(cells), true)}>
-          Collapse All Outputs
+        <button type="button" className="nb-action" aria-label="Collapse All Outputs" title="Collapse All Outputs" onClick={() => foldOutputs(notebookId, codeCellIds(cells), true)}>
+          Collapse
         </button>
-        <button type="button" className="nb-action" onClick={() => foldOutputs(notebookId, codeCellIds(cells), false)}>
-          Expand All Outputs
+        <button type="button" className="nb-action" aria-label="Expand All Outputs" title="Expand All Outputs" onClick={() => foldOutputs(notebookId, codeCellIds(cells), false)}>
+          Expand
         </button>
         <span className="spacer" />
         <button type="button" className="nb-action" disabled={save.isPending || savePipeline.isPending} onClick={() => void saveNow()} title="Save, and rebuild this notebook's steps in the flow">
@@ -413,9 +413,10 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
           className="nb-action alert"
           disabled={save.isPending || savePipeline.isPending}
           onClick={handleDeleteNotebook}
+          aria-label="Delete Notebook"
           title="Delete this notebook (requires confirmation)"
         >
-          <TrashIcon /> Delete Notebook
+          <TrashIcon /> Delete
         </button>
         <span className="nb-kernel" title="One live Python kernel for this notebook. Its results are scratch; the flow runs the saved cells in its own workers.">
           <span className={`nb-kernel-dot${running ? " busy" : ""}`} /> Python 3 · {running ? "busy" : "idle"}

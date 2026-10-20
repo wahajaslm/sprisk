@@ -15,6 +15,9 @@
   --text-md: 14px;
   --text-lg: 20px;
   --text-xl: 24px;
+  /* Page layout: every page's side list and side padding (Datasets, Methodology, Notebooks). */
+  --side-width: 300px;
+  --page-x: var(--space-6);
   --ground: #08090c;
   --canvas: #090a0e;
   --panel: #0d0e13;
@@ -274,8 +277,7 @@ p { margin: 0; }
 .send:disabled { opacity: 0.3; cursor: not-allowed; }
 
 /* ── Views not built yet ─────────────────────────────── */
-.coming { padding: var(--space-7) var(--space-6); max-width: 760px; }
-.coming h1 { margin: var(--space-2) 0 var(--space-2); font-size: var(--text-xl); font-weight: 500; }
+.coming { height: 100%; background: var(--canvas); }
 .eyebrow { font: 500 var(--text-sm) var(--sans); color: var(--muted); }
 
 /* ── Table peek (paged rows of a table artifact) ─────── */
@@ -589,9 +591,7 @@ p { margin: 0; }
 
 /* ── Experiments (compare runs) ─────────────────────── */
 .experiments { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; background: var(--canvas); overflow: hidden; }
-.exp-head { padding: var(--space-5) var(--space-6) var(--space-3); border-bottom: 1px solid var(--line); }
 .eyebrow { font: 500 var(--text-sm) var(--sans); color: var(--faint); margin: 0 0 var(--space-2); }
-.exp-head h1 { margin: 0; font-size: var(--text-xl); font-weight: 400; color: var(--ink); text-wrap: balance; }
 .exp-scroll { overflow: auto; min-height: 0; }
 .exp-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .exp-table th { position: sticky; top: 0; z-index: 1; background: var(--canvas); text-align: left; padding: var(--space-2) var(--space-3); font: 500 var(--text-sm) var(--sans); color: var(--faint); font-weight: 400; border-bottom: 1px solid var(--line); }
@@ -604,8 +604,10 @@ p { margin: 0; }
 
 /* Investigation Atlas: immutable question revisions that give methodology its context. */
 .ledger { height: 100%; min-height: 0; overflow: auto; background: var(--canvas); }
-.ledger-head { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: end; gap: var(--space-5); padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--line); background: var(--canvas); }
-.ledger-head h1, .ledger-editor h2 { margin: 0; font-size: var(--text-xl); font-weight: 400; }
+/* The one page header (PageHeader). */
+.page-head { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: end; gap: var(--space-5); padding: var(--space-5) var(--page-x); border-bottom: 1px solid var(--line); background: var(--canvas); }
+.page-head h1, .ledger-editor h2 { margin: 0; font-size: var(--text-xl); font-weight: 500; color: var(--ink); text-wrap: balance; }
+.page-head p.muted { margin-top: var(--space-1); }
 .ledger-body { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.4fr); gap: var(--space-6); padding: var(--space-6); }
 .ledger-body h2 { margin: 0 0 var(--space-3); font-size: var(--text-lg); font-weight: 400; }
 .ledger-list { display: grid; gap: var(--space-3); }
@@ -943,8 +945,10 @@ p { margin: 0; }
 .kind-mark.kind-decision { color: var(--kind-decision); }
 .kind-mark.kind-model { color: var(--kind-model); }
 /* Notebook, laid out as VS Code's notebook editor (ADR-0035). */
-.notebooks-page > .notebook { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #090a0e; }
-.nb-toolbar { display: flex; flex: none; align-items: center; gap: var(--space-1); height: 36px; padding: 0 var(--space-3); border-bottom: 1px solid rgba(255, 255, 255, 0.04); background: #0d0e13; font-size: var(--text-sm); }
+.notebooks-page > .notebook { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #090a0e; }
+/* One line always: a narrow window scrolls the toolbar, it never wraps its labels. */
+.nb-toolbar > * { flex: none; white-space: nowrap; }
+.nb-toolbar { display: flex; flex: none; align-items: center; gap: var(--space-1); height: 36px; padding: 0 var(--space-3); overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid rgba(255, 255, 255, 0.04); background: #0d0e13; font-size: var(--text-sm); }
 .nb-action { display: inline-flex; align-items: center; gap: var(--space-1); height: 24px; padding: 0 var(--space-2); border: 0; border-radius: 4px; background: transparent; color: var(--soft); font-size: var(--text-sm); cursor: pointer; }
 .nb-action:hover:not(:disabled) { background: var(--node-hover); color: var(--ink); }
 .nb-action:disabled { color: var(--ghost); cursor: default; }
@@ -1021,7 +1025,7 @@ p { margin: 0; }
 
 /* Notebooks page: saved notebooks, and the open one on its kernel (ADR-0036). */
 .notebooks-page { flex: 1; min-width: 0; display: flex; min-height: 0; }
-.notebooks-list { flex: none; width: 230px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-2); border-right: 1px solid rgba(255, 255, 255, 0.04); background: #0d0e13; overflow: auto; }
+.notebooks-list { flex: none; width: var(--side-width); display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-2); border-right: 1px solid rgba(255, 255, 255, 0.04); background: #0d0e13; overflow: auto; }
 .notebooks-list ul { margin: 0; padding: 0; list-style: none; }
 .notebooks-heading { margin: var(--space-3) var(--space-2) 4px; font: 600 10.5px/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: #737686; }
 .nb-item-row { position: relative; display: flex; align-items: center; margin-bottom: 2px; }
@@ -1061,7 +1065,7 @@ p { margin: 0; }
 .tab-visuals .code-output.grid .result-tile:not(.plot) { max-height: none; }
 
 /* Datasets: names in a sidebar, one table's details beside it. */
-.dsx { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 100%; min-height: 0; background: var(--canvas); overflow: hidden; }
+.dsx { display: grid; grid-template-columns: var(--side-width) minmax(0, 1fr); height: 100%; min-height: 0; background: var(--canvas); overflow: hidden; }
 .dsx-side { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid rgba(255, 255, 255, 0.04); background: #0d0e13; }
 .dsx-side-head { display: grid; gap: var(--space-2); padding: var(--space-4) var(--space-3) var(--space-3); }
 .dsx-side-head .ds-filter { width: 100%; }
@@ -1105,9 +1109,9 @@ p { margin: 0; }
 .ds-open-btn { width: 100%; justify-content: center; margin-top: 2px; }
 
 .dsx-main { min-width: 0; min-height: 0; overflow: auto; }
-.dsx-detail { max-width: 1200px; display: grid; gap: var(--space-4); padding: var(--space-5); }
+.dsx-detail { max-width: 1200px; display: grid; gap: var(--space-4); padding: var(--space-5) var(--page-x); }
 .dsx-title { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
-.dsx-title h1 { margin: 0; font-size: var(--text-xl); font-weight: 600; color: #f2f3f7; overflow-wrap: anywhere; }
+.dsx-title h1 { margin: 0; font-size: var(--text-xl); font-weight: 500; color: #f2f3f7; overflow-wrap: anywhere; }
 .dsx-title p { margin: 4px 0 0; }
 
 /* Tabs inside Dataset Detail */

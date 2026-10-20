@@ -1,5 +1,6 @@
 import type { PipelineVersion, Run } from "@sprisk/contracts";
 
+import { PageHeader } from "../components/ui/PageHeader.tsx";
 import { useOperators, usePipelineVersions } from "../api/hooks.ts";
 import { type NodeInRun, useFlowRuns, useRunNodes } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
@@ -32,7 +33,13 @@ export function Experiments() {
   const nodes = useRunNodes(runs, evaluators);
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
-  if (!flow) return <p className="muted pad">Open a flow to see its experiments.</p>;
+  if (!flow) {
+    return (
+      <main className="experiments">
+        <PageHeader eyebrow="Experiments" title="Experiments" description="Open a flow to see its experiments." />
+      </main>
+    );
+  }
   const picked = compare.filter((id) => runs.some((r) => r.id === id));
   const pair = (picked.length === 2 ? picked : runs.slice(0, 2).map((r) => r.id)).map((id) => runs.findIndex((r) => r.id === id));
   // Older run first, so changes read "before → after".
@@ -42,12 +49,14 @@ export function Experiments() {
 
   return (
     <main className="experiments">
-      <header className="exp-head">
-        <p className="eyebrow">
-          Experiments · <span>{runs.length === 1 ? "1 run" : `${runs.length} runs`}</span>
-        </p>
-        <h1>{flowName(flow.head)}: every run, with what changed</h1>
-      </header>
+      <PageHeader
+        eyebrow={
+          <>
+            Experiments · <span>{runs.length === 1 ? "1 run" : `${runs.length} runs`}</span>
+          </>
+        }
+        title={`${flowName(flow.head)}: every run, with what changed`}
+      />
       <div className="exp-scroll">
         <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
       </div>
