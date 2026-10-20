@@ -75,9 +75,14 @@ pub async fn serve_on(
 ) -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.data_dir)
         .with_context(|| format!("create {}", config.data_dir.display()))?;
-    let gate = sprisk_registry::Registry::load_dir(&config.methodology)?
+    let methodology = sprisk_registry::Registry::load_dir(&config.methodology)?;
+    let gate = methodology
         .get("sprisk.methodology.supervised@1.0.0")
         .context("methodology root has no Supervised pack entrypoint")?
+        .clone();
+    let split_check = methodology
+        .get("sprisk.methodology.split_rows@1.0.0")
+        .context("methodology root has no split row check entrypoint")?
         .clone();
     let worker_command = vec![
         config.python.display().to_string(),
@@ -136,6 +141,7 @@ pub async fn serve_on(
             &config.methodology,
         )?),
         gate: Some(gate),
+        split_check: Some(split_check),
         worker_command,
         idle_worker,
         settings: sprisk_scheduler::Settings::default(),

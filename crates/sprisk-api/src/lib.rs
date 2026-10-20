@@ -47,6 +47,8 @@ pub struct AppState {
     pub rules: Arc<sprisk_methodology::RuleCatalog>,
     /// Methodology pack entrypoint run as Gate B before each run (ADR-0017).
     pub gate: Option<Operator>,
+    /// Methodology entrypoint run on each split's rows right after it (ADR-0040).
+    pub split_check: Option<Operator>,
     /// Command that starts one Python worker.
     pub worker_command: Vec<String>,
     /// A started worker kept between runs, so an edit does not wait for one to start.
@@ -1313,6 +1315,9 @@ async fn create_run(
         );
         if let Some(gate) = state.gate.clone() {
             scheduler = scheduler.with_gate(gate);
+        }
+        if let Some(check) = state.split_check.clone() {
+            scheduler = scheduler.with_split_check(check);
         }
         if let Some(reuse) = request.reuse_run_id {
             scheduler = scheduler.reusing(reuse);

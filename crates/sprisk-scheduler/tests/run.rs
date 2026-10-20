@@ -173,7 +173,7 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
                     };
                     let bytes = if matches!(behave, Behave::GateGarbage) {
                         "not json".to_owned()
-                    } else if lease.node_id.as_str() == "gate_b" {
+                    } else if lease.node_id.as_str().starts_with("gate_") {
                         let verdict = if matches!(behave, Behave::GateFail) {
                             "fail"
                         } else {
@@ -233,7 +233,7 @@ fn outputs_of(operator: &str) -> &'static [&'static str] {
         "sprisk.validation.random_split" => &["train", "test"],
         "sprisk.ml.linear_model" | "sprisk.ml.dummy_baseline" => &["model"],
         "sprisk.ml.evaluate" => &["metrics", "figures"],
-        "sprisk.methodology.supervised" => &["checks"],
+        "sprisk.methodology.supervised" | "sprisk.methodology.split_rows" => &["checks"],
         other => panic!("no fake outputs for {other}"),
     }
 }
@@ -251,6 +251,15 @@ fn gate_operator() -> sprisk_contracts::Operator {
     let registry = Registry::load_dir(&methodology).unwrap();
     registry
         .get("sprisk.methodology.supervised@1.0.0")
+        .unwrap()
+        .clone()
+}
+
+fn split_check_operator() -> sprisk_contracts::Operator {
+    let methodology = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    Registry::load_dir(&methodology)
+        .unwrap()
+        .get("sprisk.methodology.split_rows@1.0.0")
         .unwrap()
         .clone()
 }
@@ -324,6 +333,8 @@ struct Case {
     side_effecting: Option<&'static str>,
     run_status: &'static str,
     gate: bool,
+    /// Check each split's rows after it runs (ADR-0040 runtime).
+    split_check: bool,
     /// Run `decided_pipeline()`, whose split was set by a stored methodology decision.
     decided: bool,
 }
@@ -337,6 +348,7 @@ impl Default for Case {
             side_effecting: None,
             run_status: "queued",
             gate: false,
+            split_check: false,
             decided: false,
         }
     }
@@ -350,6 +362,7 @@ async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::Schedule
         side_effecting,
         run_status,
         gate,
+        split_check,
         decided,
     } = case;
     let dir = tempfile::tempdir().unwrap();
@@ -390,6 +403,9 @@ async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::Schedule
     let mut scheduler = Scheduler::new(&store, &artifacts, workers, settings);
     if gate {
         scheduler = scheduler.with_gate(gate_operator());
+    }
+    if split_check {
+        scheduler = scheduler.with_split_check(split_check_operator());
     }
     let status = scheduler.run(&run.id, &pipeline, &plan).await;
     (
@@ -1163,4 +1179,71 @@ async fn side_effecting_step_always_runs() {
 async fn another_project_never_reuses_these_results() {
     let (_, leased) = rerun_in("prj_01JABCDEFGHJKMNPQRSTVWXYZ9", |_| {}).await;
     assert_eq!(leased, ["load", "split", "model", "score"]);
+}
+
+#[tokio::test]
+async fn a_split_s_rows_are_checked_right_after_it_with_the_question() {
+    let (env, status) = setup(Case {
+        split_check: true,
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Succeeded);
+    assert_eq!(
+        states(&env, "gate_split").await,
+        vec![AttemptState::Succeeded]
+    );
+    let log = env.log.lock().unwrap();
+    let order: Vec<_> = log.leases.iter().map(|l| l.node_id.as_str()).collect();
+    let at = |node: &str| order.iter().position(|n| *n == node).unwrap();
+    assert!(
+        at("split") < at("gate_split") && at("gate_split") < at("model"),
+        "{order:?}"
+    );
+    let check = &log.leases[at("gate_split")];
+    assert_eq!(
+        check.operator.as_str(),
+        "sprisk.methodology.split_rows@1.0.0"
+    );
+    let ports: Vec<_> = check.inputs.iter().map(|i| i.port.as_str()).collect();
+    assert_eq!(ports, ["question", "test", "train"]);
+    assert_eq!(gate_input(check, "question"), json!(null));
+    assert_eq!(
+        json!(check.params),
+        json!({"pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0", "node_id": "split"})
+    );
+}
+
+#[tokio::test]
+async fn a_failing_split_check_stops_the_run_before_the_next_step() {
+    let workers = FakeWorkers {
+        script: [("gate_split", vec![Behave::GateFail])].into(),
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(Case {
+        workers,
+        split_check: true,
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Failed);
+    assert_eq!(states(&env, "split").await, vec![AttemptState::Succeeded]);
+    assert!(states(&env, "model").await.is_empty());
+}
+
+#[tokio::test]
+async fn a_resumed_run_does_not_skip_the_check_of_a_split_that_finished_before_the_crash() {
+    let (env, status) = setup(Case {
+        earlier: vec![("load", 1, "succeeded"), ("split", 1, "succeeded")],
+        split_check: true,
+        ..Case::default()
+    })
+    .await;
+    // The stored split has no rows, so the check it still owes cannot run: a loud error,
+    // not a run that goes on unchecked.
+    assert!(
+        matches!(&status, Err(sprisk_scheduler::SchedulerError::MissingInput { node, .. }) if node == "gate_split"),
+        "{status:?}"
+    );
+    assert!(states(&env, "model").await.is_empty());
 }

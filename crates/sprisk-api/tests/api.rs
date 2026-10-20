@@ -76,9 +76,13 @@ async fn api_with_kernel_host(
     let csv = dir.path().join("d.csv");
     std::fs::write(&csv, "x,y\n1,2\n3,4\n").unwrap();
     let root = root();
-    let gate = Registry::load_dir(&root.join("methodology"))
-        .unwrap()
+    let methodology = Registry::load_dir(&root.join("methodology")).unwrap();
+    let gate = methodology
         .get("sprisk.methodology.supervised@1.0.0")
+        .unwrap()
+        .clone();
+    let split_check = methodology
+        .get("sprisk.methodology.split_rows@1.0.0")
         .unwrap()
         .clone();
     let store = Arc::new(SqliteStore::in_memory().await.unwrap());
@@ -90,6 +94,7 @@ async fn api_with_kernel_host(
             sprisk_methodology::RuleCatalog::load_dir(&root.join("methodology")).unwrap(),
         ),
         gate: Some(gate),
+        split_check: Some(split_check),
         worker_command: vec![
             python.display().to_string(),
             "-m".into(),
@@ -1951,4 +1956,50 @@ async fn a_data_rule_refuses_train_rows_that_did_not_come_from_a_split() {
             .contains("split"),
         "{body}"
     );
+}
+
+#[tokio::test]
+async fn a_group_split_s_rows_are_checked_after_it_runs() {
+    let api = api().await;
+    let mut csv = String::from("patient,x,y\n");
+    for i in 0..20 {
+        csv.push_str(&format!("p{},{i},{}\n", i % 5, i % 2));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let facts = q.as_object_mut().unwrap();
+    facts.remove("time_column");
+    facts.insert(
+        "entity_column".into(),
+        json!({"value": "patient", "origin": "confirmed"}),
+    );
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().push(json!({
+        "id":"split", "operator":"sprisk.validation.group_split@1.0.0",
+        "params":{"group_column":"patient","test_fraction":0.4,"seed":1}
+    }));
+    flow["edges"] = json!([{"from":"load.data","to":"split.data"}]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (run, attempts) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let check = attempts
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["node_id"] == "gate_split")
+        .unwrap_or_else(|| panic!("no split check: {attempts}"));
+    assert_eq!(check["state"], "succeeded", "{check}");
+    let uri = format!("/attempts/{}/outputs", check["id"].as_str().unwrap());
+    let (_, outputs) = call(&api.app, "GET", &uri, None).await;
+    let artifact = outputs[0]["artifact"]["id"].as_str().unwrap();
+    let content = format!("/artifacts/{artifact}/content");
+    let (_, checks) = call(&api.app, "GET", &content, None).await;
+    assert_eq!(checks[0]["phase"], "runtime", "{checks}");
+    assert_eq!(checks[0]["verdict"], "pass", "{checks}");
+    assert_eq!(checks[0]["cited_nodes"], json!(["split"]));
 }

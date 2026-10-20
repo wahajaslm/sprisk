@@ -9,9 +9,9 @@ use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     Artifact, ArtifactManifest, Attempt, AttemptId, AttemptState, Effects,
     FailFailureKind as FailureKind, MethodologyCheck, MethodologyDecision, Operator,
-    PipelineVersion, RunId, RunStatus, Verdict, WorkerMessage, parse,
+    PipelineVersion, PortKind, RunId, RunStatus, Verdict, WorkerMessage, parse,
 };
-use sprisk_graph::{Plan, Step};
+use sprisk_graph::{Input, Plan, Step};
 use sprisk_store::{SqliteStore, StoreError};
 
 use crate::cache::{cache_key, cacheable};
@@ -62,7 +62,7 @@ pub enum SchedulerError {
 }
 
 /// Attempts of the methodology gate use this node id (ADR-0017); Gate A reserves it.
-pub const GATE_NODE: &str = sprisk_graph::RESERVED_NODE_IDS[0];
+pub const GATE_NODE: &str = "gate_b";
 
 /// Where an attempt's inputs come from.
 #[derive(Clone, Copy)]
@@ -71,6 +71,8 @@ enum Inputs<'p> {
     Upstream,
     /// The pipeline version and its operators, for the methodology gate.
     Gate(&'p PipelineVersion, &'p Plan),
+    /// Upstream outputs plus the question the pipeline answers, for a split's row check.
+    Question(&'p PipelineVersion),
 }
 
 /// How one attempt ended, from the scheduler's point of view.
@@ -86,6 +88,7 @@ pub struct Scheduler<'a, W: Workers> {
     workers: W,
     settings: Settings,
     gate: Option<Operator>,
+    split_check: Option<Operator>,
     worker: Option<W::Worker>,
     reuse: Option<RunId>,
 }
@@ -103,6 +106,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             workers,
             settings,
             gate: None,
+            split_check: None,
             worker: None,
             reuse: None,
         }
@@ -118,6 +122,13 @@ impl<'a, W: Workers> Scheduler<'a, W> {
     /// Run this methodology pack entrypoint as Gate B before the first step (ADR-0017).
     pub fn with_gate(mut self, operator: Operator) -> Self {
         self.gate = Some(operator);
+        self
+    }
+
+    /// Run this methodology entrypoint on each split's rows right after the split
+    /// (ADR-0040 runtime layer). A failing check stops the run there.
+    pub fn with_split_check(mut self, operator: Operator) -> Self {
+        self.split_check = Some(operator);
         self
     }
 
@@ -186,6 +197,9 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             done.insert(GATE_NODE.to_owned(), attempt);
         }
         loop {
+            if !self.check_splits(run_id, pipeline, plan, &mut done).await? {
+                return self.finish(run_id, RunStatus::Failed).await;
+            }
             let succeeded: HashSet<String> = done.keys().cloned().collect();
             // The gate is not a plan step; `succeeded` only needs plan nodes.
             let step = match next_step(plan, &succeeded) {
@@ -201,7 +215,58 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         }
     }
 
-    /// True when any methodology check in the gate's `checks` output failed.
+    /// Check the rows of every finished split that has no check yet; false when one failed
+    /// or could not run. Runs after each step, so a resumed run also catches up.
+    async fn check_splits(
+        &mut self,
+        run_id: &RunId,
+        pipeline: &PipelineVersion,
+        plan: &Plan,
+        done: &mut HashMap<String, AttemptId>,
+    ) -> Result<bool, SchedulerError> {
+        let Some(operator) = self.split_check.clone() else {
+            return Ok(true);
+        };
+        let owed: Vec<&Step> = plan
+            .steps
+            .iter()
+            .filter(|s| is_split(s) && done.contains_key(&s.node_id))
+            .filter(|s| !done.contains_key(&split_check_node(s)))
+            .collect();
+        for split in owed {
+            let node_id = split_check_node(split);
+            let check = Step {
+                node_id: node_id.clone(),
+                operator: operator.clone(),
+                implementation_digest: String::new(),
+                params: serde_json::Map::from_iter([
+                    ("pipeline_version_id".to_owned(), json!(pipeline.id)),
+                    ("node_id".to_owned(), json!(split.node_id)),
+                ]),
+                inputs: ["test", "train"]
+                    .map(|port| Input {
+                        port: port.to_owned(),
+                        from_node: split.node_id.clone(),
+                        from_port: port.to_owned(),
+                    })
+                    .into(),
+                code: None,
+            };
+            let Some(attempt) = self
+                .run_step(run_id, &check, done, Inputs::Question(pipeline))
+                .await?
+            else {
+                return Ok(false);
+            };
+            if self.gate_failed(&attempt).await? {
+                return Ok(false);
+            }
+            done.insert(node_id, attempt);
+        }
+        Ok(true)
+    }
+
+    /// True when any methodology check in a gate attempt's `checks` output failed.
     async fn gate_failed(&self, attempt: &AttemptId) -> Result<bool, SchedulerError> {
         let outputs = self.store.outputs(attempt).await?;
         let (_, artifact) = outputs
@@ -607,6 +672,11 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             Inputs::Gate(pipeline, plan) => {
                 self.gate_inputs(run_id, attempt, pipeline, plan).await?
             }
+            Inputs::Question(pipeline) => {
+                let question = self.question(pipeline).await?;
+                self.commit_docs(run_id, attempt, [("question", question)])
+                    .await?
+            }
         };
         for (port, artifact) in self.resolve_inputs(step, done).await? {
             inputs.push(json!({
@@ -681,16 +751,34 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         let mut operators: Vec<&Operator> = plan.steps.iter().map(|s| &s.operator).collect();
         operators.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
         operators.dedup_by(|a, b| a.id == b.id);
-        let question = match &pipeline.question_version_id {
-            Some(id) => json!(self.store.get_question_version(id).await?),
-            None => json!(null),
-        };
+        let question = self.question(pipeline).await?;
         let docs = [
             ("decisions", json!(self.cited_decisions(pipeline).await?)),
             ("operators", json!(operators)),
             ("pipeline", json!(pipeline)),
             ("question", question),
         ];
+        self.commit_docs(run_id, attempt, docs).await
+    }
+
+    /// The question `pipeline` answers, or `null` when it links none.
+    async fn question(
+        &self,
+        pipeline: &PipelineVersion,
+    ) -> Result<serde_json::Value, SchedulerError> {
+        Ok(match &pipeline.question_version_id {
+            Some(id) => json!(self.store.get_question_version(id).await?),
+            None => json!(null),
+        })
+    }
+
+    /// Commit each `(port, document)` as a JSON artifact of `attempt`, as lease input bindings.
+    async fn commit_docs<const N: usize>(
+        &self,
+        run_id: &RunId,
+        attempt: &AttemptId,
+        docs: [(&str, serde_json::Value); N],
+    ) -> Result<Vec<serde_json::Value>, SchedulerError> {
         let dir = self
             .artifacts
             .staging_dir(&format!("{}_inputs", attempt.as_str()))?;
@@ -784,3 +872,18 @@ fn build<T: serde::de::DeserializeOwned>(
 }
 
 use sprisk_core::time::now;
+
+/// A step that writes `train` and `test` tables splits rows, whatever its operator or code.
+fn is_split(step: &Step) -> bool {
+    ["train", "test"].iter().all(|name| {
+        step.operator
+            .outputs
+            .iter()
+            .any(|p| p.name.as_str() == *name && p.kind == PortKind::Table)
+    })
+}
+
+/// The reserved node id of `split`'s row check.
+fn split_check_node(split: &Step) -> String {
+    format!("{}{}", sprisk_graph::RESERVED_NODE_PREFIX, split.node_id)
+}
