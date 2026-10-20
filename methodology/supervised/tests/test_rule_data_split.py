@@ -1,33 +1,13 @@
-import json
-from pathlib import Path
 from typing import Any
 
-from sprisk_contracts import RuleDecision, RuleObservation
-from sprisk_workers.rule import load_decide
+from rule_harness import alternative
+from rule_harness import decide as run
 
-RULE = Path(__file__).parents[1] / "rules" / "data_split" / "rule.py"
-SETTINGS = {"default_test_fraction": 0.2, "default_seed": 42}
+RULE = "supervised/data_split"
 
 
 def decide(facts: dict[str, tuple[str, str]]) -> dict[str, Any]:
-    observation = RuleObservation.model_validate_json(
-        json.dumps(
-            {
-                "schema_version": "sprisk.rule_observation/v1",
-                "rule": "methodology.supervised.data_split@1.0.0",
-                "facts": {k: {"value": v, "origin": o} for k, (v, o) in facts.items()},
-                "profile": {},
-                "settings": SETTINGS,
-            }
-        )
-    )
-    decision: RuleDecision = load_decide(RULE)(observation)
-    result: dict[str, Any] = json.loads(decision.model_dump_json())
-    return result
-
-
-def alternative(decision: dict[str, Any], id: str) -> dict[str, Any]:
-    return next(a for a in decision["alternatives"] if a["id"] == id)
+    return run(RULE, facts=facts)
 
 
 TARGET = {
