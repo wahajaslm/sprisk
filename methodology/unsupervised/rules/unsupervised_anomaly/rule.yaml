@@ -11,7 +11,7 @@ decides: anomaly.algorithm_selection
 # ------------------------------------------------------------------------------
 provenance:
   standard: "Liu, Ting & Zhou (2008) Isolation Forest (IEEE ICDM) & Breunig et al. (2000) LOF: Identifying Density-Based Local Outliers (ACM SIGMOD)"
-  citation: "Rousseeuw & Driessen (1999) A Fast Algorithm for the Minimum Covariance Determinant (Technometrics) & Schölkopf et al. (2001) One-Class SVM (Neural Computation)"
+  citation: "Rousseeuw & Driessen (1999) A Fast Algorithm for the Minimum Covariance Determinant (Technometrics) & Schölkopf et al. (2001) Estimating the Support of a High-Dimensional Distribution (Neural Computation)"
   pitfall: "Applying parametric Gaussian anomaly assumptions (e.g. Mahalanobis distance or z-scores) to multi-modal or complex non-linear data misclassifies legitimate sub-clusters as severe global anomalies."
   corner_cases:
     - "Local vs Global Anomalies: A point can have high global distance from the dataset centroid while possessing normal density in its local neighborhood; Local Outlier Factor (LOF) is required."

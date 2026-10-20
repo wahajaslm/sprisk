@@ -10,8 +10,8 @@ decides: split.method
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
 provenance:
-  standard: "REFORMS Reporting Standards for ML & Netflix Technology: Time-Travel Feature Generation"
-  citation: "Kapoor & Narayanan (2023) Leakage in Data-Driven Science & Arlot & Celisse (2010) A Survey of Cross-Validation Procedures (Statistics Surveys)"
+  standard: "REFORMS: Kapoor et al. (2024) Consensus-based Recommendations for Machine-learning-based Science (Science Advances)"
+  citation: "Kapoor & Narayanan (2023) Leakage and the Reproducibility Crisis in Machine-learning-based Science (Patterns) & Roberts et al. (2017) Cross-validation Strategies for Data with Temporal, Spatial, Hierarchical, or Phylogenetic Structure (Ecography) & Arlot & Celisse (2010) A Survey of Cross-Validation Procedures for Model Selection (Statistics Surveys)"
   pitfall: "Randomly shuffling observations across time (lookahead bias) or across repeated entities (identity leakage) produces artificially inflated validation scores that collapse in production."
   corner_cases:
     - "Repeated Entity Leakage: Multiple transactions or records per customer appearing in both train and test partitions allows estimators to memorize entity identities."

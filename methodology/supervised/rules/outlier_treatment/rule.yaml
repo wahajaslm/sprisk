@@ -43,7 +43,7 @@ alternatives:
     condition: outlier_percentage_iqr < outlier_fraction_threshold OR planned_model_family in ['random_forest',
       'xgboost', 'lightgbm']
     rationale: Either outlier rate is within expected natural limits (<5%) or tree models are used, which
-      are immune to univariate leverage.
+      are far less sensitive to univariate leverage, as they split on rank order.
     action:
       type: pass_through
   - id: clip_mean_sd

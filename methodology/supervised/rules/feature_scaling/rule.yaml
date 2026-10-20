@@ -10,7 +10,7 @@ decides: features.scaling_strategy
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
 provenance:
-  standard: "Scikit-Learn Preprocessing Standards & DoorDash Engineering: Serving Parity Architecture (2022)"
+  standard: "scikit-learn User Guide: Preprocessing Data (StandardScaler, RobustScaler) and Common Pitfalls"
   citation: "Rousseeuw & Croux (1993) Alternatives to the Median Absolute Deviation (JASA) & Breck et al. (2019) Data Validation for Machine Learning (MLSys)"
   pitfall: "StandardScaler fitted on data with extreme kurtosis/outliers compresses normal variance into a narrow spike. Scaling sparse matrices with centering causes fatal OOM. Recomputing scalers independently in serving introduces training-serving skew."
   corner_cases:

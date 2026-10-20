@@ -14,9 +14,9 @@ provenance:
   citation: "van der Maaten & Hinton (2008) Visualizing Data using t-SNE (JMLR) & Pearson (1901) On Lines and Planes of Closest Fit (Philosophical Magazine)"
   pitfall: "Using linear PCA to visualize non-linear manifold structures collapses curved geometries onto a 2D plane, falsely suggesting cluster overlap. Conversely, interpreting inter-cluster distances in t-SNE as physical metric distances is invalid because t-SNE loses global topology."
   corner_cases:
-    - "t-SNE Global Distance Distortion: Distances between separated clusters in t-SNE are mathematically meaningless; UMAP balances local metric structure with global continuum preservation."
+    - "t-SNE Global Distance Distortion: Distances between separated clusters in t-SNE are mathematically meaningless; UMAP keeps more global structure than t-SNE in practice, but its inter-cluster distances are not metric either (Chari & Pachter, 2023, The Specious Art of Single-Cell Genomics, PLOS Comp. Biol.)."
     - "Perplexity Artifacts: In t-SNE, setting perplexity too low (<10) creates artificial micro-clusters out of uniform random distributions."
-    - "Out-of-Sample Projectability: t-SNE cannot project new unseen inference observations without completely re-fitting the entire dataset; UMAP supports deterministic out-of-sample transform()."
+    - "Out-of-Sample Projectability: t-SNE cannot project new unseen inference observations without completely re-fitting the entire dataset; UMAP has an out-of-sample transform(), reproducible only with a fixed random_state."
 
 # 2. What This Rule Observes
 # ------------------------------------------------------------------------------
