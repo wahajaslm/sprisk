@@ -117,4 +117,20 @@ describe("model shortlist", () => {
     await vi.waitFor(() => expect(useSelection.getState().nav).toBe("Experiments"));
     expect(posted).toEqual(["compare", `run ${comparison.id}`]);
   });
+
+  it("shows why a comparison could not start and stays on the step", async () => {
+    useSelection.setState({ nav: "Flow" });
+    server.use(
+      http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(shortlist, { status: 201 })),
+      http.post(`/api/methodology_proposals/${shortlist.id}/compare`, () =>
+        HttpResponse.json({ errors: [{ code: "stale_proposal", message: "the flow changed after this proposal; resolve it again" }] }, { status: 422 }),
+      ),
+    );
+    renderWithApi(<SplitMethodology pipeline={modelPipeline} nodeId="model" />);
+    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Compare shortlisted models" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("stale_proposal: the flow changed after this proposal");
+    expect(useSelection.getState().nav).toBe("Flow");
+  });
 });

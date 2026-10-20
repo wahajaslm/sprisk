@@ -62,14 +62,15 @@ function Decided({ decision, artifactId, proposal }: { decision: SelectionDecisi
           <tr>
             <th scope="col">Model</th>
             <th scope="col" className="num">Mean ± spread</th>
-            <th scope="col" className="num">Gain over baseline</th>
+            <th scope="col" className="num">Gain over baseline ± corrected SE</th>
             <th scope="col">Verdict</th>
           </tr>
         </thead>
         <tbody>
           {decision.candidates.map((c) => {
             const versus = c.versus_baseline;
-            const verdict = c.id === decision.baseline ? "baseline (the floor)" : c.id === decision.winner ? "winner" : versus?.beats_baseline ? "beats baseline" : "within noise";
+            const verdict =
+              c.id === decision.baseline ? "baseline (the floor)" : c.id === decision.winner ? "winner" : versus ? standing(versus) : "—";
             return (
               <tr key={c.id} className={c.id === decision.winner ? "picked" : undefined}>
                 <td className="mono">{c.id}</td>
@@ -113,4 +114,11 @@ function Decided({ decision, artifactId, proposal }: { decision: SelectionDecisi
       {apply.isError && <p role="alert" className="error">{apply.error.message}</p>}
     </>
   );
+}
+
+/** Where a candidate stands against the baseline: one corrected SE is a screening bar, not a test. */
+function standing(versus: NonNullable<SelectionDecision["candidates"][number]["versus_baseline"]>): string {
+  if (versus.beats_baseline) return "clears the 1-SE bar";
+  if (versus.mean_difference < -versus.corrected_se) return "worse than baseline";
+  return "within 1 SE of baseline";
 }

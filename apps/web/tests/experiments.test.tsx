@@ -150,7 +150,7 @@ describe("model comparison", () => {
     expect(rows[2]).toHaveTextContent("0.898 ± 0.0238");
     expect(rows[2]).toHaveTextContent("+0.398 ± 0.0145");
     expect(rows[2]).toHaveTextContent("winner");
-    expect(rows[3]).toHaveTextContent("beats baseline");
+    expect(rows[3]).toHaveTextContent("clears the 1-SE bar");
     expect(region).toHaveTextContent(winner.reason);
     // A comparison is not a run of the flow.
     expect(screen.getByText("1 run")).toBeInTheDocument();
@@ -172,7 +172,7 @@ describe("model comparison", () => {
     const region = await screen.findByRole("region", { name: "Model comparison" });
     expect(await within(region).findByText(noWinner.reason)).toBeInTheDocument();
     expect(region).toHaveTextContent(noWinner.limitations[0]!);
-    expect(within(region).getAllByRole("row")[2]).toHaveTextContent("within noise");
+    expect(within(region).getAllByRole("row")[2]).toHaveTextContent("within 1 SE of baseline");
     expect(within(region).queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
   });
 
@@ -180,5 +180,40 @@ describe("model comparison", () => {
     compared(winner);
     server.use(http.get(`/api/methodology_proposals/${MPR}`, () => HttpResponse.json({ errors: [{ code: "not_found", message: "gone" }] }, { status: 404 })));
     expect(await screen.findByRole("alert")).toHaveTextContent("A model comparison cannot be shown: not_found: gone");
+  });
+
+  it("calls a model clearly below the baseline worse, not within noise", async () => {
+    const [floor, linear] = noWinner.candidates;
+    compared({ ...noWinner, candidates: [floor, { ...linear, versus_baseline: { mean_difference: -0.2, corrected_se: 0.02, beats_baseline: false } }] });
+    const region = await screen.findByRole("region", { name: "Model comparison" });
+    expect((await within(region).findAllByRole("row"))[2]).toHaveTextContent("worse than baseline");
+  });
+
+  it("says why a comparison run failed", async () => {
+    compared(winner);
+    const failed = { ...selectAttempt, state: "failed", error: { code: "invalid_input", message: "class 'rare' has 3 train rows" } };
+    server.use(
+      http.get("/api/runs", ({ request }) =>
+        HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [{ ...comparisonRun, status: "failed" }] : [run]),
+      ),
+      http.get(`/api/runs/${CRUN}/attempts`, () => HttpResponse.json([failed])),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("The comparison failed: select_model: class 'rare' has 3 train rows");
+  });
+
+  it("says the models are being cross-validated while the run is live", async () => {
+    compared(winner);
+    server.use(
+      http.get("/api/runs", ({ request }) =>
+        HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [{ ...comparisonRun, status: "running" }] : [run]),
+      ),
+    );
+    expect(await screen.findByText("Cross-validating 3 models…")).toBeInTheDocument();
+  });
+
+  it("says so when a finished run has no decision, instead of loading for ever", async () => {
+    compared(winner);
+    server.use(http.get(`/api/runs/${CRUN}/attempts`, () => HttpResponse.json([])));
+    expect(await screen.findByRole("alert")).toHaveTextContent(`The comparison failed: run ${CRUN} has no select_model result`);
   });
 });

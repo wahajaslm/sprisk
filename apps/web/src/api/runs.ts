@@ -1,7 +1,8 @@
 import { parse, type Attempt, type Run, type SelectionDecision } from "@sprisk/contracts";
 import { type Query, useQueries, useQuery } from "@tanstack/react-query";
 
-import { getList, getText } from "./client.ts";
+import { getList } from "./client.ts";
+import { useReport } from "./code.ts";
 import { artifactTextQuery, isLive, outputsQuery, useOutputs } from "./hooks.ts";
 import { MAX_INLINE_BYTES } from "./media.ts";
 
@@ -96,24 +97,20 @@ export function useSelectionDecision(run: Run | undefined, selectNode: string | 
   const producer = attempts.data
     ?.filter((a) => a.node_id === selectNode && (a.state === "succeeded" || a.state === "cache_hit"))
     .at(-1);
-  const outputs = useOutputs(producer?.id);
-  const artifact = outputs.data?.find((o) => o.port === "decision")?.artifact;
-  const readable = artifact !== undefined && artifact.size_bytes <= MAX_INLINE_BYTES ? artifact.id : undefined;
-  const decision = useQuery({
-    queryKey: ["selection-decision", readable],
-    queryFn: async () => parse("SelectionDecision", JSON.parse(await getText(`/artifacts/${readable ?? ""}/content`))),
-    enabled: readable !== undefined,
-    staleTime: Infinity,
-  });
+  const report = useReport(producer, "decision", (raw) => parse("SelectionDecision", raw), MAX_INLINE_BYTES);
+  // The same cached read useReport made; it names the artifact the decision is cited by.
+  const artifactId = useOutputs(producer?.id).data?.find((o) => o.port === "decision")?.artifact.id;
   if (run === undefined) return { status: "not_run" };
   if (isLive(run)) return { status: "running" };
-  const error = attempts.error ?? outputs.error ?? decision.error;
-  if (error) return { status: "failed", message: error.message };
+  if (attempts.isError) return { status: "failed", message: attempts.error.message };
+  if (attempts.data === undefined) return { status: "loading" };
   if (run.status !== "succeeded") {
-    const failed = attempts.data?.find((a) => a.state === "failed" && a.error);
+    const failed = attempts.data.find((a) => a.state === "failed" && a.error);
     return { status: "failed", message: failed?.error ? `${failed.node_id}: ${failed.error.message}` : `the run ${run.status}` };
   }
-  if (artifact !== undefined && readable === undefined) return { status: "failed", message: "the decision is too large to show" };
-  if (decision.data && readable) return { status: "decided", decision: decision.data, artifactId: readable };
-  return { status: "loading" };
+  if (producer === undefined) return { status: "failed", message: `run ${run.id} has no ${selectNode ?? "select step"} result` };
+  if (report.status === "none") return { status: "failed", message: report.reason };
+  if (report.status === "error") return { status: "failed", message: report.message };
+  if (report.status === "loading" || artifactId === undefined) return { status: "loading" };
+  return { status: "decided", decision: report.value, artifactId };
 }

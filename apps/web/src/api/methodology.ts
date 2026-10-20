@@ -76,20 +76,14 @@ export const useMethodologyDecision = (id: string | undefined) =>
   });
 
 /** A proposal never changes once made; it holds the evidence its decision weighed. */
+const proposalQuery = (id: string) => ({
+  queryKey: ["methodology_proposal", id],
+  queryFn: () => getOne("DecisionProposal", `/methodology_proposals/${id}`),
+  staleTime: Infinity,
+});
+
 export const useMethodologyProposal = (id: string | undefined) =>
-  useQuery({
-    queryKey: ["methodology_proposal", id],
-    queryFn: () => getOne("DecisionProposal", `/methodology_proposals/${id}`),
-    enabled: id !== undefined,
-    staleTime: Infinity,
-  });
+  useQuery({ ...proposalQuery(id ?? ""), enabled: id !== undefined });
 
 /** Several proposals at once, e.g. the ones the flow's comparisons compare. */
-export const useMethodologyProposals = (ids: string[]) =>
-  useQueries({
-    queries: ids.map((id) => ({
-      queryKey: ["methodology_proposal", id],
-      queryFn: () => getOne("DecisionProposal", `/methodology_proposals/${id}`),
-      staleTime: Infinity,
-    })),
-  });
+export const useMethodologyProposals = (ids: string[]) => useQueries({ queries: ids.map(proposalQuery) });
