@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import bundle from "../../../contracts/bundle.schema.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
-import { MethodologyPage, STAGES } from "../src/views/methodology/MethodologyPage.tsx";
+import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
+import { STAGES } from "../src/views/methodology/ruleTree.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -42,14 +43,14 @@ describe("methodology page", () => {
   });
 
 
-  it("lists the rules from the API by stage, in stage order", async () => {
+  it("maps the rules from the API under their stages, in stage order", async () => {
     serve([features, split]);
     renderWithApi(<MethodologyPage />);
 
-    const list = await screen.findByRole("navigation", { name: "Methodology rules" });
-    const stages = within(list).getAllByRole("heading").map((h) => h.textContent);
+    const map = await screen.findByRole("region", { name: "Methodology map" });
+    const stages = (await within(map).findAllByRole("heading")).map((h) => h.textContent);
     expect(stages).toEqual(["Split", "Features"]);
-    expect(within(list).getByRole("button", { name: /Data Splitting/ })).toBeInTheDocument();
+    expect(within(map).getByRole("button", { name: /Data Splitting/ })).toBeInTheDocument();
   });
 
   it("shows what the picked rule decides, its source and its alternatives", async () => {

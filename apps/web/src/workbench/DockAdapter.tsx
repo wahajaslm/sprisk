@@ -35,7 +35,7 @@ function pinSetter(api: PanelApi, fallbackTitle: string) {
 /** The Studio cockpit: sidebar left, flow over the Inspector tabs in the centre, copilot right (ADR-0018). */
 function addDefaultLayout(api: DockviewApi): void {
   api.addPanel({ id: "flow", component: "flow", title: "Flow" });
-  api.addPanel({ id: "sidebar", component: "sidebar", title: "Sidebar", position: { referencePanel: "flow", direction: "left" }, initialWidth: 236 });
+  api.addPanel({ id: "sidebar", component: "sidebar", title: "Sidebar", position: { referencePanel: "flow", direction: "left" }, initialWidth: 240 }); // --side-width in cockpit.css
   api.addPanel({ id: "copilot", component: "copilot", title: "Copilot", position: { referencePanel: "flow", direction: "right" }, initialWidth: 330 });
   const [first, ...rest] = INSPECTOR_TABS;
   addTabPanel(api, first, { referencePanel: "flow", direction: "below" }, 340);

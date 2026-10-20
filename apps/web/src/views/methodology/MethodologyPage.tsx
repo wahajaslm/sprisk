@@ -1,64 +1,45 @@
-import type { MethodologyRule, MethodologyStage } from "@sprisk/contracts";
+import type { MethodologyRule } from "@sprisk/contracts";
 import { useState } from "react";
 
 import { useMethodologyRules, useMethodologyRuleSource } from "../../api/methodology.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
+import { MethodologyMap } from "./MethodologyMap.tsx";
+import { stageName } from "./ruleTree.ts";
 
-/** ADR-0042: stages run in this order. */
-export const STAGES: MethodologyStage[] = ["question", "data", "cleaning", "split", "features", "models", "evaluation", "reporting"];
-const stageName = (stage: MethodologyStage) => stage[0]!.toUpperCase() + stage.slice(1);
 const ignore = () => undefined;
 
-/** The rule packs (ADR-0042): every rule by stage, and the picked one's guidance and code. */
+/** The rule packs (ADR-0042) as a map of stages and rules, and the picked rule's guidance
+ * and code beside it. */
 export function MethodologyPage() {
   const rules = useMethodologyRules();
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
   if (rules.isPending) return <Loading text="Loading methodology rules…" pad />;
+  if (rules.data.length === 0) return <p className="muted pad">No methodology rules are loaded.</p>;
 
   const query = filter.trim().toLowerCase();
   const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query));
-  const byStage = STAGES.map((stage) => ({ stage, rules: shown.filter((r) => r.stage === stage) })).filter((g) => g.rules.length > 0);
-  const current = shown.find((r) => r.id === picked) ?? byStage[0]?.rules[0];
+  const current = shown.find((r) => r.id === picked) ?? shown[0];
 
   return (
-    <main className="dsx">
-      <nav className="dsx-side" aria-label="Methodology rules">
-        <header className="dsx-side-head">
-          <p className="eyebrow">Methodology · {rules.data.length === 1 ? "1 rule" : `${rules.data.length} rules`}</p>
+    <main className="mth-page">
+      <div className="mth-canvas">
+        <div className="mth-toolbar">
           <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
-        </header>
-        {rules.data.length === 0 ? (
-          <p className="muted pad">No methodology rules are loaded.</p>
-        ) : (
-          <div className="mth-groups">
-            {byStage.map((group) => (
-              <section key={group.stage}>
-                <h2 className="mth-stage">{stageName(group.stage)}</h2>
-                <ul className="dsx-list mth-list">
-                  {group.rules.map((rule) => (
-                    <li key={rule.id}>
-                      <button type="button" className={`dsx-item${rule === current ? " picked" : ""}`} aria-pressed={rule === current} onClick={() => setPicked(rule.id)}>
-                        <span className="dsx-item-name mth-item-name">{rule.name}</span>
-                        <span className="dsx-item-meta">{rule.decides}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        )}
-      </nav>
-      <div className="dsx-main">{current && <RuleDetail key={current.id} rule={current} />}</div>
+        </div>
+        <MethodologyMap rules={shown} picked={current?.id} onPick={setPicked} />
+      </div>
+      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} />}</aside>
     </main>
   );
 }
 
 function RuleDetail({ rule }: { rule: MethodologyRule }) {
   const [tab, setTab] = useState<"overview" | "code">("overview");
+  const source = useMethodologyRuleSource(rule.id);
+  const python = source.data?.files.some((f) => f.language === "python");
   return (
     <section className="dsx-detail" aria-label={rule.name}>
       <header className="dsx-title">
@@ -67,6 +48,7 @@ function RuleDetail({ rule }: { rule: MethodologyRule }) {
           <p className="muted">
             {stageName(rule.stage)} · decides <code>{rule.decides}</code> · <span className="tech">{rule.id}</span>
           </p>
+          {source.data && <p className="mth-tag">{python ? "Python decide() in rule.py" : "No rule.py yet: manifest only"}</p>}
         </div>
       </header>
       <div className="dsx-tabs" role="tablist" aria-label="Rule view tabs">

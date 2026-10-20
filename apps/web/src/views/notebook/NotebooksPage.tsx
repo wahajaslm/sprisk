@@ -103,16 +103,19 @@ export function NotebooksPage() {
   return (
     <div className="notebooks-page">
       <nav className="notebooks-list" aria-label="Notebooks">
-        <div style={{ display: "flex", gap: "6px", flexDirection: "column" }}>
-          <button type="button" className="page-btn" disabled={save.isPending} onClick={create}>
-            <AddIcon /> New notebook
-          </button>
-          {flow?.head && (
-            <button type="button" className="page-btn" disabled={save.isPending} onClick={createFromFlow} title="Generate interactive notebook cells directly from flow DAG nodes">
-              <AddIcon /> Sync notebook from flow
+        <header className="dsx-side-head">
+          <p className="eyebrow">Notebooks · {mine.length + loose.length}</p>
+          <div className="side-actions">
+            <button type="button" className="page-btn" disabled={save.isPending} onClick={create}>
+              <AddIcon /> New notebook
             </button>
-          )}
-        </div>
+            {flow?.head && (
+              <button type="button" className="page-btn" disabled={save.isPending} onClick={createFromFlow} title="Generate interactive notebook cells directly from flow DAG nodes">
+                <AddIcon /> Sync from flow
+              </button>
+            )}
+          </div>
+        </header>
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
         <NotebookList label="This flow's notebooks" notebooks={mine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
         {loose.length > 0 && (
