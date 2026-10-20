@@ -1451,6 +1451,24 @@ class ColumnProfile(StrictModel):
     data_type: Annotated[str, Field(description="Polars data type name, for display only.")]
     missing: Annotated[int, Field(description="Empty cells, NaN and infinity.", ge=0)]
     distinct: Annotated[int, Field(description="Distinct values, not counting missing.", ge=0)]
+    skewness: Annotated[
+        float | None,
+        Field(description="Sample skewness of a numeric column with variation; absent otherwise."),
+    ] = None
+    kurtosis: Annotated[
+        float | None,
+        Field(
+            description="Excess (Fisher) kurtosis of a numeric column with variation; absent otherwise."
+        ),
+    ] = None
+    outlier_share: Annotated[
+        float | None,
+        Field(
+            description="Share of present values outside the 1.5 x IQR fences, for a numeric column with variation.",
+            ge=0.0,
+            le=1.0,
+        ),
+    ] = None
     missing_by_band: Annotated[
         list[float],
         Field(description="Share of missing cells (0 to 1) in each row band, in row order."),

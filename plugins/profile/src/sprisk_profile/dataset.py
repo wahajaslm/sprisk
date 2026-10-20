@@ -2,8 +2,8 @@
 
 Run as `python -m sprisk_profile.dataset` with a Parquet path on stdin; prints a
 `DatasetProfile` as JSON. Rust starts one short process per request, bounds its time and
-checks the answer against the contract. No step reads the profile; it only helps people see
-their data.
+checks the answer against the contract. Methodology rules read it too, but only of a step's
+train rows (ADR-0042): a whole-table profile sees held-out rows.
 """
 
 import json
@@ -75,10 +75,31 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
         "distinct": s.drop_nulls().n_unique(),
         "missing_by_band": _missing_by_band(s, band_rows),
     }
+    if numeric:
+        column.update(_shape(s))
     histogram = _bins(bins, s.name) if numeric else _top_values(s)
     if histogram is not None:
         column["histogram"] = histogram
     return column
+
+
+def _shape(s: pl.Series) -> dict[str, float]:
+    """Skew, excess kurtosis and the share outside the 1.5 x IQR fences, for scaling and
+    outlier rules. A column without variation has no shape, so it gets none."""
+    present = s.drop_nulls().cast(pl.Float64)
+    if present.n_unique() < 2:
+        return {}
+    q1, q3 = present.quantile(0.25, "linear"), present.quantile(0.75, "linear")
+    shape: dict[str, float] = {}
+    if (skew := present.skew()) is not None and math.isfinite(skew):
+        shape["skewness"] = skew
+    if (kurtosis := present.kurtosis()) is not None and math.isfinite(kurtosis):
+        shape["kurtosis"] = kurtosis
+    if q1 is not None and q3 is not None:
+        fence = 1.5 * (q3 - q1)
+        outside = ((present < q1 - fence) | (present > q3 + fence)).sum()
+        shape["outlier_share"] = float(outside) / present.len()
+    return shape
 
 
 def _missing_by_band(s: pl.Series, band_rows: int) -> list[float]:

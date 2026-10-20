@@ -452,6 +452,18 @@ export interface ColumnProfile {
    */
   distinct: number;
   /**
+   * Sample skewness of a numeric column with variation; absent otherwise.
+   */
+  skewness?: number;
+  /**
+   * Excess (Fisher) kurtosis of a numeric column with variation; absent otherwise.
+   */
+  kurtosis?: number;
+  /**
+   * Share of present values outside the 1.5 x IQR fences, for a numeric column with variation.
+   */
+  outlier_share?: number;
+  /**
    * Share of missing cells (0 to 1) in each row band, in row order.
    */
   missing_by_band: number[];

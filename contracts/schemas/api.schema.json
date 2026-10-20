@@ -283,6 +283,9 @@
           "minimum": 0,
           "description": "Distinct values, not counting missing."
         },
+        "skewness": { "type": "number", "description": "Sample skewness of a numeric column with variation; absent otherwise." },
+        "kurtosis": { "type": "number", "description": "Excess (Fisher) kurtosis of a numeric column with variation; absent otherwise." },
+        "outlier_share": { "type": "number", "minimum": 0, "maximum": 1, "description": "Share of present values outside the 1.5 x IQR fences, for a numeric column with variation." },
         "missing_by_band": {
           "type": "array",
           "items": {

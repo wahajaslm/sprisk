@@ -188,3 +188,18 @@ def test_command_fails_loudly_on_a_file_it_cannot_read(tmp_path: Path) -> None:
     )
     assert done.returncode != 0
     assert "not.parquet" in done.stderr
+
+
+def test_numeric_columns_report_skew_kurtosis_and_outlier_share() -> None:
+    values = [float(v) for v in range(1, 20)] + [1000.0]
+    column = profile(pl.DataFrame({"x": values, "label": ["a"] * 20})).columns[0]
+    assert column.skewness is not None and column.skewness > 3
+    assert column.kurtosis is not None and column.kurtosis > 3
+    assert column.outlier_share == pytest.approx(1 / 20)
+
+
+def test_shape_is_left_out_where_it_means_nothing() -> None:
+    data = pl.DataFrame({"flat": [2.0] * 20, "label": ["a", "b"] * 10})
+    flat, label = profile(data).columns
+    assert flat.skewness is None and flat.outlier_share is None
+    assert label.kurtosis is None
