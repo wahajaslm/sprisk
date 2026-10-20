@@ -101,3 +101,14 @@ def test_a_confirmed_column_missing_from_the_rows_is_bad_input() -> None:
 def test_an_empty_side_is_bad_input() -> None:
     with pytest.raises(CheckInputError, match="empty"):
         check(rows([1], ["a"]).clear(), rows([2], ["b"]), question(**TIME))
+
+
+@pytest.mark.parametrize("side", ["train", "test"])
+@pytest.mark.parametrize(("facts", "column"), [(TIME, "day"), (ENTITY, "patient")])
+def test_a_missing_value_in_a_confirmed_column_is_bad_input(
+    facts: dict[str, Any], column: str, side: str
+) -> None:
+    tables = {"train": rows([1], ["a"]), "test": rows([2], ["b"])}
+    tables[side] = tables[side].with_columns(pl.lit(None).alias(column))
+    with pytest.raises(CheckInputError, match=column):
+        check(tables["train"], tables["test"], question(**facts))

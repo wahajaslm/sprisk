@@ -99,15 +99,16 @@ def _judge(node: Node, question: QuestionVersion | None) -> tuple[Verdict, str]:
     entity = authoritative(question.entity_column)
     if time:
         if operator == TEMPORAL and params.get("time_column") == time:
-            crossing = (
-                f" Rows of one {entity} may still be in both; that is right only when the "
-                f"model will predict for {entity} values it has seen."
-                if entity
-                else ""
-            )
+            if entity and params.get("group_column") != entity:
+                return Verdict.fail, (
+                    f"Step {step} orders rows by {time}, but the question also confirms "
+                    f"{entity} as the entity column. Set group_column to {entity}, so train "
+                    f"drops every {entity} that is also in test."
+                )
+            purged = f" and no {entity} is in both" if entity else ""
             return Verdict.pass_, (
                 f"Step {step} puts the latest rows by {time}, the confirmed time column, in "
-                f"test.{crossing}"
+                f"test{purged}."
             )
         return Verdict.fail, (
             f"The question confirms {time} as the time column, but step {step} "

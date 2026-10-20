@@ -27,6 +27,7 @@ DECISION_ID = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0"
 
 RANDOM = ("sprisk.validation.random_split@1.0.0", {"test_fraction": 0.2, "seed": 1})
 TEMPORAL = ("sprisk.validation.temporal_split@1.0.0", {"time_column": "day", "test_fraction": 0.2})
+PURGED = (TEMPORAL[0], {**TEMPORAL[1], "group_column": "patient"})
 GROUP = (
     "sprisk.validation.group_split@1.0.0",
     {"group_column": "patient", "test_fraction": 0.2, "seed": 1},
@@ -112,7 +113,8 @@ def test_knows_the_operator_of_every_alternative_the_rule_offers() -> None:
         ((GROUP[0], {**GROUP[1], "group_column": "other"}), CONFIRMED_ENTITY, "fail"),
         (RANDOM, {}, "pass"),
         (GROUP, {**CONFIRMED_TIME, **CONFIRMED_ENTITY}, "fail"),
-        (TEMPORAL, {**CONFIRMED_TIME, **CONFIRMED_ENTITY}, "pass"),
+        (TEMPORAL, {**CONFIRMED_TIME, **CONFIRMED_ENTITY}, "fail"),
+        (PURGED, {**CONFIRMED_TIME, **CONFIRMED_ENTITY}, "pass"),
     ],
 )
 def test_the_split_must_follow_the_confirmed_time_or_entity_fact(
@@ -132,10 +134,10 @@ def test_an_inferred_fact_leaves_the_split_unassessed_until_it_is_confirmed(fact
     assert "day" in result.rationale
 
 
-def test_a_temporal_pass_with_a_confirmed_entity_says_entities_may_cross() -> None:
+def test_a_temporal_split_that_does_not_purge_a_confirmed_entity_fails_and_says_so() -> None:
     result = check(TEMPORAL, question(**CONFIRMED_TIME, **CONFIRMED_ENTITY))
-    assert result.verdict == "pass"
-    assert "patient" in result.rationale
+    assert result.verdict == "fail"
+    assert "group_column" in result.rationale and "patient" in result.rationale
 
 
 def test_a_failure_says_which_fact_and_what_to_use_instead() -> None:

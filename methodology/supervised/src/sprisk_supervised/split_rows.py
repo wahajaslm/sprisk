@@ -30,7 +30,10 @@ def split_rows(
         return _result(pipeline_version_id, node_id, check_id, now, verdict, rationale)
 
     if question is None:
-        return result(Verdict.not_assessed, f"No question is linked to check step {node_id} by.")
+        return result(
+            Verdict.not_assessed,
+            f"No question is linked, so step {node_id}'s rows are not checked.",
+        )
     if train.is_empty() or test.is_empty():
         raise CheckInputError(
             f"split {node_id} gave {train.height} train and {test.height} test rows; "
@@ -83,6 +86,11 @@ def split_rows(
 def _require(column: str, node_id: str, *tables: pl.DataFrame) -> None:
     if any(column not in t.columns for t in tables):
         raise CheckInputError(f"split {node_id}'s rows have no {column} column to check")
+    # Polars skips nulls in min() and joins, so a null would pass unchecked.
+    if any(t[column].null_count() for t in tables):
+        raise CheckInputError(
+            f"split {node_id}'s rows have missing {column} values, which cannot be checked"
+        )
 
 
 def _result(
