@@ -129,5 +129,5 @@ alternatives:
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------
 verification:
-  check_id: sprisk.checks.supervised.split_leakage@1.0.0
+  check_id: methodology.supervised.data_split@1.0.0
   invariant: "Zero row overlap, zero entity overlap across train/test splits, and strictly non-decreasing timestamps across temporal boundaries."

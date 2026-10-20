@@ -8,16 +8,30 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from sprisk_contracts import MethodologyCheck, MethodologyDecision, PipelineVersion, QuestionVersion
-from sprisk_contracts.generated.models import MethodologyCoverage, MethodologyPhase, Node, Verdict
-from sprisk_supervised.split_leakage import HOLDOUT_PORTS, unversioned
+from sprisk_contracts.generated.models import (
+    MethodologyCoverage,
+    MethodologyPhase,
+    Node,
+    Verdict,
+)
+from sprisk_supervised.split_leakage import HOLDOUT_PORTS, CheckInputError, unversioned
 from sprisk_workers.rule import authoritative
 
 CHECK = "methodology.supervised.data_split@1.0.0"
+RANDOM = "sprisk.validation.random_split"
 TEMPORAL = "sprisk.validation.temporal_split"
 GROUP = "sprisk.validation.group_split"
+# The operator each alternative of rules/data_split/rule.yaml builds; a test keeps them equal.
+ALTERNATIVE_OPERATORS = {
+    "temporal": TEMPORAL,
+    "entity_group": GROUP,
+    "stratified_random": RANDOM,
+    "simple_random": RANDOM,
+}
 LIMITATIONS = (
     "Compares the split's settings with the question's facts. It does not read rows, so it "
-    "cannot show that test rows come later or share no entity with train rows."
+    "cannot show that test rows come later or share no entity with train rows, and it does "
+    "not check stratification."
 )
 
 
@@ -32,14 +46,45 @@ def split_design(
     splits = [n for n in pipeline.nodes if unversioned(n.operator.root) in HOLDOUT_PORTS]
     if not splits:
         return [_result(pipeline, new_id(), now, Verdict.not_assessed, "No split step.", None)]
-    chose = {d.id.root: d for d in decisions if d.rule.root == CHECK}
+    sent = {d.id.root: d for d in decisions}
     results = []
     for node in splits:
+        decision = _own_decision(node, sent)
         verdict, rationale = _judge(node, question)
-        decided = node.methodology_decision_id
-        decision = chose.get(decided.root) if decided else None
+        if decision is not None and verdict != Verdict.not_assessed:
+            drift = _drift(node, decision)
+            if drift:
+                verdict, rationale = Verdict.fail, drift
         results.append(_result(pipeline, new_id(), now, verdict, rationale, node, decision))
     return results
+
+
+def _own_decision(
+    node: Node, sent: Mapping[str, MethodologyDecision]
+) -> MethodologyDecision | None:
+    """The split decision `node` cites. Citing one that was not sent, or that decided
+    something else, is bad input: the check would credit the split to the wrong choice."""
+    cited = node.methodology_decision_id
+    if cited is None:
+        return None
+    decision = sent.get(cited.root)
+    if decision is None or decision.rule.root != CHECK or decision.subject_node_id != node.id:
+        raise CheckInputError(
+            f"split {node.id.root} cites decision {cited.root}, which was not sent or is not "
+            f"a {CHECK} decision about this step"
+        )
+    return decision
+
+
+def _drift(node: Node, decision: MethodologyDecision) -> str | None:
+    """Why the step no longer matches the alternative its decision chose, or None."""
+    chose = decision.alternative_id
+    if ALTERNATIVE_OPERATORS.get(chose) == unversioned(node.operator.root):
+        return None
+    return (
+        f"Step {node.id.root} cites decision {decision.id.root}, which chose {chose}, but the "
+        "step was changed since. Apply the decision again or make a new one."
+    )
 
 
 def _judge(node: Node, question: QuestionVersion | None) -> tuple[Verdict, str]:
@@ -49,36 +94,50 @@ def _judge(node: Node, question: QuestionVersion | None) -> tuple[Verdict, str]:
             f"No question is linked, so step {step} has no time or entity fact to follow."
         )
     params: Mapping[str, Any] = node.params.model_extra or {}
+    operator = unversioned(node.operator.root)
     time = authoritative(question.time_column)
     entity = authoritative(question.entity_column)
     if time:
-        if unversioned(node.operator.root) == TEMPORAL and params.get("time_column") == time:
+        if operator == TEMPORAL and params.get("time_column") == time:
+            crossing = (
+                f" Rows of one {entity} may still be in both; that is right only when the "
+                f"model will predict for {entity} values it has seen."
+                if entity
+                else ""
+            )
             return Verdict.pass_, (
-                f"Step {step} puts the latest rows by {time}, the confirmed time column, in test."
+                f"Step {step} puts the latest rows by {time}, the confirmed time column, in "
+                f"test.{crossing}"
             )
         return Verdict.fail, (
             f"The question confirms {time} as the time column, but step {step} "
-            f"{_describe(node, params)}. Use a temporal split on {time}, so the model is "
+            f"{_describe(operator, params)}. Use a temporal split on {time}, so the model is "
             "tested on rows later than the ones it learned from."
         )
     if entity:
-        if unversioned(node.operator.root) == GROUP and params.get("group_column") == entity:
+        if operator == GROUP and params.get("group_column") == entity:
             return Verdict.pass_, (
                 f"Step {step} keeps each {entity}, the confirmed entity column, wholly in "
                 "train or in test."
             )
         return Verdict.fail, (
             f"The question confirms {entity} as the entity column, but step {step} "
-            f"{_describe(node, params)}. Use a group split on {entity}, so no entity's rows "
+            f"{_describe(operator, params)}. Use a group split on {entity}, so no entity's rows "
             "are both learned from and tested on."
         )
+    facts = (question.time_column, question.entity_column)
+    unconfirmed = [f.value for f in facts if f is not None and authoritative(f) is None]
+    if unconfirmed:
+        return Verdict.not_assessed, (
+            f"Confirm whether {' and '.join(unconfirmed)} orders or groups the rows. Until "
+            f"then step {step} cannot be checked against it."
+        )
     return Verdict.pass_, (
-        f"The question confirms no time or entity column, so step {step} may split rows freely."
+        f"The question has no time or entity column, so step {step} may split rows freely."
     )
 
 
-def _describe(node: Node, params: Mapping[str, Any]) -> str:
-    operator = unversioned(node.operator.root)
+def _describe(operator: str, params: Mapping[str, Any]) -> str:
     if operator == TEMPORAL:
         return f"orders rows by {params.get('time_column')}"
     if operator == GROUP:

@@ -79,3 +79,21 @@ def test_every_fact_read_is_recorded_as_evidence() -> None:
     d = decide({**TARGET, "question.time_column": ("signup_date", "confirmed")})
     labels = {e["label"]: e["origin"] for e in d["evidence"]}
     assert labels == {"Target": "explicit", "Task": "explicit", "Time column": "confirmed"}
+
+
+def test_a_confirmed_time_column_offers_only_the_temporal_split() -> None:
+    d = decide(
+        {
+            **TARGET,
+            "question.time_column": ("signup_date", "confirmed"),
+            "question.entity_column": ("customer_id", "confirmed"),
+        }
+    )
+    offered = [a["id"] for a in d["alternatives"] if a["applicability"] == "applicable"]
+    assert offered == ["temporal"]
+
+
+def test_a_confirmed_entity_column_offers_only_the_group_split() -> None:
+    d = decide({**TARGET, "question.entity_column": ("customer_id", "confirmed")})
+    offered = [a["id"] for a in d["alternatives"] if a["applicability"] == "applicable"]
+    assert offered == ["entity_group"]

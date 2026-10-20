@@ -41,16 +41,30 @@ def decide(observation: RuleObservation) -> RuleDecision:
         if time
         else needs_fact("temporal", "Confirm the time column before it can order the split.")
     )
-    entity_group = (
-        applicable(
+    # A confirmed time column requires a temporal split and a confirmed entity column a group
+    # split (rule.yaml conditions); Gate B fails any other split, so it is never offered.
+    if time:
+        entity_group = not_applicable(
+            "entity_group", "The confirmed time column requires a temporal split."
+        )
+    elif entity:
+        entity_group = applicable(
             "entity_group",
             "A confirmed entity key keeps each entity wholly in train or in test.",
             {"group_column": entity, "test_fraction": fraction, "seed": seed},
         )
-        if entity
-        else needs_fact("entity_group", "Confirm the entity column before it can group the split.")
+    else:
+        entity_group = needs_fact(
+            "entity_group", "Confirm the entity column before it can group the split."
+        )
+    boundary = (
+        "The confirmed time column requires a temporal split."
+        if time
+        else "The confirmed entity column requires a group split."
     )
-    if task == "classification" and target:
+    if time or entity:
+        stratified = not_applicable("stratified_random", boundary)
+    elif task == "classification" and target:
         stratified = applicable(
             "stratified_random",
             "Keeps each class's share the same in train and test.",
@@ -60,10 +74,14 @@ def decide(observation: RuleObservation) -> RuleDecision:
         stratified = not_applicable(
             "stratified_random", "Stratifying needs a confirmed classification target."
         )
-    simple = applicable(
-        "simple_random",
-        "Shuffles rows with a fixed seed. It ignores any time or entity boundary.",
-        {"test_fraction": fraction, "seed": seed},
+    simple = (
+        not_applicable("simple_random", boundary)
+        if time or entity
+        else applicable(
+            "simple_random",
+            "Shuffles rows with a fixed seed. It ignores any time or entity boundary.",
+            {"test_fraction": fraction, "seed": seed},
+        )
     )
 
     if time:
