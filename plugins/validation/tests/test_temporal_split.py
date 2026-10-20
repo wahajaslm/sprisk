@@ -22,3 +22,17 @@ def test_temporal_split_puts_all_train_strictly_before_test() -> None:
 def test_temporal_split_rejects_bad_data(df: pl.DataFrame, error: type[Exception]) -> None:
     with pytest.raises(error):
         temporal_split(df, time_column="t", test_fraction=0.5)
+
+
+def test_a_group_column_keeps_test_entities_out_of_train() -> None:
+    df = pl.DataFrame({"t": [1, 2, 3, 4, 5, 6], "user": ["a", "b", "c", "d", "a", "e"]})
+    out = temporal_split(df, time_column="t", test_fraction=0.34, group_column="user")
+    assert out["test"]["t"].to_list() == [4, 5, 6]
+    # a is in test, so its earlier row leaves train.
+    assert out["train"]["t"].to_list() == [2, 3]
+
+
+def test_purging_every_train_row_is_an_error_not_an_empty_train() -> None:
+    df = pl.DataFrame({"t": [1, 2, 3, 4], "user": ["a", "a", "a", "a"]})
+    with pytest.raises(ValueError, match="train"):
+        temporal_split(df, time_column="t", test_fraction=0.5, group_column="user")

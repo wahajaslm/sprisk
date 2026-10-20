@@ -16,7 +16,7 @@ inputs: [{{ name: data, kind: table }}]
 outputs: [{{ name: train, kind: table }}, {{ name: test, kind: table }}]
 params_schema:
   type: object
-  properties: {{ time_column: {{ type: string }}, test_fraction: {{ type: number }} }}
+  properties: {{ time_column: {{ type: string }}, test_fraction: {{ type: number }}, group_column: {{ type: string }} }}
 effects: pure
 network: none
 resources: {{ cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }}

@@ -19,6 +19,7 @@ LABELS = {
     "question.task": "Task",
     "question.time_column": "Time column",
     "question.entity_column": "Entity column",
+    "question.prediction_horizon": "Prediction horizon",
 }
 
 
@@ -31,13 +32,24 @@ def decide(observation: RuleObservation) -> RuleDecision:
     entity = authoritative(facts.get("question.entity_column"))
     target = authoritative(facts.get("question.target"))
     task = authoritative(facts.get("question.task"))
+    horizon = authoritative(facts.get("question.prediction_horizon"))
+
+    temporal_params = {"time_column": time, "test_fraction": fraction}
+    temporal_reason = (
+        "A confirmed time column sets the prediction chronology: train on earlier rows."
+    )
+    if entity:
+        # Time alone would let one entity sit on both sides; purge test entities from train.
+        temporal_params["group_column"] = entity
+        temporal_reason += f" Train drops every {entity} that also appears in test."
+    if horizon:
+        temporal_reason += (
+            f" Labels look {horizon} ahead, and the split leaves no gap at the cutoff yet:"
+            " the last train rows may share label windows with test."
+        )
 
     temporal = (
-        applicable(
-            "temporal",
-            "A confirmed time column sets the prediction chronology: train on earlier rows.",
-            {"time_column": time, "test_fraction": fraction},
-        )
+        applicable("temporal", temporal_reason, temporal_params)
         if time
         else needs_fact("temporal", "Confirm the time column before it can order the split.")
     )

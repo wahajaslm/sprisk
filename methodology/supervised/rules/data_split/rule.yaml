@@ -46,7 +46,7 @@ alternatives:
   - id: temporal
     label: "Temporal (Chronological) Split"
     description: "Split data along the time axis: train strictly on past events, evaluate on future events."
-    condition: "question.time_column is confirmed"
+    condition: "question.time_column is confirmed (with a confirmed question.entity_column, test entities are purged from train)"
     rationale: "Time column is authoritative. Evaluates out-of-time generalization and strictly prevents lookahead leakage."
     settings_schema:
       type: object

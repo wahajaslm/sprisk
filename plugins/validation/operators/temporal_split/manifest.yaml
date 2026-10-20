@@ -12,6 +12,7 @@ params_schema:
   properties:
     time_column: { type: string, minLength: 1, description: "Rows are ordered by this column; the latest rows become the test set." }
     test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Share of the latest rows held out for testing." }
+    group_column: { type: string, minLength: 1, description: "Entity identifier. Train drops every entity that also appears in test, so none is on both sides." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

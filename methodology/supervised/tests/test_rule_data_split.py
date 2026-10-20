@@ -97,3 +97,31 @@ def test_a_confirmed_entity_column_offers_only_the_group_split() -> None:
     d = decide({**TARGET, "question.entity_column": ("customer_id", "confirmed")})
     offered = [a["id"] for a in d["alternatives"] if a["applicability"] == "applicable"]
     assert offered == ["entity_group"]
+
+
+def test_time_and_entity_together_split_by_time_and_purge_shared_entities() -> None:
+    d = decide(
+        {
+            **TARGET,
+            "question.time_column": ("signup_date", "confirmed"),
+            "question.entity_column": ("customer_id", "confirmed"),
+        }
+    )
+    assert d["recommended_alternative_id"] == "temporal"
+    assert alternative(d, "temporal")["params"] == {
+        "time_column": "signup_date",
+        "test_fraction": 0.2,
+        "group_column": "customer_id",
+    }
+    assert "customer_id" in alternative(d, "temporal")["reason"]
+
+
+def test_a_prediction_horizon_is_named_as_a_gap_the_split_does_not_leave() -> None:
+    d = decide(
+        {
+            **TARGET,
+            "question.time_column": ("signup_date", "confirmed"),
+            "question.prediction_horizon": ("P30D", "explicit"),
+        }
+    )
+    assert "P30D" in alternative(d, "temporal")["reason"]
