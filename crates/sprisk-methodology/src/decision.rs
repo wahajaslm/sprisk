@@ -15,16 +15,6 @@ use sprisk_contracts::{
 
 use crate::{ResolveError, facts};
 
-/// Question fields a rule may read, as `question.<field>` facts.
-const QUESTION_FACTS: &[&str] = &[
-    "target",
-    "task",
-    "unit_of_analysis",
-    "entity_column",
-    "time_column",
-    "prediction_horizon",
-];
-
 /// The rule's observation of this question, of the flow around the step (`flow_facts`)
 /// and, for rules that read data, of the step's train rows (`profile_facts`), holding only
 /// the facts the rule `reads` (ADR-0045). Its settings are the manifest's thresholds.
@@ -35,9 +25,10 @@ pub fn observation(
     profile: Map<String, Value>,
 ) -> Result<RuleObservation, ResolveError> {
     let question = serde_json::to_value(question)?;
-    let mut facts: Map<String, Value> = QUESTION_FACTS
+    let mut facts: Map<String, Value> = facts::FACTS
         .iter()
-        .filter_map(|field| Some((format!("question.{field}"), question.get(*field)?.clone())))
+        .filter_map(|name| Some((*name, question.get(name.strip_prefix("question.")?)?)))
+        .map(|(name, fact)| (name.to_owned(), fact.clone()))
         .collect();
     facts.extend(flow);
     // A rule sees only the facts it declares it reads (ADR-0045).

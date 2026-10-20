@@ -8,7 +8,7 @@ stage: cleaning
 decides: cleaning.outlier_strategy
 status: active
 applies_to: [sprisk.clean.clip_outliers]
-reads: [flow.model_families, flow.models_hidden, flow.other_readers, question.target, question.task, column.*.outlier_share, column.*.iqr]
+reads: [flow.model_families, flow.models_hidden, flow.other_readers, question.target, question.task, column.*.data_type, column.*.outlier_share, column.*.iqr]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -64,9 +64,9 @@ verification:
 # Examples: run as tests and shown on the Methodology page (ADR-0045)
 # ------------------------------------------------------------------------------
 examples:
-  - given: { column.income.outlier_share: 0.2, column.income.iqr: 5.0 }
+  - given: { column.income.data_type: Float64, column.income.outlier_share: 0.2, column.income.iqr: 5.0 }
     picks: clip_iqr_fence
-  - given: { column.age.outlier_share: 0.01, column.age.iqr: 3.0 }
+  - given: { column.age.data_type: Float64, column.age.outlier_share: 0.01, column.age.iqr: 3.0 }
     picks: none_tree_or_clean
-  - given: { flow.model_families: tree_ensemble, flow.models_hidden: none, column.income.outlier_share: 0.2, column.income.iqr: 5.0 }
+  - given: { flow.model_families: tree_ensemble, flow.models_hidden: none, column.income.data_type: Float64, column.income.outlier_share: 0.2, column.income.iqr: 5.0 }
     picks: none_tree_or_clean

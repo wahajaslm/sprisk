@@ -192,3 +192,10 @@ def test_a_profile_reading_few_outliers_does_not_make_the_rule_clip() -> None:
     few = column("income", iqr=1.0, outlier_share=0.01)
     d = run(few, readers("summary"))
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
+
+
+def test_a_text_column_that_may_be_the_target_still_asks_before_any_clip() -> None:
+    profile = {**column("income", iqr=5.0, outlier_share=0.2), **column("label", "String")}
+    d = run(profile, {"question.target": ("label", "inferred")})
+    assert alternative(d, "clip_iqr_fence")["applicability"] == "needs_fact"
+    assert d["recommended_alternative_id"] == "none_tree_or_clean"

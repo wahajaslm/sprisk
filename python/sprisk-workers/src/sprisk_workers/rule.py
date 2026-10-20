@@ -68,11 +68,13 @@ def question_evidence(observation: RuleObservation, labels: dict[str, str]) -> l
 
 
 def step_columns(observation: RuleObservation) -> list[str]:
-    """The step's columns: Rust sends profile facts only for them, as column.<name>.<measure>."""
+    """The step's columns: every profiled column has a data type, so a rule that reads
+    column.*.data_type sees them all, text and constant ones too. One that does not sees none."""
+    suffix = ".data_type"
     names = {
-        key[len("column.") :].rsplit(".", 1)[0]
+        key[len("column.") : -len(suffix)]
         for key in observation.profile
-        if key.startswith("column.")
+        if key.startswith("column.") and key.endswith(suffix)
     }
     return sorted(names)
 

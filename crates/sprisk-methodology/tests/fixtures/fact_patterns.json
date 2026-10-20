@@ -1,0 +1,11 @@
+[
+  { "pattern": "question.target", "name": "question.target", "covers": true },
+  { "pattern": "question.target", "name": "question.task", "covers": false },
+  { "pattern": "column.*.kurtosis", "name": "column.age.kurtosis", "covers": true },
+  { "pattern": "column.*.kurtosis", "name": "column.a.b.kurtosis", "covers": true },
+  { "pattern": "column.*.kurtosis", "name": "column..kurtosis", "covers": false },
+  { "pattern": "column.*.kurtosis", "name": "column.age.skewness", "covers": false },
+  { "pattern": "step.*", "name": "step.method", "covers": true },
+  { "pattern": "step.*", "name": "step.", "covers": false },
+  { "pattern": "rows", "name": "row", "covers": false }
+]

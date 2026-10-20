@@ -957,20 +957,16 @@ export interface MethodologyRule {
   status: "draft" | "active";
   /**
    * Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045).
-   *
-   * @minItems 1
    */
-  applies_to?: [string, ...string[]];
+  applies_to?: string[];
   /**
    * Facts this active rule may read, by name from the fact catalog, e.g. question.target or column.*.kurtosis; * stands for a column or setting name. Rust sends only these (ADR-0045).
    */
   reads?: string[];
   /**
    * Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).
-   *
-   * @minItems 1
    */
-  examples?: [RuleExample, ...RuleExample[]];
+  examples?: RuleExample[];
   /**
    * The one decision this rule owns; unique across loaded packs.
    */
@@ -1080,7 +1076,6 @@ export interface RuleExample {
     [k: string]:
       | string
       | number
-      | boolean
       | {
           value: string;
           origin: Origin;

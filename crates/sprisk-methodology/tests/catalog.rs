@@ -306,3 +306,29 @@ fn a_manifest_that_is_not_yaml_is_refused() {
     let err = RuleCatalog::load_dir(dir.path()).unwrap_err();
     assert!(matches!(err, CatalogError::Yaml { .. }), "{err}");
 }
+
+#[test]
+fn an_active_rule_needs_applies_to() {
+    let manifest = active_yaml(
+        "methodology.pack.a@1.0.0",
+        "cleaning.a",
+        "x",
+        READS_AND_EXAMPLE,
+    )
+    .replace("applies_to: [x]\n", "");
+    assert!(refused(&manifest).contains("applies_to"));
+}
+
+#[test]
+fn a_draft_rule_is_never_routed() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), "a", "methodology.pack.a@1.0.0", "cleaning.a");
+    let path = dir.path().join("pack/rules/a/rule.yaml");
+    let manifest = fs::read_to_string(&path).unwrap().replace(
+        "status: draft\n",
+        "status: draft\napplies_to: [sprisk.clean.scale]\n",
+    );
+    fs::write(&path, manifest).unwrap();
+    let err = RuleCatalog::load_dir(dir.path()).unwrap_err().to_string();
+    assert!(err.contains("applies_to"), "{err}");
+}

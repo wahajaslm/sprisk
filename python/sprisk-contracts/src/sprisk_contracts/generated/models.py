@@ -1181,7 +1181,7 @@ class RuleExample(StrictModel):
         extra="forbid",
     )
     given: Annotated[
-        dict[str, str | float | bool | Given],
+        dict[str, str | float | Given],
         Field(
             description="Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }."
         ),
@@ -1600,8 +1600,7 @@ class MethodologyRule(StrictModel):
     applies_to: Annotated[
         list[AppliesToItem] | None,
         Field(
-            description="Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045).",
-            min_length=1,
+            description="Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045)."
         ),
     ] = None
     reads: Annotated[
@@ -1613,8 +1612,7 @@ class MethodologyRule(StrictModel):
     examples: Annotated[
         list[RuleExample] | None,
         Field(
-            description="Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).",
-            min_length=1,
+            description="Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045)."
         ),
     ] = None
     decides: Annotated[

@@ -617,3 +617,52 @@ fn an_observation_holds_only_what_the_rule_reads() {
     // A column name may hold dots; the pattern still matches it.
     assert_eq!(observed["profile"], json!({ "column.a.b.kurtosis": 2.0 }));
 }
+
+#[test]
+fn every_flow_fact_in_the_catalog_is_one_rust_sends() {
+    let pipeline = flow(
+        &[
+            ("scale", "clean.scale"),
+            ("rf", "ml.random_forest"),
+            ("summary", "profile.summarize"),
+        ],
+        &[("scale.train", "rf.train"), ("scale.train", "summary.data")],
+    );
+    let sent: Vec<String> = facts_of(&pipeline, "scale")
+        .keys()
+        .filter(|k| k.starts_with("flow."))
+        .cloned()
+        .collect();
+    let mut catalog: Vec<&str> = sprisk_methodology::facts::FACTS
+        .iter()
+        .copied()
+        .filter(|f| f.starts_with("flow."))
+        .collect();
+    let mut sent = sent;
+    sent.sort();
+    catalog.sort();
+    assert_eq!(sent, catalog);
+}
+
+/// The same cases run in the Python rule harness, so both match `reads` alike.
+#[test]
+fn a_reads_pattern_covers_the_fact_names_the_shared_cases_say() {
+    let cases: Vec<Value> = serde_json::from_str(
+        &std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fact_patterns.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    for case in cases {
+        let (pattern, name) = (
+            case["pattern"].as_str().unwrap(),
+            case["name"].as_str().unwrap(),
+        );
+        assert_eq!(
+            sprisk_methodology::facts::covers(pattern, name),
+            case["covers"].as_bool().unwrap(),
+            "{case}"
+        );
+    }
+}

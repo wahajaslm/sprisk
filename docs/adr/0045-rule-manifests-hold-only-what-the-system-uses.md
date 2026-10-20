@@ -32,3 +32,7 @@ Arch doc sections: §8, §15.1. Amends ADR-0042.
 - An active rule with a `condition`, an unknown fact in `reads`, or no example fails when packs load.
 - An example that picks another alternative, or a `decide()` reading an undeclared fact, fails the test run.
 - `rule_for` is gone; the five active rules route from `applies_to`.
+
+## Notes
+- The manifest contract stays `sprisk.methodology_rule/v1`: manifests live only in the repo's packs and change with it, as with the `action.type` enum.
+- "An active rule needs applies_to, reads and examples, and no notes" is checked by the catalog, not the schema: the generated types cannot express a condition on `status`, and a list's minimum length is not enforced the same way in all three languages.

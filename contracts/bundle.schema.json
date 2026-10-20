@@ -1259,7 +1259,6 @@
         "applies_to": {
           "type": "array",
           "description": "Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045).",
-          "minItems": 1,
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
@@ -1276,7 +1275,6 @@
         "examples": {
           "type": "array",
           "description": "Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).",
-          "minItems": 1,
           "items": {
             "$ref": "#/$defs/RuleExample"
           }
@@ -1565,9 +1563,6 @@
               },
               {
                 "type": "number"
-              },
-              {
-                "type": "boolean"
               },
               {
                 "type": "object",
