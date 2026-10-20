@@ -1,3 +1,4 @@
+import type { Attempt } from "@sprisk/contracts";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -20,6 +21,7 @@ import {
   attempts,
   checksJson,
   codeAttempt,
+  gateOutputs,
   fakeDock,
   codeDisplayJson,
   codeOutputs,
@@ -540,6 +542,37 @@ describe("inspector failures and checks", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
     await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(appliedDecision.proposal_id);
+  });
+
+  it("shows a split's row check from its own gate attempt next to Gate B's", async () => {
+    const rowCheck: Attempt = { ...attempts[0]!, id: "att_01JABCDEFGHJKMNPQRSTVWXZZ1", node_id: "gate_split" };
+    const rowArtifact = { ...gateOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXZZ1", producer_attempt_id: rowCheck.id };
+    const failing = {
+      ...JSON.parse(checksJson)[0],
+      id: "mck_01JABCDEFGHJKMNPQRSTVWXZZ1",
+      check: "methodology.supervised.data_split@1.0.0",
+      phase: "runtime",
+      coverage: "complete",
+      verdict: "fail",
+      rationale: "In step split's rows, 1 patient value is in both train and test, e.g. ['b'].",
+      cited_nodes: ["split"],
+    };
+    server.use(
+      http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([...attempts, rowCheck])),
+      http.get("/api/attempts/:id/outputs", ({ params }) =>
+        HttpResponse.json(params.id === rowCheck.id ? [{ port: "checks", artifact: rowArtifact }] : params.id === attempts[0]!.id ? gateOutputs : []),
+      ),
+      http.get("/api/artifacts/:id/content", ({ params }) =>
+        HttpResponse.text(params.id === rowArtifact.id ? JSON.stringify([failing]) : checksJson),
+      ),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Methodology, 1 to review" }));
+    const checks = await screen.findByRole("region", { name: "Methodology checks" });
+    expect(within(checks).getAllByRole("article")).toHaveLength(2);
+    expect(checks).toHaveTextContent("Run · complete coverage");
+    expect(checks).toHaveTextContent("1 patient value is in both train and test");
   });
 
   it("says so when the checks output is not a list of checks", async () => {

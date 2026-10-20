@@ -6,7 +6,7 @@ import { useNodeHistory } from "../../api/history.ts";
 import { useOperators, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun, useTablePage } from "../../api/hooks.ts";
 import { PARQUET } from "../../api/media.ts";
 import { addCodeStep, isCodeOperator } from "../../flow/edit.ts";
-import { GATE_NODE, hasOutputs, latestByNode } from "../../flow/latest.ts";
+import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { stepOf } from "../../flow/ports.ts";
 import { shortName } from "../../flow/stages.ts";
 import { useViewInstance, useViewSelection } from "../../workbench/instance.tsx";
@@ -41,7 +41,7 @@ export function useStep() {
   const saveAndRun = useSaveAndRun(runId);
   const showRun = useSelection((s) => s.showRun);
   const all = attempts.data ?? [];
-  const checks = useRunChecks(latestByNode(all).get(GATE_NODE));
+  const checks = useRunChecks(all);
   const history = useNodeHistory(pipelineVersionId, nodeId ?? "");
   const mine = all.filter((a) => a.node_id === nodeId).sort((a, b) => a.number - b.number);
   const latest = latestByNode(mine).get(nodeId ?? "");

@@ -27,7 +27,7 @@ import { create } from "zustand";
 
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun, useStartRun } from "../api/hooks.ts";
 import { type RunChecks, useRunChecks } from "../api/checks.ts";
-import { GATE_NODE, hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
+import { hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { CardFigure } from "./CardFigure.tsx";
@@ -633,7 +633,7 @@ export function FlowCanvas() {
   const operators = useOperators();
   const attempts = useRunAttempts(pipelineVersionId, runId);
   const level = useCanvasDetail((s) => s.level);
-  const checks = useRunChecks(latestByNode(attempts.data ?? []).get(GATE_NODE));
+  const checks = useRunChecks(attempts.data ?? []);
 
   // Chart steps are views inside the step they draw, never canvas steps.
   const found = versions.data?.find((v) => v.id === pipelineVersionId);

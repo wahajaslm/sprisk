@@ -10,8 +10,9 @@ export function latestByNode(attempts: Attempt[]): Map<string, Attempt> {
   return latest;
 }
 
-/** Attempts of the methodology gate use this node id (ADR-0017). */
-export const GATE_NODE = "gate_b";
+/** Node ids of the control plane's methodology checks: `gate_b` (ADR-0017) and each
+ *  split's row check `gate_<split>` (ADR-0040). They are not pipeline steps. */
+export const isGateNode = (nodeId: string) => nodeId.startsWith("gate_");
 
 /** A finished attempt with outputs: it ran and succeeded, or it reused a cached result. */
 export const hasOutputs = (attempt: Attempt | undefined) =>

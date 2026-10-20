@@ -1,7 +1,7 @@
 import type { Attempt } from "@sprisk/contracts";
 
 import { useRunAttempts } from "../api/hooks.ts";
-import { GATE_NODE, hasOutputs } from "../flow/latest.ts";
+import { hasOutputs, isGateNode } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { SendIcon, SparkIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
@@ -46,7 +46,7 @@ export function Copilot() {
 }
 
 function RunSummary({ attempts }: { attempts: Attempt[] }) {
-  const steps = attempts.filter((a) => a.node_id !== GATE_NODE);
+  const steps = attempts.filter((a) => !isGateNode(a.node_id));
   const done = steps.filter(hasOutputs).length;
   const cached = steps.filter((a) => a.state === "cache_hit").length;
   return (
