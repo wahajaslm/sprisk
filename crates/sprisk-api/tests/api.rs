@@ -1533,3 +1533,46 @@ async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
         applied["decision"]["id"]
     );
 }
+
+#[tokio::test]
+async fn scaling_methodology_is_refused_until_profile_facts_are_available() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    assert_eq!(
+        call(&api.app, "POST", "/question_versions", Some(q))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    let nodes = flow["nodes"].as_array_mut().unwrap();
+    nodes.push(json!({
+        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        "params":{"test_fraction":0.2,"seed":42,"stratify":"returned_within_30d"}
+    }));
+    nodes.push(json!({
+        "id":"scale", "operator":"sprisk.clean.scale@1.0.0",
+        "params":{"columns":["age"],"method":"z_score"}
+    }));
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"scale.train"},
+        {"from":"split.test","to":"scale.test"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/scale",
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(
+        body["errors"][0]["code"],
+        "methodology_evidence_unavailable"
+    );
+}

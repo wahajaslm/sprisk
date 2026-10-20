@@ -873,50 +873,19 @@ async fn propose_node_methodology(
             false,
             false,
         )
-    } else if node.operator.as_str().contains("impute@")
-        || node.operator.as_str().contains("drop_missing@")
+    } else if ["impute@", "drop_missing@", "scale@", "clip_outliers@"]
+        .iter()
+        .any(|op| node.operator.as_str().contains(op))
     {
-        let col = question
-            .target
-            .as_ref()
-            .map(|t| t.value.as_str())
-            .unwrap_or("feature");
-        sprisk_methodology::resolve_missingness(
-            &question,
-            &pipeline,
-            &node_id,
-            &proposal_id,
-            &at,
-            col,
-            0.05,
-            false,
-            None,
-        )
-    } else if node.operator.as_str().contains("scale@") {
-        let cols = vec!["feature".to_string()];
-        sprisk_methodology::resolve_scaling(
-            &question,
-            &pipeline,
-            &node_id,
-            &proposal_id,
-            &at,
-            &cols,
-            1.0,
-            false,
-            None,
-        )
-    } else if node.operator.as_str().contains("clip_outliers@") {
-        let cols = vec!["feature".to_string()];
-        sprisk_methodology::resolve_outlier_treatment(
-            &question,
-            &pipeline,
-            &node_id,
-            &proposal_id,
-            &at,
-            &cols,
-            0.05,
-            None,
-        )
+        // These rules decide from measured column facts; until the profile feeds them,
+        // refusing is honest where placeholder facts would be recorded as measured evidence.
+        return Err(ApiError::BadRequest {
+            code: "methodology_evidence_unavailable",
+            message: format!(
+                "operator {} needs measured profile facts, which are not wired to methodology yet",
+                node.operator.as_str()
+            ),
+        });
     } else {
         return Err(ApiError::BadRequest {
             code: "methodology_not_applicable",
