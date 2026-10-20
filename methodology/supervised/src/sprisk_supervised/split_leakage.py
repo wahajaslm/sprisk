@@ -54,14 +54,16 @@ def split_leakage(
     op_of = _operators_by_node(pipeline, operators)
     graph = _port_graph(pipeline, op_of)
     holdouts = {
-        f"{node}.{HOLDOUT_PORTS[_unversioned(op)]}"
+        f"{node}.{HOLDOUT_PORTS[unversioned(op.id.root)]}"
         for node, op in op_of.items()
-        if _unversioned(op) in HOLDOUT_PORTS
+        if unversioned(op.id.root) in HOLDOUT_PORTS
     }
 
-    splits = [n for n, op in op_of.items() if _unversioned(op) in HOLDOUT_PORTS]
+    splits = [n for n, op in op_of.items() if unversioned(op.id.root) in HOLDOUT_PORTS]
     sources = {n for n, op in op_of.items() if op.capability_class == CapabilityClass.source}
-    for node in sorted(n for n, op in op_of.items() if _unversioned(op) in FITTING_TRANSFORMS):
+    for node in sorted(
+        n for n, op in op_of.items() if unversioned(op.id.root) in FITTING_TRANSFORMS
+    ):
         problem = _fit_problem(graph, node, splits, sources, holdouts)
         if problem:
             rationale, cited = problem
@@ -89,7 +91,7 @@ def split_leakage(
         table, model = _input_sources(evaluator, op_of[evaluator], graph)
         scored = holdouts & (nx.ancestors(graph, table) | {table})
         for model_node in _nearest_estimators(graph, model, op_of):
-            if _unversioned(op_of[model_node]) in BASELINE_OPERATORS:
+            if unversioned(op_of[model_node].id.root) in BASELINE_OPERATORS:
                 continue
             for holdout in scored:
                 candidates[holdout][model_node].add(evaluator)
@@ -113,8 +115,9 @@ def split_leakage(
     return _result(pipeline, check_id, now, Verdict.pass_, rationale, examined)
 
 
-def _unversioned(op: Operator) -> str:
-    return op.id.root.split("@")[0]
+def unversioned(ref: str) -> str:
+    """An operator ref without its version: `sprisk.ml.evaluate@1.0.0` -> `sprisk.ml.evaluate`."""
+    return ref.split("@")[0]
 
 
 def _operators_by_node(
@@ -143,7 +146,7 @@ def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> Por
     # A fitting transform's train output carries only its train input; its test output
     # depends on both. Without this, every model after a transform looks fit on test rows.
     for node, op in op_of.items():
-        if _unversioned(op) in FITTING_TRANSFORMS:
+        if unversioned(op.id.root) in FITTING_TRANSFORMS:
             source = _source_of(graph, node, TRAIN_PORT)
             graph.remove_edge(node, f"{node}.{TRAIN_PORT}")
             graph.add_edge(source, f"{node}.{TRAIN_PORT}")

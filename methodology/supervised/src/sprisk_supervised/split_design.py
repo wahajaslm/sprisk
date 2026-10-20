@@ -9,10 +9,10 @@ from typing import Any
 
 from sprisk_contracts import MethodologyCheck, MethodologyDecision, PipelineVersion, QuestionVersion
 from sprisk_contracts.generated.models import MethodologyCoverage, MethodologyPhase, Node, Verdict
+from sprisk_supervised.split_leakage import HOLDOUT_PORTS, unversioned
 from sprisk_workers.rule import authoritative
 
 CHECK = "methodology.supervised.data_split@1.0.0"
-RANDOM = "sprisk.validation.random_split"
 TEMPORAL = "sprisk.validation.temporal_split"
 GROUP = "sprisk.validation.group_split"
 LIMITATIONS = (
@@ -29,7 +29,7 @@ def split_design(
     now: str,
 ) -> list[MethodologyCheck]:
     """One check per split step; one not-assessed check when there is no split."""
-    splits = [n for n in pipeline.nodes if _operator(n) in (RANDOM, TEMPORAL, GROUP)]
+    splits = [n for n in pipeline.nodes if unversioned(n.operator.root) in HOLDOUT_PORTS]
     if not splits:
         return [_result(pipeline, new_id(), now, Verdict.not_assessed, "No split step.", None)]
     chose = {d.id.root: d for d in decisions if d.rule.root == CHECK}
@@ -52,7 +52,7 @@ def _judge(node: Node, question: QuestionVersion | None) -> tuple[Verdict, str]:
     time = authoritative(question.time_column)
     entity = authoritative(question.entity_column)
     if time:
-        if _operator(node) == TEMPORAL and params.get("time_column") == time:
+        if unversioned(node.operator.root) == TEMPORAL and params.get("time_column") == time:
             return Verdict.pass_, (
                 f"Step {step} puts the latest rows by {time}, the confirmed time column, in test."
             )
@@ -62,7 +62,7 @@ def _judge(node: Node, question: QuestionVersion | None) -> tuple[Verdict, str]:
             "tested on rows later than the ones it learned from."
         )
     if entity:
-        if _operator(node) == GROUP and params.get("group_column") == entity:
+        if unversioned(node.operator.root) == GROUP and params.get("group_column") == entity:
             return Verdict.pass_, (
                 f"Step {step} keeps each {entity}, the confirmed entity column, wholly in "
                 "train or in test."
@@ -78,16 +78,12 @@ def _judge(node: Node, question: QuestionVersion | None) -> tuple[Verdict, str]:
 
 
 def _describe(node: Node, params: Mapping[str, Any]) -> str:
-    operator = _operator(node)
+    operator = unversioned(node.operator.root)
     if operator == TEMPORAL:
         return f"orders rows by {params.get('time_column')}"
     if operator == GROUP:
         return f"groups rows by {params.get('group_column')}"
     return "shuffles rows at random"
-
-
-def _operator(node: Node) -> str:
-    return node.operator.root.split("@")[0]
 
 
 def _result(

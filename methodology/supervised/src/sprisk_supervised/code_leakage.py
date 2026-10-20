@@ -19,6 +19,7 @@ from sprisk_supervised.split_leakage import (
     HOLDOUT_PORTS,
     TRAIN_PORT,
     CheckInputError,
+    unversioned,
 )
 
 CHECK = "supervised.code_leakage@1.0.0"
@@ -199,7 +200,9 @@ def code_leakage(pipeline: PipelineVersion, check_id: str, now: str) -> Methodol
     if not code_nodes:
         return _result(pipeline, check_id, now, Verdict.not_assessed, "No code steps.", [])
 
-    split_nodes = {n for n, node in nodes.items() if _unversioned(node) in HOLDOUT_PORTS}
+    split_nodes = {
+        n for n, node in nodes.items() if unversioned(node.operator.root) in HOLDOUT_PORTS
+    }
     steps: dict[str, _Step] = {}
     unread = []
     for node in code_nodes:
@@ -265,7 +268,7 @@ def _port_tags(
     """Tags of the rows an output port carries. A built-in step passes on its inputs' tags:
     the input of the same name when it has one, else all of them."""
     node, name = port.split(".")
-    op = _unversioned(nodes[node])
+    op = unversioned(nodes[node].operator.root)
     if op in HOLDOUT_PORTS:
         if name == HOLDOUT_PORTS[op]:
             return frozenset({"holdout"})
@@ -301,12 +304,8 @@ def _last_name_of_call(expr: ast.expr) -> str | None:
     return _last_name(expr.func) if isinstance(expr, ast.Call) else None
 
 
-def _unversioned(node: Node) -> str:
-    return node.operator.root.split("@")[0]
-
-
 def _is_code(node: Node) -> bool:
-    return _unversioned(node) == CODE_OPERATOR
+    return unversioned(node.operator.root) == CODE_OPERATOR
 
 
 def _result(
