@@ -36,70 +36,37 @@ observes:
 policy_thresholds:
   outlier_fraction_threshold: 0.05
   extreme_zscore_cutoff: 8.0
+  clip_k: 3.0
 
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------
 alternatives:
   - id: none_tree_or_clean
-    label: "Retain Outliers (Natural Variation / Tree Invariance)"
-    description: "Keep all extreme values without capping or dropping."
-    condition: "outlier_percentage_iqr < outlier_fraction_threshold OR planned_model_family in ['random_forest', 'xgboost', 'lightgbm']"
-    rationale: "Either outlier rate is within expected natural limits (<5%) or tree models are used, which are immune to univariate leverage."
+    label: Retain Outliers (Natural Variation / Tree Invariance)
+    description: Keep all extreme values without capping or dropping.
+    condition: outlier_percentage_iqr < outlier_fraction_threshold OR planned_model_family in ['random_forest',
+      'xgboost', 'lightgbm']
+    rationale: Either outlier rate is within expected natural limits (<5%) or tree models are used, which
+      are immune to univariate leverage.
     action:
       type: pass_through
-
-  - id: winsorize_capping
-    label: "Winsorization (Percentile Capping)"
-    description: "Cap extreme lower and upper values at training set percentiles (e.g. 1st and 99th)."
-    condition: "outlier_percentage_iqr >= outlier_fraction_threshold AND extreme_zscore_max < extreme_zscore_cutoff"
-    rationale: "Moderate extreme values present. Percentile capping preserves sample size while eliminating unbounded leverage on gradient updates."
-    settings_schema:
-      type: object
-      properties:
-        lower_percentile:
-          type: number
-          default: 0.01
-          minimum: 0.001
-          maximum: 0.05
-        upper_percentile:
-          type: number
-          default: 0.99
-          minimum: 0.95
-          maximum: 0.999
+  - id: clip_mean_sd
+    label: Clip to Train Mean ± k SD
+    description: Cap each value at the train mean plus or minus k standard deviations.
+    condition: outlier_percentage_iqr >= outlier_fraction_threshold AND extreme_zscore_max < extreme_zscore_cutoff
+    rationale: Limits extreme leverage points without dropping rows. The mean and SD are themselves pulled
+      by outliers, so heavy tails are clipped less than a percentile cap would.
     action:
-      type: insert_step
-      placement: after_split
-      fit_on: train_partition_only
-      operator: sprisk.clean.winsorize@1.0.0
-      params:
-        lower_percentile: "{settings.lower_percentile}"
-        upper_percentile: "{settings.upper_percentile}"
-
+      type: replace_node
+      operator: sprisk.clean.clip_outliers@1.0.0
   - id: isolation_forest_filter
-    label: "Multivariate Isolation Forest (Train Filtering)"
-    description: "Identify and filter multi-dimensional anomalies in the training set using random partition isolation trees."
-    condition: "outlier_percentage_iqr >= outlier_fraction_threshold AND extreme_zscore_max >= extreme_zscore_cutoff"
-    rationale: "Severe, multi-standard-deviation anomalies detected. Multivariate isolation prevents corrupted data collection artifacts from polluting model training."
-    settings_schema:
-      type: object
-      properties:
-        contamination:
-          type: number
-          default: 0.02
-          minimum: 0.001
-          maximum: 0.10
-        random_state:
-          type: integer
-          default: 42
+    label: Multivariate Isolation Forest (Train Filtering)
+    description: Identify and filter multi-dimensional anomalies in the training set using random partition
+      isolation trees.
+    condition: outlier_percentage_iqr >= outlier_fraction_threshold AND extreme_zscore_max >= extreme_zscore_cutoff
+    rationale: 'Not available: no isolation forest filter operator exists.'
     action:
       type: insert_step
-      placement: after_split
-      fit_on: train_partition_only
-      apply_to: train_partition_only
-      operator: sprisk.clean.isolation_filter@1.0.0
-      params:
-        contamination: "{settings.contamination}"
-        random_state: "{settings.random_state}"
 
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------

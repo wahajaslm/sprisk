@@ -43,78 +43,40 @@ policy_thresholds:
 # ------------------------------------------------------------------------------
 alternatives:
   - id: none_tree_models
-    label: "No Scaling (Tree Ensembles)"
-    description: "Leave raw numerical features unscaled."
-    condition: "planned_model_family in ['random_forest', 'xgboost', 'lightgbm', 'catboost', 'decision_tree']"
-    rationale: "Decision trees partition features along orthogonal axes and are scale-invariant. Scaling adds processing latency with zero model benefit."
+    label: No Scaling (Tree Ensembles)
+    description: Leave raw numerical features unscaled.
+    condition: planned_model_family in ['random_forest', 'xgboost', 'lightgbm', 'catboost', 'decision_tree']
+    rationale: Decision trees partition features along orthogonal axes and are scale-invariant. Scaling
+      adds processing latency with zero model benefit.
     action:
       type: pass_through
-
   - id: robust_scaling
-    label: "Robust Scaling (Median & IQR)"
-    description: "Center using the median and scale using the interquartile range (IQR)."
-    condition: "planned_model_family not in ['tree'] AND max_kurtosis > outlier_kurtosis_threshold"
-    rationale: "Heavy-tailed distributions detected (kurtosis > 3.0). RobustScaler prevents extreme outliers from compressing regular feature distances."
-    settings_schema:
-      type: object
-      properties:
-        quantile_range:
-          type: array
-          items: { type: number }
-          default: [25.0, 75.0]
-        with_centering:
-          type: boolean
-          default: true
-        with_scaling:
-          type: boolean
-          default: true
+    label: Robust Scaling (Median & IQR)
+    description: Center using the median and scale using the interquartile range (IQR).
+    condition: planned_model_family not in ['tree'] AND max_kurtosis > outlier_kurtosis_threshold
+    rationale: Heavy-tailed distributions detected (kurtosis > 3.0). RobustScaler prevents extreme outliers
+      from compressing regular feature distances.
     action:
-      type: insert_step
-      placement: after_split
-      fit_on: train_partition_only
-      operator: sprisk.features.scale@1.0.0
-      params:
-        method: "robust"
-        quantile_range: "{settings.quantile_range}"
-        with_centering: "{settings.with_centering}"
-        with_scaling: "{settings.with_scaling}"
-
+      type: replace_node
+      operator: sprisk.clean.scale@1.0.0
   - id: standard_scaling
-    label: "Standard Scaling (Z-Score Normalization)"
-    description: "Center to zero mean and scale to unit variance."
-    condition: "planned_model_family not in ['tree'] AND max_kurtosis <= outlier_kurtosis_threshold AND is_sparse_matrix is false"
-    rationale: "Data has standard bell-shaped distributions. Essential for gradient descent convergence and distance metrics (SVM/KNN)."
-    settings_schema:
-      type: object
-      properties:
-        with_mean:
-          type: boolean
-          default: true
-        with_std:
-          type: boolean
-          default: true
+    label: Standard Scaling (Z-Score Normalization)
+    description: Center to zero mean and scale to unit variance.
+    condition: planned_model_family not in ['tree'] AND max_kurtosis <= outlier_kurtosis_threshold AND is_sparse_matrix
+      is false
+    rationale: Data has standard bell-shaped distributions. Essential for gradient descent convergence and
+      distance metrics (SVM/KNN).
     action:
-      type: insert_step
-      placement: after_split
-      fit_on: train_partition_only
-      operator: sprisk.features.scale@1.0.0
-      params:
-        method: "standard"
-        with_mean: "{settings.with_mean}"
-        with_std: "{settings.with_std}"
-
+      type: replace_node
+      operator: sprisk.clean.scale@1.0.0
   - id: maxabs_scaling_sparse
-    label: "MaxAbs Scaling (Sparsity Preserving)"
-    description: "Scale each feature by its maximum absolute value without centering, preserving sparse zero structure."
-    condition: "is_sparse_matrix is true"
-    rationale: "Sparse matrix input detected. Preserving zero elements prevents OOM memory explosion while normalizing ranges to [-1, 1]."
+    label: MaxAbs Scaling (Sparsity Preserving)
+    description: Scale each feature by its maximum absolute value without centering, preserving sparse zero
+      structure.
+    condition: is_sparse_matrix is true
+    rationale: 'Not available: the scale step has no max-abs method.'
     action:
-      type: insert_step
-      placement: after_split
-      fit_on: train_partition_only
-      operator: sprisk.features.scale@1.0.0
-      params:
-        method: "maxabs"
+      type: replace_node
 
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------

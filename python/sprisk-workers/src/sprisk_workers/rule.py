@@ -67,6 +67,29 @@ def question_evidence(observation: RuleObservation, labels: dict[str, str]) -> l
     ]
 
 
+def step_columns(observation: RuleObservation) -> list[str]:
+    """The step's columns: Rust sends profile facts only for them, as column.<name>.<measure>."""
+    names = {
+        key[len("column.") :].rsplit(".", 1)[0]
+        for key in observation.profile
+        if key.startswith("column.")
+    }
+    return sorted(names)
+
+
+def measure(observation: RuleObservation, column: str, name: str) -> float | str | bool | None:
+    return observation.profile.get(f"column.{column}.{name}")
+
+
+def is_numeric(observation: RuleObservation, column: str) -> bool:
+    data_type = str(measure(observation, column, "data_type"))
+    return data_type.startswith(("Int", "UInt", "Float", "Decimal"))
+
+
+def profile_evidence(label: str, value: str) -> dict[str, Any]:
+    return {"kind": "profile_fact", "label": label, "value": value, "origin": "measured"}
+
+
 def load_decide(module_path: Path) -> Decide:
     spec = importlib.util.spec_from_file_location("sprisk_rule", module_path)
     if spec is None or spec.loader is None:
