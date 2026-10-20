@@ -53,22 +53,24 @@ const useAttempts = (runId: string | undefined, run: Run | undefined) =>
     placeholderData: (previous, query) => (query?.queryKey[1] === runId ? previous : undefined),
   });
 
+export const outputsQuery = (attemptId: string) => ({
+  queryKey: ["outputs", attemptId],
+  queryFn: () => getList("AttemptOutput", `/attempts/${attemptId}/outputs`),
+  staleTime: Infinity, // outputs of an attempt never change
+});
+
 export const useOutputs = (attemptId: string | undefined) =>
-  useQuery({
-    queryKey: ["outputs", attemptId],
-    queryFn: () => getList("AttemptOutput", `/attempts/${attemptId ?? ""}/outputs`),
-    enabled: attemptId !== undefined,
-    staleTime: Infinity, // outputs of an attempt never change
-  });
+  useQuery({ ...outputsQuery(attemptId ?? ""), enabled: attemptId !== undefined });
 
 /** Small JSON artifacts only (metrics, checks). Tables are never pulled into the browser. */
+export const artifactTextQuery = (artifactId: string) => ({
+  queryKey: ["artifact-text", artifactId],
+  queryFn: () => getText(`/artifacts/${artifactId}/content`),
+  staleTime: Infinity,
+});
+
 export const useArtifactText = (artifactId: string | undefined) =>
-  useQuery({
-    queryKey: ["artifact-text", artifactId],
-    queryFn: () => getText(`/artifacts/${artifactId ?? ""}/content`),
-    enabled: artifactId !== undefined,
-    staleTime: Infinity,
-  });
+  useQuery({ ...artifactTextQuery(artifactId ?? ""), enabled: artifactId !== undefined });
 
 /** One page of a table artifact's rows. Artifacts are immutable, so a page never goes stale. */
 export const tablePageQuery = (artifactId: string, offset: number, limit: number) => ({

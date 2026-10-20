@@ -1,8 +1,8 @@
 import type { Attempt, Run } from "@sprisk/contracts";
 import { type Query, useQueries } from "@tanstack/react-query";
 
-import { getList, getText } from "./client.ts";
-import { isLive } from "./hooks.ts";
+import { getList } from "./client.ts";
+import { artifactTextQuery, isLive, outputsQuery } from "./hooks.ts";
 import { MAX_INLINE_BYTES } from "./media.ts";
 
 /** Runs of several pipeline versions (one flow), newest first. Bounded by `limit`. */
@@ -46,26 +46,14 @@ export function useRunNodes(runs: Run[], nodeIds: string[]): Record<string, Node
   // Each id is read once: a list of queries must not repeat a key, and steps that have not run
   // all share "no id".
   const producerIds = unique(producers);
-  const outputs = useQueries({
-    queries: producerIds.map((id) => ({
-      queryKey: ["outputs", id],
-      queryFn: () => getList("AttemptOutput", `/attempts/${id}/outputs`),
-      staleTime: Infinity,
-    })),
-  });
+  const outputs = useQueries({ queries: producerIds.map(outputsQuery) });
   const metricIds = producers.map((id) => {
     const found = id === undefined ? undefined : outputs[producerIds.indexOf(id)]?.data;
     const a = found?.find((x) => x.artifact.media_type === "application/json")?.artifact;
     return a && a.size_bytes <= MAX_INLINE_BYTES ? a.id : undefined;
   });
   const textIds = unique(metricIds);
-  const texts = useQueries({
-    queries: textIds.map((id) => ({
-      queryKey: ["artifact-text", id],
-      queryFn: () => getText(`/artifacts/${id}/content`),
-      staleTime: Infinity,
-    })),
-  });
+  const texts = useQueries({ queries: textIds.map(artifactTextQuery) });
   const result: Record<string, NodeInRun>[] = runs.map(() => ({}));
   pairs.forEach(({ r, node }, i) => {
     const row = result[r];

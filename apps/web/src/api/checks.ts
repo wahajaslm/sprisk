@@ -3,7 +3,7 @@ import { parse } from "@sprisk/contracts";
 import { useQueries } from "@tanstack/react-query";
 
 import { isGateNode, latestByNode } from "../flow/latest.ts";
-import { getList, getText } from "./client.ts";
+import { artifactTextQuery, outputsQuery } from "./hooks.ts";
 
 export type RunChecks =
   | { status: "none" }
@@ -17,26 +17,15 @@ export function useRunChecks(attempts: Attempt[]): RunChecks {
   const gates = [...latestByNode(attempts.filter((a) => isGateNode(a.node_id))).values()].filter(
     (a) => a.state === "succeeded",
   );
-  const outputs = useQueries({
-    queries: gates.map((g) => ({
-      queryKey: ["outputs", g.id],
-      queryFn: () => getList("AttemptOutput", `/attempts/${g.id}/outputs`),
-      staleTime: Infinity, // outputs of an attempt never change
-    })),
-  });
+  const outputs = useQueries({ queries: gates.map((g) => outputsQuery(g.id)) });
   const artifacts = outputs.map((o) => o.data?.find((out) => out.port === "checks")?.artifact.id);
-  const texts = useQueries({
-    queries: artifacts.map((id) => ({
-      queryKey: ["artifact-text", id],
-      queryFn: () => getText(`/artifacts/${id ?? ""}/content`),
-      enabled: id !== undefined,
-      staleTime: Infinity,
-    })),
-  });
+  // A list of queries must not repeat a key; gates still loading share "no id".
+  const ids = [...new Set(artifacts.filter((id): id is string => id !== undefined))];
+  const texts = useQueries({ queries: ids.map(artifactTextQuery) });
   const failed = [...outputs, ...texts].find((q) => q.isError);
   if (failed?.error) return { status: "error", message: failed.error.message };
   if (gates.length === 0) return { status: "none" };
-  if (texts.some((t) => t.data === undefined)) return { status: "loading" };
+  if (ids.length < gates.length || texts.some((t) => t.data === undefined)) return { status: "loading" };
   try {
     const checks = texts.flatMap((t) => {
       const raw: unknown = JSON.parse(t.data ?? "");
