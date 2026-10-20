@@ -1563,7 +1563,12 @@ async fn scaling_flow(api: &Api) {
     }
     csv.push_str("1000,1\n");
     std::fs::write(&api.csv, csv).unwrap();
-    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    // These rows have no time or entity column, so the question declares none and a random
+    // split passes Gate B's split check.
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let facts = q.as_object_mut().unwrap();
+    facts.remove("time_column");
+    facts.remove("entity_column");
     assert_eq!(
         call(&api.app, "POST", "/question_versions", Some(q))
             .await
