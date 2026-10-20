@@ -11,7 +11,7 @@ params_schema:
   required: [columns, k]
   properties:
     columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Numeric columns to clip." }
-    k: { type: number, exclusiveMinimum: 0, description: "Clip to the train mean ± k standard deviations." }
+    k: { type: number, exclusiveMinimum: 0, description: "Clip to the train fences Q1 - k IQR and Q3 + k IQR." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

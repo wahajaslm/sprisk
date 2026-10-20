@@ -38,9 +38,9 @@ def decide(observation: RuleObservation) -> RuleDecision:
         "reason": _keep_reason(many, family),
     }
     clip = applicable(
-        "clip_mean_sd",
-        f"{', '.join(many)} has many values outside the IQR fences. The mean and SD are "
-        "themselves pulled by those values, so clipping is milder than it looks."
+        "clip_iqr_fence",
+        f"{', '.join(many)} has many values outside the IQR fences. The fences come from the "
+        "train quartiles, which those values barely move."
         if many
         else "Available; few values would change.",
         {"columns": columns, "k": s["clip_k"]},
@@ -53,7 +53,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in share.items()]
     return decision(
         observation,
-        "clip_mean_sd" if many and not trees else "none_tree_or_clean",
+        "clip_iqr_fence" if many and not trees else "none_tree_or_clean",
         [keep, clip, isolation],
         evidence,
     )

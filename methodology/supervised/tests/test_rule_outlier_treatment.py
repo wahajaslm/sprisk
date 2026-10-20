@@ -12,10 +12,11 @@ def run(
     return decide(RULE, facts=facts, profile={"rows": 100, **profile}, settings=SETTINGS)
 
 
-def test_many_outliers_are_clipped_to_the_train_mean_plus_k_sd() -> None:
+def test_many_outliers_are_clipped_to_the_train_iqr_fences() -> None:
     d = run({**column("income", outlier_share=0.08), **column("age", outlier_share=0.0)})
-    assert d["recommended_alternative_id"] == "clip_mean_sd"
-    assert alternative(d, "clip_mean_sd")["params"] == {"columns": ["age", "income"], "k": 3.0}
+    assert d["recommended_alternative_id"] == "clip_iqr_fence"
+    assert alternative(d, "clip_iqr_fence")["params"] == {"columns": ["age", "income"], "k": 3.0}
+    assert "quartiles" in alternative(d, "clip_iqr_fence")["reason"]
 
 
 def test_few_outliers_keep_the_values() -> None:
@@ -41,23 +42,23 @@ def test_tree_models_downstream_keep_the_values_despite_outliers() -> None:
 
 def test_a_linear_model_downstream_clips_many_outliers_and_says_why() -> None:
     d = run(MANY, LINEAR)
-    assert d["recommended_alternative_id"] == "clip_mean_sd"
+    assert d["recommended_alternative_id"] == "clip_iqr_fence"
     assert "linear" in alternative(d, "none_tree_or_clean")["reason"]
 
 
 def test_clustering_downstream_clips_many_outliers_and_says_why() -> None:
     d = run(MANY, CLUSTERING)
-    assert d["recommended_alternative_id"] == "clip_mean_sd"
+    assert d["recommended_alternative_id"] == "clip_iqr_fence"
     assert "distances" in alternative(d, "none_tree_or_clean")["reason"]
 
 
 def test_mixed_families_clip_many_outliers_for_the_models_they_pull() -> None:
     d = run(MANY, flow("mixed", "all", "all"))
-    assert d["recommended_alternative_id"] == "clip_mean_sd"
+    assert d["recommended_alternative_id"] == "clip_iqr_fence"
     assert "not tree" in alternative(d, "none_tree_or_clean")["reason"]
 
 
 def test_no_model_downstream_clips_many_outliers_as_before_and_says_so() -> None:
     d = run(MANY)
-    assert d["recommended_alternative_id"] == "clip_mean_sd"
+    assert d["recommended_alternative_id"] == "clip_iqr_fence"
     assert "no model is downstream" in alternative(d, "none_tree_or_clean")["reason"]
