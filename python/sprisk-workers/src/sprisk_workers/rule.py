@@ -104,6 +104,32 @@ def profile_evidence(label: str, value: str) -> dict[str, Any]:
     return {"kind": "profile_fact", "label": label, "value": value, "origin": "measured"}
 
 
+def model_family(observation: RuleObservation) -> str | None:
+    """The family of the models downstream of the step, `mixed` for several; None for none."""
+    fact = observation.facts.get("flow.model_family")
+    return None if fact is None else fact.value
+
+
+def family_evidence(family: str | None) -> list[dict[str, Any]]:
+    if family is None:
+        return []
+    return [
+        {
+            "kind": "flow_fact",
+            "label": "Model family downstream",
+            "value": family,
+            "origin": "measured",
+        }
+    ]
+
+
+def unknown_family(family: str | None) -> str:
+    """Why a family-specific choice is not offered when the family is not one family."""
+    if family == "mixed":
+        return "The model family is unknown: models of several families are downstream."
+    return "The model family is unknown: no model is downstream of this step."
+
+
 def load_decide(module_path: Path) -> Decide:
     spec = importlib.util.spec_from_file_location("sprisk_rule", module_path)
     if spec is None or spec.loader is None:

@@ -24,8 +24,8 @@ observes:
   - profile: outlier_percentage_iqr
     description: "Percentage of data points beyond [Q1 - 1.5*IQR, Q3 + 1.5*IQR]"
     required: true
-  - fact: planned_model_family
-    description: "Linear/logistic, distance-based, or neural vs tree-based"
+  - fact: flow.model_family
+    description: "Family of the models downstream of the step, read from the flow: tree_ensemble, linear, distance_based, or mixed. Absent when no model is downstream."
     required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
@@ -40,8 +40,7 @@ alternatives:
   - id: none_tree_or_clean
     label: Retain Outliers (Natural Variation / Tree Invariance)
     description: Keep all extreme values without capping or dropping.
-    condition: outlier_percentage_iqr < outlier_fraction_threshold OR planned_model_family in ['random_forest',
-      'xgboost', 'lightgbm']
+    condition: outlier_percentage_iqr < outlier_fraction_threshold OR flow.model_family == 'tree_ensemble'
     rationale: Either outlier rate is within expected natural limits (<5%) or tree models are used, which
       are far less sensitive to univariate leverage, as they split on rank order.
     action:
@@ -49,7 +48,7 @@ alternatives:
   - id: clip_mean_sd
     label: Clip to Train Mean ± k SD
     description: Cap each value at the train mean plus or minus k standard deviations.
-    condition: outlier_percentage_iqr >= outlier_fraction_threshold
+    condition: outlier_percentage_iqr >= outlier_fraction_threshold AND flow.model_family != 'tree_ensemble'
     rationale: Limits extreme leverage points without dropping rows. The mean and SD are themselves pulled
       by outliers, so heavy tails are clipped less than a percentile cap would.
     action:

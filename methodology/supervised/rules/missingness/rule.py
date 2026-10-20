@@ -1,7 +1,8 @@
 """How a step fills or drops gaps, from the train rows' measured missing shares (ADR-0042).
 
 Fills are fit on train rows only (the impute step's train/test ports). A target is never
-filled, and text cannot be imputed yet, so either means dropping rows.
+filled, and text cannot be imputed yet, so either means dropping rows. Tree models
+downstream fill numeric gaps inside their own pipeline, on train rows, so numbers can pass.
 """
 
 from typing import Any
@@ -11,17 +12,21 @@ from sprisk_workers.rule import (
     applicable,
     authoritative,
     decision,
+    family_evidence,
     is_numeric,
     measured,
+    model_family,
     not_applicable,
     profile_evidence,
     required,
     step_columns,
+    unknown_family,
 )
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
+    family = model_family(observation)
     columns = step_columns(observation)
     target = authoritative(observation.facts.get("question.target"))
     share = {c: required(observation, c, "missing_share") for c in columns}
@@ -69,18 +74,34 @@ def decide(observation: RuleObservation) -> RuleDecision:
         if mostly_empty
         else "No column is mostly empty.",
     )
-    pass_through = not_applicable(
-        "pass_through", "Needs the planned model family, which the question does not record."
-    )
+    if blocked:
+        pass_through = not_applicable("pass_through", blocked)
+    elif family == "tree_ensemble":
+        # Leaving the step as it is changes no graph, so this choice has no params.
+        pass_through = {
+            "id": "pass_through",
+            "applicability": "applicable",
+            "reason": "Only tree models are downstream. Their own pipeline fills numeric gaps "
+            "with the train median, and rank-order splits do not need more.",
+        }
+    elif family in (None, "mixed"):
+        pass_through = not_applicable("pass_through", unknown_family(family))
+    else:
+        pass_through = not_applicable(
+            "pass_through", f"The model downstream is {family}, not a tree ensemble."
+        )
 
     if blocked:
         recommended = "drop_rows"
+    elif family == "tree_ensemble":
+        recommended = "pass_through"
     elif skewed:
         recommended = "impute_median"
     else:
         recommended = "impute_mean"
 
-    evidence = [profile_evidence(f"{c} missing share", f"{share[c]:.1%}") for c in columns]
+    evidence = family_evidence(family)
+    evidence += [profile_evidence(f"{c} missing share", f"{share[c]:.1%}") for c in columns]
     return decision(
         observation,
         recommended,

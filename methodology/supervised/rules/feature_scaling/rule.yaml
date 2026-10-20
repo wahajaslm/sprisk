@@ -30,9 +30,9 @@ observes:
   - profile: is_sparse_matrix
     description: "Whether the input matrix is represented as a sparse matrix"
     required: false
-  - fact: planned_model_family
-    description: "Linear, SVM, Neural Network, Distance-based (KNN) vs Tree-based (RF, XGBoost)"
-    required: true
+  - fact: flow.model_family
+    description: "Family of the models downstream of the step, read from the flow: tree_ensemble, linear, distance_based, or mixed. Absent when no model is downstream."
+    required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -47,7 +47,7 @@ alternatives:
   - id: none_tree_models
     label: No Scaling (Tree Ensembles)
     description: Leave raw numerical features unscaled.
-    condition: planned_model_family in ['random_forest', 'xgboost', 'lightgbm', 'catboost', 'decision_tree']
+    condition: flow.model_family == 'tree_ensemble'
     rationale: Decision trees partition features along orthogonal axes and are scale-invariant. Scaling
       adds processing latency with zero model benefit.
     action:
@@ -55,7 +55,7 @@ alternatives:
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).
-    condition: planned_model_family not in ['tree'] AND max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold
+    condition: flow.model_family != 'tree_ensemble' AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
     rationale: Heavy-tailed distributions detected (excess kurtosis > 3.0). RobustScaler prevents extreme outliers
       from compressing regular feature distances.
     action:
@@ -64,7 +64,7 @@ alternatives:
   - id: standard_scaling
     label: Standard Scaling (Z-Score Normalization)
     description: Center to zero mean and scale to unit variance.
-    condition: planned_model_family not in ['tree'] AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold AND is_sparse_matrix
+    condition: flow.model_family != 'tree_ensemble' AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold AND is_sparse_matrix
       is false
     rationale: Data has standard bell-shaped distributions. Essential for gradient descent convergence and
       distance metrics (SVM/KNN).

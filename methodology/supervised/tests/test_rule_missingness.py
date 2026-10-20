@@ -14,8 +14,9 @@ SETTINGS = {
 TARGET = {"question.target": ("churned", "explicit")}
 
 
-def run(profile: dict[str, object]) -> dict[str, Any]:
-    return decide(RULE, facts=TARGET, profile={"rows": 100, **profile}, settings=SETTINGS)
+def run(profile: dict[str, object], family: str | None = None) -> dict[str, Any]:
+    facts = {**TARGET, "flow.model_family": (family, "measured")} if family else TARGET
+    return decide(RULE, facts=facts, profile={"rows": 100, **profile}, settings=SETTINGS)
 
 
 def test_skewed_numbers_are_filled_with_the_train_median() -> None:
@@ -66,3 +67,30 @@ def test_measured_missing_shares_are_evidence() -> None:
 def test_an_unmeasured_missing_share_is_an_error_not_zero() -> None:
     with pytest.raises(RuleError, match="missing_share"):
         run(column("age", skewness=0.1))
+
+
+def test_tree_models_downstream_pass_numeric_gaps_through() -> None:
+    d = run(column("income", missing_share=0.1, skewness=2.4), family="tree_ensemble")
+    assert d["recommended_alternative_id"] == "pass_through"
+    assert alternative(d, "pass_through")["applicability"] == "applicable"
+    assert any(e["kind"] == "flow_fact" for e in d["evidence"])
+
+
+def test_tree_models_still_drop_rows_where_the_target_has_gaps() -> None:
+    d = run(column("churned", "Int64", missing_share=0.1, skewness=0.1), family="tree_ensemble")
+    assert d["recommended_alternative_id"] == "drop_rows"
+    assert alternative(d, "pass_through")["applicability"] == "not_applicable"
+
+
+def test_tree_models_do_not_pass_text_gaps_through() -> None:
+    d = run(column("city", "String", missing_share=0.1), family="tree_ensemble")
+    assert d["recommended_alternative_id"] == "drop_rows"
+    assert alternative(d, "pass_through")["applicability"] == "not_applicable"
+
+
+def test_an_unknown_or_mixed_family_fills_gaps_as_today() -> None:
+    for family in (None, "linear", "mixed"):
+        d = run(column("age", missing_share=0.1, skewness=0.2), family=family)
+        assert d["recommended_alternative_id"] == "impute_mean"
+        assert alternative(d, "pass_through")["applicability"] == "not_applicable"
+    assert "unknown" in alternative(run(column("age", missing_share=0.1)), "pass_through")["reason"]

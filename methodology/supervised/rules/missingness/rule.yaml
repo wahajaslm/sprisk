@@ -33,6 +33,9 @@ observes:
   - fact: question.target
     description: "Target column name (strictly forbidden from synthetic imputation)"
     required: true
+  - fact: flow.model_family
+    description: "Family of the models downstream of the step, read from the flow: tree_ensemble, linear, distance_based, or mixed. Absent when no model is downstream."
+    required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -90,12 +93,13 @@ alternatives:
       operator: sprisk.clean.select_columns@1.0.0
       placement: before_split
   - id: pass_through
-    label: No Imputation (Native Null Handling)
-    description: Preserve null values as-is for tree algorithms with native missing value split handling
-      (XGBoost/LightGBM/HistGradientBoosting).
-    condition: planned_model_family in ['xgboost', 'lightgbm', 'catboost', 'hist_gradient_boosting'] AND
-      column_missingness_rate < drop_column_threshold
-    rationale: Tree algorithms natively route missing values to optimal split directions during training.
+    label: No Imputation Here (Tree Models Fill Their Own Gaps)
+    description: Leave numeric gaps for the tree models downstream, whose own pipeline fills them with the
+      train median.
+    condition: flow.model_family == 'tree_ensemble' AND every column is numeric AND the target is not
+      among the columns
+    rationale: The forest's pipeline imputes on train rows only, and its rank-order splits need no
+      better fill. A target with gaps still means dropping rows.
     action:
       type: pass_through
 
