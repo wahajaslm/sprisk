@@ -19,8 +19,13 @@ def feature_importance(
     x = test.select(features)
 
     def score(estimator: Pipeline, rows: Any, y: Any) -> float:
-        # permutation_importance shuffles a plain array; give the model its named columns back.
-        return float(estimator.score(pl.DataFrame(rows.tolist(), schema=x.schema, orient="row"), y))
+        # permutation_importance shuffles a plain array; give the model its typed columns back.
+        # The array holds a numeric gap as NaN, so it becomes a gap again before the cast.
+        columns = [
+            pl.Series(name, rows[:, k].tolist(), strict=False) for k, name in enumerate(x.columns)
+        ]
+        frame = pl.DataFrame([c.fill_nan(None) if c.dtype.is_float() else c for c in columns])
+        return float(estimator.score(frame.cast(x.schema), y))
 
     result = permutation_importance(
         model, x.to_numpy(), test[target].to_numpy(), scoring=score, n_repeats=10, random_state=seed

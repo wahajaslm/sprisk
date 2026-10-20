@@ -70,7 +70,9 @@ def preprocessor(x: pl.DataFrame) -> ColumnTransformer:
             (
                 "categorical",
                 make_pipeline(
-                    SimpleImputer(strategy="most_frequent"), OneHotEncoder(handle_unknown="ignore")
+                    # Polars text and boolean gaps reach sklearn as None, not NaN.
+                    SimpleImputer(missing_values=None, strategy="most_frequent"),
+                    OneHotEncoder(handle_unknown="ignore"),
                 ),
                 categorical,
             ),
