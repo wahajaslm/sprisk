@@ -12,6 +12,7 @@ from sprisk_workers.rule import (
     flow_evidence,
     flow_fact,
     measured,
+    needs_fact,
     not_applicable,
     profile_evidence,
     question_evidence,
@@ -39,7 +40,11 @@ PULLED = {
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
     family = flow_fact(observation, FAMILY)
-    target = authoritative(observation.facts.get("question.target"))
+    target_fact = observation.facts.get("question.target")
+    target = authoritative(target_fact)
+    # An inferred target only asks: it cannot clear a column for clipping, nor protect it.
+    maybe_target = target_fact.value if target_fact and target is None else None
+    task = authoritative(observation.facts.get("question.task"))
     columns = step_columns(observation)
     features = [c for c in columns if c != target]
     # A column without an outlier share has no variation, so it has no outliers to clip.
@@ -50,25 +55,36 @@ def decide(observation: RuleObservation) -> RuleDecision:
     unpulled = UNPULLED.get(family or "")
 
     keep_reason = _keep_reason(many, family, unpulled)
-    if target_outliers:
+    if target_outliers and task == "regression":
         keep_reason += (
             f" {target} is the target: its outliers pull squared-error fits, trees included, "
             "but clipping it would change the labels."
         )
     # Keeping the step as it is changes no graph, so this choice has no params.
     keep = {"id": "none_tree_or_clean", "applicability": "applicable", "reason": keep_reason}
-    clip = _clip(features, many, target if target in columns else None, s["clip_k"])
+    if maybe_target in columns:
+        clip = needs_fact(
+            "clip_iqr_fence",
+            f"Confirm the target first: if {maybe_target} is the target, clipping it would change "
+            "the labels the model is scored on.",
+        )
+    else:
+        clip = _clip(features, many, target if target in columns else None, s["clip_k"])
     isolation = not_applicable(
         "isolation_forest_filter", "No isolation forest filter operator exists."
     )
 
     evidence = flow_evidence(observation, [FAMILY])
-    if target in columns:
-        evidence += question_evidence(observation, {"question.target": "Target"})
+    if target_fact and target_fact.value in columns:
+        evidence += question_evidence(
+            observation, {"question.target": "Target", "question.task": "Task"}
+        )
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in share.items()]
     return decision(
         observation,
-        "clip_iqr_fence" if many and not unpulled else "none_tree_or_clean",
+        "clip_iqr_fence"
+        if many and not unpulled and maybe_target not in columns
+        else "none_tree_or_clean",
         [keep, clip, isolation],
         evidence,
     )

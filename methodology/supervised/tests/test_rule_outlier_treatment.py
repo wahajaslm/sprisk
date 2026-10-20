@@ -93,12 +93,30 @@ def test_the_target_is_never_clipped() -> None:
 
 
 def test_a_step_on_the_target_alone_cannot_clip_and_trees_are_not_called_immune() -> None:
-    d = run(column("price", outlier_share=0.2), {**TARGET, **FOREST})
+    d = run(column("price", outlier_share=0.2), {**REGRESSION, **FOREST})
     assert alternative(d, "clip_iqr_fence")["applicability"] == "not_applicable"
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
     assert "trees included" in alternative(d, "none_tree_or_clean")["reason"]
 
 
-def test_an_inferred_target_does_not_decide() -> None:
+def test_a_column_that_may_be_the_target_asks_before_it_is_clipped() -> None:
     d = run(column("price", outlier_share=0.2), {"question.target": ("price", "inferred")})
-    assert alternative(d, "clip_iqr_fence")["params"]["columns"] == ["price"]
+    clip = alternative(d, "clip_iqr_fence")
+    assert clip["applicability"] == "needs_fact"
+    assert "Confirm" in clip["reason"]
+    assert d["recommended_alternative_id"] == "none_tree_or_clean"
+
+
+REGRESSION = {**TARGET, "question.task": ("regression", "confirmed")}
+
+
+def test_target_outliers_are_said_to_pull_squared_error_fits_only_in_regression() -> None:
+    step = {**column("price", outlier_share=0.2), **column("age", outlier_share=0.0)}
+    assert "squared-error" in alternative(run(step, REGRESSION), "none_tree_or_clean")["reason"]
+    classes = {**TARGET, "question.task": ("classification", "confirmed")}
+    assert "squared-error" not in alternative(run(step, classes), "none_tree_or_clean")["reason"]
+
+
+def test_an_inferred_target_outside_the_step_does_not_stop_clipping() -> None:
+    d = run(MANY, {"question.target": ("price", "inferred")})
+    assert d["recommended_alternative_id"] == "clip_iqr_fence"

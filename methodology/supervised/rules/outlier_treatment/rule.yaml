@@ -28,7 +28,10 @@ observes:
     description: "Family of the models downstream of the step, from their manifests: tree_ensemble, linear, distance_based, density_based, featureless (only models that ignore their features), mixed, or unknown when a model sits behind a step that is not preparation. Absent when no model is downstream."
     required: false
   - fact: question.target
-    description: "Target column; it is never clipped, since that changes the labels the model is scored on."
+    description: "Target column; it is never clipped, since that changes the labels the model is scored on. An inferred target in the columns asks for confirmation before any clip."
+    required: false
+  - fact: question.task
+    description: "Regression targets with outliers pull squared-error fits, trees included."
     required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
@@ -53,7 +56,7 @@ alternatives:
   - id: clip_iqr_fence
     label: Clip to the Train IQR Fences
     description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target is left as it is.
-    condition: a column other than question.target exists AND outlier_percentage_iqr >= outlier_fraction_threshold AND flow.model_family not in ['tree_ensemble', 'density_based', 'featureless']
+    condition: question.target is not inferred among the columns AND a column other than question.target exists AND outlier_percentage_iqr >= outlier_fraction_threshold AND flow.model_family not in ['tree_ensemble', 'density_based', 'featureless']
     rationale: Limits extreme leverage points without dropping rows. The fences come from the train
       quartiles, which outliers barely move, so the cap does not drift with the values it caps.
     action:
