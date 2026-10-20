@@ -1247,3 +1247,71 @@ async fn a_resumed_run_does_not_skip_the_check_of_a_split_that_finished_before_t
     );
     assert!(states(&env, "model").await.is_empty());
 }
+
+#[tokio::test]
+async fn a_resumed_run_stops_at_a_split_check_that_already_failed() {
+    let workers = FakeWorkers {
+        script: [("gate_split", vec![Behave::GateFail])].into(),
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(Case {
+        workers,
+        split_check: true,
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Failed);
+    // RUN2 is RUN as it stood after a crash between the failing check and the run's end:
+    // its finished attempts reuse RUN's outputs.
+    let run: Run = parse(
+        &json!({"schema_version": "sprisk.run/v1", "id": RUN2,
+                "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                "status": "running", "created_at": "2026-10-16T10:00:00Z"})
+        .to_string(),
+    )
+    .unwrap();
+    env.store.insert_run(&run).await.unwrap();
+    let first = env
+        .store
+        .list_attempts(&RUN.parse().unwrap())
+        .await
+        .unwrap();
+    for (i, node) in ["load", "split", "gate_split"].iter().enumerate() {
+        let source = first.iter().find(|a| a.node_id.as_str() == *node).unwrap();
+        let attempt: sprisk_contracts::Attempt = parse(
+            &json!({"schema_version": "sprisk.attempt/v1",
+                    "id": format!("att_01JABCDEFGHJKMNPQRSTVWXZ{i:02}"),
+                    "run_id": RUN2, "node_id": node, "number": 1, "state": "created",
+                    "created_at": "2026-10-16T10:00:00Z"})
+            .to_string(),
+        )
+        .unwrap();
+        env.store.insert_attempt(&attempt).await.unwrap();
+        env.store
+            .transition_attempt(&attempt.id, AttemptState::Validated, "2026-10-16T10:00:00Z")
+            .await
+            .unwrap();
+        env.store
+            .hit_cache(&attempt.id, &source.id, "2026-10-16T10:00:00Z")
+            .await
+            .unwrap();
+    }
+    let first_leases = env.log.lock().unwrap().leases.len();
+    let workers = FakeWorkers {
+        log: env.log.clone(),
+        ..FakeWorkers::default()
+    };
+    let status = Scheduler::new(&env.store, &env.artifacts, workers, Settings::default())
+        .with_split_check(split_check_operator())
+        .run(&run.id, &pipeline(), &plan())
+        .await
+        .unwrap();
+
+    assert_eq!(status, RunStatus::Failed);
+    let leased: Vec<_> = env.log.lock().unwrap().leases[first_leases..]
+        .iter()
+        .map(|l| l.node_id.to_string())
+        .collect();
+    assert!(leased.is_empty(), "{leased:?}");
+}

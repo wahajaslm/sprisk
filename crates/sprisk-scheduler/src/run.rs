@@ -215,8 +215,8 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         }
     }
 
-    /// Check the rows of every finished split that has no check yet; false when one failed
-    /// or could not run. Runs after each step, so a resumed run also catches up.
+    /// Check the rows of every finished split; false when a check failed or could not run.
+    /// Runs before each step, so a resumed run also catches up.
     async fn check_splits(
         &mut self,
         run_id: &RunId,
@@ -227,14 +227,21 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         let Some(operator) = self.split_check.clone() else {
             return Ok(true);
         };
-        let owed: Vec<&Step> = plan
+        let finished: Vec<&Step> = plan
             .steps
             .iter()
             .filter(|s| is_split(s) && done.contains_key(&s.node_id))
-            .filter(|s| !done.contains_key(&split_check_node(s)))
             .collect();
-        for split in owed {
+        for split in finished {
             let node_id = split_check_node(split);
+            // A stored check is read again, like Gate B: a crash after a failing check
+            // must not let the resumed run go on.
+            if let Some(attempt) = done.get(&node_id) {
+                if self.gate_failed(attempt).await? {
+                    return Ok(false);
+                }
+                continue;
+            }
             let check = Step {
                 node_id: node_id.clone(),
                 operator: operator.clone(),
