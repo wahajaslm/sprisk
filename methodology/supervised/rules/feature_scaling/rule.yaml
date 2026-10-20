@@ -30,6 +30,9 @@ observes:
   - profile: is_sparse_matrix
     description: "Whether the input matrix is represented as a sparse matrix"
     required: false
+  - profile: iqr
+    description: "Per column, the train interquartile range. Zero when most values are equal, so the IQR gives no spread to use."
+    required: false
   - fact: flow.model_family
     description: "Family of the models downstream of the step, from their manifests: tree_ensemble, linear, distance_based, density_based, featureless (only models that ignore their features), mixed, or unknown when a model sits behind a step that is not preparation. Absent when no model is downstream."
     required: false
@@ -58,7 +61,7 @@ alternatives:
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).
-    condition: NOT (flow.models_standardize == 'all' OR flow.model_family in ['tree_ensemble', 'featureless']) AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
+    condition: NOT (flow.models_standardize == 'all' OR flow.model_family in ['tree_ensemble', 'featureless']) AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold) AND every column has iqr > 0
     rationale: Heavy-tailed distributions detected (excess kurtosis > 3.0). RobustScaler prevents extreme outliers
       from compressing regular feature distances.
     action:

@@ -13,24 +13,29 @@ def run(
 
 
 def test_many_outliers_are_clipped_to_the_train_iqr_fences() -> None:
-    d = run({**column("income", outlier_share=0.08), **column("age", outlier_share=0.0)})
+    d = run(
+        {
+            **column("income", iqr=1.0, outlier_share=0.08),
+            **column("age", iqr=1.0, outlier_share=0.0),
+        }
+    )
     assert d["recommended_alternative_id"] == "clip_iqr_fence"
     assert alternative(d, "clip_iqr_fence")["params"] == {"columns": ["age", "income"], "k": 3.0}
     assert "quartiles" in alternative(d, "clip_iqr_fence")["reason"]
 
 
 def test_few_outliers_keep_the_values() -> None:
-    d = run(column("age", outlier_share=0.01))
+    d = run(column("age", iqr=1.0, outlier_share=0.01))
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
     assert "params" not in alternative(d, "none_tree_or_clean")
 
 
 def test_no_isolation_forest_is_offered_without_an_operator() -> None:
-    d = run(column("age", outlier_share=0.2))
+    d = run(column("age", iqr=1.0, outlier_share=0.2))
     assert alternative(d, "isolation_forest_filter")["applicability"] == "not_applicable"
 
 
-MANY = column("income", outlier_share=0.2)
+MANY = column("income", iqr=1.0, outlier_share=0.2)
 
 
 def test_tree_models_downstream_keep_the_values_despite_outliers() -> None:
@@ -86,21 +91,27 @@ TARGET = {"question.target": ("price", "confirmed")}
 
 
 def test_the_target_is_never_clipped() -> None:
-    d = run({**column("price", outlier_share=0.2), **column("age", outlier_share=0.2)}, TARGET)
+    d = run(
+        {
+            **column("price", iqr=1.0, outlier_share=0.2),
+            **column("age", iqr=1.0, outlier_share=0.2),
+        },
+        TARGET,
+    )
     clip = alternative(d, "clip_iqr_fence")
     assert clip["params"]["columns"] == ["age"]
     assert "price" in clip["reason"]
 
 
 def test_a_step_on_the_target_alone_cannot_clip_and_trees_are_not_called_immune() -> None:
-    d = run(column("price", outlier_share=0.2), {**REGRESSION, **FOREST})
+    d = run(column("price", iqr=1.0, outlier_share=0.2), {**REGRESSION, **FOREST})
     assert alternative(d, "clip_iqr_fence")["applicability"] == "not_applicable"
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
     assert "trees included" in alternative(d, "none_tree_or_clean")["reason"]
 
 
 def test_a_column_that_may_be_the_target_asks_before_it_is_clipped() -> None:
-    d = run(column("price", outlier_share=0.2), {"question.target": ("price", "inferred")})
+    d = run(column("price", iqr=1.0, outlier_share=0.2), {"question.target": ("price", "inferred")})
     clip = alternative(d, "clip_iqr_fence")
     assert clip["applicability"] == "needs_fact"
     assert "Confirm" in clip["reason"]
@@ -111,7 +122,10 @@ REGRESSION = {**TARGET, "question.task": ("regression", "confirmed")}
 
 
 def test_target_outliers_are_said_to_pull_squared_error_fits_only_in_regression() -> None:
-    step = {**column("price", outlier_share=0.2), **column("age", outlier_share=0.0)}
+    step = {
+        **column("price", iqr=1.0, outlier_share=0.2),
+        **column("age", iqr=1.0, outlier_share=0.0),
+    }
     assert "squared-error" in alternative(run(step, REGRESSION), "none_tree_or_clean")["reason"]
     classes = {**TARGET, "question.task": ("classification", "confirmed")}
     assert "squared-error" not in alternative(run(step, classes), "none_tree_or_clean")["reason"]
@@ -120,3 +134,17 @@ def test_target_outliers_are_said_to_pull_squared_error_fits_only_in_regression(
 def test_an_inferred_target_outside_the_step_does_not_stop_clipping() -> None:
     d = run(MANY, {"question.target": ("price", "inferred")})
     assert d["recommended_alternative_id"] == "clip_iqr_fence"
+
+
+def test_a_column_with_no_iqr_spread_is_left_out_of_the_clip() -> None:
+    flag = column("flag", "Int64", iqr=0.0, outlier_share=0.1)
+    d = run({**flag, **column("age", iqr=5.0, outlier_share=0.2)})
+    clip = alternative(d, "clip_iqr_fence")
+    assert clip["params"]["columns"] == ["age"]
+    assert "flag has no IQR spread" in clip["reason"]
+
+
+def test_a_step_with_only_flat_iqr_columns_cannot_clip() -> None:
+    d = run(column("flag", "Int64", iqr=0.0, outlier_share=0.1))
+    assert alternative(d, "clip_iqr_fence")["applicability"] == "not_applicable"
+    assert d["recommended_alternative_id"] == "none_tree_or_clean"

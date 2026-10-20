@@ -24,6 +24,9 @@ observes:
   - profile: outlier_percentage_iqr
     description: "Per column, the share of train values beyond [Q1 - 1.5*IQR, Q3 + 1.5*IQR]; the conditions read the largest among columns other than the target"
     required: true
+  - profile: iqr
+    description: "Per column, the train interquartile range. Zero when most values are equal, so the IQR gives no spread to use."
+    required: false
   - fact: flow.model_family
     description: "Family of the models downstream of the step, from their manifests: tree_ensemble, linear, distance_based, density_based, featureless (only models that ignore their features), mixed, or unknown when a model sits behind a step that is not preparation. Absent when no model is downstream."
     required: false
@@ -55,8 +58,8 @@ alternatives:
       type: pass_through
   - id: clip_iqr_fence
     label: Clip to the Train IQR Fences
-    description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target is left as it is.
-    condition: question.target is not inferred among the columns AND a column other than question.target exists AND outlier_percentage_iqr >= outlier_fraction_threshold AND flow.model_family not in ['tree_ensemble', 'density_based', 'featureless']
+    description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target, and any column with a zero IQR, are left as they are.
+    condition: question.target is not inferred among the columns AND a column other than question.target has iqr > 0 AND outlier_percentage_iqr >= outlier_fraction_threshold AND flow.model_family not in ['tree_ensemble', 'density_based', 'featureless']
     rationale: Limits extreme leverage points without dropping rows. The fences come from the train
       quartiles, which outliers barely move, so the cap does not drift with the values it caps.
     action:

@@ -114,3 +114,11 @@ def test_models_that_ignore_their_features_need_no_scaling_step() -> None:
     d = run(HEAVY, flow("featureless", "none", "none"))
     assert d["recommended_alternative_id"] == "no_scaling"
     assert "ignore their features" in alternative(d, "no_scaling")["reason"]
+
+
+def test_a_column_with_no_iqr_spread_cannot_be_robust_scaled() -> None:
+    d = run(column("flag", "Int64", kurtosis=5.1, outlier_share=0.1, iqr=0.0))
+    robust = alternative(d, "robust_scaling")
+    assert robust["applicability"] == "not_applicable"
+    assert "flag has no IQR spread" in robust["reason"]
+    assert d["recommended_alternative_id"] == "standard_scaling"

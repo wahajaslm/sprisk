@@ -43,6 +43,8 @@ def decide(observation: RuleObservation) -> RuleDecision:
         or outliers.get(c, 0.0) >= s["outlier_share_threshold"]
     ]
     no_effect = _no_effect(family, standardize)
+    # With Q1 = Q3 robust scaling divides by zero; the scale step refuses it.
+    flat_iqr = [c for c in columns if measured(observation, c, "iqr") == 0]
 
     if text or flat:
         why = (
@@ -71,15 +73,22 @@ def decide(observation: RuleObservation) -> RuleDecision:
             else "Available, but outliers inflate the SD and squash the other values.",
             {"columns": columns, "method": "z_score"},
         )
+    if flat_iqr and robust["applicability"] == "applicable":
+        robust = not_applicable(
+            "robust_scaling",
+            f"{', '.join(flat_iqr)} has no IQR spread in train, so robust scaling cannot divide "
+            "by it.",
+        )
     none = _no_scaling(family, standardize, no_effect)
     maxabs = not_applicable("maxabs_scaling_sparse", "The scale step has no max-abs method.")
 
     evidence = flow_evidence(observation, [FAMILY, STANDARDIZE])
     evidence += [profile_evidence(f"{c} excess kurtosis", f"{v:.2f}") for c, v in kurtosis.items()]
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in outliers.items()]
+    evidence += [profile_evidence(f"{c} IQR", "0") for c in flat_iqr]
     if no_effect:
         recommended = "no_scaling"
-    elif heavy:
+    elif heavy and not flat_iqr:
         recommended = "robust_scaling"
     else:
         recommended = "standard_scaling"

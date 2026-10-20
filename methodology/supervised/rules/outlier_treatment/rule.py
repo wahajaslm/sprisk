@@ -50,7 +50,11 @@ def decide(observation: RuleObservation) -> RuleDecision:
     # A column without an outlier share has no variation, so it has no outliers to clip.
     share = {c: v for c in columns if (v := measured(observation, c, "outlier_share")) is not None}
     threshold = s["outlier_fraction_threshold"]
-    many = [c for c in features if share.get(c, 0.0) >= threshold]
+    iqr = {c: measured(observation, c, "iqr") for c in features}
+    # With Q1 = Q3 the fences meet, so a clip would flatten the column; the step refuses it.
+    flat = [c for c in features if iqr[c] == 0]
+    clippable = [c for c in features if iqr[c]]
+    many = [c for c in clippable if share.get(c, 0.0) >= threshold]
     target_outliers = target in columns and share.get(target, 0.0) >= threshold
     unpulled = UNPULLED.get(family or "")
 
@@ -69,7 +73,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
             "the labels the model is scored on.",
         )
     else:
-        clip = _clip(features, many, target if target in columns else None, s["clip_k"])
+        clip = _clip(clippable, many, flat, target if target in columns else None, s["clip_k"])
     isolation = not_applicable(
         "isolation_forest_filter", "No isolation forest filter operator exists."
     )
@@ -80,6 +84,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
             observation, {"question.target": "Target", "question.task": "Task"}
         )
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in share.items()]
+    evidence += [profile_evidence(f"{c} IQR", "0") for c in flat]
     return decision(
         observation,
         "clip_iqr_fence"
@@ -100,12 +105,20 @@ def _keep_reason(many: list[str], family: str | None, unpulled: str | None) -> s
     return f"Keeps every value, but {PULLED[family]}"
 
 
-def _clip(features: list[str], many: list[str], target: str | None, k: float) -> dict[str, Any]:
-    if not features:
-        return not_applicable(
-            "clip_iqr_fence",
+def _clip(
+    clippable: list[str], many: list[str], flat: list[str], target: str | None, k: float
+) -> dict[str, Any]:
+    left_out = []
+    if flat:
+        left_out.append(f"{', '.join(flat)} has no IQR spread in train: clipping would flatten it.")
+    if target:
+        left_out.append(
             f"{target} is the target: clipping it would change the labels the model is "
-            "scored on, test ones included.",
+            "scored on, test ones included."
+        )
+    if not clippable:
+        return not_applicable(
+            "clip_iqr_fence", " ".join(left_out) or "No column has a spread to clip."
         )
     reason = (
         f"{', '.join(many)} has many values outside the IQR fences. The fences come from the "
@@ -113,6 +126,5 @@ def _clip(features: list[str], many: list[str], target: str | None, k: float) ->
         if many
         else "Available; few values would change."
     )
-    if target:
-        reason += f" {target} is the target, so it is left as it is."
-    return applicable("clip_iqr_fence", reason, {"columns": features, "k": k})
+    reason = " ".join([reason, *(f"Left out: {why}" for why in left_out)])
+    return applicable("clip_iqr_fence", reason, {"columns": clippable, "k": k})
