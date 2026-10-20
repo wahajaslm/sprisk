@@ -1,0 +1,22 @@
+# Runtime split check (ADR-0040). The scheduler runs it after each split step; loaded by the
+# worker only, never by the pipeline registry.
+schema_version: sprisk.operator/v1
+id: sprisk.methodology.split_rows@1.0.0
+capability_class: analyzer
+description: Check that a split's train and test rows keep the question's time and entity rules.
+entrypoint: sprisk_supervised.pack:split_rows_run
+inputs:
+  - { name: train, kind: table }
+  - { name: test, kind: table }
+  - { name: question, kind: report }
+outputs: [{ name: checks, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [pipeline_version_id, node_id]
+  properties:
+    pipeline_version_id: { type: string, minLength: 1 }
+    node_id: { type: string, minLength: 1 }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 300 }

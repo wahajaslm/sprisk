@@ -1,14 +1,16 @@
 """The pack entrypoint the worker runs for the Gate B attempt (ADR-0017)."""
 
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
+import polars as pl
 import pytest
 import yaml
 
 from sprisk_contracts import MethodologyCheck
-from sprisk_supervised.pack import run
+from sprisk_supervised.pack import run, split_rows_run
 from sprisk_workers.errors import OperatorError
 
 PLUGINS = Path(__file__).parents[3] / "plugins"
@@ -137,3 +139,33 @@ def test_the_split_check_names_the_decision_that_chose_the_split() -> None:
     inputs["decisions"] = [decision]
     (design,) = [c for c in run(**inputs) if c["check"].endswith("data_split@1.0.0")]
     assert design["methodology_decision_id"] == decision["id"]
+
+
+def test_split_rows_checks_a_split_s_rows_and_names_the_question() -> None:
+    asked = question()
+    time = asked["time_column"]["value"]
+    entity = asked["entity_column"]["value"]
+    train = pl.DataFrame({time: [date(2026, 1, 1)], entity: ["a"]})
+    test = pl.DataFrame({time: [date(2026, 1, 2)], entity: ["b"]})
+    (check,) = split_rows_run(train, test, asked, "plv_01JABCDEFGHJKMNPQRSTVWXYZ0", "split")
+    assert check["phase"] == "runtime"
+    assert check["verdict"] == "pass", check["rationale"]
+    assert check["question_version_id"] == QUESTION_ID
+    assert check["id"].startswith("mck_")
+
+
+def test_split_rows_with_bad_rows_is_an_operator_error() -> None:
+    empty = pl.DataFrame({"x": []})
+    with pytest.raises(OperatorError) as e:
+        split_rows_run(empty, empty, question(), "plv_01JABCDEFGHJKMNPQRSTVWXYZ0", "split")
+    assert e.value.code == "invalid_check_input"
+
+
+def test_split_rows_has_a_manifest_the_registry_loads() -> None:
+    manifest = yaml.safe_load(
+        (Path(__file__).parents[1] / "operators/split_rows/manifest.yaml").read_text()
+    )
+    assert manifest["id"] == "sprisk.methodology.split_rows@1.0.0"
+    assert manifest["entrypoint"] == "sprisk_supervised.pack:split_rows_run"
+    assert [i["name"] for i in manifest["inputs"]] == ["train", "test", "question"]
+    assert set(manifest["params_schema"]["required"]) == {"pipeline_version_id", "node_id"}
