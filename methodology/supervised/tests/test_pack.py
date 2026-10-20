@@ -60,7 +60,7 @@ def answering_the_question(inputs: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.mark.parametrize(("evaluators", "verdict"), [(1, "pass"), (2, "fail")])
 def test_returns_every_rule_result(evaluators: int, verdict: str) -> None:
-    leakage, code = (
+    leakage, code, design = (
         MethodologyCheck.model_validate_json(json.dumps(raw))
         for raw in run(**inputs_for(evaluators))
     )
@@ -68,8 +68,10 @@ def test_returns_every_rule_result(evaluators: int, verdict: str) -> None:
     assert leakage.verdict == verdict
     assert code.check.root == "supervised.code_leakage@1.0.0"
     assert code.verdict == "not_assessed"
+    assert design.check.root == "methodology.supervised.data_split@1.0.0"
+    assert design.verdict == "not_assessed", "no question is linked"
     assert leakage.id.root.startswith("mck_")
-    assert leakage.id != code.id
+    assert len({leakage.id.root, code.id.root, design.id.root}) == 3
 
 
 def test_invalid_pipeline_is_an_operator_error() -> None:
@@ -101,7 +103,7 @@ def test_without_a_question_no_check_names_one() -> None:
 
 def test_every_check_names_the_question_the_pipeline_answers() -> None:
     checks = run(**answering_the_question(inputs_for(1)))
-    assert [c["question_version_id"] for c in checks] == [QUESTION_ID, QUESTION_ID]
+    assert [c["question_version_id"] for c in checks] == [QUESTION_ID] * 3
 
 
 def test_a_question_other_than_the_pipeline_s_is_an_operator_error() -> None:
@@ -125,3 +127,13 @@ def test_an_invalid_decision_is_an_operator_error() -> None:
     with pytest.raises(OperatorError) as e:
         run(**{**inputs_for(1), "decisions": [{"id": "mdc_x"}]})
     assert e.value.code == "invalid_check_input"
+
+
+def test_the_split_check_names_the_decision_that_chose_the_split() -> None:
+    inputs = answering_the_question(inputs_for(1))
+    decision = fixture("methodology_decision", "applied.json")
+    decision["rule"] = "methodology.supervised.data_split@1.0.0"
+    inputs["pipeline"]["nodes"][1]["methodology_decision_id"] = decision["id"]
+    inputs["decisions"] = [decision]
+    (design,) = [c for c in run(**inputs) if c["check"].endswith("data_split@1.0.0")]
+    assert design["methodology_decision_id"] == decision["id"]

@@ -7,6 +7,7 @@ from ulid import ULID
 
 from sprisk_contracts import MethodologyDecision, Operator, PipelineVersion, QuestionVersion
 from sprisk_supervised.code_leakage import code_leakage
+from sprisk_supervised.split_design import split_design
 from sprisk_supervised.split_leakage import CheckInputError, split_leakage
 from sprisk_workers.errors import OperatorError
 
@@ -17,8 +18,7 @@ def run(
     """Gate B for the Supervised pack: every rule's result, as one JSON array (ADR-0017).
 
     `question` is the question the pipeline answers, or None when it is not linked;
-    `decisions` are the methodology decisions its nodes cite; they are validated here, and
-    no rule reads them yet: the split design check that verifies a chosen split will.
+    `decisions` are the methodology decisions its nodes cite.
     """
     try:
         version = PipelineVersion.model_validate_json(json.dumps(pipeline))
@@ -26,8 +26,7 @@ def run(
         asked = (
             None if question is None else QuestionVersion.model_validate_json(json.dumps(question))
         )
-        for decision in decisions:
-            MethodologyDecision.model_validate_json(json.dumps(decision))
+        chosen = [MethodologyDecision.model_validate_json(json.dumps(d)) for d in decisions]
     except ValidationError as e:
         raise OperatorError("invalid_check_input", str(e)) from e
     linked = version.question_version_id
@@ -45,6 +44,7 @@ def run(
         results = [
             split_leakage(version, by_ref, f"mck_{ULID()}", now),
             code_leakage(version, f"mck_{ULID()}", now),
+            *split_design(version, asked, chosen, lambda: f"mck_{ULID()}", now),
         ]
     except CheckInputError as e:
         raise OperatorError("invalid_check_input", str(e)) from e
