@@ -83,7 +83,6 @@
         "prepares": {
           "type": "array",
           "description": "Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.",
-          "uniqueItems": true,
           "items": { "$ref": "#/$defs/ModelPreparation" }
         }
       }
