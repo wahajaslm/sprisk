@@ -224,12 +224,12 @@ export type Effects = "pure" | "nondeterministic" | "side_effecting";
  */
 export type NetworkAccess = "none" | "egress_allowlisted";
 /**
- * How a model operator's fit reacts to its inputs, for preparation rules: tree_ensemble splits on rank order; linear and distance_based depend on scale and outliers.
+ * How a model operator's fit reacts to its inputs, for preparation rules: tree_ensemble splits on rank order; linear and distance_based depend on scale and outliers; density_based depends on scale and marks isolated rows as noise.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ModelFamily".
  */
-export type ModelFamily = "tree_ensemble" | "linear" | "distance_based";
+export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "density_based";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "TaskType".
@@ -1430,7 +1430,7 @@ export interface OperatorModel {
   /**
    * Left out for a model that ignores its features, such as a dummy baseline.
    */
-  family?: "tree_ensemble" | "linear" | "distance_based";
+  family?: "tree_ensemble" | "linear" | "distance_based" | "density_based";
   /**
    * Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.
    */

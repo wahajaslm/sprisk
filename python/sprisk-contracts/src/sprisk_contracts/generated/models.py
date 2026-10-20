@@ -623,6 +623,7 @@ class ModelFamily(StrEnum):
     tree_ensemble = "tree_ensemble"
     linear = "linear"
     distance_based = "distance_based"
+    density_based = "density_based"
 
 
 class CapabilityClass(StrEnum):
