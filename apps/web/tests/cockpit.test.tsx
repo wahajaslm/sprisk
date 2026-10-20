@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
+import appliedDecision from "../../../tests/contract/methodology_decision/valid/applied.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
 import { FlowCanvas } from "../src/views/FlowCanvas.tsx";
 import { Inspector } from "./inspector.tsx";
@@ -462,7 +463,7 @@ describe("inspector failures and checks", () => {
     expect(checks).toHaveTextContent("at most one non-baseline model");
   });
 
-  it("names each verdict's rule, phase and coverage, and whether a decision set the step", async () => {
+  it("names each verdict's rule, phase and coverage, and what the decision that set the step chose", async () => {
     const design = {
       ...JSON.parse(checksJson)[0],
       id: "mck_01JABCDEFGHJKMNPQRSTVWXYZ9",
@@ -474,7 +475,21 @@ describe("inspector failures and checks", () => {
     };
     server.use(
       http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify([...JSON.parse(checksJson), design]))),
-      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...multicollinearity, id: design.check, name: "Data Splitting" }])),
+      http.get("/api/methodology_rules", () =>
+        HttpResponse.json([
+          {
+            ...multicollinearity,
+            id: design.check,
+            name: "Data Splitting",
+            alternatives: [{ ...multicollinearity.alternatives[0], id: "temporal", label: "Temporal split" }],
+          },
+        ]),
+      ),
+      http.get("/api/methodology_decisions/:id", ({ params }) =>
+        params.id === design.methodology_decision_id
+          ? HttpResponse.json({ ...appliedDecision, rule: design.check })
+          : HttpResponse.json({ errors: [] }, { status: 404 }),
+      ),
     );
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
@@ -482,10 +497,26 @@ describe("inspector failures and checks", () => {
     const checks = await screen.findByRole("region", { name: "Methodology checks" });
     const [leakage, chosen] = within(checks).getAllByRole("article");
     expect(leakage).toHaveTextContent("supervised.split_leakage@1.0.0");
-    expect(leakage).not.toHaveTextContent("Set by a methodology decision");
+    expect(leakage).not.toHaveTextContent("Decision chose");
     expect(await within(chosen!).findByText("Data Splitting")).toBeInTheDocument();
     expect(chosen).toHaveTextContent("Plan · partial coverage");
-    expect(chosen).toHaveTextContent("Set by a methodology decision");
+    expect(await within(chosen!).findByText(/Decision chose Temporal split/)).toHaveTextContent(
+      "Decision chose Temporal split: Matches deployment chronology.",
+    );
+  });
+
+  it("says so when the decision a verdict cites cannot be loaded", async () => {
+    const cited = { ...JSON.parse(checksJson)[0], methodology_decision_id: "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9" };
+    server.use(
+      http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify([cited]))),
+      http.get("/api/methodology_decisions/:id", () =>
+        HttpResponse.json({ errors: [{ code: "not_found", message: "methodology decision mdc_01JABCDEFGHJKMNPQRSTVWXYZ9 not found" }] }, { status: 404 }),
+      ),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("mdc_01JABCDEFGHJKMNPQRSTVWXYZ9");
   });
 
   it("says so when the checks output is not a list of checks", async () => {

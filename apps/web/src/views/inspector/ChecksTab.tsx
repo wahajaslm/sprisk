@@ -1,7 +1,7 @@
-import type { MethodologyCheck } from "@sprisk/contracts";
+import type { MethodologyCheck, MethodologyRule } from "@sprisk/contracts";
 
 import type { RunChecks } from "../../api/checks.ts";
-import { useMethodologyRules } from "../../api/methodology.ts";
+import { useMethodologyDecision, useMethodologyRules } from "../../api/methodology.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 
 const PHASE: Record<NonNullable<MethodologyCheck["phase"]>, string> = {
@@ -21,7 +21,7 @@ export function ChecksTab({ run, nodeId }: { run: RunChecks; nodeId: string }) {
   if (run.status === "loading") return <Loading />;
   const mine = run.checks.filter((c) => c.cited_nodes.includes(nodeId));
   if (mine.length === 0) return <p className="muted">No methodology check concerns this step.</p>;
-  const ruleName = new Map((rules.data ?? []).map((r) => [r.id, r.name]));
+  const byId = new Map((rules.data ?? []).map((r) => [r.id, r]));
   return (
     <section className="checks" aria-label="Methodology checks">
       {mine.map((c) => (
@@ -31,7 +31,7 @@ export function ChecksTab({ run, nodeId }: { run: RunChecks; nodeId: string }) {
           </span>
           <div className="check-body">
             <p>
-              <strong>{ruleName.get(c.check) ?? c.check}</strong>
+              <strong>{byId.get(c.check)?.name ?? c.check}</strong>
             </p>
             {(c.phase || c.coverage) && (
               <p className="check-limit">
@@ -39,13 +39,23 @@ export function ChecksTab({ run, nodeId }: { run: RunChecks; nodeId: string }) {
               </p>
             )}
             <p>{c.rationale}</p>
-            {c.methodology_decision_id && <p className="check-limit">Set by a methodology decision.</p>}
+            {c.methodology_decision_id && <DecisionLine id={c.methodology_decision_id} rule={byId.get(c.check)} />}
             {c.limitations && <p className="check-limit">{c.limitations}</p>}
           </div>
         </article>
       ))}
     </section>
   );
+}
+
+/** What the decision that set this step chose, and the reason given for it. */
+function DecisionLine({ id, rule }: { id: string; rule: MethodologyRule | undefined }) {
+  const decision = useMethodologyDecision(id);
+  if (decision.isError) return <p role="alert" className="error">{decision.error.message}</p>;
+  if (!decision.data) return <p className="check-limit">Set by a methodology decision.</p>;
+  const { alternative_id, reason } = decision.data;
+  const label = rule?.alternatives.find((a) => a.id === alternative_id)?.label ?? alternative_id;
+  return <p className="check-limit">{`Decision chose ${label}${reason ? `: ${reason}` : "."}`}</p>;
 }
 
 /** Checks citing this step that did not pass; shown as a badge on the tab. */

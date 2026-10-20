@@ -45,3 +45,12 @@ export const useMethodologyRuleSource = (ruleRef: string) =>
     queryFn: () => getOne("MethodologyRuleSource", `/methodology_rules/${encodeURIComponent(ruleRef)}/source`),
     staleTime: Infinity,
   });
+
+/** A decision never changes once applied (ADR-0042). */
+export const useMethodologyDecision = (id: string | undefined) =>
+  useQuery({
+    queryKey: ["methodology_decision", id],
+    queryFn: () => getOne("MethodologyDecision", `/methodology_decisions/${id}`),
+    enabled: id !== undefined,
+    staleTime: Infinity,
+  });
