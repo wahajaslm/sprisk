@@ -11,7 +11,7 @@ import { type Ran, useOutputs } from "../../notebook/outputs.ts";
 import { cellsFromFlow, stepsIntoFlow, stepsOutOfFlow } from "../../notebook/sync.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { CodeInput } from "../CodeInput.tsx";
-import { AddIcon, CheckIcon, Chevron, CrossIcon, ExportIcon, PlayIcon, RunAllIcon, TrashIcon } from "../Icons.tsx";
+import { AddIcon, CheckIcon, Chevron, CrossIcon, ExportIcon, PlayIcon, RedoIcon, RunAllIcon, TrashIcon, UndoIcon } from "../Icons.tsx";
 import { CellOutputs, hasOutputs, OutputItems } from "./CellOutputs.tsx";
 
 type Queued = { id: string; code: string };
@@ -359,9 +359,10 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
           className="nb-action"
           disabled={cells.length === 0}
           onClick={() => remove(active)}
+          aria-label="Delete Cell"
           title="Delete selected cell (Delete / Backspace / dd)"
         >
-          <TrashIcon /> Delete Cell
+          <TrashIcon />
         </button>
         <span className="nb-divider" />
         <button
@@ -369,18 +370,20 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
           className="nb-action"
           disabled={historyIndex <= 0}
           onClick={undo}
+          aria-label="Undo"
           title="Undo cell action (Z / ⌘Z)"
         >
-          Undo
+          <UndoIcon />
         </button>
         <button
           type="button"
           className="nb-action"
           disabled={historyIndex >= history.length - 1}
           onClick={redo}
+          aria-label="Redo"
           title="Redo cell action (⇧Z / ⌘⇧Z / ⌘Y)"
         >
-          Redo
+          <RedoIcon />
         </button>
         <span className="nb-divider" />
         <button type="button" className="nb-action" onClick={runAll}>
@@ -418,12 +421,14 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
         >
           <TrashIcon /> Delete
         </button>
-        <span className="nb-kernel" title="One live Python kernel for this notebook. Its results are scratch; the flow runs the saved cells in its own workers.">
-          <span className={`nb-kernel-dot${running ? " busy" : ""}`} /> Python 3 · {running ? "busy" : "idle"}
-        </span>
       </div>
       <div className="nb-scroll" onKeyDown={onKeyDown}>
-        <input className="nb-title" aria-label="Notebook title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <div className="nb-title-row">
+          <input className="nb-title" aria-label="Notebook title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <span className="nb-kernel" title="One live Python kernel for this notebook. Its results are scratch; the flow runs the saved cells in its own workers.">
+          <span className={`nb-kernel-dot${running ? " busy" : ""}`} /> Python 3 · {running ? "busy" : "idle"}
+          </span>
+        </div>
         {(problem ?? save.error?.message) && <p role="alert" className="error nb-message">{problem ?? save.error?.message}</p>}
         {news && <p className="nb-message nb-note">{news}</p>}
         {incoming && (

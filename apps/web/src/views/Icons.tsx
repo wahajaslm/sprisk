@@ -253,3 +253,21 @@ export function NotebookIcon() {
     </svg>
   );
 }
+
+export function UndoIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 3 2 6l3 3" />
+      <path d="M2 6h7.5a4.5 4.5 0 0 1 0 9H6" />
+    </svg>
+  );
+}
+
+export function RedoIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m11 3 3 3-3 3" />
+      <path d="M14 6H6.5a4.5 4.5 0 0 0 0 9H10" />
+    </svg>
+  );
+}
