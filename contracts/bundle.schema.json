@@ -2405,8 +2405,7 @@
           "type": "string"
         },
         "entrypoint": {
-          "type": "string",
-          "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*:[a-z_][a-z0-9_]*$",
+          "$ref": "#/$defs/Entrypoint",
           "description": "Python `module:function` the worker calls."
         },
         "inputs": {
@@ -2462,8 +2461,16 @@
           "items": {
             "$ref": "#/$defs/ModelPreparation"
           }
+        },
+        "estimator": {
+          "$ref": "#/$defs/Entrypoint",
+          "description": "Python `module:function` returning the model unfitted, given `schema` (the feature columns' types) and its params except target and features, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model."
         }
       }
+    },
+    "Entrypoint": {
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*:[a-z_][a-z0-9_]*$"
     },
     "ModelPreparation": {
       "type": "string",

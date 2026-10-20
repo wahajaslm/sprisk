@@ -38,7 +38,7 @@ def _load(path: Path) -> tuple[str, LoadedOperator]:
         operator = Operator.model_validate_json(json.dumps(yaml.safe_load(path.read_text())))
     except (yaml.YAMLError, ValidationError) as e:
         raise ManifestError(f"{path}: {e}") from e
-    entrypoint = operator.entrypoint
+    entrypoint = operator.entrypoint.root
     module_name, function_name = entrypoint.split(":")
     if module_name.split(".")[0] not in TRUSTED_PACKAGES:
         raise ManifestError(f"{path}: entrypoint {entrypoint} is not in a trusted core pack")

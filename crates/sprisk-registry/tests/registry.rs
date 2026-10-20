@@ -105,6 +105,18 @@ fn yaml_null_is_rejected() {
 }
 
 #[test]
+fn a_supervised_model_without_an_estimator_names_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let model = "model: { tasks: [classification], prepares: [] }\n";
+    write(dir.path(), "bad/manifest.yaml", &format!("{SPLIT}{model}"));
+
+    let err = Registry::load_dir(dir.path()).unwrap_err();
+
+    assert!(matches!(err, RegistryError::NoEstimator { .. }), "{err}");
+    assert!(err.to_string().contains("bad/manifest.yaml"), "{err}");
+}
+
+#[test]
 fn malformed_yaml_names_the_file() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "bad/manifest.yaml", "id: [unclosed");

@@ -222,7 +222,7 @@ fn facts_of(pipeline: &PipelineVersion, node_id: &str) -> serde_json::Map<String
 }
 
 #[test]
-fn a_scale_step_upstream_of_a_random_forest_reads_trees_that_prepare_themselves() {
+fn a_scale_step_upstream_of_a_random_forest_reads_trees_that_fill_their_own_gaps() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
@@ -241,7 +241,7 @@ fn a_scale_step_upstream_of_a_random_forest_reads_trees_that_prepare_themselves(
     assert_eq!(facts["flow.model_families"]["origin"], "measured");
     assert_eq!(facts["flow.models_hidden"]["value"], "none");
     assert_eq!(facts["flow.models_fill_gaps"]["value"], "all");
-    assert_eq!(facts["flow.models_standardize"]["value"], "all");
+    assert_eq!(facts["flow.models_standardize"]["value"], "some");
 }
 
 #[test]
@@ -259,11 +259,11 @@ fn models_of_several_families_are_all_listed() {
         facts["flow.model_families"]["value"],
         "linear, tree_ensemble"
     );
-    assert_eq!(facts["flow.models_standardize"]["value"], "all");
+    assert_eq!(facts["flow.models_standardize"]["value"], "some");
 }
 
 #[test]
-fn a_clustering_step_beside_a_forest_means_only_some_models_prepare_themselves() {
+fn a_clustering_step_beside_a_forest_means_only_some_models_fill_their_own_gaps() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
@@ -274,7 +274,7 @@ fn a_clustering_step_beside_a_forest_means_only_some_models_prepare_themselves()
     );
     let facts = facts_of(&pipeline, "scale");
     assert_eq!(facts["flow.models_fill_gaps"]["value"], "some");
-    assert_eq!(facts["flow.models_standardize"]["value"], "some");
+    assert_eq!(facts["flow.models_standardize"]["value"], "none");
 }
 
 #[test]
@@ -355,7 +355,7 @@ fn a_hidden_model_beside_a_seen_one_means_only_some_prepare_themselves() {
     let facts = facts_of(&pipeline, "scale");
     assert_eq!(facts["flow.model_families"]["value"], "tree_ensemble");
     assert_eq!(facts["flow.models_hidden"]["value"], "some");
-    assert_eq!(facts["flow.models_standardize"]["value"], "some");
+    assert_eq!(facts["flow.models_fill_gaps"]["value"], "some");
 }
 
 #[test]
@@ -370,7 +370,7 @@ fn a_step_with_no_model_after_it_hides_nothing() {
     );
     let facts = facts_of(&pipeline, "scale");
     assert_eq!(facts["flow.model_families"]["value"], "tree_ensemble");
-    assert_eq!(facts["flow.models_standardize"]["value"], "all");
+    assert_eq!(facts["flow.models_standardize"]["value"], "none");
     assert_eq!(facts["flow.other_readers"]["value"], "summary");
 }
 
@@ -624,7 +624,10 @@ fn an_observation_holds_only_what_the_rule_reads() {
     let observed =
         serde_json::to_value(observation(scale, &question(), flow, profile).unwrap()).unwrap();
     assert!(observed["facts"].get("question.target").is_none());
-    assert_eq!(observed["facts"]["flow.models_standardize"]["value"], "all");
+    assert_eq!(
+        observed["facts"]["flow.models_standardize"]["value"],
+        "none"
+    );
     // A column name may hold dots; the pattern still matches it.
     assert_eq!(observed["profile"], json!({ "column.a.b.kurtosis": 2.0 }));
 }

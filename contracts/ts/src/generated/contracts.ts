@@ -252,6 +252,11 @@ export type Effects = "pure" | "nondeterministic" | "side_effecting";
  */
 export type NetworkAccess = "none" | "egress_allowlisted";
 /**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Entrypoint".
+ */
+export type Entrypoint = string;
+/**
  * How a model operator's fit reacts to its inputs, for preparation rules: tree_ensemble splits on rank order; linear and distance_based depend on scale and outliers; density_based depends on scale and marks isolated rows as noise.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1492,6 +1497,10 @@ export interface OperatorModel {
    * Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.
    */
   prepares: ModelPreparation[];
+  /**
+   * Python `module:function` returning the model unfitted, given `schema` (the feature columns' types) and its params except target and features, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model.
+   */
+  estimator?: string;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

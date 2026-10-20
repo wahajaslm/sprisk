@@ -1,6 +1,8 @@
-"""Each model manifest's `model.prepares`, checked on the code. Preparation rules trust it to
-skip an impute or scale step before the model, so a false claim breaks real flows."""
+"""Each model manifest's `model` claims, checked on the code. Preparation rules trust
+`prepares` to skip an impute or scale step before the model, so a false claim breaks real
+flows; cross-validation trusts `estimator` to refit the same model per fold."""
 
+import importlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,8 @@ import polars as pl
 import pytest
 import skops.io
 import yaml
+from sklearn.exceptions import NotFittedError
+from sklearn.utils.validation import check_is_fitted
 
 from sprisk_ml.evaluate import evaluate
 from sprisk_ml.importance import feature_importance
@@ -25,9 +29,18 @@ MODELS: dict[str, Callable[..., Any]] = {
 FEATURES = ["x", "i", "c", "b"]
 
 
-def prepares(name: str) -> list[str]:
+def claims(name: str) -> dict[str, Any]:
     manifest = yaml.safe_load((OPERATORS / name / "manifest.yaml").read_text())
-    return list(manifest["model"]["prepares"])
+    return dict(manifest["model"])
+
+
+def prepares(name: str) -> list[str]:
+    return list(claims(name)["prepares"])
+
+
+def estimator(name: str) -> Callable[..., Any]:
+    module, function = claims(name)["estimator"].split(":")
+    return getattr(importlib.import_module(module), function)  # type: ignore[no-any-return]
 
 
 def rows(n: int, seed: int) -> pl.DataFrame:
@@ -67,8 +80,29 @@ def test_a_model_that_fills_gaps_fills_every_kind_of_column_and_scores_rows_with
 
 
 @pytest.mark.parametrize("name", MODELS)
+def test_the_estimator_is_the_fitted_model_before_its_fit(name: str) -> None:
+    train, test = rows(60, seed=1), rows(30, seed=2)
+    unfitted = estimator(name)(schema=train.select(FEATURES).schema, task="classification")
+    with pytest.raises(NotFittedError):
+        check_is_fitted(unfitted)
+
+    refit = unfitted.fit(train.select(FEATURES), train["y"].to_numpy())
+    np.testing.assert_array_equal(
+        refit.predict_proba(test.select(FEATURES)),
+        fit(name, train).predict_proba(test.select(FEATURES)),
+    )
+
+
+STANDARDIZING = [n for n in MODELS if "standardize" in prepares(n)]
+NOT_STANDARDIZING = [n for n in MODELS if "standardize" not in prepares(n)]
+
+
+def test_tree_models_do_not_standardize() -> None:
+    assert NOT_STANDARDIZING == ["random_forest"]
+
+
+@pytest.mark.parametrize("name", STANDARDIZING)
 def test_a_model_that_standardizes_is_unchanged_by_affine_scaling_before_it(name: str) -> None:
-    assert "standardize" in prepares(name)
     train, test = rows(60, seed=1), rows(30, seed=2)
 
     def rescale(frame: pl.DataFrame) -> pl.DataFrame:
@@ -77,6 +111,18 @@ def test_a_model_that_standardizes_is_unchanged_by_affine_scaling_before_it(name
     raw = fit(name, train).predict_proba(test.select(FEATURES))
     scaled = fit(name, rescale(train)).predict_proba(rescale(test).select(FEATURES))
     np.testing.assert_allclose(raw, scaled, atol=1e-9)
+
+
+@pytest.mark.parametrize("name", NOT_STANDARDIZING)
+def test_a_model_that_does_not_standardize_takes_numbers_as_they_are(name: str) -> None:
+    train = rows(60, seed=1)
+    numbers = fit(name, train).named_steps["preprocess"].named_transformers_["numeric"]
+    filled = train.select("x", "i").fill_null(strategy="mean").to_numpy()
+    observed = train.select(pl.all_horizontal(pl.col("x", "i").is_not_null())).to_series()
+    np.testing.assert_allclose(
+        numbers.transform(train.select("x", "i"))[observed.to_numpy()],
+        filled[observed.to_numpy()],
+    )
 
 
 @pytest.mark.parametrize("name", MODELS)

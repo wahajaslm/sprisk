@@ -18,20 +18,30 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 def dummy_baseline(train: pl.DataFrame, target: str, features: list[str], task: str) -> Pipeline:
     """Always predicts the most frequent class, or the mean. Any real model should beat it."""
+    model = dummy_baseline_estimator(train.select(features).schema, task)
+    return fit(model, train, target, features)
+
+
+def dummy_baseline_estimator(schema: pl.Schema, task: str) -> Pipeline:
     estimator = (
         DummyClassifier(strategy="most_frequent")
         if task == "classification"
         else DummyRegressor(strategy="mean")
     )
-    return fit(estimator, train, target, features)
+    return Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
 
 
 def linear_model(train: pl.DataFrame, target: str, features: list[str], task: str) -> Pipeline:
     """Logistic regression for classes, linear regression for numbers."""
+    model = linear_model_estimator(train.select(features).schema, task)
+    return fit(model, train, target, features)
+
+
+def linear_model_estimator(schema: pl.Schema, task: str) -> Pipeline:
     estimator = (
         LogisticRegression(max_iter=1000) if task == "classification" else LinearRegression()
     )
-    return fit(estimator, train, target, features)
+    return Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
 
 
 def random_forest(
@@ -43,20 +53,29 @@ def random_forest(
     seed: int = 0,
 ) -> Pipeline:
     """A forest of decision trees; captures interactions a linear model misses."""
-    forest = RandomForestClassifier if task == "classification" else RandomForestRegressor
-    return fit(forest(n_estimators=n_estimators, random_state=seed), train, target, features)
+    model = random_forest_estimator(train.select(features).schema, task, n_estimators, seed)
+    return fit(model, train, target, features)
 
 
-def fit(
-    estimator: BaseEstimator, train: pl.DataFrame, target: str, features: list[str]
+def random_forest_estimator(
+    schema: pl.Schema, task: str, n_estimators: int = 200, seed: int = 0
 ) -> Pipeline:
+    forest = RandomForestClassifier if task == "classification" else RandomForestRegressor
+    # Trees split on rank order, so scaling would change nothing.
+    return Pipeline(
+        [
+            ("preprocess", preprocessor(schema, scale=False)),
+            ("estimator", forest(n_estimators=n_estimators, random_state=seed)),
+        ]
+    )
+
+
+def fit(model: Pipeline, train: pl.DataFrame, target: str, features: list[str]) -> Pipeline:
     if target in features:
         raise ValueError(f"target {target!r} is listed as a feature")
     if train[target].null_count():
         raise ValueError(f"{target} has {train[target].null_count()} missing values in train")
-    x = train.select(features)
-    model = Pipeline([("preprocess", preprocessor(x)), ("estimator", estimator)])
-    return model.fit(x, train[target].to_numpy())
+    return model.fit(train.select(features), train[target].to_numpy())
 
 
 class AsObject(TransformerMixin, BaseEstimator):  # type: ignore[misc]
@@ -70,17 +89,18 @@ class AsObject(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         return np.asarray(x, dtype=object)
 
 
-def preprocessor(x: pl.DataFrame) -> ColumnTransformer:
-    """Numbers: fill gaps with the median, then standardise. Text: fill with the most
-    frequent value, then one-hot encode; a category seen only in test is ignored."""
-    numeric = x.select(cs.numeric()).columns
-    categorical = x.select(cs.string() | cs.categorical() | cs.boolean()).columns
-    unsupported = sorted(set(x.columns) - set(numeric) - set(categorical))
+def preprocessor(schema: pl.Schema, scale: bool) -> ColumnTransformer:
+    """Numbers: fill gaps with the median, then standardise if `scale`. Text: fill with the
+    most frequent value, then one-hot encode; a category seen only in test is ignored."""
+    numeric = list(cs.expand_selector(schema, cs.numeric()))
+    categorical = list(cs.expand_selector(schema, cs.string() | cs.categorical() | cs.boolean()))
+    unsupported = sorted(set(schema) - set(numeric) - set(categorical))
     if unsupported:
         raise ValueError(f"columns {unsupported} are not numeric or categorical")
+    numbers = SimpleImputer(strategy="median")
     return ColumnTransformer(
         [
-            ("numeric", make_pipeline(SimpleImputer(strategy="median"), StandardScaler()), numeric),
+            ("numeric", make_pipeline(numbers, StandardScaler()) if scale else numbers, numeric),
             (
                 "categorical",
                 make_pipeline(
