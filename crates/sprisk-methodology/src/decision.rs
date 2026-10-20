@@ -9,8 +9,8 @@ use petgraph::visit::Bfs;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    DatasetProfile, DecisionProposal, MethodologyRule, PipelineVersion, QuestionVersion,
-    RuleDecision, RuleObservation, parse,
+    DatasetProfile, DecisionProposal, MethodologyRule, ModelFamily, PipelineVersion,
+    QuestionVersion, RuleDecision, RuleObservation, parse,
 };
 
 use crate::ResolveError;
@@ -52,23 +52,15 @@ pub fn observation(
     )?)
 }
 
-/// The family of a model operator, as preparation rules care about it. A dummy baseline
-/// ignores its features, so it has none.
-fn model_family(operator: &str) -> Option<&'static str> {
-    Some(match operator.split('@').next()? {
-        "sprisk.ml.random_forest" => "tree_ensemble",
-        "sprisk.ml.linear_model" => "linear",
-        "sprisk.clustering.kmeans" | "sprisk.clustering.dbscan" | "sprisk.clustering.gmm" => {
-            "distance_based"
-        }
-        _ => return None,
-    })
-}
-
 /// What the flow says about `node_id`: `flow.model_family`, the family of the models
-/// downstream of it, or `mixed` for several. Read from the graph, so `measured`; left out
-/// when no model is downstream, so a rule never reads a stand-in family.
-pub fn flow_facts(pipeline: &PipelineVersion, node_id: &str) -> Map<String, Value> {
+/// downstream of it, or `mixed` for several. `family_of` reads an operator's manifest.
+/// Read from the graph, so `measured`; left out when no model is downstream, so a rule
+/// never reads a stand-in family.
+pub fn flow_facts(
+    pipeline: &PipelineVersion,
+    node_id: &str,
+    family_of: impl Fn(&str) -> Option<ModelFamily>,
+) -> Map<String, Value> {
     let mut graph = DiGraph::<&str, ()>::new();
     let index: std::collections::HashMap<&str, _> = pipeline
         .nodes
@@ -90,12 +82,16 @@ pub fn flow_facts(pipeline: &PipelineVersion, node_id: &str) -> Map<String, Valu
     let mut families = BTreeSet::new();
     let mut bfs = Bfs::new(&graph, start);
     while let Some(next) = bfs.next(&graph) {
-        families.extend(model_family(graph[next]));
+        families.extend(family_of(graph[next]));
     }
-    let Some(&first) = families.first() else {
+    let Some(first) = families.first() else {
         return Map::new();
     };
-    let family = if families.len() == 1 { first } else { "mixed" };
+    let family = if families.len() == 1 {
+        first.to_string()
+    } else {
+        "mixed".to_owned()
+    };
     let mut facts = Map::new();
     facts.insert(
         "flow.model_family".into(),

@@ -2260,6 +2260,9 @@
         "capability_class": {
           "$ref": "#/$defs/CapabilityClass"
         },
+        "model_family": {
+          "$ref": "#/$defs/ModelFamily"
+        },
         "description": {
           "type": "string"
         },
@@ -2295,6 +2298,15 @@
           "$ref": "#/$defs/Resources"
         }
       }
+    },
+    "ModelFamily": {
+      "type": "string",
+      "description": "How a model operator's fit reacts to its inputs, for preparation rules: tree_ensemble splits on rank order; linear and distance_based depend on scale and outliers.",
+      "enum": [
+        "tree_ensemble",
+        "linear",
+        "distance_based"
+      ]
     },
     "CapabilityClass": {
       "type": "string",

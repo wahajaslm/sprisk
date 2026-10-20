@@ -64,8 +64,7 @@ alternatives:
   - id: standard_scaling
     label: Standard Scaling (Z-Score Normalization)
     description: Center to zero mean and scale to unit variance.
-    condition: flow.model_family != 'tree_ensemble' AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold AND is_sparse_matrix
-      is false
+    condition: flow.model_family != 'tree_ensemble' AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold
     rationale: Data has standard bell-shaped distributions. Essential for gradient descent convergence and
       distance metrics (SVM/KNN).
     action:

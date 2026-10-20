@@ -1,6 +1,7 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.linear_model@1.0.0
 capability_class: estimator
+model_family: linear
 description: Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.
 entrypoint: sprisk_ml.models:linear_model
 inputs: [{ name: train, kind: table }]

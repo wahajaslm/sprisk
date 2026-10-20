@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sprisk_contracts::{PipelineVersion, QuestionVersion, RuleDecision, parse};
+use sprisk_contracts::{ModelFamily, PipelineVersion, QuestionVersion, RuleDecision, parse};
 use sprisk_methodology::{RuleCatalog, flow_facts, observation, profile_facts, proposal};
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
@@ -185,6 +185,16 @@ fn flow(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> PipelineVersion {
     .unwrap()
 }
 
+/// The families the ml plugin's manifests declare.
+fn family_of(operator: &str) -> Option<ModelFamily> {
+    match operator {
+        "sprisk.ml.random_forest@1.0.0" => Some(ModelFamily::TreeEnsemble),
+        "sprisk.ml.linear_model@1.0.0" => Some(ModelFamily::Linear),
+        "sprisk.clustering.kmeans@1.0.0" => Some(ModelFamily::DistanceBased),
+        _ => None,
+    }
+}
+
 #[test]
 fn a_scale_step_upstream_of_a_random_forest_reads_tree_ensemble() {
     let pipeline = flow(
@@ -200,7 +210,7 @@ fn a_scale_step_upstream_of_a_random_forest_reads_tree_ensemble() {
             ("rf.model", "eval.model"),
         ],
     );
-    let facts = flow_facts(&pipeline, "scale");
+    let facts = flow_facts(&pipeline, "scale", family_of);
     assert_eq!(facts["flow.model_family"]["value"], "tree_ensemble");
     assert_eq!(facts["flow.model_family"]["origin"], "measured");
 }
@@ -216,7 +226,7 @@ fn models_of_several_families_read_mixed() {
         &[("scale.train", "rf.train"), ("scale.train", "lin.train")],
     );
     assert_eq!(
-        flow_facts(&pipeline, "scale")["flow.model_family"]["value"],
+        flow_facts(&pipeline, "scale", family_of)["flow.model_family"]["value"],
         "mixed"
     );
 }
@@ -237,7 +247,7 @@ fn a_model_reached_through_other_steps_counts_but_one_upstream_does_not() {
         ],
     );
     assert_eq!(
-        flow_facts(&pipeline, "impute")["flow.model_family"]["value"],
+        flow_facts(&pipeline, "impute", family_of)["flow.model_family"]["value"],
         "distance_based"
     );
 }
@@ -248,7 +258,7 @@ fn no_model_downstream_sends_no_family() {
         &[("scale", "clean.scale"), ("base", "ml.dummy_baseline")],
         &[("scale.train", "base.train")],
     );
-    assert!(flow_facts(&pipeline, "scale").is_empty());
+    assert!(flow_facts(&pipeline, "scale", family_of).is_empty());
 }
 
 #[test]
@@ -262,7 +272,7 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
     let observed = observation(
         rule,
         &question(),
-        flow_facts(&pipeline, "scale"),
+        flow_facts(&pipeline, "scale", family_of),
         Default::default(),
     )
     .unwrap();

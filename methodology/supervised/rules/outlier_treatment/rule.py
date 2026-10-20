@@ -62,4 +62,5 @@ def _keep_reason(many: list[str], family: str | None) -> str:
         return "Few values fall outside the IQR fences: keep them as they are."
     if family in (None, "mixed"):
         return f"Keeps every value; outliers pull linear models. {unknown_family(family)}"
-    return f"Keeps every value; outliers will pull the {family} model downstream."
+    # Every ml model standardises inside its pipeline, and that mean and SD are pulled too.
+    return f"Keeps every value; outliers pull the {family} model's own scaling and its fit."

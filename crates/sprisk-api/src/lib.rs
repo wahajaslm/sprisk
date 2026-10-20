@@ -930,7 +930,9 @@ async fn propose(
 
     let rule = state.rules.rule(rule_ref)?;
     let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
-    let flow = sprisk_methodology::flow_facts(&pipeline, node_id);
+    let flow = sprisk_methodology::flow_facts(&pipeline, node_id, |operator| {
+        state.registry.get(operator)?.model_family
+    });
     let observation =
         sprisk_methodology::observation(rule, &question, flow, profile).map_err(resolve)?;
     let decision = state

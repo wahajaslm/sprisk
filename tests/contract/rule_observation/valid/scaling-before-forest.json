@@ -1,0 +1,10 @@
+{
+  "schema_version": "sprisk.rule_observation/v1",
+  "rule": "methodology.supervised.feature_scaling@1.0.0",
+  "facts": {
+    "question.target": { "value": "churned", "origin": "confirmed" },
+    "flow.model_family": { "value": "tree_ensemble", "origin": "measured" }
+  },
+  "profile": { "column.age.data_type": "Float64", "column.age.kurtosis": 0.4 },
+  "settings": { "outlier_kurtosis_threshold": 3.0, "outlier_share_threshold": 0.05 }
+}

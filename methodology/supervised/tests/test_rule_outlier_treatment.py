@@ -40,3 +40,9 @@ def test_an_unknown_or_mixed_family_clips_many_outliers_as_today() -> None:
         d = run(column("income", outlier_share=0.2), family=family)
         assert d["recommended_alternative_id"] == "clip_mean_sd"
         assert "unknown" in alternative(d, "none_tree_or_clean")["reason"]
+
+
+def test_a_linear_model_downstream_clips_many_outliers_and_says_why() -> None:
+    d = run(column("income", outlier_share=0.2), family="linear")
+    assert d["recommended_alternative_id"] == "clip_mean_sd"
+    assert "linear" in alternative(d, "none_tree_or_clean")["reason"]

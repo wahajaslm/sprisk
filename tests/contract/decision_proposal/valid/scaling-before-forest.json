@@ -1,0 +1,28 @@
+{
+  "schema_version": "sprisk.decision_proposal/v1",
+  "id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "rule": "methodology.supervised.feature_scaling@1.0.0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "subject_node_id": "scale",
+  "evidence": [
+    {
+      "kind": "flow_fact",
+      "label": "Model family downstream",
+      "value": "tree_ensemble",
+      "origin": "measured"
+    }
+  ],
+  "alternatives": [
+    {
+      "id": "none_tree_models",
+      "label": "No Scaling (Tree Ensembles)",
+      "description": "Leave raw numerical features unscaled.",
+      "applicability": "applicable",
+      "reason": "Only tree models are downstream."
+    }
+  ],
+  "recommended_alternative_id": "none_tree_models",
+  "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "created_at": "2026-10-19T10:00:00Z"
+}

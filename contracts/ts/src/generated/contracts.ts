@@ -200,6 +200,13 @@ export type CapabilityClass =
   | "sink"
   | "custom_code";
 /**
+ * How a model operator's fit reacts to its inputs, for preparation rules: tree_ensemble splits on rank order; linear and distance_based depend on scale and outliers.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ModelFamily".
+ */
+export type ModelFamily = "tree_ensemble" | "linear" | "distance_based";
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "PortKind".
  */
@@ -1388,6 +1395,7 @@ export interface Operator {
   schema_version: "sprisk.operator/v1";
   id: OperatorRef;
   capability_class: CapabilityClass;
+  model_family?: ModelFamily;
   description?: string;
   /**
    * Python `module:function` the worker calls.

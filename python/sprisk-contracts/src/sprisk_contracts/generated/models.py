@@ -614,6 +614,12 @@ class KernelShutdown(StrictModel):
     op: Literal["shutdown"]
 
 
+class ModelFamily(StrEnum):
+    tree_ensemble = "tree_ensemble"
+    linear = "linear"
+    distance_based = "distance_based"
+
+
 class CapabilityClass(StrEnum):
     source = "source"
     transform = "transform"
@@ -1572,6 +1578,7 @@ class Operator(StrictModel):
     schema_version: Literal["sprisk.operator/v1"]
     id: OperatorRef
     capability_class: CapabilityClass
+    model_family: ModelFamily | None = None
     description: str | None = None
     entrypoint: Annotated[
         str,
