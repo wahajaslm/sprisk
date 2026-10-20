@@ -8,8 +8,8 @@ use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     Artifact, ArtifactManifest, Attempt, AttemptId, AttemptState, Effects,
-    FailFailureKind as FailureKind, MethodologyCheck, Operator, PipelineVersion, RunId, RunStatus,
-    Verdict, WorkerMessage, parse,
+    FailFailureKind as FailureKind, MethodologyCheck, MethodologyDecision, Operator,
+    PipelineVersion, RunId, RunStatus, Verdict, WorkerMessage, parse,
 };
 use sprisk_graph::{Plan, Step};
 use sprisk_store::{SqliteStore, StoreError};
@@ -57,6 +57,8 @@ pub enum SchedulerError {
     Contract { what: &'static str, reason: String },
     #[error("gate output: {0}")]
     GateOutput(String),
+    #[error("node {node} cites methodology decision {decision}, which is not stored")]
+    UnknownDecision { node: String, decision: String },
 }
 
 /// Attempts of the methodology gate use this node id (ADR-0017); Gate A reserves it.
@@ -667,7 +669,8 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         Ok(resolved)
     }
 
-    /// Commit the pipeline version and its operators as the gate attempt's input artifacts.
+    /// Commit the pipeline version, its operators, the question it answers (`null` when it is
+    /// not linked) and the decisions its nodes cite as the gate attempt's input artifacts.
     async fn gate_inputs(
         &self,
         run_id: &RunId,
@@ -678,9 +681,15 @@ impl<'a, W: Workers> Scheduler<'a, W> {
         let mut operators: Vec<&Operator> = plan.steps.iter().map(|s| &s.operator).collect();
         operators.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
         operators.dedup_by(|a, b| a.id == b.id);
+        let question = match &pipeline.question_version_id {
+            Some(id) => json!(self.store.get_question_version(id).await?),
+            None => json!(null),
+        };
         let docs = [
+            ("decisions", json!(self.cited_decisions(pipeline).await?)),
             ("operators", json!(operators)),
             ("pipeline", json!(pipeline)),
+            ("question", question),
         ];
         let dir = self
             .artifacts
@@ -717,6 +726,29 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             }));
         }
         Ok(bindings)
+    }
+
+    /// The decisions `pipeline`'s nodes cite. A cited decision that is not stored is an error:
+    /// the gate would otherwise check the graph without the choice that shaped it.
+    async fn cited_decisions(
+        &self,
+        pipeline: &PipelineVersion,
+    ) -> Result<Vec<MethodologyDecision>, SchedulerError> {
+        let mut cited: Vec<_> = pipeline
+            .nodes
+            .iter()
+            .filter_map(|n| n.methodology_decision_id.clone().map(|d| (d, n)))
+            .collect();
+        let ids: Vec<_> = cited.iter().map(|(d, _)| d.clone()).collect();
+        let found = self.store.methodology_decisions(&ids).await?;
+        cited.retain(|(d, _)| !found.iter().any(|f| f.id == *d));
+        if let Some((decision, node)) = cited.first() {
+            return Err(SchedulerError::UnknownDecision {
+                node: node.id.as_str().to_owned(),
+                decision: decision.as_str().to_owned(),
+            });
+        }
+        Ok(found)
     }
 
     fn expiry(&self) -> Result<sprisk_contracts::Timestamp, SchedulerError> {

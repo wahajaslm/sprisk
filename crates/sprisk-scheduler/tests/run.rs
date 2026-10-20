@@ -324,6 +324,8 @@ struct Case {
     side_effecting: Option<&'static str>,
     run_status: &'static str,
     gate: bool,
+    /// Run `decided_pipeline()`, whose split was set by a stored methodology decision.
+    decided: bool,
 }
 
 impl Default for Case {
@@ -335,6 +337,7 @@ impl Default for Case {
             side_effecting: None,
             run_status: "queued",
             gate: false,
+            decided: false,
         }
     }
 }
@@ -347,9 +350,16 @@ async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::Schedule
         side_effecting,
         run_status,
         gate,
+        decided,
     } = case;
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteStore::in_memory().await.unwrap();
+    let pipeline = if decided {
+        seed_decision(&store).await;
+        decided_pipeline()
+    } else {
+        pipeline()
+    };
     let run: Run = parse(
         &json!({"schema_version": "sprisk.run/v1", "id": RUN,
                 "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
@@ -381,7 +391,7 @@ async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::Schedule
     if gate {
         scheduler = scheduler.with_gate(gate_operator());
     }
-    let status = scheduler.run(&run.id, &pipeline(), &plan).await;
+    let status = scheduler.run(&run.id, &pipeline, &plan).await;
     (
         Env {
             _dir: dir,
@@ -711,7 +721,7 @@ async fn bad_manifests_fail_the_attempt_permanently() {
 }
 
 #[tokio::test]
-async fn gate_b_runs_first_with_the_pipeline_and_operators_as_inputs() {
+async fn gate_b_runs_first_with_the_pipeline_its_operators_question_and_decisions_as_inputs() {
     let (env, status) = setup(Case {
         gate: true,
         ..Case::default()
@@ -727,13 +737,138 @@ async fn gate_b_runs_first_with_the_pipeline_and_operators_as_inputs() {
         .iter()
         .map(|i| i.port.as_str().to_owned())
         .collect();
-    assert_eq!(ports, ["operators", "pipeline"]);
-    let pipeline_uri = url::Url::parse(&gate.inputs[1].uri)
-        .unwrap()
-        .to_file_path()
-        .unwrap();
-    let sent: PipelineVersion = parse(&std::fs::read_to_string(pipeline_uri).unwrap()).unwrap();
+    assert_eq!(ports, ["decisions", "operators", "pipeline", "question"]);
+    let sent: PipelineVersion = parse(&gate_input(gate, "pipeline").to_string()).unwrap();
     assert_eq!(sent, pipeline());
+    assert_eq!(
+        gate_input(gate, "question"),
+        json!(null),
+        "no question linked"
+    );
+    assert_eq!(gate_input(gate, "decisions"), json!([]), "no decided node");
+}
+
+#[tokio::test]
+async fn gate_b_sees_the_linked_question_and_the_decisions_its_nodes_cite() {
+    let (env, status) = setup(Case {
+        gate: true,
+        decided: true,
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Succeeded);
+    let log = env.log.lock().unwrap();
+    let gate = &log.leases[0];
+    assert_eq!(
+        gate_input(gate, "question")["id"],
+        "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+    );
+    let decisions = gate_input(gate, "decisions");
+    let ids: Vec<_> = decisions
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| &d["id"])
+        .collect();
+    assert_eq!(ids, ["mdc_01JABCDEFGHJKMNPQRSTVWXYZ0"]);
+}
+
+#[tokio::test]
+async fn a_node_citing_a_decision_that_is_not_stored_fails_the_run() {
+    let workers = FakeWorkers::default();
+    let dir = tempfile::tempdir().unwrap();
+    let store = SqliteStore::in_memory().await.unwrap();
+    let run: Run = parse(
+        &json!({"schema_version": "sprisk.run/v1", "id": RUN,
+                "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                "status": "queued", "created_at": "2026-10-16T10:00:00Z"})
+        .to_string(),
+    )
+    .unwrap();
+    store.insert_run(&run).await.unwrap();
+    store.insert_question_version(&question()).await.unwrap();
+    let artifacts = ArtifactStore::local(dir.path()).unwrap();
+    let mut scheduler =
+        Scheduler::new(&store, &artifacts, workers, Settings::default()).with_gate(gate_operator());
+
+    let result = scheduler.run(&run.id, &decided_pipeline(), &plan()).await;
+
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("mdc_01JABCDEFGHJKMNPQRSTVWXYZ0"), "{err}");
+    assert_eq!(
+        store.get_run(&run.id).await.unwrap().status,
+        RunStatus::Failed
+    );
+}
+
+/// The JSON document a gate lease binds to `port`.
+fn gate_input(lease: &LeaseAttempt, port: &str) -> serde_json::Value {
+    let input = lease
+        .inputs
+        .iter()
+        .find(|i| i.port.as_str() == port)
+        .unwrap();
+    let path = url::Url::parse(&input.uri).unwrap().to_file_path().unwrap();
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+/// A shared contract fixture, with some fields replaced so linked records agree on ids.
+fn fixture_with(entity: &str, name: &str, fields: serde_json::Value) -> serde_json::Value {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/contract")
+        .join(entity)
+        .join("valid")
+        .join(name);
+    let mut value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    for (key, field) in fields.as_object().unwrap() {
+        value[key] = field.clone();
+    }
+    value
+}
+
+/// `pipeline()` answering question `qv_..0`, with its split set by decision `mdc_..0`.
+fn decided_pipeline() -> PipelineVersion {
+    let mut value = serde_json::to_value(pipeline()).unwrap();
+    value["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    value["nodes"][1]["methodology_decision_id"] = json!("mdc_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    parse(&value.to_string()).unwrap()
+}
+
+/// The question `decided_pipeline()` answers.
+fn question() -> sprisk_contracts::QuestionVersion {
+    let question = fixture_with(
+        "question_version",
+        "classification-all-fields.json",
+        json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    parse(&question.to_string()).unwrap()
+}
+
+/// Store the question, base pipeline, proposal and decision that `decided_pipeline()` cites.
+async fn seed_decision(store: &SqliteStore) {
+    store.insert_question_version(&question()).await.unwrap();
+    store.insert_pipeline_version(&pipeline()).await.unwrap();
+    let proposal = fixture_with("decision_proposal", "split.json", json!({}));
+    store
+        .insert_methodology_proposal(&parse(&proposal.to_string()).unwrap())
+        .await
+        .unwrap();
+    let applied = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1"}),
+    );
+    let decision = fixture_with("methodology_decision", "applied.json", json!({}));
+    store
+        .apply_methodology_decision(
+            &parse(&decision.to_string()).unwrap(),
+            &parse(&applied.to_string()).unwrap(),
+            "key-0001",
+        )
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

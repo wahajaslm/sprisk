@@ -12,6 +12,17 @@ from sprisk_supervised.pack import run
 from sprisk_workers.errors import OperatorError
 
 PLUGINS = Path(__file__).parents[3] / "plugins"
+CONTRACT = Path(__file__).parents[3] / "tests" / "contract"
+QUESTION_ID = "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+
+
+def fixture(entity: str, name: str) -> dict[str, Any]:
+    loaded: dict[str, Any] = json.loads((CONTRACT / entity / "valid" / name).read_text())
+    return loaded
+
+
+def question() -> dict[str, Any]:
+    return {**fixture("question_version", "classification-all-fields.json"), "id": QUESTION_ID}
 
 
 def inputs_for(evaluators: int) -> dict[str, Any]:
@@ -39,7 +50,12 @@ def inputs_for(evaluators: int) -> dict[str, Any]:
         "created_at": "2026-10-16T10:00:00Z",
     }
     operators = [yaml.safe_load(p.read_text()) for p in sorted(PLUGINS.rglob("manifest.yaml"))]
-    return {"pipeline": pipeline, "operators": operators}
+    return {"pipeline": pipeline, "operators": operators, "question": None, "decisions": []}
+
+
+def answering_the_question(inputs: dict[str, Any]) -> dict[str, Any]:
+    pipeline = {**inputs["pipeline"], "question_version_id": QUESTION_ID}
+    return {**inputs, "pipeline": pipeline, "question": question()}
 
 
 @pytest.mark.parametrize(("evaluators", "verdict"), [(1, "pass"), (2, "fail")])
@@ -75,4 +91,37 @@ def test_code_step_without_source_is_an_operator_error() -> None:
     )
     with pytest.raises(OperatorError) as e:
         run(**inputs)
+    assert e.value.code == "invalid_check_input"
+
+
+def test_without_a_question_no_check_names_one() -> None:
+    checks = run(**inputs_for(1))
+    assert all("question_version_id" not in c for c in checks)
+
+
+def test_every_check_names_the_question_the_pipeline_answers() -> None:
+    checks = run(**answering_the_question(inputs_for(1)))
+    assert [c["question_version_id"] for c in checks] == [QUESTION_ID, QUESTION_ID]
+
+
+def test_a_question_other_than_the_pipeline_s_is_an_operator_error() -> None:
+    inputs = answering_the_question(inputs_for(1))
+    inputs["question"] = {**question(), "id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ9"}
+    with pytest.raises(OperatorError) as e:
+        run(**inputs)
+    assert e.value.code == "invalid_check_input"
+    assert "qv_01JABCDEFGHJKMNPQRSTVWXYZ9" in e.value.message
+
+
+def test_a_linked_question_that_was_not_sent_is_an_operator_error() -> None:
+    inputs = answering_the_question(inputs_for(1))
+    inputs["question"] = None
+    with pytest.raises(OperatorError) as e:
+        run(**inputs)
+    assert e.value.code == "invalid_check_input"
+
+
+def test_an_invalid_decision_is_an_operator_error() -> None:
+    with pytest.raises(OperatorError) as e:
+        run(**{**inputs_for(1), "decisions": [{"id": "mdc_x"}]})
     assert e.value.code == "invalid_check_input"
