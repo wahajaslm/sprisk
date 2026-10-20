@@ -3,11 +3,13 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sprisk_contracts::{Node, PipelineVersion, QuestionVersion, RuleDecision, TaskType, parse};
+use sprisk_contracts::{
+    DecisionProposal, Node, PipelineVersion, QuestionVersion, RuleDecision, TaskType, parse,
+};
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
-    RuleCatalog, Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts,
-    proposal, train_rows_source, without_node,
+    Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, flow_facts,
+    observation, profile_facts, proposal, train_rows_source, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -931,4 +933,199 @@ fn a_hop_through_a_test_port_is_refused() {
         &[("split.test", "scale.train"), ("scale.test", "model.train")],
     );
     assert!(train_rows_source(&pipeline, "model", is_split, keeps_train).is_err());
+}
+
+/// load -> split -> scale -> model -> evaluate, with the test rows going to evaluate.
+fn evaluated_flow() -> PipelineVersion {
+    let mut pipeline = serde_json::to_value(flow(
+        &[
+            ("load", "io.file_source"),
+            ("split", "validation.random_split"),
+            ("scale", "clean.scale"),
+            ("model", "ml.linear_model"),
+            ("eval", "ml.evaluate"),
+        ],
+        &[
+            ("load.data", "split.data"),
+            ("split.train", "scale.train"),
+            ("split.test", "scale.test"),
+            ("scale.train", "model.train"),
+            ("model.model", "eval.model"),
+            ("scale.test", "eval.test"),
+        ],
+    ))
+    .unwrap();
+    pipeline["nodes"][3]["params"] =
+        json!({ "target": "churned", "features": ["age", "plan"], "task": "classification" });
+    parse(&pipeline.to_string()).unwrap()
+}
+
+fn shortlisted(pipeline: &PipelineVersion, shortlist: Value) -> DecisionProposal {
+    let registry = registry();
+    let candidates = candidates(TaskType::Classification, registry.operators()).unwrap();
+    proposal(
+        &shortlist_rule(),
+        &shortlist_decision(shortlist, None),
+        &question(),
+        pipeline,
+        "model",
+        &candidates,
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-15T10:00:00Z",
+        },
+    )
+    .unwrap()
+}
+
+fn compare(
+    pipeline: &PipelineVersion,
+    proposal: &DecisionProposal,
+) -> Result<Comparison, ResolveError> {
+    let registry = registry();
+    comparison(
+        pipeline,
+        proposal,
+        TaskType::Classification,
+        is_split,
+        keeps_train,
+        |operator| registry.get(operator),
+    )
+}
+
+#[test]
+fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
+    let pipeline = evaluated_flow();
+    let built = compare(
+        &pipeline,
+        &shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"])),
+    )
+    .unwrap();
+
+    let ids: Vec<&str> = built.nodes.iter().map(|n| n.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "load",
+            "split",
+            "cv_ml_dummy_baseline",
+            "cv_ml_linear_model",
+            "select_model"
+        ]
+    );
+    let edges: Vec<(&str, &str)> = built
+        .edges
+        .iter()
+        .map(|e| (e.from.as_str(), e.to.as_str()))
+        .collect();
+    assert_eq!(
+        edges,
+        [
+            ("load.data", "split.data"),
+            ("split.train", "cv_ml_dummy_baseline.train"),
+            ("split.train", "cv_ml_linear_model.train"),
+            (
+                "cv_ml_dummy_baseline.scores",
+                "select_model.ml_dummy_baseline"
+            ),
+            ("cv_ml_linear_model.scores", "select_model.ml_linear_model"),
+        ]
+    );
+    let linear = serde_json::to_value(&built.nodes[3]).unwrap();
+    assert_eq!(
+        linear,
+        json!({
+            "id": "cv_ml_linear_model", "operator": "sprisk.ml.cross_validate@1.0.0",
+            "params": {
+                "candidate": "sprisk.ml.linear_model@1.0.0",
+                "candidate_params": { "target": "churned", "features": ["age", "plan"], "task": "classification" },
+                "folds": 5, "seed": 0, "metric": "balanced_accuracy"
+            }
+        })
+    );
+    let select = serde_json::to_value(&built.nodes[4]).unwrap();
+    assert_eq!(
+        select["params"],
+        json!({
+            "trials": ["ml_dummy_baseline", "ml_linear_model"], "baseline": "ml_dummy_baseline",
+            "metric": "balanced_accuracy", "not_compared": ["scale"]
+        })
+    );
+}
+
+#[test]
+fn a_comparison_never_reads_a_splits_test_or_holdout_rows() {
+    let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+    // A second split upstream, whose held-out rows feed nothing of the comparison either.
+    pipeline["nodes"][1]["operator"] = json!("sprisk.validation.temporal_split@1.0.0");
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let built = compare(
+        &pipeline,
+        &shortlisted(
+            &pipeline,
+            json!(["ml_dummy_baseline", "ml_linear_model", "ml_random_forest"]),
+        ),
+    )
+    .unwrap();
+
+    for edge in &built.edges {
+        let (step, port) = edge.from.step_and_port();
+        assert!(
+            step != "split" || port == "train",
+            "{} reads the split's {port} rows",
+            edge.to.as_str()
+        );
+    }
+    let fed_by_split = built
+        .edges
+        .iter()
+        .filter(|e| e.from.as_str() == "split.train")
+        .count();
+    assert_eq!(fed_by_split, 3);
+}
+
+#[test]
+fn a_comparison_needs_a_baseline_on_the_shortlist() {
+    let pipeline = evaluated_flow();
+    let mut proposal = serde_json::to_value(shortlisted(
+        &pipeline,
+        json!(["ml_dummy_baseline", "ml_linear_model"]),
+    ))
+    .unwrap();
+    proposal["shortlist"] = json!(["ml_linear_model", "ml_random_forest"]);
+    let proposal: DecisionProposal = parse(&proposal.to_string()).unwrap();
+
+    let err = compare(&pipeline, &proposal).unwrap_err();
+    assert!(matches!(err, ResolveError::Selection(_)), "{err}");
+    assert!(
+        err.to_string().contains("needs exactly one baseline"),
+        "{err}"
+    );
+}
+
+#[test]
+fn only_a_shortlist_can_be_compared() {
+    let pipeline = evaluated_flow();
+    let mut proposal =
+        serde_json::to_value(shortlisted(&pipeline, json!(["ml_dummy_baseline"]))).unwrap();
+    proposal.as_object_mut().unwrap().remove("shortlist");
+    proposal["recommended_alternative_id"] = json!("ml_dummy_baseline");
+    let proposal: DecisionProposal = parse(&proposal.to_string()).unwrap();
+
+    let err = compare(&pipeline, &proposal).unwrap_err();
+    assert!(
+        err.to_string().contains("has no shortlist to compare"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_model_whose_train_rows_do_not_trace_to_a_split_cannot_be_compared() {
+    let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+    pipeline["edges"][3] = json!({ "from": "scale.test", "to": "model.train" });
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let proposal = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
+
+    let err = compare(&pipeline, &proposal).unwrap_err();
+    assert!(matches!(err, ResolveError::NotTrainRows(_)), "{err}");
 }

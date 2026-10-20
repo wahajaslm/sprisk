@@ -325,3 +325,31 @@ def test_unconnected_fitting_transform_train_is_an_input_error() -> None:
     p = pipeline({"impute": IMPUTE}, [])
     with pytest.raises(CheckInputError, match="impute.train"):
         split_leakage(p, operators(), CHECK_ID, NOW)
+
+
+CROSS_VALIDATE = "sprisk.ml.cross_validate@1.0.0"
+SELECT = "sprisk.ml.select_model@1.0.0"
+
+
+def cross_validated(rows_from: str) -> PipelineVersion:
+    """A comparison (ADR-0044): two cross-validate steps fed `rows_from`, one select step."""
+    nodes = {"load": SOURCE, "split": SPLIT, "cv_a": CROSS_VALIDATE, "cv_b": CROSS_VALIDATE}
+    nodes["select_model"] = SELECT
+    edges = [
+        ("load.data", "split.data"),
+        (rows_from, "cv_a.train"),
+        (rows_from, "cv_b.train"),
+        ("cv_a.scores", "select_model.a"),
+        ("cv_b.scores", "select_model.b"),
+    ]
+    return pipeline(nodes, edges)
+
+
+def test_a_comparison_on_the_train_rows_is_not_a_holdout_issue() -> None:
+    assert check(cross_validated("split.train")).verdict == Verdict.not_assessed
+
+
+def test_a_comparison_fed_the_test_rows_fails() -> None:
+    result = check(cross_validated("split.test"))
+    assert result.verdict == Verdict.fail
+    assert result.rationale.startswith("cv_a learns from the test set (split.test)")

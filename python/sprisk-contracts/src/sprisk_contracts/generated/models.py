@@ -1824,6 +1824,12 @@ class PipelineVersion(StrictModel):
         PipelineVersionId | None,
         Field(description="Version this one was derived from. Absent for the first version."),
     ] = None
+    compares: Annotated[
+        MethodologyProposalId | None,
+        Field(
+            description="The shortlist proposal whose models this version cross-validates (ADR-0046). A comparison is a side version, not an edit: it has no parent_id, so the proposal stays applicable. Absent on every other version."
+        ),
+    ] = None
     nodes: list[Node]
     edges: list[Edge]
     created_at: Timestamp

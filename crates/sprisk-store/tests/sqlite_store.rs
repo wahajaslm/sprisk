@@ -711,3 +711,28 @@ async fn methodology_decisions_are_found_by_their_ids_and_unknown_ids_are_left_o
 
     assert_eq!(found, vec![decision]);
 }
+
+#[tokio::test]
+async fn a_comparison_is_found_by_its_proposal_and_a_proposal_has_one() {
+    let (store, decision) = store_with_decision().await;
+    let comparison: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "comparison.json",
+        serde_json::json!({ "compares": decision.proposal_id, "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0" }),
+    );
+    assert_eq!(
+        store.comparison_of(&decision.proposal_id).await.unwrap(),
+        None
+    );
+
+    store.insert_pipeline_version(&comparison).await.unwrap();
+
+    assert_eq!(
+        store.comparison_of(&decision.proposal_id).await.unwrap(),
+        Some(comparison.clone())
+    );
+    let mut second = comparison;
+    second.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ7".parse().unwrap();
+    let err = store.insert_pipeline_version(&second).await.unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+}

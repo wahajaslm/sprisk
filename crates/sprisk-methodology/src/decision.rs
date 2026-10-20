@@ -288,6 +288,18 @@ pub fn train_rows_source<'p>(
     is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
 ) -> Result<&'p str, ResolveError> {
+    let chain = train_rows_chain(pipeline, node_id, is_split, keeps_train)?;
+    Ok(chain[0])
+}
+
+/// The steps from the one feeding `node_id`'s `train` input back to the split, in that
+/// order, as `train_rows_source` walks them. Never empty: the split is last.
+pub(crate) fn train_rows_chain<'p>(
+    pipeline: &'p PipelineVersion,
+    node_id: &str,
+    is_split: impl Fn(&Node) -> bool,
+    keeps_train: impl Fn(&Node) -> bool,
+) -> Result<Vec<&'p str>, ResolveError> {
     let node = |id: &str| pipeline.nodes.iter().find(|n| n.id.as_str() == id);
     let feeding = |id: &str| {
         pipeline
@@ -304,13 +316,14 @@ pub fn train_rows_source<'p>(
             "step {node_id} takes no train output into its train input"
         ));
     };
-    let mut at = source;
+    let mut chain = vec![source];
     loop {
+        let at = chain[chain.len() - 1];
         let Some(step) = node(at) else {
             return Err(ResolveError::UnknownNode(at.to_owned()));
         };
         if is_split(step) {
-            return Ok(source);
+            return Ok(chain);
         }
         if !keeps_train(step) {
             return refuse(format!(
@@ -323,7 +336,7 @@ pub fn train_rows_source<'p>(
                 "step {at} takes no train output into its train input"
             ));
         };
-        at = next;
+        chain.push(next);
     }
 }
 

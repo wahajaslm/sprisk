@@ -1205,6 +1205,10 @@ export interface PipelineVersion {
    * Version this one was derived from. Absent for the first version.
    */
   parent_id?: string;
+  /**
+   * The shortlist proposal whose models this version cross-validates (ADR-0046). A comparison is a side version, not an edit: it has no parent_id, so the proposal stays applicable. Absent on every other version.
+   */
+  compares?: string;
   nodes: Node[];
   edges: Edge[];
   created_at: Timestamp;

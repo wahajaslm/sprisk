@@ -100,13 +100,29 @@ impl SqliteStore {
         &self,
         pipeline: &PipelineVersion,
     ) -> Result<(), StoreError> {
-        sqlx::query("INSERT INTO pipeline_versions (id, project_id, body) VALUES (?, ?, ?)")
-            .bind(pipeline.id.as_str())
-            .bind(pipeline.project_id.as_str())
-            .bind(to_json(pipeline)?)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "INSERT INTO pipeline_versions (id, project_id, compares_proposal_id, body) VALUES (?, ?, ?, ?)",
+        )
+        .bind(pipeline.id.as_str())
+        .bind(pipeline.project_id.as_str())
+        .bind(pipeline.compares.as_ref().map(|p| p.as_str()))
+        .bind(to_json(pipeline)?)
+        .execute(&self.pool)
+        .await?;
         Ok(())
+    }
+
+    /// The version comparing `proposal`'s shortlist (ADR-0046), if one was built.
+    pub async fn comparison_of(
+        &self,
+        proposal: &MethodologyProposalId,
+    ) -> Result<Option<PipelineVersion>, StoreError> {
+        let body: Option<String> =
+            sqlx::query_scalar("SELECT body FROM pipeline_versions WHERE compares_proposal_id = ?")
+                .bind(proposal.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(body.map(|b| serde_json::from_str(&b)).transpose()?)
     }
 
     pub async fn get_pipeline_version(

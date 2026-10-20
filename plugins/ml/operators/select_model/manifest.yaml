@@ -1,6 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.select_model@1.0.0
-capability_class: evaluator
+capability_class: decision_evaluator
 description: Choose among cross-validated candidates (ADR-0044). A model wins only if it beats the baseline on the same folds by more than the corrected standard error of their paired differences; otherwise none does. Writes a SelectionDecision.
 entrypoint: sprisk_ml.compare:select_model
 inputs: []

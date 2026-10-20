@@ -2,9 +2,11 @@
 //! and the proposal built from its decision. Graph mutation stays an explicit API Apply.
 
 mod catalog;
+mod compare;
 mod decision;
 pub mod facts;
 pub use catalog::{CatalogError, RuleCatalog};
+pub use compare::{Comparison, FOLDS, SEED, comparison};
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts, proposal,
     train_rows_source, without_node,

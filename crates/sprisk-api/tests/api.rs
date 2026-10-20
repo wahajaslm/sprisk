@@ -2003,3 +2003,171 @@ async fn a_group_split_s_rows_are_checked_after_it_runs() {
     assert_eq!(checks[0]["verdict"], "pass", "{checks}");
     assert_eq!(checks[0]["cited_nodes"], json!(["split"]));
 }
+
+async fn compare(api: &Api, proposal: &Value) -> (StatusCode, Value) {
+    let uri = format!(
+        "/methodology_proposals/{}/compare",
+        proposal["id"].as_str().unwrap()
+    );
+    call(&api.app, "POST", &uri, Some(json!({}))).await
+}
+
+/// Runs `version` and waits, bounded, for it to end; gives the run and its attempts.
+async fn run_version(api: &Api, version: &str) -> (Value, Value) {
+    let create = json!({ "pipeline_version_id": version });
+    let (status, run) = call(&api.app, "POST", "/runs", Some(create)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
+    for _ in 0..1200 {
+        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
+        if body["status"] == "succeeded" || body["status"] == "failed" {
+            let (_, attempts) = call(&api.app, "GET", &format!("{run_uri}/attempts"), None).await;
+            return (body, attempts);
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("run {run_uri} did not end");
+}
+
+/// The JSON a step's attempt wrote on `port`.
+async fn output(api: &Api, attempts: &Value, node: &str, port: &str) -> Value {
+    let attempt = attempts
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["node_id"] == node)
+        .unwrap_or_else(|| panic!("no attempt of {node}: {attempts}"));
+    let uri = format!("/attempts/{}/outputs", attempt["id"].as_str().unwrap());
+    let (_, outputs) = call(&api.app, "GET", &uri, None).await;
+    let artifact = outputs
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["port"] == port)
+        .unwrap()["artifact"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    use tower::ServiceExt;
+    let request = Request::builder()
+        .uri(format!("/artifacts/{artifact}/content"))
+        .header("host", "127.0.0.1:7420")
+        .body(Body::empty())
+        .unwrap();
+    let response = api.app.clone().oneshot(request).await.unwrap();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+#[tokio::test]
+async fn a_shortlist_is_cross_validated_on_train_rows_and_the_winner_applied() {
+    let api = api().await;
+    model_flow(&api).await;
+    let (_, proposal) = propose_model(&api).await;
+
+    let (status, comparison) = compare(&api, &proposal).await;
+    assert_eq!(status, StatusCode::CREATED, "{comparison}");
+    assert_eq!(comparison["compares"], proposal["id"]);
+    assert!(comparison.get("parent_id").is_none(), "{comparison}");
+    let steps: Vec<&str> = comparison["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        steps,
+        [
+            "load",
+            "split",
+            "cv_ml_dummy_baseline",
+            "cv_ml_linear_model",
+            "select_model"
+        ]
+    );
+    let read_from_split: Vec<&str> = comparison["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["from"].as_str()?.strip_prefix("split."))
+        .collect();
+    assert_eq!(read_from_split, ["train", "train"]);
+
+    let (status, again) = compare(&api, &proposal).await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["id"], comparison["id"]);
+
+    let (run, attempts) = run_version(&api, comparison["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let decision = output(&api, &attempts, "select_model", "decision").await;
+    parse::<sprisk_contracts::SelectionDecision>(&decision.to_string()).unwrap();
+    assert_eq!(decision["metric"], "balanced_accuracy");
+    assert_eq!(decision["baseline"], "ml_dummy_baseline");
+    assert_eq!(decision["limitations"].as_array().unwrap().len(), 1);
+
+    // The comparison is a side version: the proposal still applies to the flow.
+    let chosen = decision["winner"].as_str().unwrap_or("ml_linear_model");
+    let apply = json!({
+        "alternative_id": chosen, "idempotency_key": "test-apply-compared",
+        "reason": format!("Cross-validation: {}", decision["reason"].as_str().unwrap())
+    });
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let (status, applied) = call(&api.app, "POST", &uri, Some(apply)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let model = applied["pipeline"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    assert_eq!(
+        model["operator"],
+        format!("sprisk.{}@1.0.0", chosen.replacen('_', ".", 1))
+    );
+}
+
+#[tokio::test]
+async fn a_comparison_is_built_only_by_compare_and_never_edited_by_a_rule() {
+    let api = api().await;
+    model_flow(&api).await;
+    let (_, proposal) = propose_model(&api).await;
+    let (_, comparison) = compare(&api, &proposal).await;
+
+    let mut forged = pipeline(&api.csv);
+    forged["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
+    forged["compares"] = proposal["id"].clone();
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(forged)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "comparison_by_compare");
+
+    let uri = format!(
+        "/pipeline_versions/{}/methodology/split/split/proposals",
+        comparison["id"].as_str().unwrap()
+    );
+    let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "comparison_not_editable");
+}
+
+#[tokio::test]
+async fn only_a_shortlist_proposal_can_be_compared() {
+    let api = api().await;
+    scaling_flow(&api).await;
+    run_to_end(&api).await;
+    let (status, proposal) = propose_scaling(&api).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+
+    let (status, body) = compare(&api, &proposal).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("has no shortlist to compare"),
+        "{body}"
+    );
+}

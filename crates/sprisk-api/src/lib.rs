@@ -87,6 +87,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/methodology_proposals/{id}", get(get_methodology_proposal))
         .route("/methodology_proposals/{id}/apply", post(apply_methodology))
+        .route(
+            "/methodology_proposals/{id}/compare",
+            post(compare_methodology),
+        )
         .route("/methodology_decisions", get(list_methodology_decisions))
         .route("/methodology_decisions/{id}", get(get_methodology_decision))
         .route("/methodology_rules", get(list_methodology_rules))
@@ -350,6 +354,13 @@ async fn create_pipeline_version(
     text: String,
 ) -> Result<(StatusCode, Json<PipelineVersion>), ApiError> {
     let pipeline: PipelineVersion = body(&text)?;
+    if pipeline.compares.is_some() {
+        // Its steps must be the ones compare builds from the proposal (ADR-0046).
+        return Err(ApiError::BadRequest {
+            code: "comparison_by_compare",
+            message: "a comparison is built by POST /methodology_proposals/{id}/compare".into(),
+        });
+    }
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     check_local_paths(&plan, &state.data_roots)?;
     if let Some(parent) = &pipeline.parent_id {
@@ -846,6 +857,13 @@ async fn propose_node_methodology(
 /// What the split rule decides, whatever its version.
 const SPLIT_DECISION: &str = "split.method";
 
+/// A step the split rule decides, whatever its version.
+fn is_split(rules: &sprisk_methodology::RuleCatalog, node: &sprisk_contracts::Node) -> bool {
+    rules
+        .rule_for_operator(node.operator.as_str())
+        .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
+}
+
 /// Preparation steps that read train and test on separate ports and write each from its own,
 /// so a train output never holds a test row.
 fn keeps_train_rows(node: &sprisk_contracts::Node) -> bool {
@@ -906,6 +924,13 @@ async fn propose(
                 message: "link a question revision to this flow before resolving methodology"
                     .into(),
             })?;
+    if pipeline.compares.is_some() {
+        return Err(ApiError::BadRequest {
+            code: "comparison_not_editable",
+            message: "this version compares models; resolve methodology on the flow it compares"
+                .into(),
+        });
+    }
     let question = state.store.get_question_version(question_id).await?;
     let node = pipeline
         .nodes
@@ -1005,12 +1030,7 @@ async fn train_profile_facts(
     node: &sprisk_contracts::Node,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
-    let is_split = |n: &sprisk_contracts::Node| {
-        state
-            .rules
-            .rule_for_operator(n.operator.as_str())
-            .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
-    };
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n);
     let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps_train_rows)
         .map_err(|e| evidence_unavailable(e.to_string()))?;
     let columns: Vec<String> = ["columns", "features"]
@@ -1155,6 +1175,70 @@ async fn apply_methodology(
             pipeline: saved_pipeline,
         }),
     ))
+}
+
+/// The version that cross-validates a shortlist proposal's models on its flow's train rows
+/// (ADR-0044, ADR-0046), stored once per proposal: asked again, it gives the same version.
+/// It has no parent, so the proposal stays applicable. The client runs it like any version.
+async fn compare_methodology(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<(StatusCode, Json<PipelineVersion>), ApiError> {
+    let proposal = state
+        .store
+        .get_methodology_proposal(&id::<MethodologyProposalId>(&raw)?)
+        .await?;
+    if let Some(saved) = state.store.comparison_of(&proposal.id).await? {
+        return Ok((StatusCode::OK, Json(saved)));
+    }
+    let base = state
+        .store
+        .get_pipeline_version(&proposal.pipeline_version_id)
+        .await?;
+    if state.store.has_pipeline_child(&base.id).await? {
+        return Err(ApiError::BadRequest {
+            code: "stale_proposal",
+            message: "the flow changed after this proposal; resolve it again".into(),
+        });
+    }
+    let question = state
+        .store
+        .get_question_version(&proposal.question_version_id)
+        .await?;
+    let built = sprisk_methodology::comparison(
+        &base,
+        &proposal,
+        question.task.value,
+        |n| is_split(&state.rules, n),
+        keeps_train_rows,
+        |operator| state.registry.get(operator),
+    )
+    .map_err(|e| not_applicable(e.to_string()))?;
+    let pipeline: PipelineVersion = parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": format!("plv_{}", ulid::Ulid::new()),
+            "project_id": base.project_id,
+            "question_version_id": proposal.question_version_id,
+            "compares": proposal.id,
+            "nodes": built.nodes,
+            "edges": built.edges,
+            "created_at": now(),
+        })
+        .to_string(),
+    )
+    .map_err(|error| ApiError::Internal(error.to_string()))?;
+    let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
+    check_local_paths(&plan, &state.data_roots)?;
+    match state.store.insert_pipeline_version(&pipeline).await {
+        Ok(()) => Ok((StatusCode::CREATED, Json(pipeline))),
+        // A concurrent request stored this proposal's comparison first.
+        Err(StoreError::Conflict(why)) => match state.store.comparison_of(&proposal.id).await? {
+            Some(saved) => Ok((StatusCode::OK, Json(saved))),
+            None => Err(ApiError::Store(StoreError::Conflict(why))),
+        },
+        Err(other) => Err(other.into()),
+    }
 }
 
 fn materialize_effect(
