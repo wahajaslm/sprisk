@@ -2,15 +2,15 @@
 //! built from what it returns. Python chooses; Rust builds graph effects only from the
 //! manifest's actions, so a rule can never name an operator its manifest does not declare.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use petgraph::graph::DiGraph;
 use petgraph::visit::Bfs;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    DatasetProfile, DecisionProposal, MethodologyRule, ModelFamily, PipelineVersion,
-    QuestionVersion, RuleDecision, RuleObservation, parse,
+    DatasetProfile, DecisionProposal, MethodologyRule, ModelFamily, ModelPreparation, Operator,
+    OperatorModel, PipelineVersion, QuestionVersion, RuleDecision, RuleObservation, parse,
 };
 
 use crate::ResolveError;
@@ -52,17 +52,59 @@ pub fn observation(
     )?)
 }
 
-/// What the flow says about `node_id`: `flow.model_family`, the family of the models
-/// downstream of it, or `mixed` for several. `family_of` reads an operator's manifest.
-/// Read from the graph, so `measured`; left out when no model is downstream, so a rule
-/// never reads a stand-in family.
-pub fn flow_facts(
+/// What the flow says about the models downstream of `node_id`, read from their manifests
+/// through `operator_of`:
+/// - `flow.model_family`: their family, or `mixed` for several;
+/// - `flow.models_fill_gaps`, `flow.models_standardize`: whether `all`, `some` or `none` of
+///   them do that preparation themselves.
+///
+/// Read from the graph, so `measured`. Left out when no model is downstream, so a rule never
+/// reads a stand-in value.
+pub fn flow_facts<'a>(
     pipeline: &PipelineVersion,
     node_id: &str,
-    family_of: impl Fn(&str) -> Option<ModelFamily>,
+    operator_of: impl Fn(&str) -> Option<&'a Operator>,
 ) -> Map<String, Value> {
+    let models: Vec<&OperatorModel> = downstream(pipeline, node_id)
+        .into_iter()
+        .filter_map(|operator| operator_of(operator)?.model.as_ref())
+        .collect();
+    if models.is_empty() {
+        return Map::new();
+    }
+    let measured = |value: String| json!({ "value": value, "origin": "measured" });
+    let mut facts = Map::new();
+    let families: BTreeSet<ModelFamily> = models.iter().filter_map(|m| m.family).collect();
+    if let Some(first) = families.first() {
+        let family = if families.len() == 1 {
+            first.to_string()
+        } else {
+            "mixed".to_owned()
+        };
+        facts.insert("flow.model_family".into(), measured(family));
+    }
+    for (preparation, name) in [
+        (ModelPreparation::FillGaps, "flow.models_fill_gaps"),
+        (ModelPreparation::Standardize, "flow.models_standardize"),
+    ] {
+        let doing = models
+            .iter()
+            .filter(|m| m.prepares.contains(&preparation))
+            .count();
+        let share = match doing {
+            0 => "none",
+            n if n == models.len() => "all",
+            _ => "some",
+        };
+        facts.insert(name.into(), measured(share.to_owned()));
+    }
+    facts
+}
+
+/// The operators of the steps downstream of `node_id`, not counting itself.
+fn downstream<'p>(pipeline: &'p PipelineVersion, node_id: &str) -> Vec<&'p str> {
     let mut graph = DiGraph::<&str, ()>::new();
-    let index: std::collections::HashMap<&str, _> = pipeline
+    let index: HashMap<&str, _> = pipeline
         .nodes
         .iter()
         .map(|n| (n.id.as_str(), graph.add_node(n.operator.as_str())))
@@ -77,27 +119,16 @@ pub fn flow_facts(
         }
     }
     let Some(&start) = index.get(node_id) else {
-        return Map::new();
+        return Vec::new();
     };
-    let mut families = BTreeSet::new();
+    let mut operators = Vec::new();
     let mut bfs = Bfs::new(&graph, start);
     while let Some(next) = bfs.next(&graph) {
-        families.extend(family_of(graph[next]));
+        if next != start {
+            operators.push(graph[next]);
+        }
     }
-    let Some(first) = families.first() else {
-        return Map::new();
-    };
-    let family = if families.len() == 1 {
-        first.to_string()
-    } else {
-        "mixed".to_owned()
-    };
-    let mut facts = Map::new();
-    facts.insert(
-        "flow.model_family".into(),
-        json!({ "value": family, "origin": "measured" }),
-    );
-    facts
+    operators
 }
 
 /// Measured values of `columns`, as `column.<name>.<measure>`, plus `rows`. Only the step's

@@ -42,3 +42,21 @@ def column(name: str, data_type: str = "Float64", **measures: float) -> dict[str
     facts: dict[str, Any] = {f"column.{name}.data_type": data_type}
     facts.update({f"column.{name}.{k}": v for k, v in measures.items()})
     return facts
+
+
+def flow(
+    family: str | None = None, fill_gaps: str | None = None, standardize: str | None = None
+) -> dict[str, tuple[str, str]]:
+    """The flow facts Rust sends about the models downstream; None leaves one out."""
+    facts = {
+        "flow.model_family": family,
+        "flow.models_fill_gaps": fill_gaps,
+        "flow.models_standardize": standardize,
+    }
+    return {k: (v, "measured") for k, v in facts.items() if v is not None}
+
+
+# What the ml plugin's manifests declare, as Rust reports one model of each.
+FOREST = flow("tree_ensemble", "all", "all")
+LINEAR = flow("linear", "all", "all")
+CLUSTERING = flow("distance_based", "none", "none")

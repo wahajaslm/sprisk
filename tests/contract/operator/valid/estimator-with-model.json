@@ -44,5 +44,11 @@
     "gpu": "none",
     "timeout_seconds": 600
   },
-  "model_family": "linear"
+  "model": {
+    "family": "linear",
+    "prepares": [
+      "fill_gaps",
+      "standardize"
+    ]
+  }
 }

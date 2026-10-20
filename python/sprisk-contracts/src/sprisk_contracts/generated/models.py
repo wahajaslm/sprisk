@@ -614,6 +614,11 @@ class KernelShutdown(StrictModel):
     op: Literal["shutdown"]
 
 
+class ModelPreparation(StrEnum):
+    fill_gaps = "fill_gaps"
+    standardize = "standardize"
+
+
 class ModelFamily(StrEnum):
     tree_ensemble = "tree_ensemble"
     linear = "linear"
@@ -1310,6 +1315,24 @@ class NotebookKernelRequest(
     ]
 
 
+class OperatorModel(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    family: Annotated[
+        ModelFamily | None,
+        Field(
+            description="Left out for a model that ignores its features, such as a dummy baseline."
+        ),
+    ] = None
+    prepares: Annotated[
+        list[ModelPreparation],
+        Field(
+            description="Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are."
+        ),
+    ]
+
+
 class Port(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1578,7 +1601,7 @@ class Operator(StrictModel):
     schema_version: Literal["sprisk.operator/v1"]
     id: OperatorRef
     capability_class: CapabilityClass
-    model_family: ModelFamily | None = None
+    model: OperatorModel | None = None
     description: str | None = None
     entrypoint: Annotated[
         str,

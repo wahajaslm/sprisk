@@ -5,19 +5,26 @@ from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_workers.rule import (
     applicable,
     decision,
-    family_evidence,
+    flow_evidence,
+    flow_fact,
     measured,
-    model_family,
     not_applicable,
     profile_evidence,
     step_columns,
-    unknown_family,
 )
+
+FAMILY = "flow.model_family"
+# What outliers pull, by the family downstream; mixed always includes a family that is not trees.
+PULLED = {
+    "linear": "extreme values pull the linear model's coefficients.",
+    "distance_based": "extreme values stretch the distances the clustering uses.",
+    "mixed": "extreme values pull the models downstream that are not trees.",
+}
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
-    family = model_family(observation)
+    family = flow_fact(observation, FAMILY)
     trees = family == "tree_ensemble"
     columns = step_columns(observation)
     # A column without an outlier share has no variation, so it has no outliers to clip.
@@ -42,7 +49,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
         "isolation_forest_filter", "No isolation forest filter operator exists."
     )
 
-    evidence = family_evidence(family)
+    evidence = flow_evidence(observation, [FAMILY])
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in share.items()]
     return decision(
         observation,
@@ -60,7 +67,6 @@ def _keep_reason(many: list[str], family: str | None) -> str:
         )
     if not many:
         return "Few values fall outside the IQR fences: keep them as they are."
-    if family in (None, "mixed"):
-        return f"Keeps every value; outliers pull linear models. {unknown_family(family)}"
-    # Every ml model standardises inside its pipeline, and that mean and SD are pulled too.
-    return f"Keeps every value; outliers pull the {family} model's own scaling and its fit."
+    if family is None:
+        return "Keeps every value. Whether outliers matter is unclear: no model is downstream yet."
+    return f"Keeps every value, but {PULLED[family]}"

@@ -200,12 +200,12 @@ export type CapabilityClass =
   | "sink"
   | "custom_code";
 /**
- * How a model operator's fit reacts to its inputs, for preparation rules: tree_ensemble splits on rank order; linear and distance_based depend on scale and outliers.
+ * fill_gaps: fills missing values, numbers and text. standardize: centres and scales numbers, so any earlier affine scaling has no effect.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "ModelFamily".
+ * via the `definition` "ModelPreparation".
  */
-export type ModelFamily = "tree_ensemble" | "linear" | "distance_based";
+export type ModelPreparation = "fill_gaps" | "standardize";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "PortKind".
@@ -223,6 +223,13 @@ export type Effects = "pure" | "nondeterministic" | "side_effecting";
  * via the `definition` "NetworkAccess".
  */
 export type NetworkAccess = "none" | "egress_allowlisted";
+/**
+ * How a model operator's fit reacts to its inputs, for preparation rules: tree_ensemble splits on rank order; linear and distance_based depend on scale and outliers.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ModelFamily".
+ */
+export type ModelFamily = "tree_ensemble" | "linear" | "distance_based";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "TaskType".
@@ -1395,7 +1402,7 @@ export interface Operator {
   schema_version: "sprisk.operator/v1";
   id: OperatorRef;
   capability_class: CapabilityClass;
-  model_family?: ModelFamily;
+  model?: OperatorModel;
   description?: string;
   /**
    * Python `module:function` the worker calls.
@@ -1412,6 +1419,22 @@ export interface Operator {
   effects: Effects;
   network: NetworkAccess;
   resources: Resources;
+}
+/**
+ * Set on every operator that fits a model on rows, for preparation rules: how its fit reacts to its inputs and what it prepares itself.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorModel".
+ */
+export interface OperatorModel {
+  /**
+   * Left out for a model that ignores its features, such as a dummy baseline.
+   */
+  family?: "tree_ensemble" | "linear" | "distance_based";
+  /**
+   * Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.
+   */
+  prepares: ModelPreparation[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

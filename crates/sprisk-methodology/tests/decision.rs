@@ -3,8 +3,9 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sprisk_contracts::{ModelFamily, PipelineVersion, QuestionVersion, RuleDecision, parse};
+use sprisk_contracts::{PipelineVersion, QuestionVersion, RuleDecision, parse};
 use sprisk_methodology::{RuleCatalog, flow_facts, observation, profile_facts, proposal};
+use sprisk_registry::Registry;
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
 
@@ -185,18 +186,18 @@ fn flow(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> PipelineVersion {
     .unwrap()
 }
 
-/// The families the ml plugin's manifests declare.
-fn family_of(operator: &str) -> Option<ModelFamily> {
-    match operator {
-        "sprisk.ml.random_forest@1.0.0" => Some(ModelFamily::TreeEnsemble),
-        "sprisk.ml.linear_model@1.0.0" => Some(ModelFamily::Linear),
-        "sprisk.clustering.kmeans@1.0.0" => Some(ModelFamily::DistanceBased),
-        _ => None,
-    }
+/// The operators the repo's plugins declare, as the API looks them up.
+fn registry() -> Registry {
+    Registry::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins")).unwrap()
+}
+
+fn facts_of(pipeline: &PipelineVersion, node_id: &str) -> serde_json::Map<String, Value> {
+    let registry = registry();
+    flow_facts(pipeline, node_id, |operator| registry.get(operator))
 }
 
 #[test]
-fn a_scale_step_upstream_of_a_random_forest_reads_tree_ensemble() {
+fn a_scale_step_upstream_of_a_random_forest_reads_trees_that_prepare_themselves() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
@@ -210,9 +211,11 @@ fn a_scale_step_upstream_of_a_random_forest_reads_tree_ensemble() {
             ("rf.model", "eval.model"),
         ],
     );
-    let facts = flow_facts(&pipeline, "scale", family_of);
+    let facts = facts_of(&pipeline, "scale");
     assert_eq!(facts["flow.model_family"]["value"], "tree_ensemble");
     assert_eq!(facts["flow.model_family"]["origin"], "measured");
+    assert_eq!(facts["flow.models_fill_gaps"]["value"], "all");
+    assert_eq!(facts["flow.models_standardize"]["value"], "all");
 }
 
 #[test]
@@ -225,10 +228,24 @@ fn models_of_several_families_read_mixed() {
         ],
         &[("scale.train", "rf.train"), ("scale.train", "lin.train")],
     );
-    assert_eq!(
-        flow_facts(&pipeline, "scale", family_of)["flow.model_family"]["value"],
-        "mixed"
+    let facts = facts_of(&pipeline, "scale");
+    assert_eq!(facts["flow.model_family"]["value"], "mixed");
+    assert_eq!(facts["flow.models_standardize"]["value"], "all");
+}
+
+#[test]
+fn a_clustering_step_beside_a_forest_means_only_some_models_prepare_themselves() {
+    let pipeline = flow(
+        &[
+            ("scale", "clean.scale"),
+            ("rf", "ml.random_forest"),
+            ("km", "clustering.kmeans"),
+        ],
+        &[("scale.train", "rf.train"), ("scale.train", "km.data")],
     );
+    let facts = facts_of(&pipeline, "scale");
+    assert_eq!(facts["flow.models_fill_gaps"]["value"], "some");
+    assert_eq!(facts["flow.models_standardize"]["value"], "some");
 }
 
 #[test]
@@ -246,19 +263,38 @@ fn a_model_reached_through_other_steps_counts_but_one_upstream_does_not() {
             ("scale.train", "km.data"),
         ],
     );
-    assert_eq!(
-        flow_facts(&pipeline, "impute", family_of)["flow.model_family"]["value"],
-        "distance_based"
-    );
+    let facts = facts_of(&pipeline, "impute");
+    assert_eq!(facts["flow.model_family"]["value"], "distance_based");
+    assert_eq!(facts["flow.models_fill_gaps"]["value"], "none");
 }
 
 #[test]
-fn no_model_downstream_sends_no_family() {
+fn a_dummy_baseline_has_no_family_but_prepares_itself() {
     let pipeline = flow(
         &[("scale", "clean.scale"), ("base", "ml.dummy_baseline")],
         &[("scale.train", "base.train")],
     );
-    assert!(flow_facts(&pipeline, "scale", family_of).is_empty());
+    let facts = facts_of(&pipeline, "scale");
+    assert!(facts.get("flow.model_family").is_none());
+    assert_eq!(facts["flow.models_fill_gaps"]["value"], "all");
+}
+
+#[test]
+fn no_model_downstream_sends_no_flow_facts() {
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("scale", "clean.scale"),
+        ],
+        &[("split.train", "scale.train")],
+    );
+    assert!(facts_of(&pipeline, "scale").is_empty());
+}
+
+#[test]
+fn a_model_step_does_not_count_itself() {
+    let pipeline = flow(&[("km", "clustering.kmeans")], &[]);
+    assert!(facts_of(&pipeline, "km").is_empty());
 }
 
 #[test]
@@ -272,7 +308,7 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
     let observed = observation(
         rule,
         &question(),
-        flow_facts(&pipeline, "scale", family_of),
+        facts_of(&pipeline, "scale"),
         Default::default(),
     )
     .unwrap();

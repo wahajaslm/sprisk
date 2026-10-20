@@ -104,30 +104,26 @@ def profile_evidence(label: str, value: str) -> dict[str, Any]:
     return {"kind": "profile_fact", "label": label, "value": value, "origin": "measured"}
 
 
-def model_family(observation: RuleObservation) -> str | None:
-    """The family of the models downstream of the step, `mixed` for several; None for none."""
-    fact = observation.facts.get("flow.model_family")
+FLOW_LABELS = {
+    "flow.model_family": "Model family downstream",
+    "flow.models_fill_gaps": "Models downstream that fill their own gaps",
+    "flow.models_standardize": "Models downstream that standardise their own inputs",
+}
+
+
+def flow_fact(observation: RuleObservation, name: str) -> str | None:
+    """A fact Rust read from the models downstream of the step; None when no model is."""
+    fact = observation.facts.get(name)
     return None if fact is None else fact.value
 
 
-def family_evidence(family: str | None) -> list[dict[str, Any]]:
-    if family is None:
-        return []
+def flow_evidence(observation: RuleObservation, names: list[str]) -> list[dict[str, Any]]:
+    """The flow facts a rule read, as evidence, in `names` order."""
     return [
-        {
-            "kind": "flow_fact",
-            "label": "Model family downstream",
-            "value": family,
-            "origin": "measured",
-        }
+        {"kind": "flow_fact", "label": FLOW_LABELS[name], "value": value, "origin": "measured"}
+        for name in names
+        if (value := flow_fact(observation, name)) is not None
     ]
-
-
-def unknown_family(family: str | None) -> str:
-    """Why a family-specific choice is not offered when the family is not one family."""
-    if family == "mixed":
-        return "The model family is unknown: models of several families are downstream."
-    return "The model family is unknown: no model is downstream of this step."
 
 
 def load_decide(module_path: Path) -> Decide:

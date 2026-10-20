@@ -1,13 +1,14 @@
 from typing import Any
 
-from rule_harness import alternative, column, decide
+from rule_harness import CLUSTERING, FOREST, LINEAR, alternative, column, decide, flow
 
 RULE = "supervised/feature_scaling"
 SETTINGS = {"outlier_kurtosis_threshold": 3.0, "outlier_share_threshold": 0.05}
 
 
-def run(profile: dict[str, object], family: str | None = None) -> dict[str, Any]:
-    facts = {"flow.model_family": (family, "measured")} if family else {}
+def run(
+    profile: dict[str, object], facts: dict[str, tuple[str, str]] | None = None
+) -> dict[str, Any]:
     return decide(RULE, facts=facts, profile={"rows": 100, **profile}, settings=SETTINGS)
 
 
@@ -42,12 +43,16 @@ def test_a_few_values_outside_the_fences_are_normal_and_keep_standard_scaling() 
     assert d["recommended_alternative_id"] == "standard_scaling"
 
 
-def test_tree_models_downstream_need_no_scaling() -> None:
-    d = run(column("income", kurtosis=9.0, outlier_share=0.07), family="tree_ensemble")
+HEAVY = column("income", kurtosis=9.0, outlier_share=0.07)
+LIGHT = column("age", kurtosis=0.2, outlier_share=0.0)
+
+
+def test_tree_models_downstream_need_no_scaling_step() -> None:
+    d = run(HEAVY, FOREST)
     assert d["recommended_alternative_id"] == "none_tree_models"
-    trees = alternative(d, "none_tree_models")
-    assert trees["applicability"] == "applicable"
-    assert "params" not in trees
+    none = alternative(d, "none_tree_models")
+    assert none["applicability"] == "applicable"
+    assert "params" not in none
     assert {
         "kind": "flow_fact",
         "label": "Model family downstream",
@@ -56,14 +61,34 @@ def test_tree_models_downstream_need_no_scaling() -> None:
     } in d["evidence"]
 
 
-def test_a_linear_model_downstream_is_scaled_as_today() -> None:
-    d = run(column("age", kurtosis=0.2, outlier_share=0.0), family="linear")
+def test_trees_that_do_not_standardise_still_need_no_scaling_for_rank_order_splits() -> None:
+    d = run(HEAVY, flow("tree_ensemble", "none", "none"))
+    assert d["recommended_alternative_id"] == "none_tree_models"
+    assert "rank order" in alternative(d, "none_tree_models")["reason"]
+
+
+def test_a_linear_model_that_standardises_itself_needs_no_scaling_step() -> None:
+    d = run(HEAVY, LINEAR)
+    assert d["recommended_alternative_id"] == "none_tree_models"
+    assert "standardise" in alternative(d, "none_tree_models")["reason"]
+    assert "no effect" in alternative(d, "robust_scaling")["reason"]
+    assert "no effect" in alternative(d, "standard_scaling")["reason"]
+    assert any(e["label"].startswith("Models downstream that standardise") for e in d["evidence"])
+
+
+def test_clustering_downstream_is_scaled_from_the_tails() -> None:
+    d = run(HEAVY, CLUSTERING)
+    assert d["recommended_alternative_id"] == "robust_scaling"
+    assert "distance_based" in alternative(d, "none_tree_models")["reason"]
+
+
+def test_a_forest_beside_clustering_is_scaled_for_the_clustering() -> None:
+    d = run(LIGHT, flow("mixed", "some", "some"))
     assert d["recommended_alternative_id"] == "standard_scaling"
-    assert "linear" in alternative(d, "none_tree_models")["reason"]
+    assert "Not every model" in alternative(d, "none_tree_models")["reason"]
 
 
-def test_an_unknown_or_mixed_family_is_scaled_as_today() -> None:
-    for family in (None, "mixed"):
-        d = run(column("age", kurtosis=0.2, outlier_share=0.0), family=family)
-        assert d["recommended_alternative_id"] == "standard_scaling"
-        assert "unknown" in alternative(d, "none_tree_models")["reason"]
+def test_no_model_downstream_is_scaled_as_before_and_says_so() -> None:
+    d = run(LIGHT)
+    assert d["recommended_alternative_id"] == "standard_scaling"
+    assert "no model is downstream" in alternative(d, "none_tree_models")["reason"]

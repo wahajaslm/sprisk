@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.random_forest@1.0.0
 capability_class: estimator
-model_family: tree_ensemble
+model: { family: tree_ensemble, prepares: [fill_gaps, standardize] }
 description: Random forest (classification or regression) with imputation and one-hot encoding fit on train only.
 entrypoint: sprisk_ml.models:random_forest
 inputs: [{ name: train, kind: table }]

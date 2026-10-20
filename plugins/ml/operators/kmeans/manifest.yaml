@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clustering.kmeans@1.0.0
 capability_class: transform
-model_family: distance_based
+model: { family: distance_based, prepares: [] }
 description: "K-Means++ clustering: partitions rows into K convex clusters minimizing within-cluster inertia."
 entrypoint: sprisk_ml.clustering:kmeans
 inputs: [{ name: data, kind: table }]

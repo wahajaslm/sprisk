@@ -1,7 +1,7 @@
 from typing import Any
 
 import pytest
-from rule_harness import alternative, column, decide
+from rule_harness import CLUSTERING, FOREST, LINEAR, alternative, column, decide, flow
 
 from sprisk_workers.errors import RuleError
 
@@ -14,9 +14,12 @@ SETTINGS = {
 TARGET = {"question.target": ("churned", "explicit")}
 
 
-def run(profile: dict[str, object], family: str | None = None) -> dict[str, Any]:
-    facts = {**TARGET, "flow.model_family": (family, "measured")} if family else TARGET
-    return decide(RULE, facts=facts, profile={"rows": 100, **profile}, settings=SETTINGS)
+def run(
+    profile: dict[str, object], facts: dict[str, tuple[str, str]] | None = None
+) -> dict[str, Any]:
+    return decide(
+        RULE, facts={**TARGET, **(facts or {})}, profile={"rows": 100, **profile}, settings=SETTINGS
+    )
 
 
 def test_skewed_numbers_are_filled_with_the_train_median() -> None:
@@ -69,28 +72,40 @@ def test_an_unmeasured_missing_share_is_an_error_not_zero() -> None:
         run(column("age", skewness=0.1))
 
 
-def test_tree_models_downstream_pass_numeric_gaps_through() -> None:
-    d = run(column("income", missing_share=0.1, skewness=2.4), family="tree_ensemble")
+def test_models_that_fill_their_own_gaps_take_numeric_gaps_as_they_are() -> None:
+    for facts in (FOREST, LINEAR, flow("mixed", "all", "all")):
+        d = run(column("income", missing_share=0.1, skewness=2.4), facts)
+        assert d["recommended_alternative_id"] == "pass_through"
+        assert alternative(d, "pass_through")["applicability"] == "applicable"
+        assert "params" not in alternative(d, "pass_through")
+    assert any(e["label"].startswith("Models downstream that fill") for e in d["evidence"])
+
+
+def test_models_that_fill_their_own_gaps_take_text_gaps_as_they_are() -> None:
+    d = run(column("city", "String", missing_share=0.1), LINEAR)
     assert d["recommended_alternative_id"] == "pass_through"
-    assert alternative(d, "pass_through")["applicability"] == "applicable"
-    assert any(e["kind"] == "flow_fact" for e in d["evidence"])
+    assert alternative(d, "impute_mean")["applicability"] == "not_applicable"
 
 
-def test_tree_models_still_drop_rows_where_the_target_has_gaps() -> None:
-    d = run(column("churned", "Int64", missing_share=0.1, skewness=0.1), family="tree_ensemble")
+def test_a_target_with_gaps_is_dropped_even_when_models_fill_their_own() -> None:
+    d = run(column("churned", "Int64", missing_share=0.1, skewness=0.1), FOREST)
     assert d["recommended_alternative_id"] == "drop_rows"
     assert alternative(d, "pass_through")["applicability"] == "not_applicable"
 
 
-def test_tree_models_do_not_pass_text_gaps_through() -> None:
-    d = run(column("city", "String", missing_share=0.1), family="tree_ensemble")
+def test_clustering_downstream_needs_gaps_filled_here() -> None:
+    d = run(column("age", missing_share=0.1, skewness=0.2), CLUSTERING)
+    assert d["recommended_alternative_id"] == "impute_mean"
+    assert "do not fill" in alternative(d, "pass_through")["reason"]
+
+
+def test_a_forest_beside_clustering_needs_gaps_filled_here() -> None:
+    d = run(column("city", "String", missing_share=0.1), flow("mixed", "some", "some"))
     assert d["recommended_alternative_id"] == "drop_rows"
     assert alternative(d, "pass_through")["applicability"] == "not_applicable"
 
 
-def test_an_unknown_or_mixed_family_fills_gaps_as_today() -> None:
-    for family in (None, "linear", "mixed"):
-        d = run(column("age", missing_share=0.1, skewness=0.2), family=family)
-        assert d["recommended_alternative_id"] == "impute_mean"
-        assert alternative(d, "pass_through")["applicability"] == "not_applicable"
-    assert "unknown" in alternative(run(column("age", missing_share=0.1)), "pass_through")["reason"]
+def test_no_model_downstream_fills_gaps_as_before_and_says_so() -> None:
+    d = run(column("age", missing_share=0.1, skewness=0.2))
+    assert d["recommended_alternative_id"] == "impute_mean"
+    assert "no model is downstream" in alternative(d, "pass_through")["reason"]

@@ -16,6 +16,7 @@ walkdir = "2.5.0"
 yaml_serde = "0.10.7"
 
 [dev-dependencies]
+sprisk-registry = { path = "../sprisk-registry" }
 tempfile = "3.27.0"
 
 [lints]

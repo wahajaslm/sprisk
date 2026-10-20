@@ -31,8 +31,8 @@
         "capability_class": {
           "$ref": "#/$defs/CapabilityClass"
         },
-        "model_family": {
-          "$ref": "#/$defs/ModelFamily"
+        "model": {
+          "$ref": "#/$defs/OperatorModel"
         },
         "description": {
           "type": "string"
@@ -69,6 +69,29 @@
           "$ref": "#/$defs/Resources"
         }
       }
+    },
+    "OperatorModel": {
+      "type": "object",
+      "description": "Set on every operator that fits a model on rows, for preparation rules: how its fit reacts to its inputs and what it prepares itself.",
+      "additionalProperties": false,
+      "required": ["prepares"],
+      "properties": {
+        "family": {
+          "$ref": "#/$defs/ModelFamily",
+          "description": "Left out for a model that ignores its features, such as a dummy baseline."
+        },
+        "prepares": {
+          "type": "array",
+          "description": "Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/ModelPreparation" }
+        }
+      }
+    },
+    "ModelPreparation": {
+      "type": "string",
+      "description": "fill_gaps: fills missing values, numbers and text. standardize: centres and scales numbers, so any earlier affine scaling has no effect.",
+      "enum": ["fill_gaps", "standardize"]
     },
     "ModelFamily": {
       "type": "string",

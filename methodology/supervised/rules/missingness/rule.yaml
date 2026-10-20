@@ -33,8 +33,8 @@ observes:
   - fact: question.target
     description: "Target column name (strictly forbidden from synthetic imputation)"
     required: true
-  - fact: flow.model_family
-    description: "Family of the models downstream of the step, read from the flow: tree_ensemble, linear, distance_based, or mixed. Absent when no model is downstream."
+  - fact: flow.models_fill_gaps
+    description: "Whether all, some or none of the models downstream fill gaps themselves on the train rows, from their manifests. Absent when no model is downstream."
     required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
@@ -50,7 +50,7 @@ alternatives:
   - id: drop_rows
     label: Drop Rows With Missing Values
     description: Remove every row with a gap in these columns, in train and test alike.
-    condition: a target column has gaps, OR a column is not numeric
+    condition: the target is among the columns, OR (a column is not numeric AND flow.models_fill_gaps != 'all')
     rationale: A missing target must never be filled. Text columns cannot be imputed yet. Dropping rows
       shrinks the data and can bias it if gaps are not random.
     action:
@@ -93,13 +93,11 @@ alternatives:
       operator: sprisk.clean.select_columns@1.0.0
       placement: before_split
   - id: pass_through
-    label: No Imputation Here (Tree Models Fill Their Own Gaps)
-    description: Leave numeric gaps for the tree models downstream, whose own pipeline fills them with the
-      train median.
-    condition: flow.model_family == 'tree_ensemble' AND every column is numeric AND the target is not
-      among the columns
-    rationale: The forest's pipeline imputes on train rows only, and its rank-order splits need no
-      better fill. A target with gaps still means dropping rows.
+    label: No Imputation Here (Models Fill Their Own Gaps)
+    description: Leave the gaps for the models downstream, which fill numbers and text themselves.
+    condition: flow.models_fill_gaps == 'all' AND the target is not among the columns
+    rationale: Each model downstream fits its fill on its train rows only, so filling here first adds
+      nothing. A target with gaps still means dropping rows, since a label is never filled.
     action:
       type: pass_through
 

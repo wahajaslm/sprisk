@@ -33,6 +33,9 @@ observes:
   - fact: flow.model_family
     description: "Family of the models downstream of the step, read from the flow: tree_ensemble, linear, distance_based, or mixed. Absent when no model is downstream."
     required: false
+  - fact: flow.models_standardize
+    description: "Whether all, some or none of the models downstream standardise their own inputs on the train rows, from their manifests. Absent when no model is downstream."
+    required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -45,17 +48,17 @@ policy_thresholds:
 # ------------------------------------------------------------------------------
 alternatives:
   - id: none_tree_models
-    label: No Scaling (Tree Ensembles)
-    description: Leave raw numerical features unscaled.
-    condition: flow.model_family == 'tree_ensemble'
-    rationale: Decision trees partition features along orthogonal axes and are scale-invariant. Scaling
-      adds processing latency with zero model benefit.
+    label: No Scaling Step (Models Downstream Do Not Need It)
+    description: Leave the features as they are; scaling here would not change the models downstream.
+    condition: (flow.models_standardize == 'all' OR flow.model_family == 'tree_ensemble')
+    rationale: A model that standardises its inputs on the train rows undoes any earlier affine scaling,
+      and trees split on rank order, which scaling keeps. Scaling here adds work with no effect.
     action:
       type: pass_through
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).
-    condition: flow.model_family != 'tree_ensemble' AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
+    condition: NOT (flow.models_standardize == 'all' OR flow.model_family == 'tree_ensemble') AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
     rationale: Heavy-tailed distributions detected (excess kurtosis > 3.0). RobustScaler prevents extreme outliers
       from compressing regular feature distances.
     action:
@@ -64,9 +67,9 @@ alternatives:
   - id: standard_scaling
     label: Standard Scaling (Z-Score Normalization)
     description: Center to zero mean and scale to unit variance.
-    condition: flow.model_family != 'tree_ensemble' AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold
-    rationale: Data has standard bell-shaped distributions. Essential for gradient descent convergence and
-      distance metrics (SVM/KNN).
+    condition: NOT (flow.models_standardize == 'all' OR flow.model_family == 'tree_ensemble') AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold
+    rationale: Light tails and few outliers, so the mean and SD describe the spread. It matters for
+      models that take their inputs as they are, such as distance-based clustering.
     action:
       type: replace_node
       operator: sprisk.clean.scale@1.0.0
