@@ -15,7 +15,7 @@ def run(
     rows: int, *columns: dict[str, Any], facts: dict[str, tuple[str, str]] = CLASSIFY
 ) -> dict[str, Any]:
     profile: dict[str, Any] = {"rows": rows}
-    for c in columns or (column("age", missing_share=0.0),):
+    for c in columns or (column("age"),):
         profile.update(c)
     return decide(RULE, facts=facts, profile=profile)
 
@@ -40,30 +40,16 @@ def test_the_baseline_is_always_on_the_list_and_says_why() -> None:
         assert "beat" in alternative(d, "ml_dummy_baseline")["reason"]
 
 
-def test_many_text_columns_are_named_as_a_reason_for_the_forest() -> None:
-    d = run(
-        500,
-        column("plan", "String", missing_share=0.0),
-        column("region", "String", missing_share=0.0),
-        column("age", missing_share=0.0),
-    )
-    assert "text" in alternative(d, "ml_random_forest")["reason"]
-
-
-def test_few_rows_win_over_many_text_columns() -> None:
-    d = run(
-        40,
-        column("plan", "String", missing_share=0.0),
-        column("region", "String", missing_share=0.0),
-    )
-    assert "ml_random_forest" not in d["shortlist"]
-
-
 def test_a_model_of_a_family_with_no_heuristic_is_compared_like_the_others() -> None:
     facts = {**CLASSIFY, "candidate.acme_boosted.family": ("boosted_trees", "measured")}
     d = run(40, facts=facts)
     assert "acme_boosted" in d["shortlist"]
     assert "boosted_trees" in alternative(d, "acme_boosted")["reason"]
+
+
+def test_the_forest_threshold_is_named_as_a_default_not_a_source() -> None:
+    reason = alternative(run(40), "ml_random_forest")["reason"]
+    assert "default" in reason and "ESL" not in reason
 
 
 def test_every_candidate_stays_applicable_so_any_can_be_chosen_with_a_reason() -> None:

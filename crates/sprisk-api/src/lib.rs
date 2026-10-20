@@ -844,25 +844,32 @@ async fn propose_node_methodology(
 /// What the split rule decides, whatever its version.
 const SPLIT_DECISION: &str = "split.method";
 
+/// Preparation steps that read train and test on separate ports and write each from its own,
+/// so a train output never holds a test row.
+fn keeps_train_rows(node: &sprisk_contracts::Node) -> bool {
+    matches!(
+        node.operator.as_str().split('@').next(),
+        Some("sprisk.clean.scale" | "sprisk.clean.clip_outliers" | "sprisk.clean.impute")
+    )
+}
+
 /// Whether a step between a rule's step and a model keeps what the flow facts say about
 /// the model: it only drops rows, or rescales affinely and fills from train statistics, so
 /// the model's own standardising and filling still apply. A zero fill is not affine: zero
 /// is another value once the column is scaled.
 fn keeps_flow_facts(node: &sprisk_contracts::Node) -> bool {
-    match node.operator.as_str().split('@').next() {
-        Some("sprisk.clean.impute") => {
-            node.params.get("method").and_then(|m| m.as_str()) != Some("zero")
-        }
+    let zero_fill = node.operator.as_str().starts_with("sprisk.clean.impute@")
+        && node.params.get("method").and_then(|m| m.as_str()) == Some("zero");
+    let rows_only = matches!(
+        node.operator.as_str().split('@').next(),
         Some(
-            "sprisk.clean.scale"
-            | "sprisk.clean.clip_outliers"
-            | "sprisk.clean.drop_missing"
-            | "sprisk.validation.random_split"
-            | "sprisk.validation.temporal_split"
-            | "sprisk.validation.group_split",
-        ) => true,
-        _ => false,
-    }
+            "sprisk.clean.drop_missing"
+                | "sprisk.validation.random_split"
+                | "sprisk.validation.temporal_split"
+                | "sprisk.validation.group_split"
+        )
+    );
+    rows_only || (keeps_train_rows(node) && !zero_fill)
 }
 
 fn not_applicable(message: String) -> ApiError {
@@ -935,8 +942,9 @@ async fn propose(
     .map_err(resolve)?;
     // A shortlist rule's alternatives are the registered models that fit the task (ADR-0044).
     let candidates = if rule.selection == Some(MethodologyRuleSelection::Shortlist) {
-        let task = question.task.value.to_string();
-        let candidates = sprisk_methodology::candidates(&task, state.registry.operators());
+        let task = question.task.value;
+        let candidates = sprisk_methodology::candidates(task, state.registry.operators())
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
         if candidates.is_empty() {
             return Err(not_applicable(format!(
                 "no registered model fits a {task} question"
@@ -995,35 +1003,14 @@ async fn train_profile_facts(
     node: &sprisk_contracts::Node,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
-    let feeds = |id: &str| {
-        pipeline
-            .edges
-            .iter()
-            .find(|e| e.to.as_str() == format!("{id}.train"))
-            .map(|e| e.from.step_and_port())
-            .filter(|(_, port)| *port == "train")
+    let is_split = |n: &sprisk_contracts::Node| {
+        state
+            .rules
+            .rule_for_operator(n.operator.as_str())
+            .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
     };
-    let is_split = |id: &str| {
-        pipeline.nodes.iter().any(|n| {
-            n.id.as_str() == id
-                && state
-                    .rules
-                    .rule_for_operator(n.operator.as_str())
-                    .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
-        })
-    };
-    let not_train = || {
-        evidence_unavailable(format!(
-            "step {step} must take its train rows from a split step's train output, through train ports only"
-        ))
-    };
-    // The table the step receives, kept to train rows: every hop back to the split is a train
-    // port, so no test row can reach the profile (rule 8).
-    let source = feeds(step).ok_or_else(not_train)?.0;
-    let mut at = source;
-    while !is_split(at) {
-        at = feeds(at).ok_or_else(not_train)?.0;
-    }
+    let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps_train_rows)
+        .map_err(|e| evidence_unavailable(e.to_string()))?;
     let columns: Vec<String> = ["columns", "features"]
         .iter()
         .find_map(|name| node.params.get(*name))
@@ -1106,11 +1093,20 @@ async fn apply_methodology(
         .recommended_alternative_id
         .as_ref()
         .map(|r| r.as_str());
-    if recommended != Some(request.alternative_id.as_str()) && request.reason.is_none() {
+    let has_reason = request
+        .reason
+        .as_ref()
+        .is_some_and(|r| !r.as_str().trim().is_empty());
+    if recommended != Some(request.alternative_id.as_str()) && !has_reason {
+        let why = if proposal.shortlist.is_empty() {
+            "it is not the recommended alternative"
+        } else {
+            "it is chosen from a shortlist without comparing"
+        };
         return Err(ApiError::BadRequest {
             code: "reason_required",
             message: format!(
-                "choosing {} needs a reason: it is not the recommended alternative",
+                "choosing {} needs a reason: {why}",
                 request.alternative_id.as_str()
             ),
         });

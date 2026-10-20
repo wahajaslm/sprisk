@@ -1,0 +1,68 @@
+{
+  "schema_version": "sprisk.methodology_rule/v1",
+  "id": "methodology.supervised.model_baseline_selection@2.0.0",
+  "name": "Model Shortlist",
+  "stage": "models",
+  "decides": "modeling.estimator_selection",
+  "status": "active",
+  "selection": "shortlist",
+  "applies_to": [
+    "sprisk.ml.linear_model",
+    "sprisk.ml.random_forest",
+    "sprisk.ml.dummy_baseline"
+  ],
+  "reads": [
+    "question.task",
+    "rows",
+    "column.*.data_type",
+    "candidate.*.family"
+  ],
+  "provenance": {
+    "standard": "scikit-learn User Guide: Dummy estimators; Choosing the right estimator",
+    "citation": "Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning, 2nd ed., Springer: \u00a72.9 Model Selection and the Bias-Variance Tradeoff, ch. 7 Model Assessment and Selection, ch. 15 Random Forests. Breiman (2001) Random Forests, Machine Learning 45(1):5-32.",
+    "pitfall": "Picking one complex model before measuring hides whether it beats a simple one, or even a naive guess. With few rows, a high-variance model fits noise.",
+    "corner_cases": [
+      "The dummy baseline is the floor: a model that does not beat it on the same folds learned nothing useful.",
+      "The forest's row threshold is a sprisk default; the comparison, not the threshold, should decide.",
+      "A model of a family with no heuristic yet is put forward to be compared."
+    ]
+  },
+  "policy_thresholds": {
+    "min_rows_for_forest": 100
+  },
+  "alternatives": [],
+  "verification": {
+    "check_id": "sprisk.checks.supervised.baseline_lift@1.0.0",
+    "invariant": "The kept model beats the dummy baseline on the same cross-validation folds by more than the corrected spread of their paired differences (Nadeau & Bengio 2003)."
+  },
+  "examples": [
+    {
+      "given": {
+        "question.task": "classification",
+        "rows": 40.0,
+        "column.age.data_type": "Float64",
+        "candidate.ml_dummy_baseline.family": "featureless",
+        "candidate.ml_linear_model.family": "linear",
+        "candidate.ml_random_forest.family": "tree_ensemble"
+      },
+      "shortlist": [
+        "Not An Id"
+      ]
+    },
+    {
+      "given": {
+        "question.task": "classification",
+        "rows": 500.0,
+        "column.age.data_type": "Float64",
+        "candidate.ml_dummy_baseline.family": "featureless",
+        "candidate.ml_linear_model.family": "linear",
+        "candidate.ml_random_forest.family": "tree_ensemble"
+      },
+      "shortlist": [
+        "ml_dummy_baseline",
+        "ml_linear_model",
+        "ml_random_forest"
+      ]
+    }
+  ]
+}

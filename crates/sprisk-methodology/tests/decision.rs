@@ -3,10 +3,11 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sprisk_contracts::{Node, PipelineVersion, QuestionVersion, RuleDecision, parse};
+use sprisk_contracts::{Node, PipelineVersion, QuestionVersion, RuleDecision, TaskType, parse};
+use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
     RuleCatalog, Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts,
-    proposal, without_node,
+    proposal, train_rows_source, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -731,7 +732,7 @@ fn model_flow() -> PipelineVersion {
 #[test]
 fn the_candidates_are_the_registered_models_that_fit_the_task() {
     let registry = registry();
-    let found = candidates("classification", registry.operators());
+    let found = candidates(TaskType::Classification, registry.operators()).unwrap();
     assert_eq!(
         found.keys().collect::<Vec<_>>(),
         ["ml_dummy_baseline", "ml_linear_model", "ml_random_forest"]
@@ -745,13 +746,17 @@ fn the_candidates_are_the_registered_models_that_fit_the_task() {
         facts["candidate.ml_dummy_baseline.family"]["value"],
         "featureless"
     );
-    assert!(candidates("exploration", registry.operators()).is_empty());
+    assert!(
+        candidates(TaskType::Exploration, registry.operators())
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
 fn a_shortlist_proposal_replaces_the_model_step_with_each_candidate() {
     let registry = registry();
-    let candidates = candidates("classification", registry.operators());
+    let candidates = candidates(TaskType::Classification, registry.operators()).unwrap();
     let built = proposal(
         &shortlist_rule(),
         &shortlist_decision(json!(["ml_dummy_baseline", "ml_linear_model"]), None),
@@ -786,7 +791,7 @@ fn a_shortlist_proposal_replaces_the_model_step_with_each_candidate() {
 #[test]
 fn a_shortlist_decision_must_shortlist_and_not_recommend() {
     let registry = registry();
-    let candidates = candidates("classification", registry.operators());
+    let candidates = candidates(TaskType::Classification, registry.operators()).unwrap();
     let build = |decided: RuleDecision| {
         proposal(
             &shortlist_rule(),
@@ -801,13 +806,126 @@ fn a_shortlist_decision_must_shortlist_and_not_recommend() {
             },
         )
     };
-    assert!(build(shortlist_decision(json!([]), None)).is_err());
+    let selection = |decided| match build(decided) {
+        Err(ResolveError::Selection(problem)) => problem,
+        other => panic!("expected a selection error, got {other:?}"),
+    };
+    assert!(selection(shortlist_decision(json!([]), None)).contains("at least one"));
     assert!(
-        build(shortlist_decision(
+        selection(shortlist_decision(
             json!(["ml_linear_model"]),
             Some("ml_linear_model")
         ))
-        .is_err()
+        .contains("no single")
     );
-    assert!(build(shortlist_decision(json!(["ml_made_up"]), None)).is_err());
+    assert!(selection(shortlist_decision(json!(["ml_made_up"]), None)).contains("ml_made_up"));
+    assert!(selection(shortlist_decision(json!(["ml_linear_model"]), None)).contains("baseline"));
+}
+
+#[test]
+fn a_recommend_decision_must_pick_one_it_offers_and_give_no_shortlist() {
+    let catalog = catalog();
+    let rule = catalog.rule(SPLIT).unwrap();
+    let build = |recommended: Option<&str>, shortlist: Value| {
+        let mut decided = json!({
+            "schema_version": "sprisk.rule_decision/v1", "rule": SPLIT,
+            "alternatives": [{ "id": "stratified_random", "applicability": "applicable", "reason": "r",
+                               "params": { "stratify": "churned", "test_fraction": 0.2, "seed": 42 } }],
+            "shortlist": shortlist, "evidence": []
+        });
+        if let Some(r) = recommended {
+            decided["recommended_alternative_id"] = json!(r);
+        }
+        let decided: RuleDecision = parse(&decided.to_string()).unwrap();
+        let stamp = Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-15T10:00:00Z",
+        };
+        match proposal(
+            rule,
+            &decided,
+            &question(),
+            &pipeline(),
+            "split",
+            &Default::default(),
+            stamp,
+        ) {
+            Err(ResolveError::Selection(problem)) => problem,
+            other => panic!("expected a selection error, got {other:?}"),
+        }
+    };
+    assert!(build(None, json!([])).contains("must pick"));
+    assert!(
+        build(Some("stratified_random"), json!(["stratified_random"])).contains("no shortlist")
+    );
+    assert!(build(Some("temporal"), json!([])).contains("temporal"));
+}
+
+#[test]
+fn two_models_with_one_candidate_id_are_refused() {
+    let registry = registry();
+    let linear = registry.get("sprisk.ml.linear_model@1.0.0").unwrap();
+    let mut newer = linear.clone();
+    newer.id = parse("\"sprisk.ml.linear_model@2.0.0\"").unwrap();
+    let err = candidates(TaskType::Classification, [linear, &newer].into_iter()).unwrap_err();
+    assert!(err.to_string().contains("ml_linear_model"), "{err}");
+}
+
+fn is_split(node: &Node) -> bool {
+    node.operator.as_str().starts_with("sprisk.validation.")
+}
+
+fn keeps_train(node: &Node) -> bool {
+    node.operator.as_str().starts_with("sprisk.clean.scale@")
+}
+
+#[test]
+fn a_steps_train_rows_come_back_through_preparation_to_the_split() {
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("scale", "clean.scale"),
+            ("model", "ml.linear_model"),
+        ],
+        &[
+            ("split.train", "scale.train"),
+            ("scale.train", "model.train"),
+        ],
+    );
+    assert_eq!(
+        train_rows_source(&pipeline, "model", is_split, keeps_train).unwrap(),
+        "scale"
+    );
+}
+
+#[test]
+fn a_step_that_may_mix_rows_on_the_way_is_refused() {
+    // A code step can join its train and test inputs into its train output.
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("code", "code.python@2.0.0"),
+            ("model", "ml.linear_model"),
+        ],
+        &[
+            ("split.train", "code.train"),
+            ("split.test", "code.test"),
+            ("code.train", "model.train"),
+        ],
+    );
+    let err = train_rows_source(&pipeline, "model", is_split, keeps_train).unwrap_err();
+    assert!(err.to_string().contains("code"), "{err}");
+}
+
+#[test]
+fn a_hop_through_a_test_port_is_refused() {
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("scale", "clean.scale"),
+            ("model", "ml.linear_model"),
+        ],
+        &[("split.test", "scale.train"), ("scale.test", "model.train")],
+    );
+    assert!(train_rows_source(&pipeline, "model", is_split, keeps_train).is_err());
 }

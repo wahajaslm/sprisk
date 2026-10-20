@@ -147,27 +147,29 @@ function Overview({ rule }: { rule: MethodologyRule }) {
 
       {rule.selection === "shortlist" && (
         <section>
-          <h2 className="dsx-h">Candidates</h2>
+          <h2 className="dsx-h">Where the candidates come from</h2>
           <p>Every registered model that fits the task. The rule puts forward the ones worth comparing; cross-validation picks the winner (ADR-0044).</p>
         </section>
       )}
 
-      <section>
-        <h2 className="dsx-h">Alternatives</h2>
-        <ol className="mth-alts">
-          {rule.alternatives.map((a) => (
-            <li key={a.id}>
-              <div className="mth-alt-head">
-                <strong>{a.label}</strong>
-                <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
-              </div>
-              <p>{a.description}</p>
-              {a.condition && <p className="muted">When: {a.condition}</p>}
-              <p className="muted">Why: {a.rationale}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+      {rule.alternatives.length > 0 && (
+        <section>
+          <h2 className="dsx-h">Alternatives</h2>
+          <ol className="mth-alts">
+            {rule.alternatives.map((a) => (
+              <li key={a.id}>
+                <div className="mth-alt-head">
+                  <strong>{a.label}</strong>
+                  <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
+                </div>
+                <p>{a.description}</p>
+                {a.condition && <p className="muted">When: {a.condition}</p>}
+                <p className="muted">Why: {a.rationale}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <section>
         <h2 className="dsx-h">Verified by</h2>

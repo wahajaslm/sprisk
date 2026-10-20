@@ -22,7 +22,7 @@ Arch doc sections: §5 (experiments are not a second scheduler), §6, §8.3, §1
 - Each cross-validate step is a **TrialSpec** (candidate, params, folds, seed, metric); its attempt is a **TrialAttempt**; its per-fold scores are the **TrialResult**.
 - Folds: `StratifiedKFold` for classification, `KFold` otherwise, shuffled with a fixed seed. The same folds for every candidate. scikit-learn `cross_validate` runs each candidate's own `Pipeline`, so preparation is fit inside each fold. The test rows are never an input.
 - The metric is fixed before any score is seen: balanced accuracy for classification, RMSE for regression.
-- `select_model` writes one immutable **SelectionDecision**: every candidate's mean and spread, the winner and why. A winner must beat the dummy baseline on the same folds by more than the spread of their paired differences; otherwise it says no model beats the baseline.
+- `select_model` writes one immutable **SelectionDecision**: every candidate's mean and spread, the winner and why. A winner must beat the dummy baseline on the same folds by more than the spread of their paired differences, corrected for folds that share training rows (Nadeau & Bengio 2003, corrected resampled variance); otherwise it says no model beats the baseline.
 - Applying the winner is the shortlist alternative's `replace_node`, through the normal Apply, citing the selection.
 
 **Custom models**
@@ -49,3 +49,8 @@ Arch doc sections: §5 (experiments are not a second scheduler), §6, §8.3, §1
 
 ## Arch doc edits
 - §11: TrialSpec and TrialAttempt are a cross-validate step and its attempt; SelectionDecision is the select step's output.
+
+## Notes
+- `RuleDecision` and `DecisionProposal` stay `/v1` though `recommended_alternative_id` became optional: their only reader is Rust, changed with them, and stored proposals all carry the field.
+- "Many text columns favour trees" is not a heuristic here: every model operator one-hot encodes text the same way, so trees gain nothing from it.
+- `applies_to` still names the model operators a step may run. A new model plugin joins the shortlist with no rule edit, but a step running it is routed to this rule only once its operator is added to `applies_to`.

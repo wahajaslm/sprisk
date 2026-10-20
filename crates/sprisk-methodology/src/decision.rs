@@ -11,7 +11,7 @@ use sprisk_contracts::{
     CapabilityClass, DatasetProfile, DecisionProposal, Edge, MethodologyRule,
     MethodologyRuleSelection, ModelPreparation, Node, Operator, OperatorModel, PipelineVersion,
     PortRef, QuestionVersion, RuleActionType, RuleDecision,
-    RuleDecisionAlternativesItemApplicability, RuleObservation, parse,
+    RuleDecisionAlternativesItemApplicability, RuleObservation, TaskType, parse,
 };
 
 use crate::{ResolveError, facts};
@@ -279,6 +279,54 @@ pub fn without_node(
     Ok((nodes, edges))
 }
 
+/// The step whose `train` output feeds `node_id`'s `train` input, walked back to a split's
+/// train output through steps that `keep_train` (ADR-0044, rule 8). Every hop is a train port
+/// through a step that writes train rows from train rows only, so the table holds no test row.
+pub fn train_rows_source<'p>(
+    pipeline: &'p PipelineVersion,
+    node_id: &str,
+    is_split: impl Fn(&Node) -> bool,
+    keeps_train: impl Fn(&Node) -> bool,
+) -> Result<&'p str, ResolveError> {
+    let node = |id: &str| pipeline.nodes.iter().find(|n| n.id.as_str() == id);
+    let feeding = |id: &str| {
+        pipeline
+            .edges
+            .iter()
+            .find(|e| e.to.as_str() == format!("{id}.train"))
+            .map(|e| e.from.step_and_port())
+            .filter(|(_, port)| *port == "train")
+            .map(|(step, _)| step)
+    };
+    let refuse = |why: String| Err(ResolveError::NotTrainRows(why));
+    let Some(source) = feeding(node_id) else {
+        return refuse(format!(
+            "step {node_id} takes no train output into its train input"
+        ));
+    };
+    let mut at = source;
+    loop {
+        let Some(step) = node(at) else {
+            return Err(ResolveError::UnknownNode(at.to_owned()));
+        };
+        if is_split(step) {
+            return Ok(source);
+        }
+        if !keeps_train(step) {
+            return refuse(format!(
+                "step {at} ({}) may mix rows between its inputs, so its train output may hold test rows",
+                step.operator.as_str()
+            ));
+        }
+        let Some(next) = feeding(at) else {
+            return refuse(format!(
+                "step {at} takes no train output into its train input"
+            ));
+        };
+        at = next;
+    }
+}
+
 /// A new proposal's id and when it was made.
 pub struct Stamp<'a> {
     pub id: &'a str,
@@ -304,6 +352,17 @@ pub fn proposal(
         .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
     let shortlist = rule.selection == Some(MethodologyRuleSelection::Shortlist);
     check_selection(decision, shortlist)?;
+    // The baseline is the floor a comparison measures against (ADR-0044).
+    let baseline = |id: &str| {
+        candidates
+            .get(id)
+            .is_some_and(|o| o.model.as_ref().is_some_and(|m| m.family.is_none()))
+    };
+    if shortlist && !decision.shortlist.iter().any(|id| baseline(id.as_str())) {
+        return Err(ResolveError::Selection(
+            "a shortlist needs the baseline, a model with no family, to compare against".into(),
+        ));
+    }
     let mut alternatives = Vec::new();
     for decided in &decision.alternatives {
         let id = decided.id.as_str();
@@ -423,19 +482,25 @@ fn candidate_id(operator: &Operator) -> String {
         .replace('.', "_")
 }
 
-/// The registered models that fit `task`, by candidate id (ADR-0044).
+/// The registered models that fit `task`, by candidate id (ADR-0044). Two models with one
+/// id, such as two versions of one model, are refused: one would silently hide the other.
 pub fn candidates<'a>(
-    task: &str,
+    task: TaskType,
     operators: impl Iterator<Item = &'a Operator>,
-) -> BTreeMap<String, &'a Operator> {
-    operators
-        .filter(|o| {
-            o.model
-                .as_ref()
-                .is_some_and(|m| m.tasks.iter().any(|t| t.to_string() == task))
-        })
-        .map(|o| (candidate_id(o), o))
-        .collect()
+) -> Result<BTreeMap<String, &'a Operator>, ResolveError> {
+    let mut found = BTreeMap::new();
+    let fits = |o: &Operator| o.model.as_ref().is_some_and(|m| m.tasks.contains(&task));
+    for operator in operators.filter(|o| fits(o)) {
+        let id = candidate_id(operator);
+        if let Some(first) = found.insert(id.clone(), operator) {
+            return Err(ResolveError::SharedCandidateId {
+                id,
+                first: first.id.to_string(),
+                second: operator.id.to_string(),
+            });
+        }
+    }
+    Ok(found)
 }
 
 /// `candidate.<id>.family` for each candidate, `featureless` for one with no family.

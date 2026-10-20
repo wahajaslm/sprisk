@@ -7,7 +7,7 @@ pub mod facts;
 pub use catalog::{CatalogError, RuleCatalog};
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts, proposal,
-    without_node,
+    train_rows_source, without_node,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -16,6 +16,14 @@ pub enum ResolveError {
     UnknownNode(String),
     #[error("operator {0} is not registered")]
     UnknownOperator(String),
+    #[error("models {first} and {second} share the candidate id {id}; register one of them")]
+    SharedCandidateId {
+        id: String,
+        first: String,
+        second: String,
+    },
+    #[error("the train rows cannot be traced to a split: {0}")]
+    NotTrainRows(String),
     #[error("the rule's decision does not fit its selection: {0}")]
     Selection(String),
     #[error("cannot remove the step: output {0} has no input of the same name to take its place")]

@@ -87,7 +87,7 @@ describe("methodology page", () => {
     expect(within(detail).queryByText(/^When:/)).not.toBeInTheDocument();
   });
 
-  it("shows a shortlist rule's candidates as the registered models, and its examples' shortlists", async () => {
+  it("says a shortlist rule's candidates are the registered models, and shows its examples' shortlists", async () => {
     const { observes: _notes, ...withoutNotes } = split;
     const shortlist: MethodologyRule = {
       ...withoutNotes,
@@ -104,6 +104,7 @@ describe("methodology page", () => {
     const detail = await screen.findByRole("region", { name: shortlist.name });
     expect(within(detail).getByText(/every registered model that fits the task/i)).toBeInTheDocument();
     expect(within(detail).getByRole("listitem", { name: "Example 1" })).toHaveTextContent("shortlist: ml_dummy_baseline, ml_linear_model");
+    expect(within(detail).queryByRole("heading", { name: "Alternatives" })).not.toBeInTheDocument();
   });
 
   it("marks a draft rule and shows its design notes", async () => {

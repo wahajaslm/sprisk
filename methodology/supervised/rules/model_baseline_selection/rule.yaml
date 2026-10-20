@@ -9,7 +9,7 @@ decides: modeling.estimator_selection
 status: active
 selection: shortlist
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
-reads: [question.task, rows, column.*.data_type, column.*.missing_share, candidate.*.family]
+reads: [question.task, rows, column.*.data_type, candidate.*.family]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -19,16 +19,14 @@ provenance:
   pitfall: "Picking one complex model before measuring hides whether it beats a simple one, or even a naive guess. With few rows, a high-variance model fits noise."
   corner_cases:
     - "The dummy baseline is the floor: a model that does not beat it on the same folds learned nothing useful."
-    - "Few rows favour low-variance models; the threshold is a setting, not a law."
-    - "A model of a family with no heuristic yet is put forward, so cross-validation decides."
+    - "The forest's row threshold is a sprisk default; the comparison, not the threshold, should decide."
+    - "A model of a family with no heuristic yet is put forward to be compared."
 
 # 2. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
 policy_thresholds:
-  # Train rows below which a forest is left off the list: too few to trust its variance.
+  # Train rows below which a forest is left off the list: a sprisk default, not a published law.
   min_rows_for_forest: 100
-  # Share of text feature columns at which trees are named as handling them well.
-  text_share_threshold: 0.5
 
 # 3. Alternatives: every registered model that fits the task (ADR-0044)
 # ------------------------------------------------------------------------------
@@ -38,12 +36,12 @@ alternatives: []
 # ------------------------------------------------------------------------------
 verification:
   check_id: sprisk.checks.supervised.baseline_lift@1.0.0
-  invariant: "The kept model beats the dummy baseline on the same cross-validation folds by more than the spread of their paired differences."
+  invariant: "The kept model beats the dummy baseline on the same cross-validation folds by more than the corrected spread of their paired differences (Nadeau & Bengio 2003)."
 
 # Examples: run as tests and shown on the Methodology page (ADR-0045)
 # ------------------------------------------------------------------------------
 examples:
-  - given: { question.task: classification, rows: 40, column.age.data_type: Float64, column.age.missing_share: 0.0, candidate.ml_dummy_baseline.family: featureless, candidate.ml_linear_model.family: linear, candidate.ml_random_forest.family: tree_ensemble }
+  - given: { question.task: classification, rows: 40, column.age.data_type: Float64, candidate.ml_dummy_baseline.family: featureless, candidate.ml_linear_model.family: linear, candidate.ml_random_forest.family: tree_ensemble }
     shortlist: [ml_dummy_baseline, ml_linear_model]
-  - given: { question.task: classification, rows: 500, column.age.data_type: Float64, column.age.missing_share: 0.0, candidate.ml_dummy_baseline.family: featureless, candidate.ml_linear_model.family: linear, candidate.ml_random_forest.family: tree_ensemble }
+  - given: { question.task: classification, rows: 500, column.age.data_type: Float64, candidate.ml_dummy_baseline.family: featureless, candidate.ml_linear_model.family: linear, candidate.ml_random_forest.family: tree_ensemble }
     shortlist: [ml_dummy_baseline, ml_linear_model, ml_random_forest]

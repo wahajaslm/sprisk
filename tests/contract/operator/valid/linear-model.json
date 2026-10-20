@@ -4,6 +4,10 @@
   "capability_class": "estimator",
   "model": {
     "family": "linear",
+    "tasks": [
+      "classification",
+      "regression"
+    ],
     "prepares": [
       "fill_gaps",
       "standardize"
