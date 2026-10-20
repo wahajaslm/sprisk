@@ -109,3 +109,9 @@ def test_no_model_downstream_fills_gaps_as_before_and_says_so() -> None:
     d = run(column("age", missing_share=0.1, skewness=0.2))
     assert d["recommended_alternative_id"] == "impute_mean"
     assert "no model is downstream" in alternative(d, "pass_through")["reason"]
+
+
+def test_a_model_behind_a_step_the_rules_cannot_see_needs_gaps_filled_here() -> None:
+    d = run(column("age", missing_share=0.1, skewness=0.2), flow("unknown", "some", "some"))
+    assert d["recommended_alternative_id"] == "impute_mean"
+    assert "known to fill" in alternative(d, "pass_through")["reason"]

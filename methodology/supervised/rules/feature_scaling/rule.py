@@ -78,7 +78,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
     evidence += [profile_evidence(f"{c} excess kurtosis", f"{v:.2f}") for c, v in kurtosis.items()]
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in outliers.items()]
     if no_effect:
-        recommended = "none_tree_models"
+        recommended = "no_scaling"
     elif heavy:
         recommended = "robust_scaling"
     else:
@@ -104,11 +104,11 @@ def _no_scaling(
 ) -> dict[str, Any]:
     if no_effect:
         # Leaving the step as it is changes no graph, so this choice has no params.
-        return {"id": "none_tree_models", "applicability": "applicable", "reason": no_effect}
+        return {"id": "no_scaling", "applicability": "applicable", "reason": no_effect}
     if standardize is None:
         why = "Scaling may matter: no model is downstream of this step yet."
-    elif standardize == "none" and family not in (None, "mixed"):
+    elif standardize == "none" and family not in (None, "mixed", "unknown"):
         why = f"The {family} model downstream takes its inputs as they are, so scaling matters."
     else:
-        why = "Not every model downstream standardises its inputs, so scaling matters."
-    return not_applicable("none_tree_models", why)
+        why = "Not every model downstream is known to standardise its inputs, so scaling matters."
+    return not_applicable("no_scaling", why)

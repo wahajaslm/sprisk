@@ -22,10 +22,16 @@ provenance:
 # ------------------------------------------------------------------------------
 observes:
   - profile: outlier_percentage_iqr
-    description: "Percentage of data points beyond [Q1 - 1.5*IQR, Q3 + 1.5*IQR]"
+    description: "Per column, the share of train values beyond [Q1 - 1.5*IQR, Q3 + 1.5*IQR]; the conditions read the largest among columns other than the target"
     required: true
   - fact: flow.model_family
-    description: "Family of the models downstream of the step, read from the flow: tree_ensemble, linear, distance_based, or mixed. Absent when no model is downstream."
+    description: "Family of the models downstream of the step, from their manifests: tree_ensemble, linear, distance_based, density_based, mixed, or unknown when a model sits behind a step that is not preparation. Absent when no model, or only models that ignore their features, are downstream."
+    required: false
+  - fact: flow.models_fill_gaps
+    description: "Sent whenever a model is downstream; with no family, every model downstream ignores its features."
+    required: false
+  - fact: question.target
+    description: "Target column; it is never clipped, since that changes the labels the model is scored on."
     required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
@@ -40,15 +46,17 @@ alternatives:
   - id: none_tree_or_clean
     label: Retain Outliers (Natural Variation / Tree Invariance)
     description: Keep all extreme values without capping or dropping.
-    condition: outlier_percentage_iqr < outlier_fraction_threshold OR flow.model_family == 'tree_ensemble'
-    rationale: Either outlier rate is within expected natural limits (<5%) or tree models are used, which
-      are far less sensitive to univariate leverage, as they split on rank order.
+    condition: outlier_percentage_iqr < outlier_fraction_threshold OR flow.model_family in ['tree_ensemble', 'density_based'] OR (flow.models_fill_gaps is present AND flow.model_family is absent)
+    rationale: The outlier rate is within natural limits, or the models downstream are not pulled by
+      outlying features. Trees split on rank order; DBSCAN marks isolated rows as noise, and clipping
+      would pile them onto the fence; a dummy baseline ignores its features. Outliers in a regression
+      target still pull squared-error fits, trees included.
     action:
       type: pass_through
   - id: clip_iqr_fence
     label: Clip to the Train IQR Fences
-    description: Cap each value at the train fences Q1 - k IQR and Q3 + k IQR.
-    condition: outlier_percentage_iqr >= outlier_fraction_threshold AND flow.model_family != 'tree_ensemble'
+    description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target is left as it is.
+    condition: a column other than question.target exists AND outlier_percentage_iqr >= outlier_fraction_threshold AND NOT (flow.model_family in ['tree_ensemble', 'density_based'] OR (flow.models_fill_gaps is present AND flow.model_family is absent))
     rationale: Limits extreme leverage points without dropping rows. The fences come from the train
       quartiles, which outliers barely move, so the cap does not drift with the values it caps.
     action:

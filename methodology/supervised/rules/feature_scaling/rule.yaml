@@ -31,7 +31,7 @@ observes:
     description: "Whether the input matrix is represented as a sparse matrix"
     required: false
   - fact: flow.model_family
-    description: "Family of the models downstream of the step, read from the flow: tree_ensemble, linear, distance_based, or mixed. Absent when no model is downstream."
+    description: "Family of the models downstream of the step, from their manifests: tree_ensemble, linear, distance_based, density_based, mixed, or unknown when a model sits behind a step that is not preparation. Absent when no model, or only models that ignore their features, are downstream."
     required: false
   - fact: flow.models_standardize
     description: "Whether all, some or none of the models downstream standardise their own inputs on the train rows, from their manifests. Absent when no model is downstream."
@@ -47,7 +47,7 @@ policy_thresholds:
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------
 alternatives:
-  - id: none_tree_models
+  - id: no_scaling
     label: No Scaling Step (Models Downstream Do Not Need It)
     description: Leave the features as they are; scaling here would not change the models downstream.
     condition: (flow.models_standardize == 'all' OR flow.model_family == 'tree_ensemble')

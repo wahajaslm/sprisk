@@ -1719,7 +1719,7 @@ async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
 
     let (status, proposal) = propose_scaling(&api).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["recommended_alternative_id"], "none_tree_models");
+    assert_eq!(proposal["recommended_alternative_id"], "no_scaling");
     assert!(
         proposal["evidence"]
             .as_array()

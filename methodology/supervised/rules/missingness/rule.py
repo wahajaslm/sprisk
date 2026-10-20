@@ -75,7 +75,9 @@ def decide(observation: RuleObservation) -> RuleDecision:
         if mostly_empty
         else "No column is mostly empty.",
     )
-    pass_through = _pass_through(fills, target_gaps if has_target else None)
+    pass_through = (
+        not_applicable("pass_through", target_gaps) if has_target else _pass_through(fills)
+    )
 
     if has_target:
         recommended = "drop_rows"
@@ -106,9 +108,7 @@ def _impute(
     return applicable(id, reason, {"columns": columns, "method": method})
 
 
-def _pass_through(fills: str | None, target_gaps: str | None) -> dict[str, Any]:
-    if target_gaps:
-        return not_applicable("pass_through", target_gaps)
+def _pass_through(fills: str | None) -> dict[str, Any]:
     if fills == "all":
         # Leaving the step as it is changes no graph, so this choice has no params.
         return {
@@ -117,9 +117,9 @@ def _pass_through(fills: str | None, target_gaps: str | None) -> dict[str, Any]:
             "reason": "Every model downstream fills gaps itself, fit on its train rows only.",
         }
     if fills is None:
-        return not_applicable(
-            "pass_through", "Nothing would fill the gaps: no model is downstream of this step yet."
-        )
-    return not_applicable(
-        "pass_through", "Some models downstream do not fill gaps themselves; fill them here."
-    )
+        why = "Nothing would fill the gaps: no model is downstream of this step yet."
+    elif fills == "none":
+        why = "The models downstream do not fill gaps themselves; fill them here."
+    else:
+        why = "Not every model downstream is known to fill gaps itself; fill them here."
+    return not_applicable("pass_through", why)

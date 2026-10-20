@@ -49,8 +49,8 @@ LIGHT = column("age", kurtosis=0.2, outlier_share=0.0)
 
 def test_tree_models_downstream_need_no_scaling_step() -> None:
     d = run(HEAVY, FOREST)
-    assert d["recommended_alternative_id"] == "none_tree_models"
-    none = alternative(d, "none_tree_models")
+    assert d["recommended_alternative_id"] == "no_scaling"
+    none = alternative(d, "no_scaling")
     assert none["applicability"] == "applicable"
     assert "params" not in none
     assert {
@@ -63,14 +63,14 @@ def test_tree_models_downstream_need_no_scaling_step() -> None:
 
 def test_trees_that_do_not_standardise_still_need_no_scaling_for_rank_order_splits() -> None:
     d = run(HEAVY, flow("tree_ensemble", "none", "none"))
-    assert d["recommended_alternative_id"] == "none_tree_models"
-    assert "rank order" in alternative(d, "none_tree_models")["reason"]
+    assert d["recommended_alternative_id"] == "no_scaling"
+    assert "rank order" in alternative(d, "no_scaling")["reason"]
 
 
 def test_a_linear_model_that_standardises_itself_needs_no_scaling_step() -> None:
     d = run(HEAVY, LINEAR)
-    assert d["recommended_alternative_id"] == "none_tree_models"
-    assert "standardise" in alternative(d, "none_tree_models")["reason"]
+    assert d["recommended_alternative_id"] == "no_scaling"
+    assert "standardise" in alternative(d, "no_scaling")["reason"]
     assert "no effect" in alternative(d, "robust_scaling")["reason"]
     assert "no effect" in alternative(d, "standard_scaling")["reason"]
     assert any(e["label"].startswith("Models downstream that standardise") for e in d["evidence"])
@@ -79,16 +79,27 @@ def test_a_linear_model_that_standardises_itself_needs_no_scaling_step() -> None
 def test_clustering_downstream_is_scaled_from_the_tails() -> None:
     d = run(HEAVY, CLUSTERING)
     assert d["recommended_alternative_id"] == "robust_scaling"
-    assert "distance_based" in alternative(d, "none_tree_models")["reason"]
+    assert "distance_based" in alternative(d, "no_scaling")["reason"]
 
 
 def test_a_forest_beside_clustering_is_scaled_for_the_clustering() -> None:
     d = run(LIGHT, flow("mixed", "some", "some"))
     assert d["recommended_alternative_id"] == "standard_scaling"
-    assert "Not every model" in alternative(d, "none_tree_models")["reason"]
+    assert "Not every model" in alternative(d, "no_scaling")["reason"]
 
 
 def test_no_model_downstream_is_scaled_as_before_and_says_so() -> None:
     d = run(LIGHT)
     assert d["recommended_alternative_id"] == "standard_scaling"
-    assert "no model is downstream" in alternative(d, "none_tree_models")["reason"]
+    assert "no model is downstream" in alternative(d, "no_scaling")["reason"]
+
+
+def test_a_model_behind_a_step_the_rules_cannot_see_keeps_scaling_in_play() -> None:
+    d = run(LIGHT, flow("unknown", "some", "some"))
+    assert d["recommended_alternative_id"] == "standard_scaling"
+    assert "known to standardise" in alternative(d, "no_scaling")["reason"]
+
+
+def test_dbscan_downstream_is_scaled_since_eps_is_a_distance() -> None:
+    d = run(LIGHT, flow("density_based", "none", "none"))
+    assert d["recommended_alternative_id"] == "standard_scaling"

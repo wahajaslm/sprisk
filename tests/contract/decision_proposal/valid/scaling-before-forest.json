@@ -15,14 +15,14 @@
   ],
   "alternatives": [
     {
-      "id": "none_tree_models",
+      "id": "no_scaling",
       "label": "No Scaling (Tree Ensembles)",
       "description": "Leave raw numerical features unscaled.",
       "applicability": "applicable",
       "reason": "Only tree models are downstream."
     }
   ],
-  "recommended_alternative_id": "none_tree_models",
+  "recommended_alternative_id": "no_scaling",
   "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "created_at": "2026-10-19T10:00:00Z"
 }
