@@ -36,15 +36,17 @@ def decide(observation: RuleObservation) -> RuleDecision:
     text = [c for c in columns if not is_numeric(observation, c)]
     # The profile gives no shape to a column without variation; the scale step refuses those.
     flat = [c for c in columns if c not in text and c not in kurtosis]
+    # With Q1 = Q3 robust scaling divides by zero, and the IQR fences that measure outliers
+    # meet, so such a column says nothing about tails: it is left out of both.
+    flat_iqr = [c for c in columns if measured(observation, c, "iqr") == 0]
+    spread = [c for c in columns if c not in flat_iqr]
     heavy = [
         c
-        for c in columns
+        for c in spread
         if kurtosis.get(c, 0.0) > s["outlier_kurtosis_threshold"]
         or outliers.get(c, 0.0) >= s["outlier_share_threshold"]
     ]
     no_effect = _no_effect(family, standardize)
-    # With Q1 = Q3 robust scaling divides by zero; the scale step refuses it.
-    flat_iqr = [c for c in columns if measured(observation, c, "iqr") == 0]
 
     if text or flat:
         why = (
@@ -56,15 +58,15 @@ def decide(observation: RuleObservation) -> RuleDecision:
         standard = not_applicable("standard_scaling", why)
     elif no_effect:
         unused = "Available, but it has no effect on the models downstream."
-        robust = applicable("robust_scaling", unused, {"columns": columns, "method": "robust"})
+        robust = _robust(spread, flat_iqr, unused)
         standard = applicable("standard_scaling", unused, {"columns": columns, "method": "z_score"})
     else:
-        robust = applicable(
-            "robust_scaling",
+        robust = _robust(
+            spread,
+            flat_iqr,
             f"{', '.join(heavy)} has heavy tails or outliers; median and IQR resist them."
             if heavy
             else "Available; tails are light, so it differs little from standard scaling.",
-            {"columns": columns, "method": "robust"},
         )
         standard = applicable(
             "standard_scaling",
@@ -72,12 +74,6 @@ def decide(observation: RuleObservation) -> RuleDecision:
             if not heavy
             else "Available, but outliers inflate the SD and squash the other values.",
             {"columns": columns, "method": "z_score"},
-        )
-    if flat_iqr and robust["applicability"] == "applicable":
-        robust = not_applicable(
-            "robust_scaling",
-            f"{', '.join(flat_iqr)} has no IQR spread in train, so robust scaling cannot divide "
-            "by it.",
         )
     none = _no_scaling(family, standardize, no_effect)
     maxabs = not_applicable("maxabs_scaling_sparse", "The scale step has no max-abs method.")
@@ -88,11 +84,22 @@ def decide(observation: RuleObservation) -> RuleDecision:
     evidence += [profile_evidence(f"{c} IQR", "0") for c in flat_iqr]
     if no_effect:
         recommended = "no_scaling"
-    elif heavy and not flat_iqr:
+    elif heavy:
         recommended = "robust_scaling"
     else:
         recommended = "standard_scaling"
     return decision(observation, recommended, [none, robust, standard, maxabs], evidence)
+
+
+def _robust(spread: list[str], flat_iqr: list[str], reason: str) -> dict[str, Any]:
+    no_iqr = (
+        f"{', '.join(flat_iqr)} has no IQR spread in train, so robust scaling cannot divide by it."
+    )
+    if not spread:
+        return not_applicable("robust_scaling", no_iqr)
+    if flat_iqr:
+        reason += f" Left out: {no_iqr}"
+    return applicable("robust_scaling", reason, {"columns": spread, "method": "robust"})
 
 
 def _no_effect(family: str | None, standardize: str | None) -> str | None:

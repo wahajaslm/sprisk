@@ -122,3 +122,12 @@ def test_a_column_with_no_iqr_spread_cannot_be_robust_scaled() -> None:
     assert robust["applicability"] == "not_applicable"
     assert "flag has no IQR spread" in robust["reason"]
     assert d["recommended_alternative_id"] == "standard_scaling"
+
+
+def test_a_flat_iqr_column_is_left_out_of_robust_scaling_not_the_heavy_one() -> None:
+    flag = column("flag", "Int64", kurtosis=5.1, outlier_share=0.1, iqr=0.0)
+    d = run({**HEAVY, **flag})
+    assert d["recommended_alternative_id"] == "robust_scaling"
+    robust = alternative(d, "robust_scaling")
+    assert robust["params"]["columns"] == ["income"]
+    assert "Left out: flag has no IQR spread" in robust["reason"]

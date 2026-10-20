@@ -33,7 +33,7 @@ PULLED = {
     "linear": "extreme values pull the linear model's coefficients.",
     "distance_based": "extreme values pull the cluster centres and spreads.",
     "mixed": "extreme values pull the models downstream that are not trees.",
-    "unknown": "a model sits behind a step this rule cannot see, so they may pull it.",
+    "unknown": "outliers may pull a model that sits behind another step or model downstream.",
 }
 
 
@@ -58,7 +58,8 @@ def decide(observation: RuleObservation) -> RuleDecision:
     target_outliers = target in columns and share.get(target, 0.0) >= threshold
     unpulled = UNPULLED.get(family or "")
 
-    keep_reason = _keep_reason(many, family, unpulled)
+    flat_flagged = [c for c in flat if share.get(c, 0.0) >= threshold]
+    keep_reason = _keep_reason(many, flat_flagged, family, unpulled)
     if target_outliers and task == "regression":
         keep_reason += (
             f" {target} is the target: its outliers pull squared-error fits, trees included, "
@@ -80,9 +81,10 @@ def decide(observation: RuleObservation) -> RuleDecision:
 
     evidence = flow_evidence(observation, [FAMILY])
     if target_fact and target_fact.value in columns:
-        evidence += question_evidence(
-            observation, {"question.target": "Target", "question.task": "Task"}
-        )
+        weighed = {"question.target": "Target"}
+        if target_outliers:
+            weighed["question.task"] = "Task"
+        evidence += question_evidence(observation, weighed)
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in share.items()]
     evidence += [profile_evidence(f"{c} IQR", "0") for c in flat]
     return decision(
@@ -95,9 +97,16 @@ def decide(observation: RuleObservation) -> RuleDecision:
     )
 
 
-def _keep_reason(many: list[str], family: str | None, unpulled: str | None) -> str:
+def _keep_reason(
+    many: list[str], flat_flagged: list[str], family: str | None, unpulled: str | None
+) -> str:
     if unpulled:
         return unpulled
+    if not many and flat_flagged:
+        return (
+            f"Only {', '.join(flat_flagged)} has many values outside the IQR fences, but it has "
+            "no IQR spread: most values are equal, so the others are not outliers."
+        )
     if not many:
         return "Few values fall outside the IQR fences: keep them as they are."
     if family is None:

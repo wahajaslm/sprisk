@@ -78,7 +78,7 @@ def test_dbscan_downstream_keeps_outliers_it_marks_as_noise() -> None:
 def test_a_model_behind_a_step_the_rules_cannot_see_clips_many_outliers() -> None:
     d = run(MANY, flow("unknown", "some", "some"))
     assert d["recommended_alternative_id"] == "clip_iqr_fence"
-    assert "cannot see" in alternative(d, "none_tree_or_clean")["reason"]
+    assert "behind another step" in alternative(d, "none_tree_or_clean")["reason"]
 
 
 def test_models_that_ignore_their_features_keep_the_values() -> None:
@@ -148,3 +148,19 @@ def test_a_step_with_only_flat_iqr_columns_cannot_clip() -> None:
     d = run(column("flag", "Int64", iqr=0.0, outlier_share=0.1))
     assert alternative(d, "clip_iqr_fence")["applicability"] == "not_applicable"
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
+
+
+def test_keeping_values_when_only_flat_columns_cross_the_threshold_says_why() -> None:
+    d = run(column("flag", "Int64", iqr=0.0, outlier_share=0.1))
+    keep = alternative(d, "none_tree_or_clean")["reason"]
+    assert "Few values" not in keep
+    assert "no IQR spread" in keep
+
+
+def test_the_task_is_evidence_only_when_it_was_weighed() -> None:
+    quiet = {
+        **column("price", iqr=1.0, outlier_share=0.0),
+        **column("age", iqr=1.0, outlier_share=0.0),
+    }
+    d = run(quiet, REGRESSION)
+    assert not any(e["label"] == "Task" for e in d["evidence"])

@@ -22,7 +22,7 @@ provenance:
 # ------------------------------------------------------------------------------
 observes:
   - profile: outlier_percentage_iqr
-    description: "Per column, the share of train values beyond [Q1 - 1.5*IQR, Q3 + 1.5*IQR]; the conditions read the largest among columns other than the target"
+    description: "Per column, the share of train values beyond [Q1 - 1.5*IQR, Q3 + 1.5*IQR]; the conditions read the largest among columns other than the target that have iqr > 0"
     required: true
   - profile: iqr
     description: "Per column, the train interquartile range. Zero when most values are equal, so the IQR gives no spread to use."
@@ -49,7 +49,7 @@ alternatives:
   - id: none_tree_or_clean
     label: Retain Outliers (Natural Variation / Tree Invariance)
     description: Keep all extreme values without capping or dropping.
-    condition: outlier_percentage_iqr < outlier_fraction_threshold OR flow.model_family in ['tree_ensemble', 'density_based', 'featureless']
+    condition: outlier_percentage_iqr < outlier_fraction_threshold OR flow.model_family in ['tree_ensemble', 'density_based', 'featureless'] OR question.target is inferred among the columns OR no column other than question.target has iqr > 0
     rationale: The outlier rate is within natural limits, or the models downstream are not pulled by
       outlying features. Trees split on rank order; DBSCAN marks isolated rows as noise, and clipping
       would pile them onto the fence; a dummy baseline ignores its features. Outliers in a regression
