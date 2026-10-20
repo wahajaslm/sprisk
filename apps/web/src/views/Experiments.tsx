@@ -7,6 +7,7 @@ import { settingChanges, showValue } from "../flow/diff.ts";
 import { flows } from "../flow/flows.ts";
 import { flowName } from "../flow/labels.ts";
 import { useSelection } from "../workbench/selection.ts";
+import { ModelComparisons } from "./ModelComparison.tsx";
 import { formatMetric } from "./NodeFact.tsx";
 
 /** Runs shown in the table. Each costs a few cached reads per evaluator. */
@@ -58,6 +59,7 @@ export function Experiments() {
         title={`${flowName(flow.head)}: every run, with what changed`}
       />
       <div className="exp-scroll">
+        <ModelComparisons flowIds={flow.ids} versions={all} />
         <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
       </div>
       {runs.length < 2 ? (

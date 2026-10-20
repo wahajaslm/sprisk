@@ -81,6 +81,11 @@ describe("flows group versions by parent", () => {
     ]);
   });
 
+  it("leaves out a version that compares models, which is not a flow", () => {
+    const comparison = { ...v("plv_b"), compares: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0" };
+    expect(flows([comparison, v("plv_a")]).map((f) => f.head.id)).toEqual(["plv_a"]);
+  });
+
   it("keeps both branches when one version was edited twice", () => {
     const versions = [v("plv_c", "plv_a"), v("plv_b", "plv_a"), v("plv_a")];
     expect(flows(versions).map((f) => f.head.id)).toEqual(["plv_c", "plv_b"]);

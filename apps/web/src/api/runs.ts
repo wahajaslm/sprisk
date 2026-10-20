@@ -1,8 +1,8 @@
-import type { Attempt, Run } from "@sprisk/contracts";
-import { type Query, useQueries } from "@tanstack/react-query";
+import { parse, type Attempt, type Run, type SelectionDecision } from "@sprisk/contracts";
+import { type Query, useQueries, useQuery } from "@tanstack/react-query";
 
-import { getList } from "./client.ts";
-import { artifactTextQuery, isLive, outputsQuery } from "./hooks.ts";
+import { getList, getText } from "./client.ts";
+import { artifactTextQuery, isLive, outputsQuery, useOutputs } from "./hooks.ts";
 import { MAX_INLINE_BYTES } from "./media.ts";
 
 /** Runs of several pipeline versions (one flow), newest first. Bounded by `limit`. */
@@ -76,4 +76,44 @@ function numbers(text: string | undefined): Record<string, number> | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const found = Object.entries(value).filter((e): e is [string, number] => typeof e[1] === "number");
   return found.length > 0 ? Object.fromEntries(found) : undefined;
+}
+
+export type SelectionResult =
+  | { status: "loading" }
+  | { status: "not_run" }
+  | { status: "running" }
+  | { status: "failed"; message: string }
+  | { status: "decided"; decision: SelectionDecision; artifactId: string };
+
+/** What a comparison run's select step decided (ADR-0044), read once the run has finished. */
+export function useSelectionDecision(run: Run | undefined, selectNode: string | undefined): SelectionResult {
+  const attempts = useQuery({
+    queryKey: ["attempts", run?.id, run?.status],
+    queryFn: () => getList("Attempt", `/runs/${run?.id ?? ""}/attempts`),
+    enabled: run !== undefined && !isLive(run),
+    staleTime: Infinity,
+  });
+  const producer = attempts.data
+    ?.filter((a) => a.node_id === selectNode && (a.state === "succeeded" || a.state === "cache_hit"))
+    .at(-1);
+  const outputs = useOutputs(producer?.id);
+  const artifact = outputs.data?.find((o) => o.port === "decision")?.artifact;
+  const readable = artifact !== undefined && artifact.size_bytes <= MAX_INLINE_BYTES ? artifact.id : undefined;
+  const decision = useQuery({
+    queryKey: ["selection-decision", readable],
+    queryFn: async () => parse("SelectionDecision", JSON.parse(await getText(`/artifacts/${readable ?? ""}/content`))),
+    enabled: readable !== undefined,
+    staleTime: Infinity,
+  });
+  if (run === undefined) return { status: "not_run" };
+  if (isLive(run)) return { status: "running" };
+  const error = attempts.error ?? outputs.error ?? decision.error;
+  if (error) return { status: "failed", message: error.message };
+  if (run.status !== "succeeded") {
+    const failed = attempts.data?.find((a) => a.state === "failed" && a.error);
+    return { status: "failed", message: failed?.error ? `${failed.node_id}: ${failed.error.message}` : `the run ${run.status}` };
+  }
+  if (artifact !== undefined && readable === undefined) return { status: "failed", message: "the decision is too large to show" };
+  if (decision.data && readable) return { status: "decided", decision: decision.data, artifactId: readable };
+  return { status: "loading" };
 }

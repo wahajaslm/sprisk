@@ -1,7 +1,7 @@
 import type { PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
 
-import { useApplyMethodology, useResolveMethodology, useResolveSplit } from "../../api/methodology.ts";
+import { useApplyMethodology, useCompareModels, useResolveMethodology, useResolveSplit } from "../../api/methodology.ts";
 import { useSelection } from "../../workbench/selection.ts";
 
 export function SplitMethodology({ pipeline, nodeId }: { pipeline: PipelineVersion; nodeId: string }) {
@@ -11,7 +11,9 @@ export function SplitMethodology({ pipeline, nodeId }: { pipeline: PipelineVersi
   const resolveGeneral = useResolveMethodology();
   const resolve = isSplit ? resolveSplit : resolveGeneral;
   const apply = useApplyMethodology();
+  const compare = useCompareModels();
   const selectPipeline = useSelection((state) => state.selectPipelineVersion);
+  const setNav = useSelection((state) => state.setNav);
   const [selected, setSelected] = useState<string>();
   const [reason, setReason] = useState("");
   const proposal = resolve.data;
@@ -57,8 +59,8 @@ export function SplitMethodology({ pipeline, nodeId }: { pipeline: PipelineVersi
         ? <p>Remove <code>{chosen.effect.node_id}</code>. The steps after it read its inputs directly.</p>
         : <><p>Replace <code>{chosen.effect.node_id}</code> with <code>{chosen.effect.operator}</code>.</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>}</div>}
       {chosen && proposal.recommended_alternative_id !== chosen.id && <label className="method-reason">{proposal.shortlist ? "Reason for choosing without comparing" : "Reason for choosing another method"}<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>}
-      <div className="settings-actions"><button type="button" className="page-btn" onClick={() => resolve.reset()}>Refresh</button><span className="spacer" /><button type="button" className="run-code" disabled={!chosen || apply.isPending || (proposal.recommended_alternative_id !== chosen?.id && !reason.trim())} onClick={() => chosen && apply.mutate({ proposalId: proposal.id, alternativeId: chosen.id, reason }, { onSuccess: (result) => selectPipeline(result.pipeline.id) })}>{apply.isPending ? "Applying…" : "Apply to new flow version"}</button></div>
+      <div className="settings-actions"><button type="button" className="page-btn" onClick={() => resolve.reset()}>Refresh</button><span className="spacer" />{proposal.shortlist && <button type="button" className="page-btn" disabled={compare.isPending} onClick={() => compare.mutate(proposal.id, { onSuccess: () => setNav("Experiments") })}>{compare.isPending ? "Starting comparison…" : "Compare shortlisted models"}</button>}<button type="button" className="run-code" disabled={!chosen || apply.isPending || (proposal.recommended_alternative_id !== chosen?.id && !reason.trim())} onClick={() => chosen && apply.mutate({ proposalId: proposal.id, alternativeId: chosen.id, reason }, { onSuccess: (result) => selectPipeline(result.pipeline.id) })}>{apply.isPending ? "Applying…" : "Apply to new flow version"}</button></div>
     </>}
-    {(resolve.isError || apply.isError) && <p role="alert" className="error">{resolve.error?.message ?? apply.error?.message}</p>}
+    {(resolve.isError || apply.isError || compare.isError) && <p role="alert" className="error">{resolve.error?.message ?? apply.error?.message ?? compare.error?.message}</p>}
   </section>;
 }

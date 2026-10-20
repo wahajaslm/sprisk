@@ -601,6 +601,7 @@ p { margin: 0; }
 .exp-table input[type="checkbox"] { accent-color: var(--ink); }
 .exp-table .num { text-align: right; }
 .exp-table .changed { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.model-comparison { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--line); background: var(--panel); }
 
 /* Investigation Atlas: immutable question revisions that give methodology its context. */
 .ledger { height: 100%; min-height: 0; overflow: auto; background: var(--canvas); }

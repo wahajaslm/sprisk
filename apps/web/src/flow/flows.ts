@@ -8,8 +8,10 @@ export const flowOf = (list: Flow[], versionId: string | undefined): Flow | unde
   list.find((f) => versionId !== undefined && f.ids.includes(versionId)) ?? list[0];
 
 /** The user sees flows, not versions (ADR-0019 §8). A flow's head is a version no other
- * version edits; its size is the chain back through `parent_id`. Input is newest first. */
-export function flows(versions: PipelineVersion[]): Flow[] {
+ * version edits; its size is the chain back through `parent_id`. Input is newest first. A
+ * version comparing models is not a flow: it shows with the flow it compares (ADR-0046). */
+export function flows(all: PipelineVersion[]): Flow[] {
+  const versions = all.filter((v) => v.compares === undefined);
   const byId = new Map(versions.map((v) => [v.id, v]));
   const edited = new Set(versions.flatMap((v) => (v.parent_id ? [v.parent_id] : [])));
   return versions

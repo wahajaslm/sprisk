@@ -3,6 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
+import appliedDecision from "../../../tests/contract/applied_methodology_decision/valid/applied.json";
+import noWinner from "../../../tests/contract/selection_decision/valid/no-winner-with-limitations.json";
+import winner from "../../../tests/contract/selection_decision/valid/winner.json";
 import { Experiments } from "../src/views/Experiments.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { PV, RUN, attempts, pipeline, run, scoreAttempt, scoreOutputs } from "./fixtures.ts";
@@ -82,5 +85,100 @@ describe("comparison cautions", () => {
     const metrics = await screen.findByRole("region", { name: "Metrics" });
     expect(await within(metrics).findByText(/split changed, so the two runs were scored on different test rows/)).toBeInTheDocument();
     await waitFor(() => expect(metrics).toHaveTextContent("One test row moves accuracy by about 0.026"));
+  });
+});
+
+describe("model comparison", () => {
+  const MPR = "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0";
+  const CPV = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8";
+  const CRUN = "run_01JABCDEFGHJKMNPQRSTVWXYZ8";
+  const comparison = {
+    ...pipeline,
+    id: CPV,
+    compares: MPR,
+    nodes: [...pipeline.nodes.filter((n) => n.id === "load" || n.id === "split"), { id: "select_model", operator: "sprisk.ml.select_model@1.0.0", params: {} }],
+  };
+  const comparisonRun = { ...run, id: CRUN, pipeline_version_id: CPV };
+  const selectAttempt = { ...scoreAttempt, id: "att_01JABCDEFGHJKMNPQRSTVWXY80", run_id: CRUN, node_id: "select_model" };
+  const decisionOutput = {
+    port: "decision",
+    artifact: { ...scoreOutputs[0]!.artifact, id: "art_01JABCDEFGHJKMNPQRSTVWXY80", producer_attempt_id: selectAttempt.id },
+  };
+  const proposal = {
+    schema_version: "sprisk.decision_proposal/v1",
+    id: MPR,
+    rule: "methodology.supervised.model_baseline_selection@2.0.0",
+    question_version_id: "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    pipeline_version_id: PV,
+    subject_node_id: "model",
+    evidence: [],
+    alternatives: [{ id: "ml_linear_model", label: "sprisk.ml.linear_model@1.0.0", description: "Linear.", applicability: "applicable", reason: "Few rows." }],
+    shortlist: ["ml_dummy_baseline", "ml_linear_model", "ml_random_forest"],
+    fingerprint: `sha256:${"0".repeat(64)}`,
+    created_at: "2026-10-19T10:00:00Z",
+  };
+
+  function compared(decision: object) {
+    const applied: unknown[] = [];
+    server.use(
+      http.get("/api/pipeline_versions", () => HttpResponse.json([comparison, pipeline])),
+      http.get(`/api/methodology_proposals/${MPR}`, () => HttpResponse.json(proposal)),
+      http.get("/api/runs", ({ request }) =>
+        HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : [run]),
+      ),
+      http.get(`/api/runs/${CRUN}/attempts`, () => HttpResponse.json([selectAttempt])),
+      http.get(`/api/attempts/${selectAttempt.id}/outputs`, () => HttpResponse.json([decisionOutput])),
+      http.get(`/api/artifacts/${decisionOutput.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(decision))),
+      http.post(`/api/methodology_proposals/${MPR}/apply`, async ({ request }) => {
+        applied.push(await request.json());
+        return HttpResponse.json(appliedDecision, { status: 201 });
+      }),
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<Experiments />);
+    return applied;
+  }
+
+  it("shows each candidate's cross-validated mean and spread, the baseline floor and the winner", async () => {
+    compared(winner);
+    const region = await screen.findByRole("region", { name: "Model comparison" });
+    const rows = await within(region).findAllByRole("row");
+    expect(region).toHaveTextContent("5 folds · balanced accuracy");
+    expect(rows[1]).toHaveTextContent("ml_dummy_baseline");
+    expect(rows[1]).toHaveTextContent("0.5 ± 0");
+    expect(rows[1]).toHaveTextContent("baseline");
+    expect(rows[2]).toHaveTextContent("0.898 ± 0.0238");
+    expect(rows[2]).toHaveTextContent("+0.398 ± 0.0145");
+    expect(rows[2]).toHaveTextContent("winner");
+    expect(rows[3]).toHaveTextContent("beats baseline");
+    expect(region).toHaveTextContent(winner.reason);
+    // A comparison is not a run of the flow.
+    expect(screen.getByText("1 run")).toBeInTheDocument();
+  });
+
+  it("applies the winner to the flow, citing the selection", async () => {
+    const applied = compared(winner);
+    await userEvent.click(await screen.findByRole("button", { name: "Apply ml_linear_model" }));
+    await waitFor(() => expect(applied).toHaveLength(1));
+    expect(applied[0]).toMatchObject({ alternative_id: "ml_linear_model" });
+    const reason = (applied[0] as { reason: string }).reason;
+    expect(reason).toContain(`Selected by cross-validation (${decisionOutput.artifact.id})`);
+    expect(reason).toContain(winner.reason);
+    await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(appliedDecision.pipeline.id));
+  });
+
+  it("says when no model beats the baseline, offers nothing to apply and names what was left out", async () => {
+    compared(noWinner);
+    const region = await screen.findByRole("region", { name: "Model comparison" });
+    expect(await within(region).findByText(noWinner.reason)).toBeInTheDocument();
+    expect(region).toHaveTextContent(noWinner.limitations[0]!);
+    expect(within(region).getAllByRole("row")[2]).toHaveTextContent("within noise");
+    expect(within(region).queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
+  });
+
+  it("shows why a comparison cannot be shown when its proposal cannot be read", async () => {
+    compared(winner);
+    server.use(http.get(`/api/methodology_proposals/${MPR}`, () => HttpResponse.json({ errors: [{ code: "not_found", message: "gone" }] }, { status: 404 })));
+    expect(await screen.findByRole("alert")).toHaveTextContent("A model comparison cannot be shown: not_found: gone");
   });
 });
