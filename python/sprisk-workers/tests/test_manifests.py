@@ -96,6 +96,49 @@ def test_same_operator_in_two_roots_is_an_error(tmp_path: Path) -> None:
         load_operators(tmp_path / "a", tmp_path / "b")
 
 
+MODEL = """
+schema_version: sprisk.operator/v1
+id: sprisk.ml.linear_model@1.0.0
+capability_class: estimator
+model: {{ family: linear, tasks: [classification], prepares: [], estimator: "{estimator}" }}
+entrypoint: sprisk_ml.models:linear_model
+inputs: [{{ name: train, kind: table }}]
+outputs: [{{ name: model, kind: model }}]
+params_schema:
+  type: object
+  properties: {{ target: {{ type: string }}, features: {{ type: array }}, task: {{ type: string }} }}
+effects: pure
+network: none
+resources: {{ cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }}
+"""
+
+
+def write_model(root: Path, estimator: str) -> None:
+    path = root / "pack" / "operators" / "model" / "manifest.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(MODEL.format(estimator=estimator))
+
+
+def test_a_models_estimator_must_take_schema_and_its_settings_but_target_and_features(
+    tmp_path: Path,
+) -> None:
+    # random_forest_estimator also takes n_estimators and seed, which this manifest lacks.
+    write_model(tmp_path, "sprisk_ml.models:random_forest_estimator")
+    with pytest.raises(ManifestError, match=r"must take \['schema', 'task'\]"):
+        load_operators(tmp_path)
+
+
+def test_an_estimator_outside_core_packs_is_refused(tmp_path: Path) -> None:
+    write_model(tmp_path, "os:system")
+    with pytest.raises(ManifestError, match="estimator os:system is not in a trusted core pack"):
+        load_operators(tmp_path)
+
+
+def test_a_models_estimator_loads_beside_its_entrypoint(tmp_path: Path) -> None:
+    write_model(tmp_path, "sprisk_ml.models:linear_model_estimator")
+    assert list(load_operators(tmp_path)) == ["sprisk.ml.linear_model@1.0.0"]
+
+
 # The code step runs the user's code; its own module is the worker's runner for it (ADR-0022).
 RUNNERS = {"sprisk_code"}  # methodology packs live outside plugins/ and are runners too
 

@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.output import JSON, PARQUET, SKOPS
-from sprisk_workers.plain import adapt
+from sprisk_workers.plain import Estimator, adapt
 
 
 def operator(inputs: str, outputs: str, params: str = "{}") -> Operator:
@@ -417,3 +417,81 @@ def test_an_operator_error_from_the_step_keeps_its_code_and_message(tmp_path: Pa
             {"factor": 1}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
         )
     assert (e.value.code, e.value.message) == ("code_error", "line 2: TypeError: bad")
+
+
+COMPARE = operator(
+    "[{ name: train, kind: table }]",
+    "[{ name: scores, kind: table }]",
+    "{ candidate: { type: string, x-sprisk-model-operator: candidate_params },"
+    " candidate_params: { type: object } }",
+)
+MODEL_PARAMS = {
+    "type": "object",
+    "required": ["target"],
+    "properties": {"target": {"type": "string"}, "depth": {"type": "integer"}},
+}
+
+
+def test_a_setting_naming_a_model_arrives_as_its_estimator_function(tmp_path: Path) -> None:
+    def build(schema: pl.Schema, depth: int) -> LogisticRegression:
+        return LogisticRegression(max_iter=depth)
+
+    seen: list[Any] = []
+
+    def op(
+        train: pl.DataFrame, candidate: Callable[..., Any], candidate_params: dict[str, Any]
+    ) -> pl.DataFrame:
+        seen.append(candidate(schema=train.schema, depth=candidate_params["depth"]))
+        return train
+
+    models = {"acme.m.model@1.0.0": Estimator(build, MODEL_PARAMS)}
+    params = {"candidate": "acme.m.model@1.0.0", "candidate_params": {"target": "y", "depth": 7}}
+    adapt(op, COMPARE, models=models)(
+        params, {"train": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+    )
+    assert seen[0].max_iter == 7
+
+
+@pytest.mark.parametrize(
+    ("params", "code", "message"),
+    [
+        (
+            {"candidate": "acme.m.other@1.0.0", "candidate_params": {"target": "y"}},
+            "unknown_model",
+            "acme.m.other@1.0.0 is not a model this worker can build",
+        ),
+        (
+            {"candidate": "acme.m.model@1.0.0", "candidate_params": {"depth": 3}},
+            "invalid_params",
+            "acme.m.model@1.0.0: 'target' is a required property",
+        ),
+    ],
+)
+def test_an_unknown_model_or_params_it_refuses_fail_before_the_step_runs(
+    tmp_path: Path, params: dict[str, Any], code: str, message: str
+) -> None:
+    def op(
+        train: pl.DataFrame, candidate: Callable[..., Any], candidate_params: dict[str, Any]
+    ) -> pl.DataFrame:
+        raise AssertionError("the step must not run")
+
+    models = {"acme.m.model@1.0.0": Estimator(lambda schema: None, MODEL_PARAMS)}
+    with pytest.raises(OperatorError) as e:
+        adapt(op, COMPARE, models=models)(
+            params, {"train": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+        )
+    assert (e.value.code, e.value.message) == (code, message)
+
+
+def test_a_model_setting_must_name_a_params_setting_that_exists() -> None:
+    broken = operator(
+        "[{ name: train, kind: table }]",
+        "[{ name: scores, kind: table }]",
+        "{ candidate: { type: string, x-sprisk-model-operator: settings } }",
+    )
+
+    def op(train: pl.DataFrame, candidate: Callable[..., Any]) -> pl.DataFrame:
+        return train
+
+    with pytest.raises(ManifestError, match="candidate names settings"):
+        adapt(op, broken)

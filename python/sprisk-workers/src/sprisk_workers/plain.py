@@ -10,11 +10,14 @@ import json
 import typing
 import warnings
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import polars as pl
 import skops.io
+from jsonschema import Draft202012Validator
 from sklearn.base import BaseEstimator
 from skops.io.exceptions import UntrustedTypesFoundException
 
@@ -34,13 +37,33 @@ from sprisk_workers.serve import OperatorFn
 TRUSTED_MODEL_TYPES = ["numpy.dtype", "sklearn.tree._tree.Tree", "sprisk_ml.models.AsObject"]
 
 
-def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
-    """Check `fn`'s arguments against the manifest now, and return the worker's runner."""
+@dataclass(frozen=True)
+class Estimator:
+    """A model operator's unfitted-estimator function and the params it accepts (ADR-0046)."""
+
+    build: Callable[..., Any]
+    params_schema: Mapping[str, Any]
+
+
+NO_MODELS: Mapping[str, Estimator] = MappingProxyType({})
+
+
+def adapt(
+    fn: Callable[..., Any], operator: Operator, models: Mapping[str, Estimator] = NO_MODELS
+) -> OperatorFn:
+    """Check `fn`'s arguments against the manifest now, and return the worker's runner.
+    `models` are the estimators a setting marked `x-sprisk-model-operator` may name."""
     inputs = {p.name.root: p.kind.value for p in operator.inputs}
     outputs = {p.name.root: p.kind.value for p in operator.outputs}
     properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
     settings = set(properties)
     _check_signature(fn, operator.id.root, set(inputs), settings)
+    named_models = model_settings(operator)
+    for setting, params_setting in named_models.items():
+        if params_setting not in settings:
+            raise ManifestError(
+                f"{operator.id.root}: {setting} names {params_setting}, which is not a setting"
+            )
     # A file the step reads is an input (ADR-0025): typed Path in the code, marked in the manifest.
     files = {
         k
@@ -57,6 +80,8 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
         expected = dict(outputs) | {name: "table" for name in named}
         try:
             arguments = {k: Path(v) if k in files else v for k, v in params.items()}
+            for setting, params_setting in named_models.items():
+                arguments[setting] = _build(params[setting], params[params_setting], models)
             if named_in is not None:
                 arguments[named_in] = {
                     n: _read_as_written(paths[n])
@@ -85,6 +110,30 @@ def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:
         return written
 
     return run
+
+
+def model_settings(operator: Operator) -> dict[str, str]:
+    """Each setting that names a model operator, with the setting holding that model's params."""
+    properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
+    return {
+        key: schema["x-sprisk-model-operator"]
+        for key, schema in properties.items()
+        if isinstance(schema, Mapping) and "x-sprisk-model-operator" in schema
+    }
+
+
+def _build(ref: str, params: Mapping[str, Any], models: Mapping[str, Estimator]) -> Any:
+    """The estimator function of model `ref`, once `params` are ones it accepts. The step
+    calls it, so a model setting can only name an estimator a manifest declares."""
+    model = models.get(ref)
+    if model is None:
+        raise OperatorError("unknown_model", f"{ref} is not a model this worker can build")
+    errors = sorted(
+        e.message for e in Draft202012Validator(model.params_schema).iter_errors(params)
+    )
+    if errors:
+        raise OperatorError("invalid_params", f"{ref}: {'; '.join(errors)}")
+    return model.build
 
 
 def named_ports(operator: Operator, side: str) -> str | None:
