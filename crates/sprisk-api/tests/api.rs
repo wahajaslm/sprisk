@@ -1485,6 +1485,27 @@ async fn split_methodology_is_resolved_previewed_and_applied_once() {
     let (status, repeated) = call(&api.app, "POST", &uri, Some(request)).await;
     assert_eq!(status, StatusCode::OK, "{repeated}");
     assert_eq!(repeated, applied);
+
+    let decision = format!(
+        "/methodology_decisions/{}",
+        applied["decision"]["id"].as_str().unwrap()
+    );
+    let (status, found) = call(&api.app, "GET", &decision, None).await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert_eq!(found, applied["decision"]);
+}
+
+#[tokio::test]
+async fn an_unknown_methodology_decision_is_not_found() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "GET",
+        "/methodology_decisions/mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
 
 #[tokio::test]

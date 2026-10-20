@@ -212,6 +212,18 @@ impl SqliteStore {
         parse_all(rows, "methodology decision")
     }
 
+    pub async fn get_methodology_decision(
+        &self,
+        id: &MethodologyDecisionId,
+    ) -> Result<MethodologyDecision, StoreError> {
+        let body: Option<String> =
+            sqlx::query_scalar("SELECT body FROM methodology_decisions WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        from_json(body, "methodology decision", id.as_str())
+    }
+
     /// The decisions with these ids. An unknown id is left out.
     pub async fn methodology_decisions(
         &self,
