@@ -25,9 +25,10 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
     CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
     InvestigationId, LoadedTable, LoadedTableUse, MethodologyDecision, MethodologyProposalId,
-    NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookVariables,
-    NotebookVersion, NotebookVersionId, Operator, OperatorSource, PipelineVersion,
-    PipelineVersionId, Problem, QuestionVersion, QuestionVersionId, Run, RunId, parse,
+    MethodologyRule, MethodologyRuleSource, NotebookExecute, NotebookExecution,
+    NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
+    Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
+    QuestionVersionId, Run, RunId, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -40,6 +41,8 @@ pub struct AppState {
     pub store: Arc<SqliteStore>,
     pub artifacts: Arc<ArtifactStore>,
     pub registry: Arc<Registry>,
+    /// Methodology rule manifests and their files (ADR-0042).
+    pub rules: Arc<sprisk_methodology::RuleCatalog>,
     /// Methodology pack entrypoint run as Gate B before each run (ADR-0017).
     pub gate: Option<Operator>,
     /// Command that starts one Python worker.
@@ -78,6 +81,11 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/methodology_proposals/{id}/apply", post(apply_methodology))
         .route("/methodology_decisions", get(list_methodology_decisions))
+        .route("/methodology_rules", get(list_methodology_rules))
+        .route(
+            "/methodology_rules/{id}/source",
+            get(get_methodology_rule_source),
+        )
         .route("/operators", get(list_operators))
         .route("/operators/{id}/source", get(get_operator_source))
         .route("/code/split", post(split_code))
@@ -194,6 +202,8 @@ enum ApiError {
     #[error(transparent)]
     Registry(#[from] sprisk_registry::RegistryError),
     #[error(transparent)]
+    Rules(#[from] sprisk_methodology::CatalogError),
+    #[error(transparent)]
     Split(#[from] SplitError),
     #[error(transparent)]
     Kernel(#[from] KernelError),
@@ -228,6 +238,9 @@ impl ApiError {
                 sprisk_registry::RegistryError::UnknownOperator(_)
                 | sprisk_registry::RegistryError::NoSource { .. },
             ) => (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())]),
+            ApiError::Rules(sprisk_methodology::CatalogError::UnknownRule(_)) => {
+                (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
+            }
             ApiError::Store(StoreError::NotFound { .. }) => {
                 (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
             }
@@ -432,6 +445,17 @@ fn limit(query: &Query) -> Result<u32, ApiError> {
 
 fn optional_id<T: std::str::FromStr>(query: &Query, key: &str) -> Result<Option<T>, ApiError> {
     query.get(key).map(|raw| id(raw)).transpose()
+}
+
+async fn list_methodology_rules(State(state): State<AppState>) -> Json<Vec<MethodologyRule>> {
+    Json(state.rules.rules().cloned().collect())
+}
+
+async fn get_methodology_rule_source(
+    State(state): State<AppState>,
+    Path(rule_ref): Path<String>,
+) -> Result<Json<MethodologyRuleSource>, ApiError> {
+    Ok(Json(state.rules.source(&rule_ref)?.clone()))
 }
 
 async fn list_operators(State(state): State<AppState>) -> Json<Vec<Operator>> {

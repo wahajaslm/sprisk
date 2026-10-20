@@ -132,6 +132,9 @@ pub async fn serve_on(
             &config.data_dir.join("artifacts"),
         )?),
         registry: Arc::new(sprisk_registry::Registry::load_dir(&config.plugins)?),
+        rules: Arc::new(sprisk_methodology::RuleCatalog::load_dir(
+            &config.methodology,
+        )?),
         gate: Some(gate),
         worker_command,
         idle_worker,

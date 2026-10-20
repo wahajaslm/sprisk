@@ -86,6 +86,9 @@ async fn api_with_kernel_host(
         store: store.clone(),
         artifacts: Arc::new(ArtifactStore::local(&dir.path().join("store")).unwrap()),
         registry: Arc::new(Registry::load_dir(&root.join("plugins")).unwrap()),
+        rules: Arc::new(
+            sprisk_methodology::RuleCatalog::load_dir(&root.join("methodology")).unwrap(),
+        ),
         gate: Some(gate),
         worker_command: vec![
             python.display().to_string(),
@@ -1575,4 +1578,42 @@ async fn scaling_methodology_is_refused_until_profile_facts_are_available() {
         body["errors"][0]["code"],
         "methodology_evidence_unavailable"
     );
+}
+
+#[tokio::test]
+async fn methodology_rules_are_listed_from_the_rule_packs() {
+    let api = api().await;
+    let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let rules = rules.as_array().unwrap();
+    assert_eq!(rules.len(), 30);
+    assert!(
+        rules
+            .iter()
+            .any(|r| r["id"] == "methodology.supervised.data_split@1.0.0" && r["stage"] == "split")
+    );
+}
+
+#[tokio::test]
+async fn a_methodology_rule_source_is_its_files() {
+    let api = api().await;
+    let (status, source) = call(
+        &api.app,
+        "GET",
+        "/methodology_rules/methodology.supervised.data_split@1.0.0/source",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{source}");
+    assert_eq!(source["files"][0]["path"], "rule.yaml");
+    assert_eq!(source["files"][0]["language"], "yaml");
+
+    let (status, _) = call(
+        &api.app,
+        "GET",
+        "/methodology_rules/methodology.pack.none@1.0.0/source",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

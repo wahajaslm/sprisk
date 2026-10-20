@@ -1,6 +1,9 @@
 //! Deterministic methodology resolution. It reads immutable facts and emits proposals only;
 //! graph mutation remains an explicit API Apply operation.
 
+mod catalog;
+pub use catalog::{CatalogError, RuleCatalog};
+
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{DecisionProposal, PipelineVersion, QuestionVersion, parse};
@@ -765,6 +768,7 @@ fn alternative(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

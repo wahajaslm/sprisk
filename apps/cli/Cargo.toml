@@ -20,6 +20,7 @@ sprisk-api = { path = "../../crates/sprisk-api" }
 sprisk-artifacts = { path = "../../crates/sprisk-artifacts" }
 sprisk-contracts = { path = "../../crates/sprisk-contracts" }
 sprisk-core = { path = "../../crates/sprisk-core" }
+sprisk-methodology = { path = "../../crates/sprisk-methodology" }
 sprisk-registry = { path = "../../crates/sprisk-registry" }
 sprisk-scheduler = { path = "../../crates/sprisk-scheduler" }
 sprisk-store = { path = "../../crates/sprisk-store" }

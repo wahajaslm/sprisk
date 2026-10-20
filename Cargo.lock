@@ -2445,6 +2445,7 @@ dependencies = [
  "sprisk-artifacts",
  "sprisk-contracts",
  "sprisk-core",
+ "sprisk-methodology",
  "sprisk-registry",
  "sprisk-scheduler",
  "sprisk-store",
@@ -2498,7 +2499,10 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sprisk-contracts",
+ "tempfile",
  "thiserror",
+ "walkdir",
+ "yaml_serde",
 ]
 
 [[package]]
