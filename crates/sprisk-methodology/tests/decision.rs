@@ -282,13 +282,13 @@ fn a_model_reached_through_other_steps_counts_but_one_upstream_does_not() {
 }
 
 #[test]
-fn a_dummy_baseline_has_no_family_but_prepares_itself() {
+fn models_that_ignore_their_features_read_featureless() {
     let pipeline = flow(
         &[("scale", "clean.scale"), ("base", "ml.dummy_baseline")],
         &[("scale.train", "base.train")],
     );
     let facts = facts_of(&pipeline, "scale");
-    assert!(facts.get("flow.model_family").is_none());
+    assert_eq!(facts["flow.model_family"]["value"], "featureless");
     assert_eq!(facts["flow.models_fill_gaps"]["value"], "all");
 }
 

@@ -96,7 +96,7 @@ def test_a_target_with_gaps_is_dropped_even_when_models_fill_their_own() -> None
 def test_clustering_downstream_needs_gaps_filled_here() -> None:
     d = run(column("age", missing_share=0.1, skewness=0.2), CLUSTERING)
     assert d["recommended_alternative_id"] == "impute_mean"
-    assert "do not fill" in alternative(d, "pass_through")["reason"]
+    assert "No model downstream" in alternative(d, "pass_through")["reason"]
 
 
 def test_a_forest_beside_clustering_needs_gaps_filled_here() -> None:
@@ -113,5 +113,11 @@ def test_no_model_downstream_fills_gaps_as_before_and_says_so() -> None:
 
 def test_a_model_behind_a_step_the_rules_cannot_see_needs_gaps_filled_here() -> None:
     d = run(column("age", missing_share=0.1, skewness=0.2), flow("unknown", "some", "some"))
+    assert d["recommended_alternative_id"] == "impute_mean"
+    assert "known to fill" in alternative(d, "pass_through")["reason"]
+
+
+def test_a_hidden_model_alone_is_not_said_to_fill_no_gaps() -> None:
+    d = run(column("age", missing_share=0.1, skewness=0.2), flow("unknown", "none", "none"))
     assert d["recommended_alternative_id"] == "impute_mean"
     assert "known to fill" in alternative(d, "pass_through")["reason"]

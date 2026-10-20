@@ -54,8 +54,9 @@ pub fn observation(
 
 /// What the flow says about the models downstream of `node_id`, read from their manifests
 /// through `operator_of`:
-/// - `flow.model_family`: their family, `mixed` for several, or `unknown` when a model sits
-///   behind a step that does not `keep` these facts (it may change the columns any way);
+/// - `flow.model_family`: their family, `mixed` for several, `featureless` when none declares
+///   one, or `unknown` when a model sits behind a step that does not `keep` these facts (it
+///   may change the columns any way);
 /// - `flow.models_fill_gaps`, `flow.models_standardize`: whether `all`, `some` or `none` of
 ///   them do that preparation themselves. A model behind such a step counts as doing none.
 ///
@@ -79,7 +80,8 @@ pub fn flow_facts<'a>(
         (true, _) => Some("unknown".to_owned()),
         (false, Some(first)) if families.len() == 1 => Some(first.to_string()),
         (false, Some(_)) => Some("mixed".to_owned()),
-        (false, None) => None,
+        // Only models with no family, such as a dummy baseline, which ignores its features.
+        (false, None) => Some("featureless".to_owned()),
     };
     if let Some(family) = family {
         facts.insert("flow.model_family".into(), measured(family));

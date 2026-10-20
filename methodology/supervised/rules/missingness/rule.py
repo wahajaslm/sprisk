@@ -119,7 +119,7 @@ def _pass_through(fills: str | None) -> dict[str, Any]:
     if fills is None:
         why = "Nothing would fill the gaps: no model is downstream of this step yet."
     elif fills == "none":
-        why = "The models downstream do not fill gaps themselves; fill them here."
+        why = "No model downstream is known to fill gaps itself; fill them here."
     else:
         why = "Not every model downstream is known to fill gaps itself; fill them here."
     return not_applicable("pass_through", why)

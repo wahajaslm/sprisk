@@ -96,6 +96,8 @@ def _no_effect(family: str | None, standardize: str | None) -> str | None:
         )
     if family == "tree_ensemble":
         return "Only tree models are downstream. They split on rank order, which scaling keeps."
+    if family == "featureless":
+        return "The only models downstream ignore their features, such as a dummy baseline."
     return None
 
 

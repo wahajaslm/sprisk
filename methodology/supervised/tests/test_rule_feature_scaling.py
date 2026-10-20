@@ -103,3 +103,14 @@ def test_a_model_behind_a_step_the_rules_cannot_see_keeps_scaling_in_play() -> N
 def test_dbscan_downstream_is_scaled_since_eps_is_a_distance() -> None:
     d = run(LIGHT, flow("density_based", "none", "none"))
     assert d["recommended_alternative_id"] == "standard_scaling"
+
+
+def test_a_hidden_model_alone_is_not_said_to_take_its_inputs_as_they_are() -> None:
+    d = run(LIGHT, flow("unknown", "none", "none"))
+    assert "known to standardise" in alternative(d, "no_scaling")["reason"]
+
+
+def test_models_that_ignore_their_features_need_no_scaling_step() -> None:
+    d = run(HEAVY, flow("featureless", "none", "none"))
+    assert d["recommended_alternative_id"] == "no_scaling"
+    assert "ignore their features" in alternative(d, "no_scaling")["reason"]

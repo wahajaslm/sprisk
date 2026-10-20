@@ -875,12 +875,24 @@ fn rule_for(operator: &str) -> Option<(&'static str, RuleInput)> {
 }
 
 /// Whether a step between a rule's step and a model keeps what the flow facts say about
-/// the model: preparation a rule decides, which fills from train statistics and rescales
-/// affinely. A zero fill is not affine: zero is another value once the column is scaled.
+/// the model: it only drops rows, or rescales affinely and fills from train statistics, so
+/// the model's own standardising and filling still apply. A zero fill is not affine: zero
+/// is another value once the column is scaled.
 fn keeps_flow_facts(node: &sprisk_contracts::Node) -> bool {
-    let zero_fill = node.operator.as_str().starts_with("sprisk.clean.impute@")
-        && node.params.get("method").and_then(|m| m.as_str()) == Some("zero");
-    rule_for(node.operator.as_str()).is_some() && !zero_fill
+    match node.operator.as_str().split('@').next() {
+        Some("sprisk.clean.impute") => {
+            node.params.get("method").and_then(|m| m.as_str()) != Some("zero")
+        }
+        Some(
+            "sprisk.clean.scale"
+            | "sprisk.clean.clip_outliers"
+            | "sprisk.clean.drop_missing"
+            | "sprisk.validation.random_split"
+            | "sprisk.validation.temporal_split"
+            | "sprisk.validation.group_split",
+        ) => true,
+        _ => false,
+    }
 }
 
 fn not_applicable(message: String) -> ApiError {

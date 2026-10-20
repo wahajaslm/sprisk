@@ -77,7 +77,7 @@ def test_a_model_behind_a_step_the_rules_cannot_see_clips_many_outliers() -> Non
 
 
 def test_models_that_ignore_their_features_keep_the_values() -> None:
-    d = run(MANY, flow(None, "all", "all"))
+    d = run(MANY, flow("featureless", "all", "all"))
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
     assert "ignore their features" in alternative(d, "none_tree_or_clean")["reason"]
 

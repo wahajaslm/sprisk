@@ -19,16 +19,14 @@ from sprisk_workers.rule import (
 )
 
 FAMILY = "flow.model_family"
-# Rust sends this whenever a model is downstream, a family or not.
-ANY_MODEL = "flow.models_fill_gaps"
 # Families whose fit outlying features do not pull, and why.
 UNPULLED = {
     "tree_ensemble": "Only tree models are downstream. They split on rank order, so outlying "
     "feature values do not pull them.",
     "density_based": "DBSCAN downstream marks isolated rows as noise. Clipping would pile them "
     "onto the fence, where they can form a false cluster.",
+    "featureless": "The only models downstream ignore their features, such as a dummy baseline.",
 }
-IGNORED = "The only models downstream ignore their features, such as a dummy baseline."
 # What outliers pull, by the family downstream; mixed always includes a family that is not trees.
 PULLED = {
     "linear": "extreme values pull the linear model's coefficients.",
@@ -41,7 +39,6 @@ PULLED = {
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
     family = flow_fact(observation, FAMILY)
-    has_models = flow_fact(observation, ANY_MODEL) is not None
     target = authoritative(observation.facts.get("question.target"))
     columns = step_columns(observation)
     features = [c for c in columns if c != target]
@@ -50,7 +47,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
     threshold = s["outlier_fraction_threshold"]
     many = [c for c in features if share.get(c, 0.0) >= threshold]
     target_outliers = target in columns and share.get(target, 0.0) >= threshold
-    unpulled = UNPULLED.get(family or "") or (IGNORED if has_models and family is None else None)
+    unpulled = UNPULLED.get(family or "")
 
     keep_reason = _keep_reason(many, family, unpulled)
     if target_outliers:
