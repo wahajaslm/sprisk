@@ -2,15 +2,14 @@
 //! built from what it returns. Python chooses; Rust builds graph effects only from the
 //! manifest's actions, so a rule can never name an operator its manifest does not declare.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use petgraph::graph::DiGraph;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    DatasetProfile, DecisionProposal, MethodologyRule, ModelFamily, ModelPreparation, Node,
-    Operator, OperatorModel, PipelineVersion, QuestionVersion, RuleDecision, RuleObservation,
-    parse,
+    DatasetProfile, DecisionProposal, MethodologyRule, ModelPreparation, Node, Operator,
+    OperatorModel, PipelineVersion, QuestionVersion, RuleDecision, RuleObservation, parse,
 };
 
 use crate::ResolveError;
@@ -53,12 +52,13 @@ pub fn observation(
 }
 
 /// What the flow says about the models downstream of `node_id`, read from their manifests
-/// through `operator_of`:
-/// - `flow.model_family`: their family, `mixed` for several, `featureless` when none declares
-///   one, or `unknown` when a model sits behind a step that does not `keep` these facts (it
-///   may change the columns any way);
+/// through `operator_of`. A model is hidden when it sits behind a step that does not `keep`
+/// these facts, or behind another model: either may change the columns any way.
+/// - `flow.model_families`: the families of the models it can see, sorted and joined by
+///   `, `, or `featureless` when none of them declares one;
+/// - `flow.models_hidden`: whether `all`, `some` or `none` of the models are hidden;
 /// - `flow.models_fill_gaps`, `flow.models_standardize`: whether `all`, `some` or `none` of
-///   them do that preparation themselves. A model behind such a step counts as doing none.
+///   them do that preparation themselves. A hidden model counts as doing none.
 ///
 /// Read from the graph, so `measured`. Left out when no model is downstream, so a rule never
 /// reads a stand-in value.
@@ -68,47 +68,51 @@ pub fn flow_facts<'a>(
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
     keeps: impl Fn(&Node) -> bool,
 ) -> Result<Map<String, Value>, ResolveError> {
-    let Downstream { models, hidden } = downstream(pipeline, node_id, operator_of, keeps)?;
-    let total = models.len() + usize::from(hidden);
+    let Downstream { seen, hidden } = downstream(pipeline, node_id, operator_of, keeps)?;
+    let total = seen.len() + hidden;
     if total == 0 {
         return Ok(Map::new());
     }
-    let measured = |value: String| json!({ "value": value, "origin": "measured" });
-    let mut facts = Map::new();
-    let families: BTreeSet<ModelFamily> = models.iter().filter_map(|m| m.family).collect();
-    let family = match (hidden, families.first()) {
-        (true, _) => Some("unknown".to_owned()),
-        (false, Some(first)) if families.len() == 1 => Some(first.to_string()),
-        (false, Some(_)) => Some("mixed".to_owned()),
-        // Only models with no family, such as a dummy baseline, which ignores its features.
-        (false, None) => Some("featureless".to_owned()),
+    let measured = |value: &str| json!({ "value": value, "origin": "measured" });
+    let share = |doing: usize| match doing {
+        0 => "none",
+        n if n == total => "all",
+        _ => "some",
     };
-    if let Some(family) = family {
-        facts.insert("flow.model_family".into(), measured(family));
+    let mut facts = Map::new();
+    if !seen.is_empty() {
+        let families: BTreeSet<String> = seen
+            .iter()
+            .filter_map(|m| m.family)
+            .map(|f| f.to_string())
+            .collect();
+        let families = if families.is_empty() {
+            // Only models with no family, such as a dummy baseline, which ignores its features.
+            "featureless".to_owned()
+        } else {
+            families.into_iter().collect::<Vec<_>>().join(", ")
+        };
+        facts.insert("flow.model_families".into(), measured(&families));
     }
+    facts.insert("flow.models_hidden".into(), measured(share(hidden)));
     for (preparation, name) in [
         (ModelPreparation::FillGaps, "flow.models_fill_gaps"),
         (ModelPreparation::Standardize, "flow.models_standardize"),
     ] {
-        let doing = models
+        let doing = seen
             .iter()
             .filter(|m| m.prepares.contains(&preparation))
             .count();
-        let share = match doing {
-            0 => "none",
-            n if n == total => "all",
-            _ => "some",
-        };
-        facts.insert(name.into(), measured(share.to_owned()));
+        facts.insert(name.into(), measured(share(doing)));
     }
     Ok(facts)
 }
 
 struct Downstream<'a> {
-    /// Models reached from the step through steps that keep the facts.
-    models: Vec<&'a OperatorModel>,
-    /// Whether a model is reached only through a step that does not.
-    hidden: bool,
+    /// Models reached only through steps that keep the facts.
+    seen: Vec<&'a OperatorModel>,
+    /// How many models are reached through a step that does not.
+    hidden: usize,
 }
 
 /// The models downstream of `node_id`, not counting itself.
@@ -137,16 +141,14 @@ fn downstream<'a>(
         .get(node_id)
         .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
 
-    let mut found = Downstream {
-        models: Vec::new(),
-        hidden: false,
-    };
+    let mut seen = BTreeMap::new();
+    let mut hidden = BTreeSet::new();
     // Each step with whether the path to it passed a step that does not keep the facts.
     let mut stack = vec![(start, false)];
-    let mut seen = HashSet::new();
+    let mut visited = HashSet::new();
     while let Some((at, behind)) = stack.pop() {
         for next in graph.neighbors(at) {
-            if !seen.insert((next, behind)) {
+            if !visited.insert((next, behind)) {
                 continue;
             }
             let node = graph[next];
@@ -154,9 +156,9 @@ fn downstream<'a>(
                 .ok_or_else(|| ResolveError::UnknownOperator(node.operator.as_str().to_owned()))?;
             if let Some(model) = &operator.model {
                 if behind {
-                    found.hidden = true;
+                    hidden.insert(next);
                 } else {
-                    found.models.push(model);
+                    seen.insert(next, model);
                 }
             }
             // A model's output may carry the columns on (a clustering step adds a label to
@@ -165,7 +167,12 @@ fn downstream<'a>(
             stack.push((next, behind || !keeps_columns));
         }
     }
-    Ok(found)
+    // A model reached both ways may see changed columns, so it counts as hidden only.
+    seen.retain(|step, _| !hidden.contains(step));
+    Ok(Downstream {
+        seen: seen.into_values().collect(),
+        hidden: hidden.len(),
+    })
 }
 
 /// Measured values of `columns`, as `column.<name>.<measure>`, plus `rows`. Only the step's

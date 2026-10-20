@@ -33,8 +33,11 @@ observes:
   - profile: iqr
     description: "Per column, the train interquartile range. Zero when most values are equal: such a column is left out of robust scaling, and of max_excess_kurtosis and max_outlier_share, which are 0 when no column is left."
     required: false
-  - fact: flow.model_family
-    description: "Family of the models downstream of the step, from their manifests: tree_ensemble, linear, distance_based, density_based, featureless (only models that ignore their features), mixed, or unknown when a model sits behind a step that is not preparation. Absent when no model is downstream."
+  - fact: flow.model_families
+    description: "Families of the models seen downstream of the step, from their manifests, sorted and joined by ', ': tree_ensemble, linear, distance_based, density_based; or featureless when none declares one. Absent when no model is seen."
+    required: false
+  - fact: flow.models_hidden
+    description: "Whether all, some or none of the models downstream sit behind a step or model that may change the columns. Absent when no model is downstream."
     required: false
   - fact: flow.models_standardize
     description: "Whether all, some or none of the models downstream standardise their own inputs on the train rows, from their manifests. Absent when no model is downstream."
@@ -53,7 +56,7 @@ alternatives:
   - id: no_scaling
     label: No Scaling Step (Models Downstream Do Not Need It)
     description: Leave the features as they are; scaling here would not change the models downstream.
-    condition: (flow.models_standardize == 'all' OR flow.model_family in ['tree_ensemble', 'featureless'])
+    condition: (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless']))
     rationale: A model that standardises its inputs on the train rows undoes any earlier affine scaling,
       and trees split on rank order, which scaling keeps. Scaling here adds work with no effect.
     action:
@@ -61,7 +64,7 @@ alternatives:
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).
-    condition: NOT (flow.models_standardize == 'all' OR flow.model_family in ['tree_ensemble', 'featureless']) AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
+    condition: NOT (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless'])) AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
     rationale: Heavy-tailed distributions detected (excess kurtosis > 3.0). RobustScaler prevents extreme outliers
       from compressing regular feature distances.
     action:
@@ -70,7 +73,7 @@ alternatives:
   - id: standard_scaling
     label: Standard Scaling (Z-Score Normalization)
     description: Center to zero mean and scale to unit variance.
-    condition: NOT (flow.models_standardize == 'all' OR flow.model_family in ['tree_ensemble', 'featureless']) AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold
+    condition: NOT (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless'])) AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold
     rationale: Light tails and few outliers, so the mean and SD describe the spread. It matters for
       models that take their inputs as they are, such as distance-based clustering.
     action:

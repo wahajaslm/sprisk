@@ -55,7 +55,7 @@ def test_tree_models_downstream_need_no_scaling_step() -> None:
     assert "params" not in none
     assert {
         "kind": "flow_fact",
-        "label": "Model family downstream",
+        "label": "Model families downstream",
         "value": "tree_ensemble",
         "origin": "measured",
     } in d["evidence"]
@@ -83,7 +83,7 @@ def test_clustering_downstream_is_scaled_from_the_tails() -> None:
 
 
 def test_a_forest_beside_clustering_is_scaled_for_the_clustering() -> None:
-    d = run(LIGHT, flow("mixed", "some", "some"))
+    d = run(LIGHT, flow("distance_based, tree_ensemble", "some", "some"))
     assert d["recommended_alternative_id"] == "standard_scaling"
     assert "Not every model" in alternative(d, "no_scaling")["reason"]
 
@@ -95,7 +95,8 @@ def test_no_model_downstream_is_scaled_as_before_and_says_so() -> None:
 
 
 def test_a_model_behind_a_step_the_rules_cannot_see_keeps_scaling_in_play() -> None:
-    d = run(LIGHT, flow("unknown", "some", "some"))
+    d = run(LIGHT, flow("tree_ensemble", "some", "some", hidden="some"))
+    assert d["recommended_alternative_id"] == "standard_scaling", "seen trees do not vouch for it"
     assert d["recommended_alternative_id"] == "standard_scaling"
     assert "known to standardise" in alternative(d, "no_scaling")["reason"]
 
@@ -106,7 +107,7 @@ def test_dbscan_downstream_is_scaled_since_eps_is_a_distance() -> None:
 
 
 def test_a_hidden_model_alone_is_not_said_to_take_its_inputs_as_they_are() -> None:
-    d = run(LIGHT, flow("unknown", "none", "none"))
+    d = run(LIGHT, flow(None, "none", "none", hidden="all"))
     assert "known to standardise" in alternative(d, "no_scaling")["reason"]
 
 

@@ -45,11 +45,15 @@ def column(name: str, data_type: str = "Float64", **measures: float) -> dict[str
 
 
 def flow(
-    family: str | None = None, fill_gaps: str | None = None, standardize: str | None = None
+    families: str | None = None,
+    fill_gaps: str | None = None,
+    standardize: str | None = None,
+    hidden: str = "none",
 ) -> dict[str, tuple[str, str]]:
     """The flow facts Rust sends about the models downstream; None leaves one out."""
     facts = {
-        "flow.model_family": family,
+        "flow.model_families": families,
+        "flow.models_hidden": hidden,
         "flow.models_fill_gaps": fill_gaps,
         "flow.models_standardize": standardize,
     }

@@ -105,7 +105,8 @@ def profile_evidence(label: str, value: str) -> dict[str, Any]:
 
 
 FLOW_LABELS = {
-    "flow.model_family": "Model family downstream",
+    "flow.model_families": "Model families downstream",
+    "flow.models_hidden": "Models downstream behind a step the rules cannot see",
     "flow.models_fill_gaps": "Models downstream that fill their own gaps",
     "flow.models_standardize": "Models downstream that standardise their own inputs",
 }
@@ -115,6 +116,12 @@ def flow_fact(observation: RuleObservation, name: str) -> str | None:
     """A fact Rust read from the models downstream of the step; None when no model is."""
     fact = observation.facts.get(name)
     return None if fact is None else fact.value
+
+
+def model_families(observation: RuleObservation) -> set[str]:
+    """The families of the models Rust can see downstream; empty when it sees none."""
+    value = flow_fact(observation, "flow.model_families")
+    return set() if value is None else set(value.split(", "))
 
 
 def flow_evidence(observation: RuleObservation, names: list[str]) -> list[dict[str, Any]]:

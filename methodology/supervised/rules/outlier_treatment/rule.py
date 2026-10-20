@@ -12,6 +12,7 @@ from sprisk_workers.rule import (
     flow_evidence,
     flow_fact,
     measured,
+    model_families,
     needs_fact,
     not_applicable,
     profile_evidence,
@@ -19,27 +20,27 @@ from sprisk_workers.rule import (
     step_columns,
 )
 
-FAMILY = "flow.model_family"
+FAMILIES = "flow.model_families"
+HIDDEN = "flow.models_hidden"
 # Families whose fit outlying features do not pull, and why.
 UNPULLED = {
-    "tree_ensemble": "Only tree models are downstream. They split on rank order, so outlying "
-    "feature values do not pull them.",
-    "density_based": "DBSCAN downstream marks isolated rows as noise. Clipping would pile them "
-    "onto the fence, where they can form a false cluster.",
+    "tree_ensemble": "Trees split on rank order, so outlying feature values do not pull them.",
+    "density_based": "DBSCAN marks isolated rows as noise. Clipping would pile them onto the "
+    "fence, where they can form a false cluster.",
     "featureless": "The only models downstream ignore their features, such as a dummy baseline.",
 }
-# What outliers pull, by the family downstream; mixed always includes a family that is not trees.
+# What outliers pull, by family.
 PULLED = {
-    "linear": "extreme values pull the linear model's coefficients.",
-    "distance_based": "extreme values pull the cluster centres and spreads.",
-    "mixed": "extreme values pull the models downstream that are not trees.",
-    "unknown": "outliers may pull a model that sits behind another step or model downstream.",
+    "linear": "extreme values pull the linear model's coefficients",
+    "distance_based": "extreme values pull the cluster centres and spreads",
 }
+BEHIND = "outliers may pull a model that sits behind another step or model downstream"
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
-    family = flow_fact(observation, FAMILY)
+    families = model_families(observation)
+    hidden = flow_fact(observation, HIDDEN)
     target_fact = observation.facts.get("question.target")
     target = authoritative(target_fact)
     # An inferred target only asks: it cannot clear a column for clipping, nor protect it.
@@ -56,10 +57,11 @@ def decide(observation: RuleObservation) -> RuleDecision:
     clippable = [c for c in features if iqr[c]]
     many = [c for c in clippable if share.get(c, 0.0) >= threshold]
     target_outliers = target in columns and share.get(target, 0.0) >= threshold
-    unpulled = UNPULLED.get(family or "")
+    # Every model is seen and none is pulled by outlying features.
+    unpulled = hidden == "none" and bool(families) and families <= UNPULLED.keys()
 
     flat_flagged = [c for c in flat if share.get(c, 0.0) >= threshold]
-    keep_reason = _keep_reason(many, flat_flagged, family, unpulled)
+    keep_reason = _keep_reason(many, flat_flagged, families, hidden, unpulled)
     if target_outliers and task == "regression":
         keep_reason += (
             f" {target} is the target: its outliers pull squared-error fits, trees included, "
@@ -75,11 +77,13 @@ def decide(observation: RuleObservation) -> RuleDecision:
         )
     else:
         clip = _clip(clippable, many, flat, target if target in columns else None, s["clip_k"])
+        if "density_based" in families and clip["applicability"] == "applicable":
+            clip["reason"] += f" Caution: {UNPULLED['density_based']}"
     isolation = not_applicable(
         "isolation_forest_filter", "No isolation forest filter operator exists."
     )
 
-    evidence = flow_evidence(observation, [FAMILY])
+    evidence = flow_evidence(observation, [FAMILIES, HIDDEN])
     if target_fact and target_fact.value in columns:
         weighed = {"question.target": "Target"}
         if target_outliers:
@@ -98,10 +102,10 @@ def decide(observation: RuleObservation) -> RuleDecision:
 
 
 def _keep_reason(
-    many: list[str], flat_flagged: list[str], family: str | None, unpulled: str | None
+    many: list[str], flat_flagged: list[str], families: set[str], hidden: str | None, unpulled: bool
 ) -> str:
     if unpulled:
-        return unpulled
+        return " ".join(UNPULLED[f] for f in sorted(families))
     if not many and flat_flagged:
         return (
             f"Only {', '.join(flat_flagged)} has many values outside the IQR fences, but it has "
@@ -109,9 +113,12 @@ def _keep_reason(
         )
     if not many:
         return "Few values fall outside the IQR fences: keep them as they are."
-    if family is None:
+    if hidden is None:
         return "Keeps every value. Whether outliers matter is unclear: no model is downstream yet."
-    return f"Keeps every value, but {PULLED[family]}"
+    pulls = [PULLED[f] for f in sorted(families) if f in PULLED]
+    if hidden != "none":
+        pulls.append(BEHIND)
+    return f"Keeps every value, but {'; '.join(pulls)}."
 
 
 def _clip(

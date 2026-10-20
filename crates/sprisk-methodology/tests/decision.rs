@@ -227,14 +227,15 @@ fn a_scale_step_upstream_of_a_random_forest_reads_trees_that_prepare_themselves(
         ],
     );
     let facts = facts_of(&pipeline, "scale");
-    assert_eq!(facts["flow.model_family"]["value"], "tree_ensemble");
-    assert_eq!(facts["flow.model_family"]["origin"], "measured");
+    assert_eq!(facts["flow.model_families"]["value"], "tree_ensemble");
+    assert_eq!(facts["flow.model_families"]["origin"], "measured");
+    assert_eq!(facts["flow.models_hidden"]["value"], "none");
     assert_eq!(facts["flow.models_fill_gaps"]["value"], "all");
     assert_eq!(facts["flow.models_standardize"]["value"], "all");
 }
 
 #[test]
-fn models_of_several_families_read_mixed() {
+fn models_of_several_families_are_all_listed() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
@@ -244,7 +245,10 @@ fn models_of_several_families_read_mixed() {
         &[("scale.train", "rf.train"), ("scale.train", "lin.train")],
     );
     let facts = facts_of(&pipeline, "scale");
-    assert_eq!(facts["flow.model_family"]["value"], "mixed");
+    assert_eq!(
+        facts["flow.model_families"]["value"],
+        "linear, tree_ensemble"
+    );
     assert_eq!(facts["flow.models_standardize"]["value"], "all");
 }
 
@@ -279,7 +283,7 @@ fn a_model_reached_through_other_steps_counts_but_one_upstream_does_not() {
         ],
     );
     let facts = facts_of(&pipeline, "impute");
-    assert_eq!(facts["flow.model_family"]["value"], "distance_based");
+    assert_eq!(facts["flow.model_families"]["value"], "distance_based");
     assert_eq!(facts["flow.models_fill_gaps"]["value"], "none");
 }
 
@@ -290,7 +294,7 @@ fn models_that_ignore_their_features_read_featureless() {
         &[("scale.train", "base.train")],
     );
     let facts = facts_of(&pipeline, "scale");
-    assert_eq!(facts["flow.model_family"]["value"], "featureless");
+    assert_eq!(facts["flow.model_families"]["value"], "featureless");
     assert_eq!(facts["flow.models_fill_gaps"]["value"], "all");
 }
 
@@ -307,7 +311,7 @@ fn no_model_downstream_sends_no_flow_facts() {
 }
 
 #[test]
-fn a_model_behind_a_step_that_is_not_preparation_makes_the_models_unknown() {
+fn a_model_behind_a_step_that_is_not_preparation_is_hidden() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
@@ -317,7 +321,8 @@ fn a_model_behind_a_step_that_is_not_preparation_makes_the_models_unknown() {
         &[("scale.train", "code.data"), ("code.data", "lin.train")],
     );
     let facts = facts_of(&pipeline, "scale");
-    assert_eq!(facts["flow.model_family"]["value"], "unknown");
+    assert!(facts.get("flow.model_families").is_none());
+    assert_eq!(facts["flow.models_hidden"]["value"], "all");
     assert_eq!(facts["flow.models_standardize"]["value"], "none");
     assert_eq!(facts["flow.models_fill_gaps"]["value"], "none");
 }
@@ -338,7 +343,8 @@ fn a_hidden_model_beside_a_seen_one_means_only_some_prepare_themselves() {
         ],
     );
     let facts = facts_of(&pipeline, "scale");
-    assert_eq!(facts["flow.model_family"]["value"], "unknown");
+    assert_eq!(facts["flow.model_families"]["value"], "tree_ensemble");
+    assert_eq!(facts["flow.models_hidden"]["value"], "some");
     assert_eq!(facts["flow.models_standardize"]["value"], "some");
 }
 
@@ -353,7 +359,7 @@ fn a_step_with_no_model_after_it_hides_nothing() {
         &[("scale.train", "summary.data"), ("scale.train", "rf.train")],
     );
     let facts = facts_of(&pipeline, "scale");
-    assert_eq!(facts["flow.model_family"]["value"], "tree_ensemble");
+    assert_eq!(facts["flow.model_families"]["value"], "tree_ensemble");
     assert_eq!(facts["flow.models_standardize"]["value"], "all");
 }
 
@@ -387,8 +393,28 @@ fn a_model_after_a_clustering_step_is_hidden_since_clustering_passes_its_columns
         &[("clip.train", "db.data"), ("db.data", "lin.train")],
     );
     let facts = facts_of(&pipeline, "clip");
-    assert_eq!(facts["flow.model_family"]["value"], "unknown");
+    assert_eq!(facts["flow.model_families"]["value"], "density_based");
+    assert_eq!(facts["flow.models_hidden"]["value"], "some");
     assert_eq!(facts["flow.models_fill_gaps"]["value"], "none");
+}
+
+#[test]
+fn a_model_reached_both_directly_and_through_a_code_step_counts_once_as_hidden() {
+    let pipeline = flow(
+        &[
+            ("scale", "clean.scale"),
+            ("code", "code.python@1.1.0"),
+            ("lin", "ml.linear_model"),
+        ],
+        &[
+            ("scale.train", "lin.train"),
+            ("scale.train", "code.data"),
+            ("code.data", "lin.train"),
+        ],
+    );
+    let facts = facts_of(&pipeline, "scale");
+    assert_eq!(facts["flow.models_hidden"]["value"], "all");
+    assert_eq!(facts["flow.models_standardize"]["value"], "none");
 }
 
 #[test]
@@ -414,7 +440,7 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
     .unwrap();
     let observed = serde_json::to_value(observed).unwrap();
     assert_eq!(
-        observed["facts"]["flow.model_family"]["value"],
+        observed["facts"]["flow.model_families"]["value"],
         "tree_ensemble"
     );
     assert_eq!(observed["facts"]["question.target"]["value"], "churned");

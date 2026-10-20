@@ -27,8 +27,11 @@ observes:
   - profile: iqr
     description: "Per column, the train interquartile range. Zero when most values are equal, so the IQR gives no spread to use."
     required: false
-  - fact: flow.model_family
-    description: "Family of the models downstream of the step, from their manifests: tree_ensemble, linear, distance_based, density_based, featureless (only models that ignore their features), mixed, or unknown when a model sits behind a step that is not preparation. Absent when no model is downstream."
+  - fact: flow.model_families
+    description: "Families of the models seen downstream of the step, from their manifests, sorted and joined by ', ': tree_ensemble, linear, distance_based, density_based; or featureless when none declares one. Absent when no model is seen."
+    required: false
+  - fact: flow.models_hidden
+    description: "Whether all, some or none of the models downstream sit behind a step or model that may change the columns. Absent when no model is downstream."
     required: false
   - fact: question.target
     description: "Target column; it is never clipped, since that changes the labels the model is scored on. An inferred target in the columns asks for confirmation before any clip."
@@ -49,7 +52,7 @@ alternatives:
   - id: none_tree_or_clean
     label: Retain Outliers (Natural Variation / Tree Invariance)
     description: Keep all extreme values without capping or dropping.
-    condition: outlier_percentage_iqr < outlier_fraction_threshold OR flow.model_family in ['tree_ensemble', 'density_based', 'featureless'] OR question.target is inferred among the columns OR no column other than question.target has iqr > 0
+    condition: outlier_percentage_iqr < outlier_fraction_threshold OR (flow.models_hidden == 'none' AND every family in flow.model_families is tree_ensemble, density_based or featureless) OR question.target is inferred among the columns OR no column other than question.target has iqr > 0
     rationale: The outlier rate is within natural limits, or the models downstream are not pulled by
       outlying features. Trees split on rank order; DBSCAN marks isolated rows as noise, and clipping
       would pile them onto the fence; a dummy baseline ignores its features. Outliers in a regression
@@ -59,7 +62,7 @@ alternatives:
   - id: clip_iqr_fence
     label: Clip to the Train IQR Fences
     description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target, and any column with a zero IQR, are left as they are.
-    condition: question.target is not inferred among the columns AND a column other than question.target has iqr > 0 AND outlier_percentage_iqr >= outlier_fraction_threshold AND flow.model_family not in ['tree_ensemble', 'density_based', 'featureless']
+    condition: question.target is not inferred among the columns AND a column other than question.target has iqr > 0 AND outlier_percentage_iqr >= outlier_fraction_threshold AND NOT (flow.models_hidden == 'none' AND every family in flow.model_families is tree_ensemble, density_based or featureless)
     rationale: Limits extreme leverage points without dropping rows. The fences come from the train
       quartiles, which outliers barely move, so the cap does not drift with the values it caps.
     action:

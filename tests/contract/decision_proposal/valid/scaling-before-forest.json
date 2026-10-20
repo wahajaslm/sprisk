@@ -8,7 +8,7 @@
   "evidence": [
     {
       "kind": "flow_fact",
-      "label": "Model family downstream",
+      "label": "Model families downstream",
       "value": "tree_ensemble",
       "origin": "measured"
     }

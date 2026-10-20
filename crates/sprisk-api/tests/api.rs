@@ -1757,7 +1757,10 @@ async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play(
             .as_array()
             .unwrap()
             .iter()
-            .any(|e| e["label"] == "Model family downstream" && e["value"] == "unknown"),
+            .any(
+                |e| e["label"] == "Models downstream behind a step the rules cannot see"
+                    && e["value"] == "all"
+            ),
         "{proposal}"
     );
 }

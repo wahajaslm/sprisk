@@ -73,7 +73,7 @@ def test_an_unmeasured_missing_share_is_an_error_not_zero() -> None:
 
 
 def test_models_that_fill_their_own_gaps_take_numeric_gaps_as_they_are() -> None:
-    for facts in (FOREST, LINEAR, flow("mixed", "all", "all")):
+    for facts in (FOREST, LINEAR, flow("linear, tree_ensemble", "all", "all")):
         d = run(column("income", missing_share=0.1, skewness=2.4), facts)
         assert d["recommended_alternative_id"] == "pass_through"
         assert alternative(d, "pass_through")["applicability"] == "applicable"
@@ -100,7 +100,10 @@ def test_clustering_downstream_needs_gaps_filled_here() -> None:
 
 
 def test_a_forest_beside_clustering_needs_gaps_filled_here() -> None:
-    d = run(column("city", "String", missing_share=0.1), flow("mixed", "some", "some"))
+    d = run(
+        column("city", "String", missing_share=0.1),
+        flow("distance_based, tree_ensemble", "some", "some"),
+    )
     assert d["recommended_alternative_id"] == "drop_rows"
     assert alternative(d, "pass_through")["applicability"] == "not_applicable"
 
@@ -112,12 +115,17 @@ def test_no_model_downstream_fills_gaps_as_before_and_says_so() -> None:
 
 
 def test_a_model_behind_a_step_the_rules_cannot_see_needs_gaps_filled_here() -> None:
-    d = run(column("age", missing_share=0.1, skewness=0.2), flow("unknown", "some", "some"))
+    d = run(
+        column("age", missing_share=0.1, skewness=0.2),
+        flow("tree_ensemble", "some", "some", hidden="some"),
+    )
     assert d["recommended_alternative_id"] == "impute_mean"
     assert "known to fill" in alternative(d, "pass_through")["reason"]
 
 
 def test_a_hidden_model_alone_is_not_said_to_fill_no_gaps() -> None:
-    d = run(column("age", missing_share=0.1, skewness=0.2), flow("unknown", "none", "none"))
+    d = run(
+        column("age", missing_share=0.1, skewness=0.2), flow(None, "none", "none", hidden="all")
+    )
     assert d["recommended_alternative_id"] == "impute_mean"
     assert "known to fill" in alternative(d, "pass_through")["reason"]
