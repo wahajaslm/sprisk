@@ -5,16 +5,17 @@ import type { Edge, Node } from "@xyflow/react";
 export const STAGES: MethodologyStage[] = ["question", "data", "cleaning", "split", "features", "models", "evaluation", "reporting"];
 export const stageName = (stage: MethodologyStage) => stage[0]!.toUpperCase() + stage.slice(1);
 
-export const RULE_SIZE = { width: 300, height: 52 };
-/** Sizes given up front: a tree has no need to measure its nodes before placing them. */
-const SIZE = { root: { width: 150, height: 52 }, stage: { width: 170, height: 52 }, rule: RULE_SIZE };
-const ROW = RULE_SIZE.height + 12;
-const STAGE_GAP = 28;
-const COLUMN = { root: 0, stage: 220, rule: 470 };
+/** Sizes given up front: a tree has no need to measure its nodes before placing them. One
+ * height for all, so a parent centred on its children's tops is centred on them. */
+const HEIGHT = 40;
+const SIZE = { root: { width: 64, height: HEIGHT }, stage: { width: 190, height: HEIGHT }, rule: { width: 330, height: HEIGHT } };
+const ROW = HEIGHT + 10;
+const STAGE_GAP = 22;
+const COLUMN = { root: 0, stage: 150, rule: 450 };
 
 export type TreeNode =
   | Node<{ count: number }, "root">
-  | Node<{ stage: MethodologyStage; count: number }, "stage">
+  | Node<{ stage: MethodologyStage; count: number; number: number }, "stage">
   | Node<{ rule: MethodologyRule }, "rule">;
 
 /** Methodology, then each stage with rules, then its rules: one column per level, rules
@@ -39,7 +40,7 @@ export function ruleTree(rules: MethodologyRule[]): { nodes: TreeNode[]; edges: 
     });
     const middle = (ys[0]! + ys[ys.length - 1]!) / 2;
     middles.push(middle);
-    nodes.push({ id: stageId, type: "stage", position: { x: COLUMN.stage, y: middle }, ...SIZE.stage, data: { stage, count: mine.length } });
+    nodes.push({ id: stageId, type: "stage", position: { x: COLUMN.stage, y: middle }, ...SIZE.stage, data: { stage, count: mine.length, number: middles.length } });
     y += STAGE_GAP;
   }
   const rootY = middles.length ? (middles[0]! + middles[middles.length - 1]!) / 2 : 0;

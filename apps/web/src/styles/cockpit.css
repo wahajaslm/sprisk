@@ -2388,16 +2388,29 @@ p { margin: 0; }
 .mth-map { position: absolute; inset: 0; }
 .mth-toolbar { position: absolute; top: var(--space-3); left: var(--space-3); z-index: 5; }
 .mth-side { min-height: 0; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); }
-.mth-root, .mth-stage-node, .mth-rule-node { height: 52px; display: grid; align-content: center; gap: 2px; padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: 4px; background: var(--node); text-align: left; }
-.mth-root strong, .mth-stage-node h2 { margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--ink); }
-.mth-root span, .mth-stage-node span { font-size: var(--text-xs); color: var(--muted); }
-.mth-rule-node { width: 100%; cursor: pointer; }
-.mth-rule-node:hover { background: var(--node-hover); }
-.mth-rule-node[aria-pressed="true"] { background: var(--node-selected); border-color: var(--soft); }
-.mth-rule-name { font-size: var(--text-sm); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mth-rule-meta { font: var(--text-xs) var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mth-edge path { stroke: var(--ghost); stroke-width: 1.2; }
-.mth-edge.picked path { stroke: var(--soft); }
+/* The map's look: rings, dots and white strands, no boxes. */
+.mth-map .react-flow__handle { opacity: 0; pointer-events: none; }
+.mth-root { height: 40px; display: grid; place-items: center start; }
+.mth-root-ring { width: 56px; height: 56px; display: grid; place-content: center; text-align: center; border: 1.5px solid rgba(255, 255, 255, 0.4); border-radius: 50%; background: var(--ground); }
+.mth-root-ring strong { font: 700 9.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+.mth-root-ring span { font: 8px var(--mono); letter-spacing: 0.1em; color: var(--muted); }
+.mth-stage-node { height: 40px; display: flex; align-items: center; gap: var(--space-2); }
+.mth-stage-ring { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border: 1.2px solid rgba(255, 255, 255, 0.35); border-radius: 50%; background: var(--panel); font: 600 10px var(--mono); color: var(--soft); }
+.mth-stage-text { display: grid; }
+.mth-stage-text h2 { margin: 0; font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
+.mth-stage-text span { font: 9.5px var(--mono); color: var(--muted); }
+.mth-rule-node { width: 100%; height: 40px; display: flex; align-items: center; gap: var(--space-2); padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.mth-rule-dot { flex: none; width: 8px; height: 8px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 50%; background: var(--ground); transition: all 0.15s; }
+.mth-rule-text { display: grid; min-width: 0; }
+.mth-rule-name { font-size: var(--text-sm); color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 0.15s; }
+.mth-rule-meta { font: 9.5px var(--mono); color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mth-rule-node:hover .mth-rule-name, .mth-rule-node[aria-pressed="true"] .mth-rule-name { color: var(--white); }
+.mth-rule-node:hover .mth-rule-dot { border-color: var(--white); }
+.mth-rule-node[aria-pressed="true"] .mth-rule-dot { border-color: var(--white); background: var(--white); box-shadow: 0 0 4px var(--white); }
+.mth-edge path { fill: none; stroke-linecap: round; transition: stroke 0.15s, stroke-width 0.15s; }
+.mth-edge.trunk path { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.5; }
+.mth-edge.twig path { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1.2; }
+.mth-edge.picked path { stroke: var(--white); stroke-width: 2.2; }
 .mth-overview { display: grid; gap: var(--space-5); max-width: 860px; }
 .mth-overview section { display: grid; gap: var(--space-2); }
 .mth-overview p { color: var(--soft); }

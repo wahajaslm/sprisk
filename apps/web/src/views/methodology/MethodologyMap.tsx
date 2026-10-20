@@ -4,7 +4,7 @@ import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactF
 import type { MethodologyRule } from "@sprisk/contracts";
 import { useMemo } from "react";
 
-import { RULE_SIZE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
+import { ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
 
 type Props = { rules: MethodologyRule[]; picked: string | undefined; onPick: (ruleId: string) => void };
 
@@ -12,7 +12,11 @@ type Props = { rules: MethodologyRule[]; picked: string | undefined; onPick: (ru
 export function MethodologyMap({ rules, picked, onPick }: Props) {
   const tree = useMemo(() => ruleTree(rules), [rules]);
   const nodes = tree.nodes.map((n) => (n.type === "rule" ? { ...n, selected: n.id === picked } : n));
-  const edges = tree.edges.map((e) => ({ ...e, type: "default", className: e.target === picked ? "mth-edge picked" : "mth-edge" }));
+  const branch = rules.find((r) => r.id === picked)?.stage;
+  const edges = tree.edges.map((e) => {
+    const lit = e.target === picked || e.target === `stage:${branch}`;
+    return { ...e, type: "default", className: `mth-edge ${e.source === "root" ? "trunk" : "twig"}${lit ? " picked" : ""}` };
+  });
   return (
     <div className="mth-map" role="region" aria-label="Methodology map">
       <ReactFlow
@@ -39,9 +43,11 @@ export function MethodologyMap({ rules, picked, onPick }: Props) {
 
 function RootNode({ data }: NodeProps<Extract<TreeNode, { type: "root" }>>) {
   return (
-    <div className="mth-root">
-      <strong>Methodology</strong>
-      <span>{data.count} rules</span>
+    <div className="mth-root" title="Methodology rules">
+      <span className="mth-root-ring">
+        <strong>Rules</strong>
+        <span>{data.count}</span>
+      </span>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
   );
@@ -51,8 +57,11 @@ function StageNode({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
   return (
     <div className="mth-stage-node">
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <h2>{stageName(data.stage)}</h2>
-      <span>{data.count === 1 ? "1 rule" : `${data.count} rules`}</span>
+      <span className="mth-stage-ring">{data.number}</span>
+      <span className="mth-stage-text">
+        <h2>{stageName(data.stage)}</h2>
+        <span>{data.count === 1 ? "1 rule" : `${data.count} rules`}</span>
+      </span>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
   );
@@ -60,10 +69,13 @@ function StageNode({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
 
 function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule" }>>) {
   return (
-    <button type="button" className="mth-rule-node" aria-pressed={selected} style={RULE_SIZE}>
+    <button type="button" className="mth-rule-node" aria-pressed={selected}>
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <span className="mth-rule-name">{data.rule.name}</span>
-      <span className="mth-rule-meta">{data.rule.decides}</span>
+      <span className="mth-rule-dot" />
+      <span className="mth-rule-text">
+        <span className="mth-rule-name">{data.rule.name}</span>
+        <span className="mth-rule-meta">{data.rule.decides}</span>
+      </span>
     </button>
   );
 }
