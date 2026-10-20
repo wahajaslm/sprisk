@@ -375,6 +375,21 @@ fn an_unknown_step_is_refused() {
 }
 
 #[test]
+fn a_model_after_a_clustering_step_is_hidden_since_clustering_passes_its_columns_on() {
+    let pipeline = flow(
+        &[
+            ("clip", "clean.clip_outliers"),
+            ("db", "clustering.dbscan"),
+            ("lin", "ml.linear_model"),
+        ],
+        &[("clip.train", "db.data"), ("db.data", "lin.train")],
+    );
+    let facts = facts_of(&pipeline, "clip");
+    assert_eq!(facts["flow.model_family"]["value"], "unknown");
+    assert_eq!(facts["flow.models_fill_gaps"]["value"], "none");
+}
+
+#[test]
 fn a_model_step_does_not_count_itself() {
     let pipeline = flow(&[("km", "clustering.kmeans")], &[]);
     assert!(facts_of(&pipeline, "km").is_empty());

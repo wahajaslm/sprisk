@@ -111,8 +111,7 @@ struct Downstream<'a> {
     hidden: bool,
 }
 
-/// The models downstream of `node_id`, not counting itself. The walk stops at a model: the
-/// steps after it read its predictions, not the step's columns.
+/// The models downstream of `node_id`, not counting itself.
 fn downstream<'a>(
     pipeline: &PipelineVersion,
     node_id: &str,
@@ -153,11 +152,17 @@ fn downstream<'a>(
             let node = graph[next];
             let operator = operator_of(node.operator.as_str())
                 .ok_or_else(|| ResolveError::UnknownOperator(node.operator.as_str().to_owned()))?;
-            match &operator.model {
-                Some(_) if behind => found.hidden = true,
-                Some(model) => found.models.push(model),
-                None => stack.push((next, behind || !keeps(node))),
+            if let Some(model) = &operator.model {
+                if behind {
+                    found.hidden = true;
+                } else {
+                    found.models.push(model);
+                }
             }
+            // A model's output may carry the columns on (a clustering step adds a label to
+            // its input table), changed by a fit, so what follows a model is behind it.
+            let keeps_columns = operator.model.is_none() && keeps(node);
+            stack.push((next, behind || !keeps_columns));
         }
     }
     Ok(found)
