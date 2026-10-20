@@ -126,7 +126,7 @@ def _no_scaling(
     families: set[str], hidden: str | None, standardize: str | None, no_effect: str | None
 ) -> dict[str, Any]:
     if no_effect:
-        # Leaving the step as it is changes no graph, so this choice has no params.
+        # Removing the step needs no params (ADR-0043).
         return {"id": "no_scaling", "applicability": "applicable", "reason": no_effect}
     if standardize is None:
         why = "Scaling may matter: no model is downstream of this step yet."

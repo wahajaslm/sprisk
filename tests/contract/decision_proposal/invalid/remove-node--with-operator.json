@@ -1,0 +1,33 @@
+{
+  "schema_version": "sprisk.decision_proposal/v1",
+  "id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "rule": "methodology.supervised.feature_scaling@2.0.0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "subject_node_id": "scale",
+  "evidence": [
+    {
+      "kind": "flow_fact",
+      "label": "Model families downstream",
+      "value": "tree_ensemble",
+      "origin": "measured"
+    }
+  ],
+  "alternatives": [
+    {
+      "id": "no_scaling",
+      "label": "No Scaling Step (Models Downstream Do Not Need It)",
+      "description": "Leave the features as they are; scaling here would not change the models downstream.",
+      "applicability": "applicable",
+      "reason": "Only tree models are downstream.",
+      "effect": {
+        "kind": "remove_node",
+        "node_id": "scale",
+        "operator": "sprisk.clean.scale@1.0.0"
+      }
+    }
+  ],
+  "recommended_alternative_id": "no_scaling",
+  "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "created_at": "2026-10-19T10:00:00Z"
+}

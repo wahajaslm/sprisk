@@ -99,7 +99,7 @@ alternatives:
     rationale: Each model downstream fits its fill on its train rows only, so filling here first adds
       nothing. A target with gaps still means dropping rows, since a label is never filled.
     action:
-      type: pass_through
+      type: remove_node
 
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------

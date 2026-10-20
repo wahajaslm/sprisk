@@ -1160,6 +1160,16 @@ fn materialize_effect(
     value["id"] = json!(pipeline_id);
     value["parent_id"] = json!(base.id);
     value["created_at"] = json!(at);
+    if effect["kind"] == "remove_node" {
+        let (nodes, edges) =
+            sprisk_methodology::without_node(base, node_id).map_err(|e| ApiError::BadRequest {
+                code: "cannot_remove_step",
+                message: e.to_string(),
+            })?;
+        value["nodes"] = json!(nodes);
+        value["edges"] = json!(edges);
+        return parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()));
+    }
     let node = value["nodes"]
         .as_array_mut()
         .and_then(|nodes| nodes.iter_mut().find(|node| node["id"] == node_id))

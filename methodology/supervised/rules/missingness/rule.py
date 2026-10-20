@@ -110,7 +110,7 @@ def _impute(
 
 def _pass_through(fills: str | None) -> dict[str, Any]:
     if fills == "all":
-        # Leaving the step as it is changes no graph, so this choice has no params.
+        # Removing the step needs no params (ADR-0043).
         return {
             "id": "pass_through",
             "applicability": "applicable",

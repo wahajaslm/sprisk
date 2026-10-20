@@ -124,12 +124,17 @@ export type MethodologyStage =
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "GraphEffect".
  */
-export type GraphEffect = {
-  kind: "replace_node";
-  node_id: NodeId;
-  operator: OperatorRef;
-  params: Params;
-};
+export type GraphEffect =
+  | {
+      kind: "replace_node";
+      node_id: NodeId;
+      operator: OperatorRef;
+      params: Params;
+    }
+  | {
+      kind: "remove_node";
+      node_id: NodeId;
+    };
 /**
  * Pinned rule: <pack>.<rule>@<semver>.
  *

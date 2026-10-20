@@ -67,7 +67,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
             f" {target} is the target: its outliers pull squared-error fits, trees included, "
             "but clipping it would change the labels."
         )
-    # Keeping the step as it is changes no graph, so this choice has no params.
+    # Removing the clip step needs no params (ADR-0043).
     keep = {"id": "none_tree_or_clean", "applicability": "applicable", "reason": keep_reason}
     if maybe_target in columns:
         clip = needs_fact(

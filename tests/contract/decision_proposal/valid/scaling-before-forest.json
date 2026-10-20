@@ -16,10 +16,14 @@
   "alternatives": [
     {
       "id": "no_scaling",
-      "label": "No Scaling (Tree Ensembles)",
-      "description": "Leave raw numerical features unscaled.",
+      "label": "No Scaling Step (Models Downstream Do Not Need It)",
+      "description": "Leave the features as they are; scaling here would not change the models downstream.",
       "applicability": "applicable",
-      "reason": "Only tree models are downstream."
+      "reason": "Only tree models are downstream.",
+      "effect": {
+        "kind": "remove_node",
+        "node_id": "scale"
+      }
     }
   ],
   "recommended_alternative_id": "no_scaling",

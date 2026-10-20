@@ -8,8 +8,8 @@ use petgraph::graph::DiGraph;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    DatasetProfile, DecisionProposal, MethodologyRule, ModelPreparation, Node, Operator,
-    OperatorModel, PipelineVersion, QuestionVersion, RuleDecision, RuleObservation, parse,
+    DatasetProfile, DecisionProposal, Edge, MethodologyRule, ModelPreparation, Node, Operator,
+    OperatorModel, PipelineVersion, PortRef, QuestionVersion, RuleDecision, RuleObservation, parse,
 };
 
 use crate::ResolveError;
@@ -205,6 +205,54 @@ pub fn profile_facts(profile: &DatasetProfile, columns: &[String]) -> Map<String
     facts
 }
 
+/// The steps and edges of `pipeline` without `node_id` (ADR-0043): each edge out of
+/// `node_id.P` is fed from whatever fed `node_id.P`, and edges into it are dropped. Refused
+/// when an output with consumers has no input of the same name to take its place.
+pub fn without_node(
+    pipeline: &PipelineVersion,
+    node_id: &str,
+) -> Result<(Vec<Node>, Vec<Edge>), ResolveError> {
+    if !pipeline.nodes.iter().any(|n| n.id.as_str() == node_id) {
+        return Err(ResolveError::UnknownNode(node_id.to_owned()));
+    }
+    let port_of = |port: &PortRef| {
+        port.as_str()
+            .split_once('.')
+            .filter(|(id, _)| *id == node_id)
+            .map(|(_, name)| name.to_owned())
+    };
+    let feeds: HashMap<String, &PortRef> = pipeline
+        .edges
+        .iter()
+        .filter_map(|e| Some((port_of(&e.to)?, &e.from)))
+        .collect();
+    let mut edges = Vec::new();
+    for edge in &pipeline.edges {
+        if port_of(&edge.to).is_some() {
+            continue;
+        }
+        match port_of(&edge.from) {
+            None => edges.push(edge.clone()),
+            Some(port) => {
+                let from = feeds
+                    .get(&port)
+                    .ok_or_else(|| ResolveError::Unremovable(edge.from.as_str().to_owned()))?;
+                edges.push(Edge {
+                    from: (*from).clone(),
+                    to: edge.to.clone(),
+                });
+            }
+        }
+    }
+    let nodes = pipeline
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str() != node_id)
+        .cloned()
+        .collect();
+    Ok((nodes, edges))
+}
+
 /// The proposal for `node_id`: each decided alternative with the manifest's label and
 /// description, and, where applicable, a `replace_node` effect with the manifest's operator.
 pub fn proposal(
@@ -234,7 +282,13 @@ pub fn proposal(
             "applicability": decided.applicability,
             "reason": decided.reason,
         });
-        if let (Some(params), Some(operator)) = (&decided.params, &declared.action.operator) {
+        let applicable = decided.applicability.to_string() == "applicable";
+        if declared.action.type_.as_str() == "remove_node" {
+            if applicable {
+                built["effect"] = json!({ "kind": "remove_node", "node_id": node_id });
+            }
+        } else if let (Some(params), Some(operator)) = (&decided.params, &declared.action.operator)
+        {
             built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": operator, "params": params });
         }
         alternatives.push(built);

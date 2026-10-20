@@ -58,7 +58,7 @@ alternatives:
       would pile them onto the fence; a dummy baseline ignores its features. Outliers in a regression
       target still pull squared-error fits, trees included.
     action:
-      type: pass_through
+      type: remove_node
   - id: clip_iqr_fence
     label: Clip to the Train IQR Fences
     description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target, and any column with a zero IQR, are left as they are.

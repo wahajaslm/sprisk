@@ -4,7 +4,7 @@
 mod catalog;
 mod decision;
 pub use catalog::{CatalogError, RuleCatalog};
-pub use decision::{flow_facts, observation, profile_facts, proposal};
+pub use decision::{flow_facts, observation, profile_facts, proposal, without_node};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ResolveError {
@@ -12,6 +12,8 @@ pub enum ResolveError {
     UnknownNode(String),
     #[error("operator {0} is not registered")]
     UnknownOperator(String),
+    #[error("cannot remove the step: output {0} has no input of the same name to take its place")]
+    Unremovable(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]
     UndeclaredAlternative(String),
     #[error("could not construct proposal: {0}")]

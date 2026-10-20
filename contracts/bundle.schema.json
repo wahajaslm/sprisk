@@ -1549,6 +1549,23 @@
               "$ref": "#/$defs/Params"
             }
           }
+        },
+        {
+          "type": "object",
+          "description": "Removes the step and feeds each of its outputs from its input of the same name (ADR-0043).",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "node_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "remove_node"
+            },
+            "node_id": {
+              "$ref": "#/$defs/NodeId"
+            }
+          }
         }
       ]
     },

@@ -1728,6 +1728,32 @@ async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
             .any(|e| e["kind"] == "flow_fact" && e["value"] == "tree_ensemble"),
         "{proposal}"
     );
+
+    // Applying it takes the scale step out: the forest reads the split's train rows.
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let request =
+        json!({ "alternative_id": "no_scaling", "idempotency_key": "test-apply-no-scaling" });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(request)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let pipeline = &applied["pipeline"];
+    assert!(
+        pipeline["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|n| n["id"] != "scale"),
+        "{pipeline}"
+    );
+    assert!(
+        pipeline["edges"]
+            .as_array()
+            .unwrap()
+            .contains(&json!({"from":"split.train","to":"rf.train"})),
+        "{pipeline}"
+    );
 }
 
 #[tokio::test]

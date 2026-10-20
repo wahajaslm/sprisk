@@ -51,7 +51,9 @@ export function SplitMethodology({ pipeline, nodeId }: { pipeline: PipelineVersi
           <span><strong>{alternative.label}{proposal.recommended_alternative_id === alternative.id ? " · recommended" : ""}</strong><small>{alternative.description}</small><small>{alternative.reason}</small></span>
         </label>)}
       </div>
-      {chosen?.effect && <div className="method-preview"><strong>Preview</strong><p>Replace <code>{chosen.effect.node_id}</code> with <code>{chosen.effect.operator}</code>.</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></div>}
+      {chosen?.effect && <div className="method-preview"><strong>Preview</strong>{chosen.effect.kind === "remove_node"
+        ? <p>Remove <code>{chosen.effect.node_id}</code>. The steps after it read its inputs directly.</p>
+        : <><p>Replace <code>{chosen.effect.node_id}</code> with <code>{chosen.effect.operator}</code>.</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>}</div>}
       {chosen && proposal.recommended_alternative_id !== chosen.id && <label className="method-reason">Reason for choosing another method<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>}
       <div className="settings-actions"><button type="button" className="page-btn" onClick={() => resolve.reset()}>Refresh</button><span className="spacer" /><button type="button" className="run-code" disabled={!chosen || apply.isPending || (proposal.recommended_alternative_id !== chosen?.id && !reason.trim())} onClick={() => chosen && apply.mutate({ proposalId: proposal.id, alternativeId: chosen.id, reason }, { onSuccess: (result) => selectPipeline(result.pipeline.id) })}>{apply.isPending ? "Applying…" : "Apply to new flow version"}</button></div>
     </>}

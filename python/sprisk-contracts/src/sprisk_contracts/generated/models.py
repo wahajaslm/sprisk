@@ -462,9 +462,17 @@ class GraphEffect1(StrictModel):
     params: Params
 
 
-class GraphEffect(RootModel[GraphEffect1]):
+class GraphEffect2(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["remove_node"]
+    node_id: NodeId
+
+
+class GraphEffect(RootModel[GraphEffect1 | GraphEffect2]):
     root: Annotated[
-        GraphEffect1,
+        GraphEffect1 | GraphEffect2,
         Field(
             description="Typed mutation previewed and compiled before it can create a pipeline version."
         ),

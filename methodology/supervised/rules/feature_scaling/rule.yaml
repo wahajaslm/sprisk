@@ -60,7 +60,7 @@ alternatives:
     rationale: A model that standardises its inputs on the train rows undoes any earlier affine scaling,
       and trees split on rank order, which scaling keeps. Scaling here adds work with no effect.
     action:
-      type: pass_through
+      type: remove_node
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).

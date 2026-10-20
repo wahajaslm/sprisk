@@ -4,7 +4,9 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use sprisk_contracts::{Node, PipelineVersion, QuestionVersion, RuleDecision, parse};
-use sprisk_methodology::{RuleCatalog, flow_facts, observation, profile_facts, proposal};
+use sprisk_methodology::{
+    RuleCatalog, flow_facts, observation, profile_facts, proposal, without_node,
+};
 use sprisk_registry::Registry;
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
@@ -444,4 +446,100 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
         "tree_ensemble"
     );
     assert_eq!(observed["facts"]["question.target"]["value"], "churned");
+}
+
+const SCALING: &str = "methodology.supervised.feature_scaling@2.0.0";
+
+fn scaling_decision(applicability: &str) -> RuleDecision {
+    parse(
+        &json!({
+            "schema_version": "sprisk.rule_decision/v1",
+            "rule": SCALING,
+            "recommended_alternative_id": "no_scaling",
+            "alternatives": [{ "id": "no_scaling", "applicability": applicability, "reason": "r" }],
+            "evidence": []
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+fn before_forest() -> PipelineVersion {
+    flow(
+        &[
+            ("split", "validation.random_split"),
+            ("scale", "clean.scale"),
+            ("rf", "ml.random_forest"),
+            ("eval", "ml.evaluate"),
+        ],
+        &[
+            ("split.train", "scale.train"),
+            ("split.test", "scale.test"),
+            ("scale.train", "rf.train"),
+            ("rf.model", "eval.model"),
+            ("scale.test", "eval.test"),
+        ],
+    )
+}
+
+#[test]
+fn an_applicable_alternative_that_removes_its_step_gets_a_remove_node_effect() {
+    let catalog = catalog();
+    let rule = catalog.rule(SCALING).unwrap();
+    let built = |applicability| {
+        let built = proposal(
+            rule,
+            &scaling_decision(applicability),
+            &question(),
+            &before_forest(),
+            "scale",
+            "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            "2026-10-15T10:00:00Z",
+        )
+        .unwrap();
+        serde_json::to_value(built).unwrap()["alternatives"][0].clone()
+    };
+    assert_eq!(
+        built("applicable")["effect"],
+        json!({ "kind": "remove_node", "node_id": "scale" })
+    );
+    assert!(built("not_applicable").get("effect").is_none());
+}
+
+#[test]
+fn removing_a_step_feeds_each_output_from_its_input_of_the_same_name() {
+    let (nodes, edges) = without_node(&before_forest(), "scale").unwrap();
+    assert!(nodes.iter().all(|n| n.id.as_str() != "scale"));
+    let mut edges: Vec<String> = edges
+        .iter()
+        .map(|e| format!("{} -> {}", e.from.as_str(), e.to.as_str()))
+        .collect();
+    edges.sort();
+    assert_eq!(
+        edges,
+        [
+            "rf.model -> eval.model",
+            "split.test -> eval.test",
+            "split.train -> rf.train"
+        ]
+    );
+}
+
+#[test]
+fn a_step_whose_output_has_no_input_of_the_same_name_cannot_be_removed() {
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("rf", "ml.random_forest"),
+            ("eval", "ml.evaluate"),
+        ],
+        &[("split.train", "rf.train"), ("rf.model", "eval.model")],
+    );
+    let err = without_node(&pipeline, "rf").unwrap_err();
+    assert!(err.to_string().contains("rf.model"), "{err}");
+}
+
+#[test]
+fn removing_an_unknown_step_is_refused() {
+    assert!(without_node(&before_forest(), "nope").is_err());
 }
