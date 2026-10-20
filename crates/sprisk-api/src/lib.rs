@@ -83,6 +83,7 @@ pub fn router(state: AppState) -> Router {
             "/pipeline_versions/{id}/methodology/proposals/{node_id}",
             post(propose_node_methodology),
         )
+        .route("/methodology_proposals/{id}", get(get_methodology_proposal))
         .route("/methodology_proposals/{id}/apply", post(apply_methodology))
         .route("/methodology_decisions", get(list_methodology_decisions))
         .route("/methodology_decisions/{id}", get(get_methodology_decision))
@@ -1153,6 +1154,15 @@ async fn list_methodology_decisions(
             .store
             .list_methodology_decisions(pipeline.as_ref())
             .await?,
+    ))
+}
+
+async fn get_methodology_proposal(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Json<DecisionProposal>, ApiError> {
+    Ok(Json(
+        state.store.get_methodology_proposal(&id(&raw)?).await?,
     ))
 }
 

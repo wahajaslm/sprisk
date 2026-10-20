@@ -1493,6 +1493,27 @@ async fn split_methodology_is_resolved_previewed_and_applied_once() {
     let (status, found) = call(&api.app, "GET", &decision, None).await;
     assert_eq!(status, StatusCode::OK, "{found}");
     assert_eq!(found, applied["decision"]);
+
+    let proposed = format!(
+        "/methodology_proposals/{}",
+        proposal["id"].as_str().unwrap()
+    );
+    let (status, found) = call(&api.app, "GET", &proposed, None).await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert_eq!(found, proposal);
+}
+
+#[tokio::test]
+async fn an_unknown_methodology_proposal_is_not_found() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "GET",
+        "/methodology_proposals/mpr_01JABCDEFGHJKMNPQRSTVWXYZ9",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
 
 #[tokio::test]
