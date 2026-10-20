@@ -99,3 +99,24 @@ fn an_unknown_rule_has_no_source() {
         Err(CatalogError::UnknownRule(_))
     ));
 }
+
+#[test]
+fn one_rule_id_in_two_folders_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), "a", "methodology.pack.a@1.0.0", "cleaning.a");
+    write_rule(dir.path(), "b", "methodology.pack.a@1.0.0", "cleaning.b");
+
+    let err = RuleCatalog::load_dir(dir.path()).unwrap_err();
+    assert!(matches!(err, CatalogError::DuplicateId { .. }), "{err}");
+}
+
+#[test]
+fn a_manifest_that_is_not_yaml_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let rule = dir.path().join("pack/rules/a");
+    fs::create_dir_all(&rule).unwrap();
+    fs::write(rule.join("rule.yaml"), "id: [unclosed\n").unwrap();
+
+    let err = RuleCatalog::load_dir(dir.path()).unwrap_err();
+    assert!(matches!(err, CatalogError::Yaml { .. }), "{err}");
+}

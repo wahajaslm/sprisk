@@ -51,6 +51,11 @@
         "stage": {
           "$ref": "#/$defs/MethodologyStage"
         },
+        "needs": {
+          "type": "array",
+          "description": "Facts and earlier decisions this rule reads, e.g. question.time_column; they order rules inside a stage (ADR-0042).",
+          "items": { "type": "string", "minLength": 1 }
+        },
         "decides": {
           "type": "string",
           "description": "The one decision this rule owns; unique across loaded packs.",

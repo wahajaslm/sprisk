@@ -817,6 +817,10 @@ export interface MethodologyRule {
   name: string;
   stage: MethodologyStage;
   /**
+   * Facts and earlier decisions this rule reads, e.g. question.time_column; they order rules inside a stage (ADR-0042).
+   */
+  needs?: string[];
+  /**
    * The one decision this rule owns; unique across loaded packs.
    */
   decides: string;

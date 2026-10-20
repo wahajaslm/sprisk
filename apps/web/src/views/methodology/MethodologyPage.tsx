@@ -6,7 +6,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 
 /** ADR-0042: stages run in this order. */
-const STAGES: MethodologyStage[] = ["question", "data", "cleaning", "split", "features", "models", "evaluation", "reporting"];
+export const STAGES: MethodologyStage[] = ["question", "data", "cleaning", "split", "features", "models", "evaluation", "reporting"];
 const stageName = (stage: MethodologyStage) => stage[0]!.toUpperCase() + stage.slice(1);
 const ignore = () => undefined;
 

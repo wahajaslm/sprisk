@@ -4,8 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
+import bundle from "../../../contracts/bundle.schema.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
-import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
+import { MethodologyPage, STAGES } from "../src/views/methodology/MethodologyPage.tsx";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -36,6 +37,11 @@ function serve(rules: MethodologyRule[]) {
 }
 
 describe("methodology page", () => {
+  it("knows every stage the contract has, so no rule drops off the page", () => {
+    expect(STAGES).toEqual(bundle.$defs.MethodologyStage.enum);
+  });
+
+
   it("lists the rules from the API by stage, in stage order", async () => {
     serve([features, split]);
     renderWithApi(<MethodologyPage />);
@@ -69,6 +75,14 @@ describe("methodology page", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "rule.py" }));
     expect(await screen.findByRole("textbox", { name: "Code of rule.py" })).toHaveValue(source.files[1]!.text);
+  });
+
+  it("says so when a rule's code cannot be read", async () => {
+    serve([features]);
+    renderWithApi(<MethodologyPage />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
   it("says so when the rules cannot be read", async () => {

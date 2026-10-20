@@ -279,6 +279,10 @@ class MethodologyStage(StrEnum):
     reporting = "reporting"
 
 
+class Need(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
 class CornerCase(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
 
@@ -369,6 +373,12 @@ class MethodologyRule(StrictModel):
     id: MethodologyRuleRef
     name: Annotated[str, Field(min_length=1)]
     stage: MethodologyStage
+    needs: Annotated[
+        list[Need] | None,
+        Field(
+            description="Facts and earlier decisions this rule reads, e.g. question.time_column; they order rules inside a stage (ADR-0042)."
+        ),
+    ] = None
     decides: Annotated[
         str,
         Field(

@@ -66,3 +66,6 @@ Arch doc sections: §4 (domain model), §6 (capabilities), §7 (planning), §8 (
 - §4: add `MethodologyDecision`.
 - §8: add "rules that decide" alongside Gates A–D.
 - §2A: use the selected node inspector and its existing Checks dock for the first slice; reserve an advanced derived methodology-workflow projection for later.
+
+## Amendments
+- 2026-10-20: The `MethodologyRule` contract (`sprisk.methodology_rule/v1`) uses the names already in the rule packs: `provenance` for `source`, and `settings_schema` per alternative for the rule's settings. `needs` is optional until rules declare it. There is no `subject` field yet. Action fields (`type`, `fit_on`, `placement`) are free strings until the actions are reviewed. They become enums then, so a typo in a hard constraint cannot pass.
