@@ -212,7 +212,7 @@ impl SqliteStore {
         parse_all(rows, "methodology decision")
     }
 
-    /// The decisions with these ids, in id order. An unknown id is left out.
+    /// The decisions with these ids. An unknown id is left out.
     pub async fn methodology_decisions(
         &self,
         ids: &[MethodologyDecisionId],

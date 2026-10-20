@@ -775,9 +775,20 @@ async fn gate_b_sees_the_linked_question_and_the_decisions_its_nodes_cite() {
 
 #[tokio::test]
 async fn a_node_citing_a_decision_that_is_not_stored_fails_the_run() {
-    let workers = FakeWorkers::default();
-    let dir = tempfile::tempdir().unwrap();
     let store = SqliteStore::in_memory().await.unwrap();
+    store.insert_question_version(&question()).await.unwrap();
+    assert_gate_fails_naming(store, "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0").await;
+}
+
+#[tokio::test]
+async fn a_linked_question_that_is_not_stored_fails_the_run() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    assert_gate_fails_naming(store, "qv_01JABCDEFGHJKMNPQRSTVWXYZ0").await;
+}
+
+/// Running `decided_pipeline()` with a gate on `store` fails the run with an error naming `id`.
+async fn assert_gate_fails_naming(store: SqliteStore, id: &str) {
+    let dir = tempfile::tempdir().unwrap();
     let run: Run = parse(
         &json!({"schema_version": "sprisk.run/v1", "id": RUN,
                 "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
@@ -787,15 +798,19 @@ async fn a_node_citing_a_decision_that_is_not_stored_fails_the_run() {
     )
     .unwrap();
     store.insert_run(&run).await.unwrap();
-    store.insert_question_version(&question()).await.unwrap();
     let artifacts = ArtifactStore::local(dir.path()).unwrap();
-    let mut scheduler =
-        Scheduler::new(&store, &artifacts, workers, Settings::default()).with_gate(gate_operator());
+    let mut scheduler = Scheduler::new(
+        &store,
+        &artifacts,
+        FakeWorkers::default(),
+        Settings::default(),
+    )
+    .with_gate(gate_operator());
 
     let result = scheduler.run(&run.id, &decided_pipeline(), &plan()).await;
 
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("mdc_01JABCDEFGHJKMNPQRSTVWXYZ0"), "{err}");
+    assert!(err.contains(id), "{err}");
     assert_eq!(
         store.get_run(&run.id).await.unwrap().status,
         RunStatus::Failed
@@ -814,7 +829,11 @@ fn gate_input(lease: &LeaseAttempt, port: &str) -> serde_json::Value {
 }
 
 /// A shared contract fixture, with some fields replaced so linked records agree on ids.
-fn fixture_with(entity: &str, name: &str, fields: serde_json::Value) -> serde_json::Value {
+fn fixture_with<T: serde::de::DeserializeOwned>(
+    entity: &str,
+    name: &str,
+    fields: serde_json::Value,
+) -> T {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/contract")
         .join(entity)
@@ -825,7 +844,7 @@ fn fixture_with(entity: &str, name: &str, fields: serde_json::Value) -> serde_js
     for (key, field) in fields.as_object().unwrap() {
         value[key] = field.clone();
     }
-    value
+    parse(&value.to_string()).unwrap()
 }
 
 /// `pipeline()` answering question `qv_..0`, with its split set by decision `mdc_..0`.
@@ -838,35 +857,29 @@ fn decided_pipeline() -> PipelineVersion {
 
 /// The question `decided_pipeline()` answers.
 fn question() -> sprisk_contracts::QuestionVersion {
-    let question = fixture_with(
+    fixture_with(
         "question_version",
         "classification-all-fields.json",
         json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
-    );
-    parse(&question.to_string()).unwrap()
+    )
 }
 
 /// Store the question, base pipeline, proposal and decision that `decided_pipeline()` cites.
 async fn seed_decision(store: &SqliteStore) {
     store.insert_question_version(&question()).await.unwrap();
     store.insert_pipeline_version(&pipeline()).await.unwrap();
-    let proposal = fixture_with("decision_proposal", "split.json", json!({}));
-    store
-        .insert_methodology_proposal(&parse(&proposal.to_string()).unwrap())
-        .await
-        .unwrap();
-    let applied = fixture_with(
+    let proposal: sprisk_contracts::DecisionProposal =
+        fixture_with("decision_proposal", "split.json", json!({}));
+    store.insert_methodology_proposal(&proposal).await.unwrap();
+    let applied: PipelineVersion = fixture_with(
         "pipeline_version",
         "single-node-no-parent.json",
         json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1"}),
     );
-    let decision = fixture_with("methodology_decision", "applied.json", json!({}));
+    let decision: sprisk_contracts::MethodologyDecision =
+        fixture_with("methodology_decision", "applied.json", json!({}));
     store
-        .apply_methodology_decision(
-            &parse(&decision.to_string()).unwrap(),
-            &parse(&applied.to_string()).unwrap(),
-            "key-0001",
-        )
+        .apply_methodology_decision(&decision, &applied, "key-0001")
         .await
         .unwrap();
 }

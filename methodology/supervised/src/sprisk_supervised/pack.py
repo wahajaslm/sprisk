@@ -17,7 +17,8 @@ def run(
     """Gate B for the Supervised pack: every rule's result, as one JSON array (ADR-0017).
 
     `question` is the question the pipeline answers, or None when it is not linked;
-    `decisions` are the methodology decisions its nodes cite.
+    `decisions` are the methodology decisions its nodes cite; they are validated here, and
+    no rule reads them yet: the split design check that verifies a chosen split will.
     """
     try:
         version = PipelineVersion.model_validate_json(json.dumps(pipeline))
