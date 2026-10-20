@@ -2,15 +2,15 @@
 //! built from what it returns. Python chooses; Rust builds graph effects only from the
 //! manifest's actions, so a rule can never name an operator its manifest does not declare.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use petgraph::graph::DiGraph;
-use petgraph::visit::Bfs;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    DatasetProfile, DecisionProposal, MethodologyRule, ModelFamily, ModelPreparation, Operator,
-    OperatorModel, PipelineVersion, QuestionVersion, RuleDecision, RuleObservation, parse,
+    DatasetProfile, DecisionProposal, MethodologyRule, ModelFamily, ModelPreparation, Node,
+    Operator, OperatorModel, PipelineVersion, QuestionVersion, RuleDecision, RuleObservation,
+    parse,
 };
 
 use crate::ResolveError;
@@ -54,9 +54,10 @@ pub fn observation(
 
 /// What the flow says about the models downstream of `node_id`, read from their manifests
 /// through `operator_of`:
-/// - `flow.model_family`: their family, or `mixed` for several;
+/// - `flow.model_family`: their family, `mixed` for several, or `unknown` when a model sits
+///   behind a step that does not `keep` these facts (it may change the columns any way);
 /// - `flow.models_fill_gaps`, `flow.models_standardize`: whether `all`, `some` or `none` of
-///   them do that preparation themselves.
+///   them do that preparation themselves. A model behind such a step counts as doing none.
 ///
 /// Read from the graph, so `measured`. Left out when no model is downstream, so a rule never
 /// reads a stand-in value.
@@ -64,23 +65,23 @@ pub fn flow_facts<'a>(
     pipeline: &PipelineVersion,
     node_id: &str,
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
-) -> Map<String, Value> {
-    let models: Vec<&OperatorModel> = downstream(pipeline, node_id)
-        .into_iter()
-        .filter_map(|operator| operator_of(operator)?.model.as_ref())
-        .collect();
-    if models.is_empty() {
-        return Map::new();
+    keeps: impl Fn(&Node) -> bool,
+) -> Result<Map<String, Value>, ResolveError> {
+    let Downstream { models, hidden } = downstream(pipeline, node_id, operator_of, keeps)?;
+    let total = models.len() + usize::from(hidden);
+    if total == 0 {
+        return Ok(Map::new());
     }
     let measured = |value: String| json!({ "value": value, "origin": "measured" });
     let mut facts = Map::new();
     let families: BTreeSet<ModelFamily> = models.iter().filter_map(|m| m.family).collect();
-    if let Some(first) = families.first() {
-        let family = if families.len() == 1 {
-            first.to_string()
-        } else {
-            "mixed".to_owned()
-        };
+    let family = match (hidden, families.first()) {
+        (true, _) => Some("unknown".to_owned()),
+        (false, Some(first)) if families.len() == 1 => Some(first.to_string()),
+        (false, Some(_)) => Some("mixed".to_owned()),
+        (false, None) => None,
+    };
+    if let Some(family) = family {
         facts.insert("flow.model_family".into(), measured(family));
     }
     for (preparation, name) in [
@@ -93,21 +94,34 @@ pub fn flow_facts<'a>(
             .count();
         let share = match doing {
             0 => "none",
-            n if n == models.len() => "all",
+            n if n == total => "all",
             _ => "some",
         };
         facts.insert(name.into(), measured(share.to_owned()));
     }
-    facts
+    Ok(facts)
 }
 
-/// The operators of the steps downstream of `node_id`, not counting itself.
-fn downstream<'p>(pipeline: &'p PipelineVersion, node_id: &str) -> Vec<&'p str> {
-    let mut graph = DiGraph::<&str, ()>::new();
+struct Downstream<'a> {
+    /// Models reached from the step through steps that keep the facts.
+    models: Vec<&'a OperatorModel>,
+    /// Whether a model is reached only through a step that does not.
+    hidden: bool,
+}
+
+/// The models downstream of `node_id`, not counting itself. The walk stops at a model: the
+/// steps after it read its predictions, not the step's columns.
+fn downstream<'a>(
+    pipeline: &PipelineVersion,
+    node_id: &str,
+    operator_of: impl Fn(&str) -> Option<&'a Operator>,
+    keeps: impl Fn(&Node) -> bool,
+) -> Result<Downstream<'a>, ResolveError> {
+    let mut graph = DiGraph::<&Node, ()>::new();
     let index: HashMap<&str, _> = pipeline
         .nodes
         .iter()
-        .map(|n| (n.id.as_str(), graph.add_node(n.operator.as_str())))
+        .map(|n| (n.id.as_str(), graph.add_node(n)))
         .collect();
     let step = |port: &str| {
         port.split_once('.')
@@ -118,17 +132,33 @@ fn downstream<'p>(pipeline: &'p PipelineVersion, node_id: &str) -> Vec<&'p str> 
             graph.add_edge(from, to, ());
         }
     }
-    let Some(&start) = index.get(node_id) else {
-        return Vec::new();
+    let start = *index
+        .get(node_id)
+        .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
+
+    let mut found = Downstream {
+        models: Vec::new(),
+        hidden: false,
     };
-    let mut operators = Vec::new();
-    let mut bfs = Bfs::new(&graph, start);
-    while let Some(next) = bfs.next(&graph) {
-        if next != start {
-            operators.push(graph[next]);
+    // Each step with whether the path to it passed a step that does not keep the facts.
+    let mut stack = vec![(start, false)];
+    let mut seen = HashSet::new();
+    while let Some((at, behind)) = stack.pop() {
+        for next in graph.neighbors(at) {
+            if !seen.insert((next, behind)) {
+                continue;
+            }
+            let node = graph[next];
+            let operator = operator_of(node.operator.as_str())
+                .ok_or_else(|| ResolveError::UnknownOperator(node.operator.as_str().to_owned()))?;
+            match &operator.model {
+                Some(_) if behind => found.hidden = true,
+                Some(model) => found.models.push(model),
+                None => stack.push((next, behind || !keeps(node))),
+            }
         }
     }
-    operators
+    Ok(found)
 }
 
 /// Measured values of `columns`, as `column.<name>.<measure>`, plus `rows`. Only the step's

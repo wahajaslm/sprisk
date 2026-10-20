@@ -1731,6 +1731,38 @@ async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
 }
 
 #[tokio::test]
+async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play() {
+    let api = api().await;
+    // Zero means another value once scaled, so the model's own standardising cannot undo it.
+    let nodes = [
+        json!({"id":"fill", "operator":"sprisk.clean.impute@1.0.0",
+               "params":{"columns":["age"],"method":"zero"}}),
+        json!({"id":"lin", "operator":"sprisk.ml.linear_model@1.0.0",
+               "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}}),
+    ];
+    let edges = [
+        json!({"from":"scale.train","to":"fill.train"}),
+        json!({"from":"scale.test","to":"fill.test"}),
+        json!({"from":"fill.train","to":"lin.train"}),
+    ];
+    scaling_flow_into(&api, &nodes, &edges).await;
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let (status, proposal) = propose_scaling(&api).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(proposal["recommended_alternative_id"], "robust_scaling");
+    assert!(
+        proposal["evidence"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["label"] == "Model family downstream" && e["value"] == "unknown"),
+        "{proposal}"
+    );
+}
+
+#[tokio::test]
 async fn methodology_rules_are_listed_from_the_rule_packs() {
     let api = api().await;
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;

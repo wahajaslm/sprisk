@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sprisk_contracts::{PipelineVersion, QuestionVersion, RuleDecision, parse};
+use sprisk_contracts::{Node, PipelineVersion, QuestionVersion, RuleDecision, parse};
 use sprisk_methodology::{RuleCatalog, flow_facts, observation, profile_facts, proposal};
 use sprisk_registry::Registry;
 
@@ -167,7 +167,14 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
 fn flow(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> PipelineVersion {
     let nodes: Vec<Value> = nodes
         .iter()
-        .map(|(id, op)| json!({ "id": id, "operator": format!("sprisk.{op}@1.0.0"), "params": {} }))
+        .map(|(id, op)| {
+            let operator = if op.contains('@') {
+                format!("sprisk.{op}")
+            } else {
+                format!("sprisk.{op}@1.0.0")
+            };
+            json!({ "id": id, "operator": operator, "params": {} })
+        })
         .collect();
     let edges: Vec<Value> = edges
         .iter()
@@ -191,9 +198,15 @@ fn registry() -> Registry {
     Registry::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins")).unwrap()
 }
 
+/// Steps a test treats as preparation that keeps what the flow facts claim.
+fn keeps(node: &Node) -> bool {
+    let operator = node.operator.as_str();
+    operator.starts_with("sprisk.clean.") || operator.starts_with("sprisk.validation.")
+}
+
 fn facts_of(pipeline: &PipelineVersion, node_id: &str) -> serde_json::Map<String, Value> {
     let registry = registry();
-    flow_facts(pipeline, node_id, |operator| registry.get(operator))
+    flow_facts(pipeline, node_id, |operator| registry.get(operator), keeps).unwrap()
 }
 
 #[test]
@@ -289,6 +302,76 @@ fn no_model_downstream_sends_no_flow_facts() {
         &[("split.train", "scale.train")],
     );
     assert!(facts_of(&pipeline, "scale").is_empty());
+}
+
+#[test]
+fn a_model_behind_a_step_that_is_not_preparation_makes_the_models_unknown() {
+    let pipeline = flow(
+        &[
+            ("scale", "clean.scale"),
+            ("code", "code.python@1.1.0"),
+            ("lin", "ml.linear_model"),
+        ],
+        &[("scale.train", "code.data"), ("code.data", "lin.train")],
+    );
+    let facts = facts_of(&pipeline, "scale");
+    assert_eq!(facts["flow.model_family"]["value"], "unknown");
+    assert_eq!(facts["flow.models_standardize"]["value"], "none");
+    assert_eq!(facts["flow.models_fill_gaps"]["value"], "none");
+}
+
+#[test]
+fn a_hidden_model_beside_a_seen_one_means_only_some_prepare_themselves() {
+    let pipeline = flow(
+        &[
+            ("scale", "clean.scale"),
+            ("rf", "ml.random_forest"),
+            ("code", "code.python@1.1.0"),
+            ("lin", "ml.linear_model"),
+        ],
+        &[
+            ("scale.train", "rf.train"),
+            ("scale.train", "code.data"),
+            ("code.data", "lin.train"),
+        ],
+    );
+    let facts = facts_of(&pipeline, "scale");
+    assert_eq!(facts["flow.model_family"]["value"], "unknown");
+    assert_eq!(facts["flow.models_standardize"]["value"], "some");
+}
+
+#[test]
+fn a_step_with_no_model_after_it_hides_nothing() {
+    let pipeline = flow(
+        &[
+            ("scale", "clean.scale"),
+            ("summary", "profile.summarize"),
+            ("rf", "ml.random_forest"),
+        ],
+        &[("scale.train", "summary.data"), ("scale.train", "rf.train")],
+    );
+    let facts = facts_of(&pipeline, "scale");
+    assert_eq!(facts["flow.model_family"]["value"], "tree_ensemble");
+    assert_eq!(facts["flow.models_standardize"]["value"], "all");
+}
+
+#[test]
+fn an_operator_missing_from_the_registry_is_refused() {
+    let pipeline = flow(
+        &[("scale", "clean.scale"), ("mystery", "ml.mystery")],
+        &[("scale.train", "mystery.train")],
+    );
+    let registry = registry();
+    let err = flow_facts(&pipeline, "scale", |o| registry.get(o), keeps).unwrap_err();
+    assert!(err.to_string().contains("sprisk.ml.mystery@1.0.0"), "{err}");
+}
+
+#[test]
+fn an_unknown_step_is_refused() {
+    let pipeline = flow(&[("scale", "clean.scale")], &[]);
+    let registry = registry();
+    let err = flow_facts(&pipeline, "nope", |o| registry.get(o), keeps).unwrap_err();
+    assert!(err.to_string().contains("nope"), "{err}");
 }
 
 #[test]

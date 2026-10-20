@@ -874,6 +874,15 @@ fn rule_for(operator: &str) -> Option<(&'static str, RuleInput)> {
     })
 }
 
+/// Whether a step between a rule's step and a model keeps what the flow facts say about
+/// the model: preparation a rule decides, which fills from train statistics and rescales
+/// affinely. A zero fill is not affine: zero is another value once the column is scaled.
+fn keeps_flow_facts(node: &sprisk_contracts::Node) -> bool {
+    let zero_fill = node.operator.as_str().starts_with("sprisk.clean.impute@")
+        && node.params.get("method").and_then(|m| m.as_str()) == Some("zero");
+    rule_for(node.operator.as_str()).is_some() && !zero_fill
+}
+
 fn not_applicable(message: String) -> ApiError {
     ApiError::BadRequest {
         code: "methodology_not_applicable",
@@ -930,8 +939,13 @@ async fn propose(
 
     let rule = state.rules.rule(rule_ref)?;
     let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
-    let flow =
-        sprisk_methodology::flow_facts(&pipeline, node_id, |operator| state.registry.get(operator));
+    let flow = sprisk_methodology::flow_facts(
+        &pipeline,
+        node_id,
+        |operator| state.registry.get(operator),
+        keeps_flow_facts,
+    )
+    .map_err(resolve)?;
     let observation =
         sprisk_methodology::observation(rule, &question, flow, profile).map_err(resolve)?;
     let decision = state

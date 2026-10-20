@@ -10,6 +10,8 @@ pub use decision::{flow_facts, observation, profile_facts, proposal};
 pub enum ResolveError {
     #[error("node {0} does not exist")]
     UnknownNode(String),
+    #[error("operator {0} is not registered")]
+    UnknownOperator(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]
     UndeclaredAlternative(String),
     #[error("could not construct proposal: {0}")]
