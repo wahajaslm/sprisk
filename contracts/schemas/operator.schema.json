@@ -80,6 +80,11 @@
           "$ref": "#/$defs/ModelFamily",
           "description": "Left out for a model that ignores its features, such as a dummy baseline."
         },
+        "tasks": {
+          "type": "array",
+          "description": "The supervised tasks the model fits, so a shortlist rule can offer it (ADR-0044).",
+          "items": { "$ref": "#/$defs/TaskType" }
+        },
         "prepares": {
           "type": "array",
           "description": "Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.",

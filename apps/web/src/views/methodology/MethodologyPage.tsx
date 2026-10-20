@@ -115,7 +115,9 @@ function Overview({ rule }: { rule: MethodologyRule }) {
                     ))}
                     {Object.keys(example.given).length === 0 && <span className="muted">nothing known</span>}
                   </span>
-                  <span className="mth-tag">→ {rule.alternatives.find((a) => a.id === example.picks)?.label ?? example.picks}</span>
+                  <span className="mth-tag">
+                    → {example.shortlist ? `shortlist: ${example.shortlist.join(", ")}` : (rule.alternatives.find((a) => a.id === example.picks)?.label ?? example.picks)}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -140,6 +142,13 @@ function Overview({ rule }: { rule: MethodologyRule }) {
               );
             })}
           </ul>
+        </section>
+      )}
+
+      {rule.selection === "shortlist" && (
+        <section>
+          <h2 className="dsx-h">Candidates</h2>
+          <p>Every registered model that fits the task. The rule puts forward the ones worth comparing; cross-validation picks the winner (ADR-0044).</p>
         </section>
       )}
 

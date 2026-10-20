@@ -223,6 +223,11 @@ export type CapabilityClass =
   | "sink"
   | "custom_code";
 /**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TaskType".
+ */
+export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
+/**
  * fill_gaps: fills missing values, numbers and text. standardize: centres and scales numbers, so any earlier affine scaling has no effect.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -253,11 +258,6 @@ export type NetworkAccess = "none" | "egress_allowlisted";
  * via the `definition` "ModelFamily".
  */
 export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "density_based";
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "TaskType".
- */
-export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RunStatus".
@@ -903,7 +903,14 @@ export interface Fact {
 export interface RuleDecision {
   schema_version: "sprisk.rule_decision/v1";
   rule: MethodologyRuleRef;
-  recommended_alternative_id: string;
+  /**
+   * The one alternative a recommend rule picks; absent for a shortlist rule.
+   */
+  recommended_alternative_id?: string;
+  /**
+   * The alternatives a shortlist rule puts forward to compare; absent for a recommend rule (ADR-0044).
+   */
+  shortlist?: string[];
   /**
    * @minItems 1
    */
@@ -952,6 +959,10 @@ export interface MethodologyRule {
   name: string;
   stage: MethodologyStage;
   /**
+   * recommend (the default): decide() picks one alternative. shortlist: it puts forward the registry's models worth comparing (ADR-0044).
+   */
+  selection?: "recommend" | "shortlist";
+  /**
    * draft: a design with no rule.py, never run; its condition and observes are notes. active: has rule.py, applies_to, reads and examples, and no notes (ADR-0045).
    */
   status: "draft" | "active";
@@ -999,66 +1010,36 @@ export interface MethodologyRule {
     [k: string]: unknown;
   };
   /**
-   * @minItems 1
+   * A recommend rule's menu. A shortlist rule has none: its candidates come from the registry (ADR-0044).
    */
-  alternatives: [
-    {
-      id: string;
-      label: string;
-      description: string;
+  alternatives: {
+    id: string;
+    label: string;
+    description: string;
+    /**
+     * A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045).
+     */
+    condition?: string;
+    rationale: string;
+    /**
+     * JSON Schema for this alternative's settings.
+     */
+    settings_schema?: {};
+    action: {
+      type: RuleActionType;
       /**
-       * A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045).
+       * Operator the action builds; may name one not yet registered.
        */
-      condition?: string;
-      rationale: string;
+      operator?: string;
+      placement?: string;
+      fit_on?: string;
+      apply_to?: string;
       /**
-       * JSON Schema for this alternative's settings.
+       * Operator params; '{settings.x}' strings are filled from the alternative's settings.
        */
-      settings_schema?: {};
-      action: {
-        type: RuleActionType;
-        /**
-         * Operator the action builds; may name one not yet registered.
-         */
-        operator?: string;
-        placement?: string;
-        fit_on?: string;
-        apply_to?: string;
-        /**
-         * Operator params; '{settings.x}' strings are filled from the alternative's settings.
-         */
-        params?: {};
-      };
-    },
-    ...{
-      id: string;
-      label: string;
-      description: string;
-      /**
-       * A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045).
-       */
-      condition?: string;
-      rationale: string;
-      /**
-       * JSON Schema for this alternative's settings.
-       */
-      settings_schema?: {};
-      action: {
-        type: RuleActionType;
-        /**
-         * Operator the action builds; may name one not yet registered.
-         */
-        operator?: string;
-        placement?: string;
-        fit_on?: string;
-        apply_to?: string;
-        /**
-         * Operator params; '{settings.x}' strings are filled from the alternative's settings.
-         */
-        params?: {};
-      };
-    }[]
-  ];
+      params?: {};
+    };
+  }[];
   verification: {
     check_id: string;
     invariant: string;
@@ -1081,7 +1062,14 @@ export interface RuleExample {
           origin: Origin;
         };
   };
-  picks: string;
+  /**
+   * What a recommend rule picks.
+   */
+  picks?: string;
+  /**
+   * What a shortlist rule puts forward.
+   */
+  shortlist?: string[];
 }
 /**
  * Read-only files of one rule package: its manifest and, when present, its Python decide() module. Served by GET /methodology_rules/{id}/source; the API reads only files inside the rule's folder.
@@ -1144,6 +1132,10 @@ export interface DecisionProposal {
    */
   alternatives: [MethodologyAlternative, ...MethodologyAlternative[]];
   recommended_alternative_id?: string;
+  /**
+   * The alternatives a shortlist rule puts forward to compare (ADR-0044).
+   */
+  shortlist?: string[];
   fingerprint: ContentHash;
   created_at: Timestamp;
 }
@@ -1492,6 +1484,10 @@ export interface OperatorModel {
    * Left out for a model that ignores its features, such as a dummy baseline.
    */
   family?: "tree_ensemble" | "linear" | "distance_based" | "density_based";
+  /**
+   * The supervised tasks the model fits, so a shortlist rule can offer it (ADR-0044).
+   */
+  tasks?: TaskType[];
   /**
    * Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.
    */

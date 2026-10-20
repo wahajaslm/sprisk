@@ -1140,7 +1140,6 @@
       "required": [
         "schema_version",
         "rule",
-        "recommended_alternative_id",
         "alternatives",
         "evidence"
       ],
@@ -1153,7 +1152,16 @@
         },
         "recommended_alternative_id": {
           "type": "string",
+          "description": "The one alternative a recommend rule picks; absent for a shortlist rule.",
           "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "shortlist": {
+          "type": "array",
+          "description": "The alternatives a shortlist rule puts forward to compare; absent for a recommend rule (ADR-0044).",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          }
         },
         "alternatives": {
           "type": "array",
@@ -1247,6 +1255,14 @@
         },
         "stage": {
           "$ref": "#/$defs/MethodologyStage"
+        },
+        "selection": {
+          "type": "string",
+          "enum": [
+            "recommend",
+            "shortlist"
+          ],
+          "description": "recommend (the default): decide() picks one alternative. shortlist: it puts forward the registry's models worth comparing (ADR-0044)."
         },
         "status": {
           "type": "string",
@@ -1372,7 +1388,7 @@
         },
         "alternatives": {
           "type": "array",
-          "minItems": 1,
+          "description": "A recommend rule's menu. A shortlist rule has none: its candidates come from the registry (ADR-0044).",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -1549,8 +1565,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "given",
-        "picks"
+        "given"
       ],
       "properties": {
         "given": {
@@ -1586,7 +1601,16 @@
         },
         "picks": {
           "type": "string",
+          "description": "What a recommend rule picks.",
           "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "shortlist": {
+          "type": "array",
+          "description": "What a shortlist rule puts forward.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          }
         }
       }
     },
@@ -1745,6 +1769,14 @@
         "recommended_alternative_id": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "shortlist": {
+          "type": "array",
+          "description": "The alternatives a shortlist rule puts forward to compare (ADR-0044).",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          }
         },
         "fingerprint": {
           "$ref": "#/$defs/ContentHash"
@@ -2416,6 +2448,13 @@
         "family": {
           "$ref": "#/$defs/ModelFamily",
           "description": "Left out for a model that ignores its features, such as a dummy baseline."
+        },
+        "tasks": {
+          "type": "array",
+          "description": "The supervised tasks the model fits, so a shortlist rule can offer it (ADR-0044).",
+          "items": {
+            "$ref": "#/$defs/TaskType"
+          }
         },
         "prepares": {
           "type": "array",

@@ -58,6 +58,26 @@ def decision(
     )
 
 
+def shortlist_decision(
+    observation: RuleObservation,
+    shortlist: list[str],
+    alternatives: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+) -> RuleDecision:
+    """A shortlist rule's decision: the alternatives worth comparing, and no single pick."""
+    return RuleDecision.model_validate_json(
+        json.dumps(
+            {
+                "schema_version": "sprisk.rule_decision/v1",
+                "rule": observation.rule.root,
+                "shortlist": shortlist,
+                "alternatives": alternatives,
+                "evidence": evidence,
+            }
+        )
+    )
+
+
 def question_evidence(observation: RuleObservation, labels: dict[str, str]) -> list[dict[str, Any]]:
     """The question facts a rule read, as evidence, in `labels` order."""
     return [

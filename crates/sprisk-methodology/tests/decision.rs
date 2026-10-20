@@ -5,7 +5,8 @@ use std::path::Path;
 use serde_json::{Value, json};
 use sprisk_contracts::{Node, PipelineVersion, QuestionVersion, RuleDecision, parse};
 use sprisk_methodology::{
-    RuleCatalog, flow_facts, observation, profile_facts, proposal, without_node,
+    RuleCatalog, Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts,
+    proposal, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -99,8 +100,11 @@ fn a_proposal_takes_labels_and_operators_from_the_manifest_and_params_from_the_d
         &question(),
         &pipeline(),
         "split",
-        "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
-        "2026-10-15T10:00:00Z",
+        &Default::default(),
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-15T10:00:00Z",
+        },
     )
     .unwrap();
     let built = serde_json::to_value(built).unwrap();
@@ -133,8 +137,11 @@ fn a_decision_naming_an_alternative_the_manifest_lacks_is_refused() {
         &question(),
         &pipeline(),
         "split",
-        "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
-        "2026-10-15T10:00:00Z",
+        &Default::default(),
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-15T10:00:00Z",
+        },
     )
     .unwrap_err();
     assert!(err.to_string().contains("made_up"), "{err}");
@@ -513,8 +520,11 @@ fn an_applicable_alternative_that_removes_its_step_gets_a_remove_node_effect() {
             &question(),
             &before_forest(),
             "scale",
-            "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
-            "2026-10-15T10:00:00Z",
+            &Default::default(),
+            Stamp {
+                id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+                created_at: "2026-10-15T10:00:00Z",
+            },
         )
         .unwrap();
         serde_json::to_value(built).unwrap()["alternatives"][0].clone()
@@ -665,4 +675,139 @@ fn a_reads_pattern_covers_the_fact_names_the_shared_cases_say() {
             "{case}"
         );
     }
+}
+
+fn shortlist_rule() -> sprisk_contracts::MethodologyRule {
+    parse(
+        &json!({
+            "schema_version": "sprisk.methodology_rule/v1",
+            "id": "methodology.supervised.model_baseline_selection@2.0.0",
+            "name": "Model shortlist", "stage": "models", "decides": "modeling.estimator_selection",
+            "status": "active", "selection": "shortlist",
+            "applies_to": ["sprisk.ml.linear_model"], "reads": ["candidate.*.family"],
+            "provenance": { "standard": "s", "citation": "c", "pitfall": "p", "corner_cases": [] },
+            "policy_thresholds": {}, "alternatives": [],
+            "verification": { "check_id": "sprisk.checks.x@1.0.0", "invariant": "i" },
+            "examples": [{ "given": {}, "shortlist": ["ml_dummy_baseline"] }]
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+fn shortlist_decision(shortlist: Value, recommended: Option<&str>) -> RuleDecision {
+    let mut decided = json!({
+        "schema_version": "sprisk.rule_decision/v1",
+        "rule": "methodology.supervised.model_baseline_selection@2.0.0",
+        "alternatives": [
+            { "id": "ml_dummy_baseline", "applicability": "applicable", "reason": "The floor." },
+            { "id": "ml_linear_model", "applicability": "applicable", "reason": "Few rows." },
+            { "id": "ml_random_forest", "applicability": "applicable", "reason": "Too few rows to trust." }
+        ],
+        "shortlist": shortlist,
+        "evidence": []
+    });
+    if let Some(r) = recommended {
+        decided["recommended_alternative_id"] = json!(r);
+    }
+    parse(&decided.to_string()).unwrap()
+}
+
+/// A flow whose model step is a linear model with these params.
+fn model_flow() -> PipelineVersion {
+    let mut pipeline = serde_json::to_value(flow(
+        &[
+            ("split", "validation.random_split"),
+            ("model", "ml.linear_model"),
+        ],
+        &[("split.train", "model.train")],
+    ))
+    .unwrap();
+    pipeline["nodes"][1]["params"] =
+        json!({ "target": "churned", "features": ["age", "plan"], "task": "classification" });
+    parse(&pipeline.to_string()).unwrap()
+}
+
+#[test]
+fn the_candidates_are_the_registered_models_that_fit_the_task() {
+    let registry = registry();
+    let found = candidates("classification", registry.operators());
+    assert_eq!(
+        found.keys().collect::<Vec<_>>(),
+        ["ml_dummy_baseline", "ml_linear_model", "ml_random_forest"]
+    );
+    let facts = candidate_facts(&found);
+    assert_eq!(
+        facts["candidate.ml_random_forest.family"]["value"],
+        "tree_ensemble"
+    );
+    assert_eq!(
+        facts["candidate.ml_dummy_baseline.family"]["value"],
+        "featureless"
+    );
+    assert!(candidates("exploration", registry.operators()).is_empty());
+}
+
+#[test]
+fn a_shortlist_proposal_replaces_the_model_step_with_each_candidate() {
+    let registry = registry();
+    let candidates = candidates("classification", registry.operators());
+    let built = proposal(
+        &shortlist_rule(),
+        &shortlist_decision(json!(["ml_dummy_baseline", "ml_linear_model"]), None),
+        &question(),
+        &model_flow(),
+        "model",
+        &candidates,
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-15T10:00:00Z",
+        },
+    )
+    .unwrap();
+    let built = serde_json::to_value(built).unwrap();
+    assert_eq!(
+        built["shortlist"],
+        json!(["ml_dummy_baseline", "ml_linear_model"])
+    );
+    assert!(built.get("recommended_alternative_id").is_none());
+    let forest = &built["alternatives"][2];
+    assert_eq!(forest["label"], "sprisk.ml.random_forest@1.0.0");
+    assert_eq!(
+        forest["effect"]["operator"],
+        "sprisk.ml.random_forest@1.0.0"
+    );
+    assert_eq!(
+        forest["effect"]["params"],
+        json!({ "target": "churned", "features": ["age", "plan"], "task": "classification" })
+    );
+}
+
+#[test]
+fn a_shortlist_decision_must_shortlist_and_not_recommend() {
+    let registry = registry();
+    let candidates = candidates("classification", registry.operators());
+    let build = |decided: RuleDecision| {
+        proposal(
+            &shortlist_rule(),
+            &decided,
+            &question(),
+            &model_flow(),
+            "model",
+            &candidates,
+            Stamp {
+                id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+                created_at: "2026-10-15T10:00:00Z",
+            },
+        )
+    };
+    assert!(build(shortlist_decision(json!([]), None)).is_err());
+    assert!(
+        build(shortlist_decision(
+            json!(["ml_linear_model"]),
+            Some("ml_linear_model")
+        ))
+        .is_err()
+    );
+    assert!(build(shortlist_decision(json!(["ml_made_up"]), None)).is_err());
 }

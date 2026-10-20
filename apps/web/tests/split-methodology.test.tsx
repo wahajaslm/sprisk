@@ -55,3 +55,39 @@ describe("methodology choice preview", () => {
     expect(screen.getByText(/"method": "robust"/)).toBeInTheDocument();
   });
 });
+
+describe("model shortlist", () => {
+  const modelPipeline: PipelineVersion = {
+    ...pipeline,
+    nodes: [{ id: "model", operator: "sprisk.ml.linear_model@1.0.0", params: { target: "y", features: ["age"], task: "classification" } }],
+  };
+  const forestEffect = { kind: "replace_node" as const, node_id: "model", operator: "sprisk.ml.random_forest@1.0.0", params: { target: "y", features: ["age"], task: "classification" } };
+  const shortlist = parse("DecisionProposal", {
+    schema_version: "sprisk.decision_proposal/v1",
+    id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    rule: "methodology.supervised.model_baseline_selection@2.0.0",
+    question_version_id: "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    pipeline_version_id: pipeline.id,
+    subject_node_id: "model",
+    evidence: [],
+    alternatives: [
+      { id: "ml_dummy_baseline", label: "sprisk.ml.dummy_baseline@1.0.0", description: "Baseline.", applicability: "applicable", reason: "The floor.", effect: { ...forestEffect, operator: "sprisk.ml.dummy_baseline@1.0.0" } },
+      { id: "ml_random_forest", label: "sprisk.ml.random_forest@1.0.0", description: "Forest.", applicability: "applicable", reason: "Left off: too few rows.", effect: forestEffect },
+    ],
+    shortlist: ["ml_dummy_baseline"],
+    fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    created_at: "2026-10-19T10:00:00Z",
+  });
+
+  it("tags the shortlisted models and asks why when one is chosen without comparing", async () => {
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(shortlist, { status: 201 })));
+    renderWithApi(<SplitMethodology pipeline={modelPipeline} nodeId="model" />);
+    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+
+    expect(await screen.findByText(/dummy_baseline@1.0.0 · shortlisted/)).toBeInTheDocument();
+    expect(screen.queryByText(/random_forest@1.0.0 · shortlisted/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: /dummy_baseline/ }));
+    expect(screen.getByLabelText(/Reason for choosing without comparing/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply to new flow version" })).toBeDisabled();
+  });
+});

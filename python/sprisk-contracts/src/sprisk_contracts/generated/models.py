@@ -258,6 +258,10 @@ class Error(StrictModel):
     message: Annotated[str, Field(min_length=1)]
 
 
+class ShortlistItem(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+
+
 class Applicability(StrEnum):
     applicable = "applicable"
     needs_fact = "needs_fact"
@@ -298,6 +302,11 @@ class MethodologyStage(StrEnum):
     models = "models"
     evaluation = "evaluation"
     reporting = "reporting"
+
+
+class Selection(StrEnum):
+    recommend = "recommend"
+    shortlist = "shortlist"
 
 
 class Status(StrEnum):
@@ -1186,7 +1195,13 @@ class RuleExample(StrictModel):
             description="Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }."
         ),
     ]
-    picks: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    picks: Annotated[
+        str | None,
+        Field(description="What a recommend rule picks.", pattern="^[a-z][a-z0-9_]{0,62}$"),
+    ] = None
+    shortlist: Annotated[
+        list[ShortlistItem] | None, Field(description="What a shortlist rule puts forward.")
+    ] = None
 
 
 class DecisionProposal(StrictModel):
@@ -1204,6 +1219,10 @@ class DecisionProposal(StrictModel):
     recommended_alternative_id: Annotated[str | None, Field(pattern="^[a-z][a-z0-9_]{0,62}$")] = (
         None
     )
+    shortlist: Annotated[
+        list[ShortlistItem] | None,
+        Field(description="The alternatives a shortlist rule puts forward to compare (ADR-0044)."),
+    ] = None
     fingerprint: ContentHash
     created_at: Timestamp
 
@@ -1346,6 +1365,12 @@ class OperatorModel(StrictModel):
         ModelFamily | None,
         Field(
             description="Left out for a model that ignores its features, such as a dummy baseline."
+        ),
+    ] = None
+    tasks: Annotated[
+        list[TaskType] | None,
+        Field(
+            description="The supervised tasks the model fits, so a shortlist rule can offer it (ADR-0044)."
         ),
     ] = None
     prepares: Annotated[
@@ -1578,7 +1603,19 @@ class RuleDecision(StrictModel):
     )
     schema_version: Literal["sprisk.rule_decision/v1"]
     rule: MethodologyRuleRef
-    recommended_alternative_id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    recommended_alternative_id: Annotated[
+        str | None,
+        Field(
+            description="The one alternative a recommend rule picks; absent for a shortlist rule.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ] = None
+    shortlist: Annotated[
+        list[ShortlistItem] | None,
+        Field(
+            description="The alternatives a shortlist rule puts forward to compare; absent for a recommend rule (ADR-0044)."
+        ),
+    ] = None
     alternatives: Annotated[list[Alternative], Field(min_length=1)]
     evidence: list[MethodologyEvidence]
 
@@ -1591,6 +1628,12 @@ class MethodologyRule(StrictModel):
     id: MethodologyRuleRef
     name: Annotated[str, Field(min_length=1)]
     stage: MethodologyStage
+    selection: Annotated[
+        Selection | None,
+        Field(
+            description="recommend (the default): decide() picks one alternative. shortlist: it puts forward the registry's models worth comparing (ADR-0044)."
+        ),
+    ] = None
     status: Annotated[
         Status,
         Field(
@@ -1632,7 +1675,12 @@ class MethodologyRule(StrictModel):
     policy_thresholds: Annotated[
         dict[str, Any], Field(description="Default thresholds the rule decides with.")
     ]
-    alternatives: Annotated[list[Alternative1], Field(min_length=1)]
+    alternatives: Annotated[
+        list[Alternative1],
+        Field(
+            description="A recommend rule's menu. A shortlist rule has none: its candidates come from the registry (ADR-0044)."
+        ),
+    ]
     verification: Verification
 
 

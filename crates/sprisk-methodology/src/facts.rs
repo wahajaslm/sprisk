@@ -19,6 +19,8 @@ pub const FACTS: &[&str] = &[
     "flow.other_readers",
     // A text setting of the step itself, e.g. step.method.
     "step.*",
+    // A model a shortlist rule may put forward: its family, featureless when it has none.
+    "candidate.*.family",
     // Measured on the step's train rows.
     "rows",
     "column.*.data_type",

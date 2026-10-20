@@ -30,8 +30,17 @@ def test_an_example_picks_what_it_says_and_offers_the_whole_menu(
     rule: str, example: dict[str, Any]
 ) -> None:
     d = run_example(rule, example)
-    assert d["recommended_alternative_id"] == example["picks"], d
-    menu = sorted(a["id"] for a in manifest(rule)["alternatives"])
+    spec = manifest(rule)
+    if spec.get("selection") == "shortlist":
+        assert d["shortlist"] == example["shortlist"], d
+        # A shortlist rule offers every candidate it was given.
+        prefix, suffix = "candidate.", ".family"
+        menu = sorted(
+            n[len(prefix) : -len(suffix)] for n in example["given"] if n.startswith(prefix)
+        )
+    else:
+        assert d["recommended_alternative_id"] == example["picks"], d
+        menu = sorted(a["id"] for a in spec["alternatives"])
     assert sorted(a["id"] for a in d["alternatives"]) == menu
 
 

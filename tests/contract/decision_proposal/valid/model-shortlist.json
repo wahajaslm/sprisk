@@ -1,0 +1,35 @@
+{
+  "schema_version": "sprisk.decision_proposal/v1",
+  "id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "rule": "methodology.supervised.model_baseline_selection@2.0.0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "subject_node_id": "model",
+  "evidence": [],
+  "alternatives": [
+    {
+      "id": "ml_random_forest",
+      "label": "sprisk.ml.random_forest@1.0.0",
+      "description": "Random forest.",
+      "applicability": "applicable",
+      "reason": "Enough rows.",
+      "effect": {
+        "kind": "replace_node",
+        "node_id": "model",
+        "operator": "sprisk.ml.random_forest@1.0.0",
+        "params": {
+          "target": "y",
+          "features": [
+            "age"
+          ],
+          "task": "classification"
+        }
+      }
+    }
+  ],
+  "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "created_at": "2026-10-19T10:00:00Z",
+  "shortlist": [
+    "ml_random_forest"
+  ]
+}

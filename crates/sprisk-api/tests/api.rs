@@ -1580,7 +1580,13 @@ async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
-    let request = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-apply-dbscan" });
+    // DBSCAN is not the recommendation, so choosing it needs a reason.
+    let bare = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-apply-dbscan-bare" });
+    let (status, body) = call(&api.app, "POST", &uri, Some(bare)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "reason_required");
+    let request = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-apply-dbscan",
+                          "reason": "The clusters are not convex." });
     let (status, applied) = call(&api.app, "POST", &uri, Some(request.clone())).await;
     assert_eq!(status, StatusCode::CREATED, "{applied}");
     assert_eq!(
@@ -1789,6 +1795,91 @@ async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play(
             ),
         "{proposal}"
     );
+}
+
+/// The scaling flow with a linear model after the scale step, run to the end.
+async fn model_flow(api: &Api) {
+    let model = json!({
+        "id":"model", "operator":"sprisk.ml.linear_model@1.0.0",
+        "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
+    });
+    scaling_flow_into(
+        api,
+        &[model],
+        &[json!({"from":"scale.train","to":"model.train"})],
+    )
+    .await;
+    let (run, _) = run_to_end(api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+}
+
+async fn propose_model(api: &Api) -> (StatusCode, Value) {
+    call(
+        &api.app,
+        "POST",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/model",
+        Some(json!({})),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
+    let api = api().await;
+    model_flow(&api).await;
+
+    let (status, proposal) = propose_model(&api).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(
+        proposal["rule"],
+        "methodology.supervised.model_baseline_selection@2.0.0"
+    );
+    // 30 train rows: too few for a forest, so the baseline and the linear model.
+    assert_eq!(
+        proposal["shortlist"],
+        json!(["ml_dummy_baseline", "ml_linear_model"])
+    );
+    assert!(proposal.get("recommended_alternative_id").is_none());
+    let forest = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "ml_random_forest")
+        .unwrap();
+    assert_eq!(
+        forest["effect"]["operator"],
+        "sprisk.ml.random_forest@1.0.0"
+    );
+    assert_eq!(forest["effect"]["params"]["features"], json!(["age"]));
+}
+
+#[tokio::test]
+async fn choosing_a_shortlisted_model_without_comparing_needs_a_reason() {
+    let api = api().await;
+    model_flow(&api).await;
+    let (_, proposal) = propose_model(&api).await;
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+
+    let bare =
+        json!({ "alternative_id": "ml_random_forest", "idempotency_key": "test-apply-forest" });
+    let (status, body) = call(&api.app, "POST", &uri, Some(bare)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "reason_required");
+
+    let reasoned = json!({ "alternative_id": "ml_random_forest", "idempotency_key": "test-apply-forest-2",
+                           "reason": "The team needs feature interactions." });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(reasoned)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let model = applied["pipeline"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.0.0");
 }
 
 #[tokio::test]

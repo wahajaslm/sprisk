@@ -27,7 +27,9 @@ export function SplitMethodology({ pipeline, nodeId }: { pipeline: PipelineVersi
           ? "How should continuous features be rescaled?"
           : current?.operator.includes("clip_outliers@")
             ? "How should extreme outliers be treated?"
-            : "Which methodology rule should be applied?";
+            : current?.operator.includes(".ml.")
+              ? "Which models are worth comparing?"
+              : "Which methodology rule should be applied?";
 
   const eyebrow = proposal?.rule
     ? `Methodology · ${proposal.rule}`
@@ -48,13 +50,13 @@ export function SplitMethodology({ pipeline, nodeId }: { pipeline: PipelineVersi
       <div className="method-alternatives">
         {proposal.alternatives.map((alternative) => <label key={alternative.id} className={`method-alternative ${alternative.applicability}`}>
           <input type="radio" name={`method-choice-${nodeId}`} checked={selected === alternative.id} disabled={alternative.applicability !== "applicable"} onChange={() => setSelected(alternative.id)} />
-          <span><strong>{alternative.label}{proposal.recommended_alternative_id === alternative.id ? " · recommended" : ""}</strong><small>{alternative.description}</small><small>{alternative.reason}</small></span>
+          <span><strong>{alternative.label}{proposal.recommended_alternative_id === alternative.id ? " · recommended" : ""}{proposal.shortlist?.includes(alternative.id) ? " · shortlisted" : ""}</strong><small>{alternative.description}</small><small>{alternative.reason}</small></span>
         </label>)}
       </div>
       {chosen?.effect && <div className="method-preview"><strong>Preview</strong>{chosen.effect.kind === "remove_node"
         ? <p>Remove <code>{chosen.effect.node_id}</code>. The steps after it read its inputs directly.</p>
         : <><p>Replace <code>{chosen.effect.node_id}</code> with <code>{chosen.effect.operator}</code>.</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>}</div>}
-      {chosen && proposal.recommended_alternative_id !== chosen.id && <label className="method-reason">Reason for choosing another method<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>}
+      {chosen && proposal.recommended_alternative_id !== chosen.id && <label className="method-reason">{proposal.shortlist ? "Reason for choosing without comparing" : "Reason for choosing another method"}<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>}
       <div className="settings-actions"><button type="button" className="page-btn" onClick={() => resolve.reset()}>Refresh</button><span className="spacer" /><button type="button" className="run-code" disabled={!chosen || apply.isPending || (proposal.recommended_alternative_id !== chosen?.id && !reason.trim())} onClick={() => chosen && apply.mutate({ proposalId: proposal.id, alternativeId: chosen.id, reason }, { onSuccess: (result) => selectPipeline(result.pipeline.id) })}>{apply.isPending ? "Applying…" : "Apply to new flow version"}</button></div>
     </>}
     {(resolve.isError || apply.isError) && <p role="alert" className="error">{resolve.error?.message ?? apply.error?.message}</p>}

@@ -332,3 +332,63 @@ fn a_draft_rule_is_never_routed() {
     let err = RuleCatalog::load_dir(dir.path()).unwrap_err().to_string();
     assert!(err.contains("applies_to"), "{err}");
 }
+
+/// An active shortlist rule; its candidates come from the registry.
+fn shortlist_yaml(alternatives: &str, examples: &str) -> String {
+    format!(
+        "schema_version: sprisk.methodology_rule/v1
+id: methodology.pack.a@1.0.0
+name: Test rule
+stage: models
+decides: modeling.a
+status: active
+selection: shortlist
+applies_to: [sprisk.ml.linear_model]
+reads: [candidate.*.family]
+provenance: {{ standard: s, citation: c, pitfall: p, corner_cases: [] }}
+policy_thresholds: {{}}
+alternatives: {alternatives}
+verification: {{ check_id: sprisk.checks.x@1.0.0, invariant: i }}
+examples: {examples}
+"
+    )
+}
+
+#[test]
+fn a_shortlist_rule_loads_with_candidates_from_the_registry() {
+    let dir = tempfile::tempdir().unwrap();
+    let examples = "[{ given: { candidate.ml_dummy_baseline.family: featureless }, shortlist: [ml_dummy_baseline] }]";
+    write_active(dir.path(), "a", &shortlist_yaml("[]", examples));
+    RuleCatalog::load_dir(dir.path()).unwrap();
+}
+
+#[test]
+fn a_shortlist_rule_has_no_alternatives_of_its_own() {
+    let examples = "[{ given: {}, shortlist: [keep] }]";
+    let alternatives =
+        "[{ id: keep, label: Keep, description: d, rationale: r, action: { type: remove_node } }]";
+    assert!(refused(&shortlist_yaml(alternatives, examples)).contains("registry"));
+}
+
+#[test]
+fn a_shortlist_example_gives_a_shortlist_not_a_pick() {
+    let examples = "[{ given: {}, picks: ml_dummy_baseline }]";
+    assert!(refused(&shortlist_yaml("[]", examples)).contains("shortlist"));
+}
+
+#[test]
+fn a_recommend_rule_needs_a_menu_and_examples_that_pick_from_it() {
+    let manifest = active_yaml("methodology.pack.a@1.0.0", "cleaning.a", "sprisk.clean.scale", READS_AND_EXAMPLE)
+        .replace(
+            "alternatives:\n  - { id: keep, label: Keep, description: d, rationale: r, action: { type: remove_node } }\n",
+            "alternatives: []\n",
+        );
+    assert!(refused(&manifest).contains("alternatives"));
+    let manifest = active_yaml(
+        "methodology.pack.a@1.0.0",
+        "cleaning.a",
+        "sprisk.clean.scale",
+        "reads: []\nexamples: [{ given: {}, shortlist: [keep] }]\n",
+    );
+    assert!(refused(&manifest).contains("picks"));
+}

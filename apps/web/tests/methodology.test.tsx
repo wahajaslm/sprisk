@@ -66,8 +66,7 @@ describe("methodology page", () => {
   });
 
   it("shows an active rule's inputs and examples, and no design notes", async () => {
-    const [first, ...rest] = features.alternatives;
-    const plain = ({ condition: _, ...a }: (typeof rest)[number]) => a;
+    const plain = ({ condition: _, ...a }: MethodologyRule["alternatives"][number]) => a;
     const { observes: _notes, ...withoutNotes } = split;
     const active: MethodologyRule = {
       ...withoutNotes,
@@ -75,7 +74,7 @@ describe("methodology page", () => {
       applies_to: ["sprisk.validation.random_split"],
       reads: ["question.target", "question.time_column"],
       examples: [{ given: { "question.time_column": "signup_date" }, picks: "correlation_pruning" }],
-      alternatives: [plain(first), ...rest.map(plain)],
+      alternatives: features.alternatives.map(plain),
     };
     serve([active]);
     renderWithApi(<MethodologyPage />);
@@ -86,6 +85,25 @@ describe("methodology page", () => {
     expect(example).toHaveTextContent("question.time_column = signup_date");
     expect(example).toHaveTextContent("Pairwise Correlation Pruning");
     expect(within(detail).queryByText(/^When:/)).not.toBeInTheDocument();
+  });
+
+  it("shows a shortlist rule's candidates as the registered models, and its examples' shortlists", async () => {
+    const { observes: _notes, ...withoutNotes } = split;
+    const shortlist: MethodologyRule = {
+      ...withoutNotes,
+      status: "active",
+      selection: "shortlist",
+      applies_to: ["sprisk.ml.linear_model"],
+      reads: ["rows", "candidate.*.family"],
+      alternatives: [],
+      examples: [{ given: { rows: 40 }, shortlist: ["ml_dummy_baseline", "ml_linear_model"] }],
+    };
+    serve([shortlist]);
+    renderWithApi(<MethodologyPage />);
+
+    const detail = await screen.findByRole("region", { name: shortlist.name });
+    expect(within(detail).getByText(/every registered model that fits the task/i)).toBeInTheDocument();
+    expect(within(detail).getByRole("listitem", { name: "Example 1" })).toHaveTextContent("shortlist: ml_dummy_baseline, ml_linear_model");
   });
 
   it("marks a draft rule and shows its design notes", async () => {

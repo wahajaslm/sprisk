@@ -1,112 +1,49 @@
 # ==============================================================================
-# Sprisk Methodology Rule: Estimator Selection & Parsimonious Benchmarking
+# Sprisk Methodology Rule: Model Shortlist
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.model_baseline_selection@1.0.0
-name: "Model Selection & Baseline Floor"
+id: methodology.supervised.model_baseline_selection@2.0.0
+name: "Model Shortlist"
 stage: models
 decides: modeling.estimator_selection
-status: draft
+status: active
+selection: shortlist
+applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
+reads: [question.task, rows, column.*.data_type, column.*.missing_share, candidate.*.family]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
 provenance:
-  standard: "Principle of Parsimony (Occam's Razor) & Scikit-Learn Estimator Guidelines"
-  citation: "Knowledge Base Step 4 Masterclass: Baseline Linear Modeling Before Complex Ensembles"
-  pitfall: "Deploying complex black-box gradient boosted trees or neural networks without establishing a linear baseline hides when the model fails to beat naive dummy guessing."
+  standard: "scikit-learn User Guide: Dummy estimators; Choosing the right estimator"
+  citation: "Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning, 2nd ed., Springer: §2.9 Model Selection and the Bias-Variance Tradeoff, ch. 7 Model Assessment and Selection, ch. 15 Random Forests. Breiman (2001) Random Forests, Machine Learning 45(1):5-32."
+  pitfall: "Picking one complex model before measuring hides whether it beats a simple one, or even a naive guess. With few rows, a high-variance model fits noise."
   corner_cases:
-    - "Dummy Baseline Floor: Any model that fails to significantly outperform a naive dummy baseline (stratified/prior) must trigger Gate B rejection."
-    - "Parsimony Rule: If XGBoost yields < 1% lift over regularized Logistic Regression, prefer the simpler model for explainability and lower serving latency."
-    - "Sample Size vs Complexity: Training deep neural networks or 1,000-tree ensembles on < 1,000 observations leads to severe overparameterized memorization."
+    - "The dummy baseline is the floor: a model that does not beat it on the same folds learned nothing useful."
+    - "Few rows favour low-variance models; the threshold is a setting, not a law."
+    - "A model of a family with no heuristic yet is put forward, so cross-validation decides."
 
-# 2. What This Rule Observes
-# ------------------------------------------------------------------------------
-observes:
-  - profile: sample_count
-    description: "Number of training observations"
-    required: true
-  - profile: target_type
-    description: "Classification vs Regression"
-    required: true
-  - profile: non_linear_complexity_score
-    description: "Estimated non-linearity score based on decision tree surrogate splits"
-    required: false
-  - fact: latency_constraint_ms
-    description: "Maximum allowable inference latency in milliseconds"
-    required: false
-
-# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# 2. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
 policy_thresholds:
-  small_sample_threshold: 1000
-  low_latency_cutoff_ms: 10.0
+  # Train rows below which a forest is left off the list: too few to trust its variance.
+  min_rows_for_forest: 100
+  # Share of text feature columns at which trees are named as handling them well.
+  text_share_threshold: 0.5
 
-# 4. Methodological Alternatives & Scoped Settings
+# 3. Alternatives: every registered model that fits the task (ADR-0044)
 # ------------------------------------------------------------------------------
-alternatives:
-  - id: regularized_linear_baseline
-    label: "Regularized Generalized Linear Model (ElasticNet / Logistic)"
-    description: "Train an interpretable L1/L2 penalized linear estimator with statistical significance testing."
-    condition: "sample_count < small_sample_threshold OR latency_constraint_ms < low_latency_cutoff_ms"
-    rationale: "Small sample count (<1k) or strict low-latency SLA. Regularized linear model prevents overparameterization and provides direct feature attributions."
-    settings_schema:
-      type: object
-      properties:
-        penalty:
-          type: string
-          enum: ["l2", "l1", "elasticnet"]
-          default: "l2"
-        c_regularization:
-          type: number
-          default: 1.0
-          minimum: 0.001
-          maximum: 1000.0
-    action:
-      type: replace_node
-      operator: sprisk.modeling.linear_estimator@1.0.0
-      params:
-        penalty: "{settings.penalty}"
-        C: "{settings.c_regularization}"
+alternatives: []
 
-  - id: gradient_boosted_ensemble
-    label: "Gradient Boosted Decision Trees (XGBoost / LightGBM)"
-    description: "Train an ensemble of gradient-boosted shallow decision trees with early stopping."
-    condition: "sample_count >= small_sample_threshold"
-    rationale: "Sufficient sample size to learn non-linear interactions without memorizing noise. State-of-the-art predictive performance on tabular data."
-    settings_schema:
-      type: object
-      properties:
-        n_estimators:
-          type: integer
-          default: 300
-          minimum: 50
-          maximum: 2000
-        learning_rate:
-          type: number
-          default: 0.05
-          minimum: 0.005
-          maximum: 0.3
-        max_depth:
-          type: integer
-          default: 6
-          minimum: 2
-          maximum: 12
-        early_stopping_rounds:
-          type: integer
-          default: 20
-          minimum: 5
-          maximum: 50
-    action:
-      type: replace_node
-      operator: sprisk.modeling.gradient_boosting@1.0.0
-      params:
-        n_estimators: "{settings.n_estimators}"
-        learning_rate: "{settings.learning_rate}"
-        max_depth: "{settings.max_depth}"
-        early_stopping_rounds: "{settings.early_stopping_rounds}"
-
-# 5. Matching Gate B Verification Check
+# 4. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------
 verification:
   check_id: sprisk.checks.supervised.baseline_lift@1.0.0
-  invariant: "Model evaluation score on the holdout test partition must exceed the naive DummyClassifier / DummyRegressor baseline by at least 5% relative lift."
+  invariant: "The kept model beats the dummy baseline on the same cross-validation folds by more than the spread of their paired differences."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: { question.task: classification, rows: 40, column.age.data_type: Float64, column.age.missing_share: 0.0, candidate.ml_dummy_baseline.family: featureless, candidate.ml_linear_model.family: linear, candidate.ml_random_forest.family: tree_ensemble }
+    shortlist: [ml_dummy_baseline, ml_linear_model]
+  - given: { question.task: classification, rows: 500, column.age.data_type: Float64, column.age.missing_share: 0.0, candidate.ml_dummy_baseline.family: featureless, candidate.ml_linear_model.family: linear, candidate.ml_random_forest.family: tree_ensemble }
+    shortlist: [ml_dummy_baseline, ml_linear_model, ml_random_forest]

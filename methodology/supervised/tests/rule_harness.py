@@ -12,7 +12,12 @@ from sprisk_workers.rule import load_decide
 
 PACKS = Path(__file__).parents[2]
 # Origins Rust gives a fact, by where it comes from; an example may give its own.
-DEFAULT_ORIGIN = {"question": "confirmed", "flow": "measured", "step": "explicit"}
+DEFAULT_ORIGIN = {
+    "question": "confirmed",
+    "flow": "measured",
+    "step": "explicit",
+    "candidate": "measured",
+}
 
 
 def manifest(pack_rule: str) -> dict[str, Any]:

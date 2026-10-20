@@ -11,7 +11,8 @@ Arch doc sections: §5 (experiments are not a second scheduler), §6, §8.3, §1
 ## Decision
 **Shortlist (phase 2)**
 - A rule manifest may declare `selection: shortlist`. Its decision lists `shortlist` (alternative ids) and has no `recommended_alternative_id`. Rust checks that exactly one of the two is present, as the manifest says.
-- **Candidates come from the registry.** A model manifest declares `model.tasks` (`classification`, `regression`). For a shortlist rule, Rust sends `candidates` in the observation: every model operator whose tasks include `question.task`, with its family.
+- **Candidates come from the registry.** A model manifest declares `model.tasks` (`classification`, `regression`). For a shortlist rule, Rust sends each model operator whose tasks include `question.task` as a fact, `candidate.<id>.family` (`featureless` for a model with no family), where `<id>` is the operator's name with dots as underscores (`ml_random_forest`). They pass through `reads` like any fact (ADR-0045).
+- A shortlist rule's manifest has no alternatives of its own; its examples give `shortlist` instead of `picks`.
 - `decide()` returns one alternative per candidate, with a reason, and the shortlist. The dummy baseline is always on it.
 - Each alternative is a `replace_node` of the model step with that candidate. Rust builds its params from the step's own params that the candidate's `params_schema` accepts, and compiles every preview, as for any proposal.
 - Applying one candidate without a comparison needs a reason, like any choice that was not recommended.

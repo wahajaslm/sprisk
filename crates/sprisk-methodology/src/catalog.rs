@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 use sprisk_contracts::{
-    ContractError, MethodologyRule, MethodologyRuleSource, MethodologyRuleStatus,
+    ContractError, MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource,
+    MethodologyRuleStatus,
 };
 
 use crate::facts;
@@ -227,12 +228,30 @@ fn check_status(rule: &MethodologyRule, has_module: bool) -> Result<(), String> 
     if rule.examples.is_empty() {
         return Err("an active rule needs examples".into());
     }
+    let shortlist = rule.selection == Some(MethodologyRuleSelection::Shortlist);
+    if shortlist && !rule.alternatives.is_empty() {
+        return Err("a shortlist rule's alternatives come from the registry; list none".into());
+    }
+    if !shortlist && rule.alternatives.is_empty() {
+        return Err("a recommend rule needs alternatives to pick from".into());
+    }
     for example in &rule.examples {
-        let picks = example.picks.as_str();
-        if !rule.alternatives.iter().any(|a| a.id.as_str() == picks) {
-            return Err(format!(
-                "an example picks {picks}, which is not on the menu"
-            ));
+        match (&example.picks, example.shortlist.is_empty(), shortlist) {
+            (None, false, true) => {}
+            (_, _, true) => {
+                return Err("a shortlist rule's example gives a shortlist, not picks".into());
+            }
+            (Some(picks), true, false) => {
+                let picks = picks.as_str();
+                if !rule.alternatives.iter().any(|a| a.id.as_str() == picks) {
+                    return Err(format!(
+                        "an example picks {picks}, which is not on the menu"
+                    ));
+                }
+            }
+            (_, _, false) => {
+                return Err("a recommend rule's example gives picks, not a shortlist".into());
+            }
         }
         if let Some(name) = example
             .given

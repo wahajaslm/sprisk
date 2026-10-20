@@ -27,10 +27,10 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
     CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
     GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyDecision,
-    MethodologyProposalId, MethodologyRule, MethodologyRuleSource, NotebookExecute,
-    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion,
-    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem,
-    QuestionVersion, QuestionVersionId, Run, RunId, parse,
+    MethodologyProposalId, MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource,
+    NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookVariables,
+    NotebookVersion, NotebookVersionId, Operator, OperatorSource, PipelineVersion,
+    PipelineVersionId, Problem, QuestionVersion, QuestionVersionId, Run, RunId, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -926,13 +926,27 @@ async fn propose(
         };
 
     let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
-    let flow = sprisk_methodology::flow_facts(
+    let mut flow = sprisk_methodology::flow_facts(
         &pipeline,
         node_id,
         |operator| state.registry.get(operator),
         keeps_flow_facts,
     )
     .map_err(resolve)?;
+    // A shortlist rule's alternatives are the registered models that fit the task (ADR-0044).
+    let candidates = if rule.selection == Some(MethodologyRuleSelection::Shortlist) {
+        let task = question.task.value.to_string();
+        let candidates = sprisk_methodology::candidates(&task, state.registry.operators());
+        if candidates.is_empty() {
+            return Err(not_applicable(format!(
+                "no registered model fits a {task} question"
+            )));
+        }
+        flow.extend(sprisk_methodology::candidate_facts(&candidates));
+        candidates
+    } else {
+        Default::default()
+    };
     let observation =
         sprisk_methodology::observation(rule, &question, flow, profile).map_err(resolve)?;
     let decision = state
@@ -946,8 +960,11 @@ async fn propose(
         &question,
         &pipeline,
         node_id,
-        &format!("mpr_{}", ulid::Ulid::new()),
-        &now(),
+        &candidates,
+        sprisk_methodology::Stamp {
+            id: &format!("mpr_{}", ulid::Ulid::new()),
+            created_at: &now(),
+        },
     )
     .map_err(resolve)?;
 
@@ -978,42 +995,52 @@ async fn train_profile_facts(
     node: &sprisk_contracts::Node,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
-    let source = pipeline
-        .edges
-        .iter()
-        .find(|e| e.to.as_str() == format!("{step}.train"))
-        .map(|e| e.from.step_and_port())
-        .filter(|(from, port)| {
-            *port == "train"
-                && pipeline.nodes.iter().any(|n| {
-                    n.id.as_str() == *from
-                        && state
-                            .rules
-                            .rule_for_operator(n.operator.as_str())
-                            .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
-                })
+    let feeds = |id: &str| {
+        pipeline
+            .edges
+            .iter()
+            .find(|e| e.to.as_str() == format!("{id}.train"))
+            .map(|e| e.from.step_and_port())
+            .filter(|(_, port)| *port == "train")
+    };
+    let is_split = |id: &str| {
+        pipeline.nodes.iter().any(|n| {
+            n.id.as_str() == id
+                && state
+                    .rules
+                    .rule_for_operator(n.operator.as_str())
+                    .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
         })
-        .ok_or_else(|| {
-            evidence_unavailable(format!(
-                "step {step} must take its train rows from a split step's train output"
-            ))
-        })?;
-    let columns: Vec<String> = node
-        .params
-        .get("columns")
+    };
+    let not_train = || {
+        evidence_unavailable(format!(
+            "step {step} must take its train rows from a split step's train output, through train ports only"
+        ))
+    };
+    // The table the step receives, kept to train rows: every hop back to the split is a train
+    // port, so no test row can reach the profile (rule 8).
+    let source = feeds(step).ok_or_else(not_train)?.0;
+    let mut at = source;
+    while !is_split(at) {
+        at = feeds(at).ok_or_else(not_train)?.0;
+    }
+    let columns: Vec<String> = ["columns", "features"]
+        .iter()
+        .find_map(|name| node.params.get(*name))
         .and_then(|c| serde_json::from_value(c.clone()).ok())
-        .ok_or_else(|| not_applicable(format!("step {step} names no list of columns")))?;
+        .ok_or_else(|| {
+            not_applicable(format!("step {step} names no list of columns or features"))
+        })?;
     let artifact = state
         .store
         .latest_outputs(std::slice::from_ref(&pipeline.id))
         .await?
         .into_iter()
-        .find(|o| o.node_id == source.0 && o.port == "train")
+        .find(|o| o.node_id == source && o.port == "train")
         .map(|o| o.artifact)
         .ok_or_else(|| {
             evidence_unavailable(format!(
-                "run the flow first: this rule measures the train rows {} gives step {step}",
-                source.0
+                "run the flow first: this rule measures the train rows {source} gives step {step}"
             ))
         })?;
     let profile = state.profiler.profile(&local_table(&artifact)?).await?;
@@ -1073,6 +1100,21 @@ async fn apply_methodology(
                 request.alternative_id.as_str()
             ),
         })?;
+    // Choosing other than the recommendation, or from a shortlist without comparing, is an
+    // override: it needs a reason on every path, not only in the UI (ADR-0042).
+    let recommended = proposal
+        .recommended_alternative_id
+        .as_ref()
+        .map(|r| r.as_str());
+    if recommended != Some(request.alternative_id.as_str()) && request.reason.is_none() {
+        return Err(ApiError::BadRequest {
+            code: "reason_required",
+            message: format!(
+                "choosing {} needs a reason: it is not the recommended alternative",
+                request.alternative_id.as_str()
+            ),
+        });
+    }
     if alternative["applicability"] != "applicable" {
         return Err(ApiError::BadRequest {
             code: "missing_fact",

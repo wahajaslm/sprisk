@@ -8,9 +8,10 @@ use petgraph::graph::DiGraph;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    CapabilityClass, DatasetProfile, DecisionProposal, Edge, MethodologyRule, ModelPreparation,
-    Node, Operator, OperatorModel, PipelineVersion, PortRef, QuestionVersion, RuleActionType,
-    RuleDecision, RuleDecisionAlternativesItemApplicability, RuleObservation, parse,
+    CapabilityClass, DatasetProfile, DecisionProposal, Edge, MethodologyRule,
+    MethodologyRuleSelection, ModelPreparation, Node, Operator, OperatorModel, PipelineVersion,
+    PortRef, QuestionVersion, RuleActionType, RuleDecision,
+    RuleDecisionAlternativesItemApplicability, RuleObservation, parse,
 };
 
 use crate::{ResolveError, facts};
@@ -278,6 +279,12 @@ pub fn without_node(
     Ok((nodes, edges))
 }
 
+/// A new proposal's id and when it was made.
+pub struct Stamp<'a> {
+    pub id: &'a str,
+    pub created_at: &'a str,
+}
+
 /// The proposal for `node_id`: each decided alternative with the manifest's label and
 /// description, and, where applicable, its effect: `replace_node` with the manifest's
 /// operator, or `remove_node` when the manifest's action says so (ADR-0043).
@@ -287,24 +294,21 @@ pub fn proposal(
     question: &QuestionVersion,
     pipeline: &PipelineVersion,
     node_id: &str,
-    proposal_id: &str,
-    created_at: &str,
+    candidates: &BTreeMap<String, &Operator>,
+    stamp: Stamp,
 ) -> Result<DecisionProposal, ResolveError> {
-    if !pipeline.nodes.iter().any(|n| n.id.as_str() == node_id) {
-        return Err(ResolveError::UnknownNode(node_id.to_owned()));
-    }
+    let node = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == node_id)
+        .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
+    let shortlist = rule.selection == Some(MethodologyRuleSelection::Shortlist);
+    check_selection(decision, shortlist)?;
     let mut alternatives = Vec::new();
     for decided in &decision.alternatives {
         let id = decided.id.as_str();
-        let declared = rule
-            .alternatives
-            .iter()
-            .find(|m| m.id.as_str() == id)
-            .ok_or_else(|| ResolveError::UndeclaredAlternative(id.to_owned()))?;
         let mut built = json!({
             "id": id,
-            "label": declared.label,
-            "description": declared.description,
             "applicability": decided.applicability,
             "reason": decided.reason,
         });
@@ -312,13 +316,32 @@ pub fn proposal(
             decided.applicability,
             RuleDecisionAlternativesItemApplicability::Applicable
         );
-        if declared.action.type_ == RuleActionType::RemoveNode {
+        if shortlist {
+            let operator = candidates
+                .get(id)
+                .ok_or_else(|| ResolveError::UndeclaredAlternative(id.to_owned()))?;
+            built["label"] = json!(operator.id);
+            built["description"] = json!(operator.description);
             if applicable {
-                built["effect"] = json!({ "kind": "remove_node", "node_id": node_id });
+                built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": operator.id, "params": params_for(operator, node) });
             }
-        } else if let (Some(params), Some(operator)) = (&decided.params, &declared.action.operator)
-        {
-            built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": operator, "params": params });
+        } else {
+            let declared = rule
+                .alternatives
+                .iter()
+                .find(|m| m.id.as_str() == id)
+                .ok_or_else(|| ResolveError::UndeclaredAlternative(id.to_owned()))?;
+            built["label"] = json!(declared.label);
+            built["description"] = json!(declared.description);
+            if declared.action.type_ == RuleActionType::RemoveNode {
+                if applicable {
+                    built["effect"] = json!({ "kind": "remove_node", "node_id": node_id });
+                }
+            } else if let (Some(params), Some(operator)) =
+                (&decided.params, &declared.action.operator)
+            {
+                built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": operator, "params": params });
+            }
         }
         alternatives.push(built);
     }
@@ -328,20 +351,107 @@ pub fn proposal(
         "sha256:{}",
         hex::encode(Sha256::digest(serde_json::to_vec(&fingerprint_input)?))
     );
-    Ok(parse(
-        &json!({
-            "schema_version": "sprisk.decision_proposal/v1",
-            "id": proposal_id,
-            "rule": rule.id,
-            "question_version_id": question.id,
-            "pipeline_version_id": pipeline.id,
-            "subject_node_id": node_id,
-            "evidence": decision.evidence,
-            "alternatives": alternatives,
-            "recommended_alternative_id": decision.recommended_alternative_id,
-            "fingerprint": fingerprint,
-            "created_at": created_at,
+    let mut built = json!({
+        "schema_version": "sprisk.decision_proposal/v1",
+        "id": stamp.id,
+        "rule": rule.id,
+        "question_version_id": question.id,
+        "pipeline_version_id": pipeline.id,
+        "subject_node_id": node_id,
+        "evidence": decision.evidence,
+        "alternatives": alternatives,
+        "fingerprint": fingerprint,
+        "created_at": stamp.created_at,
+    });
+    if let Some(recommended) = &decision.recommended_alternative_id {
+        built["recommended_alternative_id"] = json!(recommended);
+    }
+    if shortlist {
+        built["shortlist"] = json!(decision.shortlist);
+    }
+    Ok(parse(&built.to_string())?)
+}
+
+/// A recommend rule picks one alternative it offers; a shortlist rule puts forward some it
+/// offers and picks none (ADR-0044).
+fn check_selection(decision: &RuleDecision, shortlist: bool) -> Result<(), ResolveError> {
+    let offered = |id: &str| decision.alternatives.iter().any(|a| a.id.as_str() == id);
+    let recommended = decision.recommended_alternative_id.as_ref();
+    let problem = match (shortlist, recommended) {
+        (false, None) => Some("a recommend rule must pick an alternative".to_owned()),
+        (false, Some(_)) if !decision.shortlist.is_empty() => {
+            Some("a recommend rule gives no shortlist".to_owned())
+        }
+        (false, Some(r)) if !offered(r.as_str()) => Some(format!(
+            "it recommends {}, which it does not offer",
+            r.as_str()
+        )),
+        (true, Some(_)) => Some("a shortlist rule recommends no single alternative".to_owned()),
+        (true, None) if decision.shortlist.is_empty() => {
+            Some("a shortlist rule must put forward at least one alternative".to_owned())
+        }
+        (true, None) => decision
+            .shortlist
+            .iter()
+            .find(|id| !offered(id.as_str()))
+            .map(|id| format!("it shortlists {}, which it does not offer", id.as_str())),
+        _ => None,
+    };
+    problem.map_or(Ok(()), |p| Err(ResolveError::Selection(p)))
+}
+
+/// The step's params that `operator` accepts, so a candidate keeps the step's target,
+/// features and task.
+fn params_for(operator: &Operator, node: &Node) -> Map<String, Value> {
+    let accepted = operator
+        .params_schema
+        .get("properties")
+        .and_then(Value::as_object);
+    node.params
+        .iter()
+        .filter(|(name, _)| accepted.is_some_and(|a| a.contains_key(*name)))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
+}
+
+/// The id a candidate model goes by: its operator name without `sprisk.`, with dots as
+/// underscores, e.g. `ml_random_forest`.
+fn candidate_id(operator: &Operator) -> String {
+    let name = operator.id.as_str().split('@').next().unwrap_or_default();
+    name.strip_prefix("sprisk.")
+        .unwrap_or(name)
+        .replace('.', "_")
+}
+
+/// The registered models that fit `task`, by candidate id (ADR-0044).
+pub fn candidates<'a>(
+    task: &str,
+    operators: impl Iterator<Item = &'a Operator>,
+) -> BTreeMap<String, &'a Operator> {
+    operators
+        .filter(|o| {
+            o.model
+                .as_ref()
+                .is_some_and(|m| m.tasks.iter().any(|t| t.to_string() == task))
         })
-        .to_string(),
-    )?)
+        .map(|o| (candidate_id(o), o))
+        .collect()
+}
+
+/// `candidate.<id>.family` for each candidate, `featureless` for one with no family.
+pub fn candidate_facts(candidates: &BTreeMap<String, &Operator>) -> Map<String, Value> {
+    candidates
+        .iter()
+        .map(|(id, operator)| {
+            let family = operator
+                .model
+                .as_ref()
+                .and_then(|m| m.family)
+                .map_or_else(|| "featureless".to_owned(), |f| f.to_string());
+            (
+                format!("candidate.{id}.family"),
+                json!({ "value": family, "origin": "measured" }),
+            )
+        })
+        .collect()
 }
