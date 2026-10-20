@@ -8,11 +8,13 @@ from typing import Any
 import numpy as np
 import polars as pl
 import pytest
+import skops.io
 import yaml
 
 from sprisk_ml.evaluate import evaluate
 from sprisk_ml.importance import feature_importance
 from sprisk_ml.models import dummy_baseline, linear_model, random_forest
+from sprisk_workers.plain import TRUSTED_MODEL_TYPES
 
 OPERATORS = Path(__file__).parents[1] / "operators"
 MODELS: dict[str, Callable[..., Any]] = {
@@ -75,3 +77,20 @@ def test_a_model_that_standardizes_is_unchanged_by_affine_scaling_before_it(name
     raw = fit(name, train).predict_proba(test.select(FEATURES))
     scaled = fit(name, rescale(train)).predict_proba(rescale(test).select(FEATURES))
     np.testing.assert_allclose(raw, scaled, atol=1e-9)
+
+
+@pytest.mark.parametrize("name", MODELS)
+def test_a_boolean_feature_without_gaps_is_encoded_like_any_category(name: str) -> None:
+    train = rows(60, seed=1).with_columns(pl.col("b").fill_null(False))
+    model = MODELS[name](train, target="y", features=["x", "b"], task="classification")
+    assert model.predict(train.select("x", "b")).shape == (60,)
+
+
+@pytest.mark.parametrize("name", MODELS)
+def test_a_fitted_model_loads_back_under_the_workers_trusted_types(name: str) -> None:
+    train, test = rows(60, seed=1), rows(30, seed=2)
+    model = fit(name, train)
+    loaded = skops.io.loads(skops.io.dumps(model), trusted=TRUSTED_MODEL_TYPES)
+    np.testing.assert_array_equal(
+        loaded.predict(test.select(FEATURES)), model.predict(test.select(FEATURES))
+    )

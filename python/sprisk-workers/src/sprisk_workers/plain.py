@@ -28,7 +28,9 @@ from sprisk_workers.serve import OperatorFn
 # Tree storage is listed so forests load: a forged tree could make predict read out of bounds,
 # but model files are written only by first-party steps into the content-addressed store, and
 # every input's hash is checked against the recorded one before it is loaded (serve.py).
-TRUSTED_MODEL_TYPES = ["numpy.dtype", "sklearn.tree._tree.Tree"]
+# numpy.asarray is listed for the models' category cast: it only builds an array from its
+# input, so a file naming it can do no more than that.
+TRUSTED_MODEL_TYPES = ["numpy.asarray", "numpy.dtype", "sklearn.tree._tree.Tree"]
 
 
 def adapt(fn: Callable[..., Any], operator: Operator) -> OperatorFn:

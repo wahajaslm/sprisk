@@ -1,6 +1,7 @@
 """Models fit on the training table: preprocessing and estimator together, so nothing about
 the test rows is learned."""
 
+import numpy as np
 import polars as pl
 import polars.selectors as cs
 from sklearn.base import BaseEstimator
@@ -10,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
 
 def dummy_baseline(train: pl.DataFrame, target: str, features: list[str], task: str) -> Pipeline:
@@ -70,6 +71,11 @@ def preprocessor(x: pl.DataFrame) -> ColumnTransformer:
             (
                 "categorical",
                 make_pipeline(
+                    # A gap-free boolean column arrives as a bool array, which the imputer
+                    # refuses; as objects, every category column looks the same to it.
+                    FunctionTransformer(
+                        np.asarray, kw_args={"dtype": "object"}, feature_names_out="one-to-one"
+                    ),
                     # Polars text and boolean gaps reach sklearn as None, not NaN.
                     SimpleImputer(missing_values=None, strategy="most_frequent"),
                     OneHotEncoder(handle_unknown="ignore"),
