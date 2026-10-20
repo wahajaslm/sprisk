@@ -806,6 +806,88 @@ export interface Params {
   [k: string]: unknown;
 }
 /**
+ * What a rule's decide() reads (ADR-0042): confirmed question facts and measured profile values, never raw rows, plus its settings. Sent by Rust to the Python rule runner.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuleObservation".
+ */
+export interface RuleObservation {
+  schema_version: "sprisk.rule_observation/v1";
+  rule: MethodologyRuleRef;
+  /**
+   * Question facts by name, e.g. question.time_column.
+   */
+  facts: {
+    [k: string]: Fact;
+  };
+  /**
+   * Measured profile values by name.
+   */
+  profile: {
+    [k: string]: number | string | boolean;
+  };
+  /**
+   * The rule's settings: policy thresholds with any overrides.
+   */
+  settings: {
+    [k: string]: unknown;
+  };
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Fact".
+ */
+export interface Fact {
+  value: string;
+  origin: Origin;
+}
+/**
+ * What a rule's decide() returns (ADR-0042). Rust builds graph effects from it with the manifest's actions; it never runs as code.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuleDecision".
+ */
+export interface RuleDecision {
+  schema_version: "sprisk.rule_decision/v1";
+  rule: MethodologyRuleRef;
+  recommended_alternative_id: string;
+  /**
+   * @minItems 1
+   */
+  alternatives: [
+    {
+      id: string;
+      applicability: "applicable" | "needs_fact" | "not_applicable";
+      reason: string;
+      params?: Params1;
+    },
+    ...{
+      id: string;
+      applicability: "applicable" | "needs_fact" | "not_applicable";
+      reason: string;
+      params?: Params1;
+    }[]
+  ];
+  evidence: MethodologyEvidence[];
+}
+/**
+ * Concrete params for the manifest action's operator; present when applicable.
+ */
+export interface Params1 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyEvidence".
+ */
+export interface MethodologyEvidence {
+  kind: "question_fact" | "profile_fact" | "policy" | "user_reason";
+  label: string;
+  value: string;
+  origin: Origin;
+  artifact_id?: ArtifactId;
+}
+/**
  * The declarative manifest of one methodology rule package (ADR-0042), loaded from methodology/<pack>/rules/<rule>/rule.yaml. Served read-only by GET /methodology_rules.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -943,17 +1025,6 @@ export interface MethodologyRuleSource {
       text: string;
     }[]
   ];
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyEvidence".
- */
-export interface MethodologyEvidence {
-  kind: "question_fact" | "profile_fact" | "policy" | "user_reason";
-  label: string;
-  value: string;
-  origin: Origin;
-  artifact_id?: ArtifactId;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1392,14 +1463,6 @@ export interface QuestionVersion {
   unknowns: Unknown[];
   acceptance_criteria: Fact[];
   created_at: Timestamp;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Fact".
- */
-export interface Fact {
-  value: string;
-  origin: Origin;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

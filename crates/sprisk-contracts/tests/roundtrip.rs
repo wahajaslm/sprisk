@@ -12,8 +12,8 @@ use sprisk_contracts::{
     DecisionProposal, FigureSet, LoadedTable, MethodologyCheck, MethodologyDecision,
     MethodologyRule, MethodologyRuleSource, NotebookExecute, NotebookExecution,
     NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator,
-    OperatorSource, PipelineVersion, Problem, QuestionVersion, Run, TablePage, WorkerMessage,
-    parse,
+    OperatorSource, PipelineVersion, Problem, QuestionVersion, RuleDecision, RuleObservation, Run,
+    TablePage, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -85,6 +85,8 @@ const ENTITIES: &[&str] = &[
     "pipeline_version",
     "problem",
     "question_version",
+    "rule_decision",
+    "rule_observation",
     "run",
     "table_page",
     "worker_message",
@@ -224,6 +226,16 @@ fn methodology_rule() {
 #[test]
 fn methodology_rule_source() {
     check::<MethodologyRuleSource>("methodology_rule_source");
+}
+
+#[test]
+fn rule_observation() {
+    check::<RuleObservation>("rule_observation");
+}
+
+#[test]
+fn rule_decision() {
+    check::<RuleDecision>("rule_decision");
 }
 
 #[test]

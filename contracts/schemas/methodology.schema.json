@@ -1,6 +1,110 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "RuleObservation": {
+      "title": "RuleObservation",
+      "description": "What a rule's decide() reads (ADR-0042): confirmed question facts and measured profile values, never raw rows, plus its settings. Sent by Rust to the Python rule runner.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "rule",
+        "facts",
+        "profile",
+        "settings"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "sprisk.rule_observation/v1"
+        },
+        "rule": {
+          "$ref": "#/$defs/MethodologyRuleRef"
+        },
+        "facts": {
+          "type": "object",
+          "description": "Question facts by name, e.g. question.time_column.",
+          "additionalProperties": {
+            "$ref": "#/$defs/Fact"
+          }
+        },
+        "profile": {
+          "type": "object",
+          "description": "Measured profile values by name.",
+          "additionalProperties": { "oneOf": [{ "type": "number" }, { "type": "string" }, { "type": "boolean" }] }
+        },
+        "settings": {
+          "type": "object",
+          "description": "The rule's settings: policy thresholds with any overrides.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "RuleDecision": {
+      "title": "RuleDecision",
+      "description": "What a rule's decide() returns (ADR-0042). Rust builds graph effects from it with the manifest's actions; it never runs as code.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "rule",
+        "recommended_alternative_id",
+        "alternatives",
+        "evidence"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "sprisk.rule_decision/v1"
+        },
+        "rule": {
+          "$ref": "#/$defs/MethodologyRuleRef"
+        },
+        "recommended_alternative_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "alternatives": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "applicability",
+              "reason"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,62}$"
+              },
+              "applicability": {
+                "type": "string",
+                "enum": [
+                  "applicable",
+                  "needs_fact",
+                  "not_applicable"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "params": {
+                "$ref": "#/$defs/Params",
+                "description": "Concrete params for the manifest action's operator; present when applicable."
+              }
+            }
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MethodologyEvidence"
+          }
+        }
+      }
+    },
     "MethodologyRuleRef": {
       "type": "string",
       "description": "methodology.<pack>.<rule>@<semver>",

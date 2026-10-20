@@ -1,0 +1,20 @@
+{
+  "schema_version": "sprisk.rule_decision/v1",
+  "rule": "methodology.supervised.data_split@1.0.0",
+  "recommended_alternative_id": "temporal",
+  "alternatives": [
+    {
+      "id": "temporal",
+      "applicability": "maybe",
+      "reason": "r"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "question_fact",
+      "label": "Time column",
+      "value": "signup_date",
+      "origin": "confirmed"
+    }
+  ]
+}

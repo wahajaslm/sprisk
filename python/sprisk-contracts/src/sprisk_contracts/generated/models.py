@@ -258,6 +258,27 @@ class Error(StrictModel):
     message: Annotated[str, Field(min_length=1)]
 
 
+class Applicability(StrEnum):
+    applicable = "applicable"
+    needs_fact = "needs_fact"
+    not_applicable = "not_applicable"
+
+
+class Alternative(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    applicability: Applicability
+    reason: Annotated[str, Field(min_length=1)]
+    params: Annotated[
+        Params | None,
+        Field(
+            description="Concrete params for the manifest action's operator; present when applicable."
+        ),
+    ] = None
+
+
 class MethodologyRuleRef(RootModel[str]):
     root: Annotated[
         str,
@@ -337,7 +358,7 @@ class Action(StrictModel):
     ] = None
 
 
-class Alternative(StrictModel):
+class Alternative1(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -391,7 +412,7 @@ class MethodologyRule(StrictModel):
     policy_thresholds: Annotated[
         dict[str, Any], Field(description="Default thresholds the rule decides with.")
     ]
-    alternatives: Annotated[list[Alternative], Field(min_length=1)]
+    alternatives: Annotated[list[Alternative1], Field(min_length=1)]
     verification: Verification
 
 
@@ -447,12 +468,6 @@ class GraphEffect(RootModel[GraphEffect1]):
             description="Typed mutation previewed and compiled before it can create a pipeline version."
         ),
     ]
-
-
-class Applicability(StrEnum):
-    applicable = "applicable"
-    needs_fact = "needs_fact"
-    not_applicable = "not_applicable"
 
 
 class MethodologyAlternative(StrictModel):
@@ -1107,6 +1122,24 @@ class Artifact(StrictModel):
     created_at: Timestamp
 
 
+class RuleObservation(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.rule_observation/v1"]
+    rule: MethodologyRuleRef
+    facts: Annotated[
+        dict[str, Fact], Field(description="Question facts by name, e.g. question.time_column.")
+    ]
+    profile: Annotated[
+        dict[str, float | str | bool], Field(description="Measured profile values by name.")
+    ]
+    settings: Annotated[
+        dict[str, Any],
+        Field(description="The rule's settings: policy thresholds with any overrides."),
+    ]
+
+
 class MethodologyEvidence(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1456,6 +1489,17 @@ class CodeSplit(StrictModel):
     steps: list[SplitStep]
     links: list[SplitLink]
     notes: list[SplitNote]
+
+
+class RuleDecision(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.rule_decision/v1"]
+    rule: MethodologyRuleRef
+    recommended_alternative_id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    alternatives: Annotated[list[Alternative], Field(min_length=1)]
+    evidence: list[MethodologyEvidence]
 
 
 class NotebookVersion(StrictModel):

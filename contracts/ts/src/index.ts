@@ -30,6 +30,8 @@ export interface Entities {
   OperatorSource: C.OperatorSource;
   MethodologyRule: C.MethodologyRule;
   MethodologyRuleSource: C.MethodologyRuleSource;
+  RuleObservation: C.RuleObservation;
+  RuleDecision: C.RuleDecision;
   FigureSet: C.FigureSet;
   LoadedTable: C.LoadedTable;
   DatasetProfile: C.DatasetProfile;
