@@ -62,6 +62,19 @@ pub fn comparison<'a>(
     let (split, between) = chain
         .split_last()
         .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
+    // Folds shuffle rows. After a split that keeps time order or groups apart, they would
+    // validate on rows before the ones a fold fits on, or on groups it also fits on.
+    let split_operator = base
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == *split)
+        .map(|n| n.operator.as_str())
+        .ok_or_else(|| ResolveError::UnknownNode((*split).to_owned()))?;
+    if !split_operator.starts_with("sprisk.validation.random_split@") {
+        return Err(ResolveError::Selection(format!(
+            "split step {split} ({split_operator}) keeps time order or groups apart, which shuffled folds would mix; only a flow with a random split can be compared yet"
+        )));
+    }
 
     let kept = upstream(base, split);
     let mut nodes: Vec<Node> = base

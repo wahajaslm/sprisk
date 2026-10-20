@@ -15,6 +15,11 @@ METRIC_OF_TASK = {"classification": "balanced_accuracy", "regression": "rmse"}
 SCORING = {"balanced_accuracy": "balanced_accuracy", "rmse": "neg_root_mean_squared_error"}
 GREATER_IS_BETTER = {"balanced_accuracy": True, "rmse": False}
 LABEL = {"balanced_accuracy": "balanced accuracy", "rmse": "RMSE"}
+SCREENING = (
+    "A model beats the baseline when its mean gain is larger than one corrected standard "
+    "error. That is a screening rule, not a significance test, and it is not adjusted for "
+    "comparing several models."
+)
 # What every candidate's folds must share for their paired differences to mean anything.
 PROTOCOL = ["metric", "folds", "seed", "fold", "train_rows", "validate_rows", "rows_digest"]
 
@@ -31,6 +36,9 @@ def cross_validate(
     pipeline, preparation included, is refit on the other rows of each fold. The same rows,
     folds and seed give every candidate the same folds."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
+    # Rust picks the metric from the question's task; this checks a step built by hand.
+    if task not in METRIC_OF_TASK:
+        raise ValueError(f"a {task} task has no comparison metric")
     if METRIC_OF_TASK[task] != metric:
         raise ValueError(
             f"metric {metric} does not fit a {task} task; it is {METRIC_OF_TASK[task]}"
@@ -84,9 +92,10 @@ def select_model(
 ) -> dict[str, Any]:
     """A SelectionDecision: the candidate with the best mean score among those that beat the
     baseline on the same folds, or none. Beating it means a mean paired improvement larger
-    than its standard error, corrected for folds that share train rows (Nadeau & Bengio 2003:
-    the variance of the mean is (1/k + n_validate/n_train) times the variance of the
-    differences, not 1/k)."""
+    than one standard error, corrected for folds that share train rows: the variance of the
+    mean is (1/k + n_validate/n_train) times the variance of the differences, not 1/k. That
+    is the correction of Nadeau & Bengio (2003), applied to k-fold as Bouckaert & Frank
+    (2004) do. The one-standard-error bar is ours, a screening rule, not a test."""
     if baseline not in trials:
         raise ValueError(f"baseline {baseline} is not one of the trials {sorted(trials)}")
     protocol = trials[baseline].select(PROTOCOL)
@@ -120,6 +129,14 @@ def select_model(
         candidates.append(result)
 
     beating = [c for c in candidates if c.get("versus_baseline", {}).get("beats_baseline")]
+    left_out = (
+        [
+            f"Steps {', '.join(not_compared)} between the split and the model were not part "
+            "of the comparison: every candidate was scored on the split's train rows without them."
+        ]
+        if not_compared
+        else []
+    )
     decision: dict[str, Any] = {
         "schema_version": "sprisk.selection_decision/v1",
         "metric": metric,
@@ -127,17 +144,12 @@ def select_model(
         "seed": int(protocol["seed"][0]),
         "baseline": baseline,
         "candidates": candidates,
-        "limitations": [
-            f"Steps {', '.join(not_compared)} between the split and the model were not part "
-            "of the comparison: every candidate was scored on the split's train rows without them."
-        ]
-        if not_compared
-        else [],
+        "limitations": [*left_out, SCREENING],
     }
     if not beating:
         decision["reason"] = (
             f"No model beats the baseline: none improves on {baseline}'s {LABEL[metric]} by more "
-            f"than the corrected standard error of its paired differences over the same {k} folds."
+            f"than one corrected standard error of its paired differences over the same {k} folds."
         )
         return decision
     # Ties go to the first by id, so the same scores always give the same winner.
@@ -147,7 +159,7 @@ def select_model(
     decision["reason"] = (
         f"{winner['id']} has the best mean {LABEL[metric]} ({winner['mean']:.3f} ± "
         f"{winner['spread']:.3f}) of the models that beat the baseline. Over the same {k} folds "
-        f"it improves on {baseline} by {versus['mean_difference']:.3f}, more than the corrected "
-        f"standard error {versus['corrected_se']:.3f}."
+        f"it improves on {baseline} by {versus['mean_difference']:.3f}, more than one corrected "
+        f"standard error ({versus['corrected_se']:.3f})."
     )
     return decision

@@ -767,11 +767,14 @@ class BaselineComparison(StrictModel):
     corrected_se: Annotated[
         float,
         Field(
-            description="Standard error of that mean, corrected for folds that share train rows (Nadeau & Bengio 2003)."
+            description="Standard error of that mean, corrected for folds that share train rows: the correction of Nadeau & Bengio (2003), applied to k-fold as in Bouckaert & Frank (2004)."
         ),
     ]
     beats_baseline: Annotated[
-        bool, Field(description="Whether mean_difference is larger than corrected_se.")
+        bool,
+        Field(
+            description="Whether mean_difference is larger than one corrected_se: a screening rule, not a significance test."
+        ),
     ]
 
 

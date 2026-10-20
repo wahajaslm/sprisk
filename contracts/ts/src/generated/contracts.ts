@@ -1741,11 +1741,11 @@ export interface BaselineComparison {
    */
   mean_difference: number;
   /**
-   * Standard error of that mean, corrected for folds that share train rows (Nadeau & Bengio 2003).
+   * Standard error of that mean, corrected for folds that share train rows: the correction of Nadeau & Bengio (2003), applied to k-fold as in Bouckaert & Frank (2004).
    */
   corrected_se: number;
   /**
-   * Whether mean_difference is larger than corrected_se.
+   * Whether mean_difference is larger than one corrected_se: a screening rule, not a significance test.
    */
   beats_baseline: boolean;
 }
@@ -1759,11 +1759,11 @@ export interface BaselineComparison1 {
    */
   mean_difference: number;
   /**
-   * Standard error of that mean, corrected for folds that share train rows (Nadeau & Bengio 2003).
+   * Standard error of that mean, corrected for folds that share train rows: the correction of Nadeau & Bengio (2003), applied to k-fold as in Bouckaert & Frank (2004).
    */
   corrected_se: number;
   /**
-   * Whether mean_difference is larger than corrected_se.
+   * Whether mean_difference is larger than one corrected_se: a screening rule, not a significance test.
    */
   beats_baseline: boolean;
 }

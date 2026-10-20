@@ -1055,10 +1055,7 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
 
 #[test]
 fn a_comparison_never_reads_a_splits_test_or_holdout_rows() {
-    let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
-    // A second split upstream, whose held-out rows feed nothing of the comparison either.
-    pipeline["nodes"][1]["operator"] = json!("sprisk.validation.temporal_split@1.0.0");
-    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let pipeline = evaluated_flow();
     let built = compare(
         &pipeline,
         &shortlisted(
@@ -1128,4 +1125,24 @@ fn a_model_whose_train_rows_do_not_trace_to_a_split_cannot_be_compared() {
 
     let err = compare(&pipeline, &proposal).unwrap_err();
     assert!(matches!(err, ResolveError::NotTrainRows(_)), "{err}");
+}
+
+#[test]
+fn a_comparison_after_a_temporal_or_group_split_is_refused() {
+    // Shuffled folds would validate on rows from before, or groups also fit on (ADR-0046).
+    for split in ["temporal_split", "group_split"] {
+        let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+        pipeline["nodes"][1]["operator"] = json!(format!("sprisk.validation.{split}@1.0.0"));
+        let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+        let proposal = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
+
+        let err = compare(&pipeline, &proposal).unwrap_err();
+        assert!(matches!(err, ResolveError::Selection(_)), "{err}");
+        assert!(
+            err.to_string().contains(&format!(
+                "split step split (sprisk.validation.{split}@1.0.0) keeps"
+            )),
+            "{err}"
+        );
+    }
 }

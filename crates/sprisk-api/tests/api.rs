@@ -2103,7 +2103,8 @@ async fn a_shortlist_is_cross_validated_on_train_rows_and_the_winner_applied() {
     parse::<sprisk_contracts::SelectionDecision>(&decision.to_string()).unwrap();
     assert_eq!(decision["metric"], "balanced_accuracy");
     assert_eq!(decision["baseline"], "ml_dummy_baseline");
-    assert_eq!(decision["limitations"].as_array().unwrap().len(), 1);
+    // The scale step it left out, and what "beats the baseline" means.
+    assert_eq!(decision["limitations"].as_array().unwrap().len(), 2);
 
     // The comparison is a side version: the proposal still applies to the flow.
     let chosen = decision["winner"].as_str().unwrap_or("ml_linear_model");
@@ -2169,5 +2170,69 @@ async fn only_a_shortlist_proposal_can_be_compared() {
             .unwrap()
             .contains("has no shortlist to compare"),
         "{body}"
+    );
+}
+
+#[tokio::test]
+async fn a_proposal_whose_flow_changed_cannot_be_compared() {
+    let api = api().await;
+    model_flow(&api).await;
+    let (_, proposal) = propose_model(&api).await;
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let apply = json!({ "alternative_id": "ml_dummy_baseline", "idempotency_key": "test-apply-first",
+                        "reason": "A floor to start from." });
+    assert_eq!(
+        call(&api.app, "POST", &uri, Some(apply)).await.0,
+        StatusCode::CREATED
+    );
+
+    let (status, body) = compare(&api, &proposal).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "stale_proposal");
+}
+
+#[tokio::test]
+async fn gate_b_stops_a_hand_built_comparison_that_reads_the_test_rows() {
+    let api = api().await;
+    model_flow(&api).await;
+    let (_, proposal) = propose_model(&api).await;
+    let (_, comparison) = compare(&api, &proposal).await;
+    let mut forged = comparison.clone();
+    forged["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ6");
+    forged.as_object_mut().unwrap().remove("compares");
+    for edge in forged["edges"].as_array_mut().unwrap() {
+        if edge["to"] == "cv_ml_linear_model.train" {
+            edge["from"] = json!("split.test");
+        }
+    }
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(forged)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (run, attempts) = run_version(&api, "plv_01JABCDEFGHJKMNPQRSTVWXYZ6").await;
+    assert_eq!(run["status"], "failed", "{run}");
+    let ran: Vec<&str> = attempts
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["node_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ran, ["gate_b"], "no step runs after a failed gate");
+    let checks = output(&api, &attempts, "gate_b", "checks").await;
+    let leak = checks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["check"] == "supervised.split_leakage@1.0.0")
+        .unwrap();
+    assert_eq!(leak["verdict"], "fail", "{leak}");
+    assert!(
+        leak["rationale"]
+            .as_str()
+            .unwrap()
+            .starts_with("cv_ml_linear_model learns from the test set"),
+        "{leak}"
     );
 }

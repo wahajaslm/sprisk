@@ -117,6 +117,12 @@ def test_regression_is_scored_by_rmse_where_lower_is_better() -> None:
         ),
         (rows(100, seed=1), {**CLASSIFY, "features": ["x", "y"]}, "balanced_accuracy", "'y'"),
         (
+            rows(100, seed=1),
+            {**CLASSIFY, "task": "ranking"},
+            "balanced_accuracy",
+            "a ranking task has no comparison metric",
+        ),
+        (
             rows(100, seed=1).with_columns(pl.lit(None, pl.String).alias("y")),
             CLASSIFY,
             "balanced_accuracy",
@@ -238,8 +244,21 @@ def test_steps_left_out_of_the_comparison_are_named_as_a_limitation() -> None:
     )
     assert [limit.root for limit in decision.limitations] == [
         "Steps scale, impute between the split and the model were not part of the comparison: "
-        "every candidate was scored on the split's train rows without them."
+        "every candidate was scored on the split's train rows without them.",
+        SCREENING,
     ]
+
+
+SCREENING = (
+    "A model beats the baseline when its mean gain is larger than one corrected standard "
+    "error. That is a screening rule, not a significance test, and it is not adjusted for "
+    "comparing several models."
+)
+
+
+def test_every_decision_says_beating_the_baseline_is_a_screening_rule() -> None:
+    decision = select({BASE: trial([0.5] * 5), "ml_linear_model": trial([0.8] * 5)})
+    assert [limit.root for limit in decision.limitations] == [SCREENING]
 
 
 @pytest.mark.parametrize(

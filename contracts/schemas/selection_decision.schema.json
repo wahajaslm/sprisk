@@ -54,8 +54,8 @@
       "required": ["mean_difference", "corrected_se", "beats_baseline"],
       "properties": {
         "mean_difference": { "type": "number", "description": "Mean fold-by-fold improvement over the baseline on the same folds; positive is better for either metric." },
-        "corrected_se": { "type": "number", "description": "Standard error of that mean, corrected for folds that share train rows (Nadeau & Bengio 2003)." },
-        "beats_baseline": { "type": "boolean", "description": "Whether mean_difference is larger than corrected_se." }
+        "corrected_se": { "type": "number", "description": "Standard error of that mean, corrected for folds that share train rows: the correction of Nadeau & Bengio (2003), applied to k-fold as in Bouckaert & Frank (2004)." },
+        "beats_baseline": { "type": "boolean", "description": "Whether mean_difference is larger than one corrected_se: a screening rule, not a significance test." }
       }
     }
   }
