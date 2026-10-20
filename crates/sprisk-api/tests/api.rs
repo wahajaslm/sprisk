@@ -1328,3 +1328,208 @@ async fn a_kernel_that_stops_before_any_output_is_an_http_error_even_when_stream
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{lines:?}");
     assert_eq!(lines[0]["errors"][0]["code"], "kernel_stopped");
 }
+
+fn question(id: &str, parent: Option<&str>) -> Value {
+    let mut question = json!({
+        "schema_version": "sprisk.question_version/v1",
+        "id": id,
+        "investigation_id": "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "objective": {"value": "Predict which orders will be returned within 30 days.", "origin": "explicit"},
+        "task": {"value": "classification", "origin": "explicit"},
+        "target": {"value": "returned_within_30d", "origin": "explicit"},
+        "unit_of_analysis": {"value": "order", "origin": "explicit"},
+        "entity_column": {"value": "order_id", "origin": "explicit"},
+        "time_column": {"value": "order_date", "origin": "explicit"},
+        "prediction_horizon": {"value": "P30D", "origin": "explicit"},
+        "assumptions": [{"value": "Return labels are complete after 30 days.", "origin": "explicit"}],
+        "unknowns": [{"question": "Are exchanges counted as returns?", "blocks": "release"}],
+        "acceptance_criteria": [{"value": "Average precision beats the dummy baseline on temporal validation.", "origin": "explicit"}],
+        "created_at": "2026-10-19T10:00:00Z"
+    });
+    if let Some(parent) = parent {
+        question["parent_id"] = json!(parent);
+    }
+    question
+}
+
+#[tokio::test]
+async fn question_ledger_is_immutable_filterable_and_revision_checked() {
+    let api = api().await;
+    let first = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, created) = call(&api.app, "POST", "/question_versions", Some(first.clone())).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+
+    let second = question(
+        "qv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        Some("qv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+    );
+    let (status, created) =
+        call(&api.app, "POST", "/question_versions", Some(second.clone())).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+
+    let (status, listed) = call(
+        &api.app,
+        "GET",
+        "/question_versions?investigation_id=inv_01JABCDEFGHJKMNPQRSTVWXYZ0&limit=20",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed, json!([second, first]));
+
+    let (_, original) = call(
+        &api.app,
+        "GET",
+        "/question_versions/qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        None,
+    )
+    .await;
+    assert_eq!(original, first);
+
+    let mut wrong = question(
+        "qv_01JABCDEFGHJKMNPQRSTVWXYZ2",
+        Some("qv_01JABCDEFGHJKMNPQRSTVWXYZ1"),
+    );
+    wrong["investigation_id"] = json!("inv_01JABCDEFGHJKMNPQRSTVWXYZ9");
+    let (status, problem) = call(&api.app, "POST", "/question_versions", Some(wrong)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{problem}");
+    assert_eq!(problem["errors"][0]["code"], "different_investigation");
+}
+
+#[tokio::test]
+async fn a_flow_can_only_link_a_saved_question_revision() {
+    let api = api().await;
+    let mut linked = pipeline(&api.csv);
+    linked["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    let (status, problem) =
+        call(&api.app, "POST", "/pipeline_versions", Some(linked.clone())).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{problem}");
+    assert_eq!(problem["errors"][0]["code"], "unknown_question_version");
+
+    let question = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, _) = call(&api.app, "POST", "/question_versions", Some(question)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, saved) = call(&api.app, "POST", "/pipeline_versions", Some(linked)).await;
+    assert_eq!(status, StatusCode::CREATED, "{saved}");
+    assert_eq!(
+        saved["question_version_id"],
+        "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+    );
+}
+
+#[tokio::test]
+async fn split_methodology_is_resolved_previewed_and_applied_once() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    assert_eq!(
+        call(&api.app, "POST", "/question_versions", Some(q))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().push(json!({
+        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        "params":{"test_fraction":0.2,"seed":42,"stratify":"returned_within_30d"}
+    }));
+    flow["edges"] = json!([{"from":"load.data","to":"split.data"}]);
+    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, proposal) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/split/split/proposals",
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(proposal["recommended_alternative_id"], "temporal");
+    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 3);
+
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let request = json!({"alternative_id":"temporal","idempotency_key":"test-apply-temporal"});
+    let (status, applied) = call(&api.app, "POST", &uri, Some(request.clone())).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    assert_eq!(
+        applied["pipeline"]["parent_id"],
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+    );
+    assert_eq!(
+        applied["pipeline"]["nodes"][1]["operator"],
+        "sprisk.validation.temporal_split@1.0.0"
+    );
+    assert_eq!(
+        applied["pipeline"]["nodes"][1]["methodology_decision_id"],
+        applied["decision"]["id"]
+    );
+
+    let (status, repeated) = call(&api.app, "POST", &uri, Some(request)).await;
+    assert_eq!(status, StatusCode::OK, "{repeated}");
+    assert_eq!(repeated, applied);
+}
+
+#[tokio::test]
+async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
+    let api = api().await;
+    let question = json!({
+        "schema_version": "sprisk.question_version/v1",
+        "id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ8",
+        "investigation_id": "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "objective": { "value": "Customer clustering exploration", "origin": "explicit" },
+        "task": { "value": "exploration", "origin": "confirmed" },
+        "assumptions": [],
+        "unknowns": [],
+        "acceptance_criteria": [],
+        "created_at": "2026-10-15T10:00:00Z"
+    });
+    let (status, _) = call(&api.app, "POST", "/question_versions", Some(question)).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let mut flow = pipeline(&api.csv);
+    flow["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ8");
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ8");
+    flow["nodes"].as_array_mut().unwrap().push(json!({
+        "id": "cluster",
+        "operator": "sprisk.clustering.kmeans@1.0.0",
+        "params": { "n_clusters": 3 }
+    }));
+    flow["edges"] = json!([{ "from": "load.data", "to": "cluster.data" }]);
+    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, proposal) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/methodology/proposals/cluster",
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(proposal["recommended_alternative_id"], "kmeans");
+    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 3);
+
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let request = json!({ "alternative_id": "dbscan", "idempotency_key": "test-apply-dbscan" });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(request.clone())).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    assert_eq!(
+        applied["pipeline"]["parent_id"],
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ8"
+    );
+    assert_eq!(
+        applied["pipeline"]["nodes"][1]["operator"],
+        "sprisk.clustering.dbscan@1.0.0"
+    );
+    assert_eq!(
+        applied["pipeline"]["nodes"][1]["methodology_decision_id"],
+        applied["decision"]["id"]
+    );
+}

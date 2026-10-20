@@ -1,0 +1,94 @@
+# ==============================================================================
+# Sprisk Methodology Rule: DBSCAN Neighborhood Calibration (Eps & MinPts)
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.unsupervised.dbscan_neighborhood@1.0.0
+name: "DBSCAN Density Neighborhood Calibration"
+stage: modeling
+decides: clustering.dbscan_hyperparameters
+
+# 1. Scientific Standards & Authoritative Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Ester, Kriegel, Sander & Xu (1996) A Density-Based Algorithm for Discovering Clusters (ACM KDD)"
+  citation: "Schubert, Sander, Ester, Kriegel & Xu (2017) DBSCAN Revisited, Revisited: Why and How You Should (Still) Use DBSCAN (ACM TODS)"
+  pitfall: "Setting eps and min_samples through manual guessing produces catastrophic results: if eps is slightly too large, all data collapses into a single giant blob; if eps is slightly too small, 99% of the dataset is classified as noise."
+  corner_cases:
+    - "The k-NN Distance Knee: The mathematically sound method to establish eps is identifying the maximum curvature knee in the sorted k-nearest neighbor distance curve (where k = 2 * dim)."
+    - "Multi-Density Failure: DBSCAN uses a single global density threshold (eps); when data contains both dense and sparse clusters, a fixed eps either merges dense clusters or discards sparse clusters as noise. HDBSCAN is required."
+    - "Dimensionality Hypervolume Collapse: In high dimensions (d > 15), the volume of a sphere of radius eps approaches zero, requiring HDBSCAN or pre-clustering PCA."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: feature_count
+    description: "Number of dimensions in the feature space"
+    required: true
+  - profile: knn_distance_knee_value
+    description: "Estimated epsilon value at the maximum curvature point of the sorted k-NN distance graph"
+    required: true
+  - profile: multi_density_variance_score
+    description: "Statistical variance in local density across data regions"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  multi_density_divergence_cutoff: 0.40
+  min_samples_multiplier: 2
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: knn_knee_calibrated_dbscan
+    label: "k-NN Distance Knee Calibrated DBSCAN"
+    description: "Calibrate eps to the sorted k-distance knee curve and set min_samples = 2 * dimensions."
+    condition: "multi_density_variance_score <= multi_density_divergence_cutoff"
+    rationale: "Uniform density across clusters. The k-NN distance knee provides an objective, repeatable density threshold that maximizes core points without cluster collapse."
+    settings_schema:
+      type: object
+      properties:
+        k_neighbors_factor:
+          type: integer
+          default: 2
+          minimum: 1
+          maximum: 5
+          description: "Multiplier on dimensionality to set min_samples (default = 2 * dim)."
+        eps_override:
+          type: number
+          default: 0.0
+          description: "Manual override for epsilon if domain requires custom density threshold."
+    action:
+      type: configure_dbscan_params
+      params:
+        eps_source: "knn_knee"
+        min_samples: "{feature_count} * {settings.k_neighbors_factor}"
+
+  - id: hdbscan_variable_density
+    label: "HDBSCAN (Hierarchical Density for Variable Clusters)"
+    description: "Perform hierarchical density clustering across varying densities without requiring a fixed global eps."
+    condition: "multi_density_variance_score > multi_density_divergence_cutoff"
+    rationale: "Data exhibits significant density differences across clusters. HDBSCAN extracts stable clusters across the full density hierarchy."
+    settings_schema:
+      type: object
+      properties:
+        min_cluster_size:
+          type: integer
+          default: 15
+          minimum: 5
+          maximum: 100
+        min_samples:
+          type: integer
+          default: 5
+    action:
+      type: replace_node
+      operator: sprisk.clustering.hdbscan@1.0.0
+      params:
+        min_cluster_size: "{settings.min_cluster_size}"
+        min_samples: "{settings.min_samples}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.unsupervised.dbscan_collapse@1.0.0
+  invariant: "DBSCAN resulting in > 80% noise points or < 2 clusters triggers a Gate B WARNING for inappropriate neighborhood calibration."

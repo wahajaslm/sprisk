@@ -1,0 +1,87 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Distance Metric & Feature Scaling in Clustering
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.unsupervised.clustering_distance_scaling@1.0.0
+name: "Clustering Distance Metric & Feature Scaling"
+stage: geometry
+decides: clustering.distance_scaling
+
+# 1. Scientific Standards & Authoritative Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Kaufman & Rousseeuw (1990) Finding Groups in Data: An Introduction to Cluster Analysis (Wiley)"
+  citation: "Jain, Murty & Flynn (1999) Data Clustering: A Review (ACM Computing Surveys) & Hastie, Tibshirani & Friedman (2009) ESL Chapter 14"
+  pitfall: "Distance-based clustering algorithms (K-Means, Hierarchical, DBSCAN) compute Euclidean or Manhattan metrics across all coordinates. If features are not scaled, the variable with the largest absolute magnitude (e.g. revenue in 100,000s) dictates 99.9% of distances, rendering all other variables (e.g. age or ratio scores) completely irrelevant."
+  corner_cases:
+    - "Magnitude Domination: Comparing annual salary (mean 60,000) with customer rating (1 to 5) without scaling equates a $1 difference to 1 full point of rating, completely drowning out the rating."
+    - "Outlier Compression: StandardScaler in the presence of heavy-tailed outliers compresses the bulk of points into an ultra-dense cluster, creating 1 giant cluster and isolated singleton clusters."
+    - "Mixed Categorical/Numerical (Gower Distance): Euclidean distance on one-hot encoded categories produces distorted equidistant vertices; Gower distance is required for mixed data types."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: feature_variance_ratio_max_min
+    description: "Ratio between the largest feature variance and smallest feature variance"
+    required: true
+  - profile: max_kurtosis
+    description: "Maximum kurtosis across numerical features to detect outlier leverage"
+    required: true
+  - profile: has_categorical_columns
+    description: "Whether the input dataset contains categorical or mixed-type features"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  scale_disparity_cutoff: 5.0
+  outlier_kurtosis_threshold: 3.0
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: robust_scaling_for_clustering
+    label: "Robust Scaling (Median & IQR Centering)"
+    description: "Standardize features using median and interquartile range to prevent outliers from distorting Euclidean centroids."
+    condition: "max_kurtosis > outlier_kurtosis_threshold AND has_categorical_columns is false"
+    rationale: "Heavy-tailed distributions detected. RobustScaler ensures that extreme values do not artificially distort Euclidean distance calculations or pull K-Means centroids away from real modes."
+    settings_schema:
+      type: object
+      properties:
+        quantile_range:
+          type: array
+          items: { type: number }
+          default: [25.0, 75.0]
+    action:
+      type: insert_step
+      operator: sprisk.features.scale@1.0.0
+      params:
+        method: "robust"
+        quantile_range: "{settings.quantile_range}"
+
+  - id: standard_scaling_for_clustering
+    label: "Standard Scaling (Unit Variance Normalization)"
+    description: "Center to zero mean and scale to unit variance (sigma = 1.0) across all numerical features."
+    condition: "feature_variance_ratio_max_min > scale_disparity_cutoff AND max_kurtosis <= outlier_kurtosis_threshold AND has_categorical_columns is false"
+    rationale: "Large magnitude disparities observed across features. Unit variance standardization ensures all coordinates contribute equally to distance calculations."
+    action:
+      type: insert_step
+      operator: sprisk.features.scale@1.0.0
+      params:
+        method: "standard"
+
+  - id: gower_distance_mixed_types
+    label: "Gower Distance Metric (Mixed Numerical & Categorical)"
+    description: "Compute Gower's dissimilarity coefficient combining range-normalized numerical distances with Dice categorical matching."
+    condition: "has_categorical_columns is true"
+    rationale: "Dataset contains categorical features. Euclidean distance on one-hot encodings violates metric space axioms; Gower distance provides valid pairwise dissimilarities."
+    action:
+      type: configure_clustering_distance
+      params:
+        metric: "gower"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.unsupervised.distance_scaling_invariant@1.0.0
+  invariant: "Executing distance-based clustering algorithms (K-Means, DBSCAN) on unscaled data with variance disparity ratio > 10.0 causes Gate B FAIL."

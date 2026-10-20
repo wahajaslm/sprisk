@@ -1,0 +1,118 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Manifold Learning & Cluster Visualization
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.unsupervised.manifold_projection@1.0.0
+name: "Manifold Learning & High-Dimensional Visualization"
+stage: evaluation
+decides: clustering.manifold_visualization
+
+# 1. Scientific Standards & Authoritative Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "McInnes, Healy & Melville (2018) UMAP: Uniform Manifold Approximation and Projection (JOSS)"
+  citation: "van der Maaten & Hinton (2008) Visualizing Data using t-SNE (JMLR) & Pearson (1901) On Lines and Planes of Closest Fit (Philosophical Magazine)"
+  pitfall: "Using linear PCA to visualize non-linear manifold structures collapses curved geometries onto a 2D plane, falsely suggesting cluster overlap. Conversely, interpreting inter-cluster distances in t-SNE as physical metric distances is invalid because t-SNE loses global topology."
+  corner_cases:
+    - "t-SNE Global Distance Distortion: Distances between separated clusters in t-SNE are mathematically meaningless; UMAP balances local metric structure with global continuum preservation."
+    - "Perplexity Artifacts: In t-SNE, setting perplexity too low (<10) creates artificial micro-clusters out of uniform random distributions."
+    - "Out-of-Sample Projectability: t-SNE cannot project new unseen inference observations without completely re-fitting the entire dataset; UMAP supports deterministic out-of-sample transform()."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: feature_count
+    description: "Number of dimensions in the input feature space"
+    required: true
+  - profile: sample_count
+    description: "Number of rows in the dataset"
+    required: true
+  - profile: non_linear_manifold_curvature
+    description: "Estimated manifold non-linearity based on local tangent PCA divergence"
+    required: false
+  - fact: requires_out_of_sample_projection
+    description: "Whether new incoming observations must be projected onto the existing 2D/3D manifold"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  tsne_sample_size_ceiling: 15000
+  default_umap_n_neighbors: 15
+  default_umap_min_dist: 0.10
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: umap_manifold_projection
+    label: "UMAP (Uniform Manifold Approximation and Projection)"
+    description: "Non-linear manifold learning preserving both local neighborhood fidelity and global topological distances with out-of-sample transform support."
+    condition: "requires_out_of_sample_projection is true OR sample_count > tsne_sample_size_ceiling"
+    rationale: "McInnes et al. (2018) standard. Scalable O(N log N) projection preserving global and local continuum structure with deterministic parametric mapping."
+    settings_schema:
+      type: object
+      properties:
+        n_neighbors:
+          type: integer
+          default: 15
+          minimum: 5
+          maximum: 100
+          description: "Balance between local vs global structure (larger values capture macro geometry)."
+        min_dist:
+          type: number
+          default: 0.10
+          minimum: 0.001
+          maximum: 0.99
+          description: "Controls how tightly UMAP packs points together in the low-dimensional embedding."
+        n_components:
+          type: integer
+          default: 2
+          enum: [2, 3]
+    action:
+      type: insert_step
+      operator: sprisk.visualization.umap_projection@1.0.0
+      params:
+        n_neighbors: "{settings.n_neighbors}"
+        min_dist: "{settings.min_dist}"
+        n_components: "{settings.n_components}"
+
+  - id: tsne_local_projection
+    label: "t-SNE (t-Distributed Stochastic Neighbor Embedding)"
+    description: "Probabilistic embedding minimizing Kullback-Leibler divergence between high-dimensional and low-dimensional Gaussian affinities."
+    condition: "sample_count <= tsne_sample_size_ceiling AND requires_out_of_sample_projection is false"
+    rationale: "van der Maaten & Hinton (2008) standard. Proven local cluster separation for moderate sample sizes (N <= 15k) in pure exploratory visualization."
+    settings_schema:
+      type: object
+      properties:
+        perplexity:
+          type: number
+          default: 30.0
+          minimum: 5.0
+          maximum: 100.0
+          description: "Smooth measure of effective number of neighbors."
+        learning_rate:
+          type: string
+          default: "auto"
+    action:
+      type: insert_step
+      operator: sprisk.visualization.tsne_projection@1.0.0
+      params:
+        perplexity: "{settings.perplexity}"
+        learning_rate: "{settings.learning_rate}"
+
+  - id: pca_linear_2d_projection
+    label: "PCA 2D Linear Projection"
+    description: "Orthogonal linear projection onto the first two principal components."
+    condition: "non_linear_manifold_curvature is false"
+    rationale: "Direct linear orthogonal projection. Preserves exact Euclidean variances without non-linear stochastic warping."
+    action:
+      type: insert_step
+      operator: sprisk.features.pca@1.0.0
+      params:
+        n_components: 2
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.unsupervised.manifold_distortion@1.0.0
+  invariant: "Executing t-SNE on datasets with N > 25,000 without prior PCA compression triggers a Gate B WARNING for extreme computational latency."

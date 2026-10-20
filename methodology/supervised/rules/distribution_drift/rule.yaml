@@ -1,0 +1,107 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Production Distribution Drift & Statistical Health
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.distribution_drift@1.0.0
+name: "Production Drift Monitoring & Baseline Reference"
+stage: governance
+decides: governance.drift_monitoring_policy
+
+# 1. Scientific Standards & Industrial Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Yurdakul (2020) Statistical Properties of Population Stability Index & Google TensorFlow Data Validation Standards"
+  citation: "Breck et al. (2019) Data Validation for Machine Learning (MLSys) & Eugene Yan: Monitoring Machine Learning Systems in Production (2021)"
+  pitfall: "Input feature drift is evidence of changing distributions, NOT an automatic proof of accuracy decline. Blindly retraining on drifted data without delayed label verification can degrade performance."
+  corner_cases:
+    - "Seasonal Drift vs Real Degradation: Features exhibiting periodic weekly or monthly cycles show transient PSI spikes that resolve naturally without retraining."
+    - "Label Delay Gap: True labels (e.g. loan defaults or churn) take 30-90 days to materialize; drift monitors must rely on unsupervised statistical divergence (PSI/KS) until ground truth arrives."
+    - "Small Window Noise: Computing PSI on small production sample windows (<500 requests) generates noisy false alarms."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: baseline_feature_distributions
+    description: "Empirical reference distributions established on the training/validation partition"
+    required: true
+  - profile: production_window_size
+    description: "Number of production inference records in the monitoring calculation window"
+    required: false
+  - fact: ground_truth_label_latency_days
+    description: "Expected delay between inference and ground-truth label arrival"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  psi_advisory_threshold: 0.10
+  psi_critical_threshold: 0.25
+  ks_test_pvalue_threshold: 0.01
+  min_monitoring_sample_size: 1000
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: psi_and_wasserstein_dual_monitor
+    label: "PSI & Wasserstein Dual Drift Detection"
+    description: "Monitor continuous features via Population Stability Index (PSI) and Earth Mover's (Wasserstein) Distance against training baseline."
+    condition: "baseline_feature_distributions is confirmed"
+    rationale: "Production drift monitoring standard. Combines binned categorical stability (PSI) with distance-metric sensitivity (Wasserstein) to detect covariate shift."
+    settings_schema:
+      type: object
+      properties:
+        psi_threshold:
+          type: number
+          default: 0.25
+          minimum: 0.10
+          maximum: 0.50
+          description: "PSI score above which an alert finding is emitted to the monitoring dock."
+        calculation_window_size:
+          type: integer
+          default: 2000
+          minimum: 500
+          maximum: 50000
+        alert_severity:
+          type: string
+          enum: ["advisory", "review_finding", "critical"]
+          default: "review_finding"
+    action:
+      type: insert_step
+      operator: sprisk.monitoring.drift_detector@1.0.0
+      params:
+        psi_threshold: "{settings.psi_threshold}"
+        window_size: "{settings.calculation_window_size}"
+        severity: "{settings.alert_severity}"
+
+  - id: ks_hypothesis_test_monitor
+    label: "Kolmogorov-Smirnov Statistical Hypothesis Testing"
+    description: "Evaluate whether the empirical CDF of incoming production requests significantly differs from training baseline using two-sample KS-test."
+    condition: "production_window_size < 1000"
+    rationale: "Low-traffic or early-stage deployment. Non-parametric hypothesis testing is statistically more robust than histogram binning for smaller sample sizes."
+    settings_schema:
+      type: object
+      properties:
+        significance_alpha:
+          type: number
+          default: 0.01
+          minimum: 0.001
+          maximum: 0.05
+    action:
+      type: insert_step
+      operator: sprisk.monitoring.ks_drift_detector@1.0.0
+      params:
+        alpha: "{settings.significance_alpha}"
+
+  - id: passive_logging_only
+    label: "Telemetry Logging without Active Thresholding"
+    description: "Log raw feature distributions to object store without firing automated drift findings."
+    condition: "ground_truth_label_latency_days == 0"
+    rationale: "Immediate real-time ground truth labels available; outcome quality monitoring directly supersedes surrogate input drift alerts."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.drift_baseline_integrity@1.0.0
+  invariant: "Reference baseline statistics must be frozen and content-digested from the exact ModelVersion training partition. Live production data must never overwrite reference baselines."

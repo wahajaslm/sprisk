@@ -1,0 +1,102 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Point-in-Time Correctness & Availability Lag
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.point_in_time_availability@1.0.0
+name: "Point-in-Time Correctness & Time-Travel Joins"
+stage: split
+decides: split.point_in_time_policy
+
+# 1. Scientific Standards & Industrial Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Netflix Technology: Historical Feature Generation & Feast Open Feature Store Standards"
+  citation: "DoorDash Engineering: Fabricator Declarative Feature Framework (2022) & Marcos Lopez de Prado: Advances in Financial Machine Learning (2018)"
+  pitfall: "Joining features on event_at instead of available_at includes historical facts that were physically unknown at prediction time (e.g. a chargeback or refund recorded with the transaction timestamp but settled 3 days later)."
+  corner_cases:
+    - "Batch Pipeline Ingestion Delay: A feature with event_at = 23:59:00 is only computed by an overnight ETL and usable at available_at = 06:00:00 the next morning. Predicting at 02:00:00 using this feature causes severe time-travel leakage."
+    - "Missing Availability Timestamps: When a data source records event_at but lacks available_at, assuming zero-latency ingestion is a major flaw. It must produce a NEEDS_FACT or explicit limitation finding, never a fabricated PASS."
+    - "Asynchronous Label Arrival: Ground truth labels (e.g. loan default 90 days later) must not be joined to features computed after the default occurred."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - fact: question.event_time_column
+    description: "Timestamp when the physical event occurred in the real world"
+    required: true
+  - fact: question.available_time_column
+    description: "Timestamp when the record was ingested and accessible to the prediction system"
+    required: false
+  - fact: question.prediction_time_column
+    description: "Decision timestamp (cutoff) at which the inference request is executed"
+    required: true
+  - profile: max_pipeline_ingestion_lag_seconds
+    description: "Observed delay between event occurrence and system ingestion (available_at - event_at)"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  default_conservative_lag_hours: 24.0
+  max_allowable_clock_skew_seconds: 300
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: strict_point_in_time_asof_join
+    label: "Strict Point-in-Time ASOF Join (available_at <= prediction_at)"
+    description: "Execute temporal joins strictly filtering records where available_at <= prediction_at, eliminating time-travel bias."
+    condition: "question.available_time_column is confirmed"
+    rationale: "Authoritative availability timestamp exists. Guarantees that backtests faithfully reproduce the exact historical state of knowledge available at prediction time."
+    settings_schema:
+      type: object
+      properties:
+        tolerance_seconds:
+          type: integer
+          default: 0
+          minimum: 0
+          description: "Maximum allowable lookback window for ASOF feature matching."
+    action:
+      type: replace_node
+      operator: sprisk.validation.point_in_time_join@1.0.0
+      params:
+        event_time: "{question.event_time_column}"
+        available_time: "{question.available_time_column}"
+        prediction_time: "{question.prediction_time_column}"
+        tolerance: "{settings.tolerance_seconds}"
+
+  - id: conservative_lag_buffer
+    label: "Conservative Ingestion Lag Buffer (event_at + tau_lag <= prediction_at)"
+    description: "Apply a conservative safety margin (e.g. 24-hour ingestion buffer) when available_at is not tracked explicitly."
+    condition: "question.available_time_column is not confirmed AND question.prediction_time_column is confirmed"
+    rationale: "Availability timestamp missing from raw source. Enforces a conservative lag buffer to prevent batch ETL delay leakage, recorded as an explicit methodology limitation."
+    settings_schema:
+      type: object
+      properties:
+        lag_buffer_hours:
+          type: number
+          default: 24.0
+          minimum: 1.0
+          maximum: 168.0
+          description: "Estimated pipeline ingestion delay subtracted from prediction cutoff."
+    action:
+      type: replace_node
+      operator: sprisk.validation.lag_buffered_join@1.0.0
+      params:
+        event_time: "{question.event_time_column}"
+        prediction_time: "{question.prediction_time_column}"
+        lag_hours: "{settings.lag_buffer_hours}"
+
+  - id: request_availability_audit
+    label: "Flag Missing Availability Audit (Needs Fact)"
+    description: "Halt automated time-series join and request data engineering confirmation of ingestion latency."
+    condition: "question.available_time_column is not confirmed"
+    rationale: "Enterprise risk mitigation. Prevents deploying models with unverified historical availability assumptions."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.point_in_time_leakage@1.0.0
+  invariant: "Every feature observation joined for training must strictly satisfy available_at <= prediction_at. Records with event_at < prediction_at but available_at > prediction_at cause Gate B FAIL."

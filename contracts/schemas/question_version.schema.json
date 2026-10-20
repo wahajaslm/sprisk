@@ -29,7 +29,15 @@
         "task": { "$ref": "#/$defs/TaskFact" },
         "target": { "$ref": "#/$defs/Fact", "description": "Target column. Absent when there is no legitimate supervised target." },
         "unit_of_analysis": { "$ref": "#/$defs/Fact" },
+        "entity_column": {
+          "$ref": "#/$defs/Fact",
+          "description": "Column whose values identify the unit or group that must not cross an entity-aware split."
+        },
         "time_column": { "$ref": "#/$defs/Fact" },
+        "prediction_horizon": {
+          "$ref": "#/$defs/Fact",
+          "description": "How far after prediction time the outcome is observed, preferably an ISO-8601 duration such as P30D."
+        },
         "assumptions": { "type": "array", "items": { "$ref": "#/$defs/Fact" } },
         "unknowns": { "type": "array", "items": { "$ref": "#/$defs/Unknown" } },
         "acceptance_criteria": { "type": "array", "items": { "$ref": "#/$defs/Fact" } },

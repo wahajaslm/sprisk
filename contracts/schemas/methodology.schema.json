@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "MethodologyEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "label", "value", "origin"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["question_fact", "profile_fact", "policy", "user_reason"] },
+        "label": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "origin": { "$ref": "#/$defs/Origin" },
+        "artifact_id": { "$ref": "#/$defs/ArtifactId" }
+      }
+    },
+    "GraphEffect": {
+      "description": "Typed mutation previewed and compiled before it can create a pipeline version.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "node_id", "operator", "params"],
+          "properties": {
+            "kind": { "const": "replace_node" },
+            "node_id": { "$ref": "#/$defs/NodeId" },
+            "operator": { "$ref": "#/$defs/OperatorRef" },
+            "params": { "$ref": "#/$defs/Params" }
+          }
+        }
+      ]
+    },
+    "MethodologyAlternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "description", "applicability", "reason"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+        "label": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "applicability": { "type": "string", "enum": ["applicable", "needs_fact", "not_applicable"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "effect": { "$ref": "#/$defs/GraphEffect" }
+      }
+    },
+    "DecisionProposal": {
+      "title": "DecisionProposal",
+      "description": "Immutable resolver output. It explains alternatives and previews typed effects; it does not mutate a graph.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "id", "rule", "question_version_id", "pipeline_version_id", "subject_node_id", "evidence", "alternatives", "fingerprint", "created_at"],
+      "properties": {
+        "schema_version": { "const": "sprisk.decision_proposal/v1" },
+        "id": { "$ref": "#/$defs/MethodologyProposalId" },
+        "rule": { "$ref": "#/$defs/CheckRef" },
+        "question_version_id": { "$ref": "#/$defs/QuestionVersionId" },
+        "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
+        "subject_node_id": { "$ref": "#/$defs/NodeId" },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/MethodologyEvidence" } },
+        "alternatives": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/MethodologyAlternative" } },
+        "recommended_alternative_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+        "fingerprint": { "$ref": "#/$defs/ContentHash" },
+        "created_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "ApplyMethodologyDecision": {
+      "title": "ApplyMethodologyDecision",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alternative_id", "idempotency_key"],
+      "properties": {
+        "alternative_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+        "reason": { "type": "string", "minLength": 1 },
+        "idempotency_key": { "type": "string", "minLength": 8, "maxLength": 128 }
+      }
+    },
+    "MethodologyDecision": {
+      "title": "MethodologyDecision",
+      "description": "Immutable record of an alternative atomically applied to a new pipeline version.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "id", "proposal_id", "rule", "question_version_id", "base_pipeline_version_id", "pipeline_version_id", "subject_node_id", "alternative_id", "created_at"],
+      "properties": {
+        "schema_version": { "const": "sprisk.methodology_decision/v1" },
+        "id": { "$ref": "#/$defs/MethodologyDecisionId" },
+        "proposal_id": { "$ref": "#/$defs/MethodologyProposalId" },
+        "rule": { "$ref": "#/$defs/CheckRef" },
+        "question_version_id": { "$ref": "#/$defs/QuestionVersionId" },
+        "base_pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
+        "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
+        "subject_node_id": { "$ref": "#/$defs/NodeId" },
+        "alternative_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+        "reason": { "type": "string", "minLength": 1 },
+        "created_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "AppliedMethodologyDecision": {
+      "title": "AppliedMethodologyDecision",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "pipeline"],
+      "properties": {
+        "decision": { "$ref": "#/$defs/MethodologyDecision" },
+        "pipeline": { "$ref": "#/$defs/PipelineVersion" }
+      }
+    }
+  }
+}

@@ -1,0 +1,124 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Unsupervised Anomaly Detection Strategy
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.unsupervised.unsupervised_anomaly@1.0.0
+name: "Unsupervised Anomaly Detection Strategy"
+stage: modeling
+decides: anomaly.algorithm_selection
+
+# 1. Scientific Standards & Authoritative Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Liu, Ting & Zhou (2008) Isolation Forest (IEEE ICDM) & Breunig et al. (2000) LOF: Identifying Density-Based Local Outliers (ACM SIGMOD)"
+  citation: "Rousseeuw & Driessen (1999) A Fast Algorithm for the Minimum Covariance Determinant (Technometrics) & Schölkopf et al. (2001) One-Class SVM (Neural Computation)"
+  pitfall: "Applying parametric Gaussian anomaly assumptions (e.g. Mahalanobis distance or z-scores) to multi-modal or complex non-linear data misclassifies legitimate sub-clusters as severe global anomalies."
+  corner_cases:
+    - "Local vs Global Anomalies: A point can have high global distance from the dataset centroid while possessing normal density in its local neighborhood; Local Outlier Factor (LOF) is required."
+    - "Arbitrary Contamination Guessing: Hardcoding contamination = 0.10 when the true anomaly rate is 0.1% generates 100x false positive alarms."
+    - "Masking Effect in High Dimension: Multi-attribute outliers that mask each other under univariate checks are isolated rapidly in random recursive trees."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: sample_count
+    description: "Number of rows in the dataset"
+    required: true
+  - profile: feature_count
+    description: "Number of continuous features"
+    required: true
+  - profile: is_multimodal_distribution
+    description: "Whether feature distributions exhibit multiple distinct modes"
+    required: true
+  - fact: expected_contamination_rate
+    description: "Estimated proportion of anomalous observations (default = 0.02)"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  default_contamination_estimate: 0.02
+  max_samples_for_lof: 20000
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: isolation_forest_multivariate
+    label: "Isolation Forest (Random Subspace Partitioning)"
+    description: "Isolate anomalies using recursive random axis-aligned splits; anomalies require significantly shorter path lengths to isolate."
+    condition: "is_multimodal_distribution is true OR feature_count > 10"
+    rationale: "Complex multi-modal or high-dimensional data. Isolation Forest makes zero distributional assumptions and scales linearly O(N log N) without computing full distance matrices."
+    settings_schema:
+      type: object
+      properties:
+        n_estimators:
+          type: integer
+          default: 150
+          minimum: 50
+          maximum: 500
+        contamination:
+          type: number
+          default: 0.02
+          minimum: 0.001
+          maximum: 0.15
+          description: "Expected proportion of anomalies in the dataset."
+        random_state:
+          type: integer
+          default: 42
+    action:
+      type: replace_node
+      operator: sprisk.anomaly.isolation_forest@1.0.0
+      params:
+        n_estimators: "{settings.n_estimators}"
+        contamination: "{settings.contamination}"
+        random_state: "{settings.random_state}"
+
+  - id: local_outlier_factor
+    label: "Local Outlier Factor (LOF Density Ratio)"
+    description: "Measure the local density of an observation relative to its k-nearest neighbors to detect density-based anomalies."
+    condition: "sample_count <= max_samples_for_lof AND is_multimodal_distribution is true"
+    rationale: "Data contains clusters of varying density. LOF compares local densities, preventing dense clusters from marking valid points in sparse clusters as false anomalies."
+    settings_schema:
+      type: object
+      properties:
+        n_neighbors:
+          type: integer
+          default: 20
+          minimum: 5
+          maximum: 50
+        contamination:
+          type: number
+          default: 0.02
+          minimum: 0.001
+          maximum: 0.15
+    action:
+      type: replace_node
+      operator: sprisk.anomaly.lof@1.0.0
+      params:
+        n_neighbors: "{settings.n_neighbors}"
+        contamination: "{settings.contamination}"
+
+  - id: elliptic_envelope_mcd
+    label: "Robust Minimum Covariance Determinant (Elliptic Envelope)"
+    description: "Fit a robust Gaussian covariance matrix assuming unimodal elliptical distribution."
+    condition: "is_multimodal_distribution is false AND feature_count <= 10"
+    rationale: "Low-dimensional unimodal data. Fast Minimum Covariance Determinant estimates robust Mahalanobis distances unaffected by outlier masking."
+    settings_schema:
+      type: object
+      properties:
+        contamination:
+          type: number
+          default: 0.02
+          minimum: 0.001
+          maximum: 0.15
+    action:
+      type: replace_node
+      operator: sprisk.anomaly.elliptic_envelope@1.0.0
+      params:
+        contamination: "{settings.contamination}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.unsupervised.anomaly_contamination_bounds@1.0.0
+  invariant: "Anomaly contamination rate configured above 0.20 triggers a Gate B WARNING for extreme over-filtering."

@@ -1,0 +1,112 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Evaluation Metric Policy
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.evaluation_metric@1.0.0
+name: "Primary Evaluation Metric Selection"
+stage: evaluation
+decides: evaluation.primary_metric
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Saito & Rehmsmeier (2015) The Precision-Recall Plot Is More Informative than the ROC Plot"
+  citation: "Provost, Fawcett & Kohavi (1998) The Case Against Accuracy Estimation (ICML) & Hand (2009) Measuring Classifier Performance"
+  pitfall: "Using standard accuracy or unweighted ROC-AUC on imbalanced targets conceals disastrous false-negative rates in fraud, medical, or churn detection. RMSE squares large outliers in heavy-tailed regression."
+  corner_cases:
+    - "Accuracy Paradox: A null classifier predicting the majority class exclusively achieves 95% accuracy while possessing zero discriminative power."
+    - "ROC-AUC Over-optimism: ROC-AUC uses False Positive Rate (FP / [FP + TN]), which stays deceptively small when TN is huge, even if Precision is near zero."
+    - "Heavy-Tailed Regression Outliers: Single extreme errors dominate RMSE; MAE or Huber loss is required for robust evaluation."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: target_type
+    description: "Classification vs Regression"
+    required: true
+  - profile: target_minority_ratio
+    description: "Minority class proportion for classification tasks"
+    required: false
+  - profile: target_skewness
+    description: "Target distribution skewness for regression tasks"
+    required: false
+  - fact: relative_false_negative_cost
+    description: "Whether missing a positive is more costly than a false alarm (e.g. disease screening)"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  imbalance_pr_auc_cutoff: 0.15
+  regression_skewness_cutoff: 2.0
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: pr_auc_imbalanced
+    label: "PR-AUC (Average Precision) & F-beta"
+    description: "Area under the Precision-Recall curve focusing strictly on minority class retrieval."
+    condition: "target_type == 'classification' AND target_minority_ratio < imbalance_pr_auc_cutoff"
+    rationale: "Target is heavily imbalanced (< 15% minority). PR-AUC directly tracks positive retrieval without distortion from abundant true negatives."
+    settings_schema:
+      type: object
+      properties:
+        beta:
+          type: number
+          default: 2.0
+          minimum: 0.5
+          maximum: 5.0
+          description: "Beta factor for F-beta (beta=2 penalizes false negatives twice as heavily as false positives)."
+    action:
+      type: configure_evaluation_params
+      params:
+        primary_metric: "pr_auc"
+        secondary_metrics: ["f_beta", "brier_score", "balanced_accuracy"]
+        beta: "{settings.beta}"
+
+  - id: roc_auc_balanced
+    label: "ROC-AUC & F1 Score"
+    description: "Area under Receiver Operating Characteristic curve."
+    condition: "target_type == 'classification' AND target_minority_ratio >= imbalance_pr_auc_cutoff"
+    rationale: "Classes are reasonably balanced. ROC-AUC effectively compares false-positive vs true-positive trade-offs across all operating thresholds."
+    settings_schema:
+      type: object
+      properties:
+        average:
+          type: string
+          enum: ["macro", "weighted", "binary"]
+          default: "binary"
+    action:
+      type: configure_evaluation_params
+      params:
+        primary_metric: "roc_auc"
+        secondary_metrics: ["f1_score", "accuracy", "log_loss"]
+        average: "{settings.average}"
+
+  - id: mae_robust_regression
+    label: "MAE (Mean Absolute Error) & Huber Loss"
+    description: "L1 absolute error metric robust against heavy-tailed outliers."
+    condition: "target_type == 'regression' AND abs(target_skewness) > regression_skewness_cutoff"
+    rationale: "Regression target has heavy-tailed outliers. MAE prevents single extreme residuals from dominating evaluation."
+    action:
+      type: configure_evaluation_params
+      params:
+        primary_metric: "mae"
+        secondary_metrics: ["median_absolute_error", "r2_score"]
+
+  - id: rmse_standard_regression
+    label: "RMSE & R-Squared"
+    description: "Root Mean Squared Error aligning with Gaussian maximum likelihood."
+    condition: "target_type == 'regression' AND abs(target_skewness) <= regression_skewness_cutoff"
+    rationale: "Normally distributed continuous target without severe outliers."
+    action:
+      type: configure_evaluation_params
+      params:
+        primary_metric: "rmse"
+        secondary_metrics: ["r2_score", "mae"]
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.misleading_metric@1.0.0
+  invariant: "Evaluating a dataset with < 10% minority target using standard accuracy produces a Gate B WARNING."

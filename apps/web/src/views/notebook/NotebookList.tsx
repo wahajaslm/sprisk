@@ -6,6 +6,7 @@ import { useSavePipelineVersion } from "../../api/hooks.ts";
 import { useSaveNotebook } from "../../api/notebooks.ts";
 import { nextNotebookVersion } from "../../notebook/document.ts";
 import { stepsOutOfFlow } from "../../notebook/sync.ts";
+import { useSelection } from "../../workbench/selection.ts";
 import { RenameIcon, TrashIcon } from "../Icons.tsx";
 
 type Mode = { kind: "idle" } | { kind: "renaming" } | { kind: "confirming"; steps: number } | { kind: "refused"; readers: string[] };
@@ -16,17 +17,18 @@ export function NotebookList({ label, notebooks, open, flow, onOpen }: { label: 
   return (
     <ul aria-label={label}>
       {notebooks.map((v) => (
-        <NotebookItem key={v.notebook_id} notebook={v} current={v.notebook_id === open} flow={flow} onOpen={onOpen} />
+        <NotebookItem key={v.notebook_id} notebook={v} allNotebooks={notebooks} current={v.notebook_id === open} flow={flow} onOpen={onOpen} />
       ))}
     </ul>
   );
 }
 
-function NotebookItem({ notebook, current, flow, onOpen }: { notebook: NotebookVersion; current: boolean; flow: PipelineVersion | undefined; onOpen: (id: string) => void }) {
+function NotebookItem({ notebook, allNotebooks, current, flow, onOpen }: { notebook: NotebookVersion; allNotebooks: NotebookVersion[]; current: boolean; flow: PipelineVersion | undefined; onOpen: (id: string) => void }) {
   const [mode, setMode] = useState<Mode>({ kind: "idle" });
   const openButton = useRef<HTMLButtonElement>(null);
   const save = useSaveNotebook();
   const savePipeline = useSavePipelineVersion();
+  const selectPipelineVersion = useSelection((s) => s.selectPipelineVersion);
   const busy = save.isPending || savePipeline.isPending;
   const error = savePipeline.error ?? save.error;
   const { title } = notebook;
@@ -54,8 +56,22 @@ function NotebookItem({ notebook, current, flow, onOpen }: { notebook: NotebookV
     if ("refused" in out) return setMode({ kind: "refused", readers: out.refused });
     close();
     const removed = nextNotebookVersion(notebook, { removed: true });
-    if ("version" in out) savePipeline.mutate(out.version, { onSuccess: () => save.mutate(removed) });
-    else save.mutate(removed);
+    const afterDelete = () => {
+      if (current) {
+        const remaining = allNotebooks.filter((v) => v.notebook_id !== notebook.notebook_id);
+        onOpen(remaining[0]?.notebook_id ?? "");
+      }
+    };
+    if ("version" in out) {
+      savePipeline.mutate(out.version, {
+        onSuccess: () => {
+          selectPipelineVersion(out.version.id);
+          save.mutate(removed, { onSuccess: afterDelete });
+        },
+      });
+    } else {
+      save.mutate(removed, { onSuccess: afterDelete });
+    }
   };
 
   return (
@@ -93,7 +109,7 @@ function NotebookItem({ notebook, current, flow, onOpen }: { notebook: NotebookV
           <span>
             Delete {title}?{mode.steps > 0 && ` Its ${mode.steps} ${mode.steps === 1 ? "step leaves" : "steps leave"} the flow.`}
           </span>
-          <button type="button" className="nb-action" onClick={remove}>
+          <button type="button" className="nb-action alert" onClick={remove}>
             Delete
           </button>
           <button type="button" className="nb-action" autoFocus onClick={close}>

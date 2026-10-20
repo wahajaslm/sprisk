@@ -7,12 +7,15 @@ import { flows } from "../../flow/flows.ts";
 import { flowName } from "../../flow/labels.ts";
 import { shortName } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
+import { useSelection } from "../../workbench/selection.ts";
 import { DatasetDetail } from "./DatasetDetail.tsx";
 
 /** Every table the flows load, and a profile of the one picked (ADR-0038). */
 export function DatasetsPage() {
   const datasets = useLoadedTables();
   const versions = usePipelineVersions();
+  const showRun = useSelection((s) => s.showRun);
+  const setNav = useSelection((s) => s.setNav);
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (datasets.isError) return <p role="alert" className="error pad">{datasets.error.message}</p>;
@@ -21,50 +24,69 @@ export function DatasetsPage() {
   const shown = list.filter((d) => d.name.toLowerCase().includes(filter.trim().toLowerCase()));
   const current = shown.find((d) => d.artifact.id === picked) ?? shown[0];
   const usedBy = (d: LoadedTable) => uses(d, versions.data ?? []);
+  const first = current?.used_by[0];
+
   return (
-    <main className="datasets">
-      <header className="exp-head ds-head">
-        <div>
+    <main className="dsx">
+      <aside className="dsx-side" aria-label="Datasets">
+        <header className="dsx-side-head">
           <p className="eyebrow">Datasets · {list.length === 1 ? "1 table" : `${list.length} tables`}</p>
-          <h1>Data in this project</h1>
-        </div>
-        <input type="search" className="ds-filter" aria-label="Filter datasets" placeholder="Filter datasets" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      </header>
-      {list.length === 0 ? (
-        <p className="muted pad">No datasets yet. Run a flow that loads a file to see it here.</p>
-      ) : (
-        <div className="ds-body">
-          <div className="ds-list">
-            <table className="exp-table" aria-label="Datasets">
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Origin</th>
-                  <th scope="col" className="num">Rows</th>
-                  <th scope="col" className="num">Cols</th>
-                  <th scope="col">Used by</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((d) => (
-                  <tr key={d.artifact.id} className={d === current ? "picked" : undefined}>
-                    <td>
-                      <button type="button" className="ds-name" aria-pressed={d === current} onClick={() => setPicked(d.artifact.id)}>
-                        {d.name}
-                      </button>
-                    </td>
-                    <td className="muted">{shortName(d.operator)}</td>
-                    <td className="num mono">{d.total_rows.toLocaleString()}</td>
-                    <td className="num mono">{d.total_columns}</td>
-                    <td className="ds-used">{usedBy(d).join(", ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <input type="search" className="ds-filter" aria-label="Filter datasets" placeholder="Filter datasets" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        </header>
+        {list.length === 0 ? (
+          <p className="muted pad">No datasets yet. Run a flow that loads a file to see it here.</p>
+        ) : (
+          <ul className="dsx-list" aria-label="Dataset list">
+            {shown.map((d) => (
+              <li key={d.artifact.id}>
+                <button type="button" className={`dsx-item${d === current ? " picked" : ""}`} aria-pressed={d === current} onClick={() => setPicked(d.artifact.id)}>
+                  <span className="dsx-item-name">{d.name}</span>
+                  <span className="dsx-item-meta">
+                    {d.total_rows.toLocaleString()} rows · {d.total_columns} cols
+                  </span>
+                  <span className="dsx-item-meta">{shortName(d.operator)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {current && (
+          <div className="dsx-side-meta-panel" aria-label={`Metadata for ${current.name}`}>
+            <div className="dsx-side-meta-head">
+              <span className="dsx-side-meta-title">{current.name}</span>
+              <span className="dsx-side-meta-op">Loaded by {shortName(current.operator)}</span>
+            </div>
+            <dl className="dsx-side-meta-list">
+              <div>
+                <dt>Rows</dt>
+                <dd>{current.total_rows.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Columns</dt>
+                <dd>{current.total_columns}</dd>
+              </div>
+              <div>
+                <dt>Used by</dt>
+                <dd className="dsx-used">{usedBy(current).join(", ") || "—"}</dd>
+              </div>
+            </dl>
+            {first && (
+              <button
+                type="button"
+                className="page-btn ds-open-btn"
+                aria-label={`Open ${current.name} in Flow`}
+                onClick={() => {
+                  showRun(first.pipeline_version_id, first.run_id, first.node_id);
+                  setNav("Flow");
+                }}
+              >
+                Open in Flow
+              </button>
+            )}
           </div>
-          {current && <DatasetDetail key={current.artifact.id} dataset={current} usedBy={usedBy(current)} />}
-        </div>
-      )}
+        )}
+      </aside>
+      <div className="dsx-main">{current && <DatasetDetail key={current.artifact.id} dataset={current} usedBy={usedBy(current)} />}</div>
     </main>
   );
 }

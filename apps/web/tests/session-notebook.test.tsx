@@ -434,4 +434,27 @@ describe("collapsing cells, as VS Code does (ADR-0035)", () => {
     await userEvent.keyboard("o");
     expect(screen.getByText("out 1")).toBeInTheDocument();
   });
+
+  it("undoes and redoes cell insertion and deletion via toolbar and shortcuts", async () => {
+    withApi();
+    renderWithApi(<NotebooksPage />);
+    await screen.findByRole("button", { name: "Run All" });
+    const initialCellCount = screen.getAllByRole("group", { name: /^Cell \d+$/ }).length;
+
+    // Insert a new code cell
+    await userEvent.click(screen.getByRole("button", { name: "Code" }));
+    expect(screen.getAllByRole("group", { name: /^Cell \d+$/ })).toHaveLength(initialCellCount + 1);
+
+    // Click Undo
+    const undoBtn = screen.getByRole("button", { name: "Undo" });
+    expect(undoBtn).not.toBeDisabled();
+    await userEvent.click(undoBtn);
+    expect(screen.getAllByRole("group", { name: /^Cell \d+$/ })).toHaveLength(initialCellCount);
+
+    // Click Redo
+    const redoBtn = screen.getByRole("button", { name: "Redo" });
+    expect(redoBtn).not.toBeDisabled();
+    await userEvent.click(redoBtn);
+    expect(screen.getAllByRole("group", { name: /^Cell \d+$/ })).toHaveLength(initialCellCount + 1);
+  });
 });

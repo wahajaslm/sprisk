@@ -1,0 +1,83 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Target Proxy & Data Leakage Prevention
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.target_leakage@1.0.0
+name: "Target Proxy & Leakage Detection"
+stage: features
+decides: features.leakage_exclusion
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Kapoor & Narayanan (2023) Leakage Taxonomy (L2 Feature Proxy)"
+  citation: "Kaufman et al. (2012) Leakage in Data Mining: Formulations, Detection, and Avoidance (ACM TKDD)"
+  pitfall: "Features that encode downstream consequences of the target (e.g. signature_date recorded only after contract signing) produce 99.9% test accuracy in labs and catastrophic failure in live deployment."
+  corner_cases:
+    - "Sequential index identifiers (e.g. 'id', 'client_id', 'cust_id') treated as continuous numbers allow tree algorithms to memorize split indices."
+    - "Variables where nullness perfectly matches target negative class (e.g. missing signature_date on target=0)."
+    - "Mathematical proxies or aggregate summaries derived using future target labels."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - fact: question.target
+    description: "Target column being predicted"
+    required: true
+  - profile: feature_target_correlation
+    description: "Pearson/Spearman correlation and Mutual Information between each feature and the target"
+    required: true
+  - profile: feature_unique_ratio
+    description: "Cardinality ratio (distinct values / row count) to detect raw database surrogate IDs"
+    required: true
+  - profile: feature_name_patterns
+    description: "Regex match against common index/identifier patterns (id, _id, uuid, hash, row_num)"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  high_correlation_cutoff: 0.95
+  id_cardinality_cutoff: 0.98
+  target_contingency_cutoff: 0.95
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: exclude_proxies
+    label: "Exclude High-Risk Leakage Features"
+    description: "Quarantine and drop features that exhibit near-deterministic alignment with the target or act as unique record identifiers."
+    condition: "any(feature_target_correlation > high_correlation_cutoff) OR any(feature_unique_ratio > id_cardinality_cutoff) OR any(matches_id_pattern)"
+    rationale: "Features with correlation > 0.95, target-contingent missingness, or unique ID characteristics represent post-outcome records or ungeneralizable surrogate keys."
+    settings_schema:
+      type: object
+      properties:
+        quarantine_action:
+          type: string
+          enum: ["drop", "flag_for_review"]
+          default: "drop"
+        correlation_threshold:
+          type: number
+          default: 0.95
+          minimum: 0.80
+          maximum: 1.00
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.clean.select_columns@1.0.0
+      params:
+        drop_columns: ["{flagged_proxy_columns}"]
+
+  - id: pass_clean
+    label: "No Target Leakage Detected"
+    description: "All features maintain realistic information bounds relative to the target."
+    condition: "all(feature_target_correlation <= high_correlation_cutoff) AND all(feature_unique_ratio <= id_cardinality_cutoff)"
+    rationale: "Features exhibit plausible mutual information distributions without surrogate identifiers."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.target_proxy_leakage@1.0.0
+  invariant: "Features with target correlation > 0.98 cause Gate B FAIL unless accompanied by an explicit user domain justification and audit token."

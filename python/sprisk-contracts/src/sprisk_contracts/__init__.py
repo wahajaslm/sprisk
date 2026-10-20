@@ -1,6 +1,8 @@
 """Wire types generated from `contracts/schemas`. Do not hand-write wire types here."""
 
 from sprisk_contracts.generated.models import (
+    AppliedMethodologyDecision,
+    ApplyMethodologyDecision,
     Artifact,
     Attempt,
     AttemptOutput,
@@ -10,9 +12,11 @@ from sprisk_contracts.generated.models import (
     CodeSplitRequest,
     CreateRun,
     DatasetProfile,
+    DecisionProposal,
     FigureSet,
     LoadedTable,
     MethodologyCheck,
+    MethodologyDecision,
     NotebookExecute,
     NotebookExecution,
     NotebookExecutionEvent,
@@ -30,6 +34,8 @@ from sprisk_contracts.generated.models import (
 )
 
 __all__ = [
+    "AppliedMethodologyDecision",
+    "ApplyMethodologyDecision",
     "Artifact",
     "Attempt",
     "AttemptOutput",
@@ -39,9 +45,11 @@ __all__ = [
     "CodeSplitRequest",
     "CreateRun",
     "DatasetProfile",
+    "DecisionProposal",
     "FigureSet",
     "LoadedTable",
     "MethodologyCheck",
+    "MethodologyDecision",
     "NotebookExecute",
     "NotebookExecution",
     "NotebookExecutionEvent",

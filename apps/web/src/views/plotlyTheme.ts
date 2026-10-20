@@ -28,12 +28,13 @@ type Figure = { data: Plotly.Data[]; layout: Partial<Plotly.Layout> };
 /** A themed figure cut down for a canvas card: just the marks and the grid. Words, legends
  * and colour bars cannot be read at that size; the Inspector shows them. */
 export function thumbnail({ data, layout }: Figure): Figure {
-  const { title: _title, ...rest } = layout;
+  const { title: _title, width: _width, height: _height, ...rest } = layout;
   const bare = { showticklabels: false, automargin: false, title: { text: "" } };
   return {
     data: data.map((trace) => ({ ...trace, showscale: false }) as Plotly.Data),
     layout: {
       ...rest,
+      autosize: true,
       showlegend: false,
       xaxis: { ...layout.xaxis, ...bare },
       yaxis: { ...layout.yaxis, ...bare },

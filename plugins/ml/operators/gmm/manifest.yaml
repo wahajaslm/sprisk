@@ -1,0 +1,18 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clustering.gmm@1.0.0
+capability_class: transform
+description: "Gaussian Mixture Models clustering: fits K multivariate Gaussian components with EM."
+entrypoint: sprisk_ml.clustering:gmm
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: clusters, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [n_components]
+  properties:
+    n_components: { type: integer, minimum: 2, maximum: 100, description: "Number of mixture components." }
+    covariance_type: { type: string, enum: [full, tied, diag, spherical], description: "Type of covariance parameters to use." }
+    seed: { type: integer, description: "Random seed for reproducible EM fitting." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

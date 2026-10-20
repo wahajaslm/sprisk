@@ -192,6 +192,14 @@ class QuestionVersionId(RootModel[str]):
     root: Annotated[str, Field(pattern="^qv_[0-9A-HJKMNP-TV-Z]{26}$")]
 
 
+class MethodologyProposalId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^mpr_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
+class MethodologyDecisionId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^mdc_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
 class PipelineVersionId(RootModel[str]):
     root: Annotated[str, Field(pattern="^plv_[0-9A-HJKMNP-TV-Z]{26}$")]
 
@@ -250,6 +258,59 @@ class Error(StrictModel):
     message: Annotated[str, Field(min_length=1)]
 
 
+class Kind2(StrEnum):
+    question_fact = "question_fact"
+    profile_fact = "profile_fact"
+    policy = "policy"
+    user_reason = "user_reason"
+
+
+class GraphEffect1(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["replace_node"]
+    node_id: NodeId
+    operator: OperatorRef
+    params: Params
+
+
+class GraphEffect(RootModel[GraphEffect1]):
+    root: Annotated[
+        GraphEffect1,
+        Field(
+            description="Typed mutation previewed and compiled before it can create a pipeline version."
+        ),
+    ]
+
+
+class Applicability(StrEnum):
+    applicable = "applicable"
+    needs_fact = "needs_fact"
+    not_applicable = "not_applicable"
+
+
+class MethodologyAlternative(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    label: Annotated[str, Field(min_length=1)]
+    description: Annotated[str, Field(min_length=1)]
+    applicability: Applicability
+    reason: Annotated[str, Field(min_length=1)]
+    effect: GraphEffect | None = None
+
+
+class ApplyMethodologyDecision(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    alternative_id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    reason: Annotated[str | None, Field(min_length=1)] = None
+    idempotency_key: Annotated[str, Field(max_length=128, min_length=8)]
+
+
 class MethodologyCheckId(RootModel[str]):
     root: Annotated[str, Field(pattern="^mck_[0-9A-HJKMNP-TV-Z]{26}$")]
 
@@ -271,7 +332,21 @@ class Verdict(StrEnum):
     not_assessed = "not_assessed"
 
 
-class Kind2(StrEnum):
+class MethodologyPhase(StrEnum):
+    plan = "plan"
+    code = "code"
+    runtime = "runtime"
+    result = "result"
+    release = "release"
+
+
+class MethodologyCoverage(StrEnum):
+    complete = "complete"
+    partial = "partial"
+    not_assessed = "not_assessed"
+
+
+class Kind3(StrEnum):
     code = "code"
     markdown = "markdown"
 
@@ -867,6 +942,53 @@ class Artifact(StrictModel):
     created_at: Timestamp
 
 
+class MethodologyEvidence(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Kind2
+    label: Annotated[str, Field(min_length=1)]
+    value: Annotated[str, Field(min_length=1)]
+    origin: Origin
+    artifact_id: ArtifactId | None = None
+
+
+class DecisionProposal(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.decision_proposal/v1"]
+    id: MethodologyProposalId
+    rule: CheckRef
+    question_version_id: QuestionVersionId
+    pipeline_version_id: PipelineVersionId
+    subject_node_id: NodeId
+    evidence: list[MethodologyEvidence]
+    alternatives: Annotated[list[MethodologyAlternative], Field(min_length=1)]
+    recommended_alternative_id: Annotated[str | None, Field(pattern="^[a-z][a-z0-9_]{0,62}$")] = (
+        None
+    )
+    fingerprint: ContentHash
+    created_at: Timestamp
+
+
+class MethodologyDecision(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.methodology_decision/v1"]
+    id: MethodologyDecisionId
+    proposal_id: MethodologyProposalId
+    rule: CheckRef
+    question_version_id: QuestionVersionId
+    base_pipeline_version_id: PipelineVersionId
+    pipeline_version_id: PipelineVersionId
+    subject_node_id: NodeId
+    alternative_id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    reason: Annotated[str | None, Field(min_length=1)] = None
+    created_at: Timestamp
+
+
 class MethodologyCheck(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -874,7 +996,11 @@ class MethodologyCheck(StrictModel):
     schema_version: Literal["sprisk.methodology_check/v1"]
     id: MethodologyCheckId
     pipeline_version_id: PipelineVersionId
+    question_version_id: QuestionVersionId | None = None
+    methodology_decision_id: MethodologyDecisionId | None = None
     check: CheckRef
+    phase: MethodologyPhase | None = None
+    coverage: MethodologyCoverage | None = None
     verdict: Verdict
     rationale: Annotated[str, Field(min_length=1)]
     cited_nodes: Annotated[
@@ -898,7 +1024,7 @@ class NotebookCell(StrictModel):
         extra="forbid",
     )
     id: NotebookCellId
-    kind: Kind2
+    kind: Kind3
     source: Annotated[str, Field(max_length=100000)]
 
 
@@ -992,6 +1118,12 @@ class Node(StrictModel):
     id: NodeId
     operator: OperatorRef
     params: Params
+    methodology_decision_id: Annotated[
+        MethodologyDecisionId | None,
+        Field(
+            description="Decision that produced this node state. Absent for a hand-authored node."
+        ),
+    ] = None
     code: Annotated[
         NodeCode | None,
         Field(
@@ -1237,6 +1369,12 @@ class PipelineVersion(StrictModel):
     schema_version: Literal["sprisk.pipeline_version/v1"]
     id: PipelineVersionId
     project_id: ProjectId
+    question_version_id: Annotated[
+        QuestionVersionId | None,
+        Field(
+            description="Exact immutable question-ledger revision this flow answers. Absent only for legacy or not-yet-scoped flows."
+        ),
+    ] = None
     parent_id: Annotated[
         PipelineVersionId | None,
         Field(description="Version this one was derived from. Absent for the first version."),
@@ -1264,7 +1402,19 @@ class QuestionVersion(StrictModel):
         Field(description="Target column. Absent when there is no legitimate supervised target."),
     ] = None
     unit_of_analysis: Fact | None = None
+    entity_column: Annotated[
+        Fact | None,
+        Field(
+            description="Column whose values identify the unit or group that must not cross an entity-aware split."
+        ),
+    ] = None
     time_column: Fact | None = None
+    prediction_horizon: Annotated[
+        Fact | None,
+        Field(
+            description="How far after prediction time the outcome is observed, preferably an ISO-8601 duration such as P30D."
+        ),
+    ] = None
     assumptions: list[Fact]
     unknowns: list[Unknown]
     acceptance_criteria: list[Fact]
@@ -1323,3 +1473,11 @@ class DatasetProfile(StrictModel):
     ]
     columns: list[ColumnProfile]
     correlation: Correlation
+
+
+class AppliedMethodologyDecision(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    decision: MethodologyDecision
+    pipeline: PipelineVersion

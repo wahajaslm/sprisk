@@ -1,0 +1,84 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Clustering Tendency (Hopkins Statistic)
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.unsupervised.clustering_tendency@1.0.0
+name: "Clustering Tendency Assessment"
+stage: geometry
+decides: clustering.tendency_verification
+
+# 1. Scientific Standards & Authoritative Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Lawson & Jurs (1990) New Method for Estimating the Clustering Tendency of Data (Hopkins Statistic)"
+  citation: "Banerjee & Dave (2004) Validating Clusters Using the Hopkins Statistic & Aggarwal (2015) Data Mining: The Textbook (Springer)"
+  pitfall: "Clustering algorithms (such as K-Means or Hierarchical Clustering) are mathematical optimization solvers that will forcibly partition data into K clusters even when applied to completely uniform random noise."
+  corner_cases:
+    - "Uniform Noise Artifact: Data uniformly scattered across feature space yields a Hopkins statistic H ≈ 0.5. Running clustering on H ≈ 0.5 fabricates meaningless segments."
+    - "Isolated Tail Leverage: A single distant outlier can artificially elevate the Hopkins statistic even if 99% of the points form an amorphous unimodal blob."
+    - "Synthetic Reference Convexity: When data lives on a non-convex manifold, uniform hypercube sampling can overstate clusterability."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: hopkins_statistic
+    description: "Hopkins statistic measuring divergence from spatial randomness (0.5 = random noise, 1.0 = highly clusterable)"
+    required: true
+  - profile: sample_count
+    description: "Number of observations in the dataset"
+    required: true
+  - profile: numerical_feature_count
+    description: "Number of continuous numeric features"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  hopkins_clusterability_threshold: 0.70
+  hopkins_random_noise_ceiling: 0.55
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: proceed_with_clustering
+    label: "Genuine Multimodal Clustering Structure Confirmed"
+    description: "Dataset exhibits significant spatial clustering tendency (Hopkins H >= 0.70). Proceed to clustering algorithm selection."
+    condition: "hopkins_statistic >= hopkins_clusterability_threshold"
+    rationale: "Hopkins statistic confirms significant deviation from uniform spatial randomness. Real density modes exist in the feature geometry."
+    action:
+      type: pass_through
+
+  - id: reject_uniform_noise
+    label: "Halt Clustering (Uniform Spatial Noise Detected)"
+    description: "Prevent automated clustering and issue a methodology advisory: data lacks genuine cluster structure (H < 0.55)."
+    condition: "hopkins_statistic <= hopkins_random_noise_ceiling"
+    rationale: "Data distribution is statistically indistinguishable from uniform random noise. Forcing clustering would produce artificial boundaries without empirical basis."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "hopkins_statistic_indicates_uniform_noise"
+
+  - id: weak_clustering_review
+    label: "Weak Clustering Tendency (Review with Density Estimation)"
+    description: "Data exhibits marginal clustering tendency (0.55 < H < 0.70). Require density-based exploration (DBSCAN) rather than centroid partitioning."
+    condition: "hopkins_statistic > hopkins_random_noise_ceiling AND hopkins_statistic < hopkins_clusterability_threshold"
+    rationale: "Marginal clustering signal. Centroid algorithms like K-Means will produce unstable clusters; density estimation is required to verify real modes."
+    settings_schema:
+      type: object
+      properties:
+        subsample_ratio:
+          type: number
+          default: 0.20
+          minimum: 0.05
+          maximum: 0.50
+    action:
+      type: insert_step
+      operator: sprisk.unsupervised.density_check@1.0.0
+      params:
+        subsample: "{settings.subsample_ratio}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.unsupervised.clustering_tendency@1.0.0
+  invariant: "Clustering algorithms executed on datasets with Hopkins statistic H < 0.55 trigger a Gate B WARNING for spurious cluster formation."

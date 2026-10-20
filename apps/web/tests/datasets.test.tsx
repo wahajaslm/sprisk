@@ -54,20 +54,20 @@ afterEach(() => server.events.removeAllListeners());
 describe("datasets", () => {
   it("lists each table the flows load, with its rows, columns and the steps that load it", async () => {
     serve();
-    const list = await screen.findByRole("table", { name: "Datasets" });
-    const row = within(list).getByRole("row", { name: /^iris\.csv/ });
-    expect(row).toHaveTextContent("120");
-    expect(row).toHaveTextContent("3");
-    expect(row).toHaveTextContent("iris.csv · load");
-    expect(within(list).getByRole("row", { name: /^penguins\.csv/ })).toHaveTextContent("344");
+    const list = await screen.findByRole("list", { name: "Dataset list" });
+    const item = within(list).getByRole("button", { name: /^iris\.csv/ });
+    expect(item).toHaveTextContent("120 rows");
+    expect(item).toHaveTextContent("3 cols");
+    expect(within(await screen.findByRole("region", { name: "iris.csv" })).getByText(/iris\.csv · load/)).toBeInTheDocument();
+    expect(within(list).getByRole("button", { name: /^penguins\.csv/ })).toHaveTextContent("344 rows");
   });
 
   it("filters the list by name", async () => {
     serve();
     await userEvent.type(await screen.findByRole("searchbox", { name: "Filter datasets" }), "peng");
-    const list = screen.getByRole("table", { name: "Datasets" });
-    expect(within(list).queryByRole("row", { name: /^iris\.csv/ })).toBeNull();
-    expect(within(list).getByRole("row", { name: /^penguins\.csv/ })).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Dataset list" });
+    expect(within(list).queryByRole("button", { name: /^iris\.csv/ })).toBeNull();
+    expect(within(list).getByRole("button", { name: /^penguins\.csv/ })).toBeInTheDocument();
   });
 
   it("profiles the first dataset: each column's type, missing share and distinct count", async () => {
@@ -99,7 +99,7 @@ describe("datasets", () => {
 
   it("shows another dataset's profile when it is picked", async () => {
     serve();
-    await userEvent.click(await screen.findByRole("button", { name: "penguins.csv" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^penguins\.csv/ }));
     expect(await screen.findByRole("table", { name: "Columns of penguins.csv" })).toBeInTheDocument();
   });
 

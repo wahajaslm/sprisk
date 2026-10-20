@@ -35,8 +35,8 @@ const mixed: PipelineVersion = {
   ],
 };
 
-const LOAD_CALL = 'load_data = df = f(path=Path("/d/iris.csv"), format="csv")';
-const SPLIT_CALL = 'split_out = f(data=clean, seed=42)\nsplit_train = train = split_out["train"]\nsplit_test = split_out["test"]';
+const LOAD_CALL = 'load_data = df = load(path=Path("/d/iris.csv"), format="csv")';
+const SPLIT_CALL = 'split_out = split(data=clean, seed=42)\nsplit_train = train = split_out["train"]\nsplit_test = split_out["test"]';
 const byEnds = (edges: PipelineVersion["edges"]) => [...edges].sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));
 
 describe("notebook order (ADR-0033)", () => {

@@ -1,0 +1,125 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Categorical Encoding Strategy
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.categorical_encoding@1.0.0
+name: "Categorical Encoding Strategy"
+stage: features
+decides: features.encoding_strategy
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Scikit-Learn Category Encoders & CatBoost Categorical Statistics"
+  citation: "Micci-Barreca (2001) A Preprocessing Scheme for High-Cardinality Categoricals in Data Mining (ACM SIGKDD) & DoorDash Engineering: Fabricator Declarative Feature Framework (2022)"
+  pitfall: "One-hot encoding high-cardinality columns (e.g. 150+ sales channels or zip codes) creates massive sparse matrices, leading to the curse of dimensionality and tree split dilution; target encoding without out-of-fold cross-fitting introduces severe target leakage."
+  corner_cases:
+    - "Dummy Variable Trap: Linear and logistic regression models suffer perfect multicollinearity if drop='first' is not applied when an intercept exists."
+    - "Unseen categories at test time: Encoders without explicit 'handle_unknown' policies crash during production inference."
+    - "Rare categories: Low-frequency categories (e.g. <10 instances) need Bayesian smoothing towards the global prior to prevent overfitting."
+    - "Ordinal features: Variables with natural sequence (e.g. low/med/high) lose structural ordering if one-hot encoded instead of ordinal-mapped."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: categorical_columns
+    description: "List of discrete nominal/ordinal columns"
+    required: true
+  - profile: column_cardinality
+    description: "Distinct category count per categorical column"
+    required: true
+  - fact: planned_model_family
+    description: "Linear/logistic models vs tree ensembles vs neural nets"
+    required: true
+  - fact: question.target
+    description: "Target column name"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  high_cardinality_threshold: 15
+  default_smoothing_weight: 10.0
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: one_hot_encoding
+    label: "One-Hot Encoding"
+    description: "Convert discrete categories into orthogonal binary indicator columns."
+    condition: "column_cardinality <= high_cardinality_threshold"
+    rationale: "Low cardinality (<= 15 levels). One-hot encoding creates no artificial ordering and avoids dimensional explosion."
+    settings_schema:
+      type: object
+      properties:
+        drop_first:
+          type: boolean
+          default: true
+          description: "Drop first category to prevent dummy variable trap in linear/logistic models."
+        handle_unknown:
+          type: string
+          enum: ["ignore", "error"]
+          default: "ignore"
+          description: "Encode unknown production categories as all zeros rather than crashing."
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.features.one_hot@1.0.0
+      params:
+        drop_first: "{settings.drop_first}"
+        handle_unknown: "{settings.handle_unknown}"
+
+  - id: target_encoding_oof
+    label: "Out-of-Fold Target Encoding with Bayesian Smoothing"
+    description: "Encode categories as regularized posterior target expectations using inner cross-validation."
+    condition: "column_cardinality > high_cardinality_threshold"
+    rationale: "High cardinality (> 15 levels). Target encoding condenses high-cardinality levels into a single informative scalar while inner CV and smoothing prevent overfitting."
+    settings_schema:
+      type: object
+      properties:
+        smoothing:
+          type: number
+          default: 10.0
+          minimum: 1.0
+          maximum: 100.0
+          description: "Weight allocated to global target mean for smoothing rare categories."
+        cv_folds:
+          type: integer
+          default: 5
+          minimum: 3
+          maximum: 10
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.features.target_encoder@1.0.0
+      params:
+        cv: "{settings.cv_folds}"
+        smoothing: "{settings.smoothing}"
+
+  - id: ordinal_encoding
+    label: "Ordinal / Integer Mapping"
+    description: "Map naturally ordered levels (e.g. low/medium/high) to sequential integers [0, 1, 2]."
+    condition: "column_is_ordinal is true"
+    rationale: "Preserves natural monotonic ordering among discrete categories."
+    settings_schema:
+      type: object
+      properties:
+        handle_unknown:
+          type: string
+          default: "use_encoded_value"
+        unknown_value:
+          type: integer
+          default: -1
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.features.ordinal_encoder@1.0.0
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.target_encoding_leakage@1.0.0
+  invariant: "Target encoding must use out-of-fold cross-fitting on training folds and never access validation partition labels during category mapping."

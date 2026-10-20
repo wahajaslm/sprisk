@@ -1,0 +1,19 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clustering.kmeans@1.0.0
+capability_class: transform
+description: "K-Means++ clustering: partitions rows into K convex clusters minimizing within-cluster inertia."
+entrypoint: sprisk_ml.clustering:kmeans
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: clusters, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [n_clusters]
+  properties:
+    n_clusters: { type: integer, minimum: 2, maximum: 100, description: "Number of clusters to form." }
+    n_init: { type: integer, minimum: 1, description: "Number of times k-means runs with different seeds." }
+    max_iter: { type: integer, minimum: 1, description: "Maximum number of iterations for a single run." }
+    seed: { type: integer, description: "Deterministic random seed for centroid initialization." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

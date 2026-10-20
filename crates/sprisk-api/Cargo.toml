@@ -14,6 +14,7 @@ sprisk-artifacts = { path = "../sprisk-artifacts" }
 sprisk-contracts = { path = "../sprisk-contracts" }
 sprisk-core = { path = "../sprisk-core" }
 sprisk-graph = { path = "../sprisk-graph" }
+sprisk-methodology = { path = "../sprisk-methodology" }
 sprisk-registry = { path = "../sprisk-registry" }
 sprisk-scheduler = { path = "../sprisk-scheduler" }
 sprisk-store = { path = "../sprisk-store" }

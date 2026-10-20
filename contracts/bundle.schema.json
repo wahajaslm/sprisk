@@ -998,6 +998,14 @@
       "type": "string",
       "pattern": "^qv_[0-9A-HJKMNP-TV-Z]{26}$"
     },
+    "MethodologyProposalId": {
+      "type": "string",
+      "pattern": "^mpr_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "MethodologyDecisionId": {
+      "type": "string",
+      "pattern": "^mdc_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
     "PipelineVersionId": {
       "type": "string",
       "pattern": "^plv_[0-9A-HJKMNP-TV-Z]{26}$"
@@ -1055,6 +1063,267 @@
         }
       }
     },
+    "MethodologyEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "label",
+        "value",
+        "origin"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "question_fact",
+            "profile_fact",
+            "policy",
+            "user_reason"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "artifact_id": {
+          "$ref": "#/$defs/ArtifactId"
+        }
+      }
+    },
+    "GraphEffect": {
+      "description": "Typed mutation previewed and compiled before it can create a pipeline version.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "node_id",
+            "operator",
+            "params"
+          ],
+          "properties": {
+            "kind": {
+              "const": "replace_node"
+            },
+            "node_id": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "operator": {
+              "$ref": "#/$defs/OperatorRef"
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            }
+          }
+        }
+      ]
+    },
+    "MethodologyAlternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "description",
+        "applicability",
+        "reason"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applicability": {
+          "type": "string",
+          "enum": [
+            "applicable",
+            "needs_fact",
+            "not_applicable"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effect": {
+          "$ref": "#/$defs/GraphEffect"
+        }
+      }
+    },
+    "DecisionProposal": {
+      "title": "DecisionProposal",
+      "description": "Immutable resolver output. It explains alternatives and previews typed effects; it does not mutate a graph.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "rule",
+        "question_version_id",
+        "pipeline_version_id",
+        "subject_node_id",
+        "evidence",
+        "alternatives",
+        "fingerprint",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "sprisk.decision_proposal/v1"
+        },
+        "id": {
+          "$ref": "#/$defs/MethodologyProposalId"
+        },
+        "rule": {
+          "$ref": "#/$defs/CheckRef"
+        },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "subject_node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MethodologyEvidence"
+          }
+        },
+        "alternatives": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/MethodologyAlternative"
+          }
+        },
+        "recommended_alternative_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/ContentHash"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "ApplyMethodologyDecision": {
+      "title": "ApplyMethodologyDecision",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alternative_id",
+        "idempotency_key"
+      ],
+      "properties": {
+        "alternative_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128
+        }
+      }
+    },
+    "MethodologyDecision": {
+      "title": "MethodologyDecision",
+      "description": "Immutable record of an alternative atomically applied to a new pipeline version.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "proposal_id",
+        "rule",
+        "question_version_id",
+        "base_pipeline_version_id",
+        "pipeline_version_id",
+        "subject_node_id",
+        "alternative_id",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "sprisk.methodology_decision/v1"
+        },
+        "id": {
+          "$ref": "#/$defs/MethodologyDecisionId"
+        },
+        "proposal_id": {
+          "$ref": "#/$defs/MethodologyProposalId"
+        },
+        "rule": {
+          "$ref": "#/$defs/CheckRef"
+        },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "base_pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "subject_node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "alternative_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "AppliedMethodologyDecision": {
+      "title": "AppliedMethodologyDecision",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "pipeline"
+      ],
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/MethodologyDecision"
+        },
+        "pipeline": {
+          "$ref": "#/$defs/PipelineVersion"
+        }
+      }
+    },
     "MethodologyCheck": {
       "title": "MethodologyCheck",
       "description": "Result of one Gate B methodology rule on one pipeline version (arch doc §4, §8). Immutable; re-checking creates a new record.",
@@ -1083,8 +1352,20 @@
         "pipeline_version_id": {
           "$ref": "#/$defs/PipelineVersionId"
         },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "methodology_decision_id": {
+          "$ref": "#/$defs/MethodologyDecisionId"
+        },
         "check": {
           "$ref": "#/$defs/CheckRef"
+        },
+        "phase": {
+          "$ref": "#/$defs/MethodologyPhase"
+        },
+        "coverage": {
+          "$ref": "#/$defs/MethodologyCoverage"
         },
         "verdict": {
           "$ref": "#/$defs/Verdict"
@@ -1125,6 +1406,24 @@
         "pass",
         "fail",
         "warning",
+        "not_assessed"
+      ]
+    },
+    "MethodologyPhase": {
+      "type": "string",
+      "enum": [
+        "plan",
+        "code",
+        "runtime",
+        "result",
+        "release"
+      ]
+    },
+    "MethodologyCoverage": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
         "not_assessed"
       ]
     },
@@ -1695,6 +1994,10 @@
         "project_id": {
           "$ref": "#/$defs/ProjectId"
         },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId",
+          "description": "Exact immutable question-ledger revision this flow answers. Absent only for legacy or not-yet-scoped flows."
+        },
         "parent_id": {
           "$ref": "#/$defs/PipelineVersionId",
           "description": "Version this one was derived from. Absent for the first version."
@@ -1733,6 +2036,10 @@
         },
         "params": {
           "$ref": "#/$defs/Params"
+        },
+        "methodology_decision_id": {
+          "$ref": "#/$defs/MethodologyDecisionId",
+          "description": "Decision that produced this node state. Absent for a hand-authored node."
         },
         "code": {
           "$ref": "#/$defs/NodeCode",
@@ -1854,8 +2161,16 @@
         "unit_of_analysis": {
           "$ref": "#/$defs/Fact"
         },
+        "entity_column": {
+          "$ref": "#/$defs/Fact",
+          "description": "Column whose values identify the unit or group that must not cross an entity-aware split."
+        },
         "time_column": {
           "$ref": "#/$defs/Fact"
+        },
+        "prediction_horizon": {
+          "$ref": "#/$defs/Fact",
+          "description": "How far after prediction time the outcome is observed, preferably an ISO-8601 duration such as P30D."
         },
         "assumptions": {
           "type": "array",

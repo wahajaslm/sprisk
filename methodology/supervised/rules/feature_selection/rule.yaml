@@ -1,0 +1,102 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Supervised Feature Selection
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.feature_selection@1.0.0
+name: "Feature Selection & Dimensional Sparsity"
+stage: features
+decides: features.selection_strategy
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Guyon & Elisseeff (2003) An Introduction to Variable and Feature Selection (JMLR)"
+  citation: "Knowledge Base Dimension Reduction 01 & Hastie et al. (2009) ESL"
+  pitfall: "Fitting feature selection algorithms (e.g. SelectKBest) on the full dataset before splitting selects features biased towards test labels (L1 Data Snooping)."
+  corner_cases:
+    - "High feature-to-sample ratio (p >> n): When feature count approaches or exceeds row count, non-regularized estimators overfit on noise."
+    - "Non-linear relationships: Linear correlation tests (ANOVA F-value) fail to detect quadratic or interaction features; Mutual Information is required."
+    - "Supervised selection leakage: Selection must strictly be computed on train folds; test labels must never be used to pick features."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: feature_count
+    description: "Number of candidate engineered features"
+    required: true
+  - profile: sample_count
+    description: "Number of training observations"
+    required: true
+  - profile: non_linear_dependency_ratio
+    description: "Proportion of features with non-linear mutual information"
+    required: false
+  - fact: planned_model_family
+    description: "Model family (linear vs tree ensembles)"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  high_feature_ratio_threshold: 0.10
+  min_features_for_selection: 40
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: mutual_information_kbest
+    label: "Mutual Information Feature Selection (Filter)"
+    description: "Select the top K features ranked by non-parametric Mutual Information with the target."
+    condition: "feature_count >= min_features_for_selection AND (feature_count / sample_count) >= high_feature_ratio_threshold"
+    rationale: "High feature-to-sample ratio detected. Mutual Information captures both linear and non-linear associations without assuming Gaussian distributions."
+    settings_schema:
+      type: object
+      properties:
+        k_features:
+          type: integer
+          default: 20
+          minimum: 5
+          maximum: 200
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.features.select_k_best@1.0.0
+      params:
+        score_func: "mutual_info"
+        k: "{settings.k_features}"
+
+  - id: l1_sparsity_selection
+    label: "L1 Lasso / ElasticNet Sparsity Selection (Embedded)"
+    description: "Use an L1 penalty to drive irrelevant feature weights strictly to zero, pruning uninformative columns."
+    condition: "feature_count >= min_features_for_selection AND planned_model_family in ['linear', 'logistic']"
+    rationale: "Linear model context with wide feature set. L1 shrinkage performs simultaneous coefficient estimation and sparse subset selection."
+    settings_schema:
+      type: object
+      properties:
+        l1_penalty:
+          type: number
+          default: 0.01
+          minimum: 0.0001
+          maximum: 1.0
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.features.select_from_model@1.0.0
+      params:
+        estimator: "lasso"
+        threshold: "1e-5"
+
+  - id: pass_all_features
+    label: "Preserve All Features (Tree Invariant / Low Dimension)"
+    description: "Retain the full feature space without pre-filtering."
+    condition: "feature_count < min_features_for_selection"
+    rationale: "Feature dimension is compact (< 40 features). Retaining all features preserves full domain variance."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.feature_selection_leakage@1.0.0
+  invariant: "Feature selection rank scores and subset masks must be derived exclusively from training partition folds."

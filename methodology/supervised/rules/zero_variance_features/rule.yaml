@@ -1,0 +1,85 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Zero-Variance & Quasi-Constant Feature Elimination
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.zero_variance_features@1.0.0
+name: "Constant & Low-Variance Feature Elimination"
+stage: cleaning
+decides: cleaning.zero_variance_elimination
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Data Quality Inspection & Kuhn & Johnson (2013) Applied Predictive Modeling"
+  citation: "Kuhn & Johnson (2013) Applied Predictive Modeling (Springer) & Scikit-Learn Feature Selection Guidelines: VarianceThreshold (2023)"
+  pitfall: "Features with zero or near-zero variance provide zero discriminative signal, cause division-by-zero crashes in scaling (sigma = 0), and bloat memory."
+  corner_cases:
+    - "Features constant in the training split but having a single rare value in the test split."
+    - "Boolean indicator columns where only 1 row out of 100,000 is True (quasi-constant)."
+    - "Categorical features where a single category occupies 99.9% of all rows."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: feature_variances
+    description: "Sample variance of numerical features"
+    required: true
+  - profile: feature_top_frequency_ratio
+    description: "Proportion of rows occupied by the single most frequent value"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  zero_variance_epsilon: 1e-12
+  near_zero_variance_frequency_ratio: 0.995
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: drop_constant_and_quasi_constant
+    label: "Eliminate Zero and Near-Zero Variance Features"
+    description: "Drop strictly constant columns and columns where the top value exceeds 99.5% frequency."
+    condition: "any(feature_variances <= zero_variance_epsilon) OR any(feature_top_frequency_ratio >= near_zero_variance_frequency_ratio)"
+    rationale: "Zero-variance columns induce mathematical singularities in linear solvers and waste estimator split points."
+    settings_schema:
+      type: object
+      properties:
+        frequency_cutoff:
+          type: number
+          default: 0.995
+          minimum: 0.90
+          maximum: 1.00
+          description: "Threshold above which a single value dominating the feature triggers elimination."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.cleaning.variance_threshold@1.0.0
+      params:
+        frequency_cutoff: "{settings.frequency_cutoff}"
+
+  - id: drop_strictly_constant_only
+    label: "Eliminate Strictly Constant Columns Only"
+    description: "Remove only columns with exactly one distinct value (variance == 0), retaining quasi-constant features."
+    condition: "any(feature_variances <= zero_variance_epsilon) AND all(feature_top_frequency_ratio < near_zero_variance_frequency_ratio)"
+    rationale: "Removes singularity risk while preserving rare event indicator columns."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.cleaning.variance_threshold@1.0.0
+      params:
+        threshold: 0.0
+
+  - id: pass_clean
+    label: "Sufficient Variance Observed"
+    description: "All features maintain diverse value distributions."
+    condition: "all(feature_variances > zero_variance_epsilon) AND all(feature_top_frequency_ratio < near_zero_variance_frequency_ratio)"
+    rationale: "No constant or near-constant features detected."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.variance_invariants@1.0.0
+  invariant: "Feature matrix entering model training must contain zero columns with sample variance == 0."

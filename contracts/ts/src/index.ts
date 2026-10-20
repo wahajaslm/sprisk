@@ -15,6 +15,10 @@ export interface Entities {
   WorkerMessage: C.WorkerMessage;
   QuestionVersion: C.QuestionVersion;
   MethodologyCheck: C.MethodologyCheck;
+  DecisionProposal: C.DecisionProposal;
+  ApplyMethodologyDecision: C.ApplyMethodologyDecision;
+  MethodologyDecision: C.MethodologyDecision;
+  AppliedMethodologyDecision: C.AppliedMethodologyDecision;
   CreateRun: C.CreateRun;
   AttemptOutput: C.AttemptOutput;
   Problem: C.Problem;

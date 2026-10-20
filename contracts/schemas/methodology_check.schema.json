@@ -11,7 +11,11 @@
         "schema_version": { "type": "string", "enum": ["sprisk.methodology_check/v1"] },
         "id": { "$ref": "#/$defs/MethodologyCheckId" },
         "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
+        "question_version_id": { "$ref": "#/$defs/QuestionVersionId" },
+        "methodology_decision_id": { "$ref": "#/$defs/MethodologyDecisionId" },
         "check": { "$ref": "#/$defs/CheckRef" },
+        "phase": { "$ref": "#/$defs/MethodologyPhase" },
+        "coverage": { "$ref": "#/$defs/MethodologyCoverage" },
         "verdict": { "$ref": "#/$defs/Verdict" },
         "rationale": { "type": "string", "minLength": 1 },
         "cited_nodes": {
@@ -39,6 +43,14 @@
     "Verdict": {
       "type": "string",
       "enum": ["pass", "fail", "warning", "not_assessed"]
+    },
+    "MethodologyPhase": {
+      "type": "string",
+      "enum": ["plan", "code", "runtime", "result", "release"]
+    },
+    "MethodologyCoverage": {
+      "type": "string",
+      "enum": ["complete", "partial", "not_assessed"]
     }
   }
 }

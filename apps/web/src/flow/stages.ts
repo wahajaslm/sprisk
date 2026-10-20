@@ -13,6 +13,7 @@ export function stageOf(operator: Operator): Stage {
   const domain = operator.id.split(".")[1];
   if (domain === "validation") return "Split";
   if (domain === "clean") return "Clean";
+  if (domain === "clustering") return "Model";
   switch (operator.capability_class) {
     case "source":
     case "analyzer":
@@ -27,6 +28,8 @@ export function stageOf(operator: Operator): Stage {
 }
 
 export function kindOf(operator: Operator): NodeKind {
+  const domain = operator.id.split(".")[1];
+  if (domain === "clustering") return "model";
   switch (operator.capability_class) {
     case "source":
       return "source";
@@ -69,22 +72,10 @@ export function stageGroups(pipeline: PipelineVersion, operators: Map<string, Op
     const op = stage.get(id);
     return op ? stageOf(op) : undefined;
   };
-  const parent = new Map(pipeline.nodes.map((n) => [n.id, n.id]));
-  const find = (id: string): string => {
-    const p = parent.get(id) ?? id;
-    return p === id ? id : find(p);
-  };
-  const join = (a: string, b: string) => {
-    if (stageName(a) !== undefined && stageName(a) === stageName(b)) parent.set(find(a), find(b));
-  };
-  for (const e of pipeline.edges) join(stepOf(e.from), stepOf(e.to));
-  const readers = new Map<string, string[]>();
-  for (const e of pipeline.edges) readers.set(stepOf(e.from), [...(readers.get(stepOf(e.from)) ?? []), stepOf(e.to)]);
-  for (const siblings of readers.values()) for (const a of siblings) for (const b of siblings) join(a, b);
   const groups = new Map<string, string>();
   for (const n of pipeline.nodes) {
     const name = stageName(n.id);
-    if (name !== undefined) groups.set(n.id, `${name}#${find(n.id)}`);
+    if (name !== undefined) groups.set(n.id, `${name}#${name.toLowerCase()}`);
   }
   return groups;
 }
@@ -101,6 +92,38 @@ export function stepTitle(ref: string): string {
 /** The profile step writes one DuckDB SUMMARIZE row per data column. Matched by operator
  * because ports do not declare their table shape yet (docs/backlog.md). */
 export const isProfileOperator = (ref: string | undefined) => ref?.startsWith("sprisk.profile.summarize@") === true;
+
+export const isClusteringOperator = (ref: string | undefined) =>
+  ref !== undefined && (ref.startsWith("sprisk.clustering.") || ref.includes(".clustering."));
+
+export const isSpectralGatingOperator = (ref: string | undefined) =>
+  ref !== undefined && ref.includes("spectral_gating");
+
+export const isDistributionsOperator = (ref: string | undefined) =>
+  ref !== undefined && ref.includes("profile.distributions");
+
+export const isFeatureImportanceOperator = (ref: string | undefined) =>
+  ref !== undefined && ref.includes("feature_importance");
+
+export const isClipOutliersOperator = (ref: string | undefined) =>
+  ref !== undefined && ref.includes("clip_outliers");
+
+export const isSplitOperator = (ref: string | undefined) =>
+  ref !== undefined && (ref.includes(".validation.") || ref.includes("_split"));
+
+export function isAnalysisOperator(ref: string | undefined, capability?: string): boolean {
+  if (!ref) return false;
+  if (isClusteringOperator(ref)) return true;
+  if (isSpectralGatingOperator(ref)) return true;
+  if (isFeatureImportanceOperator(ref)) return true;
+  if (isDistributionsOperator(ref)) return true;
+  if (isClipOutliersOperator(ref)) return true;
+  if (isProfileOperator(ref)) return true;
+  if (isSplitOperator(ref)) return true;
+  if (capability === "evaluator" || capability === "estimator") return true;
+  return false;
+}
+
 
 /** One entry per operator name: its highest `major.minor.patch` version. */
 export function newestVersions(operators: Operator[]): Operator[] {

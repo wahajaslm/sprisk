@@ -1,0 +1,97 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Subspace Dimensionality Reduction
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.dimensionality_reduction@1.0.0
+name: "Orthogonal Subspace Projection (PCA)"
+stage: features
+decides: features.subspace_reduction
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Jolliffe & Cadima (2016) Principal Component Analysis: A review and recent developments"
+  citation: "Knowledge Base Dimension Reduction 02/03 & Scikit-Learn Decomposition Standards"
+  pitfall: "Running PCA on unscaled features causes principal components to align artificially with the feature having the largest measurement units. Centering sparse matrices in PCA causes fatal memory exhaustion."
+  corner_cases:
+    - "Scaling Dependency: Numerical variables MUST be standardized before PCA projection; otherwise variance is dominated by large-scale units."
+    - "Loss of Direct Interpretability: PCA components are linear combinations of all original features; do not use when regulatory policies require direct univariate explanations."
+    - "Sparse Text Representations: For TF-IDF sparse matrices, TruncatedSVD must be used instead of standard PCA to avoid dense matrix densification."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: numerical_feature_count
+    description: "Number of continuous numeric features"
+    required: true
+  - profile: average_pairwise_correlation
+    description: "Mean absolute correlation across numerical features"
+    required: true
+  - profile: is_sparse_matrix
+    description: "Whether feature matrix is sparse (e.g. text/bag-of-words)"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  min_numerical_features: 30
+  high_correlation_density: 0.40
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: pca_variance_threshold
+    label: "Principal Component Analysis (95% Explained Variance)"
+    description: "Project continuous features onto orthogonal principal axes retaining 95% of cumulative explained variance."
+    condition: "numerical_feature_count >= min_numerical_features AND average_pairwise_correlation >= high_correlation_density AND is_sparse_matrix is false"
+    rationale: "Dense, highly correlated high-dimensional feature space. PCA removes multicollinearity and compresses dimension while retaining 95% of total variance."
+    settings_schema:
+      type: object
+      properties:
+        explained_variance_target:
+          type: number
+          default: 0.95
+          minimum: 0.80
+          maximum: 0.99
+    action:
+      type: insert_step
+      placement: after_scaling
+      fit_on: train_partition_only
+      operator: sprisk.features.pca@1.0.0
+      params:
+        n_components: "{settings.explained_variance_target}"
+
+  - id: truncated_svd_sparse
+    label: "TruncatedSVD (Sparse Latent Semantic Analysis)"
+    description: "Decompose sparse matrix without centering to extract low-rank orthogonal latent factors without memory explosion."
+    condition: "is_sparse_matrix is true AND numerical_feature_count >= min_numerical_features"
+    rationale: "Sparse matrix representation. TruncatedSVD preserves sparsity while reducing dimensionality."
+    settings_schema:
+      type: object
+      properties:
+        n_components:
+          type: integer
+          default: 50
+          minimum: 10
+          maximum: 300
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.features.truncated_svd@1.0.0
+      params:
+        n_components: "{settings.n_components}"
+
+  - id: pass_original_features
+    label: "Preserve Original Feature Space (Full Interpretability)"
+    description: "Keep original features without subspace rotation to ensure every feature retains its direct domain meaning."
+    condition: "numerical_feature_count < min_numerical_features OR average_pairwise_correlation < high_correlation_density"
+    rationale: "Feature dimension is manageable or correlations are low. Retaining original features preserves maximum model explainability."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.subspace_leakage@1.0.0
+  invariant: "PCA eigenvectors (loadings) and singular values must be calculated exclusively on the training partition."

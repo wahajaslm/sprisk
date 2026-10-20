@@ -99,7 +99,7 @@ function python(value: unknown): string {
 function callOf(pipeline: PipelineVersion, operators: Operators, node: Node): string {
   const operator = operators.get(node.operator);
   if (!operator) return `# operator ${node.operator} is not installed`;
-  const fn = node.code?.function ?? operator.entrypoint.split(":")[1] ?? node.operator;
+  const fn = node.code?.function ?? node.id;
   const properties = (operator.params_schema["properties"] ?? {}) as Record<string, Record<string, unknown>>;
   const args = [
     ...inputsOf(pipeline, node.id).map((i) => `${i.port}=${i.name}`),

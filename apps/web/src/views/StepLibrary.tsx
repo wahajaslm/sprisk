@@ -49,7 +49,6 @@ export function StepLibrary() {
                         <Chevron />
                       </span>
                       {stage}
-                      <span className="stage-count">{inStage.length}</span>
                     </button>
                   </h3>
                   {open && inStage.map((op) => <StepItem key={op.id} operator={op} />)}

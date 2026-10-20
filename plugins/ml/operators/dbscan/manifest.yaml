@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clustering.dbscan@1.0.0
+capability_class: transform
+description: "DBSCAN density-based clustering: identifies arbitrary dense regions and assigns noise to -1."
+entrypoint: sprisk_ml.clustering:dbscan
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: clusters, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [eps, min_samples]
+  properties:
+    eps: { type: number, minimum: 0.0001, description: "Maximum distance between two samples for one to be considered in the neighborhood of the other." }
+    min_samples: { type: integer, minimum: 1, description: "Number of samples in a neighborhood for a point to be considered a core point." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

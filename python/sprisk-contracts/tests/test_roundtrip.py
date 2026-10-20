@@ -8,6 +8,8 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from sprisk_contracts import (
+    AppliedMethodologyDecision,
+    ApplyMethodologyDecision,
     Artifact,
     Attempt,
     AttemptOutput,
@@ -17,9 +19,11 @@ from sprisk_contracts import (
     CodeSplitRequest,
     CreateRun,
     DatasetProfile,
+    DecisionProposal,
     FigureSet,
     LoadedTable,
     MethodologyCheck,
+    MethodologyDecision,
     NotebookExecute,
     NotebookExecution,
     NotebookExecutionEvent,
@@ -47,6 +51,10 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (WorkerMessage, "worker_message"),
     (QuestionVersion, "question_version"),
     (MethodologyCheck, "methodology_check"),
+    (DecisionProposal, "decision_proposal"),
+    (MethodologyDecision, "methodology_decision"),
+    (ApplyMethodologyDecision, "apply_methodology_decision"),
+    (AppliedMethodologyDecision, "applied_methodology_decision"),
     (CreateRun, "create_run"),
     (AttemptOutput, "attempt_output"),
     (Problem, "problem"),

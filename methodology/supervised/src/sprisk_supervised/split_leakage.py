@@ -18,11 +18,12 @@ BASELINE_OPERATORS = frozenset({"sprisk.ml.dummy_baseline"})
 HOLDOUT_PORTS = {
     "sprisk.validation.random_split": "test",
     "sprisk.validation.temporal_split": "test",
+    "sprisk.validation.group_split": "test",
 }
 TRAIN_PORT = "train"
 # Transforms that learn from their `train` input and apply to `train` and `test` (ADR-0018).
 FITTING_TRANSFORMS = frozenset(
-    {"sprisk.clean.impute", "sprisk.clean.scale", "sprisk.clean.clip_outliers"}
+    {"sprisk.clean.impute", "sprisk.clean.scale", "sprisk.clean.clip_outliers", "sprisk.clean.spectral_gating"}
 )
 
 LIMITATIONS = (

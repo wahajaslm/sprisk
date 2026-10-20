@@ -1,0 +1,33 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.spectral_gating@1.0.0
+capability_class: transform
+description: Adaptive spectral gating for acoustic and time-series noise reduction. Learns stationary noise threshold from train and suppresses sub-threshold spectral energy across train and test partitions.
+entrypoint: sprisk_clean.spectral_gating:spectral_gating
+inputs: [{ name: train, kind: table }, { name: test, kind: table }]
+outputs: [{ name: train, kind: table }, { name: test, kind: table }, { name: figures, kind: figure }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [signal_column, snr_column]
+  properties:
+    signal_column:
+      type: string
+      minLength: 1
+      description: "Signal amplitude column to attenuate."
+    snr_column:
+      type: string
+      minLength: 1
+      description: "Signal-to-noise ratio column (in dB) used to evaluate noise floor."
+    threshold_db:
+      type: number
+      default: 0.0
+      description: "Cutoff SNR threshold in dB below which noise attenuation is applied."
+    attenuation_factor:
+      type: number
+      minimum: 0.0
+      maximum: 1.0
+      default: 0.15
+      description: "Multiplier applied to sub-threshold noisy frames (0.0 = complete mute, 1.0 = pass through)."
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }

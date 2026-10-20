@@ -1,0 +1,148 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Validation Data Partitioning
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.data_split@1.0.0
+name: "Data Splitting & Cross-Validation Strategy"
+stage: split
+decides: split.method
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "REFORMS Reporting Standards for ML & Netflix Technology: Time-Travel Feature Generation"
+  citation: "Kapoor & Narayanan (2023) Leakage in Data-Driven Science & Arlot & Celisse (2010) A Survey of Cross-Validation Procedures (Statistics Surveys)"
+  pitfall: "Randomly shuffling observations across time (lookahead bias) or across repeated entities (identity leakage) produces artificially inflated validation scores that collapse in production."
+  corner_cases:
+    - "Repeated Entity Leakage: Multiple transactions or records per customer appearing in both train and test partitions allows estimators to memorize entity identities."
+    - "Temporal Lookahead: Training on future data to predict historical events invalidates all out-of-time production testing."
+    - "Label Horizon Overlap: When predicting multi-day forward horizons, samples within the horizon distance of the test boundary share label computation windows."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - fact: question.time_column
+    description: "Chronological event timestamp (if observations represent time-series or sequential events)"
+    required: false
+  - fact: question.entity_column
+    description: "Grouping identifier (e.g. user_id, patient_id, device_id) with repeated measurements"
+    required: false
+  - fact: question.target
+    description: "Target column being predicted"
+    required: true
+  - profile: target_type
+    description: "Classification (discrete classes) vs Regression (continuous)"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  default_test_fraction: 0.20
+  default_seed: 42
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: temporal
+    label: "Temporal (Chronological) Split"
+    description: "Split data along the time axis: train strictly on past events, evaluate on future events."
+    condition: "question.time_column is confirmed"
+    rationale: "Time column is authoritative. Evaluates out-of-time generalization and strictly prevents lookahead leakage."
+    settings_schema:
+      type: object
+      properties:
+        test_fraction:
+          type: number
+          default: 0.20
+          minimum: 0.05
+          maximum: 0.50
+          description: "Fraction of most recent events reserved for evaluation."
+        embargo_period_days:
+          type: integer
+          default: 0
+          minimum: 0
+          description: "Buffer period between train and test to prevent label overlap or leakage."
+    action:
+      type: replace_node
+      operator: sprisk.validation.temporal_split@1.0.0
+      params:
+        time_column: "{question.time_column}"
+        test_fraction: "{settings.test_fraction}"
+        embargo_days: "{settings.embargo_period_days}"
+
+  - id: entity_group
+    label: "Entity Group Split"
+    description: "Ensure all records for any given entity (patient, customer) remain exclusively in either train or test."
+    condition: "question.entity_column is confirmed AND question.time_column is not confirmed"
+    rationale: "Entity identifier is confirmed. Prevents identical subjects from appearing in both train and validation partitions (identity leakage)."
+    settings_schema:
+      type: object
+      properties:
+        test_fraction:
+          type: number
+          default: 0.20
+          minimum: 0.05
+          maximum: 0.50
+        seed:
+          type: integer
+          default: 42
+    action:
+      type: replace_node
+      operator: sprisk.validation.group_split@1.0.0
+      params:
+        group_column: "{question.entity_column}"
+        test_fraction: "{settings.test_fraction}"
+        seed: "{settings.seed}"
+
+  - id: stratified_random
+    label: "Stratified Random Split"
+    description: "Randomly partition data while strictly preserving class proportions across partitions."
+    condition: "target_type == 'classification' AND question.time_column is not confirmed AND question.entity_column is not confirmed"
+    rationale: "Classification target without time or entity dependencies. Stratification guarantees representative class balance across splits."
+    settings_schema:
+      type: object
+      properties:
+        test_fraction:
+          type: number
+          default: 0.20
+          minimum: 0.05
+          maximum: 0.50
+        seed:
+          type: integer
+          default: 42
+    action:
+      type: replace_node
+      operator: sprisk.validation.random_split@1.0.0
+      params:
+        stratify: "{question.target}"
+        test_fraction: "{settings.test_fraction}"
+        seed: "{settings.seed}"
+
+  - id: simple_random
+    label: "Simple Random Split"
+    description: "Uniformly shuffle rows with a repeatable deterministic seed."
+    condition: "target_type == 'regression' AND question.time_column is not confirmed AND question.entity_column is not confirmed"
+    rationale: "Continuous regression target with independent, identically distributed (i.i.d.) observations."
+    settings_schema:
+      type: object
+      properties:
+        test_fraction:
+          type: number
+          default: 0.20
+          minimum: 0.05
+          maximum: 0.50
+        seed:
+          type: integer
+          default: 42
+    action:
+      type: replace_node
+      operator: sprisk.validation.random_split@1.0.0
+      params:
+        test_fraction: "{settings.test_fraction}"
+        seed: "{settings.seed}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.split_leakage@1.0.0
+  invariant: "Zero row overlap, zero entity overlap across train/test splits, and strictly non-decreasing timestamps across temporal boundaries."

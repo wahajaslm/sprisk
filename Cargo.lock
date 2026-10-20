@@ -2398,6 +2398,7 @@ dependencies = [
  "sprisk-contracts",
  "sprisk-core",
  "sprisk-graph",
+ "sprisk-methodology",
  "sprisk-registry",
  "sprisk-scheduler",
  "sprisk-store",
@@ -2486,6 +2487,17 @@ dependencies = [
  "sprisk-contracts",
  "sprisk-registry",
  "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "sprisk-methodology"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde_json",
+ "sha2 0.11.1",
+ "sprisk-contracts",
  "thiserror",
 ]
 

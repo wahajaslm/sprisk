@@ -2,6 +2,7 @@ import "@xyflow/react/dist/style.css";
 
 import type { Attempt, Operator, PipelineVersion } from "@sprisk/contracts";
 import {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   BaseEdge,
@@ -10,6 +11,7 @@ import {
   getBezierPath,
   Handle,
   type Node,
+  type NodeChange,
   type NodeProps,
   Panel,
   Position,
@@ -23,22 +25,35 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
 
-import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun } from "../api/hooks.ts";
+import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun, useStartRun } from "../api/hooks.ts";
 import { type RunChecks, useRunChecks } from "../api/checks.ts";
 import { GATE_NODE, hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { CardFigure } from "./CardFigure.tsx";
 import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
-import { flowPositions, GROUP_HEAD, type Group, keepDragged, type Point } from "../flow/layout.ts";
+import {
+  flowPositions,
+  GROUP_HEAD,
+  type Group,
+  keepDragged,
+  MIN_STAGE_CARD_HEIGHT,
+  MIN_STAGE_CARD_WIDTH,
+  type Point,
+  STAGE_FOOTER_HEIGHT,
+  STAGE_HEAD_HEIGHT,
+  STAGE_PAD_X,
+} from "../flow/layout.ts";
 import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
-import { KindIcon, KindMark } from "./Icons.tsx";
+import { useNotebooks } from "../api/notebooks.ts";
+import { KindIcon, KindMark, NotebookIcon, PlayIcon, RestartIcon, StopIcon, TrashIcon } from "./Icons.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 import { useEscape } from "../hooks/useEscape.ts";
+import { stageDescription } from "./StageArtwork.tsx";
 import { stepOf } from "../flow/ports.ts";
 
 
@@ -66,20 +81,97 @@ type StepData = {
   level: DetailLevel;
   selected: boolean;
 };
-type StageData = { name: string; count: number; active: boolean };
+type StageData = {
+  name: string;
+  count: number;
+  completed?: number;
+  running?: number;
+  failed?: number;
+  active: boolean;
+  baseWidth?: number;
+  baseHeight?: number;
+};
 
-/** A stage's heading above its steps; no box around them (design reference). It sits above
- * the top-left of its steps and follows them when one is dragged. */
-function StageHead({ id, data }: NodeProps<Node<StageData>>) {
-  const steps = useNodes().filter((n) => n.parentId === id);
-  const left = Math.min(...steps.map((n) => n.position.x));
-  const top = Math.min(...steps.map((n) => n.position.y));
-  const at = steps.length > 0 ? `translate(${left}px, ${top - GROUP_HEAD}px)` : undefined;
+/** A stage card containing its steps, styled as sleek dark cards with minimalist vector
+ * artwork, header metadata, seamlessly aligned steps, and minimal icon controls. */
+function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
+  const { pipelineVersionId, openStageNotebook } = useSelection();
+  const startRun = useStartRun();
+
+  const isLive = (data.running ?? 0) > 0;
+  const handleRunAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pipelineVersionId) {
+      startRun.mutate(pipelineVersionId);
+    }
+  };
+
+  const handleOpenNotebook = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    openStageNotebook(data.name);
+  };
+
   return (
-    <h3 className={`stage-head${data.active ? " active" : ""}`} style={at ? { transform: at } : undefined}>
-      {data.name}
-      <span className="stage-count">{data.count}</span>
-    </h3>
+    <div
+      className={`stage-card${data.active || selected ? " active" : ""}${selected ? " selected" : ""}`}
+      role="region"
+      aria-label={`Stage ${data.name}`}
+    >
+      <div className="stage-card-header stage-head" title={`Stage: ${data.name} (${data.count} steps) — Click to select, drag to move stage`}>
+        <div className="stage-title-row">
+          <h3 className="stage-head stage-name">
+            {data.name}
+          </h3>
+        </div>
+        <p className="stage-description">{stageDescription(data.name)}</p>
+      </div>
+
+      <div className="stage-card-body" aria-hidden="true" />
+
+      <div className="stage-card-footer">
+        <div className="stage-minimal-actions">
+          <button
+            type="button"
+            className="stage-icon-btn notebook"
+            title={`Open notebook for stage ${data.name}`}
+            onClick={handleOpenNotebook}
+            aria-label={`Open notebook for stage ${data.name}`}
+          >
+            <NotebookIcon />
+          </button>
+          {isLive ? (
+            <button
+              type="button"
+              className="stage-icon-btn stop"
+              title={`Stop stage ${data.name}`}
+              onClick={handleRunAll}
+              aria-label={`Stop stage ${data.name}`}
+            >
+              <StopIcon />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="stage-icon-btn run"
+              title={`Run stage ${data.name}`}
+              onClick={handleRunAll}
+              aria-label={`Run stage ${data.name}`}
+            >
+              <PlayIcon />
+            </button>
+          )}
+          <button
+            type="button"
+            className="stage-icon-btn restart"
+            title={`Restart stage ${data.name}`}
+            onClick={handleRunAll}
+            aria-label={`Restart stage ${data.name}`}
+          >
+            <RestartIcon />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -92,8 +184,41 @@ function StepNode(props: NodeProps<Node<StepData>>) {
 
 function CardNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
+  const { pipelineVersionId, runId } = useSelection();
+  const versions = usePipelineVersions();
+  const pipeline = versions.data?.find((v) => v.id === pipelineVersionId);
+  const saveAndRun = useSaveAndRun(runId);
+  const startRun = useStartRun();
+
   const status = statusOf(data.state);
+  const isLive = status.tone === "live";
   const { width, height } = NODE_SIZE[data.level];
+
+  const handleRunFromNode = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pipelineVersionId) {
+      startRun.mutate(pipelineVersionId);
+    }
+  };
+
+  const showRun = useSelection((s) => s.showRun);
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!pipeline) return;
+    const readers = readersOf(pipeline, data.id);
+    if (readers.length > 0) {
+      alert(`Step "${data.id}" cannot be deleted because it is read by: ${readers.join(", ")}`);
+      return;
+    }
+    const next = removeStep(pipeline, data.id);
+    saveAndRun.mutate(next, {
+      onSuccess: (r) => {
+        select(undefined);
+        showRun(next.id, r.id);
+      },
+    });
+  };
+
   return (
     <button
       type="button"
@@ -101,6 +226,9 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
       style={{ width, height }}
       title={data.operatorRef}
       onClick={() => select(data.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Delete" || e.key === "Backspace") handleDelete(e as any);
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         select(data.id);
@@ -116,6 +244,40 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
         <span className="card-op">
           {data.operator}
           {data.edited && " · edited"}
+        </span>
+        <span className={`node-hover-actions${isLive ? " has-live" : ""}`}>
+          <span
+            role="button"
+            tabIndex={0}
+            className={`node-hover-btn run${isLive ? " live" : ""}`}
+            title={isLive ? `Stop ${data.id}` : `Run from ${data.id} and connected downstream steps`}
+            onClick={handleRunFromNode}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                handleRunFromNode(e as any);
+              }
+            }}
+            aria-label={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
+          >
+            {isLive ? <StopIcon /> : <PlayIcon />}
+          </span>
+          <span
+            role="button"
+            tabIndex={0}
+            className="node-hover-btn del"
+            title={`Delete step ${data.id}`}
+            onClick={handleDelete}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                handleDelete(e as any);
+              }
+            }}
+            aria-label={`Delete ${data.id}`}
+          >
+            <TrashIcon />
+          </span>
         </span>
       </span>
       <span className="card-body">
@@ -152,7 +314,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
  * picture of it. */
 function CardSummary({ data }: { data: StepData }) {
   return (
-    <>
+    <div className="card-summary">
       {/* In Detail, an evaluator's metric is drawn large below; do not repeat it. */}
       {!(data.level === "detail" && data.isEvaluator) && (
         <span className="card-fact">
@@ -174,7 +336,7 @@ function CardSummary({ data }: { data: StepData }) {
           metricsPort={data.metricsPort}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -190,8 +352,41 @@ const ROUND_ICON = 44;
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
+  const { pipelineVersionId, runId } = useSelection();
+  const versions = usePipelineVersions();
+  const pipeline = versions.data?.find((v) => v.id === pipelineVersionId);
+  const saveAndRun = useSaveAndRun(runId);
+  const startRun = useStartRun();
+
   const status = statusOf(data.state);
+  const isLive = status.tone === "live";
   const bad = status.tone === "bad" || data.concerns > 0;
+
+  const handleRunFromNode = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pipelineVersionId) {
+      startRun.mutate(pipelineVersionId);
+    }
+  };
+
+  const showRun = useSelection((s) => s.showRun);
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!pipeline) return;
+    const readers = readersOf(pipeline, data.id);
+    if (readers.length > 0) {
+      alert(`Step "${data.id}" cannot be deleted because it is read by: ${readers.join(", ")}`);
+      return;
+    }
+    const next = removeStep(pipeline, data.id);
+    saveAndRun.mutate(next, {
+      onSuccess: (r) => {
+        select(undefined);
+        showRun(next.id, r.id);
+      },
+    });
+  };
+
   return (
     <button
       type="button"
@@ -199,6 +394,9 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       aria-label={`${data.id}, ${data.role}, ${status.text}`}
       title={data.operatorRef}
       onClick={() => select(data.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Delete" || e.key === "Backspace") handleDelete(e as any);
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         select(data.id);
@@ -220,6 +418,40 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         {(status.tone === "bad" || status.tone === "live") && <span className={`round-state tone-${status.tone}`}>{status.text}</span>}
         {data.concerns > 0 && <span className="round-state tone-bad">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>}
       </span>
+      <span className={`compact-hover-actions${isLive ? " has-live" : ""}`}>
+        <span
+          role="button"
+          tabIndex={0}
+          className={`node-hover-btn run${isLive ? " live" : ""}`}
+          title={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
+          onClick={handleRunFromNode}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.stopPropagation();
+              handleRunFromNode(e as any);
+            }
+          }}
+          aria-label={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
+        >
+          {isLive ? <StopIcon /> : <PlayIcon />}
+        </span>
+        <span
+          role="button"
+          tabIndex={0}
+          className="node-hover-btn del"
+          title={`Delete step ${data.id}`}
+          onClick={handleDelete}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.stopPropagation();
+              handleDelete(e as any);
+            }
+          }}
+          aria-label={`Delete ${data.id}`}
+        >
+          <TrashIcon />
+        </span>
+      </span>
       {/* The node is as wide as its label, so outgoing lines start right after the text. */}
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       {/* Within a stage, lines run down from icon to icon. */}
@@ -235,19 +467,19 @@ function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
 }
 
 /** Fit the flow to the panel with a thin margin, so steps stay readable. */
-const FIT = { padding: 0.08 };
+const FIT = { padding: 0.08, maxZoom: 1 };
 
 const nodeTypes = { step: StepNode, stage: StageHead };
 const edgeTypes = { flow: FlowEdge };
 
-const LABEL_MAX = 128;
+const LABEL_MAX = 300;
 
 /** A compact node is the circle plus its label, no wider; Detail cards have one size. The label
  * width is estimated from its length (12.5px name, 11px role) and wraps past LABEL_MAX. */
 function sizeOf(level: DetailLevel, id: string, role: string) {
   if (level !== "compact") return NODE_SIZE[level];
-  const label = Math.min(LABEL_MAX, Math.ceil(Math.max(id.length * 7.2, role.length * 6.2)));
-  return { width: 44 + 10 + label + 2, height: NODE_SIZE.compact.height };
+  const label = Math.min(LABEL_MAX, Math.ceil(Math.max(id.length * 10.5, role.length * 9.2)));
+  return { width: Math.round(44 + 14 + label + 8), height: Math.round(NODE_SIZE.compact.height) };
 }
 
 /** React Flow nodes and edges for a flow, at the positions the layout chose. */
@@ -261,25 +493,43 @@ export function flowGraph(
   at: Map<string, Point>,
   groups: Group[] = [],
 ): { nodes: Node[]; edges: Edge[] } {
-  const selectedGroup = selectedId ? stageGroups(pipeline, operators).get(selectedId) : undefined;
-  const heads: Node[] = groups.map((g) => ({
-    id: `stage:${g.id}`,
-    type: "stage",
-    position: { x: g.x, y: g.y },
-    width: g.width,
-    height: g.height,
-    // The heading is the handle: dragging it moves every step of the group (React Flow sub-flow).
-    draggable: true,
-    dragHandle: ".stage-head",
-    selectable: false,
-    zIndex: -1,
-    data: {
-      name: g.id.split("#")[0] ?? g.id,
-      count: g.count,
-      active: g.id === selectedGroup,
-    },
-  }));
   const groupOf = stageGroups(pipeline, operators);
+  const selectedGroup = selectedId ? groupOf.get(selectedId) : undefined;
+  const heads: Node[] = groups.map((g) => {
+    const stageNodes = pipeline.nodes.filter((n) => groupOf.get(n.id) === g.id);
+    let completed = 0;
+    let running = 0;
+    let failed = 0;
+    for (const n of stageNodes) {
+      const att = latest.get(n.id);
+      const st = statusOf(att?.state ?? "not run");
+      if (st.tone === "live") running++;
+      else if (st.tone === "bad") failed++;
+      else if (st.tone === "good") completed++;
+    }
+    return {
+      id: `stage:${g.id}`,
+      type: "stage",
+      position: { x: Math.round(g.x), y: Math.round(g.y) },
+      width: Math.round(g.width),
+      height: Math.round(g.height),
+      // The heading is the handle: dragging it moves every step of the group (React Flow sub-flow).
+      draggable: true,
+      dragHandle: ".stage-head",
+      selectable: true,
+      zIndex: 0,
+      data: {
+        name: g.id.split("#")[0] ?? g.id,
+        count: g.count,
+        active: g.id === selectedGroup,
+        baseWidth: Math.round(g.width),
+        baseHeight: Math.round(g.height),
+        completed,
+        running,
+        failed,
+      },
+    };
+  });
   const boxes = new Map(groups.map((g) => [g.id, g]));
   const steps: Node[] = pipeline.nodes.map((node) => {
     const id = node.id;
@@ -290,9 +540,12 @@ export function flowGraph(
     return {
       id,
       type: "step",
-      ...(box ? { parentId: `stage:${box.id}`, position: { x: point.x - box.x, y: point.y - box.y } } : { position: point }),
-      width,
-      height,
+      ...(box
+        ? { parentId: `stage:${box.id}`, position: { x: Math.round(point.x - box.x), y: Math.round(point.y - box.y) } }
+        : { position: { x: Math.round(point.x), y: Math.round(point.y) } }),
+      width: Math.round(width),
+      height: Math.round(height),
+      zIndex: 1,
       data: {
         id,
         operator: shortName(node.operator),
@@ -401,35 +654,304 @@ export function FlowCanvas() {
     <div className="flow" aria-label="Flow canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
       {/* A new layout means new positions: start the canvas afresh. */}
-      <Canvas computed={computed} level={level} />
+      <Canvas computed={computed} level={level} pipeline={pipeline} />
       <StepMenu pipeline={pipeline} operators={byRef} />
     </div>
   );
 }
 
+export function encapsulateStages(nodes: Node[]): Node[] {
+  const boundsByParent = new Map<string, { maxRight: number; maxBottom: number }>();
+  for (const n of nodes) {
+    if (n.parentId && n.position) {
+      const w = n.width ?? NODE_SIZE.compact.width;
+      const h = n.height ?? NODE_SIZE.compact.height;
+      const right = n.position.x + w;
+      const bottom = n.position.y + h;
+      const cur = boundsByParent.get(n.parentId) ?? { maxRight: 0, maxBottom: 0 };
+      boundsByParent.set(n.parentId, {
+        maxRight: Math.max(cur.maxRight, right),
+        maxBottom: Math.max(cur.maxBottom, bottom),
+      });
+    }
+  }
+
+  return nodes.map((node) => {
+    if (node.type === "stage" || node.id.startsWith("stage:")) {
+      const bounds = boundsByParent.get(node.id);
+      if (!bounds) return node;
+      const baseW = ((node.data as any)?.baseWidth as number | undefined) ?? node.width ?? MIN_STAGE_CARD_WIDTH;
+      const baseH = ((node.data as any)?.baseHeight as number | undefined) ?? node.height ?? MIN_STAGE_CARD_HEIGHT;
+      const neededWidth = Math.round(Math.max(baseW, bounds.maxRight + STAGE_PAD_X));
+      const neededHeight = Math.round(Math.max(baseH, bounds.maxBottom + STAGE_FOOTER_HEIGHT + 24));
+      if (node.width !== neededWidth || node.height !== neededHeight) {
+        return {
+          ...node,
+          width: neededWidth,
+          height: neededHeight,
+          style: { ...(node.style || {}), width: neededWidth, height: neededHeight },
+        };
+      }
+    }
+    return node;
+  });
+}
+
+type CanvasSnapshot = {
+  positions: Map<string, Point>;
+  dimensions: Map<string, { width?: number | undefined; height?: number | undefined }>;
+  dragged: Set<string>;
+};
+
 /** Nodes can be dragged and the canvas panned. A dragged node keeps its place while its
  * status keeps updating. Positions are view state only; they are not saved (rule 9). */
-function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] }; level: DetailLevel }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(computed.nodes);
+function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edges: Edge[] }; level: DetailLevel; pipeline?: PipelineVersion }) {
+  const selectNode = useSelection((s) => s.selectNode);
+  const selectedNodeId = useSelection((s) => s.nodeId);
+  const runId = useSelection((s) => s.runId);
+  const showRun = useSelection((s) => s.showRun);
+  const saveAndRun = useSaveAndRun(runId);
+  const [nodes, setNodes] = useState<Node[]>(() => encapsulateStages(computed.nodes));
+  const nodesRef = useRef<Node[]>(nodes);
+  nodesRef.current = nodes;
+
   // Steps the user dragged keep their place; every other step follows the layout. The canvas
   // is updated in place, never remounted, so zoom and pan stay (ADR-0027 loading rules).
   const dragged = useRef(new Set<string>());
-  useEffect(() => dragged.current.clear(), [level]);
+  const [undoStack, setUndoStack] = useState<CanvasSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<CanvasSnapshot[]>([]);
+  const isDraggingRef = useRef(false);
+  const dragStartSnapshot = useRef<CanvasSnapshot | null>(null);
+
+  useEffect(() => {
+    dragged.current.clear();
+    setUndoStack([]);
+    setRedoStack([]);
+  }, [level]);
+
   const key = JSON.stringify(computed.nodes.map((n) => [n.id, n.data, n.position, n.parentId]));
   useEffect(() => {
-    setNodes((shown) => keepDragged(computed.nodes, shown, dragged.current));
+    const updated = keepDragged(computed.nodes, nodesRef.current, dragged.current);
+    const encapsulated = encapsulateStages(updated);
+    nodesRef.current = encapsulated;
+    setNodes(encapsulated);
     // `key` captures every change to the computed nodes and their layout.
   }, [key]);
-  const tidy = () => {
-    dragged.current.clear();
-    setNodes(computed.nodes);
+
+  const captureSnapshot = (): CanvasSnapshot => {
+    const positions = new Map<string, Point>();
+    const dimensions = new Map<string, { width?: number | undefined; height?: number | undefined }>();
+    for (const n of nodesRef.current) {
+      positions.set(n.id, { ...n.position });
+      dimensions.set(n.id, { width: n.width, height: n.height });
+    }
+    return { positions, dimensions, dragged: new Set(dragged.current) };
   };
+
+  const applySnapshot = (snap: CanvasSnapshot) => {
+    dragged.current = new Set(snap.dragged);
+    setNodes((current) => {
+      const updated = current.map((n) => {
+        const savedPos = snap.positions.get(n.id);
+        const savedDim = snap.dimensions.get(n.id);
+        const nextNode = { ...n };
+        if (savedPos) {
+          nextNode.position = { ...savedPos };
+        }
+        if (savedDim?.width !== undefined) {
+          nextNode.width = savedDim.width;
+        }
+        if (savedDim?.height !== undefined) {
+          nextNode.height = savedDim.height;
+        }
+        if (savedDim?.width !== undefined || savedDim?.height !== undefined) {
+          nextNode.style = {
+            ...nextNode.style,
+            ...(savedDim?.width !== undefined ? { width: savedDim.width } : {}),
+            ...(savedDim?.height !== undefined ? { height: savedDim.height } : {}),
+          };
+        }
+        return nextNode;
+      });
+      const finalNodes = encapsulateStages(updated);
+      nodesRef.current = finalNodes;
+      return finalNodes;
+    });
+  };
+
+  const undo = () => {
+    if (undoStack.length === 0) return;
+    const currentSnap = captureSnapshot();
+    const prevSnap = undoStack[undoStack.length - 1];
+    if (!prevSnap) return;
+
+    setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => [...prev, currentSnap]);
+    applySnapshot(prevSnap);
+  };
+
+  const redo = () => {
+    if (redoStack.length === 0) return;
+    const currentSnap = captureSnapshot();
+    const nextSnap = redoStack[redoStack.length - 1];
+    if (!nextSnap) return;
+
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => [...prev, currentSnap]);
+    applySnapshot(nextSnap);
+  };
+
+  const tidy = () => {
+    const currentSnap = captureSnapshot();
+    setUndoStack((prev) => [...prev, currentSnap]);
+    setRedoStack([]);
+    dragged.current.clear();
+    const resetNodes = encapsulateStages(computed.nodes);
+    nodesRef.current = resetNodes;
+    setNodes(resetNodes);
+  };
+
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  const redoRef = useRef(redo);
+  redoRef.current = redo;
+
+  const finishDrag = () => {
+    if (isDraggingRef.current && dragStartSnapshot.current) {
+      const startSnap = dragStartSnapshot.current;
+      isDraggingRef.current = false;
+      dragStartSnapshot.current = null;
+
+      const anyMoved = nodesRef.current.some((n) => {
+        const orig = startSnap.positions.get(n.id);
+        return orig && (orig.x !== n.position.x || orig.y !== n.position.y);
+      });
+
+      if (anyMoved) {
+        setUndoStack((prev) => [...prev, startSnap]);
+        setRedoStack([]);
+      }
+    }
+  };
+
+  const handleNodesChange = (changes: NodeChange[]) => {
+    const hasDragging = changes.some((c) => c.type === "position" && c.dragging === true);
+    if (hasDragging && !isDraggingRef.current) {
+      isDraggingRef.current = true;
+      dragStartSnapshot.current = captureSnapshot();
+    }
+
+    const dragEnded = changes.some((c) => c.type === "position" && c.dragging === false);
+
+    setNodes((current) => {
+      let next = applyNodeChanges(changes, current);
+
+      // Clamp child node positions inside their parent stage card so they never collide with the header
+      next = next.map((n) => {
+        if (n.parentId && n.position) {
+          const clampedX = Math.max(STAGE_PAD_X, Math.round(n.position.x));
+          const clampedY = Math.max(STAGE_HEAD_HEIGHT, Math.round(n.position.y));
+          if (n.position.x !== clampedX || n.position.y !== clampedY) {
+            return { ...n, position: { x: clampedX, y: clampedY } };
+          }
+        }
+        return n;
+      });
+
+      // Dynamically adjust stage dimensions to encapsulate all children
+      next = encapsulateStages(next);
+      nodesRef.current = next;
+      return next;
+    });
+
+    if (dragEnded) {
+      finishDrag();
+    }
+  };
+
+  const onNodeDragStart = () => {
+    if (!isDraggingRef.current) {
+      isDraggingRef.current = true;
+      dragStartSnapshot.current = captureSnapshot();
+    }
+  };
+
+  const onNodeDragStop = (_: unknown, node: Node) => {
+    dragged.current.add(node.id);
+    finishDrag();
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redoRef.current();
+        } else {
+          undoRef.current();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redoRef.current();
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedNodeId && pipeline) {
+          e.preventDefault();
+          const readers = readersOf(pipeline, selectedNodeId);
+          if (readers.length > 0) {
+            alert(`Step "${selectedNodeId}" cannot be deleted because it is read by: ${readers.join(", ")}`);
+            return;
+          }
+          const next = removeStep(pipeline, selectedNodeId);
+          saveAndRun.mutate(next, {
+            onSuccess: (r) => {
+              selectNode(undefined);
+              showRun(next.id, r.id);
+            },
+          });
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedNodeId, pipeline, saveAndRun, selectNode, showRun]);
+
+  const onPaneClick = () => {
+    selectNode(undefined);
+    setNodes((current) => {
+      const hasSelected = current.some((n) => n.selected || (n.data as any)?.selected);
+      if (!hasSelected) return current;
+      const cleared = current.map((n) => ({
+        ...n,
+        selected: false,
+        data: n.data ? { ...n.data, selected: false } : n.data,
+      }));
+      nodesRef.current = cleared;
+      return cleared;
+    });
+  };
+
   return (
     <ReactFlow
       nodes={nodes}
       edges={computed.edges}
-      onNodesChange={onNodesChange}
-      onNodeDragStop={(_, node) => dragged.current.add(node.id)}
+      onNodesChange={handleNodesChange}
+      onNodeDragStart={onNodeDragStart}
+      onNodeDragStop={onNodeDragStop}
+      onPaneClick={onPaneClick}
+      onNodeClick={(_event, node) => {
+        if (node.type === "step") {
+          selectNode(node.id);
+        } else if (node.type === "stage") {
+          selectNode(undefined);
+        }
+      }}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
@@ -440,9 +962,15 @@ function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] 
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
     >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1.4} color="rgba(255,255,255,0.18)" />
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.18)" />
       <Panel position="bottom-left" className="canvas-controls">
-        <ZoomControl tidy={tidy} />
+        <ZoomControl
+          tidy={tidy}
+          undo={undo}
+          redo={redo}
+          canUndo={undoStack.length > 0}
+          canRedo={redoStack.length > 0}
+        />
         <DetailSwitch />
       </Panel>
       <Panel position="bottom-right">
@@ -452,11 +980,41 @@ function Canvas({ computed, level }: { computed: { nodes: Node[]; edges: Edge[] 
   );
 }
 
-function ZoomControl({ tidy }: { tidy: () => void }) {
+function ZoomControl({
+  tidy,
+  undo,
+  redo,
+  canUndo,
+  canRedo,
+}: {
+  tidy: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+}) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const { zoom } = useViewport();
   return (
-    <div className="zoom" role="group" aria-label="Zoom">
+    <div className="zoom" role="group" aria-label="Zoom and History">
+      <button
+        type="button"
+        className="fit"
+        title="Undo (Ctrl+Z / ⌘Z)"
+        disabled={!canUndo}
+        onClick={undo}
+      >
+        Undo
+      </button>
+      <button
+        type="button"
+        className="fit"
+        title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)"
+        disabled={!canRedo}
+        onClick={redo}
+      >
+        Redo
+      </button>
       <button type="button" aria-label="Zoom out" onClick={() => void zoomOut()}>
         −
       </button>

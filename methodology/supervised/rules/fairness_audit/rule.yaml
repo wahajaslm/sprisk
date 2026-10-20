@@ -1,0 +1,86 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Algorithmic Fairness & Bias Auditing
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.fairness_audit@1.0.0
+name: "Algorithmic Fairness & Bias Mitigation"
+stage: governance
+decides: governance.fairness_policy
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "EEOC Uniform Guidelines (Four-Fifths Rule) & Hardt et al. (2016) Equality of Opportunity"
+  citation: "Knowledge Base Ethics & AI: Disparate Impact & Equalized Odds in Medical/Lending Systems"
+  pitfall: "Models achieving high aggregate accuracy can harbor severe disparate impact or unequal false negative rates against protected sub-populations."
+  corner_cases:
+    - "Four-Fifths Rule: Selection rate ratio < 0.80 between unprivileged and privileged groups triggers regulatory adverse impact finding."
+    - "Medical Diagnosis Bias: Equal Opportunity disparity where disease true positive rate is significantly lower for women (e.g. UCL 2022 liver disease study)."
+    - "Proxy Attributes: Removing protected column (e.g. race) while retaining zip code allows the model to reconstruct protected status through proxy correlation."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - fact: question.sensitive_attribute
+    description: "Protected sensitive column (e.g. gender, age_group, ethnicity)"
+    required: false
+  - profile: disparate_impact_ratio
+    description: "Ratio of selection rate for unprivileged vs privileged group"
+    required: false
+  - profile: equal_opportunity_diff
+    description: "Absolute difference in True Positive Rate across protected groups"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  disparate_impact_cutoff: 0.80
+  equal_opportunity_cutoff: 0.10
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: post_processing_threshold_optimization
+    label: "Group-Specific Threshold Optimization (Equal Opportunity)"
+    description: "Adjust group-specific decision thresholds to equalize True Positive Rates across protected demographic segments."
+    condition: "question.sensitive_attribute is confirmed AND equal_opportunity_diff > equal_opportunity_cutoff"
+    rationale: "Significant disparity in true positive rates detected across protected groups (>10% gap). Post-processing thresholds restore equalized opportunity."
+    settings_schema:
+      type: object
+      properties:
+        fairness_constraint:
+          type: string
+          enum: ["equalized_odds", "equal_opportunity", "demographic_parity"]
+          default: "equal_opportunity"
+    action:
+      type: insert_step
+      operator: sprisk.governance.threshold_optimizer@1.0.0
+      params:
+        sensitive_column: "{question.sensitive_attribute}"
+        constraint: "{settings.fairness_constraint}"
+
+  - id: sample_reweighting
+    label: "Pre-Processing Sample Re-Weighting"
+    description: "Re-weight training examples to neutralize historical sample bias between protected groups."
+    condition: "question.sensitive_attribute is confirmed AND disparate_impact_ratio < disparate_impact_cutoff"
+    rationale: "Disparate impact ratio violates EEOC Four-Fifths Rule (<0.80). Re-weighting balances group representation before model fitting."
+    action:
+      type: insert_step
+      fit_on: train_partition_only
+      operator: sprisk.governance.fairness_reweight@1.0.0
+      params:
+        sensitive_column: "{question.sensitive_attribute}"
+
+  - id: passive_fairness_audit
+    label: "Passive Bias Audit & Compliance Reporting"
+    description: "Compute and log demographic parity and equal opportunity metrics to the audit trail without altering predictions."
+    condition: "question.sensitive_attribute is not confirmed OR disparate_impact_ratio >= disparate_impact_cutoff"
+    rationale: "No sensitive attribute declared or model complies with Four-Fifths and Equal Opportunity criteria."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.fairness_audit@1.0.0
+  invariant: "When a sensitive attribute is declared, Disparate Impact ratio < 0.80 produces a Gate B WARNING."

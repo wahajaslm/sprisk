@@ -1,0 +1,69 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Data-Access Matrix & Fit-Scope Integrity
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.fit_scope_integrity@1.0.0
+name: "Data-Access Matrix & Fit-Scope Integrity"
+stage: compile
+decides: compile.fit_scope_authorization
+
+# 1. Scientific Standards & Industrial Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Scikit-Learn Pipeline Composition & Data Partition Access Isolation"
+  citation: "Bouthillier et al. (2021) Accounting for Variance in Machine Learning Benchmark Studies & Kapoor & Narayanan (2023) Leakage Taxonomy"
+  pitfall: "Calling .fit() or .fit_transform() on validation or test partitions leaks target distributions and feature parameters into evaluation scores, invalidating all model verification claims."
+  corner_cases:
+    - "Supervised Preprocessor Leakage: Target encoding or supervised feature selectors accessing validation target labels during training."
+    - "Test Set Resampling Violation: SMOTE or undersampling pipelines containing edges flowing into the validation or final evaluation metrics."
+    - "Transformed Test Port Access: Model scoring steps reading raw un-transformed test data while model was trained on scaled inputs."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: computational_graph_dag
+    description: "Compiled graph topology with typed nodes, ports, and directional edges"
+    required: true
+  - profile: node_operator_signatures
+    description: "Operator metadata declaring required execution semantics (fit, transform, predict, score, resample)"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  enforce_strict_data_access_matrix: true
+  deny_validation_fit_access: true
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: strict_data_access_matrix_enforcement
+    label: "Strict Partition Fit-Scope Invariant"
+    description: "Compile and enforce rigid partition port restrictions: .fit() is permitted strictly on Train X/y; Validation and Test partitions are strictly denied fit access."
+    condition: "enforce_strict_data_access_matrix == true"
+    rationale: "Rigid partition isolation invariant. Compiler verifies that preprocessors, scalers, and encoders never receive edges from evaluation partitions."
+    settings_schema:
+      type: object
+      properties:
+        block_on_uninstrumented_custom_python:
+          type: boolean
+          default: true
+          description: "Require custom opaque Python steps to pass Gate B topology inspection before execution."
+    action:
+      type: enforce_compiler_invariant
+      params:
+        authorized_matrix: "strict_train_only_fit_matrix"
+
+  - id: audit_log_fit_scope_only
+    label: "Advisory Audit Log (Non-blocking)"
+    description: "Record fit-scope topology warnings to the audit trail without terminating execution."
+    condition: "enforce_strict_data_access_matrix == false"
+    rationale: "Exploratory sandbox mode. Disables compile-time blocking for exploratory unconstrained research."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.data_access_matrix@1.0.0
+  invariant: "Any node executing fit() with an edge from validation_x, validation_y, or final_y causes immediate compilation REJECTION."

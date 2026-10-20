@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export const NAV = ["Flow", "Datasets", "Notebooks", "Experiments", "Deploy"] as const;
+export const NAV = ["Atlas", "Flow", "Methodology", "Datasets", "Notebooks", "Experiments", "Deploy"] as const;
 export type Nav = (typeof NAV)[number];
 
 /** UI context only (arch §2A WorkbenchContext). Never scientific state. */
@@ -11,8 +11,10 @@ type Selection = {
   nodeId: string | undefined;
   /** The notebook open on the Notebooks page (ADR-0036). */
   notebookId: string | undefined;
+  stageTarget: string | undefined;
   setNav: (nav: Nav) => void;
   openNotebook: (id: string) => void;
+  openStageNotebook: (stage: string) => void;
   selectPipelineVersion: (id: string) => void;
   selectRun: (id: string | undefined) => void;
   selectNode: (id: string | undefined) => void;
@@ -29,8 +31,10 @@ export const useSelection = create<Selection>((set) => ({
   runId: undefined,
   nodeId: undefined,
   notebookId: undefined,
+  stageTarget: undefined,
   setNav: (nav) => set({ nav }),
-  openNotebook: (id) => set({ notebookId: id, nav: "Notebooks" }),
+  openNotebook: (id) => set({ notebookId: id, stageTarget: undefined, nav: "Notebooks" }),
+  openStageNotebook: (stage) => set({ stageTarget: stage, notebookId: undefined, nav: "Notebooks" }),
   selectPipelineVersion: (id) => set({ pipelineVersionId: id, runId: undefined, nodeId: undefined }),
   selectRun: (id) => set({ runId: id }),
   selectNode: (id) => set({ nodeId: id }),

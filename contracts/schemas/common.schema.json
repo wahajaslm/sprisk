@@ -31,6 +31,14 @@
       "type": "string",
       "pattern": "^qv_[0-9A-HJKMNP-TV-Z]{26}$"
     },
+    "MethodologyProposalId": {
+      "type": "string",
+      "pattern": "^mpr_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "MethodologyDecisionId": {
+      "type": "string",
+      "pattern": "^mdc_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
     "PipelineVersionId": {
       "type": "string",
       "pattern": "^plv_[0-9A-HJKMNP-TV-Z]{26}$"

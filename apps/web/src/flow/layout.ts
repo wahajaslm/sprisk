@@ -9,8 +9,13 @@ export type Point = { x: number; y: number };
 /** A stage's steps, kept together under one heading. */
 export type Group = { id: string; count: number } & Point & Size;
 
-/** Room above a group's steps for its heading. */
-export const GROUP_HEAD = 44;
+/** Room above a group's steps for its card header. */
+export const STAGE_PAD_X = 20;
+export const STAGE_HEAD_HEIGHT = 186;
+export const STAGE_FOOTER_HEIGHT = 44;
+export const MIN_STAGE_CARD_WIDTH = 340;
+export const MIN_STAGE_CARD_HEIGHT = 520;
+export const GROUP_HEAD = STAGE_HEAD_HEIGHT;
 
 const LAYERED = {
   "elk.algorithm": "layered",
@@ -53,7 +58,11 @@ export async function flowPositions(
     layoutOptions: LAYERED,
     children: [
       ...pipeline.nodes.filter((n) => groupOf(n.id) === undefined).map((n) => ({ id: n.id, ...sizeOf(n.id) })),
-      ...[...inner].map(([name, g]) => ({ id: `group:${name}`, width: g.width, height: g.height + GROUP_HEAD })),
+      ...[...inner].map(([name, g]) => ({
+        id: `group:${name}`,
+        width: Math.round(Math.max(g.width + STAGE_PAD_X * 2, MIN_STAGE_CARD_WIDTH)),
+        height: Math.round(Math.max(g.height + STAGE_HEAD_HEIGHT + STAGE_FOOTER_HEIGHT + 36, MIN_STAGE_CARD_HEIGHT)),
+      })),
     ],
     edges: links.flatMap((l, i) => {
       const [from, to] = [box(l.from), box(l.to)];
@@ -66,16 +75,47 @@ export async function flowPositions(
 
   const nodes = new Map<string, Point>();
   const groups: Group[] = [];
+  // All stage cards sit at the same top horizontal level by default and in Tidy,
+  // so that all stage headers and titles align horizontally side-by-side.
+  const stageGroupsList = (outer.children ?? [])
+    .filter((c) => c.id.startsWith("group:"))
+    .sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+  const commonStageTopY = Math.round(stageGroupsList.length > 0 ? Math.min(...stageGroupsList.map((c) => c.y ?? 0)) : 0);
+
+  // Guarantee sequential non-overlapping columns horizontally
+  let prevRight = 0;
+  const groupPlacedX = new Map<string, number>();
+  for (const child of stageGroupsList) {
+    const assignedX = Math.round(Math.max(child.x ?? 0, prevRight > 0 ? prevRight + 64 : (child.x ?? 0)));
+    groupPlacedX.set(child.id, assignedX);
+    const g = inner.get(child.id.slice("group:".length));
+    const cardWidth = Math.round(child.width ?? Math.max((g?.width ?? 0) + STAGE_PAD_X * 2, MIN_STAGE_CARD_WIDTH));
+    prevRight = assignedX + cardWidth;
+  }
+
   for (const child of outer.children ?? []) {
-    const x = child.x ?? 0;
-    const y = child.y ?? 0;
     if (!child.id.startsWith("group:")) {
-      nodes.set(child.id, { x, y });
+      nodes.set(child.id, { x: Math.round(child.x ?? 0), y: Math.round(child.y ?? 0) });
       continue;
     }
-    const steps = inner.get(child.id.slice("group:".length))?.at ?? new Map<string, Point>();
-    for (const [id, p] of steps) nodes.set(id, { x: x + p.x, y: y + GROUP_HEAD + p.y });
-    groups.push({ id: child.id.slice("group:".length), count: steps.size, x, y, width: child.width ?? 0, height: child.height ?? 0 });
+    const x = Math.round(groupPlacedX.get(child.id) ?? (child.x ?? 0));
+    const y = commonStageTopY;
+    const name = child.id.slice("group:".length);
+    const g = inner.get(name);
+    const steps = g?.at ?? new Map<string, Point>();
+    const cardWidth = Math.round(child.width ?? Math.max((g?.width ?? 0) + STAGE_PAD_X * 2, MIN_STAGE_CARD_WIDTH));
+    const cardHeight = Math.round(child.height ?? Math.max(((g?.height ?? 0) + STAGE_HEAD_HEIGHT + STAGE_FOOTER_HEIGHT + 36), MIN_STAGE_CARD_HEIGHT));
+    for (const [id, p] of steps) {
+      nodes.set(id, { x: Math.round(x + STAGE_PAD_X + p.x), y: Math.round(y + STAGE_HEAD_HEIGHT + p.y) });
+    }
+    groups.push({
+      id: name,
+      count: steps.size,
+      x,
+      y,
+      width: cardWidth,
+      height: cardHeight,
+    });
   }
   return { nodes, groups };
 }
@@ -87,7 +127,7 @@ export function keepDragged<T extends { id: string; position: Point }>(computed:
   return computed.map((n) => ({ ...n, position: dragged.has(n.id) ? (at.get(n.id) ?? n.position) : n.position }));
 }
 
-const STAGE_GAP = 24;
+const STAGE_GAP = 28;
 
 /** A stage's steps in one column: each below the steps it reads, otherwise in flow order.
  * Compact and predictable, whatever the steps' size. */

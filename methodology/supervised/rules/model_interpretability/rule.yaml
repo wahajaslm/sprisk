@@ -1,0 +1,95 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Model Interpretability & Explainability
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.model_interpretability@1.0.0
+name: "Model Interpretability & Explainability Governance"
+stage: governance
+decides: governance.explainability_framework
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Lundberg & Lee (2017) A Unified Approach to Interpreting Model Predictions (NeurIPS)"
+  citation: "Knowledge Base Masterclass: Model Interpretation with SHAP & EU AI Act Transparency Requirements"
+  pitfall: "Deploying black-box ensemble or neural models without global and local explanation frameworks hides spurious correlations and violates right-to-explanation compliance."
+  corner_cases:
+    - "High collinearity: When features are strongly correlated, standard feature importance splits attribution unpredictably between correlated twins."
+    - "KernelSHAP vs TreeSHAP: KernelSHAP on large datasets has exponential complexity O(2^M); TreeSHAP provides exact O(TLD^2) polynomial time."
+    - "Leakage of Future Variables: SHAP summary plots often expose that a single proxy variable dominates 90% of model attributions."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - fact: planned_model_family
+    description: "Linear, Tree Ensemble (XGBoost/LightGBM/RF), or Neural Network"
+    required: true
+  - profile: feature_count
+    description: "Number of input features entering the final estimator"
+    required: true
+  - fact: explainability_requirement
+    description: "High (regulated credit/healthcare), Moderate (internal ops), or Low (pure research)"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  tree_model_families: ["random_forest", "xgboost", "lightgbm", "catboost"]
+  linear_model_families: ["logistic_regression", "elasticnet", "ridge", "lasso"]
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: tree_shap
+    label: "TreeSHAP (Exact Shapley Additive Explanations)"
+    description: "Compute exact local and global Shapley values leveraging tree ensemble structures."
+    condition: "planned_model_family in tree_model_families"
+    rationale: "Tree ensemble selected. TreeSHAP provides exact additive feature attributions in polynomial time for both global summary and local waterfall plots."
+    settings_schema:
+      type: object
+      properties:
+        check_additivity:
+          type: boolean
+          default: true
+        sample_background_size:
+          type: integer
+          default: 100
+    action:
+      type: insert_step
+      operator: sprisk.governance.shap_explainer@1.0.0
+      params:
+        method: "tree"
+
+  - id: linear_coefficients_with_odds_ratios
+    label: "Standardized Coefficients & Odds Ratios"
+    description: "Extract directly interpretable regression beta weights and odds ratios exp(beta)."
+    condition: "planned_model_family in linear_model_families"
+    rationale: "Inherently interpretable generalized linear model. Standardized coefficients provide direct marginal effect interpretations."
+    action:
+      type: insert_step
+      operator: sprisk.governance.linear_explainer@1.0.0
+
+  - id: permutation_importance
+    label: "Permutation Feature Importance on Holdout Split"
+    description: "Shuffle feature values on the validation set to measure true empirical loss degradation."
+    condition: "planned_model_family not in tree_model_families AND planned_model_family not in linear_model_families"
+    rationale: "Model-agnostic evaluation for non-tree complex estimators. Evaluates feature reliance directly on unseen validation records."
+    settings_schema:
+      type: object
+      properties:
+        n_repeats:
+          type: integer
+          default: 10
+          minimum: 5
+          maximum: 50
+    action:
+      type: insert_step
+      operator: sprisk.governance.permutation_importance@1.0.0
+      params:
+        n_repeats: "{settings.n_repeats}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.explainability_invariants@1.0.0
+  invariant: "Local SHAP explanation sum of attributions must equal model prediction minus expected baseline value (additivity invariant)."

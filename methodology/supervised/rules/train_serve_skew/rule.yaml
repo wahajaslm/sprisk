@@ -1,0 +1,97 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Training-Serving Skew & Data Contract Enforcement
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.train_serve_skew@1.0.0
+name: "Training-Serving Skew & Contract Parity"
+stage: governance
+decides: governance.serving_parity_contract
+
+# 1. Scientific Standards & Industrial Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Google TensorFlow Data Validation & Linux Foundation ONNX Runtime Standards"
+  citation: "Breck, Polyzotis, Roy, Whang & Zinkevich (2019) Data Validation for Machine Learning (MLSys) & DoorDash Engineering: Serving Parity Architecture (2022)"
+  pitfall: "Re-implementing transformations in production (e.g. Java/Go serving layer recomputing Python pandas logic) introduces subtle numerical drift, schema mismatches, and silent inference corruption."
+  corner_cases:
+    - "Unseen Production Categoricals: Serving traffic receiving a category never observed in training crashes inference unless a strict fallback policy (handle_unknown) is packaged in the ModelPackage."
+    - "Schema Type Drift: Serving JSON payload passing integer 0 where training pipeline expected float 0.0 or string '0'."
+    - "Missing Value Policy Inconsistency: Offline pipeline imputing with training median, while online microservice defaults missing inputs to 0 or null."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: feature_contract_schema
+    description: "Expected column names, data types, domains, and allowed null rates"
+    required: true
+  - fact: serving_runtime_environment
+    description: "Inference deployment target: Embedded Python, Triton/TorchScript, ONNX, or REST microservice"
+    required: true
+  - fact: latency_sla_budget_ms
+    description: "Maximum allowable per-request inference latency"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  max_allowable_schema_divergence: 0.0
+  max_unseen_category_rate_threshold: 0.01
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: hermetic_model_package_pipeline
+    label: "Hermetic ModelPackage (Bundled Fitted Preprocessors)"
+    description: "Bundle fitted preprocessing artifacts (scalers, encoders, imputers) and estimator into a single immutable ModelPackage."
+    condition: "serving_runtime_environment in ['embedded_python', 'container', 'kserve', 'seldon']"
+    rationale: "Google TFDV & DoorDash Fabricator standard. Eliminates training-serving skew by executing the exact same serialized transformers in production serving."
+    settings_schema:
+      type: object
+      properties:
+        package_format:
+          type: string
+          enum: ["sprisk_bundle", "onnx", "mlflow_model"]
+          default: "sprisk_bundle"
+        strict_schema_validation:
+          type: boolean
+          default: true
+          description: "Reject serving requests containing unexpected extra or missing keys."
+    action:
+      type: insert_step
+      operator: sprisk.packaging.bundle_model_package@1.0.0
+      params:
+        format: "{settings.package_format}"
+        strict_schema: "{settings.strict_schema_validation}"
+
+  - id: onnx_compiled_graph
+    label: "ONNX Native Graph Compilation"
+    description: "Compile both preprocessing steps and model estimator into a unified ONNX computational graph."
+    condition: "latency_sla_budget_ms is confirmed AND latency_sla_budget_ms < 5.0"
+    rationale: "High-throughput, ultra-low latency SLA (<5ms). Compiles preprocessing and inference into a single C++ runtime graph, completely removing Python runtime overhead and guaranteeing bitwise parity."
+    settings_schema:
+      type: object
+      properties:
+        target_opset:
+          type: integer
+          default: 17
+          minimum: 14
+          maximum: 20
+    action:
+      type: insert_step
+      operator: sprisk.packaging.compile_onnx@1.0.0
+      params:
+        opset: "{settings.target_opset}"
+
+  - id: passive_contract_manifest
+    label: "Export Versioned DataContract Manifest Only"
+    description: "Export JSON schema and statistical expectations for external feature store consumption."
+    condition: "serving_runtime_environment == 'external_feature_store'"
+    rationale: "Inference executed by external feature store (e.g. Feast/Hopsworks). DataContract provides authoritative validation expectations."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.train_serve_parity@1.0.0
+  invariant: "ModelPackage input signature must be bitwise-compatible with the QuestionVersion feature contract. Serving tests must produce zero divergence against training fold transformations."

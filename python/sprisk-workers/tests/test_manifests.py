@@ -38,6 +38,10 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.clean.impute@1.0.0",
         "sprisk.clean.scale@1.0.0",
         "sprisk.clean.select_columns@1.0.0",
+        "sprisk.clean.spectral_gating@1.0.0",
+        "sprisk.clustering.dbscan@1.0.0",
+        "sprisk.clustering.gmm@1.0.0",
+        "sprisk.clustering.kmeans@1.0.0",
         "sprisk.code.python@1.0.0",
         "sprisk.code.python@1.1.0",
         "sprisk.code.python@1.2.0",
@@ -51,6 +55,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.profile.chart@1.0.0",
         "sprisk.profile.distributions@1.0.0",
         "sprisk.profile.summarize@1.0.0",
+        "sprisk.validation.group_split@1.0.0",
         "sprisk.validation.random_split@1.0.0",
         "sprisk.validation.temporal_split@1.0.0",
     ]

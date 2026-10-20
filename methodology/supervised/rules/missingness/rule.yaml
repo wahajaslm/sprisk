@@ -1,0 +1,155 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Missingness & Imputation Strategy
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.missingness@1.0.0
+name: "Missing Data Treatment Strategy"
+stage: cleaning
+decides: cleaning.missingness_strategy
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Google TensorFlow Data Validation (Missingness Invariants) & Scikit-Learn Preprocessing Standards"
+  citation: "Little & Rubin (2019) Statistical Analysis with Missing Data (Wiley) & van Buuren (2018) Flexible Imputation of Missing Data (CRC Press)"
+  pitfall: "Fitting imputers across the entire dataset before splitting leaks test set statistics into the training partition. Imputing columns with >60% missingness fabricates spurious patterns."
+  corner_cases:
+    - "Informative Missingness (MNAR): Missing values that signify a business state (e.g. signature_date only populated for closed contracts) carry predictive signal that requires a binary indicator flag."
+    - "Extreme Nullness: Columns with >60% null values fabricate more than half the observations if imputed, distorting sample moments."
+    - "Target Column Nullness: Imputing values into the target label column is strictly forbidden and invalidates ground truth."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: column_missingness_rate
+    description: "Percentage of null or NaN values per column"
+    required: true
+  - profile: column_data_type
+    description: "Semantic type: quantitative (numerical) vs nominal/categorical"
+    required: true
+  - profile: column_skewness
+    description: "Statistical skewness for numerical variables to differentiate mean vs median"
+    required: false
+  - fact: question.target
+    description: "Target column name (strictly forbidden from synthetic imputation)"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  drop_column_threshold: 0.60
+  indicator_flag_threshold: 0.20
+  skewness_threshold: 1.50
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: drop_column
+    label: "Drop Column"
+    description: "Exclude the column entirely from the feature matrix."
+    condition: "column_missingness_rate >= drop_column_threshold"
+    rationale: "Column has over 60% missing values. Imputation would fabricate more than half the observations and distort variance."
+    settings_schema:
+      type: object
+      properties:
+        drop_threshold:
+          type: number
+          default: 0.60
+          minimum: 0.30
+          maximum: 0.95
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.cleaning.drop_columns@1.0.0
+      params:
+        columns: ["{column_name}"]
+
+  - id: impute_median_with_flag
+    label: "Median Imputation with Missingness Indicator"
+    description: "Impute missing values using training fold median and append a binary '_is_missing' indicator column."
+    condition: "column_data_type == 'numerical' AND column_skewness > skewness_threshold AND column_missingness_rate >= indicator_flag_threshold"
+    rationale: "High missingness with skewed distribution. Median is robust to outliers, and the indicator flag preserves missingness-not-at-random (MNAR) signal."
+    settings_schema:
+      type: object
+      properties:
+        strategy:
+          type: string
+          enum: ["median", "mean"]
+          default: "median"
+        add_indicator:
+          type: boolean
+          default: true
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.cleaning.simple_imputer@1.0.0
+      params:
+        columns: ["{column_name}"]
+        strategy: "{settings.strategy}"
+        add_indicator: "{settings.add_indicator}"
+
+  - id: impute_mean
+    label: "Mean Imputation"
+    description: "Impute missing values using the arithmetic mean of the training fold."
+    condition: "column_data_type == 'numerical' AND column_skewness <= skewness_threshold AND column_missingness_rate < drop_column_threshold"
+    rationale: "Symmetric Gaussian distribution with moderate missingness. Mean preserves expected value without distorting sample moments."
+    settings_schema:
+      type: object
+      properties:
+        strategy:
+          type: string
+          const: "mean"
+          default: "mean"
+        add_indicator:
+          type: boolean
+          default: false
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.cleaning.simple_imputer@1.0.0
+      params:
+        columns: ["{column_name}"]
+        strategy: "mean"
+        add_indicator: false
+
+  - id: impute_mode
+    label: "Mode / Frequent Category Imputation"
+    description: "Fill missing categorical entries with the most frequent category or an explicit 'missing' sentinel category."
+    condition: "column_data_type in ['nominal', 'categorical'] AND column_missingness_rate < drop_column_threshold"
+    rationale: "Categorical feature. Fills with the modal category or designates missingness as a distinct category."
+    settings_schema:
+      type: object
+      properties:
+        strategy:
+          type: string
+          enum: ["most_frequent", "constant"]
+          default: "most_frequent"
+        fill_value:
+          type: string
+          default: "missing"
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.cleaning.simple_imputer@1.0.0
+      params:
+        columns: ["{column_name}"]
+        strategy: "{settings.strategy}"
+        fill_value: "{settings.fill_value}"
+
+  - id: pass_through
+    label: "No Imputation (Native Null Handling)"
+    description: "Preserve null values as-is for tree algorithms with native missing value split handling (XGBoost/LightGBM/HistGradientBoosting)."
+    condition: "planned_model_family in ['xgboost', 'lightgbm', 'catboost', 'hist_gradient_boosting'] AND column_missingness_rate < drop_column_threshold"
+    rationale: "Tree algorithms natively route missing values to optimal split directions during training."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.imputer_leakage@1.0.0
+  invariant: "Imputation statistics (mean/median/mode) must be calculated exclusively on the training partition. Target column must never contain imputed values."

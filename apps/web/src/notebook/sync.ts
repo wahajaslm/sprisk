@@ -13,15 +13,44 @@ type Synced = { version: PipelineVersion } | { unchanged: true } | { refused: st
 
 const ownedBy = (notebookId: string) => (n: Node) => n.from_notebook?.notebook_id === notebookId;
 
+const STEP_HEADER = /^### (?:Stage Step|Code Node): `(.+)`\s*$/;
+const escaped = (id: string) => id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A built-in step's cell in a notebook made from the flow: its call is named by the step. */
+const hasCall = (cells: NotebookCell[], id: string) => {
+  const call = new RegExp(`(^|\\s|=)${escaped(id)}\\(`);
+  return cells.some((c) => c.kind === "code" && call.test(c.source));
+};
+
+const hasHeader = (cells: NotebookCell[], id: string) =>
+  cells.some((c) => c.kind === "markdown" && STEP_HEADER.exec(c.source.trim())?.[1] === id);
+
+const hasStepReference = (cells: NotebookCell[], node: Node) => {
+  if (hasCall(cells, node.id)) return true;
+  if (hasHeader(cells, node.id)) return true;
+  if (node.from_notebook?.cells.some((cid) => cells.some((c) => c.id === cid))) return true;
+  return false;
+};
+
+/** Built-in or flow steps whose cell the person removed since `previous` was saved. */
+const droppedCalls = (flow: PipelineVersion | undefined, previous: NotebookVersion | undefined, notebook: NotebookVersion) =>
+  (flow?.nodes ?? []).filter((n) => !n.from_notebook && previous && hasStepReference(previous.cells, n) && !hasStepReference(notebook.cells, n)).map((n) => n.id);
+
 /** The flow with this notebook's steps rebuilt from its cells (ADR-0037). `split` is Python's
  * reading of the notebook's code cells, in order. Steps of other notebooks and built-in steps
  * stay; a step keeps its id while it keeps any of its cells, and keeps its exposed settings. */
-export function stepsIntoFlow({ base, projectId, notebook, split }: { base: PipelineVersion | undefined; projectId: string; notebook: NotebookVersion; split: CodeSplit }): Synced {
+export function stepsIntoFlow({ base, projectId, notebook, split, previous }: { base: PipelineVersion | undefined; projectId: string; notebook: NotebookVersion; split: CodeSplit; previous?: NotebookVersion | undefined }): Synced {
   const code = notebook.cells.filter((c) => c.kind === "code");
   const owned = (base?.nodes ?? []).filter(ownedBy(notebook.notebook_id));
   const ownedIds = new Set(owned.map((n) => n.id));
-  const kept = (base?.nodes ?? []).filter((n) => !ownedIds.has(n.id));
-  const keptEdges = (base?.edges ?? []).filter((e) => !ownedIds.has(stepOf(e.from)) && !ownedIds.has(stepOf(e.to)));
+  // A built-in step whose cell was deleted here is deleted from the flow too.
+  const dropped = new Set(droppedCalls(base, previous, notebook));
+  const blocking = [...dropped].flatMap((id) => readersOf(base!, id)).filter((id) => !dropped.has(id) && !ownedIds.has(id));
+  if (blocking.length > 0) return { refused: `Cannot remove the cell: ${[...new Set(blocking)].join(", ")} still read${blocking.length === 1 ? "s" : ""} its output.` };
+  const kept = (base?.nodes ?? []).filter((n) => !ownedIds.has(n.id) && !dropped.has(n.id));
+  const keptEdges = (base?.edges ?? []).filter(
+    (e) => !ownedIds.has(stepOf(e.from)) && !ownedIds.has(stepOf(e.to)) && !dropped.has(stepOf(e.from)) && !dropped.has(stepOf(e.to)),
+  );
   // Other steps reading this notebook's outputs: they must still find them.
   const outward = (base?.edges ?? []).filter((e) => ownedIds.has(stepOf(e.from)) && !ownedIds.has(stepOf(e.to)));
 
@@ -79,8 +108,8 @@ export function stepsIntoFlow({ base, projectId, notebook, split }: { base: Pipe
 
 /** The flow without this notebook's steps and their edges, for deleting the notebook (ADR-0041).
  * Refused, naming the readers, while a step outside the notebook reads one of their outputs. */
-export function stepsOutOfFlow(base: PipelineVersion, notebookId: string): { version: PipelineVersion } | { unchanged: true } | { refused: string[] } {
-  const owned = new Set(base.nodes.filter(ownedBy(notebookId)).map((n) => n.id));
+export function stepsOutOfFlow(base: PipelineVersion, notebookId: string, cells: NotebookCell[] = []): { version: PipelineVersion } | { unchanged: true } | { refused: string[] } {
+  const owned = new Set(base.nodes.filter((n) => ownedBy(notebookId)(n) || (!n.from_notebook && hasStepReference(cells, n))).map((n) => n.id));
   if (owned.size === 0) return { unchanged: true };
   const readers = [...owned].flatMap((id) => readersOf(base, id)).filter((id) => !owned.has(id));
   if (readers.length > 0) return { refused: [...new Set(readers)] };
@@ -113,6 +142,16 @@ function freshId(prefix: string, taken: Set<string>) {
 export function cellsFromFlow(flow: PipelineVersion, notebook: NotebookVersion): NotebookCell[] | undefined {
   let cells = [...notebook.cells];
   let changed = false;
+  // A step deleted on the canvas loses its heading and call cells here.
+  const live = new Set(flow.nodes.map((n) => n.id));
+  const gone = cells.flatMap((c, i) => {
+    const id = c.kind === "markdown" ? STEP_HEADER.exec(c.source.trim())?.[1] : undefined;
+    return id !== undefined && !live.has(id) ? [i, ...(cells[i + 1]?.kind === "code" ? [i + 1] : [])] : [];
+  });
+  if (gone.length > 0) {
+    cells = cells.filter((_, i) => !gone.includes(i));
+    changed = true;
+  }
   for (const node of flow.nodes.filter(ownedBy(notebook.notebook_id))) {
     const source = node.params["source"];
     const ids = (node.from_notebook?.cells ?? []).filter((id) => cells.some((c) => c.id === id));

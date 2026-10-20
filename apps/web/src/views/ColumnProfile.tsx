@@ -68,22 +68,12 @@ function spreadOf(s: Summary): Spread | undefined {
   return { min, q25, q50, q75, max };
 }
 
-/** Box-plot strip: whisker min..max, box q25..q75, tick at the median. */
+/** The five-number summary as plain numbers; the plots live in Visualizations, drawn by Python. */
 function SpreadStrip({ min, q25, q50, q75, max }: Spread) {
-  const span = max - min || 1;
-  const x = (v: number) => 4 + ((v - min) / span) * 192;
   return (
-    <div className="spread">
-      <svg viewBox="0 0 200 16" role="img" aria-label={`min ${min}, q25 ${q25}, median ${q50}, q75 ${q75}, max ${max}`}>
-        <line x1={x(min)} x2={x(max)} y1="8" y2="8" className="whisker" />
-        <rect x={x(q25)} y="3" width={Math.max(1, x(q75) - x(q25))} height="10" rx="2" className="box" />
-        <line x1={x(q50)} x2={x(q50)} y1="2" y2="14" className="median" />
-      </svg>
-      <span className="spread-axis">
-        <span>{min}</span>
-        <span>{max}</span>
-      </span>
-    </div>
+    <p className="profile-range" aria-label={`min ${min}, q25 ${q25}, median ${q50}, q75 ${q75}, max ${max}`}>
+      min {min} · q25 {q25} · median {q50} · q75 {q75} · max {max}
+    </p>
   );
 }
 

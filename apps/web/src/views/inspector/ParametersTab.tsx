@@ -5,6 +5,7 @@ import type { Read } from "../../api/code.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { useRunEdit } from "./useRunEdit.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
+import { SplitMethodology } from "./SplitMethodology.tsx";
 
 type Props = {
   pipeline: PipelineVersion;
@@ -26,7 +27,21 @@ export function ParametersTab({ pipeline, nodeId, operator, found }: Props) {
     return <Expose key={JSON.stringify(found.value.parameters)} pipeline={pipeline} nodeId={nodeId} params={node.params} found={found.value} />;
   }
   if (!operator) return <Loading />;
-  return <Settings key={`${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} params={node.params} schema={operator.params_schema} />;
+  const hasMethodology =
+    node.operator.includes("split@") ||
+    node.operator.includes("clustering.") ||
+    node.operator.includes("kmeans") ||
+    node.operator.includes("dbscan") ||
+    node.operator.includes("gmm") ||
+    node.operator.includes("impute@") ||
+    node.operator.includes("drop_missing@") ||
+    node.operator.includes("scale@") ||
+    node.operator.includes("clip_outliers@");
+
+  return <>
+    {hasMethodology && <SplitMethodology key={`method/${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} />}
+    <Settings key={`${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} params={node.params} schema={operator.params_schema} />
+  </>;
 }
 
 /** Exposed values as typed in the form, by parameter name. */

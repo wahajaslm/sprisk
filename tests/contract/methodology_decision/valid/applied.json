@@ -1,0 +1,13 @@
+{
+  "schema_version":"sprisk.methodology_decision/v1",
+  "id":"mdc_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "proposal_id":"mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "rule":"supervised.split_method@1.0.0",
+  "question_version_id":"qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "base_pipeline_version_id":"plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id":"plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "subject_node_id":"split",
+  "alternative_id":"temporal",
+  "reason":"Matches deployment chronology.",
+  "created_at":"2026-10-19T10:00:00Z"
+}

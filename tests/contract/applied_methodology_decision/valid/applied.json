@@ -1,0 +1,4 @@
+{
+  "decision":{"schema_version":"sprisk.methodology_decision/v1","id":"mdc_01JABCDEFGHJKMNPQRSTVWXYZ0","proposal_id":"mpr_01JABCDEFGHJKMNPQRSTVWXYZ0","rule":"supervised.split_method@1.0.0","question_version_id":"qv_01JABCDEFGHJKMNPQRSTVWXYZ0","base_pipeline_version_id":"plv_01JABCDEFGHJKMNPQRSTVWXYZ0","pipeline_version_id":"plv_01JABCDEFGHJKMNPQRSTVWXYZ1","subject_node_id":"split","alternative_id":"temporal","created_at":"2026-10-19T10:00:00Z"},
+  "pipeline":{"schema_version":"sprisk.pipeline_version/v1","id":"plv_01JABCDEFGHJKMNPQRSTVWXYZ1","project_id":"prj_01JABCDEFGHJKMNPQRSTVWXYZ0","question_version_id":"qv_01JABCDEFGHJKMNPQRSTVWXYZ0","parent_id":"plv_01JABCDEFGHJKMNPQRSTVWXYZ0","nodes":[{"id":"split","operator":"sprisk.validation.temporal_split@1.0.0","params":{"time_column":"order_date"},"methodology_decision_id":"mdc_01JABCDEFGHJKMNPQRSTVWXYZ0"}],"edges":[],"created_at":"2026-10-19T10:00:00Z"}
+}

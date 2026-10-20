@@ -1,0 +1,94 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Time-Series Integrity & Lookahead Prevention
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.time_series_leakage@1.0.0
+name: "Time-Series Integrity & Temporal Validation"
+stage: split
+decides: split.temporal_integrity
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Hyndman & Athanasopoulos (2021) Forecasting: Principles and Practice"
+  citation: "Bergmeir & Benítez (2012) On the Use of Cross-Validation for Time Series Predictor Evaluation & Marcos Lopez de Prado (2018) Advances in Financial Machine Learning"
+  pitfall: "Standard k-fold cross validation on time series leaks future information to predict the past. Shifting features with negative lags introduces fatal forward lookahead leakage."
+  corner_cases:
+    - "Lag Shift Missings: Shifting forward to create lag features introduces initial NaN rows that must be handled without synthetic backfill."
+    - "Label Overlap (De Prado Embargo): In multi-step ahead prediction (horizon = h), training samples within h steps of test set share label calculation windows with test data unless purged."
+    - "Non-Stationarity Drift: Series with unit roots (ADF p > 0.05) exhibit spurious correlations under OLS regression unless differenced."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - fact: question.time_column
+    description: "Timestamp column ordering the time series"
+    required: true
+  - profile: adf_p_value
+    description: "Augmented Dickey-Fuller stationarity test p-value"
+    required: false
+  - fact: question.prediction_horizon
+    description: "Forecast window (e.g. 7 days ahead, 1 month ahead)"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  adf_significance_level: 0.05
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: rolling_origin_with_embargo
+    label: "Rolling-Origin (Expanding Window) with Purge Embargo"
+    description: "Train on expanding historical window with an embargo gap equal to the forecast horizon between train and test."
+    condition: "question.time_column is confirmed"
+    rationale: "Rigorous walk-forward validation. Embargo window equal to forecast horizon strictly prevents label overlap and serial correlation leakage."
+    settings_schema:
+      type: object
+      properties:
+        n_splits:
+          type: integer
+          default: 5
+          minimum: 2
+          maximum: 10
+        embargo_gap_steps:
+          type: integer
+          default: 1
+          minimum: 0
+          description: "Number of time steps purged between train and test to prevent label overlap."
+    action:
+      type: replace_node
+      operator: sprisk.validation.temporal_split@1.0.0
+      params:
+        time_column: "{question.time_column}"
+        method: "expanding_window"
+        embargo_horizon: "{question.prediction_horizon}"
+        n_splits: "{settings.n_splits}"
+
+  - id: stationary_differencing
+    label: "First-Order Differencing (Non-Stationary Series)"
+    description: "Apply differencing step (Y_t - Y_{t-1}) to stabilize mean and eliminate unit root drift."
+    condition: "adf_p_value is not None AND adf_p_value > adf_significance_level"
+    rationale: "ADF test p-value > 0.05 indicates unit root non-stationarity. Differencing is mandatory before linear autoregressive modeling."
+    settings_schema:
+      type: object
+      properties:
+        order:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 2
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      operator: sprisk.clean.difference@1.0.0
+      params:
+        lag: "{settings.order}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.lookahead_leakage@1.0.0
+  invariant: "Every training observation timestamp must be strictly earlier than (test_timestamp - prediction_horizon). Negative shift operations are forbidden."

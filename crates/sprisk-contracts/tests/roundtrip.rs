@@ -7,11 +7,12 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, Attempt, AttemptOutput, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    CreateRun, DatasetProfile, FigureSet, LoadedTable, MethodologyCheck, NotebookExecute,
-    NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables,
-    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion, Run,
-    TablePage, WorkerMessage, parse,
+    AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
+    CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile,
+    DecisionProposal, FigureSet, LoadedTable, MethodologyCheck, MethodologyDecision,
+    NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest,
+    NotebookVariables, NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem,
+    QuestionVersion, Run, TablePage, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -54,6 +55,8 @@ fn check<T: Serialize + DeserializeOwned>(entity: &str) {
 }
 
 const ENTITIES: &[&str] = &[
+    "applied_methodology_decision",
+    "apply_methodology_decision",
     "artifact",
     "attempt",
     "attempt_output",
@@ -63,9 +66,11 @@ const ENTITIES: &[&str] = &[
     "code_split_request",
     "create_run",
     "dataset_profile",
+    "decision_proposal",
     "figure_set",
     "loaded_table",
     "methodology_check",
+    "methodology_decision",
     "notebook_execute",
     "notebook_execution",
     "notebook_execution_event",
@@ -136,6 +141,26 @@ fn question_version() {
 #[test]
 fn methodology_check() {
     check::<MethodologyCheck>("methodology_check");
+}
+
+#[test]
+fn decision_proposal() {
+    check::<DecisionProposal>("decision_proposal");
+}
+
+#[test]
+fn apply_methodology_decision() {
+    check::<ApplyMethodologyDecision>("apply_methodology_decision");
+}
+
+#[test]
+fn methodology_decision() {
+    check::<MethodologyDecision>("methodology_decision");
+}
+
+#[test]
+fn applied_methodology_decision() {
+    check::<AppliedMethodologyDecision>("applied_methodology_decision");
 }
 
 #[test]

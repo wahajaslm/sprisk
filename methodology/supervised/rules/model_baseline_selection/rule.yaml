@@ -1,0 +1,111 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Estimator Selection & Parsimonious Benchmarking
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.model_baseline_selection@1.0.0
+name: "Model Selection & Baseline Floor"
+stage: modeling
+decides: modeling.estimator_selection
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Principle of Parsimony (Occam's Razor) & Scikit-Learn Estimator Guidelines"
+  citation: "Knowledge Base Step 4 Masterclass: Baseline Linear Modeling Before Complex Ensembles"
+  pitfall: "Deploying complex black-box gradient boosted trees or neural networks without establishing a linear baseline hides when the model fails to beat naive dummy guessing."
+  corner_cases:
+    - "Dummy Baseline Floor: Any model that fails to significantly outperform a naive dummy baseline (stratified/prior) must trigger Gate B rejection."
+    - "Parsimony Rule: If XGBoost yields < 1% lift over regularized Logistic Regression, prefer the simpler model for explainability and lower serving latency."
+    - "Sample Size vs Complexity: Training deep neural networks or 1,000-tree ensembles on < 1,000 observations leads to severe overparameterized memorization."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: sample_count
+    description: "Number of training observations"
+    required: true
+  - profile: target_type
+    description: "Classification vs Regression"
+    required: true
+  - profile: non_linear_complexity_score
+    description: "Estimated non-linearity score based on decision tree surrogate splits"
+    required: false
+  - fact: latency_constraint_ms
+    description: "Maximum allowable inference latency in milliseconds"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  small_sample_threshold: 1000
+  low_latency_cutoff_ms: 10.0
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: regularized_linear_baseline
+    label: "Regularized Generalized Linear Model (ElasticNet / Logistic)"
+    description: "Train an interpretable L1/L2 penalized linear estimator with statistical significance testing."
+    condition: "sample_count < small_sample_threshold OR latency_constraint_ms < low_latency_cutoff_ms"
+    rationale: "Small sample count (<1k) or strict low-latency SLA. Regularized linear model prevents overparameterization and provides direct feature attributions."
+    settings_schema:
+      type: object
+      properties:
+        penalty:
+          type: string
+          enum: ["l2", "l1", "elasticnet"]
+          default: "l2"
+        c_regularization:
+          type: number
+          default: 1.0
+          minimum: 0.001
+          maximum: 1000.0
+    action:
+      type: replace_node
+      operator: sprisk.modeling.linear_estimator@1.0.0
+      params:
+        penalty: "{settings.penalty}"
+        C: "{settings.c_regularization}"
+
+  - id: gradient_boosted_ensemble
+    label: "Gradient Boosted Decision Trees (XGBoost / LightGBM)"
+    description: "Train an ensemble of gradient-boosted shallow decision trees with early stopping."
+    condition: "sample_count >= small_sample_threshold"
+    rationale: "Sufficient sample size to learn non-linear interactions without memorizing noise. State-of-the-art predictive performance on tabular data."
+    settings_schema:
+      type: object
+      properties:
+        n_estimators:
+          type: integer
+          default: 300
+          minimum: 50
+          maximum: 2000
+        learning_rate:
+          type: number
+          default: 0.05
+          minimum: 0.005
+          maximum: 0.3
+        max_depth:
+          type: integer
+          default: 6
+          minimum: 2
+          maximum: 12
+        early_stopping_rounds:
+          type: integer
+          default: 20
+          minimum: 5
+          maximum: 50
+    action:
+      type: replace_node
+      operator: sprisk.modeling.gradient_boosting@1.0.0
+      params:
+        n_estimators: "{settings.n_estimators}"
+        learning_rate: "{settings.learning_rate}"
+        max_depth: "{settings.max_depth}"
+        early_stopping_rounds: "{settings.early_stopping_rounds}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.baseline_lift@1.0.0
+  invariant: "Model evaluation score on the holdout test partition must exceed the naive DummyClassifier / DummyRegressor baseline by at least 5% relative lift."

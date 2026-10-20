@@ -1,0 +1,93 @@
+# ==============================================================================
+# Sprisk Methodology Rule: High-Dimensional Distance Concentration
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.unsupervised.distance_concentration@1.0.0
+name: "High-Dimensional Distance Concentration Mitigation"
+stage: geometry
+decides: clustering.subspace_preprocessing
+
+# 1. Scientific Standards & Authoritative Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Beyer et al. (1999) When Is 'Nearest Neighbor' Meaningful? (ICDT)"
+  citation: "Aggarwal, Hinneburg & Keim (2001) On the Surprising Behavior of Distance Metrics in High Dimensional Space (ICDT) & Scikit-Learn Dimensionality Reduction Standards"
+  pitfall: "In high-dimensional feature spaces (d > 30), the phenomenon of distance concentration occurs: the mathematical ratio (D_max - D_min) / D_min approaches zero as dimensionality grows. Every point becomes virtually equidistant from every other point, causing Euclidean clustering and density estimation to break down completely."
+  corner_cases:
+    - "Curse of Dimensionality: In 100-dimensional space, all pairwise Euclidean distances converge to a narrow bell curve, meaning nearest neighbors are scarcely closer than random points."
+    - "Noisy Feature Dilution: Adding uninformative noise features steadily destroys the geometric contrast between real clusters."
+    - "Sparse Text Embeddings: High-dimensional TF-IDF matrices require Cosine distance or TruncatedSVD rather than Euclidean metrics."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: feature_count
+    description: "Total number of features entering the clustering pipeline"
+    required: true
+  - profile: is_sparse_matrix
+    description: "Whether the feature representation is a sparse matrix"
+    required: false
+  - profile: distance_contrast_ratio
+    description: "Empirical relative contrast (D_max - D_min) / D_min measured across sample pairs"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  high_dimension_cutoff: 30
+  low_contrast_cutoff: 0.15
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: pca_subspace_compression
+    label: "PCA Subspace Compression (90% Explained Variance)"
+    description: "Project dense features onto orthogonal principal components before distance calculation to restore geometric contrast."
+    condition: "feature_count >= high_dimension_cutoff AND is_sparse_matrix is false"
+    rationale: "High dimensionality detected (d >= 30). Projecting onto dominant principal axes eliminates orthogonal noise and restores Euclidean distance contrast."
+    settings_schema:
+      type: object
+      properties:
+        explained_variance_ratio:
+          type: number
+          default: 0.90
+          minimum: 0.70
+          maximum: 0.98
+    action:
+      type: insert_step
+      operator: sprisk.features.pca@1.0.0
+      params:
+        n_components: "{settings.explained_variance_ratio}"
+
+  - id: truncated_svd_sparse_compression
+    label: "TruncatedSVD Latent Semantic Reduction (Sparse)"
+    description: "Decompose high-dimensional sparse representations into 50 latent semantic dimensions."
+    condition: "feature_count >= high_dimension_cutoff AND is_sparse_matrix is true"
+    rationale: "Sparse high-dimensional data (e.g. text/bag-of-words). SVD compresses sparse coordinates without memory densification."
+    settings_schema:
+      type: object
+      properties:
+        n_components:
+          type: integer
+          default: 50
+          minimum: 10
+          maximum: 200
+    action:
+      type: insert_step
+      operator: sprisk.features.truncated_svd@1.0.0
+      params:
+        n_components: "{settings.n_components}"
+
+  - id: direct_space_clustering
+    label: "Direct Low-Dimensional Space Clustering"
+    description: "Cluster directly in the original feature space without subspace transformation."
+    condition: "feature_count < high_dimension_cutoff"
+    rationale: "Feature dimension is compact (d < 30). Geometric distance contrast remains robust without compression."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.unsupervised.distance_contrast@1.0.0
+  invariant: "Clustering executed in spaces with d > 50 without prior dimensionality reduction triggers a Gate B WARNING for distance metric saturation."

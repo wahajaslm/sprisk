@@ -1,0 +1,104 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Decision Threshold & Probability Calibration
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.probability_calibration@1.0.0
+name: "Decision Threshold & Probability Calibration"
+stage: calibration
+decides: evaluation.decision_threshold
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Niculescu-Mizil & Caruana (2005) Predicting Good Probabilities With Supervised Learning"
+  citation: "Knowledge Base Step 4 & 5 Masterclass: Profit/Loss Matrix & Threshold Optimization"
+  pitfall: "Applying a static 0.5 threshold when false negatives cost 10x more than false positives produces catastrophic business loss. Uncalibrated SVM or tree probabilities distort risk calculations."
+  corner_cases:
+    - "Asymmetric Cost Risk: In marketing/credit, False Positive (contacting non-interested user) costs 30€; False Negative (missing customer) costs 200€. Optimal threshold p* = 30/(30+200) = 0.13, not 0.5."
+    - "Tree Ensemble Calibration: Boosted trees push predicted probabilities away from 0 and 1 due to sigmoid loss; isotonic or sigmoid post-calibration restores reliable probabilities."
+    - "Calibration Leakage: Fitting Platt scaling or Isotonic regression on test data creates test partition leakage."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: target_type
+    description: "Classification vs Regression"
+    required: true
+  - profile: class_distribution
+    description: "Proportion of positive and negative classes"
+    required: true
+  - fact: planned_model_family
+    description: "Model family: svm, naive_bayes, boosted_trees, logistic_regression"
+    required: false
+  - fact: cost_false_positive
+    description: "Business cost/penalty for False Positive prediction"
+    required: false
+  - fact: cost_false_negative
+    description: "Business cost/penalty for False Negative prediction"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  uncalibrated_model_families: ["svm", "naive_bayes", "xgboost", "lightgbm", "random_forest"]
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: cost_optimal_threshold
+    label: "Cost-Utility Optimal Threshold"
+    description: "Derive decision threshold p* minimizing expected business loss based on declared asymmetric costs."
+    condition: "cost_false_positive is confirmed AND cost_false_negative is confirmed"
+    rationale: "Explicit asymmetric business costs declared. Custom threshold aligns model predictions with operational profit/loss utility."
+    settings_schema:
+      type: object
+      properties:
+        optimization_metric:
+          type: string
+          enum: ["expected_cost", "f_beta", "youden_j"]
+          default: "expected_cost"
+    action:
+      type: insert_step
+      operator: sprisk.evaluation.cost_threshold@1.0.0
+      params:
+        cost_fp: "{cost_false_positive}"
+        cost_fn: "{cost_false_negative}"
+
+  - id: platt_scaling
+    label: "Platt Scaling (Sigmoid Probability Calibration)"
+    description: "Fit a logistic calibration mapping raw model scores to posterior probabilities."
+    condition: "planned_model_family in uncalibrated_model_families AND cost_false_positive is not confirmed"
+    rationale: "Selected model family outputs distorted probabilities. Platt scaling restores probabilistic calibration without altering rank ordering."
+    settings_schema:
+      type: object
+      properties:
+        method:
+          type: string
+          enum: ["sigmoid", "isotonic"]
+          default: "sigmoid"
+        cv_folds:
+          type: integer
+          default: 5
+          minimum: 3
+          maximum: 10
+    action:
+      type: insert_step
+      fit_on: train_partition_only
+      operator: sprisk.calibration.calibrate_classifier@1.0.0
+      params:
+        method: "{settings.method}"
+        cv: "{settings.cv_folds}"
+
+  - id: default_half
+    label: "Standard 0.5 Threshold"
+    description: "Assign positive class when predicted probability exceeds 0.5."
+    condition: "cost_false_positive is not confirmed AND planned_model_family not in uncalibrated_model_families"
+    rationale: "Well-calibrated baseline model (e.g. LogisticRegression) under symmetric business risk."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.calibration_leakage@1.0.0
+  invariant: "Probability calibration and threshold optimization must be fitted on an independent calibration split, never on the holdout test data."

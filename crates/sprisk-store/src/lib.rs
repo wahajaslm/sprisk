@@ -5,9 +5,10 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, NotebookId, NotebookVersion,
-    NotebookVersionId, PipelineVersion, PipelineVersionId, Run, RunId, RunStatus, Timestamp,
-    WorkerId,
+    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, DecisionProposal, InvestigationId,
+    MethodologyDecision, MethodologyProposalId, NotebookId, NotebookVersion, NotebookVersionId,
+    PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus,
+    Timestamp, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -118,6 +119,143 @@ impl SqliteStore {
                 .fetch_optional(&self.pool)
                 .await?;
         from_json(body, "pipeline version", id.as_str())
+    }
+
+    pub async fn has_pipeline_child(&self, id: &PipelineVersionId) -> Result<bool, StoreError> {
+        let pattern = format!("%\"parent_id\":\"{}\"%", id.as_str());
+        let found: Option<i64> =
+            sqlx::query_scalar("SELECT 1 FROM pipeline_versions WHERE body LIKE ? LIMIT 1")
+                .bind(pattern)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(found.is_some())
+    }
+
+    pub async fn insert_question_version(
+        &self,
+        question: &QuestionVersion,
+    ) -> Result<(), StoreError> {
+        sqlx::query("INSERT INTO question_versions (id, investigation_id, body) VALUES (?, ?, ?)")
+            .bind(question.id.as_str())
+            .bind(question.investigation_id.as_str())
+            .bind(to_json(question)?)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_question_version(
+        &self,
+        id: &QuestionVersionId,
+    ) -> Result<QuestionVersion, StoreError> {
+        let body: Option<String> =
+            sqlx::query_scalar("SELECT body FROM question_versions WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        from_json(body, "question version", id.as_str())
+    }
+
+    pub async fn list_question_versions(
+        &self,
+        investigation: Option<&InvestigationId>,
+        before: Option<&QuestionVersionId>,
+        limit: u32,
+    ) -> Result<Vec<QuestionVersion>, StoreError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM question_versions \
+             WHERE (?1 IS NULL OR investigation_id = ?1) \
+             AND (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?3",
+        )
+        .bind(investigation.map(|id| id.as_str()))
+        .bind(before.map(|id| id.as_str()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        parse_all(rows, "question version")
+    }
+
+    pub async fn insert_methodology_proposal(
+        &self,
+        proposal: &DecisionProposal,
+    ) -> Result<(), StoreError> {
+        sqlx::query("INSERT INTO methodology_proposals (id, pipeline_version_id, question_version_id, subject_node_id, body) VALUES (?, ?, ?, ?, ?)")
+            .bind(proposal.id.as_str())
+            .bind(proposal.pipeline_version_id.as_str())
+            .bind(proposal.question_version_id.as_str())
+            .bind(proposal.subject_node_id.as_str())
+            .bind(to_json(proposal)?)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_methodology_proposal(
+        &self,
+        id: &MethodologyProposalId,
+    ) -> Result<DecisionProposal, StoreError> {
+        let body: Option<String> =
+            sqlx::query_scalar("SELECT body FROM methodology_proposals WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        from_json(body, "methodology proposal", id.as_str())
+    }
+
+    pub async fn list_methodology_decisions(
+        &self,
+        pipeline: Option<&PipelineVersionId>,
+    ) -> Result<Vec<MethodologyDecision>, StoreError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM methodology_decisions WHERE (?1 IS NULL OR pipeline_version_id = ?1) ORDER BY id DESC",
+        ).bind(pipeline.map(|id| id.as_str())).fetch_all(&self.pool).await?;
+        parse_all(rows, "methodology decision")
+    }
+
+    pub async fn methodology_decision_by_key(
+        &self,
+        key: &str,
+    ) -> Result<Option<MethodologyDecision>, StoreError> {
+        let body: Option<String> =
+            sqlx::query_scalar("SELECT body FROM methodology_decisions WHERE idempotency_key = ?")
+                .bind(key)
+                .fetch_optional(&self.pool)
+                .await?;
+        body.map(|body| serde_json::from_str(&body))
+            .transpose()
+            .map_err(StoreError::from)
+    }
+
+    /// Commits the applied graph and its decision in one transaction. A repeated key returns
+    /// the original decision, so a lost HTTP response cannot create a second graph version.
+    pub async fn apply_methodology_decision(
+        &self,
+        decision: &MethodologyDecision,
+        pipeline: &PipelineVersion,
+        idempotency_key: &str,
+    ) -> Result<MethodologyDecision, StoreError> {
+        let mut tx = self.pool.begin().await?;
+        let existing: Option<String> =
+            sqlx::query_scalar("SELECT body FROM methodology_decisions WHERE idempotency_key = ?")
+                .bind(idempotency_key)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if let Some(body) = existing {
+            tx.rollback().await?;
+            return Ok(serde_json::from_str(&body)?);
+        }
+        sqlx::query("INSERT INTO pipeline_versions (id, project_id, body) VALUES (?, ?, ?)")
+            .bind(pipeline.id.as_str())
+            .bind(pipeline.project_id.as_str())
+            .bind(to_json(pipeline)?)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO methodology_decisions (id, proposal_id, pipeline_version_id, idempotency_key, body) VALUES (?, ?, ?, ?, ?)")
+            .bind(decision.id.as_str()).bind(decision.proposal_id.as_str())
+            .bind(decision.pipeline_version_id.as_str()).bind(idempotency_key).bind(to_json(decision)?)
+            .execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(decision.clone())
     }
 
     pub async fn insert_notebook_version(

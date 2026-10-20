@@ -1,0 +1,18 @@
+schema_version: sprisk.operator/v1
+id: sprisk.validation.group_split@1.0.0
+capability_class: transform
+description: Hold out complete entities so the same group never appears in train and test.
+entrypoint: sprisk_validation.group_split:group_split
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: train, kind: table }, { name: test, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [group_column, test_fraction, seed]
+  properties:
+    group_column: { type: string, minLength: 1, description: "Entity or group identifier kept wholly in one partition." }
+    test_fraction: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "Approximate share of groups held out for testing." }
+    seed: { type: integer, minimum: 0, description: "Fixes group selection so runs repeat." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

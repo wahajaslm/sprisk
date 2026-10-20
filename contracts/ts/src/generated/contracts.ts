@@ -75,6 +75,16 @@ export type InvestigationId = string;
 export type QuestionVersionId = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyProposalId".
+ */
+export type MethodologyProposalId = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyDecisionId".
+ */
+export type MethodologyDecisionId = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "NotebookId".
  */
 export type NotebookId = string;
@@ -94,10 +104,17 @@ export type RunId = string;
  */
 export type WorkerId = string;
 /**
+ * Typed mutation previewed and compiled before it can create a pipeline version.
+ *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyCheckId".
+ * via the `definition` "GraphEffect".
  */
-export type MethodologyCheckId = string;
+export type GraphEffect = {
+  kind: "replace_node";
+  node_id: NodeId;
+  operator: OperatorRef;
+  params: Params;
+};
 /**
  * Pinned rule: <pack>.<rule>@<semver>.
  *
@@ -106,17 +123,39 @@ export type MethodologyCheckId = string;
  */
 export type CheckRef = string;
 /**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Verdict".
- */
-export type Verdict = "pass" | "fail" | "warning" | "not_assessed";
-/**
  * Stable within a notebook across versions, as in Jupyter's nbformat 4.5.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "NotebookCellId".
  */
 export type NotebookCellId = string;
+/**
+ * `<node_id>.<port_name>`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortRef".
+ */
+export type PortRef = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyCheckId".
+ */
+export type MethodologyCheckId = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyPhase".
+ */
+export type MethodologyPhase = "plan" | "code" | "runtime" | "result" | "release";
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyCoverage".
+ */
+export type MethodologyCoverage = "complete" | "partial" | "not_assessed";
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Verdict".
+ */
+export type Verdict = "pass" | "fail" | "warning" | "not_assessed";
 /**
  * One line of a cell's execution as it happens (ADR-0041), from the session host to Rust and, when asked with Accept: application/x-ndjson, from POST /notebooks/{id}/execute to the browser. Tagged by `kind`: `running` lines carry every output so far; the last line is `done`, or `failed` when the kernel stopped answering after the stream began (earlier failures are an HTTP error).
  *
@@ -162,13 +201,6 @@ export type Effects = "pure" | "nondeterministic" | "side_effecting";
  * via the `definition` "NetworkAccess".
  */
 export type NetworkAccess = "none" | "egress_allowlisted";
-/**
- * `<node_id>.<port_name>`.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PortRef".
- */
-export type PortRef = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "TaskType".
@@ -759,6 +791,156 @@ export interface Params {
   [k: string]: unknown;
 }
 /**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyEvidence".
+ */
+export interface MethodologyEvidence {
+  kind: "question_fact" | "profile_fact" | "policy" | "user_reason";
+  label: string;
+  value: string;
+  origin: Origin;
+  artifact_id?: ArtifactId;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyAlternative".
+ */
+export interface MethodologyAlternative {
+  id: string;
+  label: string;
+  description: string;
+  applicability: "applicable" | "needs_fact" | "not_applicable";
+  reason: string;
+  effect?: GraphEffect;
+}
+/**
+ * Immutable resolver output. It explains alternatives and previews typed effects; it does not mutate a graph.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DecisionProposal".
+ */
+export interface DecisionProposal {
+  schema_version: "sprisk.decision_proposal/v1";
+  id: MethodologyProposalId;
+  rule: CheckRef;
+  question_version_id: QuestionVersionId;
+  pipeline_version_id: PipelineVersionId;
+  subject_node_id: NodeId;
+  evidence: MethodologyEvidence[];
+  /**
+   * @minItems 1
+   */
+  alternatives: [MethodologyAlternative, ...MethodologyAlternative[]];
+  recommended_alternative_id?: string;
+  fingerprint: ContentHash;
+  created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ApplyMethodologyDecision".
+ */
+export interface ApplyMethodologyDecision {
+  alternative_id: string;
+  reason?: string;
+  idempotency_key: string;
+}
+/**
+ * Immutable record of an alternative atomically applied to a new pipeline version.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyDecision".
+ */
+export interface MethodologyDecision {
+  schema_version: "sprisk.methodology_decision/v1";
+  id: MethodologyDecisionId;
+  proposal_id: MethodologyProposalId;
+  rule: CheckRef;
+  question_version_id: QuestionVersionId;
+  base_pipeline_version_id: PipelineVersionId;
+  pipeline_version_id: PipelineVersionId;
+  subject_node_id: NodeId;
+  alternative_id: string;
+  reason?: string;
+  created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "AppliedMethodologyDecision".
+ */
+export interface AppliedMethodologyDecision {
+  decision: MethodologyDecision;
+  pipeline: PipelineVersion;
+}
+/**
+ * Immutable typed graph of pinned operators (arch doc §4, §5). Structural checks (at least one node, unique node ids, known ports, no cycles) belong to the Rust compiler, not this schema.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PipelineVersion".
+ */
+export interface PipelineVersion {
+  schema_version: "sprisk.pipeline_version/v1";
+  id: PipelineVersionId;
+  project_id: ProjectId;
+  /**
+   * Exact immutable question-ledger revision this flow answers. Absent only for legacy or not-yet-scoped flows.
+   */
+  question_version_id?: string;
+  /**
+   * Version this one was derived from. Absent for the first version.
+   */
+  parent_id?: string;
+  nodes: Node[];
+  edges: Edge[];
+  created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Node".
+ */
+export interface Node {
+  id: NodeId;
+  operator: OperatorRef;
+  params: Params;
+  /**
+   * Decision that produced this node state. Absent for a hand-authored node.
+   */
+  methodology_decision_id?: string;
+  code?: NodeCode;
+  from_notebook?: NodeSource;
+}
+/**
+ * This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs.
+ */
+export interface NodeCode {
+  /**
+   * Python module source.
+   */
+  source: string;
+  /**
+   * The function in source that is the step.
+   */
+  function: string;
+}
+/**
+ * The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook.
+ */
+export interface NodeSource {
+  notebook_version_id: NotebookVersionId;
+  /**
+   * The notebook these cells belong to, so saving it again rebuilds its steps (ADR-0037). Absent on nodes made before.
+   */
+  notebook_id?: string;
+  cells: NotebookCellId[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Edge".
+ */
+export interface Edge {
+  from: PortRef;
+  to: PortRef;
+}
+/**
  * Result of one Gate B methodology rule on one pipeline version (arch doc §4, §8). Immutable; re-checking creates a new record.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -768,7 +950,11 @@ export interface MethodologyCheck {
   schema_version: "sprisk.methodology_check/v1";
   id: MethodologyCheckId;
   pipeline_version_id: PipelineVersionId;
+  question_version_id?: QuestionVersionId;
+  methodology_decision_id?: MethodologyDecisionId;
   check: CheckRef;
+  phase?: MethodologyPhase;
+  coverage?: MethodologyCoverage;
   verdict: Verdict;
   rationale: string;
   /**
@@ -1002,67 +1188,6 @@ export interface Resources {
   timeout_seconds: number;
 }
 /**
- * Immutable typed graph of pinned operators (arch doc §4, §5). Structural checks (at least one node, unique node ids, known ports, no cycles) belong to the Rust compiler, not this schema.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PipelineVersion".
- */
-export interface PipelineVersion {
-  schema_version: "sprisk.pipeline_version/v1";
-  id: PipelineVersionId;
-  project_id: ProjectId;
-  /**
-   * Version this one was derived from. Absent for the first version.
-   */
-  parent_id?: string;
-  nodes: Node[];
-  edges: Edge[];
-  created_at: Timestamp;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Node".
- */
-export interface Node {
-  id: NodeId;
-  operator: OperatorRef;
-  params: Params;
-  code?: NodeCode;
-  from_notebook?: NodeSource;
-}
-/**
- * This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs.
- */
-export interface NodeCode {
-  /**
-   * Python module source.
-   */
-  source: string;
-  /**
-   * The function in source that is the step.
-   */
-  function: string;
-}
-/**
- * The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook.
- */
-export interface NodeSource {
-  notebook_version_id: NotebookVersionId;
-  /**
-   * The notebook these cells belong to, so saving it again rebuilds its steps (ADR-0037). Absent on nodes made before.
-   */
-  notebook_id?: string;
-  cells: NotebookCellId[];
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Edge".
- */
-export interface Edge {
-  from: PortRef;
-  to: PortRef;
-}
-/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "NodeSource".
  */
@@ -1106,7 +1231,9 @@ export interface QuestionVersion {
   task: TaskFact;
   target?: Fact1;
   unit_of_analysis?: Fact;
+  entity_column?: Fact2;
   time_column?: Fact;
+  prediction_horizon?: Fact3;
   assumptions: Fact[];
   unknowns: Unknown[];
   acceptance_criteria: Fact[];
@@ -1132,6 +1259,20 @@ export interface TaskFact {
  * Target column. Absent when there is no legitimate supervised target.
  */
 export interface Fact1 {
+  value: string;
+  origin: Origin;
+}
+/**
+ * Column whose values identify the unit or group that must not cross an entity-aware split.
+ */
+export interface Fact2 {
+  value: string;
+  origin: Origin;
+}
+/**
+ * How far after prediction time the outcome is observed, preferably an ISO-8601 duration such as P30D.
+ */
+export interface Fact3 {
   value: string;
   origin: Origin;
 }

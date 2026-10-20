@@ -1,0 +1,131 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Class Imbalance Strategy
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.class_imbalance@1.0.0
+name: "Class Imbalance Mitigation Strategy"
+stage: sampling
+decides: sampling.imbalance_strategy
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Imbalanced-Learn Open Source Standards & Chawla et al. (2002) SMOTE"
+  citation: "He & Garcia (2009) Learning from Imbalanced Data (IEEE Transactions on Knowledge and Data Engineering) & Chawla et al. (2002) JAIR"
+  pitfall: "Evaluating models with raw accuracy on imbalanced targets produces a trivial dummy predictor that achieves high accuracy while failing completely on the minority class. Applying SMOTE to validation data fabricates synthetic evaluation points."
+  corner_cases:
+    - "Resampling must be strictly confined to train folds; validation and test sets must NEVER be resampled, preserving real-world class prevalence."
+    - "SMOTE in very high dimensional sparse spaces creates synthetic points in empty feature space, polluting decision boundaries."
+    - "Extreme imbalance (<0.5%, e.g. fraud or rare medical events) where classification transitions into anomaly detection."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - fact: question.target
+    description: "Binary or multiclass target column name"
+    required: true
+  - profile: target_minority_ratio
+    description: "Proportion of the minority class (e.g. 0.03 for 3%)"
+    required: true
+  - profile: row_count
+    description: "Total observation count in the training dataset"
+    required: true
+  - fact: planned_model_family
+    description: "Model algorithm family (e.g. xgboost, lightgbm, logistic, random_forest)"
+    required: false
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  mild_imbalance_threshold: 0.20
+  severe_imbalance_threshold: 0.05
+  small_dataset_cutoff: 50000
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: none_natural_prevalence
+    label: "Standard Training (No Resampling)"
+    description: "Train directly on the natural class distribution."
+    condition: "target_minority_ratio >= mild_imbalance_threshold"
+    rationale: "Class distribution is sufficiently balanced (>20% minority). Resampling would distort authentic posterior probabilities."
+    action:
+      type: pass_through
+
+  - id: cost_weighting
+    label: "Algorithmic Cost-Weighting (class_weight='balanced')"
+    description: "Inversely scale model loss weights by class frequencies without altering sample count."
+    condition: "target_minority_ratio < mild_imbalance_threshold AND target_minority_ratio >= severe_imbalance_threshold"
+    rationale: "Moderate imbalance. Adjusting loss weights avoids generating noisy synthetic data while preventing majority bias."
+    settings_schema:
+      type: object
+      properties:
+        class_weight:
+          type: string
+          enum: ["balanced", "balanced_subsample"]
+          default: "balanced"
+    action:
+      type: update_estimator_params
+      params:
+        class_weight: "{settings.class_weight}"
+
+  - id: smote_oversample
+    label: "SMOTE (Synthetic Minority Over-sampling)"
+    description: "Synthesize minority instances along k-nearest neighbor line segments strictly on training folds."
+    condition: "target_minority_ratio < severe_imbalance_threshold AND row_count < small_dataset_cutoff"
+    rationale: "Severe imbalance with small sample size (<50k). Undersampling would discard too much variance."
+    settings_schema:
+      type: object
+      properties:
+        k_neighbors:
+          type: integer
+          default: 5
+          minimum: 1
+          maximum: 20
+        sampling_strategy:
+          type: string
+          enum: ["auto", "minority", "not_majority"]
+          default: "auto"
+        random_state:
+          type: integer
+          default: 42
+    action:
+      type: insert_step
+      placement: before_model_fit
+      fit_on: train_partition_only
+      apply_to: train_partition_only
+      operator: sprisk.sampling.smote@1.0.0
+      params:
+        k_neighbors: "{settings.k_neighbors}"
+        sampling_strategy: "{settings.sampling_strategy}"
+        random_state: "{settings.random_state}"
+
+  - id: random_undersample
+    label: "Random Majority Under-sampling"
+    description: "Downsample the majority class strictly on training folds to accelerate training."
+    condition: "target_minority_ratio < severe_imbalance_threshold AND row_count >= small_dataset_cutoff"
+    rationale: "Severe imbalance in large dataset (>50k rows). Eliminates majority redundancy and accelerates convergence without synthetic interpolation."
+    settings_schema:
+      type: object
+      properties:
+        sampling_strategy:
+          type: string
+          default: "auto"
+        random_state:
+          type: integer
+          default: 42
+    action:
+      type: insert_step
+      placement: before_model_fit
+      fit_on: train_partition_only
+      apply_to: train_partition_only
+      operator: sprisk.sampling.random_undersample@1.0.0
+      params:
+        sampling_strategy: "{settings.sampling_strategy}"
+        random_state: "{settings.random_state}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.resampling_leakage@1.0.0
+  invariant: "Resampling must be strictly confined to train folds. Validation and test sets must NEVER be resampled."

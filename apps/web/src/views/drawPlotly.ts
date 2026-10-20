@@ -13,9 +13,9 @@ export function drawPlotly(node: HTMLElement, figure: PlotlyFigureJson, small = 
   const layout = { ...themed(figure.layout ?? {}, color), autosize: true };
   if (small) {
     const still = thumbnail({ data: figure.data, layout });
-    void Plotly.react(node, still.data, still.layout, { staticPlot: true });
+    void Plotly.react(node, still.data, still.layout, { staticPlot: true, responsive: true });
   } else {
-    void Plotly.react(node, figure.data, layout, { displaylogo: false });
+    void Plotly.react(node, figure.data, layout, { displaylogo: false, responsive: true });
   }
   // Plotly's own `responsive` follows only the window; the box also changes with dock panels
   // and the Inline/Grid switch.

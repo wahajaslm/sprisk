@@ -1,0 +1,92 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Cluster Stability & Reproducibility Assessment
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.unsupervised.cluster_stability@1.0.0
+name: "Cluster Stability & Resampling Validation"
+stage: evaluation
+decides: clustering.stability_validation
+
+# 1. Scientific Standards & Authoritative Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Hennig (2007) Cluster-Wise Assessment of Cluster Stability (Computational Statistics & Data Analysis)"
+  citation: "Tibshirani & Walther (2005) Cluster Validation by Prediction Strength (JCGS) & von Luxburg (2010) Clustering Stability: An Overview (Foundations and Trends in ML)"
+  pitfall: "Deploying clusters based only on a single optimization run can enshrine pure sample noise artifacts. Clusters that dissolve or drastically reassign points under slight bootstrap perturbation lack real-world validity."
+  corner_cases:
+    - "Hennig Stability Thresholds: An empirical mean Jaccard similarity < 0.60 across bootstrap resamples proves a cluster is an unstable random artifact; Jaccard > 0.85 indicates highly stable reproducible structure."
+    - "Local Minima Seeding Sensitivity: K-Means initialized with low n_init converges to distinct suboptimal Voronoi partitions on different random seeds."
+    - "Cluster Dissolution in Sub-sampling: In small sample sizes, removing 10% of observations can cause two separate clusters to merge or disappear completely."
+
+# 2. What This Rule Observes
+# ------------------------------------------------------------------------------
+observes:
+  - profile: cluster_jaccard_stability_scores
+    description: "Mean Jaccard similarity index per cluster across bootstrap resamples"
+    required: true
+  - profile: sample_count
+    description: "Number of rows in the dataset"
+    required: true
+  - fact: planned_clustering_algorithm
+    description: "Clustering algorithm being evaluated"
+    required: true
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  min_acceptable_jaccard_stability: 0.60
+  high_confidence_jaccard_stability: 0.85
+  default_bootstrap_iterations: 50
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: bootstrap_jaccard_stability
+    label: "Bootstrap Jaccard Cluster Validation (50 Resamples)"
+    description: "Resample dataset with replacement 50 times, re-fit clustering, and compute mean Jaccard similarity for each cluster."
+    condition: "sample_count <= 25000"
+    rationale: "Hennig (2007) standard. Proves whether discovered clusters represent reproducible patterns or transient sample fluctuations."
+    settings_schema:
+      type: object
+      properties:
+        n_bootstraps:
+          type: integer
+          default: 50
+          minimum: 20
+          maximum: 200
+        min_jaccard_threshold:
+          type: number
+          default: 0.60
+          minimum: 0.50
+          maximum: 0.85
+    action:
+      type: insert_step
+      operator: sprisk.unsupervised.bootstrap_stability@1.0.0
+      params:
+        n_bootstraps: "{settings.n_bootstraps}"
+        threshold: "{settings.min_jaccard_threshold}"
+
+  - id: prediction_strength_half_split
+    label: "Prediction Strength Two-Fold Cross-Validation"
+    description: "Split data into two halves, fit cluster centroids on fold A, predict cluster labels on fold B, and evaluate pairwise co-membership agreement."
+    condition: "sample_count > 25000"
+    rationale: "Tibshirani & Walther (2005) standard. Computationally fast O(N) stability evaluation for large datasets avoiding 50x bootstrap re-fitting."
+    settings_schema:
+      type: object
+      properties:
+        threshold:
+          type: number
+          default: 0.80
+          minimum: 0.60
+          maximum: 0.95
+    action:
+      type: insert_step
+      operator: sprisk.unsupervised.prediction_strength@1.0.0
+      params:
+        threshold: "{settings.threshold}"
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.unsupervised.cluster_stability@1.0.0
+  invariant: "Any cluster exhibiting mean bootstrap Jaccard similarity < 0.60 triggers a Gate B WARNING for statistical instability."

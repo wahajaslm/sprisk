@@ -11,6 +11,10 @@
         "schema_version": { "type": "string", "enum": ["sprisk.pipeline_version/v1"] },
         "id": { "$ref": "#/$defs/PipelineVersionId" },
         "project_id": { "$ref": "#/$defs/ProjectId" },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId",
+          "description": "Exact immutable question-ledger revision this flow answers. Absent only for legacy or not-yet-scoped flows."
+        },
         "parent_id": {
           "$ref": "#/$defs/PipelineVersionId",
           "description": "Version this one was derived from. Absent for the first version."
@@ -28,6 +32,10 @@
         "id": { "$ref": "#/$defs/NodeId" },
         "operator": { "$ref": "#/$defs/OperatorRef" },
         "params": { "$ref": "#/$defs/Params" },
+        "methodology_decision_id": {
+          "$ref": "#/$defs/MethodologyDecisionId",
+          "description": "Decision that produced this node state. Absent for a hand-authored node."
+        },
         "code": { "$ref": "#/$defs/NodeCode", "description": "This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs." },
         "from_notebook": { "$ref": "#/$defs/NodeSource", "description": "The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook." }
       }

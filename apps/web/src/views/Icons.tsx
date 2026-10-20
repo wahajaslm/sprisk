@@ -3,7 +3,18 @@ import type { NodeKind } from "../flow/stages.ts";
 /** Kind glyphs from the Studio concept, 16px, stroked in their kind's colour. */
 export function KindIcon({ kind, size = 16 }: { kind: NodeKind; size?: number }) {
   // Coloured by kind (cockpit.css --kind-*), so steps of one kind are easy to spot.
-  const common = { className: `kind-icon kind-${kind}`, width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.3, "aria-hidden": true } as const;
+  const common = {
+    className: `kind-icon kind-${kind}`,
+    width: size,
+    height: size,
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    shapeRendering: "geometricPrecision",
+    style: { vectorEffect: "non-scaling-stroke" },
+    "aria-hidden": true,
+  } as const;
   switch (kind) {
     case "source":
       return (
@@ -72,6 +83,25 @@ export function PlayIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
       <path d="M3 1.8v8.4L10 6z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function StopIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <rect x="2" y="2" width="6" height="6" fill="currentColor" rx="0.5" />
+    </svg>
+  );
+}
+
+export function RestartIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 8a5.5 5.5 0 0 1 9.3-3.9L14 6" />
+      <path d="M14 2v4h-4" />
+      <path d="M13.5 8a5.5 5.5 0 0 1-9.3 3.9L2 10" />
+      <path d="M2 14v-4h4" />
     </svg>
   );
 }
@@ -208,6 +238,18 @@ export function CrossIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
+export function NotebookIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+      <path d="M3.5 2.5h9v11h-9z" />
+      <path d="M3.5 5.5h9M3.5 8.5h9M3.5 11.5h9" />
+      <circle cx="1.5" cy="4.5" r="0.8" fill="currentColor" />
+      <circle cx="1.5" cy="8" r="0.8" fill="currentColor" />
+      <circle cx="1.5" cy="11.5" r="0.8" fill="currentColor" />
     </svg>
   );
 }

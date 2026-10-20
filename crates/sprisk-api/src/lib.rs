@@ -22,10 +22,12 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    ArtifactId, AttemptId, CapabilityClass, CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile,
-    FigureSet, LoadedTable, LoadedTableUse, NotebookExecute, NotebookExecution,
-    NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
-    Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, Run, RunId, parse,
+    AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
+    CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
+    InvestigationId, LoadedTable, LoadedTableUse, MethodologyDecision, MethodologyProposalId,
+    NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookVariables,
+    NotebookVersion, NotebookVersionId, Operator, OperatorSource, PipelineVersion,
+    PipelineVersionId, Problem, QuestionVersion, QuestionVersionId, Run, RunId, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -61,6 +63,21 @@ pub fn router(state: AppState) -> Router {
             "/pipeline_versions",
             post(create_pipeline_version).get(list_pipeline_versions),
         )
+        .route(
+            "/question_versions",
+            post(create_question_version).get(list_question_versions),
+        )
+        .route("/question_versions/{id}", get(get_question_version))
+        .route(
+            "/pipeline_versions/{id}/methodology/split/{node_id}/proposals",
+            post(propose_split),
+        )
+        .route(
+            "/pipeline_versions/{id}/methodology/proposals/{node_id}",
+            post(propose_node_methodology),
+        )
+        .route("/methodology_proposals/{id}/apply", post(apply_methodology))
+        .route("/methodology_decisions", get(list_methodology_decisions))
         .route("/operators", get(list_operators))
         .route("/operators/{id}/source", get(get_operator_source))
         .route("/code/split", post(split_code))
@@ -314,6 +331,19 @@ async fn create_pipeline_version(
             }
             other => other?,
         };
+    }
+    if let Some(question) = &pipeline.question_version_id {
+        state
+            .store
+            .get_question_version(question)
+            .await
+            .map_err(|error| match error {
+                StoreError::NotFound { .. } => ApiError::BadRequest {
+                    code: "unknown_question_version",
+                    message: format!("question version {} does not exist", question.as_str()),
+                },
+                other => ApiError::Store(other),
+            })?;
     }
     check_notebook_sources(&state, &pipeline).await?;
     state.store.insert_pipeline_version(&pipeline).await?;
@@ -702,6 +732,365 @@ async fn list_pipeline_versions(
         .list_pipeline_versions(before.as_ref(), limit(&query)?)
         .await?;
     Ok(Json(versions))
+}
+
+async fn create_question_version(
+    State(state): State<AppState>,
+    text: String,
+) -> Result<(StatusCode, Json<QuestionVersion>), ApiError> {
+    let question: QuestionVersion = body(&text)?;
+    if let Some(parent_id) = &question.parent_id {
+        let parent =
+            state
+                .store
+                .get_question_version(parent_id)
+                .await
+                .map_err(|error| match error {
+                    StoreError::NotFound { .. } => ApiError::BadRequest {
+                        code: "unknown_parent",
+                        message: format!(
+                            "parent question version {} does not exist",
+                            parent_id.as_str()
+                        ),
+                    },
+                    other => ApiError::Store(other),
+                })?;
+        if parent.investigation_id != question.investigation_id {
+            return Err(ApiError::BadRequest {
+                code: "different_investigation",
+                message: "a question revision must keep its investigation id".into(),
+            });
+        }
+    }
+    state.store.insert_question_version(&question).await?;
+    Ok((StatusCode::CREATED, Json(question)))
+}
+
+async fn list_question_versions(
+    State(state): State<AppState>,
+    query: Query,
+) -> Result<Json<Vec<QuestionVersion>>, ApiError> {
+    let investigation: Option<InvestigationId> = optional_id(&query, "investigation_id")?;
+    let before: Option<QuestionVersionId> = optional_id(&query, "before")?;
+    Ok(Json(
+        state
+            .store
+            .list_question_versions(investigation.as_ref(), before.as_ref(), limit(&query)?)
+            .await?,
+    ))
+}
+
+async fn get_question_version(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Json<QuestionVersion>, ApiError> {
+    Ok(Json(state.store.get_question_version(&id(&raw)?).await?))
+}
+
+async fn propose_split(
+    State(state): State<AppState>,
+    Path((raw, node_id)): Path<(String, String)>,
+) -> Result<(StatusCode, Json<DecisionProposal>), ApiError> {
+    let pipeline = state.store.get_pipeline_version(&id(&raw)?).await?;
+    let question_id =
+        pipeline
+            .question_version_id
+            .as_ref()
+            .ok_or_else(|| ApiError::BadRequest {
+                code: "question_required",
+                message: "link a question revision to this flow before resolving methodology"
+                    .into(),
+            })?;
+    let question = state.store.get_question_version(question_id).await?;
+    let proposal_id = format!("mpr_{}", ulid::Ulid::new());
+    let at = now();
+    let proposal =
+        sprisk_methodology::resolve_split(&question, &pipeline, &node_id, &proposal_id, &at)
+            .map_err(|error| ApiError::BadRequest {
+                code: "methodology_not_applicable",
+                message: error.to_string(),
+            })?;
+    // Every offered effect passes the authoritative graph compiler before it reaches the UI.
+    let value =
+        serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;
+    for alternative in value["alternatives"].as_array().into_iter().flatten() {
+        if alternative.get("effect").is_some() {
+            let preview = materialize_effect(
+                &pipeline,
+                alternative,
+                "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
+                "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
+                &at,
+            )?;
+            compile(&preview, &state.registry).map_err(ApiError::Compile)?;
+        }
+    }
+    state.store.insert_methodology_proposal(&proposal).await?;
+    Ok((StatusCode::CREATED, Json(proposal)))
+}
+
+async fn propose_node_methodology(
+    State(state): State<AppState>,
+    Path((raw, node_id)): Path<(String, String)>,
+) -> Result<(StatusCode, Json<DecisionProposal>), ApiError> {
+    let pipeline = state.store.get_pipeline_version(&id(&raw)?).await?;
+    let question_id =
+        pipeline
+            .question_version_id
+            .as_ref()
+            .ok_or_else(|| ApiError::BadRequest {
+                code: "question_required",
+                message: "link a question revision to this flow before resolving methodology"
+                    .into(),
+            })?;
+    let question = state.store.get_question_version(question_id).await?;
+    let node = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == node_id)
+        .ok_or_else(|| ApiError::BadRequest {
+            code: "node_not_found",
+            message: format!("node {node_id} does not exist"),
+        })?;
+
+    let proposal_id = format!("mpr_{}", ulid::Ulid::new());
+    let at = now();
+
+    let proposal = if node.operator.as_str().contains("split@") {
+        sprisk_methodology::resolve_split(&question, &pipeline, &node_id, &proposal_id, &at)
+    } else if node.operator.as_str().contains("clustering.")
+        || node.operator.as_str().contains("kmeans")
+        || node.operator.as_str().contains("dbscan")
+        || node.operator.as_str().contains("gmm")
+    {
+        sprisk_methodology::resolve_clustering(
+            &question,
+            &pipeline,
+            &node_id,
+            &proposal_id,
+            &at,
+            None,
+            false,
+            false,
+        )
+    } else if node.operator.as_str().contains("impute@")
+        || node.operator.as_str().contains("drop_missing@")
+    {
+        let col = question
+            .target
+            .as_ref()
+            .map(|t| t.value.as_str())
+            .unwrap_or("feature");
+        sprisk_methodology::resolve_missingness(
+            &question,
+            &pipeline,
+            &node_id,
+            &proposal_id,
+            &at,
+            col,
+            0.05,
+            false,
+            None,
+        )
+    } else if node.operator.as_str().contains("scale@") {
+        let cols = vec!["feature".to_string()];
+        sprisk_methodology::resolve_scaling(
+            &question,
+            &pipeline,
+            &node_id,
+            &proposal_id,
+            &at,
+            &cols,
+            1.0,
+            false,
+            None,
+        )
+    } else if node.operator.as_str().contains("clip_outliers@") {
+        let cols = vec!["feature".to_string()];
+        sprisk_methodology::resolve_outlier_treatment(
+            &question,
+            &pipeline,
+            &node_id,
+            &proposal_id,
+            &at,
+            &cols,
+            0.05,
+            None,
+        )
+    } else {
+        return Err(ApiError::BadRequest {
+            code: "methodology_not_applicable",
+            message: format!(
+                "no methodology rules apply to operator {}",
+                node.operator.as_str()
+            ),
+        });
+    }
+    .map_err(|error| ApiError::BadRequest {
+        code: "methodology_not_applicable",
+        message: error.to_string(),
+    })?;
+
+    let value =
+        serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;
+    for alternative in value["alternatives"].as_array().into_iter().flatten() {
+        if alternative.get("effect").is_some() {
+            let preview = materialize_effect(
+                &pipeline,
+                alternative,
+                "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
+                "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
+                &at,
+            )?;
+            compile(&preview, &state.registry).map_err(ApiError::Compile)?;
+        }
+    }
+    state.store.insert_methodology_proposal(&proposal).await?;
+    Ok((StatusCode::CREATED, Json(proposal)))
+}
+
+async fn apply_methodology(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    text: String,
+) -> Result<(StatusCode, Json<AppliedMethodologyDecision>), ApiError> {
+    let proposal: DecisionProposal = state
+        .store
+        .get_methodology_proposal(&id::<MethodologyProposalId>(&raw)?)
+        .await?;
+    let request: ApplyMethodologyDecision = body(&text)?;
+    if let Some(saved) = state
+        .store
+        .methodology_decision_by_key(request.idempotency_key.as_str())
+        .await?
+    {
+        let saved_pipeline = state
+            .store
+            .get_pipeline_version(&saved.pipeline_version_id)
+            .await?;
+        return Ok((
+            StatusCode::OK,
+            Json(AppliedMethodologyDecision {
+                decision: saved,
+                pipeline: saved_pipeline,
+            }),
+        ));
+    }
+    let base = state
+        .store
+        .get_pipeline_version(&proposal.pipeline_version_id)
+        .await?;
+    if state.store.has_pipeline_child(&base.id).await? {
+        return Err(ApiError::BadRequest {
+            code: "stale_proposal",
+            message: "the flow changed after this proposal; resolve it again".into(),
+        });
+    }
+    let proposal_value =
+        serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;
+    let alternative = proposal_value["alternatives"]
+        .as_array()
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item["id"] == request.alternative_id.as_str())
+        })
+        .ok_or_else(|| ApiError::BadRequest {
+            code: "unknown_alternative",
+            message: format!(
+                "alternative {} is not in this proposal",
+                request.alternative_id.as_str()
+            ),
+        })?;
+    if alternative["applicability"] != "applicable" {
+        return Err(ApiError::BadRequest {
+            code: "missing_fact",
+            message: alternative["reason"]
+                .as_str()
+                .unwrap_or("required evidence is missing")
+                .into(),
+        });
+    }
+    let at = now();
+    let decision_id = format!("mdc_{}", ulid::Ulid::new());
+    let pipeline_id = format!("plv_{}", ulid::Ulid::new());
+    let pipeline = materialize_effect(&base, alternative, &pipeline_id, &decision_id, &at)?;
+    compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
+    let mut decision_json = json!({
+        "schema_version":"sprisk.methodology_decision/v1", "id":decision_id,
+        "proposal_id":proposal.id, "rule":proposal.rule,
+        "question_version_id":proposal.question_version_id,
+        "base_pipeline_version_id":proposal.pipeline_version_id,
+        "pipeline_version_id":pipeline.id, "subject_node_id":proposal.subject_node_id,
+        "alternative_id":request.alternative_id, "created_at":at
+    });
+    if let Some(reason) = &request.reason {
+        decision_json["reason"] = json!(reason);
+    }
+    let decision: MethodologyDecision =
+        parse(&decision_json.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
+    let saved = state
+        .store
+        .apply_methodology_decision(&decision, &pipeline, request.idempotency_key.as_str())
+        .await?;
+    let saved_pipeline = state
+        .store
+        .get_pipeline_version(&saved.pipeline_version_id)
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(AppliedMethodologyDecision {
+            decision: saved,
+            pipeline: saved_pipeline,
+        }),
+    ))
+}
+
+fn materialize_effect(
+    base: &PipelineVersion,
+    alternative: &serde_json::Value,
+    pipeline_id: &str,
+    decision_id: &str,
+    at: &str,
+) -> Result<PipelineVersion, ApiError> {
+    let effect = alternative
+        .get("effect")
+        .ok_or_else(|| ApiError::BadRequest {
+            code: "no_effect",
+            message: "this alternative cannot be applied until its facts are resolved".into(),
+        })?;
+    let node_id = effect["node_id"]
+        .as_str()
+        .ok_or_else(|| ApiError::Internal("effect has no node id".into()))?;
+    let mut value =
+        serde_json::to_value(base).map_err(|error| ApiError::Internal(error.to_string()))?;
+    value["id"] = json!(pipeline_id);
+    value["parent_id"] = json!(base.id);
+    value["created_at"] = json!(at);
+    let node = value["nodes"]
+        .as_array_mut()
+        .and_then(|nodes| nodes.iter_mut().find(|node| node["id"] == node_id))
+        .ok_or_else(|| ApiError::BadRequest {
+            code: "stale_proposal",
+            message: format!("node {node_id} is no longer present"),
+        })?;
+    node["operator"] = effect["operator"].clone();
+    node["params"] = effect["params"].clone();
+    node["methodology_decision_id"] = json!(decision_id);
+    parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()))
+}
+
+async fn list_methodology_decisions(
+    State(state): State<AppState>,
+    query: Query,
+) -> Result<Json<Vec<MethodologyDecision>>, ApiError> {
+    let pipeline: Option<PipelineVersionId> = optional_id(&query, "pipeline_version_id")?;
+    Ok(Json(
+        state
+            .store
+            .list_methodology_decisions(pipeline.as_ref())
+            .await?,
+    ))
 }
 
 async fn list_runs(

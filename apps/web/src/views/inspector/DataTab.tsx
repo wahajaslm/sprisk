@@ -1,6 +1,6 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import type { Attempt, AttemptOutput, CodeInterface, DisplayItem } from "@sprisk/contracts";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import type { Read } from "../../api/code.ts";
 import { useArtifactText, useOutputs } from "../../api/hooks.ts";
@@ -54,7 +54,7 @@ export function DataTab({ attempt, operator, capability, previous, explore, figu
     ...data.map((o) => ({
       key: o.port,
       label: o.port,
-      body: <Output output={o} view={viewOf(o, operator, capability)} previous={previous} explore={explore} />,
+      body: <Output output={o} view={viewOf(o, operator, capability)} nodeId={attempt?.node_id} previous={previous} explore={explore} />,
     })),
     ...shown.map((item, i) => ({
       key: `shown-${i}`,
@@ -151,14 +151,17 @@ const TITLE: Record<OutputView, (port: string) => string> = {
 function Output({
   output,
   view,
+  nodeId,
   previous,
   explore,
 }: {
   output: AttemptOutput;
   view: OutputView;
+  nodeId: string | undefined;
   previous: Props["previous"];
   explore: Explore;
 }) {
+  const [profileMode, setProfileMode] = useState<"table" | "cards">(nodeId === "profile" ? "cards" : "table");
   const isJson = view === "json" || view === "metrics";
   const small = output.artifact.size_bytes <= MAX_INLINE_BYTES;
   const text = useArtifactText(isJson && small ? output.artifact.id : undefined);
@@ -179,6 +182,47 @@ function Output({
             </>
           )}
         />
+      ) : view === "profile" ? (
+        <div className="profile-container">
+          <div className="output-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <p className="output-title">Table · {output.port}</p>
+            <div style={{ display: "flex", gap: "6px" }} role="group" aria-label="Profile view options">
+              <button
+                type="button"
+                className={`page-btn${profileMode === "table" ? " active" : ""}`}
+                onClick={() => setProfileMode("table")}
+                title="View actual raw tabular data from DuckDB SUMMARIZE"
+              >
+                Data Table
+              </button>
+              <button
+                type="button"
+                className={`page-btn${profileMode === "cards" ? " active" : ""}`}
+                onClick={() => setProfileMode("cards")}
+                title="View per-column summary cards"
+              >
+                Column Cards
+              </button>
+            </div>
+          </div>
+          {profileMode === "table" ? (
+            <TablePeek
+              artifactId={a.id}
+              port={output.port}
+              actions={(columns) => (
+                <>
+                  {explore && (
+                    <button type="button" className="page-btn" aria-label={`Explore ${output.port} in code`} onClick={() => explore(output.port)}>
+                      Explore in code
+                    </button>
+                  )}
+                </>
+              )}
+            />
+          ) : (
+            <ColumnProfile artifactId={a.id} />
+          )}
+        </div>
       ) : (
       <>
       <div className="output-head">
@@ -192,8 +236,6 @@ function Output({
         <MetricTiles text={text.data} previous={previous} />
       ) : isJson ? (
         <pre className="code">{prettyJson(text.data)}</pre>
-      ) : view === "profile" ? (
-        <ColumnProfile artifactId={a.id} />
       ) : view === "model" ? (
         <p className="muted">A fitted scikit-learn model, saved for the steps that use it.</p>
       ) : (

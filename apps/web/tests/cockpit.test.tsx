@@ -45,13 +45,13 @@ describe("top bar", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
-  it("puts the project and flow switcher first, then the five views, then Run graph", async () => {
+  it("puts the project and flow switcher first, then the views including Atlas, then Run graph", async () => {
     renderWithApi(<TopBar />);
     const bar = screen.getByRole("banner");
     const switcher = await within(bar).findByRole("button", { name: "Project and flow" });
     const nav = within(bar).getByRole("navigation");
     const tabs = within(nav).getAllByRole("button").map((b) => b.textContent);
-    expect(tabs).toEqual(["Flow", "Datasets", "Notebooks", "Experiments", "Deploy"]);
+    expect(tabs).toEqual(["Atlas", "Flow", "Methodology", "Datasets", "Notebooks", "Experiments", "Deploy"]);
     expect(switcher.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(bar).getByRole("button", { name: /Run graph/ })).toBeInTheDocument();
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
@@ -244,11 +244,11 @@ describe("flow canvas", () => {
     expect(edge("load", "split")).toMatchObject({ sourceHandle: "out", targetHandle: "in" });
   });
 
-  it("shows a heading with the step count above each stage", async () => {
+  it("shows a heading above each stage, without a step count", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     const heading = await screen.findByRole("heading", { name: /Split/ });
-    expect(heading).toHaveTextContent(/Split\s*1/);
+    expect(heading).toHaveTextContent(/^Split$/);
   });
 
   it("Tidy puts every step back where the layout places it", async () => {
@@ -257,6 +257,49 @@ describe("flow canvas", () => {
     await screen.findByRole("button", { name: /^split/ });
     await userEvent.click(screen.getByRole("button", { name: "Tidy" }));
     expect(screen.getByRole("button", { name: /^split/ })).toBeInTheDocument();
+  });
+
+  it("Undo and Redo buttons are present on canvas and toggle after tidy", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    await screen.findByRole("button", { name: /^split/ });
+    const undoBtn = screen.getByRole("button", { name: "Undo" });
+    const redoBtn = screen.getByRole("button", { name: "Redo" });
+    expect(undoBtn).toBeDisabled();
+    expect(redoBtn).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Tidy" }));
+    expect(undoBtn).not.toBeDisabled();
+    await userEvent.click(undoBtn);
+    expect(redoBtn).not.toBeDisabled();
+  });
+
+  it("encapsulateStages dynamically expands stage dimensions to enclose moved child steps", async () => {
+    const { encapsulateStages } = await import("../src/views/FlowCanvas.tsx");
+    const testNodes: any[] = [
+      {
+        id: "stage:Split#split",
+        type: "stage",
+        position: { x: 100, y: 100 },
+        width: 280,
+        height: 480,
+        data: { name: "Split", count: 1, active: false, baseWidth: 280, baseHeight: 480 },
+      },
+      {
+        id: "split",
+        type: "step",
+        parentId: "stage:Split#split",
+        position: { x: 350, y: 550 },
+        width: 200,
+        height: 80,
+        data: {},
+      },
+    ];
+    const encapsulated = encapsulateStages(testNodes);
+    const stage = encapsulated.find((n) => n.id === "stage:Split#split")!;
+    // Right = 350 + 200 = 550; + STAGE_PAD_X (20) = 570
+    // Bottom = 550 + 80 = 630; + STAGE_FOOTER_HEIGHT (44) + 24 = 698
+    expect(stage.width).toBe(570);
+    expect(stage.height).toBe(698);
   });
 
   it("right-click on a step opens its actions", async () => {
@@ -522,10 +565,10 @@ describe("column profile", () => {
     expect(sepal).toHaveTextContent("DOUBLE");
     expect(sepal).toHaveTextContent("2.67% missing");
     expect(sepal).toHaveTextContent("35 distinct");
-    expect(within(sepal).getByRole("img", { name: "min 4.3, q25 5.1, median 5.8, q75 6.4, max 7.9" })).toBeInTheDocument();
+    expect(sepal).toHaveTextContent("min 4.3 · q25 5.1 · median 5.8 · q75 6.4 · max 7.9");
   });
 
-  it("shows a text column's range without a spread strip", async () => {
+  it("shows a text column's range", async () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "profile" });
     const species = within(await screen.findByRole("region", { name: "Column profile" })).getByRole("group", { name: "species" });
@@ -1425,3 +1468,44 @@ describe("pinned inspector", () => {
     expect(setPin).toHaveBeenCalledWith({ runId: RUN, nodeId: "score" });
   });
 });
+
+describe("methodology map and governance", () => {
+  it("renders the methodology map structure with lifecycle stages and rules", async () => {
+    const { MethodologyPage } = await import("../src/views/methodology/MethodologyPage.tsx");
+    renderWithApi(<MethodologyPage />);
+
+    expect(await screen.findByRole("heading", { name: "Methodology Map" })).toBeInTheDocument();
+    expect(screen.getByText(/Lifecycle Decision Topology/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Validation Partitioning/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Data Cleaning/ })).toBeInTheDocument();
+    expect(screen.getByText("Standard Production ML (Balanced Default)")).toBeInTheDocument();
+  });
+
+  it("navigates to Methodology top tab and allows switching view modes and presets", async () => {
+    const { Cockpit } = await import("../src/Cockpit.tsx");
+    renderWithApi(<Cockpit />);
+
+    // Click Methodology tab in top bar
+    const bar = screen.getByRole("banner");
+    const methodBtn = within(bar).getByRole("button", { name: "Methodology" });
+    await userEvent.click(methodBtn);
+
+    expect(await screen.findByRole("heading", { name: "Methodology Map" })).toBeInTheDocument();
+
+    // Switch to Adaptive Policies view
+    const adaptiveTab = screen.getByRole("tab", { name: "Adaptive Policies" });
+    await userEvent.click(adaptiveTab);
+    expect(await screen.findByText("Global Adaptive Policy Thresholds")).toBeInTheDocument();
+    expect(screen.getByText("Validation Split Fraction")).toBeInTheDocument();
+
+    // Switch to Active Flow Bindings
+    const bindingsTab = screen.getByRole("tab", { name: /Active Flow Bindings/ });
+    await userEvent.click(bindingsTab);
+    expect(await screen.findByText("Active Flow Node Methodology Bindings")).toBeInTheDocument();
+
+    // Switch preset to REFORMS Strict
+    await userEvent.click(screen.getByRole("button", { name: /REFORMS Strict/ }));
+    expect(screen.getByRole("button", { name: /REFORMS Strict/ })).toHaveClass("active");
+  });
+});
+
