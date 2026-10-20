@@ -10,3 +10,6 @@ dist/
 .DS_Store
 .sprisk/
 datascientest_lessons/
+
+# Third-party course material: never commit
+knowledge/
