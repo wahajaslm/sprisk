@@ -81,6 +81,20 @@ def measure(observation: RuleObservation, column: str, name: str) -> float | str
     return observation.profile.get(f"column.{column}.{name}")
 
 
+def measured(observation: RuleObservation, column: str, name: str) -> float | None:
+    """A numeric measure, or None where the profile left it out (no variation, not finite)."""
+    value = measure(observation, column, name)
+    return None if value is None else float(value)
+
+
+def required(observation: RuleObservation, column: str, name: str) -> float:
+    """A measure every profiled column has; its absence is a broken observation, not zero."""
+    value = measured(observation, column, name)
+    if value is None:
+        raise RuleError(f"profile has no {name} for column {column}")
+    return value
+
+
 def is_numeric(observation: RuleObservation, column: str) -> bool:
     data_type = str(measure(observation, column, "data_type"))
     return data_type.startswith(("Int", "UInt", "Float", "Decimal"))

@@ -4,7 +4,7 @@ from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_workers.rule import (
     applicable,
     decision,
-    measure,
+    measured,
     not_applicable,
     profile_evidence,
     step_columns,
@@ -14,8 +14,9 @@ from sprisk_workers.rule import (
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
     columns = step_columns(observation)
-    share = {c: float(measure(observation, c, "outlier_share") or 0.0) for c in columns}
-    many = [c for c in columns if share[c] >= s["outlier_fraction_threshold"]]
+    # A column without an outlier share has no variation, so it has no outliers to clip.
+    share = {c: v for c in columns if (v := measured(observation, c, "outlier_share")) is not None}
+    many = [c for c, v in share.items() if v >= s["outlier_fraction_threshold"]]
 
     # Keeping the step as it is changes no graph, so this choice has no params.
     keep = {
@@ -27,7 +28,8 @@ def decide(observation: RuleObservation) -> RuleDecision:
     }
     clip = applicable(
         "clip_mean_sd",
-        f"{', '.join(many)} has many values outside the IQR fences."
+        f"{', '.join(many)} has many values outside the IQR fences. The mean and SD are "
+        "themselves pulled by those values, so clipping is milder than it looks."
         if many
         else "Available; few values would change.",
         {"columns": columns, "k": s["clip_k"]},
@@ -36,7 +38,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
         "isolation_forest_filter", "No isolation forest filter operator exists."
     )
 
-    evidence = [profile_evidence(f"{c} outlier share", f"{share[c]:.1%}") for c in columns]
+    evidence = [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in share.items()]
     return decision(
         observation,
         "clip_mean_sd" if many else "none_tree_or_clean",

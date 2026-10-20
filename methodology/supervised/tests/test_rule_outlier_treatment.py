@@ -3,7 +3,7 @@ from typing import Any
 from rule_harness import alternative, column, decide
 
 RULE = "supervised/outlier_treatment"
-SETTINGS = {"outlier_fraction_threshold": 0.05, "extreme_zscore_cutoff": 8.0, "clip_k": 3.0}
+SETTINGS = {"outlier_fraction_threshold": 0.05, "clip_k": 3.0}
 
 
 def run(profile: dict[str, object]) -> dict[str, Any]:

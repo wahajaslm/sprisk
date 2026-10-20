@@ -8,7 +8,7 @@ from sprisk_workers.rule import (
     applicable,
     decision,
     is_numeric,
-    measure,
+    measured,
     not_applicable,
     profile_evidence,
     step_columns,
@@ -16,15 +16,28 @@ from sprisk_workers.rule import (
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
-    cutoff = observation.settings["outlier_kurtosis_threshold"]
+    s = observation.settings
     columns = step_columns(observation)
-    kurtosis = {c: float(measure(observation, c, "kurtosis") or 0.0) for c in columns}
-    outliers = {c: float(measure(observation, c, "outlier_share") or 0.0) for c in columns}
+    kurtosis = {c: v for c in columns if (v := measured(observation, c, "kurtosis")) is not None}
+    outliers = {
+        c: v for c in columns if (v := measured(observation, c, "outlier_share")) is not None
+    }
     text = [c for c in columns if not is_numeric(observation, c)]
-    heavy = [c for c in columns if kurtosis[c] > cutoff or outliers[c] > 0]
+    # The profile gives no shape to a column without variation; the scale step refuses those.
+    flat = [c for c in columns if c not in text and c not in kurtosis]
+    heavy = [
+        c
+        for c in columns
+        if kurtosis.get(c, 0.0) > s["outlier_kurtosis_threshold"]
+        or outliers.get(c, 0.0) >= s["outlier_share_threshold"]
+    ]
 
-    if text:
-        why = f"The scale step needs numbers; {', '.join(text)} is text."
+    if text or flat:
+        why = (
+            f"The scale step needs numbers; {', '.join(text)} is text."
+            if text
+            else f"{', '.join(flat)} has no spread in the train rows, so it cannot be scaled."
+        )
         robust = not_applicable("robust_scaling", why)
         standard = not_applicable("standard_scaling", why)
     else:
@@ -47,8 +60,8 @@ def decide(observation: RuleObservation) -> RuleDecision:
     )
     maxabs = not_applicable("maxabs_scaling_sparse", "The scale step has no max-abs method.")
 
-    evidence = [profile_evidence(f"{c} excess kurtosis", f"{kurtosis[c]:.2f}") for c in columns]
-    evidence += [profile_evidence(f"{c} outlier share", f"{outliers[c]:.1%}") for c in columns]
+    evidence = [profile_evidence(f"{c} excess kurtosis", f"{v:.2f}") for c, v in kurtosis.items()]
+    evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in outliers.items()]
     return decision(
         observation,
         "robust_scaling" if heavy else "standard_scaling",

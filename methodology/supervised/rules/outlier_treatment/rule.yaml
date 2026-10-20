@@ -24,9 +24,6 @@ observes:
   - profile: outlier_percentage_iqr
     description: "Percentage of data points beyond [Q1 - 1.5*IQR, Q3 + 1.5*IQR]"
     required: true
-  - profile: extreme_zscore_max
-    description: "Maximum absolute z-score across continuous variables"
-    required: true
   - fact: planned_model_family
     description: "Linear/logistic, distance-based, or neural vs tree-based"
     required: false
@@ -35,7 +32,6 @@ observes:
 # ------------------------------------------------------------------------------
 policy_thresholds:
   outlier_fraction_threshold: 0.05
-  extreme_zscore_cutoff: 8.0
   clip_k: 3.0
 
 # 4. Methodological Alternatives & Scoped Settings
@@ -53,7 +49,7 @@ alternatives:
   - id: clip_mean_sd
     label: Clip to Train Mean ± k SD
     description: Cap each value at the train mean plus or minus k standard deviations.
-    condition: outlier_percentage_iqr >= outlier_fraction_threshold AND extreme_zscore_max < extreme_zscore_cutoff
+    condition: outlier_percentage_iqr >= outlier_fraction_threshold
     rationale: Limits extreme leverage points without dropping rows. The mean and SD are themselves pulled
       by outliers, so heavy tails are clipped less than a percentile cap would.
     action:
@@ -63,7 +59,7 @@ alternatives:
     label: Multivariate Isolation Forest (Train Filtering)
     description: Identify and filter multi-dimensional anomalies in the training set using random partition
       isolation trees.
-    condition: outlier_percentage_iqr >= outlier_fraction_threshold AND extreme_zscore_max >= extreme_zscore_cutoff
+    condition: outlier_percentage_iqr >= outlier_fraction_threshold
     rationale: 'Not available: no isolation forest filter operator exists.'
     action:
       type: insert_step

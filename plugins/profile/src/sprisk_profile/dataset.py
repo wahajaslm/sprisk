@@ -91,9 +91,10 @@ def _shape(s: pl.Series) -> dict[str, float]:
         return {}
     q1, q3 = present.quantile(0.25, "linear"), present.quantile(0.75, "linear")
     shape: dict[str, float] = {}
-    if (skew := present.skew()) is not None and math.isfinite(skew):
+    # Unbiased (bias=False), as SciPy reports them: small train partitions are common.
+    if (skew := present.skew(bias=False)) is not None and math.isfinite(skew):
         shape["skewness"] = skew
-    if (kurtosis := present.kurtosis()) is not None and math.isfinite(kurtosis):
+    if (kurtosis := present.kurtosis(bias=False)) is not None and math.isfinite(kurtosis):
         shape["kurtosis"] = kurtosis
     if q1 is not None and q3 is not None:
         fence = 1.5 * (q3 - q1)

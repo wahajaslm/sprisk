@@ -24,7 +24,7 @@ observes:
   - profile: numerical_columns
     description: "List of continuous quantitative features"
     required: true
-  - profile: max_kurtosis
+  - profile: max_excess_kurtosis
     description: "Peak heavy-tailedness / outlier severity across features"
     required: true
   - profile: is_sparse_matrix
@@ -38,6 +38,8 @@ observes:
 # ------------------------------------------------------------------------------
 policy_thresholds:
   outlier_kurtosis_threshold: 3.0
+  # Share of train values outside the 1.5 x IQR fences; a normal sample has about 0.7%.
+  outlier_share_threshold: 0.05
 
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------
@@ -53,8 +55,8 @@ alternatives:
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).
-    condition: planned_model_family not in ['tree'] AND max_kurtosis > outlier_kurtosis_threshold
-    rationale: Heavy-tailed distributions detected (kurtosis > 3.0). RobustScaler prevents extreme outliers
+    condition: planned_model_family not in ['tree'] AND max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold
+    rationale: Heavy-tailed distributions detected (excess kurtosis > 3.0). RobustScaler prevents extreme outliers
       from compressing regular feature distances.
     action:
       type: replace_node
@@ -62,7 +64,7 @@ alternatives:
   - id: standard_scaling
     label: Standard Scaling (Z-Score Normalization)
     description: Center to zero mean and scale to unit variance.
-    condition: planned_model_family not in ['tree'] AND max_kurtosis <= outlier_kurtosis_threshold AND is_sparse_matrix
+    condition: planned_model_family not in ['tree'] AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold AND is_sparse_matrix
       is false
     rationale: Data has standard bell-shaped distributions. Essential for gradient descent convergence and
       distance metrics (SVM/KNN).

@@ -3,7 +3,7 @@ from typing import Any
 from rule_harness import alternative, column, decide
 
 RULE = "supervised/feature_scaling"
-SETTINGS = {"outlier_kurtosis_threshold": 3.0}
+SETTINGS = {"outlier_kurtosis_threshold": 3.0, "outlier_share_threshold": 0.05}
 
 
 def run(profile: dict[str, object]) -> dict[str, Any]:
@@ -28,3 +28,14 @@ def test_light_tails_without_outliers_get_standard_scaling() -> None:
 def test_text_columns_cannot_be_scaled() -> None:
     d = run(column("city", "String"))
     assert alternative(d, "standard_scaling")["applicability"] == "not_applicable"
+
+
+def test_a_column_without_spread_cannot_be_scaled() -> None:
+    d = run({**column("age", kurtosis=0.1), **column("flag")})
+    assert alternative(d, "standard_scaling")["applicability"] == "not_applicable"
+    assert "flag" in alternative(d, "standard_scaling")["reason"]
+
+
+def test_a_few_values_outside_the_fences_are_normal_and_keep_standard_scaling() -> None:
+    d = run(column("age", kurtosis=0.3, outlier_share=0.01))
+    assert d["recommended_alternative_id"] == "standard_scaling"

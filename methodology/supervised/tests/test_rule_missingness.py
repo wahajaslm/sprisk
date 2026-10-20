@@ -1,6 +1,9 @@
 from typing import Any
 
+import pytest
 from rule_harness import alternative, column, decide
+
+from sprisk_workers.errors import RuleError
 
 RULE = "supervised/missingness"
 SETTINGS = {
@@ -58,3 +61,8 @@ def test_measured_missing_shares_are_evidence() -> None:
         "value": "10.0%",
         "origin": "measured",
     } in d["evidence"]
+
+
+def test_an_unmeasured_missing_share_is_an_error_not_zero() -> None:
+    with pytest.raises(RuleError, match="missing_share"):
+        run(column("age", skewness=0.1))

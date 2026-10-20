@@ -12,9 +12,10 @@ from sprisk_workers.rule import (
     authoritative,
     decision,
     is_numeric,
-    measure,
+    measured,
     not_applicable,
     profile_evidence,
+    required,
     step_columns,
 )
 
@@ -23,13 +24,14 @@ def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
     columns = step_columns(observation)
     target = authoritative(observation.facts.get("question.target"))
-    share = {c: float(measure(observation, c, "missing_share") or 0.0) for c in columns}
-    skew = {c: abs(float(measure(observation, c, "skewness") or 0.0)) for c in columns}
+    share = {c: required(observation, c, "missing_share") for c in columns}
+    # A numeric column without a skew has no variation: mean and median are the same.
+    skew = {c: abs(v) for c in columns if (v := measured(observation, c, "skewness")) is not None}
 
     has_target = target in columns
     text = [c for c in columns if not is_numeric(observation, c)]
     mostly_empty = [c for c in columns if share[c] >= s["drop_column_threshold"]]
-    skewed = any(skew[c] > s["skewness_threshold"] for c in columns)
+    skewed = any(v > s["skewness_threshold"] for v in skew.values())
 
     blocked = (
         f"{target} is the target: a missing label must never be filled."
