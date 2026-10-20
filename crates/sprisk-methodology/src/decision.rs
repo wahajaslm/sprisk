@@ -88,28 +88,22 @@ pub fn proposal(
     if !pipeline.nodes.iter().any(|n| n.id.as_str() == node_id) {
         return Err(ResolveError::UnknownNode(node_id.to_owned()));
     }
-    let manifest = serde_json::to_value(&rule.alternatives)?;
-    let decided = serde_json::to_value(&decision.alternatives)?;
     let mut alternatives = Vec::new();
-    for alternative in decided.as_array().into_iter().flatten() {
-        let id = alternative["id"].as_str().unwrap_or_default();
-        let declared = manifest
-            .as_array()
-            .into_iter()
-            .flatten()
-            .find(|m| m["id"] == id)
+    for decided in &decision.alternatives {
+        let id = decided.id.as_str();
+        let declared = rule
+            .alternatives
+            .iter()
+            .find(|m| m.id.as_str() == id)
             .ok_or_else(|| ResolveError::UndeclaredAlternative(id.to_owned()))?;
         let mut built = json!({
             "id": id,
-            "label": declared["label"],
-            "description": declared["description"],
-            "applicability": alternative["applicability"],
-            "reason": alternative["reason"],
+            "label": declared.label,
+            "description": declared.description,
+            "applicability": decided.applicability,
+            "reason": decided.reason,
         });
-        if let (Some(params), Some(operator)) = (
-            alternative.get("params"),
-            declared["action"].get("operator"),
-        ) {
+        if let (Some(params), Some(operator)) = (&decided.params, &declared.action.operator) {
             built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": operator, "params": params });
         }
         alternatives.push(built);

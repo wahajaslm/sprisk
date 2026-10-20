@@ -1681,3 +1681,36 @@ async fn a_methodology_rule_source_is_its_files() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_data_rule_refuses_train_rows_that_did_not_come_from_a_split() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    call(&api.app, "POST", "/question_versions", Some(q)).await;
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().push(json!({
+        "id":"scale", "operator":"sprisk.clean.scale@1.0.0",
+        "params":{"columns":["x"],"method":"z_score"}
+    }));
+    flow["edges"] = json!([
+        {"from":"load.data","to":"scale.train"},
+        {"from":"load.data","to":"scale.test"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (status, body) = propose_scaling(&api).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(
+        body["errors"][0]["code"],
+        "methodology_evidence_unavailable"
+    );
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("split"),
+        "{body}"
+    );
+}

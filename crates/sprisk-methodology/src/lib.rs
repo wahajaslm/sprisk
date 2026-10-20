@@ -10,8 +10,6 @@ pub use decision::{observation, profile_facts, proposal};
 pub enum ResolveError {
     #[error("node {0} does not exist")]
     UnknownNode(String),
-    #[error("node {0} is not a supported split")]
-    NotSplit(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]
     UndeclaredAlternative(String),
     #[error("could not construct proposal: {0}")]
