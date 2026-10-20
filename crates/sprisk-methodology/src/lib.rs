@@ -2,13 +2,14 @@
 //! graph mutation remains an explicit API Apply operation.
 
 mod catalog;
+mod decision;
 pub use catalog::{CatalogError, RuleCatalog};
+pub use decision::{observation, proposal};
 
-use serde_json::{Value, json};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{DecisionProposal, PipelineVersion, QuestionVersion, parse};
 
-pub const SPLIT_RULE: &str = "supervised.data_split@1.0.0";
 pub const CLUSTERING_RULE: &str = "unsupervised.clustering_algorithm@1.0.0";
 pub const MISSINGNESS_RULE: &str = "supervised.missingness@1.0.0";
 pub const SCALING_RULE: &str = "supervised.feature_scaling@1.0.0";
@@ -26,93 +27,12 @@ pub enum ResolveError {
     NotSplit(String),
     #[error("node {0} is not an applicable operator: {1}")]
     IncompatibleOperator(String, String),
+    #[error("the rule returned alternative {0}, which its manifest does not declare")]
+    UndeclaredAlternative(String),
     #[error("could not construct proposal: {0}")]
     Contract(#[from] sprisk_contracts::ContractError),
     #[error("could not serialize proposal input: {0}")]
     Json(#[from] serde_json::Error),
-}
-
-pub fn resolve_split(
-    question: &QuestionVersion,
-    pipeline: &PipelineVersion,
-    node_id: &str,
-    proposal_id: &str,
-    created_at: &str,
-) -> Result<DecisionProposal, ResolveError> {
-    let node = pipeline
-        .nodes
-        .iter()
-        .find(|node| node.id.as_str() == node_id)
-        .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
-    if !node.operator.as_str().starts_with("sprisk.validation.")
-        || !node.operator.as_str().contains("split@")
-    {
-        return Err(ResolveError::NotSplit(node_id.to_owned()));
-    }
-
-    let mut evidence = Vec::new();
-    let target = fact(&question.target, "Target", &mut evidence);
-    let time = fact(&question.time_column, "Time column", &mut evidence);
-    let entity = fact(&question.entity_column, "Entity column", &mut evidence);
-    if let Some(horizon) = &question.prediction_horizon {
-        evidence.push(evidence_json("Prediction horizon", horizon));
-    }
-
-    let temporal = alternative(
-        "temporal",
-        "Temporal split",
-        "Train on earlier observations and test on later observations.",
-        time.as_ref(),
-        "A confirmed time column represents the prediction chronology.",
-        "The time column must be explicit, measured, or confirmed before it can control the split.",
-        |column| json!({"kind":"replace_node","node_id":node_id,"operator":"sprisk.validation.temporal_split@1.0.0","params":{"time_column":column,"test_fraction":0.2}}),
-    );
-    let grouped = alternative(
-        "entity",
-        "Entity split",
-        "Keep every entity wholly in train or test.",
-        entity.as_ref(),
-        "A confirmed entity key prevents the same entity appearing on both sides.",
-        "The entity column must be explicit, measured, or confirmed before it can control the split.",
-        |column| json!({"kind":"replace_node","node_id":node_id,"operator":"sprisk.validation.group_split@1.0.0","params":{"group_column":column,"test_fraction":0.2,"seed":42}}),
-    );
-    let mut random_params = json!({"test_fraction":0.2,"seed":42});
-    if let Some((target, _)) = &target {
-        random_params["stratify"] = json!(target);
-    }
-    let random = json!({
-        "id":"random", "label":"Random split",
-        "description":"Shuffle rows with a repeatable seed.", "applicability":"applicable",
-        "reason": if time.is_some() || entity.is_some() { "Available as a baseline, but it does not preserve declared time or entity boundaries." } else { "No authoritative time or entity column is available." },
-        "effect":{"kind":"replace_node","node_id":node_id,"operator":"sprisk.validation.random_split@1.0.0","params":random_params}
-    });
-    let recommended = if time
-        .as_ref()
-        .is_some_and(|(_, authoritative)| *authoritative)
-    {
-        "temporal"
-    } else if entity
-        .as_ref()
-        .is_some_and(|(_, authoritative)| *authoritative)
-    {
-        "entity"
-    } else {
-        "random"
-    };
-    let fingerprint_input =
-        json!({"rule":SPLIT_RULE,"question":question,"pipeline":pipeline,"node_id":node_id});
-    let fingerprint = format!(
-        "sha256:{}",
-        hex::encode(Sha256::digest(serde_json::to_vec(&fingerprint_input)?))
-    );
-    let value = json!({
-        "schema_version":"sprisk.decision_proposal/v1", "id":proposal_id, "rule":SPLIT_RULE,
-        "question_version_id":question.id, "pipeline_version_id":pipeline.id,
-        "subject_node_id":node_id, "evidence":evidence,
-        "alternatives":[temporal, grouped, random],
-        "recommended_alternative_id":recommended, "fingerprint":fingerprint, "created_at":created_at
-    });
-    Ok(parse(&serde_json::to_string(&value)?)?)
 }
 
 pub fn resolve_clustering(
@@ -727,46 +647,6 @@ pub fn resolve_manifold(
     Ok(parse(&serde_json::to_string(&value)?)?)
 }
 
-fn fact(
-    fact: &Option<sprisk_contracts::Fact>,
-    label: &str,
-    evidence: &mut Vec<Value>,
-) -> Option<(String, bool)> {
-    fact.as_ref().map(|fact| {
-        evidence.push(evidence_json(label, fact));
-        (
-            fact.value.as_str().to_owned(),
-            fact.origin != sprisk_contracts::Origin::Inferred,
-        )
-    })
-}
-
-fn evidence_json(label: &str, fact: &sprisk_contracts::Fact) -> Value {
-    json!({"kind":"question_fact","label":label,"value":fact.value,"origin":fact.origin})
-}
-
-fn alternative(
-    id: &str,
-    label: &str,
-    description: &str,
-    fact: Option<&(String, bool)>,
-    applicable_reason: &str,
-    missing_reason: &str,
-    effect: impl FnOnce(&str) -> Value,
-) -> Value {
-    match fact {
-        Some((value, true)) => {
-            json!({"id":id,"label":label,"description":description,"applicability":"applicable","reason":applicable_reason,"effect":effect(value)})
-        }
-        Some((_value, false)) => {
-            json!({"id":id,"label":label,"description":description,"applicability":"needs_fact","reason":missing_reason})
-        }
-        None => {
-            json!({"id":id,"label":label,"description":description,"applicability":"needs_fact","reason":missing_reason})
-        }
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -807,49 +687,6 @@ mod tests {
             "created_at": "2026-10-15T10:00:00Z"
         });
         parse(&val.to_string()).unwrap()
-    }
-
-    #[test]
-    fn test_resolve_split_random_default() {
-        let question = make_test_question("classification", None);
-        let pipeline = make_test_pipeline("split_1", "sprisk.validation.random_split@1.0.0");
-        let proposal = resolve_split(
-            &question,
-            &pipeline,
-            "split_1",
-            "mpr_01JABCDEFGHJKMNPQRSTVWXYZ1",
-            "2026-10-15T10:00:00Z",
-        )
-        .unwrap();
-        assert_eq!(
-            proposal
-                .recommended_alternative_id
-                .as_ref()
-                .map(|x| x.as_str()),
-            Some("random")
-        );
-        assert_eq!(proposal.alternatives.len(), 3);
-    }
-
-    #[test]
-    fn test_resolve_split_temporal_recommended() {
-        let question = make_test_question("classification", Some("timestamp"));
-        let pipeline = make_test_pipeline("split_1", "sprisk.validation.random_split@1.0.0");
-        let proposal = resolve_split(
-            &question,
-            &pipeline,
-            "split_1",
-            "mpr_01JABCDEFGHJKMNPQRSTVWXYZ2",
-            "2026-10-15T10:00:00Z",
-        )
-        .unwrap();
-        assert_eq!(
-            proposal
-                .recommended_alternative_id
-                .as_ref()
-                .map(|x| x.as_str()),
-            Some("temporal")
-        );
     }
 
     #[test]

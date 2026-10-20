@@ -158,6 +158,15 @@ pub async fn serve_on(
             std::time::Duration::from_secs(60),
             2,
         ),
+        rule_runner: sprisk_api::RuleRunner::new(
+            vec![
+                config.python.display().to_string(),
+                "-m".into(),
+                "sprisk_workers.rule".into(),
+            ],
+            std::time::Duration::from_secs(30),
+            4,
+        ),
         data_roots,
         kernels: kernels.clone(),
     };

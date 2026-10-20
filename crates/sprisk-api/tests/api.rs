@@ -103,6 +103,15 @@ async fn api_with_kernel_host(
         idle_worker: Default::default(),
         data_roots: vec![dir.path().canonicalize().unwrap()],
         splitter,
+        rule_runner: sprisk_api::RuleRunner::new(
+            vec![
+                python.display().to_string(),
+                "-m".into(),
+                "sprisk_workers.rule".into(),
+            ],
+            Duration::from_secs(30),
+            2,
+        ),
         profiler: Profiler::new(
             vec![
                 python.display().to_string(),
@@ -1449,7 +1458,9 @@ async fn split_methodology_is_resolved_previewed_and_applied_once() {
     .await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     assert_eq!(proposal["recommended_alternative_id"], "temporal");
-    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 3);
+    // Decided by methodology/supervised/rules/data_split/rule.py, not by Rust.
+    assert_eq!(proposal["rule"], "methodology.supervised.data_split@1.0.0");
+    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 4);
 
     let uri = format!(
         "/methodology_proposals/{}/apply",

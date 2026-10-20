@@ -49,6 +49,8 @@ pub enum CatalogError {
     },
     #[error("unknown methodology rule {0}")]
     UnknownRule(String),
+    #[error("methodology rule {0} has no rule.py")]
+    NoModule(String),
 }
 
 #[derive(Debug, Default)]
@@ -61,6 +63,8 @@ struct Entry {
     rule: MethodologyRule,
     path: PathBuf,
     source: MethodologyRuleSource,
+    /// The rule's `decide()` module, when it has one.
+    module: Option<PathBuf>,
 }
 
 impl RuleCatalog {
@@ -76,7 +80,13 @@ impl RuleCatalog {
                 let text = read(&path)?;
                 let rule = parse_manifest(&path, &text)?;
                 let source = read_source(&path, &rule, text)?;
-                catalog.insert(Entry { rule, path, source })?;
+                let module = Some(path.with_file_name(MODULE)).filter(|m| m.is_file());
+                catalog.insert(Entry {
+                    rule,
+                    path,
+                    source,
+                    module,
+                })?;
             }
         }
         catalog.refuse_shared_decisions()?;
@@ -88,11 +98,26 @@ impl RuleCatalog {
         self.rules.values().map(|e| &e.rule)
     }
 
-    pub fn source(&self, rule_ref: &str) -> Result<&MethodologyRuleSource, CatalogError> {
+    pub fn rule(&self, rule_ref: &str) -> Result<&MethodologyRule, CatalogError> {
+        self.entry(rule_ref).map(|e| &e.rule)
+    }
+
+    /// The path of the rule's `rule.py`, for the rule runner.
+    pub fn module(&self, rule_ref: &str) -> Result<&Path, CatalogError> {
+        self.entry(rule_ref)?
+            .module
+            .as_deref()
+            .ok_or_else(|| CatalogError::NoModule(rule_ref.to_owned()))
+    }
+
+    fn entry(&self, rule_ref: &str) -> Result<&Entry, CatalogError> {
         self.rules
             .get(rule_ref)
-            .map(|e| &e.source)
             .ok_or_else(|| CatalogError::UnknownRule(rule_ref.to_owned()))
+    }
+
+    pub fn source(&self, rule_ref: &str) -> Result<&MethodologyRuleSource, CatalogError> {
+        self.entry(rule_ref).map(|e| &e.source)
     }
 
     fn insert(&mut self, entry: Entry) -> Result<(), CatalogError> {

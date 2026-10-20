@@ -53,14 +53,19 @@ impl BoundedProcess {
 
     /// Writes `input` to the process and returns what it printed.
     pub async fn run(&self, input: Vec<u8>) -> Result<String, ProcessError> {
+        self.run_with(&[], input).await
+    }
+
+    /// As `run`, with `args` after the configured command.
+    pub async fn run_with(&self, args: &[String], input: Vec<u8>) -> Result<String, ProcessError> {
         let _slot = self.running.try_acquire().map_err(|_| ProcessError::Busy)?;
         // Dropping the future on timeout drops the child, which kills it (`kill_on_drop`).
-        tokio::time::timeout(self.timeout, self.run_once(input))
+        tokio::time::timeout(self.timeout, self.run_once(args, input))
             .await
             .map_err(|_| ProcessError::Timeout(self.timeout))?
     }
 
-    async fn run_once(&self, input: Vec<u8>) -> Result<String, ProcessError> {
+    async fn run_once(&self, extra: &[String], input: Vec<u8>) -> Result<String, ProcessError> {
         let failed = |e: std::io::Error| ProcessError::Failed(e.to_string());
         let (program, args) = self
             .command
@@ -68,6 +73,7 @@ impl BoundedProcess {
             .ok_or_else(|| ProcessError::Failed("no command configured".into()))?;
         let mut child = Command::new(program)
             .args(args)
+            .args(extra)
             .env_clear()
             .envs(
                 PASSED_ENV

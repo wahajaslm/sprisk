@@ -7,10 +7,12 @@ mod bounded;
 mod figures;
 mod kernel;
 mod profile;
+mod rules;
 mod split;
 pub use bounded::ProcessError;
 pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use profile::Profiler;
+pub use rules::RuleRunner;
 pub use split::{SplitError, Splitter};
 
 use axum::body::Bytes;
@@ -56,6 +58,8 @@ pub struct AppState {
     pub splitter: Splitter,
     /// Profiles one table for the Datasets view (ADR-0038).
     pub profiler: Profiler,
+    /// Runs a methodology rule's Python decide() (ADR-0042).
+    pub rule_runner: RuleRunner,
     /// One live Python kernel per notebook being explored (ADR-0036).
     pub kernels: Kernels,
 }
@@ -209,6 +213,8 @@ enum ApiError {
     Kernel(#[from] KernelError),
     #[error("profiling the table {0}")]
     Profile(#[from] ProcessError),
+    #[error("running the methodology rule {0}")]
+    Rule(ProcessError),
     #[error("{0}")]
     Internal(String),
 }
@@ -263,6 +269,14 @@ impl ApiError {
             ApiError::Profile(ProcessError::Timeout(_)) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 vec![("profile_timeout", self.to_string())],
+            ),
+            ApiError::Rule(ProcessError::Timeout(_)) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                vec![("rule_timeout", self.to_string())],
+            ),
+            ApiError::Rule(ProcessError::Busy) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                vec![("rule_busy", self.to_string())],
             ),
             ApiError::Profile(ProcessError::Busy) => (
                 StatusCode::TOO_MANY_REQUESTS,
@@ -828,12 +842,7 @@ async fn propose_split(
     let question = state.store.get_question_version(question_id).await?;
     let proposal_id = format!("mpr_{}", ulid::Ulid::new());
     let at = now();
-    let proposal =
-        sprisk_methodology::resolve_split(&question, &pipeline, &node_id, &proposal_id, &at)
-            .map_err(|error| ApiError::BadRequest {
-                code: "methodology_not_applicable",
-                message: error.to_string(),
-            })?;
+    let proposal = decide_split(&state, &question, &pipeline, &node_id, &proposal_id, &at).await?;
     // Every offered effect passes the authoritative graph compiler before it reaches the UI.
     let value =
         serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;
@@ -851,6 +860,55 @@ async fn propose_split(
     }
     state.store.insert_methodology_proposal(&proposal).await?;
     Ok((StatusCode::CREATED, Json(proposal)))
+}
+
+const SPLIT_RULE: &str = "methodology.supervised.data_split@1.0.0";
+
+/// The split rule's proposal for `node_id`, decided by its Python `decide()`.
+async fn decide_split(
+    state: &AppState,
+    question: &QuestionVersion,
+    pipeline: &PipelineVersion,
+    node_id: &str,
+    proposal_id: &str,
+    at: &str,
+) -> Result<DecisionProposal, ApiError> {
+    let not_applicable = |error: sprisk_methodology::ResolveError| ApiError::BadRequest {
+        code: "methodology_not_applicable",
+        message: error.to_string(),
+    };
+    let node = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == node_id)
+        .ok_or_else(|| {
+            not_applicable(sprisk_methodology::ResolveError::UnknownNode(
+                node_id.to_owned(),
+            ))
+        })?;
+    let operator = node.operator.as_str();
+    if !operator.starts_with("sprisk.validation.") || !operator.contains("split@") {
+        return Err(not_applicable(sprisk_methodology::ResolveError::NotSplit(
+            node_id.to_owned(),
+        )));
+    }
+    let rule = state.rules.rule(SPLIT_RULE)?;
+    let observation = sprisk_methodology::observation(rule, question).map_err(not_applicable)?;
+    let decision = state
+        .rule_runner
+        .decide(state.rules.module(SPLIT_RULE)?, &observation)
+        .await
+        .map_err(ApiError::Rule)?;
+    sprisk_methodology::proposal(
+        rule,
+        &decision,
+        question,
+        pipeline,
+        node_id,
+        proposal_id,
+        at,
+    )
+    .map_err(not_applicable)
 }
 
 async fn propose_node_methodology(
@@ -881,7 +939,7 @@ async fn propose_node_methodology(
     let at = now();
 
     let proposal = if node.operator.as_str().contains("split@") {
-        sprisk_methodology::resolve_split(&question, &pipeline, &node_id, &proposal_id, &at)
+        Ok(decide_split(&state, &question, &pipeline, &node_id, &proposal_id, &at).await?)
     } else if node.operator.as_str().contains("clustering.")
         || node.operator.as_str().contains("kmeans")
         || node.operator.as_str().contains("dbscan")
