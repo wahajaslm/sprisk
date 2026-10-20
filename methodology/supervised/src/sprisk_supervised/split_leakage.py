@@ -23,7 +23,12 @@ HOLDOUT_PORTS = {
 TRAIN_PORT = "train"
 # Transforms that learn from their `train` input and apply to `train` and `test` (ADR-0018).
 FITTING_TRANSFORMS = frozenset(
-    {"sprisk.clean.impute", "sprisk.clean.scale", "sprisk.clean.clip_outliers", "sprisk.clean.spectral_gating"}
+    {
+        "sprisk.clean.impute",
+        "sprisk.clean.scale",
+        "sprisk.clean.clip_outliers",
+        "sprisk.clean.spectral_gating",
+    }
 )
 
 LIMITATIONS = (
