@@ -277,7 +277,8 @@ Initial production method pack: read-only tabular profiling, supervised classifi
 
 ```text
 context + scoped evidence -> methodology applicability -> alternatives
-  -> immutable DecisionProposal -> typed EffectPlan -> graph diff preview
+  -> immutable DecisionProposal -> typed EffectPlan (replace_node, remove_node; ADR-0043)
+  -> graph diff preview
   -> authorization -> atomic Apply -> new PipelineVersion
   -> compile -> worker attempt -> verification -> findings
 ```
