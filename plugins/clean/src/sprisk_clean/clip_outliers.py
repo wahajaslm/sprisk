@@ -16,5 +16,7 @@ def clip_outliers(
         if q1 is None or q3 is None:
             raise ValueError(f"column {c} has no values in train")
         iqr = q3 - q1
+        if iqr == 0:
+            raise ValueError(f"column {c} has no IQR spread in train; clipping would flatten it")
         clipped.append(pl.col(c).clip(q1 - k * iqr, q3 + k * iqr))
     return {"train": train.with_columns(clipped), "test": test.with_columns(clipped)}

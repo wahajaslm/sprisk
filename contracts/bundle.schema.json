@@ -321,6 +321,11 @@
           "maximum": 1,
           "description": "Share of present values outside the 1.5 x IQR fences, for a numeric column with variation."
         },
+        "iqr": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Interquartile range of a numeric column with variation. Zero when most values are equal: IQR fences and robust scaling then have no spread to use."
+        },
         "missing_by_band": {
           "type": "array",
           "items": {

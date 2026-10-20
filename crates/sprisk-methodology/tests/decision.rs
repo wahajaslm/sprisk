@@ -145,7 +145,8 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
             "total_rows": 200, "total_columns": 3, "profiled_rows": 200, "band_rows": 5,
             "columns": [
                 { "name": "income", "data_type": "Float64", "missing": 50, "distinct": 140,
-                  "missing_by_band": [], "skewness": 2.5, "kurtosis": 9.0, "outlier_share": 0.07 },
+                  "missing_by_band": [], "skewness": 2.5, "kurtosis": 9.0, "outlier_share": 0.07,
+                  "iqr": 12.5 },
                 { "name": "city", "data_type": "String", "missing": 0, "distinct": 12, "missing_by_band": [] },
                 { "name": "other", "data_type": "Int64", "missing": 0, "distinct": 3, "missing_by_band": [] }
             ],
@@ -159,6 +160,7 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
     assert_eq!(facts["rows"], 200);
     assert_eq!(facts["column.income.missing_share"], 0.25);
     assert_eq!(facts["column.income.kurtosis"], 9.0);
+    assert_eq!(facts["column.income.iqr"], 12.5);
     assert_eq!(facts["column.city.data_type"], "String");
     assert!(facts.get("column.city.skewness").is_none());
     assert!(facts.keys().all(|k| !k.starts_with("column.other.")));

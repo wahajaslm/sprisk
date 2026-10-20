@@ -196,6 +196,13 @@ def test_numeric_columns_report_skew_kurtosis_and_outlier_share() -> None:
     assert column.skewness is not None and column.skewness > 3
     assert column.kurtosis is not None and column.kurtosis > 3
     assert column.outlier_share == pytest.approx(1 / 20)
+    assert column.iqr == pytest.approx(9.5)
+
+
+def test_a_mostly_equal_column_reports_a_zero_iqr() -> None:
+    flag = [0.0] * 18 + [1.0] * 2
+    column = profile(pl.DataFrame({"flag": flag, "label": ["a"] * 20})).columns[0]
+    assert column.iqr == 0
 
 
 def test_shape_is_left_out_where_it_means_nothing() -> None:

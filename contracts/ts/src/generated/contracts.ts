@@ -478,6 +478,10 @@ export interface ColumnProfile {
    */
   outlier_share?: number;
   /**
+   * Interquartile range of a numeric column with variation. Zero when most values are equal: IQR fences and robust scaling then have no spread to use.
+   */
+  iqr?: number;
+  /**
    * Share of missing cells (0 to 1) in each row band, in row order.
    */
   missing_by_band: number[];

@@ -84,8 +84,8 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
 
 
 def _shape(s: pl.Series) -> dict[str, float]:
-    """Skew, excess kurtosis and the share outside the 1.5 x IQR fences, for scaling and
-    outlier rules. A column without variation has no shape, so it gets none."""
+    """Skew, excess kurtosis, the IQR and the share outside the 1.5 x IQR fences, for scaling
+    and outlier rules. A column without variation has no shape, so it gets none."""
     present = s.drop_nulls().cast(pl.Float64)
     if present.n_unique() < 2:
         return {}
@@ -97,6 +97,7 @@ def _shape(s: pl.Series) -> dict[str, float]:
     if (kurtosis := present.kurtosis(bias=False)) is not None and math.isfinite(kurtosis):
         shape["kurtosis"] = kurtosis
     if q1 is not None and q3 is not None:
+        shape["iqr"] = q3 - q1
         fence = 1.5 * (q3 - q1)
         outside = ((present < q1 - fence) | (present > q3 + fence)).sum()
         shape["outlier_share"] = float(outside) / present.len()

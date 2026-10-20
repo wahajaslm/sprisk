@@ -1503,6 +1503,13 @@ class ColumnProfile(StrictModel):
             le=1.0,
         ),
     ] = None
+    iqr: Annotated[
+        float | None,
+        Field(
+            description="Interquartile range of a numeric column with variation. Zero when most values are equal: IQR fences and robust scaling then have no spread to use.",
+            ge=0.0,
+        ),
+    ] = None
     missing_by_band: Annotated[
         list[float],
         Field(description="Share of missing cells (0 to 1) in each row band, in row order."),

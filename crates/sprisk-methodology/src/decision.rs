@@ -188,6 +188,7 @@ pub fn profile_facts(profile: &DatasetProfile, columns: &[String]) -> Map<String
             ("skewness", column.skewness),
             ("kurtosis", column.kurtosis),
             ("outlier_share", column.outlier_share),
+            ("iqr", column.iqr),
         ] {
             if let Some(value) = value {
                 facts.insert(key(measure), json!(value));
