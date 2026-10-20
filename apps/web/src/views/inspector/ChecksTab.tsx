@@ -1,7 +1,7 @@
 import type { MethodologyCheck, MethodologyRule } from "@sprisk/contracts";
 
 import type { RunChecks } from "../../api/checks.ts";
-import { useMethodologyDecision, useMethodologyRules } from "../../api/methodology.ts";
+import { useMethodologyDecision, useMethodologyProposal, useMethodologyRules } from "../../api/methodology.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 
 const PHASE: Record<NonNullable<MethodologyCheck["phase"]>, string> = {
@@ -48,14 +48,27 @@ export function ChecksTab({ run, nodeId }: { run: RunChecks; nodeId: string }) {
   );
 }
 
-/** What the decision that set this step chose, and the reason given for it. */
+/** What the decision that set this step chose, the reason given, and the evidence it weighed. */
 function DecisionLine({ id, rule }: { id: string; rule: MethodologyRule | undefined }) {
   const decision = useMethodologyDecision(id);
+  const proposal = useMethodologyProposal(decision.data?.proposal_id);
   if (decision.isError) return <p role="alert" className="error">{decision.error.message}</p>;
+  if (proposal.isError) return <p role="alert" className="error">{proposal.error.message}</p>;
   if (!decision.data) return <p className="check-limit">Set by a methodology decision.</p>;
   const { alternative_id, reason } = decision.data;
   const label = rule?.alternatives.find((a) => a.id === alternative_id)?.label ?? alternative_id;
-  return <p className="check-limit">{`Decision chose ${label}${reason ? `: ${reason}` : "."}`}</p>;
+  return (
+    <>
+      <p className="check-limit">{`Decision chose ${label}${reason ? `: ${reason}` : "."}`}</p>
+      {proposal.data && proposal.data.evidence.length > 0 && (
+        <ul className="check-limit" aria-label="Evidence the decision weighed">
+          {proposal.data.evidence.map((e) => (
+            <li key={`${e.kind}:${e.label}`}>{`${e.label}: ${e.value} (${e.origin})`}</li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
 }
 
 /** Checks citing this step that did not pass; shown as a badge on the tab. */

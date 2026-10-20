@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
+import splitProposal from "../../../tests/contract/decision_proposal/valid/split.json";
 import appliedDecision from "../../../tests/contract/methodology_decision/valid/applied.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
 import { FlowCanvas } from "../src/views/FlowCanvas.tsx";
@@ -485,6 +486,11 @@ describe("inspector failures and checks", () => {
           },
         ]),
       ),
+      http.get("/api/methodology_proposals/:id", ({ params }) =>
+        params.id === appliedDecision.proposal_id
+          ? HttpResponse.json(splitProposal)
+          : HttpResponse.json({ errors: [] }, { status: 404 }),
+      ),
       http.get("/api/methodology_decisions/:id", ({ params }) =>
         params.id === design.methodology_decision_id
           ? HttpResponse.json({ ...appliedDecision, rule: design.check })
@@ -503,6 +509,8 @@ describe("inspector failures and checks", () => {
     expect(await within(chosen!).findByText(/Decision chose Temporal split/)).toHaveTextContent(
       "Decision chose Temporal split: Matches deployment chronology.",
     );
+    const evidence = await within(chosen!).findByRole("list", { name: "Evidence the decision weighed" });
+    expect(evidence).toHaveTextContent("Time column: order_date (explicit)");
   });
 
   it("says so when the decision a verdict cites cannot be loaded", async () => {
@@ -517,6 +525,21 @@ describe("inspector failures and checks", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
     await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("mdc_01JABCDEFGHJKMNPQRSTVWXYZ9");
+  });
+
+  it("says so when the proposal behind a cited decision cannot be loaded", async () => {
+    const cited = { ...JSON.parse(checksJson)[0], methodology_decision_id: appliedDecision.id };
+    server.use(
+      http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify([cited]))),
+      http.get("/api/methodology_decisions/:id", () => HttpResponse.json(appliedDecision)),
+      http.get("/api/methodology_proposals/:id", () =>
+        HttpResponse.json({ errors: [{ code: "not_found", message: `methodology proposal ${appliedDecision.proposal_id} not found` }] }, { status: 404 }),
+      ),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(appliedDecision.proposal_id);
   });
 
   it("says so when the checks output is not a list of checks", async () => {

@@ -54,3 +54,12 @@ export const useMethodologyDecision = (id: string | undefined) =>
     enabled: id !== undefined,
     staleTime: Infinity,
   });
+
+/** A proposal never changes once made; it holds the evidence its decision weighed. */
+export const useMethodologyProposal = (id: string | undefined) =>
+  useQuery({
+    queryKey: ["methodology_proposal", id],
+    queryFn: () => getOne("DecisionProposal", `/methodology_proposals/${id}`),
+    enabled: id !== undefined,
+    staleTime: Infinity,
+  });
