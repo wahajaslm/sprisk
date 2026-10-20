@@ -129,12 +129,9 @@ fn downstream<'a>(
         .iter()
         .map(|n| (n.id.as_str(), graph.add_node(n)))
         .collect();
-    let step = |port: &str| {
-        port.split_once('.')
-            .and_then(|(id, _)| index.get(id).copied())
-    };
+    let step = |port: &PortRef| index.get(port.step_and_port().0).copied();
     for edge in &pipeline.edges {
-        if let (Some(from), Some(to)) = (step(edge.from.as_str()), step(edge.to.as_str())) {
+        if let (Some(from), Some(to)) = (step(&edge.from), step(&edge.to)) {
             graph.add_edge(from, to, ());
         }
     }
@@ -217,10 +214,8 @@ pub fn without_node(
         return Err(ResolveError::UnknownNode(node_id.to_owned()));
     }
     let port_of = |port: &PortRef| {
-        port.as_str()
-            .split_once('.')
-            .filter(|(id, _)| *id == node_id)
-            .map(|(_, name)| name.to_owned())
+        let (step, name) = port.step_and_port();
+        (step == node_id).then(|| name.to_owned())
     };
     let feeds: HashMap<String, &PortRef> = pipeline
         .edges

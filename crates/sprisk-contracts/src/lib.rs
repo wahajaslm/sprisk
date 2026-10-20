@@ -8,6 +8,14 @@ typify::import_types!(
     derives = [PartialEq],
 );
 
+impl PortRef {
+    /// The step id and the port name. The schema checks the form `<step>.<port>`, so both
+    /// parts are always there.
+    pub fn step_and_port(&self) -> (&str, &str) {
+        self.as_str().split_once('.').unwrap_or((self.as_str(), ""))
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ContractError {
     #[error("null is not allowed; omit the field instead (at {0})")]

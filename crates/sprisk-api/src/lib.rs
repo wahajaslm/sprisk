@@ -1007,7 +1007,7 @@ async fn train_profile_facts(
         .edges
         .iter()
         .find(|e| e.to.as_str() == format!("{step}.train"))
-        .and_then(|e| e.from.as_str().split_once('.'))
+        .map(|e| e.from.step_and_port())
         .filter(|(from, port)| {
             *port == "train"
                 && pipeline.nodes.iter().any(|n| {

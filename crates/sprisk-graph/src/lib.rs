@@ -163,8 +163,8 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
     // Check edges and collect, per input, what feeds it.
     let mut feeds: BTreeMap<(&str, &str), Vec<(&str, &str)>> = BTreeMap::new();
     for edge in &pipeline.edges {
-        let (from_node, from_port) = split_port(&edge.from);
-        let (to_node, to_port) = split_port(&edge.to);
+        let (from_node, from_port) = edge.from.step_and_port();
+        let (to_node, to_port) = edge.to.step_and_port();
         let from = resolve_port(&operators, &index, from_node, from_port, |op| &op.outputs);
         let to = resolve_port(&operators, &index, to_node, to_port, |op| &op.inputs);
         match (from, to) {
@@ -403,11 +403,6 @@ fn check_params(
             reason: e.to_string(),
         })
         .collect()
-}
-
-/// `PortRef` is schema-validated as `<node>.<port>`, so the split always succeeds.
-fn split_port(port_ref: &str) -> (&str, &str) {
-    port_ref.split_once('.').unwrap_or((port_ref, ""))
 }
 
 enum Lookup<'a> {
