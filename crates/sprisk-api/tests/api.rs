@@ -1555,9 +1555,14 @@ async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
     );
 }
 
-#[tokio::test]
-async fn scaling_methodology_is_refused_until_profile_facts_are_available() {
-    let api = api().await;
+/// load -> split -> scale on a table whose `age` has one far outlier.
+async fn scaling_flow(api: &Api) {
+    let mut csv = String::from("age,returned_within_30d\n");
+    for i in 0..39 {
+        csv.push_str(&format!("{},{}\n", 20 + i % 20, i % 2));
+    }
+    csv.push_str("1000,1\n");
+    std::fs::write(&api.csv, csv).unwrap();
     let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
     assert_eq!(
         call(&api.app, "POST", "/question_versions", Some(q))
@@ -1570,7 +1575,7 @@ async fn scaling_methodology_is_refused_until_profile_facts_are_available() {
     let nodes = flow["nodes"].as_array_mut().unwrap();
     nodes.push(json!({
         "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
-        "params":{"test_fraction":0.2,"seed":42,"stratify":"returned_within_30d"}
+        "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"}
     }));
     nodes.push(json!({
         "id":"scale", "operator":"sprisk.clean.scale@1.0.0",
@@ -1583,18 +1588,59 @@ async fn scaling_methodology_is_refused_until_profile_facts_are_available() {
     ]);
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
 
-    let (status, body) = call(
+async fn propose_scaling(api: &Api) -> (StatusCode, Value) {
+    call(
         &api.app,
         "POST",
         "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/scale",
         Some(json!({})),
     )
-    .await;
+    .await
+}
+
+#[tokio::test]
+async fn a_data_rule_asks_for_a_run_before_it_can_measure_the_train_rows() {
+    let api = api().await;
+    scaling_flow(&api).await;
+
+    let (status, body) = propose_scaling(&api).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(
         body["errors"][0]["code"],
         "methodology_evidence_unavailable"
+    );
+}
+
+#[tokio::test]
+async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
+    let api = api().await;
+    scaling_flow(&api).await;
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let (status, proposal) = propose_scaling(&api).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(
+        proposal["rule"],
+        "methodology.supervised.feature_scaling@1.0.0"
+    );
+    assert_eq!(proposal["recommended_alternative_id"], "robust_scaling");
+    let robust = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "robust_scaling")
+        .unwrap();
+    assert_eq!(robust["effect"]["params"]["method"], "robust");
+    assert!(
+        proposal["evidence"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["label"] == "age outlier share" && e["origin"] == "measured"),
+        "{proposal}"
     );
 }
 

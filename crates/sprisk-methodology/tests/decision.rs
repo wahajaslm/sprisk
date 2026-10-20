@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use sprisk_contracts::{PipelineVersion, QuestionVersion, RuleDecision, parse};
-use sprisk_methodology::{RuleCatalog, observation, proposal};
+use sprisk_methodology::{RuleCatalog, observation, profile_facts, proposal};
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
 
@@ -63,7 +63,8 @@ fn decision(alternatives: Value) -> RuleDecision {
 fn an_observation_carries_the_question_facts_and_the_rule_thresholds() {
     let catalog = catalog();
     let rule = catalog.rule(SPLIT).unwrap();
-    let observed = serde_json::to_value(observation(rule, &question()).unwrap()).unwrap();
+    let observed =
+        serde_json::to_value(observation(rule, &question(), Default::default()).unwrap()).unwrap();
 
     assert_eq!(observed["facts"]["question.target"]["value"], "churned");
     assert_eq!(
@@ -132,4 +133,30 @@ fn a_decision_naming_an_alternative_the_manifest_lacks_is_refused() {
     )
     .unwrap_err();
     assert!(err.to_string().contains("made_up"), "{err}");
+}
+
+#[test]
+fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
+    let profile = parse(
+        &json!({
+            "total_rows": 200, "total_columns": 3, "profiled_rows": 200, "band_rows": 5,
+            "columns": [
+                { "name": "income", "data_type": "Float64", "missing": 50, "distinct": 140,
+                  "missing_by_band": [], "skewness": 2.5, "kurtosis": 9.0, "outlier_share": 0.07 },
+                { "name": "city", "data_type": "String", "missing": 0, "distinct": 12, "missing_by_band": [] },
+                { "name": "other", "data_type": "Int64", "missing": 0, "distinct": 3, "missing_by_band": [] }
+            ],
+            "correlation": { "columns": [], "pairs": [] }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let facts = profile_facts(&profile, &["income".into(), "city".into()]);
+
+    assert_eq!(facts["rows"], 200);
+    assert_eq!(facts["column.income.missing_share"], 0.25);
+    assert_eq!(facts["column.income.kurtosis"], 9.0);
+    assert_eq!(facts["column.city.data_type"], "String");
+    assert!(facts.get("column.city.skewness").is_none());
+    assert!(facts.keys().all(|k| !k.starts_with("column.other.")));
 }

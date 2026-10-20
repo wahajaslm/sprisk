@@ -5,8 +5,8 @@
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    DecisionProposal, MethodologyRule, PipelineVersion, QuestionVersion, RuleDecision,
-    RuleObservation, parse,
+    DatasetProfile, DecisionProposal, MethodologyRule, PipelineVersion, QuestionVersion,
+    RuleDecision, RuleObservation, parse,
 };
 
 use crate::ResolveError;
@@ -21,10 +21,12 @@ const QUESTION_FACTS: &[&str] = &[
     "prediction_horizon",
 ];
 
-/// The rule's observation of this question. Its settings are the manifest's thresholds.
+/// The rule's observation of this question and, for rules that read data, of the step's
+/// train rows (`profile_facts`). Its settings are the manifest's thresholds.
 pub fn observation(
     rule: &MethodologyRule,
     question: &QuestionVersion,
+    profile: Map<String, Value>,
 ) -> Result<RuleObservation, ResolveError> {
     let question = serde_json::to_value(question)?;
     let facts: Map<String, Value> = QUESTION_FACTS
@@ -36,11 +38,40 @@ pub fn observation(
             "schema_version": "sprisk.rule_observation/v1",
             "rule": rule.id,
             "facts": facts,
-            "profile": {},
+            "profile": profile,
             "settings": rule.policy_thresholds,
         })
         .to_string(),
     )?)
+}
+
+/// Measured values of `columns`, as `column.<name>.<measure>`, plus `rows`. Only the step's
+/// columns: a rule decides about the step it serves. A measure the profile left out (no
+/// variation, not numeric) stays out, so a rule never reads a stand-in value.
+pub fn profile_facts(profile: &DatasetProfile, columns: &[String]) -> Map<String, Value> {
+    let mut facts = Map::new();
+    facts.insert("rows".into(), json!(profile.profiled_rows));
+    for column in profile.columns.iter().filter(|c| columns.contains(&c.name)) {
+        let key = |measure: &str| format!("column.{}.{measure}", column.name);
+        let share = if profile.profiled_rows == 0 {
+            0.0
+        } else {
+            column.missing as f64 / profile.profiled_rows as f64
+        };
+        facts.insert(key("missing_share"), json!(share));
+        facts.insert(key("distinct"), json!(column.distinct));
+        facts.insert(key("data_type"), json!(column.data_type));
+        for (measure, value) in [
+            ("skewness", column.skewness),
+            ("kurtosis", column.kurtosis),
+            ("outlier_share", column.outlier_share),
+        ] {
+            if let Some(value) = value {
+                facts.insert(key(measure), json!(value));
+            }
+        }
+    }
+    facts
 }
 
 /// The proposal for `node_id`: each decided alternative with the manifest's label and

@@ -840,9 +840,7 @@ async fn propose_split(
                     .into(),
             })?;
     let question = state.store.get_question_version(question_id).await?;
-    let proposal_id = format!("mpr_{}", ulid::Ulid::new());
-    let at = now();
-    let proposal = decide_split(&state, &question, &pipeline, &node_id, &proposal_id, &at).await?;
+    let proposal = decide_split(&state, &question, &pipeline, &node_id).await?;
     // Every offered effect passes the authoritative graph compiler before it reaches the UI.
     let value =
         serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;
@@ -853,7 +851,7 @@ async fn propose_split(
                 alternative,
                 "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
                 "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
-                &at,
+                &proposal.created_at.to_string(),
             )?;
             compile(&preview, &state.registry).map_err(ApiError::Compile)?;
         }
@@ -865,14 +863,71 @@ async fn propose_split(
 const SPLIT_RULE: &str = "methodology.supervised.data_split@1.0.0";
 const CLUSTERING_RULE: &str = "methodology.unsupervised.clustering_algorithm@1.0.0";
 
+/// Rules that decide from the measured train rows of the step they serve.
+fn data_rule(operator: &str) -> Option<&'static str> {
+    match operator.split('@').next()? {
+        "sprisk.clean.impute" | "sprisk.clean.drop_missing" => {
+            Some("methodology.supervised.missingness@1.0.0")
+        }
+        "sprisk.clean.scale" => Some("methodology.supervised.feature_scaling@1.0.0"),
+        "sprisk.clean.clip_outliers" => Some("methodology.supervised.outlier_treatment@1.0.0"),
+        _ => None,
+    }
+}
+
+/// Profile facts of the table on `node`'s `train` port, from this version's latest run. Only
+/// train rows: a rule that saw held-out rows would leak them into the flow (rule 8).
+async fn train_profile_facts(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    node: &sprisk_contracts::Node,
+) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
+    let unavailable = |message: String| ApiError::BadRequest {
+        code: "methodology_evidence_unavailable",
+        message,
+    };
+    let train_port = format!("{}.train", node.id.as_str());
+    let source = pipeline
+        .edges
+        .iter()
+        .find(|e| e.to.as_str() == train_port)
+        .ok_or_else(|| unavailable(format!("step {} has no train input", node.id.as_str())))?;
+    let (from_node, from_port) = source.from.as_str().split_once('.').ok_or_else(|| {
+        ApiError::Internal(format!("edge source {} has no port", source.from.as_str()))
+    })?;
+    let artifact = state
+        .store
+        .latest_outputs(std::slice::from_ref(&pipeline.id))
+        .await?
+        .into_iter()
+        .find(|o| o.node_id == from_node && o.port == from_port)
+        .map(|o| o.artifact)
+        .ok_or_else(|| {
+            unavailable(format!(
+                "run the flow first: this rule measures the train rows {from_node} gives step {}",
+                node.id.as_str()
+            ))
+        })?;
+    let profile = state.profiler.profile(&local_table(&artifact)?).await?;
+    let columns: Vec<String> = node
+        .params
+        .get("columns")
+        .and_then(|c| c.as_array())
+        .map(|c| {
+            c.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_else(|| profile.columns.iter().map(|c| c.name.clone()).collect());
+    Ok(sprisk_methodology::profile_facts(&profile, &columns))
+}
+
 /// The split rule's proposal for a split step.
 async fn decide_split(
     state: &AppState,
     question: &QuestionVersion,
     pipeline: &PipelineVersion,
     node_id: &str,
-    proposal_id: &str,
-    at: &str,
 ) -> Result<DecisionProposal, ApiError> {
     let not_applicable = |error: sprisk_methodology::ResolveError| ApiError::BadRequest {
         code: "methodology_not_applicable",
@@ -896,11 +951,10 @@ async fn decide_split(
     decide_by_rule(
         state,
         SPLIT_RULE,
+        Default::default(),
         question,
         pipeline,
         node_id,
-        proposal_id,
-        at,
     )
     .await
 }
@@ -909,18 +963,18 @@ async fn decide_split(
 async fn decide_by_rule(
     state: &AppState,
     rule_ref: &str,
+    profile: serde_json::Map<String, serde_json::Value>,
     question: &QuestionVersion,
     pipeline: &PipelineVersion,
     node_id: &str,
-    proposal_id: &str,
-    at: &str,
 ) -> Result<DecisionProposal, ApiError> {
     let not_applicable = |error: sprisk_methodology::ResolveError| ApiError::BadRequest {
         code: "methodology_not_applicable",
         message: error.to_string(),
     };
     let rule = state.rules.rule(rule_ref)?;
-    let observation = sprisk_methodology::observation(rule, question).map_err(not_applicable)?;
+    let observation =
+        sprisk_methodology::observation(rule, question, profile).map_err(not_applicable)?;
     let decision = state
         .rule_runner
         .decide(state.rules.module(rule_ref)?, &observation)
@@ -932,8 +986,8 @@ async fn decide_by_rule(
         question,
         pipeline,
         node_id,
-        proposal_id,
-        at,
+        &format!("mpr_{}", ulid::Ulid::new()),
+        &now(),
     )
     .map_err(not_applicable)
 }
@@ -962,11 +1016,8 @@ async fn propose_node_methodology(
             message: format!("node {node_id} does not exist"),
         })?;
 
-    let proposal_id = format!("mpr_{}", ulid::Ulid::new());
-    let at = now();
-
     let proposal = if node.operator.as_str().contains("split@") {
-        decide_split(&state, &question, &pipeline, &node_id, &proposal_id, &at).await?
+        decide_split(&state, &question, &pipeline, &node_id).await?
     } else if node.operator.as_str().contains("clustering.")
         || node.operator.as_str().contains("kmeans")
         || node.operator.as_str().contains("dbscan")
@@ -975,26 +1026,15 @@ async fn propose_node_methodology(
         decide_by_rule(
             &state,
             CLUSTERING_RULE,
+            Default::default(),
             &question,
             &pipeline,
             &node_id,
-            &proposal_id,
-            &at,
         )
         .await?
-    } else if ["impute@", "drop_missing@", "scale@", "clip_outliers@"]
-        .iter()
-        .any(|op| node.operator.as_str().contains(op))
-    {
-        // These rules decide from measured column facts; until the profile feeds them,
-        // refusing is honest where placeholder facts would be recorded as measured evidence.
-        return Err(ApiError::BadRequest {
-            code: "methodology_evidence_unavailable",
-            message: format!(
-                "operator {} needs measured profile facts, which are not wired to methodology yet",
-                node.operator.as_str()
-            ),
-        });
+    } else if let Some(rule_ref) = data_rule(node.operator.as_str()) {
+        let profile = train_profile_facts(&state, &pipeline, node).await?;
+        decide_by_rule(&state, rule_ref, profile, &question, &pipeline, &node_id).await?
     } else {
         return Err(ApiError::BadRequest {
             code: "methodology_not_applicable",
@@ -1014,7 +1054,7 @@ async fn propose_node_methodology(
                 alternative,
                 "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
                 "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
-                &at,
+                &proposal.created_at.to_string(),
             )?;
             compile(&preview, &state.registry).map_err(ApiError::Compile)?;
         }
@@ -1413,15 +1453,24 @@ async fn get_artifact_profile(
             ),
         });
     }
+    Ok(Json(
+        state.profiler.profile(&local_table(&artifact)?).await?,
+    ))
+}
+
+/// The local file behind a table artifact; only local tables can be profiled yet.
+fn local_table(artifact: &sprisk_contracts::Artifact) -> Result<std::path::PathBuf, ApiError> {
     let uri = artifact.uri.as_str();
-    let path = url::Url::parse(uri)
+    url::Url::parse(uri)
         .ok()
         .and_then(|u| u.to_file_path().ok())
         .ok_or_else(|| ApiError::BadRequest {
             code: "not_local",
-            message: format!("artifact {raw} is at {uri}; only local tables can be profiled yet"),
-        })?;
-    Ok(Json(state.profiler.profile(&path).await?))
+            message: format!(
+                "artifact {} is at {uri}; only local tables can be profiled yet",
+                artifact.id.as_str()
+            ),
+        })
 }
 
 /// The tables flows load (ADR-0038): each source step's latest output in the newest pipeline
