@@ -6,6 +6,7 @@ id: methodology.supervised.target_leakage@1.0.0
 name: "Target Proxy & Leakage Detection"
 stage: features
 decides: features.leakage_exclusion
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

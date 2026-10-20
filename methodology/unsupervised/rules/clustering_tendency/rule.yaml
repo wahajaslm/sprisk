@@ -6,6 +6,7 @@ id: methodology.unsupervised.clustering_tendency@1.0.0
 name: "Clustering Tendency Assessment"
 stage: features
 decides: clustering.tendency_verification
+status: draft
 
 # 1. Scientific Standards & Authoritative Provenance
 # ------------------------------------------------------------------------------

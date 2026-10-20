@@ -6,6 +6,7 @@ id: methodology.supervised.evaluation_metric@1.0.0
 name: "Primary Evaluation Metric Selection"
 stage: evaluation
 decides: evaluation.primary_metric
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

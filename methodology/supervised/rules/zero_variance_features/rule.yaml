@@ -6,6 +6,7 @@ id: methodology.supervised.zero_variance_features@1.0.0
 name: "Constant & Low-Variance Feature Elimination"
 stage: cleaning
 decides: cleaning.zero_variance_elimination
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

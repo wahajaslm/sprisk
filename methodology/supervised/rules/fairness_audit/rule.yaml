@@ -6,6 +6,7 @@ id: methodology.supervised.fairness_audit@1.0.0
 name: "Algorithmic Fairness & Bias Mitigation"
 stage: reporting
 decides: governance.fairness_policy
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

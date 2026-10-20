@@ -6,6 +6,7 @@ id: methodology.unsupervised.unsupervised_anomaly@1.0.0
 name: "Unsupervised Anomaly Detection Strategy"
 stage: models
 decides: anomaly.algorithm_selection
+status: draft
 
 # 1. Scientific Standards & Authoritative Provenance
 # ------------------------------------------------------------------------------

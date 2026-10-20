@@ -6,6 +6,7 @@ id: methodology.supervised.categorical_encoding@1.0.0
 name: "Categorical Encoding Strategy"
 stage: features
 decides: features.encoding_strategy
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

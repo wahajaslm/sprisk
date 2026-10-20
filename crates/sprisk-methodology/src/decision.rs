@@ -13,7 +13,7 @@ use sprisk_contracts::{
     RuleDecision, RuleDecisionAlternativesItemApplicability, RuleObservation, parse,
 };
 
-use crate::ResolveError;
+use crate::{ResolveError, facts};
 
 /// Question fields a rule may read, as `question.<field>` facts.
 const QUESTION_FACTS: &[&str] = &[
@@ -26,8 +26,8 @@ const QUESTION_FACTS: &[&str] = &[
 ];
 
 /// The rule's observation of this question, of the flow around the step (`flow_facts`)
-/// and, for rules that read data, of the step's train rows (`profile_facts`). Its settings
-/// are the manifest's thresholds.
+/// and, for rules that read data, of the step's train rows (`profile_facts`), holding only
+/// the facts the rule `reads` (ADR-0045). Its settings are the manifest's thresholds.
 pub fn observation(
     rule: &MethodologyRule,
     question: &QuestionVersion,
@@ -40,6 +40,11 @@ pub fn observation(
         .filter_map(|field| Some((format!("question.{field}"), question.get(*field)?.clone())))
         .collect();
     facts.extend(flow);
+    // A rule sees only the facts it declares it reads (ADR-0045).
+    let reads = |name: &String| rule.reads.iter().any(|r| facts::covers(r.as_str(), name));
+    facts.retain(|name, _| reads(name));
+    let mut profile = profile;
+    profile.retain(|name, _| reads(name));
     Ok(parse(
         &json!({
             "schema_version": "sprisk.rule_observation/v1",

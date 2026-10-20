@@ -1228,8 +1228,8 @@
         "name",
         "stage",
         "decides",
+        "status",
         "provenance",
-        "observes",
         "policy_thresholds",
         "alternatives",
         "verification"
@@ -1248,12 +1248,37 @@
         "stage": {
           "$ref": "#/$defs/MethodologyStage"
         },
-        "needs": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "active"
+          ],
+          "description": "draft: a design with no rule.py, never run; its condition and observes are notes. active: has rule.py, applies_to, reads and examples, and no notes (ADR-0045)."
+        },
+        "applies_to": {
           "type": "array",
-          "description": "Facts and earlier decisions this rule reads, e.g. question.time_column; they order rules inside a stage (ADR-0042).",
+          "description": "Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045).",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+          }
+        },
+        "reads": {
+          "type": "array",
+          "description": "Facts this active rule may read, by name from the fact catalog, e.g. question.target or column.*.kurtosis; * stands for a column or setting name. Rust sends only these (ADR-0045).",
           "items": {
             "type": "string",
             "minLength": 1
+          }
+        },
+        "examples": {
+          "type": "array",
+          "description": "Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/RuleExample"
           }
         },
         "decides": {
@@ -1294,6 +1319,7 @@
         },
         "observes": {
           "type": "array",
+          "description": "Design notes on a draft rule's inputs; an active rule declares reads instead.",
           "items": {
             "oneOf": [
               {
@@ -1356,7 +1382,6 @@
               "id",
               "label",
               "description",
-              "condition",
               "rationale",
               "action"
             ],
@@ -1375,7 +1400,7 @@
               },
               "condition": {
                 "type": "string",
-                "description": "Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042)."
+                "description": "A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045)."
               },
               "rationale": {
                 "type": "string",
@@ -1519,6 +1544,54 @@
         },
         "artifact_id": {
           "$ref": "#/$defs/ArtifactId"
+        }
+      }
+    },
+    "RuleExample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "given",
+        "picks"
+      ],
+      "properties": {
+        "given": {
+          "type": "object",
+          "description": "Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }.",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "origin"
+                ],
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "origin": {
+                    "$ref": "#/$defs/Origin"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "picks": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
         }
       }
     },

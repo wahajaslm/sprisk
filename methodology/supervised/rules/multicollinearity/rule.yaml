@@ -6,6 +6,7 @@ id: methodology.supervised.multicollinearity@1.0.0
 name: "Multicollinearity & Redundancy Mitigation"
 stage: features
 decides: features.multicollinearity_strategy
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

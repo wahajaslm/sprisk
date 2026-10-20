@@ -65,6 +65,39 @@ describe("methodology page", () => {
     expect(within(detail).getByText("Pairwise Correlation Pruning")).toBeInTheDocument();
   });
 
+  it("shows an active rule's inputs and examples, and no design notes", async () => {
+    const [first, ...rest] = features.alternatives;
+    const plain = ({ condition: _, ...a }: (typeof rest)[number]) => a;
+    const { observes: _notes, ...withoutNotes } = split;
+    const active: MethodologyRule = {
+      ...withoutNotes,
+      status: "active",
+      applies_to: ["sprisk.validation.random_split"],
+      reads: ["question.target", "question.time_column"],
+      examples: [{ given: { "question.time_column": "signup_date" }, picks: "correlation_pruning" }],
+      alternatives: [plain(first), ...rest.map(plain)],
+    };
+    serve([active]);
+    renderWithApi(<MethodologyPage />);
+
+    const detail = await screen.findByRole("region", { name: active.name });
+    expect(within(detail).getByText("question.time_column", { selector: "code" })).toBeInTheDocument();
+    const example = within(detail).getByRole("listitem", { name: "Example 1" });
+    expect(example).toHaveTextContent("question.time_column = signup_date");
+    expect(example).toHaveTextContent("Pairwise Correlation Pruning");
+    expect(within(detail).queryByText(/^When:/)).not.toBeInTheDocument();
+  });
+
+  it("marks a draft rule and shows its design notes", async () => {
+    serve([features]);
+    renderWithApi(<MethodologyPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
+    const detail = screen.getByRole("region", { name: features.name });
+    expect(within(detail).getByText(/Draft: not run yet/)).toBeInTheDocument();
+    expect(within(detail).getAllByText(/^When:/).length).toBeGreaterThan(0);
+  });
+
   it("shows each file of the rule's code, read only", async () => {
     serve([split]);
     renderWithApi(<MethodologyPage />);

@@ -6,6 +6,7 @@ id: methodology.supervised.point_in_time_availability@1.0.0
 name: "Point-in-Time Correctness & Time-Travel Joins"
 stage: split
 decides: split.point_in_time_policy
+status: draft
 
 # 1. Scientific Standards & Industrial Provenance
 # ------------------------------------------------------------------------------

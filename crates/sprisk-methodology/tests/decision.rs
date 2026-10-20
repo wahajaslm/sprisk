@@ -446,7 +446,9 @@ fn a_model_step_does_not_count_itself() {
 #[test]
 fn an_observation_carries_flow_facts_beside_the_question_facts() {
     let catalog = catalog();
-    let rule = catalog.rule(SPLIT).unwrap();
+    let rule = catalog
+        .rule("methodology.supervised.outlier_treatment@2.0.0")
+        .unwrap();
     let pipeline = flow(
         &[("scale", "clean.scale"), ("rf", "ml.random_forest")],
         &[("scale.train", "rf.train")],
@@ -587,4 +589,31 @@ fn an_analysis_step_behind_a_model_still_reads_the_columns() {
         facts_of(&pipeline, "clip")["flow.other_readers"]["value"],
         "summary"
     );
+}
+
+#[test]
+fn an_observation_holds_only_what_the_rule_reads() {
+    let catalog = catalog();
+    let split = catalog.rule(SPLIT).unwrap();
+    let scale = catalog.rule(SCALING).unwrap();
+    let flow = facts_of(&before_forest(), "scale");
+    let profile: serde_json::Map<String, Value> = serde_json::from_value(json!({
+        "rows": 100, "column.a.b.kurtosis": 2.0, "column.a.b.distinct": 7
+    }))
+    .unwrap();
+
+    let observed = serde_json::to_value(
+        observation(split, &question(), flow.clone(), profile.clone()).unwrap(),
+    )
+    .unwrap();
+    assert!(observed["facts"].get("flow.model_families").is_none());
+    assert_eq!(observed["facts"]["question.target"]["value"], "churned");
+    assert_eq!(observed["profile"], json!({}));
+
+    let observed =
+        serde_json::to_value(observation(scale, &question(), flow, profile).unwrap()).unwrap();
+    assert!(observed["facts"].get("question.target").is_none());
+    assert_eq!(observed["facts"]["flow.models_standardize"]["value"], "all");
+    // A column name may hold dots; the pattern still matches it.
+    assert_eq!(observed["profile"], json!({ "column.a.b.kurtosis": 2.0 }));
 }

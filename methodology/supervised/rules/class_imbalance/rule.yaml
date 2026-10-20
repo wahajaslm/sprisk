@@ -6,6 +6,7 @@ id: methodology.supervised.class_imbalance@1.0.0
 name: "Class Imbalance Mitigation Strategy"
 stage: models
 decides: sampling.imbalance_strategy
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

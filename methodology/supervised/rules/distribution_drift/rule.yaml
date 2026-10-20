@@ -6,6 +6,7 @@ id: methodology.supervised.distribution_drift@1.0.0
 name: "Production Drift Monitoring & Baseline Reference"
 stage: reporting
 decides: governance.drift_monitoring_policy
+status: draft
 
 # 1. Scientific Standards & Industrial Provenance
 # ------------------------------------------------------------------------------

@@ -6,6 +6,7 @@ id: methodology.unsupervised.dbscan_neighborhood@1.0.0
 name: "DBSCAN Density Neighborhood Calibration"
 stage: models
 decides: clustering.dbscan_hyperparameters
+status: draft
 
 # 1. Scientific Standards & Authoritative Provenance
 # ------------------------------------------------------------------------------

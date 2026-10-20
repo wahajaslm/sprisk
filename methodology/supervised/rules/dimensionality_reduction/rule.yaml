@@ -6,6 +6,7 @@ id: methodology.supervised.dimensionality_reduction@1.0.0
 name: "Orthogonal Subspace Projection (PCA)"
 stage: features
 decides: features.subspace_reduction
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

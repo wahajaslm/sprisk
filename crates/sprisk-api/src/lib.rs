@@ -831,7 +831,7 @@ async fn propose_split(
     State(state): State<AppState>,
     Path((raw, node_id)): Path<(String, String)>,
 ) -> Result<(StatusCode, Json<DecisionProposal>), ApiError> {
-    propose(&state, &raw, &node_id, Some(SPLIT_RULE)).await
+    propose(&state, &raw, &node_id, Some(SPLIT_DECISION)).await
 }
 
 async fn propose_node_methodology(
@@ -841,38 +841,8 @@ async fn propose_node_methodology(
     propose(&state, &raw, &node_id, None).await
 }
 
-const SPLIT_RULE: &str = "methodology.supervised.data_split@1.0.0";
-
-/// What a rule reads besides the question.
-#[derive(Clone, Copy, PartialEq)]
-enum RuleInput {
-    QuestionOnly,
-    /// The measured train rows of the step it serves.
-    TrainProfile,
-}
-
-/// The rule that decides a step with this operator (ADR-0042).
-fn rule_for(operator: &str) -> Option<(&'static str, RuleInput)> {
-    use RuleInput::*;
-    Some(match operator.split('@').next()? {
-        "sprisk.validation.random_split"
-        | "sprisk.validation.temporal_split"
-        | "sprisk.validation.group_split" => (SPLIT_RULE, QuestionOnly),
-        "sprisk.clustering.kmeans" | "sprisk.clustering.dbscan" | "sprisk.clustering.gmm" => (
-            "methodology.unsupervised.clustering_algorithm@1.0.0",
-            QuestionOnly,
-        ),
-        "sprisk.clean.impute" | "sprisk.clean.drop_missing" => {
-            ("methodology.supervised.missingness@1.1.0", TrainProfile)
-        }
-        "sprisk.clean.scale" => ("methodology.supervised.feature_scaling@2.0.0", TrainProfile),
-        "sprisk.clean.clip_outliers" => (
-            "methodology.supervised.outlier_treatment@2.0.0",
-            TrainProfile,
-        ),
-        _ => return None,
-    })
-}
+/// What the split rule decides, whatever its version.
+const SPLIT_DECISION: &str = "split.method";
 
 /// Whether a step between a rule's step and a model keeps what the flow facts say about
 /// the model: it only drops rows, or rescales affinely and fills from train statistics, so
@@ -910,7 +880,7 @@ fn evidence_unavailable(message: String) -> ApiError {
 }
 
 /// The proposal of the rule that decides `node_id`, decided by the rule's Python `decide()`.
-/// `only` limits it to one rule. Every offered effect passes the compiler before it is stored.
+/// `only` limits it to the rule that owns that decision. Every offered effect passes the compiler before it is stored.
 async fn propose(
     state: &AppState,
     raw: &str,
@@ -936,20 +906,25 @@ async fn propose(
             code: "node_not_found",
             message: format!("node {node_id} does not exist"),
         })?;
-    let (rule_ref, input) = rule_for(node.operator.as_str())
-        .filter(|(rule_ref, _)| only.is_none_or(|only| only == *rule_ref))
+    let rule = state
+        .rules
+        .rule_for_operator(node.operator.as_str())
+        .filter(|rule| only.is_none_or(|only| rule.decides.as_str() == only))
         .ok_or_else(|| {
             not_applicable(format!(
                 "no methodology rule decides operator {}",
                 node.operator.as_str()
             ))
         })?;
-    let profile = match input {
-        RuleInput::QuestionOnly => Default::default(),
-        RuleInput::TrainProfile => train_profile_facts(state, &pipeline, node).await?,
-    };
+    let rule_ref = rule.id.to_string();
+    let rule_ref = rule_ref.as_str();
+    let profile =
+        if sprisk_methodology::facts::needs_train_rows(rule.reads.iter().map(|r| r.as_str())) {
+            train_profile_facts(state, &pipeline, node).await?
+        } else {
+            Default::default()
+        };
 
-    let rule = state.rules.rule(rule_ref)?;
     let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
     let flow = sprisk_methodology::flow_facts(
         &pipeline,
@@ -1012,7 +987,10 @@ async fn train_profile_facts(
             *port == "train"
                 && pipeline.nodes.iter().any(|n| {
                     n.id.as_str() == *from
-                        && rule_for(n.operator.as_str()).is_some_and(|(r, _)| r == SPLIT_RULE)
+                        && state
+                            .rules
+                            .rule_for_operator(n.operator.as_str())
+                            .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
                 })
         })
         .ok_or_else(|| {

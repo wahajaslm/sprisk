@@ -6,6 +6,9 @@ id: methodology.supervised.feature_scaling@2.0.0
 name: "Feature Scaling Strategy"
 stage: features
 decides: features.scaling_strategy
+status: active
+applies_to: [sprisk.clean.scale]
+reads: [flow.model_families, flow.models_hidden, flow.models_standardize, flow.other_readers, column.*.data_type, column.*.kurtosis, column.*.outlier_share, column.*.iqr]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -17,34 +20,6 @@ provenance:
     - "Tree ensembles (RandomForest, XGBoost, LightGBM) are invariant to monotonic transformations; scaling adds compute with zero predictive gain."
     - "Offline-Online Skew: Fitted parameters (mean_, std_, median_, IQR) must be serialized into the ModelPackage artifact so online inference uses the identical normalization."
     - "Centering sparse matrices (with_mean=True) converts zero elements to floats, causing severe memory exhaustion."
-
-# 2. What This Rule Observes
-# ------------------------------------------------------------------------------
-observes:
-  - profile: numerical_columns
-    description: "List of continuous quantitative features"
-    required: true
-  - profile: max_excess_kurtosis
-    description: "Peak heavy-tailedness / outlier severity across features"
-    required: true
-  - profile: is_sparse_matrix
-    description: "Whether the input matrix is represented as a sparse matrix"
-    required: false
-  - profile: iqr
-    description: "Per column, the train interquartile range. Zero when most values are equal: such a column is left out of robust scaling, and of max_excess_kurtosis and max_outlier_share, which are 0 when no column is left."
-    required: false
-  - fact: flow.model_families
-    description: "Families of the models seen downstream of the step, from their manifests, sorted and joined by ', ': tree_ensemble, linear, distance_based, density_based; or featureless when none declares one. Absent when no model is seen."
-    required: false
-  - fact: flow.models_hidden
-    description: "Whether all, some or none of the models downstream sit behind a step or model that may change the columns. Absent when no model is downstream."
-    required: false
-  - fact: flow.other_readers
-    description: "The analysis or code steps downstream, which read this step's output, joined by ', '. While any exist, an alternative that removes the step asks first: removing it changes what they see."
-    required: false
-  - fact: flow.models_standardize
-    description: "Whether all, some or none of the models downstream standardise their own inputs on the train rows, from their manifests. Absent when no model is downstream."
-    required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -59,7 +34,6 @@ alternatives:
   - id: no_scaling
     label: No Scaling Step (Models Downstream Do Not Need It)
     description: Leave the features as they are; scaling here would not change the models downstream.
-    condition: (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless'])); asks first while flow.other_readers is present
     rationale: A model that standardises its inputs on the train rows undoes any earlier affine scaling,
       and trees split on rank order, which scaling keeps. Scaling here adds work with no effect.
     action:
@@ -67,7 +41,6 @@ alternatives:
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).
-    condition: NOT (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless'])) AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
     rationale: Heavy-tailed distributions detected (excess kurtosis > 3.0). RobustScaler prevents extreme outliers
       from compressing regular feature distances.
     action:
@@ -76,7 +49,6 @@ alternatives:
   - id: standard_scaling
     label: Standard Scaling (Z-Score Normalization)
     description: Center to zero mean and scale to unit variance.
-    condition: NOT (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless'])) AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold
     rationale: Light tails and few outliers, so the mean and SD describe the spread. It matters for
       models that take their inputs as they are, such as distance-based clustering.
     action:
@@ -86,7 +58,6 @@ alternatives:
     label: MaxAbs Scaling (Sparsity Preserving)
     description: Scale each feature by its maximum absolute value without centering, preserving sparse zero
       structure.
-    condition: is_sparse_matrix is true
     rationale: 'Not available: the scale step has no max-abs method.'
     action:
       type: replace_node
@@ -96,3 +67,13 @@ alternatives:
 verification:
   check_id: sprisk.checks.supervised.scaler_leakage@1.0.0
   invariant: "Mean/std/median/IQR parameters must be computed strictly on the training partition."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: { column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
+    picks: robust_scaling
+  - given: { column.age.data_type: Float64, column.age.kurtosis: 0.2, column.age.outlier_share: 0.0, column.age.iqr: 10.0 }
+    picks: standard_scaling
+  - given: { flow.model_families: linear, flow.models_hidden: none, flow.models_standardize: all, column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
+    picks: no_scaling

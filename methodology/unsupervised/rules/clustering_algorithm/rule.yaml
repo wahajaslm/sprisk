@@ -6,6 +6,9 @@ id: methodology.unsupervised.clustering_algorithm@1.0.0
 name: "Clustering Algorithm Selection"
 stage: models
 decides: clustering.algorithm_choice
+status: active
+applies_to: [sprisk.clustering.kmeans, sprisk.clustering.dbscan, sprisk.clustering.gmm]
+reads: []
 
 # 1. Scientific Standards & Authoritative Provenance
 # ------------------------------------------------------------------------------
@@ -18,22 +21,6 @@ provenance:
     - "Outlier Sensitivity: K-Means has no notion of noise and shifts cluster centers toward extreme anomalies; DBSCAN isolates anomalies into an explicit noise label (-1)."
     - "Soft Membership Uncertainty: Hard partitioning assigns borderline points 100% to one cluster; Gaussian Mixture Models output calibrated posterior probabilities."
     - "Computational Scalability: Hierarchical clustering requires O(N^2) memory and O(N^3) time; it must not be executed on N > 15,000 observations."
-
-# 2. What This Rule Observes
-# ------------------------------------------------------------------------------
-observes:
-  - profile: sample_count
-    description: "Number of rows in the dataset"
-    required: true
-  - profile: presence_of_noise_points
-    description: "Whether isolated anomalies exist that should not form clusters"
-    required: true
-  - fact: expected_cluster_geometry
-    description: "Expected geometric topology: spherical/convex vs arbitrary density manifolds"
-    required: false
-  - fact: soft_clustering_required
-    description: "Whether probabilistic soft assignment weights are needed rather than hard labels"
-    required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -55,7 +42,6 @@ alternatives:
   - id: kmeans_centroid_clustering
     label: "K-Means++ Centroid Clustering"
     description: "Partition observations into K convex Voronoi cells minimizing within-cluster sum of squares (inertia)."
-    condition: "presence_of_noise_points is false AND soft_clustering_required is false AND expected_cluster_geometry != 'non_convex'"
     rationale: "Data exhibits compact spherical clusters without extreme background noise. Fast O(NK) convergence with K-Means++ smart seeding."
     settings_schema:
       type: object
@@ -80,7 +66,6 @@ alternatives:
   - id: dbscan_density_clustering
     label: "DBSCAN Density-Based Spatial Clustering"
     description: "Discover arbitrary non-convex clusters based on local density reachability and isolate noise points into label -1."
-    condition: "expected_cluster_geometry == 'non_convex' OR presence_of_noise_points is true"
     rationale: "Non-spherical geometries or noisy background detected. DBSCAN discovers arbitrary shapes without requiring pre-specified K and segregates anomalies."
     settings_schema:
       type: object
@@ -104,7 +89,6 @@ alternatives:
   - id: hierarchical_agglomerative
     label: "Hierarchical Agglomerative Clustering (Ward Linkage)"
     description: "Bottom-up recursive pairwise cluster merging generating a dendrogram hierarchy."
-    condition: "sample_count <= hierarchical_max_samples AND expected_cluster_geometry == 'hierarchical'"
     rationale: "Small-to-moderate sample size with nested taxonomy. Ward linkage minimizes variance growth across merge steps without random initialization dependence."
     settings_schema:
       type: object
@@ -125,7 +109,6 @@ alternatives:
   - id: gaussian_mixture_models
     label: "Gaussian Mixture Models (EM Soft Probabilities)"
     description: "Fit a mixture of K multivariate Gaussian distributions outputting probabilistic cluster memberships."
-    condition: "soft_clustering_required is true"
     rationale: "Soft uncertainty required. EM algorithm estimates full covariance matrices, capturing elliptical clusters with differing orientations and volumes."
     settings_schema:
       type: object
@@ -148,3 +131,9 @@ alternatives:
 verification:
   check_id: sprisk.checks.unsupervised.algorithm_compatibility@1.0.0
   invariant: "Hierarchical agglomerative clustering requested on datasets with N > 25,000 observations causes Gate B FAIL due to quadratic memory exhaustion."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: {}
+    picks: kmeans_centroid_clustering

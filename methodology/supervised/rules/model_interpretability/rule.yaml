@@ -6,6 +6,7 @@ id: methodology.supervised.model_interpretability@1.0.0
 name: "Model Interpretability & Explainability Governance"
 stage: reporting
 decides: governance.explainability_framework
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

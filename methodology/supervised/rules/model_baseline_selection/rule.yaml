@@ -6,6 +6,7 @@ id: methodology.supervised.model_baseline_selection@1.0.0
 name: "Model Selection & Baseline Floor"
 stage: models
 decides: modeling.estimator_selection
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

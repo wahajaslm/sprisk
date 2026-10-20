@@ -6,6 +6,7 @@ id: methodology.supervised.time_series_leakage@1.0.0
 name: "Time-Series Integrity & Temporal Validation"
 stage: split
 decides: split.temporal_integrity
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

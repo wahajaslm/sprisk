@@ -6,6 +6,7 @@ id: methodology.unsupervised.manifold_projection@1.0.0
 name: "Manifold Learning & High-Dimensional Visualization"
 stage: evaluation
 decides: clustering.manifold_visualization
+status: draft
 
 # 1. Scientific Standards & Authoritative Provenance
 # ------------------------------------------------------------------------------

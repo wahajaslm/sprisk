@@ -6,6 +6,9 @@ id: methodology.supervised.missingness@1.1.0
 name: "Missing Data Treatment Strategy"
 stage: cleaning
 decides: cleaning.missingness_strategy
+status: active
+applies_to: [sprisk.clean.impute, sprisk.clean.drop_missing]
+reads: [flow.models_fill_gaps, flow.other_readers, step.method, question.target, column.*.data_type, column.*.missing_share, column.*.skewness]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -17,31 +20,6 @@ provenance:
     - "Informative Missingness (MNAR): Missing values that signify a business state (e.g. signature_date only populated for closed contracts) carry predictive signal that requires a binary indicator flag."
     - "Extreme Nullness: Columns with >60% null values fabricate more than half the observations if imputed, distorting sample moments."
     - "Target Column Nullness: Imputing values into the target label column is strictly forbidden and invalidates ground truth."
-
-# 2. What This Rule Observes
-# ------------------------------------------------------------------------------
-observes:
-  - profile: column_missingness_rate
-    description: "Percentage of null or NaN values per column"
-    required: true
-  - profile: column_data_type
-    description: "Semantic type: quantitative (numerical) vs nominal/categorical"
-    required: true
-  - profile: column_skewness
-    description: "Statistical skewness for numerical variables to differentiate mean vs median"
-    required: false
-  - fact: question.target
-    description: "Target column name (strictly forbidden from synthetic imputation)"
-    required: true
-  - fact: flow.models_fill_gaps
-    description: "Whether all, some or none of the models downstream fill gaps themselves on the train rows, from their manifests. Absent when no model is downstream."
-    required: false
-  - fact: flow.other_readers
-    description: "The analysis or code steps downstream, which read this step's output, joined by ', '. While any exist, an alternative that removes the step asks first: removing it changes what they see."
-    required: false
-  - fact: step.method
-    description: "This step's own method, as set. A zero fill may carry meaning, so replacing it asks first."
-    required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -56,7 +34,6 @@ alternatives:
   - id: drop_rows
     label: Drop Rows With Missing Values
     description: Remove every row with a gap in these columns, in train and test alike.
-    condition: question.target (confirmed or inferred) is among the columns, OR (a column is not numeric AND flow.models_fill_gaps != 'all')
     rationale: A missing target must never be filled. Text columns cannot be imputed yet. Dropping rows
       shrinks the data and can bias it if gaps are not random.
     action:
@@ -65,7 +42,6 @@ alternatives:
   - id: impute_median
     label: Median Imputation (train rows)
     description: Fill each gap with the column's median over the train rows only.
-    condition: question.target is not inferred among the columns AND column_data_type == 'numerical' AND column_skewness > skewness_threshold; asks first when step.method == 'zero'
     rationale: Skewed values pull the mean; the median is robust to them. The impute step cannot add a missing-indicator
       column yet, so an informative gap loses that signal.
     action:
@@ -74,7 +50,6 @@ alternatives:
   - id: impute_mean
     label: Mean Imputation
     description: Fill each gap with the column's mean over the train rows only.
-    condition: question.target is not inferred among the columns AND column_data_type == 'numerical' AND column_skewness <= skewness_threshold; asks first when step.method == 'zero'
     rationale: For roughly symmetric values. It shrinks variance and weakens correlations, more so as the
       missing share grows.
     action:
@@ -84,14 +59,12 @@ alternatives:
     label: Mode / Frequent Category Imputation
     description: Fill missing categorical entries with the most frequent category or an explicit 'missing'
       sentinel category.
-    condition: column_data_type in ['nominal', 'categorical'] AND column_missingness_rate < drop_column_threshold
     rationale: 'Not available: the impute step fills numbers only (ADR-0042).'
     action:
       type: replace_node
   - id: drop_column
     label: Drop Column
     description: Exclude the column entirely from the feature matrix.
-    condition: column_missingness_rate >= drop_column_threshold
     rationale: 'A column with most values missing carries little signal. Not wired yet: drop it with a select
       step before the split.'
     action:
@@ -101,7 +74,6 @@ alternatives:
   - id: pass_through
     label: No Imputation Here (Models Fill Their Own Gaps)
     description: Leave the gaps for the models downstream, which fill numbers and text themselves.
-    condition: flow.models_fill_gaps == 'all' AND question.target (confirmed or inferred) is not among the columns; asks first while flow.other_readers is present or step.method == 'zero'
     rationale: Each model downstream fits its fill on its train rows only, so filling here first adds
       nothing. A target with gaps still means dropping rows, since a label is never filled.
     action:
@@ -112,3 +84,15 @@ alternatives:
 verification:
   check_id: sprisk.checks.supervised.imputer_leakage@1.0.0
   invariant: "Imputation statistics (mean/median/mode) must be calculated exclusively on the training partition. Target column must never contain imputed values."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: { question.target: churned, column.income.data_type: Float64, column.income.missing_share: 0.1, column.income.skewness: 2.4 }
+    picks: impute_median
+  - given: { question.target: churned, column.age.data_type: Float64, column.age.missing_share: 0.1, column.age.skewness: 0.2 }
+    picks: impute_mean
+  - given: { question.target: churned, column.churned.data_type: Int64, column.churned.missing_share: 0.1 }
+    picks: drop_rows
+  - given: { question.target: churned, flow.models_fill_gaps: all, column.age.data_type: Float64, column.age.missing_share: 0.1, column.age.skewness: 0.2 }
+    picks: pass_through

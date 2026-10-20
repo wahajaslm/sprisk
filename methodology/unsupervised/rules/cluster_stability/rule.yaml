@@ -6,6 +6,7 @@ id: methodology.unsupervised.cluster_stability@1.0.0
 name: "Cluster Stability & Resampling Validation"
 stage: evaluation
 decides: clustering.stability_validation
+status: draft
 
 # 1. Scientific Standards & Authoritative Provenance
 # ------------------------------------------------------------------------------

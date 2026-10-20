@@ -7,7 +7,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde_json::json;
-use sprisk_contracts::{ContractError, MethodologyRule, MethodologyRuleSource};
+use sprisk_contracts::{
+    ContractError, MethodologyRule, MethodologyRuleSource, MethodologyRuleStatus,
+};
+
+use crate::facts;
 use walkdir::WalkDir;
 
 const MANIFEST: &str = "rule.yaml";
@@ -47,6 +51,14 @@ pub enum CatalogError {
         first: String,
         second: String,
     },
+    #[error("{path}: {problem} (ADR-0045)")]
+    Manifest { path: PathBuf, problem: String },
+    #[error("operator {operator} has two active rules: {first} and {second}")]
+    SharedOperator {
+        operator: String,
+        first: String,
+        second: String,
+    },
     #[error("unknown methodology rule {0}")]
     UnknownRule(String),
     #[error("methodology rule {0} has no rule.py")]
@@ -81,6 +93,12 @@ impl RuleCatalog {
                 let rule = parse_manifest(&path, &text)?;
                 let source = read_source(&path, &rule, text)?;
                 let module = Some(path.with_file_name(MODULE)).filter(|m| m.is_file());
+                check_status(&rule, module.is_some()).map_err(|problem| {
+                    CatalogError::Manifest {
+                        path: path.clone(),
+                        problem,
+                    }
+                })?;
                 catalog.insert(Entry {
                     rule,
                     path,
@@ -90,6 +108,7 @@ impl RuleCatalog {
             }
         }
         catalog.refuse_shared_decisions()?;
+        catalog.refuse_shared_operators()?;
         Ok(catalog)
     }
 
@@ -108,6 +127,13 @@ impl RuleCatalog {
             .module
             .as_deref()
             .ok_or_else(|| CatalogError::NoModule(rule_ref.to_owned()))
+    }
+
+    /// The active rule that decides steps running `operator` (`<id>@<version>`), if any.
+    pub fn rule_for_operator(&self, operator: &str) -> Option<&MethodologyRule> {
+        let name = operator.split('@').next()?;
+        self.rules()
+            .find(|rule| rule.applies_to.iter().any(|a| a.as_str() == name))
     }
 
     fn entry(&self, rule_ref: &str) -> Result<&Entry, CatalogError> {
@@ -133,6 +159,24 @@ impl RuleCatalog {
         Ok(())
     }
 
+    /// One active rule per operator, so a step has one rule (ADR-0045).
+    fn refuse_shared_operators(&self) -> Result<(), CatalogError> {
+        let mut owners: BTreeMap<String, String> = BTreeMap::new();
+        for rule in self.rules() {
+            for operator in &rule.applies_to {
+                let operator = operator.as_str().to_owned();
+                if let Some(first) = owners.insert(operator.clone(), rule.id.to_string()) {
+                    return Err(CatalogError::SharedOperator {
+                        operator,
+                        first,
+                        second: rule.id.to_string(),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// One owner per decision (ADR-0042).
     fn refuse_shared_decisions(&self) -> Result<(), CatalogError> {
         let mut owners: BTreeMap<String, String> = BTreeMap::new();
@@ -148,6 +192,59 @@ impl RuleCatalog {
         }
         Ok(())
     }
+}
+
+/// An active rule has code and only fields the system uses; a draft has no code and is
+/// never routed (ADR-0045). Returns what is wrong.
+fn check_status(rule: &MethodologyRule, has_module: bool) -> Result<(), String> {
+    if rule.status != MethodologyRuleStatus::Active {
+        if has_module {
+            return Err("a draft rule has no rule.py; mark it active".into());
+        }
+        if !rule.applies_to.is_empty() {
+            return Err("a draft rule is never routed, so it has no applies_to".into());
+        }
+        return Ok(());
+    }
+    if !has_module {
+        return Err("an active rule needs its rule.py".into());
+    }
+    if !rule.observes.is_empty() {
+        return Err("an active rule declares reads, not observes".into());
+    }
+    if let Some(a) = rule.alternatives.iter().find(|a| a.condition.is_some()) {
+        return Err(format!(
+            "alternative {} has a condition: an active rule's decide() is its only logic",
+            a.id.as_str()
+        ));
+    }
+    if rule.applies_to.is_empty() {
+        return Err("an active rule needs applies_to".into());
+    }
+    if let Some(unknown) = rule.reads.iter().find(|r| !facts::is_known(r.as_str())) {
+        return Err(format!("reads {}, which no one sends", unknown.as_str()));
+    }
+    if rule.examples.is_empty() {
+        return Err("an active rule needs examples".into());
+    }
+    for example in &rule.examples {
+        let picks = example.picks.as_str();
+        if !rule.alternatives.iter().any(|a| a.id.as_str() == picks) {
+            return Err(format!(
+                "an example picks {picks}, which is not on the menu"
+            ));
+        }
+        if let Some(name) = example
+            .given
+            .keys()
+            .find(|name| !rule.reads.iter().any(|r| facts::covers(r.as_str(), name)))
+        {
+            return Err(format!(
+                "an example gives {name}, which the rule does not read"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn read(path: &Path) -> Result<String, CatalogError> {

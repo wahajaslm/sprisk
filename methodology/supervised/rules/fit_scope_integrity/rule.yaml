@@ -6,6 +6,7 @@ id: methodology.supervised.fit_scope_integrity@1.0.0
 name: "Data-Access Matrix & Fit-Scope Integrity"
 stage: features
 decides: compile.fit_scope_authorization
+status: draft
 
 # 1. Scientific Standards & Industrial Provenance
 # ------------------------------------------------------------------------------

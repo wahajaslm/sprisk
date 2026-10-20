@@ -300,7 +300,16 @@ class MethodologyStage(StrEnum):
     reporting = "reporting"
 
 
-class Need(RootModel[str]):
+class Status(StrEnum):
+    draft = "draft"
+    active = "active"
+
+
+class AppliesToItem(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$")]
+
+
+class Read(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
 
 
@@ -500,7 +509,7 @@ class NotebookExecute(StrictModel):
     code: Annotated[str, Field(max_length=100000)]
 
 
-class Status(StrEnum):
+class Status1(StrEnum):
     ok = "ok"
     error = "error"
     interrupted = "interrupted"
@@ -1136,46 +1145,16 @@ class Alternative1(StrictModel):
     label: Annotated[str, Field(min_length=1)]
     description: Annotated[str, Field(min_length=1)]
     condition: Annotated[
-        str,
+        str | None,
         Field(
-            description="Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042)."
+            description="A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045)."
         ),
-    ]
+    ] = None
     rationale: Annotated[str, Field(min_length=1)]
     settings_schema: Annotated[
         dict[str, Any] | None, Field(description="JSON Schema for this alternative's settings.")
     ] = None
     action: Action
-
-
-class MethodologyRule(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.methodology_rule/v1"]
-    id: MethodologyRuleRef
-    name: Annotated[str, Field(min_length=1)]
-    stage: MethodologyStage
-    needs: Annotated[
-        list[Need] | None,
-        Field(
-            description="Facts and earlier decisions this rule reads, e.g. question.time_column; they order rules inside a stage (ADR-0042)."
-        ),
-    ] = None
-    decides: Annotated[
-        str,
-        Field(
-            description="The one decision this rule owns; unique across loaded packs.",
-            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
-        ),
-    ]
-    provenance: Provenance
-    observes: list[Observes | Observes1]
-    policy_thresholds: Annotated[
-        dict[str, Any], Field(description="Default thresholds the rule decides with.")
-    ]
-    alternatives: Annotated[list[Alternative1], Field(min_length=1)]
-    verification: Verification
 
 
 class MethodologyEvidence(StrictModel):
@@ -1187,6 +1166,27 @@ class MethodologyEvidence(StrictModel):
     value: Annotated[str, Field(min_length=1)]
     origin: Origin
     artifact_id: ArtifactId | None = None
+
+
+class Given(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[str, Field(min_length=1)]
+    origin: Origin
+
+
+class RuleExample(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    given: Annotated[
+        dict[str, str | float | bool | Given],
+        Field(
+            description="Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }."
+        ),
+    ]
+    picks: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
 
 
 class DecisionProposal(StrictModel):
@@ -1268,7 +1268,7 @@ class NotebookExecution(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    status: Status
+    status: Status1
     execution_count: Annotated[
         int | None,
         Field(
@@ -1581,6 +1581,61 @@ class RuleDecision(StrictModel):
     recommended_alternative_id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
     alternatives: Annotated[list[Alternative], Field(min_length=1)]
     evidence: list[MethodologyEvidence]
+
+
+class MethodologyRule(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.methodology_rule/v1"]
+    id: MethodologyRuleRef
+    name: Annotated[str, Field(min_length=1)]
+    stage: MethodologyStage
+    status: Annotated[
+        Status,
+        Field(
+            description="draft: a design with no rule.py, never run; its condition and observes are notes. active: has rule.py, applies_to, reads and examples, and no notes (ADR-0045)."
+        ),
+    ]
+    applies_to: Annotated[
+        list[AppliesToItem] | None,
+        Field(
+            description="Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045).",
+            min_length=1,
+        ),
+    ] = None
+    reads: Annotated[
+        list[Read] | None,
+        Field(
+            description="Facts this active rule may read, by name from the fact catalog, e.g. question.target or column.*.kurtosis; * stands for a column or setting name. Rust sends only these (ADR-0045)."
+        ),
+    ] = None
+    examples: Annotated[
+        list[RuleExample] | None,
+        Field(
+            description="Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).",
+            min_length=1,
+        ),
+    ] = None
+    decides: Annotated[
+        str,
+        Field(
+            description="The one decision this rule owns; unique across loaded packs.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ]
+    provenance: Provenance
+    observes: Annotated[
+        list[Observes | Observes1] | None,
+        Field(
+            description="Design notes on a draft rule's inputs; an active rule declares reads instead."
+        ),
+    ] = None
+    policy_thresholds: Annotated[
+        dict[str, Any], Field(description="Default thresholds the rule decides with.")
+    ]
+    alternatives: Annotated[list[Alternative1], Field(min_length=1)]
+    verification: Verification
 
 
 class NotebookVersion(StrictModel):

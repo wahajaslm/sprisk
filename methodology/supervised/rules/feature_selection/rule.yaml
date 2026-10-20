@@ -6,6 +6,7 @@ id: methodology.supervised.feature_selection@1.0.0
 name: "Feature Selection & Dimensional Sparsity"
 stage: features
 decides: features.selection_strategy
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

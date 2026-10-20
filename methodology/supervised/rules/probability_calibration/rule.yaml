@@ -6,6 +6,7 @@ id: methodology.supervised.probability_calibration@1.0.0
 name: "Decision Threshold & Probability Calibration"
 stage: evaluation
 decides: evaluation.decision_threshold
+status: draft
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------

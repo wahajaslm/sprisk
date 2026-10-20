@@ -3,6 +3,7 @@
 
 mod catalog;
 mod decision;
+pub mod facts;
 pub use catalog::{CatalogError, RuleCatalog};
 pub use decision::{flow_facts, observation, profile_facts, proposal, without_node};
 

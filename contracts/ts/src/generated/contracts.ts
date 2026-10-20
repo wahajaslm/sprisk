@@ -952,9 +952,25 @@ export interface MethodologyRule {
   name: string;
   stage: MethodologyStage;
   /**
-   * Facts and earlier decisions this rule reads, e.g. question.time_column; they order rules inside a stage (ADR-0042).
+   * draft: a design with no rule.py, never run; its condition and observes are notes. active: has rule.py, applies_to, reads and examples, and no notes (ADR-0045).
    */
-  needs?: string[];
+  status: "draft" | "active";
+  /**
+   * Operators, without version, whose steps this active rule decides. Rust routes from it (ADR-0045).
+   *
+   * @minItems 1
+   */
+  applies_to?: [string, ...string[]];
+  /**
+   * Facts this active rule may read, by name from the fact catalog, e.g. question.target or column.*.kurtosis; * stands for a column or setting name. Rust sends only these (ADR-0045).
+   */
+  reads?: string[];
+  /**
+   * Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).
+   *
+   * @minItems 1
+   */
+  examples?: [RuleExample, ...RuleExample[]];
   /**
    * The one decision this rule owns; unique across loaded packs.
    */
@@ -965,7 +981,10 @@ export interface MethodologyRule {
     pitfall: string;
     corner_cases: string[];
   };
-  observes: (
+  /**
+   * Design notes on a draft rule's inputs; an active rule declares reads instead.
+   */
+  observes?: (
     | {
         profile: string;
         description: string;
@@ -992,9 +1011,9 @@ export interface MethodologyRule {
       label: string;
       description: string;
       /**
-       * Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042).
+       * A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045).
        */
-      condition: string;
+      condition?: string;
       rationale: string;
       /**
        * JSON Schema for this alternative's settings.
@@ -1020,9 +1039,9 @@ export interface MethodologyRule {
       label: string;
       description: string;
       /**
-       * Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042).
+       * A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045).
        */
-      condition: string;
+      condition?: string;
       rationale: string;
       /**
        * JSON Schema for this alternative's settings.
@@ -1048,6 +1067,26 @@ export interface MethodologyRule {
     check_id: string;
     invariant: string;
   };
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuleExample".
+ */
+export interface RuleExample {
+  /**
+   * Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }.
+   */
+  given: {
+    [k: string]:
+      | string
+      | number
+      | boolean
+      | {
+          value: string;
+          origin: Origin;
+        };
+  };
+  picks: string;
 }
 /**
  * Read-only files of one rule package: its manifest and, when present, its Python decide() module. Served by GET /methodology_rules/{id}/source; the API reads only files inside the rule's folder.

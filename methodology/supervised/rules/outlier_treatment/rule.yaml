@@ -6,6 +6,9 @@ id: methodology.supervised.outlier_treatment@2.0.0
 name: "Outlier Treatment Strategy"
 stage: cleaning
 decides: cleaning.outlier_strategy
+status: active
+applies_to: [sprisk.clean.clip_outliers]
+reads: [flow.model_families, flow.models_hidden, flow.other_readers, question.target, question.task, column.*.outlier_share, column.*.iqr]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -17,31 +20,6 @@ provenance:
     - "Test partition must NEVER have outliers dropped; real-world production inputs contain anomalous observations."
     - "Monotonic tree models (Random Forest, XGBoost) do not require outlier capping because split thresholds depend only on rank order."
     - "Multivariate anomalies where individual 1D features fall within normal bounds, but joint feature pairs are impossible."
-
-# 2. What This Rule Observes
-# ------------------------------------------------------------------------------
-observes:
-  - profile: outlier_percentage_iqr
-    description: "Per column, the share of train values beyond [Q1 - 1.5*IQR, Q3 + 1.5*IQR]; the conditions read the largest among columns other than the target that have iqr > 0"
-    required: true
-  - profile: iqr
-    description: "Per column, the train interquartile range. Zero when most values are equal, so the IQR gives no spread to use."
-    required: false
-  - fact: flow.model_families
-    description: "Families of the models seen downstream of the step, from their manifests, sorted and joined by ', ': tree_ensemble, linear, distance_based, density_based; or featureless when none declares one. Absent when no model is seen."
-    required: false
-  - fact: flow.models_hidden
-    description: "Whether all, some or none of the models downstream sit behind a step or model that may change the columns. Absent when no model is downstream."
-    required: false
-  - fact: flow.other_readers
-    description: "The analysis or code steps downstream, which read this step's output, joined by ', '. While any exist, an alternative that removes the step asks first: removing it changes what they see."
-    required: false
-  - fact: question.target
-    description: "Target column; it is never clipped, since that changes the labels the model is scored on. An inferred target in the columns asks for confirmation before any clip."
-    required: false
-  - fact: question.task
-    description: "Regression targets with outliers pull squared-error fits, trees included."
-    required: false
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -55,7 +33,6 @@ alternatives:
   - id: none_tree_or_clean
     label: Retain Outliers (Natural Variation / Tree Invariance)
     description: Keep all extreme values without capping or dropping.
-    condition: outlier_percentage_iqr < outlier_fraction_threshold OR (flow.models_hidden == 'none' AND every family in flow.model_families is tree_ensemble, density_based or featureless) OR question.target is inferred among the columns OR no column other than question.target has iqr > 0; asks first while flow.other_readers is present
     rationale: The outlier rate is within natural limits, or the models downstream are not pulled by
       outlying features. Trees split on rank order; DBSCAN marks isolated rows as noise, and clipping
       would pile them onto the fence; a dummy baseline ignores its features. Outliers in a regression
@@ -65,7 +42,6 @@ alternatives:
   - id: clip_iqr_fence
     label: Clip to the Train IQR Fences
     description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target, and any column with a zero IQR, are left as they are.
-    condition: question.target is not inferred among the columns AND a column other than question.target has iqr > 0 AND outlier_percentage_iqr >= outlier_fraction_threshold AND NOT (flow.models_hidden == 'none' AND every family in flow.model_families is tree_ensemble, density_based or featureless)
     rationale: Limits extreme leverage points without dropping rows. The fences come from the train
       quartiles, which outliers barely move, so the cap does not drift with the values it caps.
     action:
@@ -75,7 +51,6 @@ alternatives:
     label: Multivariate Isolation Forest (Train Filtering)
     description: Identify and filter multi-dimensional anomalies in the training set using random partition
       isolation trees.
-    condition: outlier_percentage_iqr >= outlier_fraction_threshold
     rationale: 'Not available: no isolation forest filter operator exists.'
     action:
       type: insert_step
@@ -85,3 +60,13 @@ alternatives:
 verification:
   check_id: sprisk.checks.supervised.outlier_boundary_leakage@1.0.0
   invariant: "Capping boundaries (quantiles/percentiles) must be estimated on training rows only. Test split rows must never be pruned."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: { column.income.outlier_share: 0.2, column.income.iqr: 5.0 }
+    picks: clip_iqr_fence
+  - given: { column.age.outlier_share: 0.01, column.age.iqr: 3.0 }
+    picks: none_tree_or_clean
+  - given: { flow.model_families: tree_ensemble, flow.models_hidden: none, column.income.outlier_share: 0.2, column.income.iqr: 5.0 }
+    picks: none_tree_or_clean

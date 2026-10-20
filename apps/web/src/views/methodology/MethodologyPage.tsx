@@ -89,24 +89,59 @@ function Overview({ rule }: { rule: MethodologyRule }) {
         </dl>
       </section>
 
-      <section>
-        <h2 className="dsx-h">Observes</h2>
-        <ul className="mth-rows">
-          {rule.observes.map((o) => {
-            const name = "profile" in o ? o.profile : o.fact;
-            return (
-              <li key={name}>
-                <code>{name}</code>
-                <span className="muted">{o.description}</span>
-                <span className="mth-tag">
-                  {"profile" in o ? "profile" : "fact"}
-                  {o.required ? " · required" : ""}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      {rule.status === "active" ? (
+        <>
+          <section>
+            <h2 className="dsx-h">Reads</h2>
+            <ul className="mth-rows">
+              {(rule.reads ?? []).map((name) => (
+                <li key={name}>
+                  <code>{name}</code>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section>
+            <h2 className="dsx-h">Examples</h2>
+            <p className="muted">Run as tests on every change, so they always hold.</p>
+            <ol className="mth-rows">
+              {(rule.examples ?? []).map((example, i) => (
+                <li key={i} aria-label={`Example ${i + 1}`}>
+                  <span>
+                    {Object.entries(example.given).map(([name, value]) => (
+                      <code key={name}>
+                        {name} = {typeof value === "object" ? `${value.value} (${value.origin})` : String(value)}
+                      </code>
+                    ))}
+                    {Object.keys(example.given).length === 0 && <span className="muted">nothing known</span>}
+                  </span>
+                  <span className="mth-tag">→ {rule.alternatives.find((a) => a.id === example.picks)?.label ?? example.picks}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </>
+      ) : (
+        <section>
+          <h2 className="dsx-h">Observes</h2>
+          <p className="muted">Draft: not run yet. These notes are the design for its code.</p>
+          <ul className="mth-rows">
+            {(rule.observes ?? []).map((o) => {
+              const name = "profile" in o ? o.profile : o.fact;
+              return (
+                <li key={name}>
+                  <code>{name}</code>
+                  <span className="muted">{o.description}</span>
+                  <span className="mth-tag">
+                    {"profile" in o ? "profile" : "fact"}
+                    {o.required ? " · required" : ""}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section>
         <h2 className="dsx-h">Alternatives</h2>
@@ -118,7 +153,7 @@ function Overview({ rule }: { rule: MethodologyRule }) {
                 <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
               </div>
               <p>{a.description}</p>
-              <p className="muted">When: {a.condition}</p>
+              {a.condition && <p className="muted">When: {a.condition}</p>}
               <p className="muted">Why: {a.rationale}</p>
             </li>
           ))}
