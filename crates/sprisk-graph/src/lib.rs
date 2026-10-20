@@ -53,6 +53,14 @@ pub enum CompileError {
         name: String,
         reason: &'static str,
     },
+    #[error(
+        "node {node}: {setting} names {operator}, which is not a registered model with an estimator"
+    )]
+    NotAModel {
+        node: String,
+        setting: String,
+        operator: String,
+    },
     #[error("node {node}: {operator} cannot carry its own code: {reason}")]
     CodeNotAllowed {
         node: String,
@@ -87,6 +95,7 @@ impl CompileError {
             CompileError::ReservedNode(_) => "reserved_node_id",
             CompileError::CodeNotAllowed { .. } => "code_not_allowed",
             CompileError::InvalidPortName { .. } => "invalid_port_name",
+            CompileError::NotAModel { .. } => "not_a_model",
         }
     }
 }
@@ -127,7 +136,7 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
     // Resolve each node to its operator and check its params.
     // Each node's operator with the ports its params name (ADR-0031).
     let mut operators: HashMap<&str, Operator> = HashMap::new();
-    let mut digests: HashMap<&str, &str> = HashMap::new();
+    let mut digests: HashMap<&str, String> = HashMap::new();
     let mut graph = DiGraph::<&str, ()>::new();
     let mut index: HashMap<&str, NodeIndex> = HashMap::new();
     for node in &pipeline.nodes {
@@ -142,8 +151,13 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
         index.insert(id, graph.add_node(id));
         match registry.resolve(&node.operator) {
             Some((op, digest)) => {
-                digests.insert(id, digest);
                 errors.extend(check_params(id, op, &node.params));
+                match named_models(id, op, &node.params, registry) {
+                    Ok(models) => {
+                        digests.insert(id, with_models(digest, &models));
+                    }
+                    Err(e) => errors.extend(e),
+                }
                 if node.code.is_some() {
                     errors.extend(check_own_code(id, op));
                 }
@@ -260,7 +274,7 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
                 operator: operators[id].clone(),
                 implementation_digest: code
                     .as_ref()
-                    .map_or_else(|| digests[id].to_owned(), own_code_digest),
+                    .map_or_else(|| digests[id].clone(), own_code_digest),
                 params: nodes[id].params.clone().into(),
                 inputs,
                 code,
@@ -343,21 +357,105 @@ fn with_named_ports(
     }
 }
 
-/// A step's own code runs instead of its operator's (ADR-0028). Only pure steps that read no
-/// files may carry it: replacement code could ignore the data-root check a path setting
-/// passed, or add effects that caching and approval would not see.
-fn check_own_code(node: &str, op: &Operator) -> Option<CompileError> {
-    let reads_files = op
-        .params_schema
+/// A setting marked `x-sprisk-model-operator: <key>` names a registered model with an
+/// estimator, and setting `<key>` holds that model's params (ADR-0046). Gives the digests of
+/// the models named, so the step's cache key follows their code.
+fn named_models<'r>(
+    node: &str,
+    op: &Operator,
+    params: &serde_json::Map<String, serde_json::Value>,
+    registry: &'r Registry,
+) -> Result<Vec<&'r str>, Vec<CompileError>> {
+    let mut digests = Vec::new();
+    let mut errors = Vec::new();
+    for (setting, schema) in properties(op) {
+        let Some(marker) = schema.get("x-sprisk-model-operator") else {
+            continue;
+        };
+        let Some(params_setting) = marker.as_str() else {
+            errors.push(CompileError::InvalidParamsSchema {
+                node: node.to_owned(),
+                operator: op.id.to_string(),
+                reason: format!("x-sprisk-model-operator on {setting} must name a setting"),
+            });
+            continue;
+        };
+        // A missing or mistyped setting is already an invalid param.
+        let Some(model_ref) = params.get(setting).and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some((model, digest)) = registry
+            .resolve(model_ref)
+            .filter(|(m, _)| m.model.as_ref().is_some_and(|m| m.estimator.is_some()))
+        else {
+            errors.push(CompileError::NotAModel {
+                node: node.to_owned(),
+                setting: setting.clone(),
+                operator: model_ref.to_owned(),
+            });
+            continue;
+        };
+        let model_params = params.get(params_setting).cloned().unwrap_or_default();
+        match validate_against(model, &model_params) {
+            Ok(reasons) => {
+                errors.extend(
+                    reasons
+                        .into_iter()
+                        .map(|reason| CompileError::InvalidParams {
+                            node: node.to_owned(),
+                            reason: format!("{params_setting}: {reason}"),
+                        }),
+                )
+            }
+            Err(reason) => errors.push(CompileError::InvalidParamsSchema {
+                node: node.to_owned(),
+                operator: model.id.to_string(),
+                reason,
+            }),
+        }
+        digests.push(digest);
+    }
+    if errors.is_empty() {
+        Ok(digests)
+    } else {
+        Err(errors)
+    }
+}
+
+/// The step's own digest, joined with those of the models it names.
+fn with_models(own: &str, models: &[&str]) -> String {
+    if models.is_empty() {
+        return own.to_owned();
+    }
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for digest in std::iter::once(own).chain(models.iter().copied()) {
+        hasher.update(digest.as_bytes());
+        hasher.update([0]);
+    }
+    format!("sha256:{}", hex::encode(hasher.finalize()))
+}
+
+fn properties(op: &Operator) -> impl Iterator<Item = (&String, &serde_json::Value)> {
+    op.params_schema
         .get("properties")
         .and_then(|p| p.as_object())
-        .is_some_and(|props| {
-            props
-                .values()
-                .any(|v| v.get("x-sprisk-local-path") == Some(&serde_json::Value::Bool(true)))
-        });
+        .into_iter()
+        .flatten()
+}
+
+/// A step's own code runs instead of its operator's (ADR-0028). Only pure steps that read no
+/// files and name no model may carry it: replacement code could ignore the data-root check a
+/// path setting passed, or the model a setting names, or add effects that caching and
+/// approval would not see.
+fn check_own_code(node: &str, op: &Operator) -> Option<CompileError> {
+    let marked = |marker: &str| properties(op).any(|(_, v)| v.get(marker).is_some());
+    let reads_files = properties(op)
+        .any(|(_, v)| v.get("x-sprisk-local-path") == Some(&serde_json::Value::Bool(true)));
     let reason = if reads_files {
         "it reads files, and its code must stay the checked one"
+    } else if marked("x-sprisk-model-operator") {
+        "it names a model, and its code must stay the checked one"
     } else if op.effects != sprisk_contracts::Effects::Pure {
         "it is not a pure step"
     } else {
@@ -385,25 +483,31 @@ fn check_params(
     op: &Operator,
     params: &serde_json::Map<String, serde_json::Value>,
 ) -> Vec<CompileError> {
-    let schema = serde_json::Value::Object(op.params_schema.clone());
-    let validator = match jsonschema::validator_for(&schema) {
-        Ok(v) => v,
-        Err(e) => {
-            return vec![CompileError::InvalidParamsSchema {
-                node: node.to_owned(),
-                operator: op.id.to_string(),
-                reason: e.to_string(),
-            }];
-        }
-    };
     let instance = serde_json::Value::Object(params.clone());
-    validator
-        .iter_errors(&instance)
-        .map(|e| CompileError::InvalidParams {
+    match validate_against(op, &instance) {
+        Ok(reasons) => reasons
+            .into_iter()
+            .map(|reason| CompileError::InvalidParams {
+                node: node.to_owned(),
+                reason,
+            })
+            .collect(),
+        Err(reason) => vec![CompileError::InvalidParamsSchema {
             node: node.to_owned(),
-            reason: e.to_string(),
-        })
-        .collect()
+            operator: op.id.to_string(),
+            reason,
+        }],
+    }
+}
+
+/// Why `instance` fails `op`'s params schema, or the schema's own error.
+fn validate_against(op: &Operator, instance: &serde_json::Value) -> Result<Vec<String>, String> {
+    let schema = serde_json::Value::Object(op.params_schema.clone());
+    let validator = jsonschema::validator_for(&schema).map_err(|e| e.to_string())?;
+    Ok(validator
+        .iter_errors(instance)
+        .map(|e| e.to_string())
+        .collect())
 }
 
 enum Lookup<'a> {

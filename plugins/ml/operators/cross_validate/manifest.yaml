@@ -1,0 +1,24 @@
+schema_version: sprisk.operator/v1
+id: sprisk.ml.cross_validate@1.0.0
+capability_class: evaluator
+description: Score one candidate model by k-fold cross-validation of the split's train rows, refitting its whole pipeline in every fold (ADR-0044). One row per fold. Stratified folds for classification.
+entrypoint: sprisk_ml.compare:cross_validate
+inputs: [{ name: train, kind: table }]
+outputs: [{ name: scores, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [candidate, candidate_params, folds, seed, metric]
+  properties:
+    candidate:
+      type: string
+      pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+      description: "The model operator to score."
+      x-sprisk-model-operator: candidate_params
+    candidate_params: { type: object, description: "The model's params, as its own step would take them." }
+    folds: { type: integer, minimum: 2, maximum: 20, description: "Number of folds. Every candidate in a comparison uses the same." }
+    seed: { type: integer, minimum: 0, description: "Shuffles the rows into folds, so every candidate gets the same folds." }
+    metric: { type: string, enum: [balanced_accuracy, rmse], description: "Fixed before any score is seen: balanced_accuracy for classification, rmse for regression." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 1800 }

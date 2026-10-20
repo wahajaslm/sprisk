@@ -28,7 +28,39 @@ fn operator(id: &str, inputs: &[(&str, &str)], outputs: &[(&str, &str)], params:
 }
 
 fn registry() -> (tempfile::TempDir, Registry) {
+    registry_with_model("A model.")
+}
+
+/// The test registry, with a model whose manifest says `about`.
+fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
+    let mut model = operator(
+        "sprisk.ml.model@1.0.0",
+        &[("train", "table")],
+        &[("model", "model")],
+        json!({
+            "type": "object",
+            "required": ["target"],
+            "properties": { "target": { "type": "string" }, "depth": { "type": "integer" } },
+            "additionalProperties": false
+        }),
+    );
+    model["description"] = json!(about);
+    model["model"] =
+        json!({ "tasks": ["classification"], "prepares": [], "estimator": "ops:build" });
     let ops = [
+        model,
+        operator(
+            "sprisk.ml.compare@1.0.0",
+            &[("train", "table")],
+            &[("scores", "table")],
+            json!({
+                "type": "object",
+                "properties": {
+                    "candidate": { "type": "string", "x-sprisk-model-operator": "candidate_params" },
+                    "candidate_params": { "type": "object" }
+                }
+            }),
+        ),
         operator(
             "sprisk.source.parquet@1.0.0",
             &[],
@@ -473,4 +505,93 @@ fn a_port_marker_must_say_input_or_output() {
         .map(CompileError::code)
         .collect();
     assert_eq!(codes, ["invalid_params_schema"]);
+}
+
+fn comparing(candidate: &str, candidate_params: Value) -> Value {
+    json!([
+        node("ingest", "sprisk.source.parquet@1.0.0"),
+        {
+            "id": "cv", "operator": "sprisk.ml.compare@1.0.0",
+            "params": { "candidate": candidate, "candidate_params": candidate_params }
+        }
+    ])
+}
+
+fn comparing_edges() -> Value {
+    json!([edge("ingest.data", "cv.train")])
+}
+
+#[test]
+fn a_step_naming_a_model_is_cached_by_the_models_code_too() {
+    let digest_with = |about: &str| {
+        let (_dir, registry) = registry_with_model(about);
+        let nodes = comparing("sprisk.ml.model@1.0.0", json!({ "target": "y" }));
+        let plan = compile(&pipeline(nodes, comparing_edges()), &registry).unwrap();
+        let cv = plan.steps.iter().find(|s| s.node_id == "cv").unwrap();
+        let own = registry
+            .digest("sprisk.ml.compare@1.0.0")
+            .unwrap()
+            .to_owned();
+        (own, cv.implementation_digest.clone())
+    };
+    let (own, first) = digest_with("A model.");
+    let (same_own, edited) = digest_with("The model, edited.");
+
+    assert_eq!(own, same_own);
+    assert_ne!(first, own);
+    assert_ne!(first, edited);
+    assert!(first.starts_with("sha256:"));
+}
+
+#[test]
+fn a_step_must_name_a_registered_model_with_an_estimator() {
+    for candidate in ["sprisk.ml.missing@1.0.0", "sprisk.ml.train@1.0.0"] {
+        let found = errors(
+            comparing(candidate, json!({ "target": "y" })),
+            comparing_edges(),
+        );
+        assert_eq!(
+            found,
+            [CompileError::NotAModel {
+                node: "cv".into(),
+                setting: "candidate".into(),
+                operator: candidate.into()
+            }],
+            "{candidate}"
+        );
+        assert_eq!(found[0].code(), "not_a_model");
+    }
+}
+
+#[test]
+fn the_named_models_params_must_pass_its_own_schema() {
+    let found = errors(
+        comparing("sprisk.ml.model@1.0.0", json!({ "depth": "deep" })),
+        comparing_edges(),
+    );
+    let reasons: Vec<String> = found.iter().map(ToString::to_string).collect();
+    assert_eq!(found.len(), 2, "{reasons:?}");
+    assert!(
+        found.iter().all(|e| e.code() == "invalid_params"),
+        "{reasons:?}"
+    );
+    assert!(
+        reasons
+            .iter()
+            .all(|r| r.starts_with("node cv: invalid params: candidate_params: ")),
+        "{reasons:?}"
+    );
+}
+
+#[test]
+fn a_step_naming_a_model_cannot_carry_its_own_code() {
+    let mut nodes = comparing("sprisk.ml.model@1.0.0", json!({ "target": "y" }));
+    nodes[1]["code"] = json!({ "source": "def run(train, candidate, candidate_params):\n    ...\n", "function": "run" });
+    let found = errors(nodes, comparing_edges());
+    assert!(
+        found
+            .iter()
+            .any(|e| e.code() == "code_not_allowed" && e.to_string().contains("names a model")),
+        "{found:?}"
+    );
 }
