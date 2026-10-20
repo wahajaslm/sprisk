@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.supervised.class_imbalance@1.0.0
 name: "Class Imbalance Mitigation Strategy"
-stage: sampling
+stage: models
 decides: sampling.imbalance_strategy
 
 # 1. Scientific Standards & Provenance

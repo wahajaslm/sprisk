@@ -258,6 +258,161 @@ class Error(StrictModel):
     message: Annotated[str, Field(min_length=1)]
 
 
+class MethodologyRuleRef(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="methodology.<pack>.<rule>@<semver>",
+            pattern="^methodology\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*@\\d+\\.\\d+\\.\\d+$",
+        ),
+    ]
+
+
+class MethodologyStage(StrEnum):
+    question = "question"
+    data = "data"
+    cleaning = "cleaning"
+    split = "split"
+    features = "features"
+    models = "models"
+    evaluation = "evaluation"
+    reporting = "reporting"
+
+
+class CornerCase(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class Provenance(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    standard: Annotated[str, Field(min_length=1)]
+    citation: Annotated[str, Field(min_length=1)]
+    pitfall: Annotated[str, Field(min_length=1)]
+    corner_cases: list[CornerCase]
+
+
+class Observes(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    profile: Annotated[str, Field(min_length=1)]
+    description: str
+    required: bool
+
+
+class Observes1(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    fact: Annotated[str, Field(min_length=1)]
+    description: str
+    required: bool
+
+
+class Action(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Annotated[str, Field(min_length=1)]
+    operator: Annotated[
+        str | None,
+        Field(
+            description="Operator the action builds; may name one not yet registered.", min_length=1
+        ),
+    ] = None
+    placement: Annotated[str | None, Field(min_length=1)] = None
+    fit_on: Annotated[str | None, Field(min_length=1)] = None
+    apply_to: Annotated[str | None, Field(min_length=1)] = None
+    params: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="Operator params; '{settings.x}' strings are filled from the alternative's settings."
+        ),
+    ] = None
+
+
+class Alternative(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    label: Annotated[str, Field(min_length=1)]
+    description: Annotated[str, Field(min_length=1)]
+    condition: Annotated[
+        str,
+        Field(
+            description="Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042)."
+        ),
+    ]
+    rationale: Annotated[str, Field(min_length=1)]
+    settings_schema: Annotated[
+        dict[str, Any] | None, Field(description="JSON Schema for this alternative's settings.")
+    ] = None
+    action: Action
+
+
+class Verification(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    check_id: Annotated[str, Field(min_length=1)]
+    invariant: Annotated[str, Field(min_length=1)]
+
+
+class MethodologyRule(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.methodology_rule/v1"]
+    id: MethodologyRuleRef
+    name: Annotated[str, Field(min_length=1)]
+    stage: MethodologyStage
+    decides: Annotated[
+        str,
+        Field(
+            description="The one decision this rule owns; unique across loaded packs.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ]
+    provenance: Provenance
+    observes: list[Observes | Observes1]
+    policy_thresholds: Annotated[
+        dict[str, Any], Field(description="Default thresholds the rule decides with.")
+    ]
+    alternatives: Annotated[list[Alternative], Field(min_length=1)]
+    verification: Verification
+
+
+class Language(StrEnum):
+    yaml = "yaml"
+    python = "python"
+
+
+class File(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    path: Annotated[
+        str,
+        Field(
+            description="Relative to the rule folder, e.g. rule.yaml. Never an absolute path.",
+            pattern="^[A-Za-z0-9_][A-Za-z0-9_./-]*$",
+        ),
+    ]
+    language: Language
+    text: str
+
+
+class MethodologyRuleSource(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    rule: MethodologyRuleRef
+    files: Annotated[list[File], Field(min_length=1)]
+
+
 class Kind2(StrEnum):
     question_fact = "question_fact"
     profile_fact = "profile_fact"

@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.supervised.probability_calibration@1.0.0
 name: "Decision Threshold & Probability Calibration"
-stage: calibration
+stage: evaluation
 decides: evaluation.decision_threshold
 
 # 1. Scientific Standards & Provenance

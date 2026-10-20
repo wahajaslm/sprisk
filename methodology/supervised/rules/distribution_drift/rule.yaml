@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.supervised.distribution_drift@1.0.0
 name: "Production Drift Monitoring & Baseline Reference"
-stage: governance
+stage: reporting
 decides: governance.drift_monitoring_policy
 
 # 1. Scientific Standards & Industrial Provenance

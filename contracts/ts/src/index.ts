@@ -28,6 +28,8 @@ export interface Entities {
   CodeSplitRequest: C.CodeSplitRequest;
   CodeSplit: C.CodeSplit;
   OperatorSource: C.OperatorSource;
+  MethodologyRule: C.MethodologyRule;
+  MethodologyRuleSource: C.MethodologyRuleSource;
   FigureSet: C.FigureSet;
   LoadedTable: C.LoadedTable;
   DatasetProfile: C.DatasetProfile;

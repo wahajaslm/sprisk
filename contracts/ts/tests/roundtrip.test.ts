@@ -25,6 +25,8 @@ const entities: [keyof Entities, string][] = [
   ["TablePage", "table_page"],
   ["CodeDisplay", "code_display"],
   ["OperatorSource", "operator_source"],
+  ["MethodologyRule", "methodology_rule"],
+  ["MethodologyRuleSource", "methodology_rule_source"],
   ["FigureSet", "figure_set"],
   ["LoadedTable", "loaded_table"],
   ["DatasetProfile", "dataset_profile"],

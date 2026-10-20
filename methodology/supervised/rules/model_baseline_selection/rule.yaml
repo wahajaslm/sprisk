@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.supervised.model_baseline_selection@1.0.0
 name: "Model Selection & Baseline Floor"
-stage: modeling
+stage: models
 decides: modeling.estimator_selection
 
 # 1. Scientific Standards & Provenance

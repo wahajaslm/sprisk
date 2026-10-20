@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.unsupervised.clustering_tendency@1.0.0
 name: "Clustering Tendency Assessment"
-stage: geometry
+stage: features
 decides: clustering.tendency_verification
 
 # 1. Scientific Standards & Authoritative Provenance

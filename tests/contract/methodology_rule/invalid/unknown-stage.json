@@ -1,0 +1,140 @@
+{
+  "schema_version": "sprisk.methodology_rule/v1",
+  "id": "methodology.supervised.multicollinearity@1.0.0",
+  "name": "Multicollinearity & Redundancy Mitigation",
+  "stage": "modeling",
+  "decides": "features.multicollinearity_strategy",
+  "provenance": {
+    "standard": "Econometric & Statistical Learning Standards (Belsley, Kuh & Welsch, 1980)",
+    "citation": "Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning (Penalized Regression, Springer)",
+    "pitfall": "Collinear features (r > 0.85, VIF > 10) invert with high condition numbers, causing linear regression coefficients to oscillate with unstable signs and wildly inflated standard errors.",
+    "corner_cases": [
+      "Tree models (Random Forest, XGBoost) do not crash with multicollinearity, but collinearity splits feature importances across correlated twins, distorting SHAP values.",
+      "Features derived from one another (e.g. Total Revenue and [Item Revenue + Tax]) forming exact linear dependencies.",
+      "One-hot dummy trap creating an exact linear combination with the intercept vector."
+    ]
+  },
+  "observes": [
+    {
+      "profile": "pairwise_feature_correlations",
+      "description": "Maximum pairwise absolute correlation among features",
+      "required": true
+    },
+    {
+      "profile": "max_vif",
+      "description": "Maximum Variance Inflation Factor across numerical features",
+      "required": true
+    },
+    {
+      "fact": "planned_model_family",
+      "description": "Linear/logistic models vs distance-based vs tree ensembles",
+      "required": true
+    }
+  ],
+  "policy_thresholds": {
+    "correlation_cutoff": 0.85,
+    "vif_cutoff": 10.0
+  },
+  "alternatives": [
+    {
+      "id": "correlation_pruning",
+      "label": "Pairwise Correlation Pruning",
+      "description": "For every feature pair with |r| > 0.85, retain the feature with higher mutual information to the target and drop the redundant partner.",
+      "condition": "pairwise_feature_correlations > correlation_cutoff AND planned_model_family in ['linear', 'logistic', 'statsmodels']",
+      "rationale": "Severe pairwise collinearity observed in a linear model context. Pruning eliminates matrix ill-conditioning while preserving target predictive power.",
+      "settings_schema": {
+        "type": "object",
+        "properties": {
+          "correlation_threshold": {
+            "type": "number",
+            "default": 0.85,
+            "minimum": 0.7,
+            "maximum": 0.95
+          }
+        }
+      },
+      "action": {
+        "type": "insert_step",
+        "placement": "after_split",
+        "fit_on": "train_partition_only",
+        "operator": "sprisk.features.correlation_filter@1.0.0",
+        "params": {
+          "threshold": "{settings.correlation_threshold}"
+        }
+      }
+    },
+    {
+      "id": "vif_elimination",
+      "label": "Iterative Variance Inflation Factor (VIF) Elimination",
+      "description": "Iteratively compute VIF scores and drop the highest-VIF feature until all remaining features satisfy VIF < 10.0.",
+      "condition": "max_vif > vif_cutoff AND planned_model_family in ['linear', 'logistic', 'statsmodels']",
+      "rationale": "Multivariate linear dependencies detected across multiple features simultaneously (which pairwise correlation misses).",
+      "settings_schema": {
+        "type": "object",
+        "properties": {
+          "vif_threshold": {
+            "type": "number",
+            "default": 10.0,
+            "minimum": 5.0,
+            "maximum": 20.0
+          }
+        }
+      },
+      "action": {
+        "type": "insert_step",
+        "placement": "after_split",
+        "fit_on": "train_partition_only",
+        "operator": "sprisk.features.vif_pruner@1.0.0",
+        "params": {
+          "threshold": "{settings.vif_threshold}"
+        }
+      }
+    },
+    {
+      "id": "ridge_regularization",
+      "label": "L2 Ridge / ElasticNet Regularization",
+      "description": "Retain all collinear features and apply an L2 penalty to shrink correlated coefficients stably.",
+      "condition": "pairwise_feature_correlations > correlation_cutoff",
+      "rationale": "L2 penalty adds an identity matrix to the covariance matrix (X'X + lambda*I), restoring strict invertibility and distributing weights smoothly across correlated features.",
+      "settings_schema": {
+        "type": "object",
+        "properties": {
+          "alpha": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 0.001,
+            "maximum": 100.0
+          },
+          "l1_ratio": {
+            "type": "number",
+            "default": 0.5,
+            "minimum": 0.0,
+            "maximum": 1.0
+          }
+        }
+      },
+      "action": {
+        "type": "update_estimator_params",
+        "params": {
+          "penalty": "elasticnet",
+          "alpha": "{settings.alpha}",
+          "l1_ratio": "{settings.l1_ratio}"
+        }
+      }
+    },
+    {
+      "id": "pass_tree_models",
+      "label": "Retain Collinear Features (Tree Ensembles)",
+      "description": "Allow tree models to split on collinear features without pre-filtering.",
+      "condition": "planned_model_family in ['random_forest', 'xgboost', 'lightgbm']",
+      "rationale": "Tree models do not perform matrix inversion; collinear features do not cause numerical instability.",
+      "action": {
+        "type": "pass_through"
+      }
+    }
+  ],
+  "verification": {
+    "check_id": "sprisk.checks.supervised.collinearity_invariants@1.0.0",
+    "invariant": "Linear model design matrices must have condition number kappa(X) < 1000 before solver estimation."
+  }
+}

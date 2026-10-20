@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.supervised.train_serve_skew@1.0.0
 name: "Training-Serving Skew & Contract Parity"
-stage: governance
+stage: reporting
 decides: governance.serving_parity_contract
 
 # 1. Scientific Standards & Industrial Provenance

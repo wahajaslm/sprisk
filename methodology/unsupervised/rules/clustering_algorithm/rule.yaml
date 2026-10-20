@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.unsupervised.clustering_algorithm@1.0.0
 name: "Clustering Algorithm Selection"
-stage: modeling
+stage: models
 decides: clustering.algorithm_choice
 
 # 1. Scientific Standards & Authoritative Provenance

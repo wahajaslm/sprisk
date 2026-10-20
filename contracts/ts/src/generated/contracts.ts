@@ -104,6 +104,21 @@ export type RunId = string;
  */
 export type WorkerId = string;
 /**
+ * methodology.<pack>.<rule>@<semver>
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyRuleRef".
+ */
+export type MethodologyRuleRef = string;
+/**
+ * ADR-0042 stages, run in this order.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyStage".
+ */
+export type MethodologyStage =
+  "question" | "data" | "cleaning" | "split" | "features" | "models" | "evaluation" | "reporting";
+/**
  * Typed mutation previewed and compiled before it can create a pipeline version.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -789,6 +804,141 @@ export interface SplitNote {
  */
 export interface Params {
   [k: string]: unknown;
+}
+/**
+ * The declarative manifest of one methodology rule package (ADR-0042), loaded from methodology/<pack>/rules/<rule>/rule.yaml. Served read-only by GET /methodology_rules.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyRule".
+ */
+export interface MethodologyRule {
+  schema_version: "sprisk.methodology_rule/v1";
+  id: MethodologyRuleRef;
+  name: string;
+  stage: MethodologyStage;
+  /**
+   * The one decision this rule owns; unique across loaded packs.
+   */
+  decides: string;
+  provenance: {
+    standard: string;
+    citation: string;
+    pitfall: string;
+    corner_cases: string[];
+  };
+  observes: (
+    | {
+        profile: string;
+        description: string;
+        required: boolean;
+      }
+    | {
+        fact: string;
+        description: string;
+        required: boolean;
+      }
+  )[];
+  /**
+   * Default thresholds the rule decides with.
+   */
+  policy_thresholds: {
+    [k: string]: unknown;
+  };
+  /**
+   * @minItems 1
+   */
+  alternatives: [
+    {
+      id: string;
+      label: string;
+      description: string;
+      /**
+       * Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042).
+       */
+      condition: string;
+      rationale: string;
+      /**
+       * JSON Schema for this alternative's settings.
+       */
+      settings_schema?: {};
+      action: {
+        type: string;
+        /**
+         * Operator the action builds; may name one not yet registered.
+         */
+        operator?: string;
+        placement?: string;
+        fit_on?: string;
+        apply_to?: string;
+        /**
+         * Operator params; '{settings.x}' strings are filled from the alternative's settings.
+         */
+        params?: {};
+      };
+    },
+    ...{
+      id: string;
+      label: string;
+      description: string;
+      /**
+       * Human-readable summary of when this applies. Documentation only: the rule's Python decide() is the logic (ADR-0042).
+       */
+      condition: string;
+      rationale: string;
+      /**
+       * JSON Schema for this alternative's settings.
+       */
+      settings_schema?: {};
+      action: {
+        type: string;
+        /**
+         * Operator the action builds; may name one not yet registered.
+         */
+        operator?: string;
+        placement?: string;
+        fit_on?: string;
+        apply_to?: string;
+        /**
+         * Operator params; '{settings.x}' strings are filled from the alternative's settings.
+         */
+        params?: {};
+      };
+    }[]
+  ];
+  verification: {
+    check_id: string;
+    invariant: string;
+  };
+}
+/**
+ * Read-only files of one rule package: its manifest and, when present, its Python decide() module. Served by GET /methodology_rules/{id}/source; the API reads only files inside the rule's folder.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyRuleSource".
+ */
+export interface MethodologyRuleSource {
+  rule: MethodologyRuleRef;
+  /**
+   * @minItems 1
+   */
+  files: [
+    {
+      /**
+       * Relative to the rule folder, e.g. rule.yaml. Never an absolute path.
+       */
+      path: string;
+      language: "yaml" | "python";
+      text: string;
+    },
+    ...{
+      /**
+       * Relative to the rule folder, e.g. rule.yaml. Never an absolute path.
+       */
+      path: string;
+      language: "yaml" | "python";
+      text: string;
+    }[]
+  ];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.supervised.fairness_audit@1.0.0
 name: "Algorithmic Fairness & Bias Mitigation"
-stage: governance
+stage: reporting
 decides: governance.fairness_policy
 
 # 1. Scientific Standards & Provenance

@@ -1,0 +1,15 @@
+{
+  "rule": "methodology.supervised.multicollinearity@1.0.0",
+  "files": [
+    {
+      "path": "rule.yaml",
+      "language": "yaml",
+      "text": "schema_version: sprisk.methodology_rule/v1\n"
+    },
+    {
+      "path": "rule.py",
+      "language": "python",
+      "text": "def decide(observation, settings):\n    ...\n"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "rule": "methodology.supervised.multicollinearity@1.0.0",
+  "files": [
+    {
+      "path": "/etc/passwd",
+      "language": "yaml",
+      "text": ""
+    }
+  ]
+}

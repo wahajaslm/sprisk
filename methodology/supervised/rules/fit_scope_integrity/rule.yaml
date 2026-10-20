@@ -4,7 +4,7 @@
 schema_version: sprisk.methodology_rule/v1
 id: methodology.supervised.fit_scope_integrity@1.0.0
 name: "Data-Access Matrix & Fit-Scope Integrity"
-stage: compile
+stage: features
 decides: compile.fit_scope_authorization
 
 # 1. Scientific Standards & Industrial Provenance

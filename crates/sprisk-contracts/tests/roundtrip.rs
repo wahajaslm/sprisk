@@ -10,9 +10,10 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile,
     DecisionProposal, FigureSet, LoadedTable, MethodologyCheck, MethodologyDecision,
-    NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest,
-    NotebookVariables, NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem,
-    QuestionVersion, Run, TablePage, WorkerMessage, parse,
+    MethodologyRule, MethodologyRuleSource, NotebookExecute, NotebookExecution,
+    NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator,
+    OperatorSource, PipelineVersion, Problem, QuestionVersion, Run, TablePage, WorkerMessage,
+    parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -71,6 +72,8 @@ const ENTITIES: &[&str] = &[
     "loaded_table",
     "methodology_check",
     "methodology_decision",
+    "methodology_rule",
+    "methodology_rule_source",
     "notebook_execute",
     "notebook_execution",
     "notebook_execution_event",
@@ -211,6 +214,16 @@ fn figure_set() {
 #[test]
 fn operator_source() {
     check::<OperatorSource>("operator_source");
+}
+
+#[test]
+fn methodology_rule() {
+    check::<MethodologyRule>("methodology_rule");
+}
+
+#[test]
+fn methodology_rule_source() {
+    check::<MethodologyRuleSource>("methodology_rule_source");
 }
 
 #[test]
