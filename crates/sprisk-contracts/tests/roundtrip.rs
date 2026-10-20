@@ -13,7 +13,7 @@ use sprisk_contracts::{
     MethodologyRule, MethodologyRuleSource, NotebookExecute, NotebookExecution,
     NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator,
     OperatorSource, PipelineVersion, Problem, QuestionVersion, RuleDecision, RuleObservation, Run,
-    TablePage, WorkerMessage, parse,
+    SelectionDecision, TablePage, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -88,6 +88,7 @@ const ENTITIES: &[&str] = &[
     "rule_decision",
     "rule_observation",
     "run",
+    "selection_decision",
     "table_page",
     "worker_message",
 ];
@@ -276,4 +277,9 @@ fn notebook_variables() {
 #[test]
 fn notebook_kernel_request() {
     check::<NotebookKernelRequest>("notebook_kernel_request");
+}
+
+#[test]
+fn selection_decision() {
+    check::<SelectionDecision>("selection_decision");
 }

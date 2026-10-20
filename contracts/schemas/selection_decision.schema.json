@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "SelectionDecision": {
+      "title": "SelectionDecision",
+      "description": "Which shortlisted model cross-validation chose, and why (arch doc §11, ADR-0044). The output of a select step: immutable, like every artifact. A model wins only by beating the baseline on the same folds.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "metric", "folds", "seed", "baseline", "candidates", "reason", "limitations"],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.selection_decision/v1"] },
+        "metric": { "$ref": "#/$defs/SelectionMetric" },
+        "folds": { "type": "integer", "minimum": 0, "description": "Number of cross-validation folds every candidate was scored on." },
+        "seed": { "type": "integer", "minimum": 0, "description": "Seed that shuffled the rows into folds." },
+        "baseline": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "description": "The candidate every other must beat: a model that ignores its features."
+        },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/CandidateResult" } },
+        "winner": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "description": "The chosen candidate. Absent: no model beats the baseline."
+        },
+        "reason": { "type": "string", "minLength": 1 },
+        "limitations": {
+          "type": "array",
+          "description": "What the comparison did not cover.",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "SelectionMetric": {
+      "type": "string",
+      "description": "Fixed before any score is seen: balanced_accuracy (higher is better) for classification, rmse (lower is better) for regression.",
+      "enum": ["balanced_accuracy", "rmse"]
+    },
+    "CandidateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "fold_scores", "mean", "spread"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$", "description": "The shortlist alternative." },
+        "fold_scores": { "type": "array", "items": { "type": "number" }, "description": "The metric on each fold's validation rows, in fold order." },
+        "mean": { "type": "number" },
+        "spread": { "type": "number", "description": "Standard deviation of the fold scores." },
+        "versus_baseline": { "$ref": "#/$defs/BaselineComparison", "description": "Absent for the baseline itself." }
+      }
+    },
+    "BaselineComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean_difference", "corrected_se", "beats_baseline"],
+      "properties": {
+        "mean_difference": { "type": "number", "description": "Mean fold-by-fold improvement over the baseline on the same folds; positive is better for either metric." },
+        "corrected_se": { "type": "number", "description": "Standard error of that mean, corrected for folds that share train rows (Nadeau & Bengio 2003)." },
+        "beats_baseline": { "type": "boolean", "description": "Whether mean_difference is larger than corrected_se." }
+      }
+    }
+  }
+}

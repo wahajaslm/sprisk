@@ -286,6 +286,13 @@ export type AttemptState =
   | "skipped"
   | "cache_hit";
 /**
+ * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, rmse (lower is better) for regression.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SelectionMetric".
+ */
+export type SelectionMetric = "balanced_accuracy" | "rmse";
+/**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1668,6 +1675,93 @@ export interface Attempt {
 export interface Error1 {
   code: string;
   message: string;
+}
+/**
+ * Which shortlisted model cross-validation chose, and why (arch doc §11, ADR-0044). The output of a select step: immutable, like every artifact. A model wins only by beating the baseline on the same folds.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SelectionDecision".
+ */
+export interface SelectionDecision {
+  schema_version: "sprisk.selection_decision/v1";
+  metric: SelectionMetric;
+  /**
+   * Number of cross-validation folds every candidate was scored on.
+   */
+  folds: number;
+  /**
+   * Seed that shuffled the rows into folds.
+   */
+  seed: number;
+  /**
+   * The candidate every other must beat: a model that ignores its features.
+   */
+  baseline: string;
+  candidates: CandidateResult[];
+  /**
+   * The chosen candidate. Absent: no model beats the baseline.
+   */
+  winner?: string;
+  reason: string;
+  /**
+   * What the comparison did not cover.
+   */
+  limitations: string[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CandidateResult".
+ */
+export interface CandidateResult {
+  /**
+   * The shortlist alternative.
+   */
+  id: string;
+  /**
+   * The metric on each fold's validation rows, in fold order.
+   */
+  fold_scores: number[];
+  mean: number;
+  /**
+   * Standard deviation of the fold scores.
+   */
+  spread: number;
+  versus_baseline?: BaselineComparison;
+}
+/**
+ * Absent for the baseline itself.
+ */
+export interface BaselineComparison {
+  /**
+   * Mean fold-by-fold improvement over the baseline on the same folds; positive is better for either metric.
+   */
+  mean_difference: number;
+  /**
+   * Standard error of that mean, corrected for folds that share train rows (Nadeau & Bengio 2003).
+   */
+  corrected_se: number;
+  /**
+   * Whether mean_difference is larger than corrected_se.
+   */
+  beats_baseline: boolean;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BaselineComparison".
+ */
+export interface BaselineComparison1 {
+  /**
+   * Mean fold-by-fold improvement over the baseline on the same folds; positive is better for either metric.
+   */
+  mean_difference: number;
+  /**
+   * Standard error of that mean, corrected for folds that share train rows (Nadeau & Bengio 2003).
+   */
+  corrected_se: number;
+  /**
+   * Whether mean_difference is larger than corrected_se.
+   */
+  beats_baseline: boolean;
 }
 /**
  * Worker → control plane, first message. Declares protocol version and operators the worker can run.

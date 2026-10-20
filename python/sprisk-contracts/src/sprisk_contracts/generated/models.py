@@ -745,6 +745,36 @@ class AttemptState(StrEnum):
     cache_hit = "cache_hit"
 
 
+class Limitation(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class SelectionMetric(StrEnum):
+    balanced_accuracy = "balanced_accuracy"
+    rmse = "rmse"
+
+
+class BaselineComparison(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    mean_difference: Annotated[
+        float,
+        Field(
+            description="Mean fold-by-fold improvement over the baseline on the same folds; positive is better for either metric."
+        ),
+    ]
+    corrected_se: Annotated[
+        float,
+        Field(
+            description="Standard error of that mean, corrected for folds that share train rows (Nadeau & Bengio 2003)."
+        ),
+    ]
+    beats_baseline: Annotated[
+        bool, Field(description="Whether mean_difference is larger than corrected_se.")
+    ]
+
+
 class Handshake(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1482,6 +1512,23 @@ class Attempt(StrictModel):
     created_at: Timestamp
 
 
+class CandidateResult(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[
+        str, Field(description="The shortlist alternative.", pattern="^[a-z][a-z0-9_]{0,62}$")
+    ]
+    fold_scores: Annotated[
+        list[float], Field(description="The metric on each fold's validation rows, in fold order.")
+    ]
+    mean: float
+    spread: Annotated[float, Field(description="Standard deviation of the fold scores.")]
+    versus_baseline: Annotated[
+        BaselineComparison | None, Field(description="Absent for the baseline itself.")
+    ] = None
+
+
 class LeaseAttempt(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1817,6 +1864,38 @@ class QuestionVersion(StrictModel):
     unknowns: list[Unknown]
     acceptance_criteria: list[Fact]
     created_at: Timestamp
+
+
+class SelectionDecision(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.selection_decision/v1"]
+    metric: SelectionMetric
+    folds: Annotated[
+        int,
+        Field(description="Number of cross-validation folds every candidate was scored on.", ge=0),
+    ]
+    seed: Annotated[int, Field(description="Seed that shuffled the rows into folds.", ge=0)]
+    baseline: Annotated[
+        str,
+        Field(
+            description="The candidate every other must beat: a model that ignores its features.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ]
+    candidates: list[CandidateResult]
+    winner: Annotated[
+        str | None,
+        Field(
+            description="The chosen candidate. Absent: no model beats the baseline.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ] = None
+    reason: Annotated[str, Field(min_length=1)]
+    limitations: Annotated[
+        list[Limitation], Field(description="What the comparison did not cover.")
+    ]
 
 
 class WorkerMessage(

@@ -1,0 +1,59 @@
+{
+  "schema_version": "sprisk.selection_decision/v1",
+  "metric": "balanced_accuracy",
+  "folds": 5,
+  "seed": 0,
+  "baseline": "ml_dummy_baseline",
+  "candidates": [
+    {
+      "id": "ml_dummy_baseline",
+      "fold_scores": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "mean": 0.5,
+      "spread": 0.0
+    },
+    {
+      "id": "ml_linear_model",
+      "fold_scores": [
+        0.91,
+        0.88,
+        0.93,
+        0.9,
+        0.87
+      ],
+      "mean": 0.898,
+      "spread": 0.0238,
+      "versus_baseline": {
+        "mean_difference": 0.398,
+        "corrected_se": 0.0145,
+        "beats_baseline": true
+      }
+    },
+    {
+      "id": "ml_random_forest",
+      "fold_scores": [
+        0.89,
+        0.9,
+        0.91,
+        0.86,
+        0.88
+      ],
+      "mean": 0.888,
+      "spread": 0.0192,
+      "versus_baseline": {
+        "mean_difference": 0.388,
+        "corrected_se": 0.0117,
+        "beats_baseline": true
+      }
+    }
+  ],
+  "winner": "ml_linear_model",
+  "reason": "ml_linear_model has the highest mean balanced accuracy of the models that beat the baseline.",
+  "limitations": [],
+  "score": 1.5
+}

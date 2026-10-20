@@ -40,6 +40,7 @@ from sprisk_contracts import (
     RuleDecision,
     RuleObservation,
     Run,
+    SelectionDecision,
     TablePage,
     WorkerMessage,
 )
@@ -75,6 +76,7 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (CodeInterface, "code_interface"),
     (CodeSplitRequest, "code_split_request"),
     (CodeSplit, "code_split"),
+    (SelectionDecision, "selection_decision"),
     (NotebookVersion, "notebook_version"),
     (NotebookExecute, "notebook_execute"),
     (NotebookExecution, "notebook_execution"),

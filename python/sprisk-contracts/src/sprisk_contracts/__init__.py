@@ -33,6 +33,7 @@ from sprisk_contracts.generated.models import (
     RuleDecision,
     RuleObservation,
     Run,
+    SelectionDecision,
     TablePage,
     WorkerMessage,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "Problem",
     "QuestionVersion",
     "Run",
+    "SelectionDecision",
     "TablePage",
     "WorkerMessage",
 ]

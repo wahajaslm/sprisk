@@ -41,6 +41,7 @@ const entities: [keyof Entities, string][] = [
   ["NotebookExecutionEvent", "notebook_execution_event"],
   ["NotebookVariables", "notebook_variables"],
   ["NotebookKernelRequest", "notebook_kernel_request"],
+  ["SelectionDecision", "selection_decision"],
 ];
 
 it("every fixture dir has an entity", () => {
