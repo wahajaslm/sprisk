@@ -64,8 +64,9 @@ pub enum CompileError {
 /// Ports every step may send without declaring them: what it printed (ADR-0025).
 const RESERVED_PORTS: [&str; 1] = ["console"];
 
-/// Node ids the control plane uses for its own attempts (`gate_b`: ADR-0017).
-pub const RESERVED_NODE_IDS: [&str; 1] = ["gate_b"];
+/// Node ids with this prefix are the control plane's own attempts: `gate_b` (ADR-0017) and
+/// each split's row check `gate_<split>` (ADR-0040).
+pub const RESERVED_NODE_PREFIX: &str = "gate_";
 
 impl CompileError {
     /// Stable snake_case code for API problem responses.
@@ -131,7 +132,7 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
     let mut index: HashMap<&str, NodeIndex> = HashMap::new();
     for node in &pipeline.nodes {
         let id = node.id.as_str();
-        if RESERVED_NODE_IDS.contains(&id) {
+        if id.starts_with(RESERVED_NODE_PREFIX) {
             errors.push(CompileError::ReservedNode(id.to_owned()));
         }
         if index.contains_key(id) {

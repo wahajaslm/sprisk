@@ -335,17 +335,16 @@ fn params_schema_cannot_reach_outside_itself() {
 }
 
 #[test]
-fn reserved_node_id_is_refused() {
-    let nodes = json!([node(
-        sprisk_graph::RESERVED_NODE_IDS[0],
-        "sprisk.source.parquet@1.0.0"
-    )]);
+fn node_ids_the_control_plane_uses_for_its_checks_are_refused() {
     let (_dir, registry) = registry();
-    let errs = compile(&pipeline(nodes, json!([])), &registry).unwrap_err();
-    assert!(
-        matches!(errs.as_slice(), [CompileError::ReservedNode(_)]),
-        "{errs:?}"
-    );
+    for id in ["gate_b", "gate_split"] {
+        let nodes = json!([node(id, "sprisk.source.parquet@1.0.0")]);
+        let errs = compile(&pipeline(nodes, json!([])), &registry).unwrap_err();
+        assert!(
+            matches!(errs.as_slice(), [CompileError::ReservedNode(n)] if n == id),
+            "{id}: {errs:?}"
+        );
+    }
 }
 
 #[test]
