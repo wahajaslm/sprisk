@@ -22,6 +22,7 @@ import {
 
 export const handlers = [
   http.get("/api/question_versions", () => HttpResponse.json([])),
+  http.get("/api/methodology_rules", () => HttpResponse.json([])),
   http.get("/api/pipeline_versions", () => HttpResponse.json([pipeline])),
   http.get("/api/operators", () => HttpResponse.json(operators)),
   http.get("/api/runs", () => HttpResponse.json([run])),

@@ -9,7 +9,7 @@ export const TAB_LABEL: Record<InspectorTab, string> = {
   inputs: "Inputs",
   parameters: "Parameters",
   code: "Code",
-  checks: "Checks",
+  checks: "Methodology",
   performance: "Performance",
   history: "History",
 };

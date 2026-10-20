@@ -189,7 +189,7 @@ function tabMark(tab: InspectorTab, step: Step): TabMark {
   }
 }
 
-/** A tab's dock label with its badge, e.g. "Checks ⚠ 2". */
+/** A tab's dock label with its badge, e.g. "Methodology ⚠ 2". */
 export function StepTabLabel() {
   const { tab, pin } = useViewInstance();
   const step = useStep();
@@ -198,7 +198,7 @@ export function StepTabLabel() {
   return (
     <span
       className={`step-tab-label${mark.muted ? " muted-tab" : ""}`}
-      aria-label={tab === "checks" && step.concernCount > 0 ? `Checks, ${step.concernCount} to review` : undefined}
+      aria-label={tab === "checks" && step.concernCount > 0 ? `${TAB_LABEL[tab]}, ${step.concernCount} to review` : undefined}
     >
       {TAB_LABEL[tab]}
       {/* The selected step is not named on the tab line; a pinned tab names the step it keeps. */}

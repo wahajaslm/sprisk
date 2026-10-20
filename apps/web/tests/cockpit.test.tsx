@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
+import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
 import { FlowCanvas } from "../src/views/FlowCanvas.tsx";
 import { Inspector } from "./inspector.tsx";
 import { StepLibrary } from "../src/views/StepLibrary.tsx";
@@ -442,30 +443,56 @@ describe("inspector", () => {
 });
 
 describe("inspector failures and checks", () => {
-  it("badges the Checks tab when a check on this step did not pass", async () => {
+  it("badges the Methodology tab when a check on this step did not pass", async () => {
     const failing = JSON.parse(checksJson).map((c: { verdict: string }) => ({ ...c, verdict: "fail" }));
     server.use(http.get("/api/artifacts/:id/content", ({ params }) =>
       HttpResponse.text(params.id === "art_01JABCDEFGHJKMNPQRSTVWXYZ1" ? JSON.stringify(failing) : "{}"),
     ));
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
-    expect(await screen.findByRole("tab", { name: "Checks, 1 to review" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Methodology, 1 to review" })).toBeInTheDocument();
   });
 
   it("shows methodology checks that cite the selected step", async () => {
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
-    await userEvent.click(await screen.findByRole("tab", { name: "Checks" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
     const checks = await screen.findByRole("region", { name: "Methodology checks" });
     expect(within(checks).getByLabelText("pass")).toBeInTheDocument();
     expect(checks).toHaveTextContent("at most one non-baseline model");
+  });
+
+  it("names each verdict's rule, phase and coverage, and whether a decision set the step", async () => {
+    const design = {
+      ...JSON.parse(checksJson)[0],
+      id: "mck_01JABCDEFGHJKMNPQRSTVWXYZ9",
+      check: "methodology.supervised.data_split@1.0.0",
+      phase: "plan",
+      coverage: "partial",
+      methodology_decision_id: "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      cited_nodes: ["split"],
+    };
+    server.use(
+      http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify([...JSON.parse(checksJson), design]))),
+      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...multicollinearity, id: design.check, name: "Data Splitting" }])),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
+    const checks = await screen.findByRole("region", { name: "Methodology checks" });
+    const [leakage, chosen] = within(checks).getAllByRole("article");
+    expect(leakage).toHaveTextContent("supervised.split_leakage@1.0.0");
+    expect(leakage).not.toHaveTextContent("Set by a methodology decision");
+    expect(await within(chosen!).findByText("Data Splitting")).toBeInTheDocument();
+    expect(chosen).toHaveTextContent("Plan · partial coverage");
+    expect(chosen).toHaveTextContent("Set by a methodology decision");
   });
 
   it("says so when the checks output is not a list of checks", async () => {
     server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text('{"verdict": "pass"}')));
     renderWithApi(<Inspector />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
-    await userEvent.click(await screen.findByRole("tab", { name: "Checks" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
     expect(await screen.findByText(/Unreadable methodology checks/)).toBeInTheDocument();
   });
 
