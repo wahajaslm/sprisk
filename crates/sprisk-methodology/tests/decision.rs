@@ -363,6 +363,24 @@ fn a_step_with_no_model_after_it_hides_nothing() {
     let facts = facts_of(&pipeline, "scale");
     assert_eq!(facts["flow.model_families"]["value"], "tree_ensemble");
     assert_eq!(facts["flow.models_standardize"]["value"], "all");
+    assert_eq!(facts["flow.other_readers"]["value"], "summary");
+}
+
+#[test]
+fn a_code_step_reading_the_output_is_an_other_reader_even_with_no_model() {
+    let pipeline = flow(
+        &[("scale", "clean.scale"), ("knn", "code.python@1.1.0")],
+        &[("scale.train", "knn.data")],
+    );
+    let facts = facts_of(&pipeline, "scale");
+    assert_eq!(facts["flow.other_readers"]["value"], "knn");
+    assert!(facts.get("flow.models_hidden").is_none());
+}
+
+#[test]
+fn evaluators_and_preparation_steps_are_not_other_readers() {
+    let facts = facts_of(&before_forest(), "scale");
+    assert!(facts.get("flow.other_readers").is_none(), "{facts:?}");
 }
 
 #[test]
@@ -542,4 +560,15 @@ fn a_step_whose_output_has_no_input_of_the_same_name_cannot_be_removed() {
 #[test]
 fn removing_an_unknown_step_is_refused() {
     assert!(without_node(&before_forest(), "nope").is_err());
+}
+
+#[test]
+fn the_steps_own_text_settings_are_facts_so_a_rule_knows_what_it_does_now() {
+    let mut pipeline = serde_json::to_value(before_forest()).unwrap();
+    pipeline["nodes"][1]["params"] = json!({ "columns": ["age"], "method": "zero" });
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let facts = facts_of(&pipeline, "scale");
+    assert_eq!(facts["step.method"]["value"], "zero");
+    assert_eq!(facts["step.method"]["origin"], "explicit");
+    assert!(facts.get("step.columns").is_none());
 }

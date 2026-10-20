@@ -33,6 +33,9 @@ observes:
   - fact: flow.models_hidden
     description: "Whether all, some or none of the models downstream sit behind a step or model that may change the columns. Absent when no model is downstream."
     required: false
+  - fact: flow.other_readers
+    description: "Other steps that read this step's output directly (a code or profile step), joined by ', '. While any exist, removing the step is not offered: it would change what they see."
+    required: false
   - fact: question.target
     description: "Target column; it is never clipped, since that changes the labels the model is scored on. An inferred target in the columns asks for confirmation before any clip."
     required: false
@@ -52,7 +55,7 @@ alternatives:
   - id: none_tree_or_clean
     label: Retain Outliers (Natural Variation / Tree Invariance)
     description: Keep all extreme values without capping or dropping.
-    condition: outlier_percentage_iqr < outlier_fraction_threshold OR (flow.models_hidden == 'none' AND every family in flow.model_families is tree_ensemble, density_based or featureless) OR question.target is inferred among the columns OR no column other than question.target has iqr > 0
+    condition: flow.other_readers is absent AND (outlier_percentage_iqr < outlier_fraction_threshold OR (flow.models_hidden == 'none' AND every family in flow.model_families is tree_ensemble, density_based or featureless) OR question.target is inferred among the columns OR no column other than question.target has iqr > 0)
     rationale: The outlier rate is within natural limits, or the models downstream are not pulled by
       outlying features. Trees split on rank order; DBSCAN marks isolated rows as noise, and clipping
       would pile them onto the fence; a dummy baseline ignores its features. Outliers in a regression
@@ -62,7 +65,7 @@ alternatives:
   - id: clip_iqr_fence
     label: Clip to the Train IQR Fences
     description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target, and any column with a zero IQR, are left as they are.
-    condition: question.target is not inferred among the columns AND a column other than question.target has iqr > 0 AND outlier_percentage_iqr >= outlier_fraction_threshold AND NOT (flow.models_hidden == 'none' AND every family in flow.model_families is tree_ensemble, density_based or featureless)
+    condition: (question.target is not inferred among the columns AND a column other than question.target has iqr > 0 AND outlier_percentage_iqr >= outlier_fraction_threshold AND NOT (flow.models_hidden == 'none' AND every family in flow.model_families is tree_ensemble, density_based or featureless)) OR (flow.other_readers is present AND clipping is possible)
     rationale: Limits extreme leverage points without dropping rows. The fences come from the train
       quartiles, which outliers barely move, so the cap does not drift with the values it caps.
     action:

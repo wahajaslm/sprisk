@@ -8,9 +8,9 @@ use petgraph::graph::DiGraph;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    DatasetProfile, DecisionProposal, Edge, MethodologyRule, ModelPreparation, Node, Operator,
-    OperatorModel, PipelineVersion, PortRef, QuestionVersion, RuleActionType, RuleDecision,
-    RuleDecisionAlternativesItemApplicability, RuleObservation, parse,
+    CapabilityClass, DatasetProfile, DecisionProposal, Edge, MethodologyRule, ModelPreparation,
+    Node, Operator, OperatorModel, PipelineVersion, PortRef, QuestionVersion, RuleActionType,
+    RuleDecision, RuleDecisionAlternativesItemApplicability, RuleObservation, parse,
 };
 
 use crate::ResolveError;
@@ -59,7 +59,11 @@ pub fn observation(
 ///   `, `, or `featureless` when none of them declares one;
 /// - `flow.models_hidden`: whether `all`, `some` or `none` of the models are hidden;
 /// - `flow.models_fill_gaps`, `flow.models_standardize`: whether `all`, `some` or `none` of
-///   them do that preparation themselves. A hidden model counts as doing none.
+///   them do that preparation themselves. A hidden model counts as doing none;
+/// - `flow.other_readers`: other steps that read the columns directly (a code or profile
+///   step), sorted and joined by `, `. Removing the step would change what they see;
+/// - `step.<name>`: each text setting of the step itself, as set, so a rule knows what it
+///   does now.
 ///
 /// Read from the graph, so `measured`. Left out when no model is downstream, so a rule never
 /// reads a stand-in value.
@@ -69,18 +73,39 @@ pub fn flow_facts<'a>(
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
     keeps: impl Fn(&Node) -> bool,
 ) -> Result<Map<String, Value>, ResolveError> {
-    let Downstream { seen, hidden } = downstream(pipeline, node_id, operator_of, keeps)?;
+    let Downstream {
+        seen,
+        hidden,
+        readers,
+    } = downstream(pipeline, node_id, operator_of, keeps)?;
+    let measured = |value: &str| json!({ "value": value, "origin": "measured" });
+    let mut facts = Map::new();
+    let step = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == node_id)
+        .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
+    for (name, value) in step.params.iter() {
+        if let Some(text) = value.as_str().filter(|t| !t.is_empty()) {
+            facts.insert(
+                format!("step.{name}"),
+                json!({ "value": text, "origin": "explicit" }),
+            );
+        }
+    }
+    if !readers.is_empty() {
+        let readers: Vec<String> = readers.into_iter().collect();
+        facts.insert("flow.other_readers".into(), measured(&readers.join(", ")));
+    }
     let total = seen.len() + hidden;
     if total == 0 {
-        return Ok(Map::new());
+        return Ok(facts);
     }
-    let measured = |value: &str| json!({ "value": value, "origin": "measured" });
     let share = |doing: usize| match doing {
         0 => "none",
         n if n == total => "all",
         _ => "some",
     };
-    let mut facts = Map::new();
     if !seen.is_empty() {
         let families: BTreeSet<String> = seen
             .iter()
@@ -114,6 +139,9 @@ struct Downstream<'a> {
     seen: Vec<&'a OperatorModel>,
     /// How many models are reached through a step that does not.
     hidden: usize,
+    /// Other steps that read the columns directly: not models, preparation or evaluators.
+    /// Removing the step would change what they see.
+    readers: BTreeSet<String>,
 }
 
 /// The models downstream of `node_id`, not counting itself.
@@ -141,6 +169,7 @@ fn downstream<'a>(
 
     let mut seen = BTreeMap::new();
     let mut hidden = BTreeSet::new();
+    let mut readers = BTreeSet::new();
     // Each step with whether the path to it passed a step that does not keep the facts.
     let mut stack = vec![(start, false)];
     let mut visited = HashSet::new();
@@ -158,6 +187,11 @@ fn downstream<'a>(
                 } else {
                     seen.insert(next, model);
                 }
+            } else if !behind
+                && !keeps(node)
+                && operator.capability_class != CapabilityClass::Evaluator
+            {
+                readers.insert(node.id.as_str().to_owned());
             }
             // A model's output may carry the columns on (a clustering step adds a label to
             // its input table), changed by a fit, so what follows a model is behind it.
@@ -170,6 +204,7 @@ fn downstream<'a>(
     Ok(Downstream {
         seen: seen.into_values().collect(),
         hidden: hidden.len(),
+        readers,
     })
 }
 

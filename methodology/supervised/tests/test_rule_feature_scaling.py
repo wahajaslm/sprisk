@@ -1,6 +1,6 @@
 from typing import Any
 
-from rule_harness import CLUSTERING, FOREST, LINEAR, alternative, column, decide, flow
+from rule_harness import CLUSTERING, FOREST, LINEAR, alternative, column, decide, flow, readers
 
 RULE = "supervised/feature_scaling"
 SETTINGS = {"outlier_kurtosis_threshold": 3.0, "outlier_share_threshold": 0.05}
@@ -131,3 +131,11 @@ def test_a_flat_iqr_column_is_left_out_of_robust_scaling_not_the_heavy_one() -> 
     robust = alternative(d, "robust_scaling")
     assert robust["params"]["columns"] == ["income"]
     assert "Left out: flag has no IQR spread" in robust["reason"]
+
+
+def test_no_scaling_is_not_offered_while_another_step_reads_the_output() -> None:
+    d = run(LIGHT, {**FOREST, **readers("knn")})
+    none = alternative(d, "no_scaling")
+    assert none["applicability"] == "not_applicable"
+    assert "knn" in none["reason"]
+    assert d["recommended_alternative_id"] == "standard_scaling"

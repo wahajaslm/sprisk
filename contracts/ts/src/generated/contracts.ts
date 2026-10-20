@@ -868,7 +868,7 @@ export interface RuleObservation {
   schema_version: "sprisk.rule_observation/v1";
   rule: MethodologyRuleRef;
   /**
-   * Facts by name: question facts, e.g. question.time_column, and facts read from the flow, e.g. flow.model_families. A fact that lists several values joins them, sorted, with ', '.
+   * Facts by name: question facts (question.time_column), facts read from the flow (flow.model_families), and the step's own text settings (step.method). A fact that lists several values joins them, sorted, with ', '.
    */
   facts: {
     [k: string]: Fact;

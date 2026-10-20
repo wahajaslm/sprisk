@@ -1,7 +1,17 @@
 from typing import Any
 
 import pytest
-from rule_harness import CLUSTERING, FOREST, LINEAR, alternative, column, decide, flow
+from rule_harness import (
+    CLUSTERING,
+    FOREST,
+    LINEAR,
+    alternative,
+    column,
+    decide,
+    flow,
+    readers,
+    step,
+)
 
 from sprisk_workers.errors import RuleError
 
@@ -129,3 +139,35 @@ def test_a_hidden_model_alone_is_not_said_to_fill_no_gaps() -> None:
     )
     assert d["recommended_alternative_id"] == "impute_mean"
     assert "known to fill" in alternative(d, "pass_through")["reason"]
+
+
+def test_passing_gaps_is_not_offered_while_another_step_reads_the_output() -> None:
+    d = run(column("age", missing_share=0.1, skewness=0.2), {**FOREST, **readers("knn")})
+    assert alternative(d, "pass_through")["applicability"] == "not_applicable"
+    assert "knn" in alternative(d, "pass_through")["reason"]
+    assert d["recommended_alternative_id"] == "impute_mean"
+
+
+def test_passing_gaps_says_the_models_fill_replaces_this_steps_fill() -> None:
+    d = run(column("age", missing_share=0.1, skewness=0.2), {**FOREST, **step(method="mean")})
+    assert "replaces this step's mean fill" in alternative(d, "pass_through")["reason"]
+
+
+def test_a_zero_fill_asks_before_the_models_fill_replaces_it() -> None:
+    d = run(column("age", missing_share=0.1, skewness=0.2), {**FOREST, **step(method="zero")})
+    passing = alternative(d, "pass_through")
+    assert passing["applicability"] == "needs_fact"
+    assert "zero" in passing["reason"]
+    assert d["recommended_alternative_id"] != "pass_through"
+
+
+def test_a_column_that_may_be_the_target_asks_before_any_fill() -> None:
+    d = decide(
+        RULE,
+        facts={"question.target": ("churned", "inferred"), **FOREST},
+        profile={"rows": 100, **column("churned", "Int64", missing_share=0.1, skewness=0.1)},
+        settings=SETTINGS,
+    )
+    for id in ("impute_mean", "impute_median", "pass_through"):
+        assert alternative(d, id)["applicability"] == "needs_fact", id
+    assert d["recommended_alternative_id"] == "drop_rows"

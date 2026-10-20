@@ -1,7 +1,7 @@
 from typing import Any
 
 import pytest
-from rule_harness import CLUSTERING, FOREST, LINEAR, alternative, column, decide, flow
+from rule_harness import CLUSTERING, FOREST, LINEAR, alternative, column, decide, flow, readers
 
 RULE = "supervised/outlier_treatment"
 SETTINGS = {"outlier_fraction_threshold": 0.05, "clip_k": 3.0}
@@ -178,3 +178,11 @@ def test_the_task_is_evidence_only_when_it_was_weighed() -> None:
 def test_a_family_with_no_written_reason_fails_loudly() -> None:
     with pytest.raises(KeyError):
         run(MANY, flow("neural", "all", "all"))
+
+
+def test_keeping_values_is_not_offered_while_another_step_reads_the_output() -> None:
+    d = run(MANY, {**FOREST, **readers("profile")})
+    keep = alternative(d, "none_tree_or_clean")
+    assert keep["applicability"] == "not_applicable"
+    assert "profile" in keep["reason"]
+    assert d["recommended_alternative_id"] == "clip_iqr_fence"

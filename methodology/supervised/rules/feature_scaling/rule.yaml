@@ -39,6 +39,9 @@ observes:
   - fact: flow.models_hidden
     description: "Whether all, some or none of the models downstream sit behind a step or model that may change the columns. Absent when no model is downstream."
     required: false
+  - fact: flow.other_readers
+    description: "Other steps that read this step's output directly (a code or profile step), joined by ', '. While any exist, removing the step is not offered: it would change what they see."
+    required: false
   - fact: flow.models_standardize
     description: "Whether all, some or none of the models downstream standardise their own inputs on the train rows, from their manifests. Absent when no model is downstream."
     required: false
@@ -56,7 +59,7 @@ alternatives:
   - id: no_scaling
     label: No Scaling Step (Models Downstream Do Not Need It)
     description: Leave the features as they are; scaling here would not change the models downstream.
-    condition: (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless']))
+    condition: flow.other_readers is absent AND (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless']))
     rationale: A model that standardises its inputs on the train rows undoes any earlier affine scaling,
       and trees split on rank order, which scaling keeps. Scaling here adds work with no effect.
     action:
@@ -64,7 +67,7 @@ alternatives:
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).
-    condition: NOT (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless'])) AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
+    condition: NOT (flow.other_readers is absent AND (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless']))) AND (max_excess_kurtosis > outlier_kurtosis_threshold OR max_outlier_share >= outlier_share_threshold)
     rationale: Heavy-tailed distributions detected (excess kurtosis > 3.0). RobustScaler prevents extreme outliers
       from compressing regular feature distances.
     action:
@@ -73,7 +76,7 @@ alternatives:
   - id: standard_scaling
     label: Standard Scaling (Z-Score Normalization)
     description: Center to zero mean and scale to unit variance.
-    condition: NOT (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless'])) AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold
+    condition: NOT (flow.other_readers is absent AND (flow.models_standardize == 'all' OR (flow.models_hidden == 'none' AND flow.model_families in ['tree_ensemble', 'featureless']))) AND max_excess_kurtosis <= outlier_kurtosis_threshold AND max_outlier_share < outlier_share_threshold
     rationale: Light tails and few outliers, so the mean and SD describe the spread. It matters for
       models that take their inputs as they are, such as distance-based clustering.
     action:

@@ -109,6 +109,8 @@ FLOW_LABELS = {
     "flow.models_hidden": "Models downstream behind a step the rules cannot see",
     "flow.models_fill_gaps": "Models downstream that fill their own gaps",
     "flow.models_standardize": "Models downstream that standardise their own inputs",
+    "flow.other_readers": "Other steps reading this step's output",
+    "step.method": "This step's method",
 }
 
 
@@ -116,6 +118,14 @@ def flow_fact(observation: RuleObservation, name: str) -> str | None:
     """A fact Rust read from the models downstream of the step; None when no model is."""
     fact = observation.facts.get(name)
     return None if fact is None else fact.value
+
+
+def other_readers(observation: RuleObservation) -> str | None:
+    """Why removing the step is not safe: the other steps that read its output, if any."""
+    readers = flow_fact(observation, "flow.other_readers")
+    if readers is None:
+        return None
+    return f"{readers} also reads this step's output; removing the step would change what it sees."
 
 
 def model_families(observation: RuleObservation) -> set[str]:
@@ -127,9 +137,14 @@ def model_families(observation: RuleObservation) -> set[str]:
 def flow_evidence(observation: RuleObservation, names: list[str]) -> list[dict[str, Any]]:
     """The flow facts a rule read, as evidence, in `names` order."""
     return [
-        {"kind": "flow_fact", "label": FLOW_LABELS[name], "value": value, "origin": "measured"}
+        {
+            "kind": "flow_fact",
+            "label": FLOW_LABELS[name],
+            "value": f.value,
+            "origin": f.origin.value,
+        }
         for name in names
-        if (value := flow_fact(observation, name)) is not None
+        if (f := observation.facts.get(name)) is not None
     ]
 
 

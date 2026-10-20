@@ -67,3 +67,13 @@ def flow(
 FOREST = flow("tree_ensemble", "all", "all")
 LINEAR = flow("linear", "all", "all")
 CLUSTERING = flow("distance_based", "none", "none")
+
+
+def readers(*steps: str) -> dict[str, tuple[str, str]]:
+    """Other steps that read the step's output, as Rust reports them."""
+    return {"flow.other_readers": (", ".join(sorted(steps)), "measured")}
+
+
+def step(**settings: str) -> dict[str, tuple[str, str]]:
+    """The step's own text settings, as Rust reports them."""
+    return {f"step.{k}": (v, "explicit") for k, v in settings.items()}
