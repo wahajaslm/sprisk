@@ -324,7 +324,7 @@ pub fn resolve_scaling(
             "kind": "replace_node",
             "node_id": node_id,
             "operator": "sprisk.clean.scale@1.0.0",
-            "params": { "columns": columns, "method": "min_max" }
+            "params": { "columns": columns, "method": "robust" }
         }
     });
 
@@ -994,6 +994,14 @@ mod tests {
                 .map(|x| x.as_str()),
             Some("robust_scaler")
         );
+        let proposal = serde_json::to_value(&proposal).unwrap();
+        let robust = proposal["alternatives"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == "robust_scaler")
+            .unwrap();
+        assert_eq!(robust["effect"]["params"]["method"], "robust");
     }
 
     #[test]

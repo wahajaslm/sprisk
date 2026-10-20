@@ -11,7 +11,7 @@ params_schema:
   required: [columns, method]
   properties:
     columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Numeric columns to rescale." }
-    method: { type: string, enum: [min_max, z_score], description: "min_max maps the train range to 0..1; z_score centres on the train mean with unit spread." }
+    method: { type: string, enum: [min_max, z_score, robust], description: "min_max maps the train range to 0..1; z_score centres on the train mean with unit spread; robust centres on the train median and divides by the train IQR." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
