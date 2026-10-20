@@ -1,0 +1,80 @@
+import { parse, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { describe, expect, it } from "vitest";
+
+import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
+import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
+import { renderWithApi } from "./render.tsx";
+import { server } from "./server.ts";
+
+const features = parse("MethodologyRule", multicollinearity);
+const split: MethodologyRule = {
+  ...features,
+  id: "methodology.supervised.data_split@1.0.0",
+  name: "Data Splitting",
+  stage: "split",
+  decides: "split.method",
+};
+
+const source: MethodologyRuleSource = {
+  rule: split.id,
+  files: [
+    { path: "rule.yaml", language: "yaml", text: "decides: split.method\n" },
+    { path: "rule.py", language: "python", text: "def decide(observation, settings):\n    ...\n" },
+  ],
+};
+
+function serve(rules: MethodologyRule[]) {
+  server.use(
+    http.get("/api/methodology_rules", () => HttpResponse.json(rules)),
+    http.get("/api/methodology_rules/:id/source", ({ params }) =>
+      params.id === source.rule ? HttpResponse.json(source) : HttpResponse.json({ errors: [] }, { status: 404 }),
+    ),
+  );
+}
+
+describe("methodology page", () => {
+  it("lists the rules from the API by stage, in stage order", async () => {
+    serve([features, split]);
+    renderWithApi(<MethodologyPage />);
+
+    const list = await screen.findByRole("navigation", { name: "Methodology rules" });
+    const stages = within(list).getAllByRole("heading").map((h) => h.textContent);
+    expect(stages).toEqual(["Split", "Features"]);
+    expect(within(list).getByRole("button", { name: /Data Splitting/ })).toBeInTheDocument();
+  });
+
+  it("shows what the picked rule decides, its source and its alternatives", async () => {
+    serve([features, split]);
+    renderWithApi(<MethodologyPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
+    const detail = screen.getByRole("region", { name: features.name });
+    expect(within(detail).getByRole("heading", { level: 1, name: features.name })).toBeInTheDocument();
+    expect(within(detail).getByText(features.decides)).toBeInTheDocument();
+    expect(within(detail).getByText(features.provenance.citation)).toBeInTheDocument();
+    expect(within(detail).getByText("Pairwise Correlation Pruning")).toBeInTheDocument();
+  });
+
+  it("shows each file of the rule's code, read only", async () => {
+    serve([split]);
+    renderWithApi(<MethodologyPage />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
+    const manifest = await screen.findByRole("textbox", { name: "Code of rule.yaml" });
+    expect(manifest).toHaveValue("decides: split.method\n");
+    expect(manifest).toHaveAttribute("readonly");
+
+    await userEvent.click(screen.getByRole("button", { name: "rule.py" }));
+    expect(await screen.findByRole("textbox", { name: "Code of rule.py" })).toHaveValue(source.files[1]!.text);
+  });
+
+  it("says so when the rules cannot be read", async () => {
+    server.use(http.get("/api/methodology_rules", () => HttpResponse.json({ errors: [{ code: "x", message: "boom" }] }, { status: 500 })));
+    renderWithApi(<MethodologyPage />);
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});

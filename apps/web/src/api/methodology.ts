@@ -2,7 +2,7 @@ import type { AppliedMethodologyDecision, ApplyMethodologyDecision, PipelineVers
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ulid } from "ulid";
 
-import { getList, postOne } from "./client.ts";
+import { getList, getOne, postOne } from "./client.ts";
 
 export function useResolveSplit() {
   return useMutation({
@@ -35,5 +35,13 @@ export function useApplyMethodology() {
   });
 }
 
-export const useMethodologyDecisions = () =>
-  useQuery({ queryKey: ["methodology_decisions"], queryFn: () => getList("MethodologyDecision", "/methodology_decisions") });
+/** Rule manifests change only when the API restarts with new packs. */
+export const useMethodologyRules = () =>
+  useQuery({ queryKey: ["methodology_rules"], queryFn: () => getList("MethodologyRule", "/methodology_rules"), staleTime: Infinity });
+
+export const useMethodologyRuleSource = (ruleRef: string) =>
+  useQuery({
+    queryKey: ["methodology_rule_source", ruleRef],
+    queryFn: () => getOne("MethodologyRuleSource", `/methodology_rules/${encodeURIComponent(ruleRef)}/source`),
+    staleTime: Infinity,
+  });

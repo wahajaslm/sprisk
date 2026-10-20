@@ -26,7 +26,7 @@ monaco.editor.defineTheme("sprisk-studio", {
 });
 
 /** Monaco edits the code. It never runs it; running goes through the API (apps/web rules). */
-export default function MonacoCode({ value, onChange, onRun, onRunStay, onEscape, label, readOnly = false, fit = false }: CodeInputProps) {
+export default function MonacoCode({ value, onChange, onRun, onRunStay, onEscape, label, readOnly = false, fit = false, language = "python" }: CodeInputProps) {
   const [height, setHeight] = useState<number | undefined>(undefined);
   // Bound once, at mount, so it calls the latest onRun through a ref. An action, not
   // addCommand: Monaco shares addCommand keys across editors, so with many cells on a page
@@ -66,7 +66,7 @@ export default function MonacoCode({ value, onChange, onRun, onRunStay, onEscape
   return (
     <Editor
       {...(fit && height !== undefined ? { height } : {})}
-      language="python"
+      language={language}
       theme="sprisk-studio"
       {...(fit ? { defaultValue: value } : { value })}
       onChange={(v) => onChange(v ?? "")}
