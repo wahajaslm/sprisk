@@ -1599,6 +1599,11 @@ async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
 
 /// load -> split -> scale on a table whose `age` has one far outlier.
 async fn scaling_flow(api: &Api) {
+    scaling_flow_into(api, &[], &[]).await;
+}
+
+/// The scaling flow with `nodes` and `edges` added after the scale step.
+async fn scaling_flow_into(api: &Api, extra_nodes: &[Value], extra_edges: &[Value]) {
     let mut csv = String::from("age,returned_within_30d\n");
     for i in 0..39 {
         csv.push_str(&format!("{},{}\n", 20 + i % 20, i % 2));
@@ -1628,11 +1633,16 @@ async fn scaling_flow(api: &Api) {
         "id":"scale", "operator":"sprisk.clean.scale@1.0.0",
         "params":{"columns":["age"],"method":"z_score"}
     }));
+    nodes.extend(extra_nodes.iter().cloned());
     flow["edges"] = json!([
         {"from":"load.data","to":"split.data"},
         {"from":"split.train","to":"scale.train"},
         {"from":"split.test","to":"scale.test"}
     ]);
+    flow["edges"]
+        .as_array_mut()
+        .unwrap()
+        .extend(extra_edges.iter().cloned());
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
@@ -1687,6 +1697,35 @@ async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
             .unwrap()
             .iter()
             .any(|e| e["label"] == "age outlier share" && e["origin"] == "measured"),
+        "{proposal}"
+    );
+}
+
+#[tokio::test]
+async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
+    let api = api().await;
+    let forest = json!({
+        "id":"rf", "operator":"sprisk.ml.random_forest@1.0.0",
+        "params":{"target":"returned_within_30d","features":["age"],"task":"classification","seed":0}
+    });
+    scaling_flow_into(
+        &api,
+        &[forest],
+        &[json!({"from":"scale.train","to":"rf.train"})],
+    )
+    .await;
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let (status, proposal) = propose_scaling(&api).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(proposal["recommended_alternative_id"], "none_tree_models");
+    assert!(
+        proposal["evidence"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["kind"] == "flow_fact" && e["value"] == "tree_ensemble"),
         "{proposal}"
     );
 }

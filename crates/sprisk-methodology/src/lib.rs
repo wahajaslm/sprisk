@@ -4,7 +4,7 @@
 mod catalog;
 mod decision;
 pub use catalog::{CatalogError, RuleCatalog};
-pub use decision::{observation, profile_facts, proposal};
+pub use decision::{flow_facts, observation, profile_facts, proposal};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ResolveError {

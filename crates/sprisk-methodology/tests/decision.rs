@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use sprisk_contracts::{PipelineVersion, QuestionVersion, RuleDecision, parse};
-use sprisk_methodology::{RuleCatalog, observation, profile_facts, proposal};
+use sprisk_methodology::{RuleCatalog, flow_facts, observation, profile_facts, proposal};
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
 
@@ -63,8 +63,10 @@ fn decision(alternatives: Value) -> RuleDecision {
 fn an_observation_carries_the_question_facts_and_the_rule_thresholds() {
     let catalog = catalog();
     let rule = catalog.rule(SPLIT).unwrap();
-    let observed =
-        serde_json::to_value(observation(rule, &question(), Default::default()).unwrap()).unwrap();
+    let observed = serde_json::to_value(
+        observation(rule, &question(), Default::default(), Default::default()).unwrap(),
+    )
+    .unwrap();
 
     assert_eq!(observed["facts"]["question.target"]["value"], "churned");
     assert_eq!(
@@ -159,4 +161,115 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
     assert_eq!(facts["column.city.data_type"], "String");
     assert!(facts.get("column.city.skewness").is_none());
     assert!(facts.keys().all(|k| !k.starts_with("column.other.")));
+}
+
+fn flow(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> PipelineVersion {
+    let nodes: Vec<Value> = nodes
+        .iter()
+        .map(|(id, op)| json!({ "id": id, "operator": format!("sprisk.{op}@1.0.0"), "params": {} }))
+        .collect();
+    let edges: Vec<Value> = edges
+        .iter()
+        .map(|(from, to)| json!({ "from": from, "to": to }))
+        .collect();
+    parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+            "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "nodes": nodes, "edges": edges,
+            "created_at": "2026-10-15T10:00:00Z"
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_scale_step_upstream_of_a_random_forest_reads_tree_ensemble() {
+    let pipeline = flow(
+        &[
+            ("scale", "clean.scale"),
+            ("rf", "ml.random_forest"),
+            ("base", "ml.dummy_baseline"),
+            ("eval", "ml.evaluate"),
+        ],
+        &[
+            ("scale.train", "rf.train"),
+            ("scale.train", "base.train"),
+            ("rf.model", "eval.model"),
+        ],
+    );
+    let facts = flow_facts(&pipeline, "scale");
+    assert_eq!(facts["flow.model_family"]["value"], "tree_ensemble");
+    assert_eq!(facts["flow.model_family"]["origin"], "measured");
+}
+
+#[test]
+fn models_of_several_families_read_mixed() {
+    let pipeline = flow(
+        &[
+            ("scale", "clean.scale"),
+            ("rf", "ml.random_forest"),
+            ("lin", "ml.linear_model"),
+        ],
+        &[("scale.train", "rf.train"), ("scale.train", "lin.train")],
+    );
+    assert_eq!(
+        flow_facts(&pipeline, "scale")["flow.model_family"]["value"],
+        "mixed"
+    );
+}
+
+#[test]
+fn a_model_reached_through_other_steps_counts_but_one_upstream_does_not() {
+    let pipeline = flow(
+        &[
+            ("lin", "ml.linear_model"),
+            ("impute", "clean.impute"),
+            ("scale", "clean.scale"),
+            ("km", "clustering.kmeans"),
+        ],
+        &[
+            ("lin.model", "impute.data"),
+            ("impute.train", "scale.train"),
+            ("scale.train", "km.data"),
+        ],
+    );
+    assert_eq!(
+        flow_facts(&pipeline, "impute")["flow.model_family"]["value"],
+        "distance_based"
+    );
+}
+
+#[test]
+fn no_model_downstream_sends_no_family() {
+    let pipeline = flow(
+        &[("scale", "clean.scale"), ("base", "ml.dummy_baseline")],
+        &[("scale.train", "base.train")],
+    );
+    assert!(flow_facts(&pipeline, "scale").is_empty());
+}
+
+#[test]
+fn an_observation_carries_flow_facts_beside_the_question_facts() {
+    let catalog = catalog();
+    let rule = catalog.rule(SPLIT).unwrap();
+    let pipeline = flow(
+        &[("scale", "clean.scale"), ("rf", "ml.random_forest")],
+        &[("scale.train", "rf.train")],
+    );
+    let observed = observation(
+        rule,
+        &question(),
+        flow_facts(&pipeline, "scale"),
+        Default::default(),
+    )
+    .unwrap();
+    let observed = serde_json::to_value(observed).unwrap();
+    assert_eq!(
+        observed["facts"]["flow.model_family"]["value"],
+        "tree_ensemble"
+    );
+    assert_eq!(observed["facts"]["question.target"]["value"], "churned");
 }

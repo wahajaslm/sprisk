@@ -2,6 +2,10 @@
 //! built from what it returns. Python chooses; Rust builds graph effects only from the
 //! manifest's actions, so a rule can never name an operator its manifest does not declare.
 
+use std::collections::BTreeSet;
+
+use petgraph::graph::DiGraph;
+use petgraph::visit::Bfs;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
@@ -21,18 +25,21 @@ const QUESTION_FACTS: &[&str] = &[
     "prediction_horizon",
 ];
 
-/// The rule's observation of this question and, for rules that read data, of the step's
-/// train rows (`profile_facts`). Its settings are the manifest's thresholds.
+/// The rule's observation of this question, of the flow around the step (`flow_facts`)
+/// and, for rules that read data, of the step's train rows (`profile_facts`). Its settings
+/// are the manifest's thresholds.
 pub fn observation(
     rule: &MethodologyRule,
     question: &QuestionVersion,
+    flow: Map<String, Value>,
     profile: Map<String, Value>,
 ) -> Result<RuleObservation, ResolveError> {
     let question = serde_json::to_value(question)?;
-    let facts: Map<String, Value> = QUESTION_FACTS
+    let mut facts: Map<String, Value> = QUESTION_FACTS
         .iter()
         .filter_map(|field| Some((format!("question.{field}"), question.get(*field)?.clone())))
         .collect();
+    facts.extend(flow);
     Ok(parse(
         &json!({
             "schema_version": "sprisk.rule_observation/v1",
@@ -43,6 +50,58 @@ pub fn observation(
         })
         .to_string(),
     )?)
+}
+
+/// The family of a model operator, as preparation rules care about it. A dummy baseline
+/// ignores its features, so it has none.
+fn model_family(operator: &str) -> Option<&'static str> {
+    Some(match operator.split('@').next()? {
+        "sprisk.ml.random_forest" => "tree_ensemble",
+        "sprisk.ml.linear_model" => "linear",
+        "sprisk.clustering.kmeans" | "sprisk.clustering.dbscan" | "sprisk.clustering.gmm" => {
+            "distance_based"
+        }
+        _ => return None,
+    })
+}
+
+/// What the flow says about `node_id`: `flow.model_family`, the family of the models
+/// downstream of it, or `mixed` for several. Read from the graph, so `measured`; left out
+/// when no model is downstream, so a rule never reads a stand-in family.
+pub fn flow_facts(pipeline: &PipelineVersion, node_id: &str) -> Map<String, Value> {
+    let mut graph = DiGraph::<&str, ()>::new();
+    let index: std::collections::HashMap<&str, _> = pipeline
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), graph.add_node(n.operator.as_str())))
+        .collect();
+    let step = |port: &str| {
+        port.split_once('.')
+            .and_then(|(id, _)| index.get(id).copied())
+    };
+    for edge in &pipeline.edges {
+        if let (Some(from), Some(to)) = (step(edge.from.as_str()), step(edge.to.as_str())) {
+            graph.add_edge(from, to, ());
+        }
+    }
+    let Some(&start) = index.get(node_id) else {
+        return Map::new();
+    };
+    let mut families = BTreeSet::new();
+    let mut bfs = Bfs::new(&graph, start);
+    while let Some(next) = bfs.next(&graph) {
+        families.extend(model_family(graph[next]));
+    }
+    let Some(&first) = families.first() else {
+        return Map::new();
+    };
+    let family = if families.len() == 1 { first } else { "mixed" };
+    let mut facts = Map::new();
+    facts.insert(
+        "flow.model_family".into(),
+        json!({ "value": family, "origin": "measured" }),
+    );
+    facts
 }
 
 /// Measured values of `columns`, as `column.<name>.<measure>`, plus `rows`. Only the step's
