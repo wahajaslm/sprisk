@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -190,12 +191,27 @@ def test_an_optional_setting_left_out_uses_the_functions_default(tmp_path: Path)
     assert pl.read_parquet(out.path)["x"].to_list() == [10]
 
 
-def test_a_model_file_with_untrusted_types_is_refused(tmp_path: Path) -> None:
+def _datetime_call() -> Any:
     import datetime as dt
 
+    return {"call": dt.datetime}
+
+
+def _numpy_function() -> Any:
+    # A file naming a numpy function can have skops call it and set the result's raw state.
+    import numpy as np
+    from sklearn.preprocessing import FunctionTransformer
+
+    return FunctionTransformer(np.asarray, kw_args={"dtype": "object"})
+
+
+@pytest.mark.parametrize("payload", [_datetime_call, _numpy_function])
+def test_a_model_file_with_untrusted_types_is_refused(
+    tmp_path: Path, payload: Callable[[], Any]
+) -> None:
     score = operator("[{ name: model, kind: model }]", "[{ name: metrics, kind: metrics }]")
     evil = tmp_path / "evil.skops"
-    skops.io.dump({"call": dt.datetime}, evil)
+    skops.io.dump(payload(), evil)
 
     def op(model: Any) -> dict[str, Any]:
         return {}

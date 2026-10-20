@@ -2411,7 +2411,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.10" },
     { name = "pyarrow", specifier = ">=17" },
     { name = "scikit-learn", specifier = ">=1.5" },
-    { name = "skops", specifier = ">=0.10" },
+    { name = "skops", specifier = ">=0.16" },
     { name = "sprisk-workers", editable = "python/sprisk-workers" },
 ]
 
@@ -2518,7 +2518,7 @@ requires-dist = [
     { name = "python-ulid", specifier = ">=3" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "scikit-learn", specifier = ">=1.5" },
-    { name = "skops", specifier = ">=0.10" },
+    { name = "skops", specifier = ">=0.16" },
     { name = "sprisk-contracts", editable = "python/sprisk-contracts" },
     { name = "typer", specifier = ">=0.12" },
 ]

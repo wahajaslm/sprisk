@@ -1,17 +1,19 @@
 """Models fit on the training table: preprocessing and estimator together, so nothing about
 the test rows is learned."""
 
+from typing import Any
+
 import numpy as np
 import polars as pl
 import polars.selectors as cs
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
 def dummy_baseline(train: pl.DataFrame, target: str, features: list[str], task: str) -> Pipeline:
@@ -57,6 +59,17 @@ def fit(
     return model.fit(x, train[target].to_numpy())
 
 
+class AsObject(TransformerMixin, BaseEstimator):  # type: ignore[misc]
+    """Category columns as an object array. Its own class with no settings, so a model file
+    names only this type: skops would let a file that names a numpy function call it."""
+
+    def fit(self, x: Any, y: Any = None) -> "AsObject":
+        return self
+
+    def transform(self, x: Any) -> Any:
+        return np.asarray(x, dtype=object)
+
+
 def preprocessor(x: pl.DataFrame) -> ColumnTransformer:
     """Numbers: fill gaps with the median, then standardise. Text: fill with the most
     frequent value, then one-hot encode; a category seen only in test is ignored."""
@@ -73,9 +86,7 @@ def preprocessor(x: pl.DataFrame) -> ColumnTransformer:
                 make_pipeline(
                     # A gap-free boolean column arrives as a bool array, which the imputer
                     # refuses; as objects, every category column looks the same to it.
-                    FunctionTransformer(
-                        np.asarray, kw_args={"dtype": "object"}, feature_names_out="one-to-one"
-                    ),
+                    AsObject(),
                     # Polars text and boolean gaps reach sklearn as None, not NaN.
                     SimpleImputer(missing_values=None, strategy="most_frequent"),
                     OneHotEncoder(handle_unknown="ignore"),
