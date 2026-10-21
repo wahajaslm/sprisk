@@ -345,8 +345,24 @@ def cross_validated(rows_from: str) -> PipelineVersion:
     return pipeline(nodes, edges)
 
 
-def test_a_comparison_on_the_train_rows_is_not_a_holdout_issue() -> None:
-    assert check(cross_validated("split.train")).verdict == Verdict.not_assessed
+def test_a_comparison_on_the_train_rows_passes_and_cites_its_models_and_split() -> None:
+    result = check(cross_validated("split.train"))
+    assert result.verdict == Verdict.pass_
+    assert [n.root for n in result.cited_nodes] == ["cv_a", "cv_b", "split"]
+    assert result.rationale.startswith("No model learns from the test set (split.test)")
+
+
+def test_a_comparison_on_rows_that_were_never_split_fails() -> None:
+    # load.data holds the test rows too, though no edge leaves split.test.
+    result = check(cross_validated("load.data"))
+    assert result.verdict == Verdict.fail
+    assert result.rationale.startswith("cv_a learns from rows that were never split (load.data)")
+    assert [n.root for n in result.cited_nodes] == ["cv_a", "load"]
+
+
+def test_a_model_on_unsplit_rows_without_any_split_is_not_assessed() -> None:
+    p = pipeline({"load": SOURCE, "model": LINEAR}, [("load.data", "model.train")])
+    assert check(p).verdict == Verdict.not_assessed
 
 
 def test_a_comparison_fed_the_test_rows_fails() -> None:

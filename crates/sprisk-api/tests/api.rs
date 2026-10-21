@@ -3623,7 +3623,7 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
     assert_eq!(decision["winner"], "ml_linear_model", "{decision}");
 
     // The study's graph reads the loaded rows only through the split, and its trials read
-    // only the split's train rows. No step reads the split's test rows.
+    // only the split's train rows. No step reads the split's test rows, and Gate B passes it.
     let (_, comparison) = call(
         &api.app,
         "GET",
@@ -3650,6 +3650,21 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
         into_trials.iter().all(|e| e["from"] == "split.train"),
         "{comparison}"
     );
+    let (_, attempts) = call(
+        &api.app,
+        "GET",
+        &format!("/runs/{}/attempts", done["run"]["id"].as_str().unwrap()),
+        None,
+    )
+    .await;
+    let checks = output(&api, &attempts, "gate_b", "checks").await;
+    let leakage = checks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["check"] == "supervised.split_leakage@1.0.0")
+        .unwrap_or_else(|| panic!("{checks}"));
+    assert_eq!(leakage["verdict"], "pass", "{leakage}");
 
     // Using the forest is an override of the study's choice: it needs a reason, and the flow's
     // model step gets the settings the study chose for the forest.
@@ -3681,13 +3696,6 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
         "the flow's own settings stay"
     );
     assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
-    let (_, attempts) = call(
-        &api.app,
-        "GET",
-        &format!("/runs/{}/attempts", done["run"]["id"].as_str().unwrap()),
-        None,
-    )
-    .await;
     assert_eq!(
         applied["decision"]["selection_id"],
         output_artifact(&api, &attempts, "select_model", "decision").await

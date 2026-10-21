@@ -48,6 +48,8 @@ def split_leakage(
 
     - A fitting transform must learn from a split's train rows, never unsplit data or a holdout.
     - Any estimator downstream of a holdout port was fit on it.
+    - When the flow has a split, an estimator that reaches a data source other than through a
+      split's train port was fit on rows that include the holdout.
     - Per holdout, evaluators may score at most one non-baseline model, where a
       model is the nearest estimator upstream of the evaluator's model input.
     """
@@ -69,20 +71,41 @@ def split_leakage(
             rationale, cited = problem
             return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
 
-    for node in sorted(op_of):
-        if op_of[node].capability_class == CapabilityClass.estimator:
-            fitted_on = sorted(holdouts & nx.ancestors(graph, node))
-            if fitted_on:
-                rationale = (
-                    f"{node} learns from the test set ({fitted_on[0]}). "
-                    "A model may only learn from training rows."
-                )
-                cited = [node, fitted_on[0].split(".")[0]]
-                return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
+    estimators = sorted(
+        n for n, op in op_of.items() if op.capability_class == CapabilityClass.estimator
+    )
+    # Cut every split's train port; a data source an estimator still reaches bypassed the split.
+    cut = graph.copy()
+    cut.remove_nodes_from(f"{s}.{TRAIN_PORT}" for s in splits)
+    for node in estimators:
+        fitted_on = sorted(holdouts & nx.ancestors(graph, node))
+        if fitted_on:
+            rationale = (
+                f"{node} learns from the test set ({fitted_on[0]}). "
+                "A model may only learn from training rows."
+            )
+            cited = [node, fitted_on[0].split(".")[0]]
+            return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
+        unsplit = sorted(p for p in nx.ancestors(cut, node) if p.split(".")[0] in sources)
+        if holdouts and unsplit:
+            port = next(p for p in unsplit if "." in p)
+            rationale = (
+                f"{node} learns from rows that were never split ({port}), so it sees the "
+                "test rows too. A model may only learn from a split's training rows."
+            )
+            cited = [node, port.split(".")[0]]
+            return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
 
     evaluators = sorted(
         n for n, op in op_of.items() if op.capability_class == CapabilityClass.evaluator
     )
+    if not evaluators and holdouts and estimators:
+        rationale = (
+            f"No model learns from the test set ({', '.join(sorted(holdouts))}) or from rows "
+            "that were never split, and no step scores a model on it."
+        )
+        cited = sorted({*estimators, *(h.split(".")[0] for h in holdouts)})
+        return _result(pipeline, check_id, now, Verdict.pass_, rationale, cited)
     if not evaluators:
         return _result(pipeline, check_id, now, Verdict.not_assessed, "No evaluator nodes.", [])
 
