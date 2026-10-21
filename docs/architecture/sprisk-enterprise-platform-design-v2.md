@@ -365,7 +365,7 @@ Architecturally represent source triggers, microbatch boundaries, watermark/late
 
 **Metric objective versus business decision:** selection may depend on PR-AUC, recall at contact budget, inference cost, latency, interpretability and operational limits. Define primary selection metric and guardrails before viewing final-holdout results. Cross-study rankings without a compatible protocol must be labeled *not directly comparable*.
 
-**Optimization:** begin with baseline + bounded grid/random search across complete pipeline parameters, not only model hyperparameters. Adaptive algorithms (e.g., Optuna/TPE) are strategy adapters added later. Trial budgets cover CPU/GPU, memory, time, concurrency, retry count, artifact bytes and money estimate when billing data exists. Trial outcomes must not overwrite prior attempts.
+**Optimization:** begin with baseline + bounded grid/random search across complete pipeline parameters, not only model hyperparameters. Adaptive algorithms (e.g., Optuna/TPE) and AutoML systems (e.g., H2O.ai / H2O AutoML) are strategy adapters added later. Trial budgets cover CPU/GPU, memory, time, concurrency, retry count, artifact bytes and money estimate when billing data exists. Trial outcomes must not overwrite prior attempts.
 
 **Final evaluation:** separate validation-driven selection from controlled final-holdout scoring. Final refit uses authorized development data; only the approved scorer reads final labels. Repeated holdout usage is logged as an evaluation limitation.
 
@@ -605,7 +605,7 @@ A `RunSnapshot` records question/context revision, graph and methods, dataset an
 |---|---|---|---|
 | Methodology | Typed resolver, packs, decisions, assessment | Established scientific methods and docs | Generic rule scripting engine |
 | Feature generation | Contracts, lineage, compilation rules | Hamilton-like patterns, SQL engines, Feast-style access | Rebuilding a complete feature store |
-| Experimentation | Study/trial/compare, authorization and evidence | sklearn, Optuna later, distributed train backends | Second orchestration engine |
+| Experimentation | Study/trial/compare, authorization and evidence | sklearn, Optuna / H2O.ai later, distributed train backends | Second orchestration engine |
 | Registry | Identity, release policies and lineage | MLflow compatibility, ONNX export | Recreating every model format |
 | Deployment | Desired state, target adapters, approvals, rollback | Container runtime, KServe/Seldon/custom endpoints | Writing a custom autoscaler |
 | Monitoring | Policies, findings, links to model/investigation | Prometheus/OpenTelemetry/managed monitors | Building metrics TSDB |

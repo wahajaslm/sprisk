@@ -52,6 +52,7 @@
 | [0048](0048-copilot-via-subscription-bridges-and-local-models.md) | Copilot chat via subscription CLI bridges and local models | Proposed |
 | [0049](0049-remote-jupyter-and-colab-kernel-execution.md) | Remote Jupyter and Google Colab kernel execution for deep learning | Proposed |
 | [0050](0050-model-selection-methodology.md) | Sprisk's model-selection methodology | Accepted |
+| [0051](0051-enterprise-intelligence-capabilities.md) | Adopting enterprise intelligence capabilities: automated compliance documentation, portable serving bundles, fairness auditing, and specialized agent fleets | Proposed |
 
 ## Open questions (arch doc §17)
 

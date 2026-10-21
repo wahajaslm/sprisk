@@ -37,8 +37,8 @@ sprisk is a general-purpose analytical platform organized around scientific inve
 | Python scientific plane | Python, Pydantic, scikit-learn, SciPy, statsmodels | Structured AI planning, scientific validators, ML/stats execution. |
 | AI providers | Local model adapter and external provider adapter(s) | Consent-gated data exposure, structured outputs, provider-independent planning interface. |
 | Data processing | DuckDB + Polars; Arrow interoperability | SQL/lazy frames, efficient profiling and transformations. |
-| ML extensions | XGBoost, LightGBM, PyTorch, Hugging Face (as required) | Optional adapters, not universal core dependencies. |
-| Search/optimization | Optuna; OR-Tools when decisions require mathematical optimization | Constrained, versioned study runs; do not rely on LLM trial selection alone. |
+| ML extensions | XGBoost, LightGBM, PyTorch, Hugging Face, H2O (h2o.ai) (as required) | Optional adapters, not universal core dependencies. |
+| Search/optimization | Optuna, H2O AutoML (h2o.ai); OR-Tools when decisions require mathematical optimization | Constrained, versioned study runs; do not rely on LLM trial selection alone. |
 | Artifact data | Parquet, Arrow IPC, model bundles; filesystem local / S3 API hosted | Immutable artifacts with content hashes and metadata. |
 | API/IPC | HTTP+JSON for control, process IPC for local workers, Arrow IPC or artifact refs for datasets | Avoid full dataframes embedded in JSON commands. |
 | Observability | tracing/OpenTelemetry; structured run events | Operations telemetry separate from immutable scientific run records. |
