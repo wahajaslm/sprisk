@@ -1613,9 +1613,9 @@ fn a_comparison_refuses_a_step_it_would_refit_with_other_code_than_the_flows() {
     let pipeline = with_own_code(evaluated_flow(), "scale");
     let models = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
     let err = compare(&pipeline, &models).unwrap_err();
-    assert!(matches!(err, ResolveError::Selection(_)), "{err}");
+    assert!(matches!(err, ResolveError::OwnCode { .. }), "{err}");
     assert!(
-        err.to_string().contains("step scale runs its own code"),
+        err.to_string().starts_with("step scale runs its own code"),
         "{err}"
     );
 

@@ -446,7 +446,12 @@ describe("model comparison", () => {
       const removed = { ...imputed("median"), id: "cv_pass_through", params: { ...imputed("median").params, prepare: [] } };
       prepared();
       server.use(
-        http.get("/api/pipeline_versions", () => HttpResponse.json([{ ...prepComparison, nodes: [...prepComparison.nodes, removed] }, pipeline])),
+        http.get("/api/pipeline_versions", () =>
+          HttpResponse.json([
+            { ...prepComparison, nodes: [...prepComparison.nodes, removed], edges: [...prepComparison.edges, { from: "split.train", to: "cv_pass_through.train" }] },
+            pipeline,
+          ]),
+        ),
         http.get(`/api/methodology_proposals/${PREP}`, () => HttpResponse.json({ ...prepProposal, alternatives: [...prepProposal.alternatives, removing] })),
         http.get(`/api/artifacts/${decisionOutput.artifact.id}/content`, () =>
           HttpResponse.text(JSON.stringify({ ...stands, candidates: [...stands.candidates, { ...stands.candidates[1]!, id: "pass_through" }] })),
@@ -456,6 +461,14 @@ describe("model comparison", () => {
       const detail = await screen.findByRole("region", { name: "Detail of pass_through" });
       expect(within(within(detail).getByRole("list", { name: "Steps of pass_through" })).getAllByRole("listitem")).toHaveLength(2);
       expect(detail).toHaveTextContent("Differs from the flow: impute removed");
+    });
+
+    it("says a choice replaces the flow step's own code, even with the same settings", async () => {
+      prepared();
+      const edited = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "impute" ? { ...n, code: { source: "def impute(train, test, columns, method):\n    return train, test\n", function: "impute" } } : n)) };
+      server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([prepComparison, edited])));
+      const median = await screen.findByRole("region", { name: "Detail of impute_median" });
+      expect(median).toHaveTextContent("Differs from the flow: impute · its own code → sprisk.clean.impute@1.0.0's code");
     });
 
     it("asks for a run before Sprisk can compare the step's choices", async () => {

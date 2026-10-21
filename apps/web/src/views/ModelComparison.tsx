@@ -2,7 +2,7 @@ import type { Attempt, DecisionProposal, PipelineVersion, SelectionDecision } fr
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client.ts";
-import { isLive, useOperators, useOperatorSource, usePipelineVersions, useRuns } from "../api/hooks.ts";
+import { isLive, useOperators, useOperatorSource, useRuns } from "../api/hooks.ts";
 import { useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
@@ -21,15 +21,16 @@ export function ModelComparisons({ flowIds, head, versions }: { flowIds: string[
   const proposals = useMethodologyProposals(comparisons.map((c) => c.proposalId));
   const mine = comparisons.flatMap((c, i) => {
     const proposal = proposals[i]?.data;
-    return proposal && flowIds.includes(proposal.pipeline_version_id) ? [{ version: c.version, proposal }] : [];
+    const base = versions.find((v) => v.id === proposal?.pipeline_version_id);
+    return proposal && base && flowIds.includes(base.id) ? [{ version: c.version, proposal, base }] : [];
   });
   const failed = proposals.find((p) => p.isError)?.error;
   return (
     <>
       <AutoSelect head={head} />
       {failed && <p role="alert" className="error pad">A model comparison cannot be shown: {failed.message}</p>}
-      {mine.map(({ version, proposal }) => (
-        <Comparison key={version.id} comparison={version} proposal={proposal} />
+      {mine.map(({ version, proposal, base }) => (
+        <Comparison key={version.id} comparison={version} proposal={proposal} base={base} />
       ))}
       <TestRowsCautions head={head} />
     </>
@@ -79,7 +80,7 @@ function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVe
   return null;
 }
 
-function Comparison({ comparison, proposal }: { comparison: PipelineVersion; proposal: DecisionProposal }) {
+function Comparison({ comparison, proposal, base }: { comparison: PipelineVersion; proposal: DecisionProposal; base: PipelineVersion }) {
   const [latest] = useFlowRuns([comparison.id], 1);
   const selectNode = comparison.nodes.find((n) => n.operator.startsWith("sprisk.ml.select_model@"))?.id;
   const result = useSelectionDecision(latest, selectNode);
@@ -89,7 +90,7 @@ function Comparison({ comparison, proposal }: { comparison: PipelineVersion; pro
     <section className="model-comparison" aria-label={models ? "Model comparison" : "Preparation comparison"}>
       <p className="eyebrow">{models ? "Model selection" : "Preparation"} · {proposal.subject_node_id}</p>
       {result.status === "decided" ? (
-        <Decided decision={result.decision} artifactId={result.artifactId} attempts={result.attempts} proposal={proposal} comparison={comparison} />
+        <Decided decision={result.decision} artifactId={result.artifactId} attempts={result.attempts} proposal={proposal} comparison={comparison} base={base} />
       ) : result.status === "failed" ? (
         <p role="alert" className="error">The comparison failed: {result.message}</p>
       ) : (
@@ -101,12 +102,13 @@ function Comparison({ comparison, proposal }: { comparison: PipelineVersion; pro
   );
 }
 
-function Decided({ decision, artifactId, attempts, proposal, comparison }: {
+function Decided({ decision, artifactId, attempts, proposal, comparison, base }: {
   decision: SelectionDecision;
   artifactId: string;
   attempts: Attempt[];
   proposal: DecisionProposal;
   comparison: PipelineVersion;
+  base: PipelineVersion;
 }) {
   const [picked, setPicked] = useState<string[]>(() => defaultPair(decision));
   const [choosing, setChoosing] = useState<string>();
@@ -170,7 +172,7 @@ function Decided({ decision, artifactId, attempts, proposal, comparison }: {
             <section key={id} className="compare-col" aria-label={`Detail of ${id}`}>
               <p className="eyebrow">{id} · from held-out folds of the train rows</p>
               <p className="mono">Fold scores: {decision.candidates.find((c) => c.id === id)?.fold_scores.map(formatMetric).join(" · ")}</p>
-              <ChoiceSteps comparison={comparison} proposal={proposal} id={id} />
+              <ChoiceSteps comparison={comparison} proposal={proposal} base={base} id={id} />
               <FigurePort attempt={cvAttempt(id)} port="figures" />
             </section>
           ))}
@@ -185,14 +187,13 @@ type Step = { operator: string; params: Record<string, unknown> };
 /** What a choice ran in every fold, read from its cross-validate step: the split's train rows,
  * each preparation step refit, then the model (ADR-0047). The compiler checked these params
  * against the step's schema. How it differs from the flow is its effect, as Apply would make it. */
-function ChoiceSteps({ comparison, proposal, id }: { comparison: PipelineVersion; proposal: DecisionProposal; id: string }) {
-  const versions = usePipelineVersions();
+function ChoiceSteps({ comparison, proposal, base, id }: { comparison: PipelineVersion; proposal: DecisionProposal; base: PipelineVersion; id: string }) {
   const [open, setOpen] = useState<string>();
   const node = comparison.nodes.find((n) => n.id === `cv_${id}`);
   if (!node) return <p role="alert" className="error">{comparison.id} has no step cv_{id}.</p>;
   const rows = comparison.edges.find((e) => e.to === `${node.id}.train`)?.from;
+  if (!rows) return <p role="alert" className="error">{node.id} has no train rows input.</p>;
   const steps = [...(node.params.prepare as Step[]), { operator: node.params.candidate as string, params: node.params.candidate_params as Step["params"] }];
-  const base = versions.data?.find((v) => v.id === proposal.pipeline_version_id);
   const effect = proposal.alternatives.find((a) => a.id === id)?.effect;
   return (
     <>
@@ -209,7 +210,7 @@ function ChoiceSteps({ comparison, proposal, id }: { comparison: PipelineVersion
         ))}
       </ol>
       {open && <StepCode operator={open} />}
-      {base && effect && <p className="muted">Differs from the flow: {differences(base, effect)}</p>}
+      {effect && <p className="muted">Differs from the flow: {differences(base, effect)}</p>}
     </>
   );
 }
@@ -227,9 +228,13 @@ function differences(base: PipelineVersion, effect: NonNullable<DecisionProposal
   const before = base.nodes.find((n) => n.id === effect.node_id);
   if (!before) return `${effect.node_id} is not in the flow`;
   const after = { ...before, operator: effect.operator, params: effect.params };
-  const changes = settingChanges({ ...base, nodes: [before] }, { ...base, nodes: [after] });
-  if (changes.length === 0) return "nothing";
-  return changes.map((c) => `${c.node} · ${c.key}: ${showValue(c.before)} → ${showValue(c.after)}`).join("; ");
+  const changes = settingChanges({ ...base, nodes: [before] }, { ...base, nodes: [after] }).map(
+    (c) => `${c.node} · ${c.key}: ${showValue(c.before)} → ${showValue(c.after)}`,
+  );
+  // The flow's step may run its own code (ADR-0028); every choice runs its operator's.
+  const own = before.code ? [`${effect.node_id} · its own code → ${effect.operator}'s code`] : [];
+  const all = [...own, ...changes];
+  return all.length === 0 ? "nothing" : all.join("; ");
 }
 
 function Row({ label, cells, mono }: { label: string; cells: string[]; mono?: boolean }) {

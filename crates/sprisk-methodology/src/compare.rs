@@ -398,11 +398,10 @@ fn as_prepared(step: &Node) -> Result<serde_json::Value, ResolveError> {
 /// would be compared as code the flow does not run.
 fn refits_as_flow_runs(step: &Node) -> Result<(), ResolveError> {
     if step.code.is_some() {
-        return Err(ResolveError::Selection(format!(
-            "step {} runs its own code, but each fold would refit it with {}'s code; revert it to compare",
-            step.id.as_str(),
-            step.operator.as_str()
-        )));
+        return Err(ResolveError::OwnCode {
+            step: step.id.as_str().to_owned(),
+            operator: step.operator.as_str().to_owned(),
+        });
     }
     Ok(())
 }

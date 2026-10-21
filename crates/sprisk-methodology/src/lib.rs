@@ -28,6 +28,10 @@ pub enum ResolveError {
     },
     #[error("the train rows cannot be traced to a split: {0}")]
     NotTrainRows(String),
+    #[error(
+        "step {step} runs its own code, but each fold would refit it with {operator}'s code; revert it to compare"
+    )]
+    OwnCode { step: String, operator: String },
     #[error("nothing to compare: {0}")]
     NothingToCompare(String),
     #[error("the rule's decision does not fit its selection: {0}")]
