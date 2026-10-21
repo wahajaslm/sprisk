@@ -654,6 +654,46 @@ class Resources(StrictModel):
     timeout_seconds: Annotated[int, Field(ge=1)]
 
 
+class Stage(StrEnum):
+    explore = "explore"
+    split = "split"
+    clean = "clean"
+    model = "model"
+    evaluate = "evaluate"
+
+
+class BeforeItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=100000)]
+
+
+class AfterItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=100000)]
+
+
+class NodeNotes(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    before: Annotated[
+        list[BeforeItem] | None,
+        Field(description="Markdown cells above the step's cell, in order."),
+    ] = None
+    after: Annotated[
+        list[AfterItem] | None,
+        Field(description="Markdown cells below it; only the last step of a stage has them."),
+    ] = None
+
+
+class VariableName(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="A Python name a cell sets or reads.",
+            pattern="^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+        ),
+    ]
+
+
 class NodeSource(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1619,6 +1659,22 @@ class Node(StrictModel):
         NodeSource | None,
         Field(
             description="The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook."
+        ),
+    ] = None
+    stage: Annotated[
+        Stage | None,
+        Field(
+            description="The stage notebook this step's cell is in (ADR-0055). Omitted: the stage its operator implies."
+        ),
+    ] = None
+    notes: Annotated[
+        NodeNotes | None,
+        Field(description="Markdown cells shown with this step's cell (ADR-0055). Omitted: none."),
+    ] = None
+    names: Annotated[
+        dict[str, VariableName] | None,
+        Field(
+            description="The variable each output port goes by in the notebook, by port (ADR-0055). Omitted: the port names."
         ),
     ] = None
 

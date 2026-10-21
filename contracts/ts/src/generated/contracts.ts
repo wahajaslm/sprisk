@@ -168,6 +168,13 @@ export type CheckRef = string;
  */
 export type NotebookCellId = string;
 /**
+ * A Python name a cell sets or reads.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "VariableName".
+ */
+export type VariableName = string;
+/**
  * `<node_id>.<port_name>`.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -268,6 +275,13 @@ export type Entrypoint = string;
  * via the `definition` "ModelFamily".
  */
 export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "density_based";
+/**
+ * A flow's stages in order; each is one notebook (ADR-0055).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Stage".
+ */
+export type Stage = "explore" | "split" | "clean" | "model" | "evaluate";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "AttemptState".
@@ -1292,6 +1306,17 @@ export interface Node {
   methodology_decision_id?: string;
   code?: NodeCode;
   from_notebook?: NodeSource;
+  /**
+   * The stage notebook this step's cell is in (ADR-0055). Omitted: the stage its operator implies.
+   */
+  stage?: "explore" | "split" | "clean" | "model" | "evaluate";
+  notes?: NodeNotes;
+  /**
+   * The variable each output port goes by in the notebook, by port (ADR-0055). Omitted: the port names.
+   */
+  names?: {
+    [k: string]: VariableName;
+  };
 }
 /**
  * This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs.
@@ -1316,6 +1341,19 @@ export interface NodeSource {
    */
   notebook_id?: string;
   cells: NotebookCellId[];
+}
+/**
+ * Markdown cells shown with this step's cell (ADR-0055). Omitted: none.
+ */
+export interface NodeNotes {
+  /**
+   * Markdown cells above the step's cell, in order.
+   */
+  before?: string[];
+  /**
+   * Markdown cells below it; only the last step of a stage has them.
+   */
+  after?: string[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1651,6 +1689,20 @@ export interface Resources {
   memory_mb: number;
   gpu: "none" | "optional" | "required";
   timeout_seconds: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NodeNotes".
+ */
+export interface NodeNotes1 {
+  /**
+   * Markdown cells above the step's cell, in order.
+   */
+  before?: string[];
+  /**
+   * Markdown cells below it; only the last step of a stage has them.
+   */
+  after?: string[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

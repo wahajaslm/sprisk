@@ -41,8 +41,33 @@
           "description": "Decision that produced this node state. Absent for a hand-authored node."
         },
         "code": { "$ref": "#/$defs/NodeCode", "description": "This step's own code in this version, replacing its operator's implementation (ADR-0028). Omitted: the operator's code runs." },
-        "from_notebook": { "$ref": "#/$defs/NodeSource", "description": "The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook." }
+        "from_notebook": { "$ref": "#/$defs/NodeSource", "description": "The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook." },
+        "stage": { "$ref": "#/$defs/Stage", "description": "The stage notebook this step's cell is in (ADR-0055). Omitted: the stage its operator implies." },
+        "notes": { "$ref": "#/$defs/NodeNotes", "description": "Markdown cells shown with this step's cell (ADR-0055). Omitted: none." },
+        "names": {
+          "type": "object",
+          "description": "The variable each output port goes by in the notebook, by port (ADR-0055). Omitted: the port names.",
+          "additionalProperties": { "$ref": "#/$defs/VariableName" }
+        }
       }
+    },
+    "Stage": {
+      "type": "string",
+      "enum": ["explore", "split", "clean", "model", "evaluate"],
+      "description": "A flow's stages in order; each is one notebook (ADR-0055)."
+    },
+    "NodeNotes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before": { "type": "array", "items": { "type": "string", "maxLength": 100000 }, "description": "Markdown cells above the step's cell, in order." },
+        "after": { "type": "array", "items": { "type": "string", "maxLength": 100000 }, "description": "Markdown cells below it; only the last step of a stage has them." }
+      }
+    },
+    "VariableName": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+      "description": "A Python name a cell sets or reads."
     },
     "NodeSource": {
       "type": "object",
