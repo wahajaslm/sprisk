@@ -18,9 +18,9 @@ export function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [importing, setImporting] = useState(false);
 
-  // Open the newest pipeline version and its newest run by default.
+  // Open the newest flow and its newest run by default. A comparison saved later is not a flow.
   useEffect(() => {
-    const newest = versions.data?.[0];
+    const newest = flows(versions.data ?? [])[0]?.head;
     if (pipelineVersionId === undefined && newest) selectPipelineVersion(newest.id);
   }, [versions.data, pipelineVersionId, selectPipelineVersion]);
   const latestRun = runs.data?.[0];

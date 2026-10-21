@@ -74,6 +74,13 @@ describe("top bar", () => {
     expect(useSelection.getState().pipelineVersionId).toBe(edited.id);
   });
 
+  it("opens the newest flow, not a comparison saved after it", async () => {
+    const comparison = { ...pipeline, id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ8", compares: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0" };
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([comparison, pipeline])));
+    renderWithApi(<TopBar />);
+    await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
+  });
+
   it("picking the flow that is already open keeps showing its latest run", async () => {
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().runId).toBe(RUN));
