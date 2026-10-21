@@ -146,6 +146,7 @@ pub fn preparation_comparison<'a>(
     let metric = metric_of(task)?;
     let subject = proposal.subject_node_id.as_str();
     let (model, chain) = model_after(base, subject, &is_split, &keeps_train, &operator_of)?;
+    refits_as_flow_runs(model)?;
     let (split, between) = chain
         .split_last()
         .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
@@ -387,8 +388,23 @@ fn step_of<'p>(base: &'p PipelineVersion, id: &str) -> Result<&'p Node, ResolveE
         .ok_or_else(|| ResolveError::UnknownNode(id.to_owned()))
 }
 
+/// `step` as a fold refits it: its operator's code with its params.
 fn as_prepared(step: &Node) -> Result<serde_json::Value, ResolveError> {
+    refits_as_flow_runs(step)?;
     Ok(json!({ "operator": step.operator, "params": step.params }))
+}
+
+/// A fold refits a step with its operator's code, so a step running its own code (ADR-0028)
+/// would be compared as code the flow does not run.
+fn refits_as_flow_runs(step: &Node) -> Result<(), ResolveError> {
+    if step.code.is_some() {
+        return Err(ResolveError::Selection(format!(
+            "step {} runs its own code, but each fold would refit it with {}'s code; revert it to compare",
+            step.id.as_str(),
+            step.operator.as_str()
+        )));
+    }
+    Ok(())
 }
 
 /// How folds must follow `split`, as cross-validate params, and how many repeats that allows:

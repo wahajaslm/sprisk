@@ -1593,3 +1593,56 @@ fn a_step_that_prepares_two_models_is_compared_for_neither() {
         "{err}"
     );
 }
+
+/// `flow` with step `id` running its own code (ADR-0028).
+fn with_own_code(flow: PipelineVersion, id: &str) -> PipelineVersion {
+    let mut pipeline = serde_json::to_value(flow).unwrap();
+    let node = pipeline["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|n| n["id"] == id)
+        .unwrap();
+    node["code"] = json!({ "source": "def scale(train, test, columns, method):\n    return train, test\n", "function": "scale" });
+    parse(&pipeline.to_string()).unwrap()
+}
+
+#[test]
+fn a_comparison_refuses_a_step_it_would_refit_with_other_code_than_the_flows() {
+    // A fold refits each step with its operator's code; an edited step would run other code.
+    let pipeline = with_own_code(evaluated_flow(), "scale");
+    let models = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
+    let err = compare(&pipeline, &models).unwrap_err();
+    assert!(matches!(err, ResolveError::Selection(_)), "{err}");
+    assert!(
+        err.to_string().contains("step scale runs its own code"),
+        "{err}"
+    );
+
+    let pipeline = with_own_code(imputed_flow(), "model");
+    let proposal = recommending(
+        &pipeline,
+        MISSINGNESS,
+        "impute",
+        "impute_mean",
+        impute_alternatives(),
+    );
+    let err = compare_preparation(&pipeline, MISSINGNESS, &proposal).unwrap_err();
+    assert!(
+        err.to_string().contains("step model runs its own code"),
+        "{err}"
+    );
+}
+
+#[test]
+fn the_step_being_compared_may_run_its_own_code_since_every_choice_replaces_it() {
+    let pipeline = with_own_code(evaluated_flow(), "scale");
+    let proposal = recommending(
+        &pipeline,
+        SCALING,
+        "scale",
+        "standard_scaling",
+        scale_alternatives(),
+    );
+    assert!(compare_preparation(&pipeline, SCALING, &proposal).is_ok());
+}
