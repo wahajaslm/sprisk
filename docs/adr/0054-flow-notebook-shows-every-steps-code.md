@@ -1,5 +1,5 @@
 # ADR-0054: A flow's notebook shows every step's code, and is made when the flow has none
-Status: Accepted
+Status: Superseded by ADR-0055 (a flow is its notebooks: one record, no sync)
 Date: 2026-10-21
 Arch doc sections: §2A (Notebook views). Builds on ADR-0028, ADR-0036, ADR-0037.
 

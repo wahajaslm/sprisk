@@ -1,5 +1,5 @@
 # ADR-0037: Notebooks belong to a flow and keep it in sync
-Status: Accepted
+Status: Superseded by ADR-0055 (a flow is its notebooks: one record, no sync)
 Date: 2026-10-18
 Arch doc sections: §2A (Notebook views), §4 (domain model). Changes ADR-0036: running a notebook now updates its flow; Create node and Open as notebook are replaced.
 
