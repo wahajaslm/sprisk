@@ -2,7 +2,7 @@ import type { DisplayItem, NotebookCell, NotebookExecution, NotebookVersion, Pip
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 
-import { useSavePipelineVersion } from "../../api/hooks.ts";
+import { useOperators, useSavePipelineVersion } from "../../api/hooks.ts";
 import { executeCell, interruptKernel, restartKernel, splitNotebook, useSaveNotebook } from "../../api/notebooks.ts";
 import { type CellPart, type Folded, useCollapsed } from "../../notebook/collapsed.ts";
 import { newCellId, nextNotebookVersion, toIpynb } from "../../notebook/document.ts";
@@ -193,6 +193,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
       clearResults(notebookId);
     });
   };
+  const operators = useOperators();
   const current = (): NotebookVersion => ({ ...saved, title, cells });
   const failed = (e: unknown) => setProblem(e instanceof Error ? e.message : String(e));
   // The flow this notebook belongs to: the one it names, or the one on screen.
@@ -204,7 +205,8 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
   /** This notebook's steps rebuilt in its flow from `version`'s cells (ADR-0037). */
   const syncFlow = async (version: NotebookVersion) => {
     const split = await splitNotebook(version.cells.filter((c) => c.kind === "code").map((c) => c.source));
-    const done = stepsIntoFlow({ base: flow, projectId: version.project_id, notebook: version, split, previous: saved });
+    const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
+    const done = stepsIntoFlow({ base: flow, projectId: version.project_id, notebook: version, split, previous: saved, operators: byRef });
     if ("refused" in done) return setProblem(done.refused);
     if ("unchanged" in done) return;
     const made = await savePipeline.mutateAsync(done.version);

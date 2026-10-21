@@ -1,4 +1,4 @@
-import type { NotebookCell, Operator, OperatorSource, PipelineVersion } from "@sprisk/contracts";
+import type { Node, NotebookCell, Operator, OperatorSource, PipelineVersion } from "@sprisk/contracts";
 
 import { notebookSteps } from "../flow/notebook.ts";
 import { flowName } from "../flow/labels.ts";
@@ -9,9 +9,13 @@ export type FlowNotebook = { title: string; cells: NotebookCell[] };
 
 const cell = (kind: NotebookCell["kind"], source: string): NotebookCell => ({ id: newCellId(), kind, source });
 
+/** First line of a cell written for a step of the flow: saving knows the cell is that step. */
+export const flowStepLine = (id: string) => `# Flow step: ${id}`;
+
 /** The flow as notebooks, one per stage when it has several (ADR-0054). A built-in step is a
- * heading the notebook's sync knows it by, its operator's code to read, and a cell that imports
- * the operator under the step's name and calls it, so it runs in the flow's kernel. */
+ * heading, its code to read, and a cell marked as that step that calls it, so it runs in the
+ * flow's kernel: the operator imported under the step's name, or, for a step whose code was
+ * edited in this flow, that code. */
 export function flowNotebooks(flow: PipelineVersion, operators: Map<string, Operator>, sources: Map<string, OperatorSource>): FlowNotebook[] {
   const byStage = new Map<string, NotebookCell[]>();
   for (const step of notebookSteps(flow, operators)) {
@@ -20,20 +24,33 @@ export function flowNotebooks(flow: PipelineVersion, operators: Map<string, Oper
     const stage = operator ? stageOf(operator) : "Explore";
     const cells = byStage.get(stage) ?? [];
     byStage.set(stage, cells);
-    if (step.kind === "cells") cells.push(...step.cells.map((source) => cell("code", source)));
-    else if (step.kind === "code") cells.push(cell("code", step.source));
-    else cells.push(...builtInCells(step.nodeId, node!.operator, operator, sources.get(node!.operator), step.call));
+    if (step.kind === "cells") cells.push(...step.cells.map((source) => cell("code", step.nodeId ? `${flowStepLine(step.nodeId)}\n${source}` : source)));
+    else if (step.kind === "code") cells.push(cell("code", `${flowStepLine(step.nodeId)}\n${step.source}`));
+    else cells.push(...builtInCells(node!, operator, sources.get(node!.operator), step.call));
   }
   const stages = STAGES.filter((stage) => byStage.has(stage));
   if (stages.length <= 1) return [{ title: `${flowName(flow)}_flow.ipynb`, cells: [...byStage.values()].flat() }];
   return stages.map((stage, i) => ({ title: `${String(i + 1).padStart(2, "0")}_Stage_${stage}.ipynb`, cells: byStage.get(stage)! }));
 }
 
-function builtInCells(id: string, ref: string, operator: Operator | undefined, source: OperatorSource | undefined, call: string): NotebookCell[] {
-  if (!source) throw new Error(`no code was read for ${ref}`);
-  const text = source.text.endsWith("\n") ? source.text : `${source.text}\n`;
-  const code = `Code of \`${ref}\` (${source.path}):\n\n\`\`\`python\n${text}\`\`\``;
-  const [module, fn] = operator?.entrypoint.split(":") ?? [];
-  const imports = [...(call.includes("Path(") ? ["from pathlib import Path"] : []), ...(module && fn ? [`from ${module} import ${fn} as ${id}`] : [])];
-  return [cell("markdown", `### Stage Step: \`${id}\``), cell("markdown", code), cell("code", [...imports, call].join("\n"))];
+const fenced = (text: string) => `\`\`\`python\n${text.endsWith("\n") ? text : `${text}\n`}\`\`\``;
+
+function builtInCells(node: Node, operator: Operator | undefined, source: OperatorSource | undefined, call: string): NotebookCell[] {
+  const path = call.includes("Path(") ? ["from pathlib import Path"] : [];
+  let shown: string;
+  let defines: string[];
+  if (node.code) {
+    shown = `Code of step \`${node.id}\`, edited in this flow from \`${node.operator}\`:\n\n${fenced(node.code.source)}`;
+    defines = [node.code.source.trimEnd()];
+  } else {
+    if (!source || !operator) throw new Error(`no code was read for ${node.operator}`);
+    const [module, fn] = operator.entrypoint.split(":");
+    shown = `Code of \`${node.operator}\` (${source.path}):\n\n${fenced(source.text)}`;
+    defines = [`from ${module} import ${fn} as ${node.id}`];
+  }
+  return [
+    cell("markdown", `### Stage Step: \`${node.id}\``),
+    cell("markdown", shown),
+    cell("code", [flowStepLine(node.id), ...path, ...defines, call].join("\n")),
+  ];
 }

@@ -1,10 +1,11 @@
-import type { CodeSplit, Edge, Node, NotebookCell, NotebookVersion, PipelineVersion } from "@sprisk/contracts";
+import type { CodeSplit, Edge, Node, NotebookCell, NotebookVersion, Operator, PipelineVersion } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
 import { nextVersion, readersOf, timestamp } from "../flow/edit.ts";
-import { isNotebookStep, NOTEBOOK_OPERATOR } from "../flow/notebook.ts";
+import { NOTEBOOK_OPERATOR } from "../flow/notebook.ts";
 import { portOf, stepOf } from "../flow/ports.ts";
 import { newCellId } from "./document.ts";
+import { flowStepLine } from "./fromFlow.ts";
 import { bindInputs } from "./node.ts";
 
 const CELL_MARKER = /^# %%.*$/m;
@@ -22,8 +23,7 @@ const hasCall = (cells: NotebookCell[], id: string) => {
   return cells.some((c) => c.kind === "code" && call.test(c.source));
 };
 
-/** The import a call cell written from the flow starts with: `from <module> import <fn> as <id>`. */
-const importsAs = (source: string, id: string) => new RegExp(`^from \\S+ import \\S+ as ${escaped(id)}$`, "m").test(source);
+const namesOf = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
 
 const hasHeader = (cells: NotebookCell[], id: string) =>
   cells.some((c) => c.kind === "markdown" && STEP_HEADER.exec(c.source.trim())?.[1] === id);
@@ -42,7 +42,14 @@ const droppedCalls = (flow: PipelineVersion | undefined, previous: NotebookVersi
 /** The flow with this notebook's steps rebuilt from its cells (ADR-0037). `split` is Python's
  * reading of the notebook's code cells, in order. Steps of other notebooks and built-in steps
  * stay; a step keeps its id while it keeps any of its cells, and keeps its exposed settings. */
-export function stepsIntoFlow({ base, projectId, notebook, split, previous }: { base: PipelineVersion | undefined; projectId: string; notebook: NotebookVersion; split: CodeSplit; previous?: NotebookVersion | undefined }): Synced {
+export function stepsIntoFlow({ base, projectId, notebook, split, previous, operators }: {
+  base: PipelineVersion | undefined;
+  projectId: string;
+  notebook: NotebookVersion;
+  split: CodeSplit;
+  previous?: NotebookVersion | undefined;
+  operators: Map<string, Operator>;
+}): Synced {
   const code = notebook.cells.filter((c) => c.kind === "code");
   const owned = (base?.nodes ?? []).filter(ownedBy(notebook.notebook_id));
   const ownedIds = new Set(owned.map((n) => n.id));
@@ -57,14 +64,14 @@ export function stepsIntoFlow({ base, projectId, notebook, split, previous }: { 
   // Other steps reading this notebook's outputs: they must still find them.
   const outward = (base?.edges ?? []).filter((e) => ownedIds.has(stepOf(e.from)) && !ownedIds.has(stepOf(e.to)));
 
-  // A call cell written from the flow (ADR-0054), which imports its operator under the step's
-  // name, is that built-in step, not a new code step. What a code cell reads from it, by the
-  // name the call wrote, is that step's output.
-  const builtIn = (i: number) => {
-    const cell = code[i];
-    return cell && kept.find((n) => !n.from_notebook && !isNotebookStep(n.operator) && importsAs(cell.source, n.id));
+  // A cell written for a step of the flow (ADR-0054) is that step, not a new code step. What a
+  // code cell reads from it, by a name the cell wrote, is that step's output.
+  const flowStep = (i: number) => {
+    const first = code[i]?.source.split("\n")[0];
+    return kept.find((n) => first === flowStepLine(n.id));
   };
-  const calls = split.steps.map((step) => (step.cells.length > 0 && step.cells.every((i) => builtIn(i)) ? builtIn(step.cells[0]!) : undefined));
+  const outputsOf = (n: Node) => [...(operators.get(n.operator)?.outputs.map((o) => o.name) ?? []), ...namesOf(n.params["outputs"])];
+  const calls = split.steps.map((step) => (step.cells.length > 0 && step.cells.every((i) => flowStep(i)) ? flowStep(step.cells[0]!) : undefined));
   const steps = split.steps.filter((_, k) => !calls[k]);
   const at = split.steps.map((_, k) => steps.indexOf(split.steps[k]!));
   const fromCalls: { from: string; toStep: number; name: string }[] = [];
@@ -76,9 +83,16 @@ export function stepsIntoFlow({ base, projectId, notebook, split, previous }: { 
       links.push({ ...l, from_step: at[l.from_step]!, to_step: at[l.to_step]! });
       continue;
     }
+    // A cell names an output as the step's own variable, `<id>_<port>`, or as a step of the
+    // flow already reads it.
     const prefix = `${from.id}_`;
-    if (!l.name.startsWith(prefix)) return { refused: `${l.name} is not an output of step ${from.id}; read it as ${prefix}<port>.` };
-    fromCalls.push({ from: `${from.id}.${l.name.slice(prefix.length)}`, toStep: at[l.to_step]!, name: l.name });
+    const alias = base?.edges.find((e) => stepOf(e.from) === from.id && portOf(e.to) === l.name);
+    const own = namesOf(from.params["outputs"]).includes(l.name) ? l.name : undefined;
+    const port = alias ? portOf(alias.from) : (own ?? (l.name.startsWith(prefix) ? l.name.slice(prefix.length) : undefined));
+    if (!port || !outputsOf(from).includes(port)) {
+      return { refused: `${l.name} is not an output of step ${from.id}; read it as ${prefix}<port>.` };
+    }
+    fromCalls.push({ from: `${from.id}.${port}`, toStep: at[l.to_step]!, name: l.name });
   }
 
   const taken = new Set(kept.map((n) => n.id));

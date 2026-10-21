@@ -1,4 +1,4 @@
-import type { CodeSplit, NotebookVersion, OperatorSource } from "@sprisk/contracts";
+import type { CodeSplit, NotebookVersion, OperatorSource, PipelineVersion } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
 import { flowNotebooks } from "../src/notebook/fromFlow.ts";
@@ -24,13 +24,13 @@ describe("a flow's notebook (ADR-0054)", () => {
     expect(code).toMatchObject({ kind: "markdown" });
     expect(code!.source).toBe(`Code of \`sprisk.ml.linear_model@1.0.0\` (m.py):\n\n\`\`\`python\n${source("sprisk.ml.linear_model@1.0.0").text}\`\`\``);
     expect(call).toMatchObject({ kind: "code" });
-    expect(call!.source.split("\n")[0]).toBe("from m import f as model");
+    expect(call!.source.split("\n").slice(0, 2)).toEqual(["# Flow step: model", "from m import f as model"]);
     expect(call!.source).toContain("model_model = model(train=impute_train");
   });
 
   it("imports Path where a step reads a local file", () => {
     const load = cells.find((c) => c.kind === "code" && c.source.includes("load_data = load("));
-    expect(load!.source.split("\n").slice(0, 2)).toEqual(["from pathlib import Path", "from m import f as load"]);
+    expect(load!.source.split("\n").slice(0, 3)).toEqual(["# Flow step: load", "from pathlib import Path", "from m import f as load"]);
   });
 
   it("adds no step and drops none when saved, since each call is its built-in step", () => {
@@ -50,7 +50,7 @@ describe("a flow's notebook (ADR-0054)", () => {
       links: [],
       notes: [],
     };
-    expect(stepsIntoFlow({ base: pipeline, projectId: pipeline.project_id, notebook, split, previous: notebook })).toEqual({ unchanged: true });
+    expect(stepsIntoFlow({ base: pipeline, projectId: pipeline.project_id, notebook, split, previous: notebook, operators: byRef })).toEqual({ unchanged: true });
   });
 });
 
@@ -75,10 +75,89 @@ describe("a person's cell beside the flow's calls", () => {
       links: [{ from_step: splitAt, to_step: code.length - 1, name: "split_train" }],
       notes: [],
     };
-    const done = stepsIntoFlow({ base: pipeline, projectId: pipeline.project_id, notebook, split, previous: notebook });
+    const done = stepsIntoFlow({ base: pipeline, projectId: pipeline.project_id, notebook, split, previous: notebook, operators: byRef });
     if (!("version" in done)) throw new Error(JSON.stringify(done));
     const added = done.version.nodes.filter((n) => !pipeline.nodes.some((p) => p.id === n.id));
     expect(added).toHaveLength(1);
     expect(done.version.edges).toContainEqual({ from: "split.train", to: `${added[0]!.id}.split_train` });
+  });
+});
+
+describe("saving links what a cell reads from a built-in step", () => {
+  const notebookOf = (cells: NotebookVersion["cells"]): NotebookVersion => ({
+    schema_version: "sprisk.notebook_version/v1",
+    id: "nbv_01JAAAAAAAAAAAAAAAAAAAAAAD",
+    notebook_id: "nb_01JAAAAAAAAAAAAAAAAAAAAAAA",
+    project_id: pipeline.project_id,
+    title: "flow",
+    cells,
+    created_at: "2026-10-21T10:00:00Z",
+  });
+  /** The flow's cells and one of mine reading `name` from the split's call. */
+  const save = (base: PipelineVersion, name: string, more: Partial<CodeSplit> = {}) => {
+    const flowCells = flowNotebooks(base, byRef, sources).flatMap((n) => n.cells);
+    const all = [...flowCells, { id: "mine", kind: "code" as const, source: `rows = len(${name})` }];
+    const code = all.filter((c) => c.kind === "code");
+    const splitAt = code.findIndex((c) => c.source.startsWith("# Flow step: split"));
+    const split: CodeSplit = {
+      steps: code.map((c, i) => ({ source: c.source, cells: [i], parameters: [], inputs: c.id === "mine" ? [name] : [], outputs: [] })),
+      links: [{ from_step: splitAt, to_step: code.length - 1, name }],
+      notes: [],
+      ...more,
+    };
+    const notebook = notebookOf(all);
+    return { done: stepsIntoFlow({ base, projectId: base.project_id, notebook, split, previous: notebook, operators: byRef }), code };
+  };
+
+  it("by the name a step of the flow already reads it as", () => {
+    const base: PipelineVersion = {
+      ...pipeline,
+      nodes: [...pipeline.nodes, { id: "peek", operator: "sprisk.code.python@2.0.0", params: { source: "n = len(train)", inputs: ["train"], outputs: [] } }],
+      edges: [...pipeline.edges, { from: "split.train", to: "peek.train" }],
+    };
+    const { done } = save(base, "train");
+    if (!("version" in done)) throw new Error(JSON.stringify(done));
+    const mine = done.version.nodes.find((n) => n.params["source"] === "rows = len(train)")!;
+    expect(done.version.edges).toContainEqual({ from: "split.train", to: `${mine.id}.train` });
+    // The flow's own code step is shown as its cell, not copied into a second step.
+    expect(done.version.nodes.map((n) => n.id).filter((id) => !base.nodes.some((b) => b.id === id))).toEqual([mine.id]);
+  });
+
+  it("and refuses a name that is no output of the step", () => {
+    expect(save(pipeline, "split_out").done).toEqual({ refused: "split_out is not an output of step split; read it as split_<port>." });
+  });
+
+  it("but leaves a built-in step's own inputs as the flow has them", () => {
+    const { done, code } = save(pipeline, "split_train", {});
+    const loadAt = code.findIndex((c) => c.source.startsWith("# Flow step: load"));
+    const splitAt = code.findIndex((c) => c.source.startsWith("# Flow step: split"));
+    const into = stepsIntoFlow({
+      base: pipeline,
+      projectId: pipeline.project_id,
+      notebook: notebookOf(flowNotebooks(pipeline, byRef, sources).flatMap((n) => n.cells)),
+      split: {
+        steps: code.slice(0, -1).map((c, i) => ({ source: c.source, cells: [i], parameters: [], inputs: [], outputs: [] })),
+        links: [{ from_step: loadAt, to_step: splitAt, name: "load_data" }],
+        notes: [],
+      },
+      operators: byRef,
+    });
+    expect("version" in done).toBe(true);
+    expect(into).toEqual({ unchanged: true });
+  });
+});
+
+describe("a built-in step whose code was edited in the flow", () => {
+  it("runs that code, not its operator's", () => {
+    const edited: PipelineVersion = {
+      ...pipeline,
+      nodes: pipeline.nodes.map((n) => (n.id === "model" ? { ...n, code: { source: "def mine(train, **settings):\n    return 1\n", function: "mine" } } : n)),
+    };
+    const flowCells = flowNotebooks(edited, byRef, sources).flatMap((n) => n.cells);
+    const call = flowCells.find((c) => c.source.startsWith("# Flow step: model"))!;
+    expect(call.source).toContain("def mine(train, **settings):");
+    expect(call.source).toContain("model_model = mine(train=impute_train");
+    expect(call.source).not.toContain("import f as model");
+    expect(flowCells.some((c) => c.source.startsWith("Code of step `model`, edited in this flow"))).toBe(true);
   });
 });

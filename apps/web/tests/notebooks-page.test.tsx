@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import { NotebooksPage } from "../src/views/notebook/NotebooksPage.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
-import { pipeline } from "./fixtures.ts";
+import { flowNotebooks } from "../src/notebook/fromFlow.ts";
+import { operators, pipeline } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -201,26 +202,30 @@ describe("deleting a notebook (ADR-0041)", () => {
   });
 });
 
+const sourceOf = (operator: string) => ({ operator, path: "m.py", language: "python" as const, text: "def f():\n    pass\n", digest: `sha256:${"0".repeat(64)}` });
+
 describe("a flow's own notebook (ADR-0054)", () => {
   function noNotebooks(listed: NotebookVersion[] = []) {
     const posts = withApi(pipeline);
     server.use(
       http.get("/api/notebooks", () => HttpResponse.json(listed)),
-      http.get("/api/operators/:id/source", ({ params }) =>
-        HttpResponse.json({ operator: String(params.id), path: "m.py", language: "python", text: "def f():\n    pass\n", digest: `sha256:${"0".repeat(64)}` }),
-      ),
+      http.get("/api/operators/:id/source", ({ params }) => HttpResponse.json(sourceOf(String(params.id)))),
     );
     useSelection.setState({ pipelineVersionId: pipeline.id, notebookId: undefined, stageTarget: undefined });
     return posts;
   }
 
-  it("is made once for a flow with none, with each step's code", async () => {
+  it("is made once for a flow with none, with each step's code, and opened", async () => {
     const posts = noNotebooks();
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
-    await waitFor(() => expect(posts.length).toBeGreaterThan(0));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // One notebook per stage of the flow; a second run of the effect would save them twice.
+    const expected = flowNotebooks(pipeline, new Map(operators.map((o) => [o.id, o])), new Map(operators.map((o) => [o.id, sourceOf(o.id)])));
+    const stages = expected.length;
+    await waitFor(() => expect(posts).toHaveLength(stages));
+    const first = posts.find((p) => (p.body as NotebookVersion).title === expected[0]!.title)!.body as NotebookVersion;
+    await waitFor(() => expect(useSelection.getState().notebookId).toBe(first.notebook_id));
     const titles = posts.map((p) => (p.body as NotebookVersion).title);
-    expect(new Set(titles).size).toBe(titles.length);
+    expect(new Set(titles).size).toBe(stages);
     const cells = posts.flatMap((p) => (p.body as NotebookVersion).cells);
     expect(cells.some((c) => c.source.startsWith("Code of `sprisk.ml.linear_model@1.0.0`"))).toBe(true);
     expect(posts.every((p) => (p.body as NotebookVersion).pipeline_version_id === pipeline.id)).toBe(true);
@@ -238,7 +243,6 @@ describe("a flow's own notebook (ADR-0054)", () => {
     const posts = noNotebooks([sales]);
     renderWithApi(<NotebooksPage />);
     await list();
-    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(posts).toEqual([]);
   });
 });

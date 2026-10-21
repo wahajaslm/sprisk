@@ -37,10 +37,13 @@ export function NotebooksPage() {
     const builtIns = [...new Set(flow.head.nodes.filter((n) => !isCodeOperator(n.operator)).map((n) => n.operator))];
     try {
       const code = await Promise.all(builtIns.map((ref) => client.fetchQuery(operatorSourceQuery(ref))));
-      flowNotebooks(flow.head, byRef, new Map(code.map((s) => [s.operator, s]))).forEach(({ title, cells }, i) => {
-        const version = firstVersion(flow.head.project_id, title, cells.length > 0 ? cells : [{ id: newCellId(), kind: "code", source: "" }], flow.head.id);
-        save.mutate(version, { onSuccess: (saved) => i === 0 && openNotebook(saved.notebook_id) });
-      });
+      const made = flowNotebooks(flow.head, byRef, new Map(code.map((s) => [s.operator, s])));
+      const saved = await Promise.all(
+        made.map(({ title, cells }) =>
+          save.mutateAsync(firstVersion(flow.head.project_id, title, cells.length > 0 ? cells : [{ id: newCellId(), kind: "code", source: "" }], flow.head.id)),
+        ),
+      );
+      if (saved[0]) openNotebook(saved[0].notebook_id);
     } catch (e) {
       setProblem(`The flow's notebook was not made: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -49,12 +52,14 @@ export function NotebooksPage() {
   const ready = flow && notebooks.data && operators.data;
   // A notebook outside any flow is listed here too, and joins the flow when saved.
   const shown = (notebooks.data ?? []).some((v) => v.pipeline_version_id === undefined || flow?.ids.includes(v.pipeline_version_id));
+  const headId = flow?.head.id;
   useEffect(() => {
-    // Once per flow, also when React runs the effect twice.
-    if (!ready || shown || made.current.has(flow.head.id)) return;
-    made.current.add(flow.head.id);
+    // Once per flow; the ref also covers React running the effect twice.
+    if (!ready || shown || !headId || made.current.has(headId)) return;
+    made.current.add(headId);
     void createFromFlow();
-  });
+    // createFromFlow reads the latest render's flow and operators, which these decide.
+  }, [ready, shown, headId]);
 
   if (notebooks.isError) return <p role="alert" className="error pad">{notebooks.error.message}</p>;
   if (notebooks.isPending || versions.isPending || operators.isPending) return <Loading text="Loading notebooks…" pad />;

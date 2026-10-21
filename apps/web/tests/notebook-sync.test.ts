@@ -3,7 +3,9 @@ import { parse } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
 import { cellsFromFlow, stepsIntoFlow, stepsOutOfFlow } from "../src/notebook/sync.ts";
-import { pipeline } from "./fixtures.ts";
+import { operators, pipeline } from "./fixtures.ts";
+
+const byRef = new Map(operators.map((o) => [o.id, o]));
 
 const NB = "nb_01JAAAAAAAAAAAAAAAAAAAAAAA";
 const PROJECT = pipeline.project_id;
@@ -35,7 +37,7 @@ const split: CodeSplit = {
 };
 
 const synced = (base: PipelineVersion | undefined, s: CodeSplit = split, nb: NotebookVersion = notebook) => {
-  const done = stepsIntoFlow({ base, projectId: PROJECT, notebook: nb, split: s });
+  const done = stepsIntoFlow({ base, projectId: PROJECT, notebook: nb, split: s, operators: byRef });
   if (!("version" in done)) throw new Error(JSON.stringify(done));
   return done.version;
 };
@@ -67,7 +69,7 @@ describe("a notebook's steps in its flow (ADR-0037)", () => {
 
   it("refuses a name no cell and no step of the flow makes", () => {
     const reads: CodeSplit = { ...split, steps: [...split.steps.slice(0, 2), { ...split.steps[2]!, inputs: ["sales", "lookup"] }] };
-    expect(stepsIntoFlow({ base: pipeline, projectId: PROJECT, notebook, split: reads })).toEqual({
+    expect(stepsIntoFlow({ base: pipeline, projectId: PROJECT, notebook, split: reads, operators: byRef })).toEqual({
       refused: "No step in this flow makes lookup. Pick the cells that make it too, or create their node first.",
     });
   });
@@ -89,7 +91,7 @@ describe("a notebook's steps in its flow (ADR-0037)", () => {
   it("does nothing when the notebook's steps are already what the flow holds", () => {
     const first = synced(pipeline);
     const again = { ...notebook, id: "nbv_01JAAAAAAAAAAAAAAAAAAAAAAD" };
-    expect(stepsIntoFlow({ base: first, projectId: PROJECT, notebook: again, split })).toEqual({ unchanged: true });
+    expect(stepsIntoFlow({ base: first, projectId: PROJECT, notebook: again, split, operators: byRef })).toEqual({ unchanged: true });
   });
 
   it("keeps a step of another notebook reading this notebook's output", () => {

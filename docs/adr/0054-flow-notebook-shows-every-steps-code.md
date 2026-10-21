@@ -19,9 +19,10 @@ Arch doc sections: §2A (Notebook views). Builds on ADR-0028, ADR-0036, ADR-0037
 **Each built-in step is three cells, in flow order.**
 - A Markdown heading: `### Stage Step: \`<id>\``.
 - A Markdown cell naming the operator and its file, then its whole module, from `GET /operators/{id}/source`, in a Python code fence. It is for reading.
-- A code cell: `from <module> import <function> as <id>`, from the operator's entrypoint, then the call line. It runs in the flow's kernel, which has the workers' packages.
-- Saving treats a code cell with that import as its built-in step, not a new code step. A person's cell that reads a call's output by the name the call wrote (`split_train`) is linked to that step's port (`split.train`). The import, not the call alone, marks the cell: a person's own `load()` is not the flow's `load` step.
-- Code steps and notebook-made steps keep their own source, as today.
+- A code cell whose first line is `# Flow step: <id>`, then `from <module> import <function> as <id>` from the operator's entrypoint, then the call line. It runs in the flow's kernel, which has the workers' packages.
+- A built-in step whose code was edited in the flow (ADR-0028) shows that code, and its cell defines it instead of importing the operator.
+- Code steps and other notebooks' steps keep their own source, under the same first line.
+- Saving treats a cell starting `# Flow step: <id>` as that step of the flow, not a new code step. A person's cell that reads its output by a name it wrote (`split_train`, or a code step's own variable) or by a name a step of the flow already reads it as is linked to that output; any other name is refused. The first line, not a look-alike call, marks the cell: a person's own `load()` is not the flow's `load` step.
 
 **The source is Markdown, not code.**
 - Saving rebuilds only code cells into steps. As Markdown, a step's code is shown and never copied into a code step that would duplicate the built-in one.
