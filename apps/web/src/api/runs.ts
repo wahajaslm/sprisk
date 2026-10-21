@@ -84,7 +84,7 @@ export type SelectionResult =
   | { status: "not_run" }
   | { status: "running" }
   | { status: "failed"; message: string }
-  | { status: "decided"; decision: SelectionDecision; artifactId: string };
+  | { status: "decided"; decision: SelectionDecision; artifactId: string; attempts: Attempt[] };
 
 /** What a comparison run's select step decided (ADR-0044), read once the run has finished. */
 export function useSelectionDecision(run: Run | undefined, selectNode: string | undefined): SelectionResult {
@@ -112,5 +112,5 @@ export function useSelectionDecision(run: Run | undefined, selectNode: string | 
   if (report.status === "none") return { status: "failed", message: report.reason };
   if (report.status === "error") return { status: "failed", message: report.message };
   if (report.status === "loading" || artifactId === undefined) return { status: "loading" };
-  return { status: "decided", decision: report.value, artifactId };
+  return { status: "decided", decision: report.value, artifactId, attempts: attempts.data };
 }

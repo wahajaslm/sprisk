@@ -2,7 +2,7 @@ import { parse, type PipelineVersion } from "@sprisk/contracts";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import scalingBeforeForest from "../../../tests/contract/decision_proposal/valid/scaling-before-forest.json";
 import { SplitMethodology } from "../src/views/inspector/SplitMethodology.tsx";
@@ -92,45 +92,15 @@ describe("model shortlist", () => {
     expect(screen.getByRole("button", { name: "Apply to new flow version" })).toBeDisabled();
   });
 
-  it("compares the shortlisted models in a run and opens Experiments", async () => {
-    const comparison = { ...modelPipeline, id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ9", compares: shortlist.id };
-    const posted: string[] = [];
-    server.use(
-      http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(shortlist, { status: 201 })),
-      http.post(`/api/methodology_proposals/${shortlist.id}/compare`, () => {
-        posted.push("compare");
-        return HttpResponse.json(comparison, { status: 201 });
-      }),
-      http.post("/api/runs", async ({ request }) => {
-        posted.push(`run ${((await request.json()) as { pipeline_version_id: string }).pipeline_version_id}`);
-        return HttpResponse.json(
-          { schema_version: "sprisk.run/v1", id: "run_01JABCDEFGHJKMNPQRSTVWXYZ9", project_id: pipeline.project_id, pipeline_version_id: comparison.id, status: "queued", created_at: "2026-10-19T10:00:00Z" },
-          { status: 202 },
-        );
-      }),
-    );
-    renderWithApi(<SplitMethodology pipeline={modelPipeline} nodeId="model" />);
-    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
-
-    await userEvent.click(await screen.findByRole("button", { name: "Compare shortlisted models" }));
-
-    await vi.waitFor(() => expect(useSelection.getState().nav).toBe("Experiments"));
-    expect(posted).toEqual(["compare", `run ${comparison.id}`]);
-  });
-
-  it("shows why a comparison could not start and stays on the step", async () => {
+  it("says Sprisk compares the shortlist itself and points to Experiments", async () => {
     useSelection.setState({ nav: "Flow" });
-    server.use(
-      http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(shortlist, { status: 201 })),
-      http.post(`/api/methodology_proposals/${shortlist.id}/compare`, () =>
-        HttpResponse.json({ errors: [{ code: "stale_proposal", message: "the flow changed after this proposal; resolve it again" }] }, { status: 422 }),
-      ),
-    );
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(shortlist, { status: 201 })));
     renderWithApi(<SplitMethodology pipeline={modelPipeline} nodeId="model" />);
     await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Compare shortlisted models" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("stale_proposal: the flow changed after this proposal");
-    expect(useSelection.getState().nav).toBe("Flow");
+    expect(await screen.findByText(/Sprisk cross-validates the shortlisted models on its own/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compare shortlisted models" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "See the comparison" }));
+    expect(useSelection.getState().nav).toBe("Experiments");
   });
 });

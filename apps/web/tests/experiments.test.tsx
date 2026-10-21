@@ -4,6 +4,8 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import appliedDecision from "../../../tests/contract/applied_methodology_decision/valid/applied.json";
+import seenDecision from "../../../tests/contract/methodology_decision/valid/second-branch-of-a-comparison.json";
+import shortlistRule from "../../../tests/contract/methodology_rule/valid/shortlist.json";
 import noWinner from "../../../tests/contract/selection_decision/valid/no-winner-with-limitations.json";
 import winner from "../../../tests/contract/selection_decision/valid/winner.json";
 import { Experiments } from "../src/views/Experiments.tsx";
@@ -112,7 +114,12 @@ describe("model comparison", () => {
     pipeline_version_id: PV,
     subject_node_id: "model",
     evidence: [],
-    alternatives: [{ id: "ml_linear_model", label: "sprisk.ml.linear_model@1.0.0", description: "Linear.", applicability: "applicable", reason: "Few rows." }],
+    alternatives: [
+      { id: "ml_dummy_baseline", label: "sprisk.ml.dummy_baseline@1.0.0", description: "Dummy.", applicability: "applicable", reason: "The floor." },
+      { id: "ml_linear_model", label: "sprisk.ml.linear_model@1.0.0", description: "Linear.", applicability: "applicable", reason: "A simple reference." },
+      { id: "ml_random_forest", label: "sprisk.ml.random_forest@1.0.0", description: "Forest.", applicability: "applicable", reason: "Enough rows for trees." },
+      { id: "ml_gradient_boosting", label: "sprisk.ml.gradient_boosting@1.0.0", description: "Boosting.", applicability: "applicable", reason: "Too few rows to trust." },
+    ],
     shortlist: ["ml_dummy_baseline", "ml_linear_model", "ml_random_forest"],
     fingerprint: `sha256:${"0".repeat(64)}`,
     created_at: "2026-10-19T10:00:00Z",
@@ -139,41 +146,65 @@ describe("model comparison", () => {
     return applied;
   }
 
-  it("shows each candidate's cross-validated mean and spread, the baseline floor and the winner", async () => {
+  const row = (table: HTMLElement, label: string) => within(table).getByRole("row", { name: new RegExp(`^${label}`) });
+
+  it("shows every model side by side: why it was shortlisted, its scores, gain and verdict", async () => {
     compared(winner);
     const region = await screen.findByRole("region", { name: "Model comparison" });
-    const rows = await within(region).findAllByRole("row");
-    expect(region).toHaveTextContent("5 folds · balanced accuracy");
-    expect(rows[1]).toHaveTextContent("ml_dummy_baseline");
-    expect(rows[1]).toHaveTextContent("0.5 ± 0");
-    expect(rows[1]).toHaveTextContent("baseline");
-    expect(rows[2]).toHaveTextContent("0.898 ± 0.0238");
-    expect(rows[2]).toHaveTextContent("+0.398 ± 0.0145");
-    expect(rows[2]).toHaveTextContent("winner");
-    expect(rows[3]).toHaveTextContent("clears the 1-SE bar");
+    const table = await within(region).findByRole("table", { name: "Candidates" });
+    expect(region).toHaveTextContent("5-fold cross-validation, seed 0, scored by balanced accuracy");
+    expect(region).toHaveTextContent("the test rows were not used");
+    expect(within(table).getAllByRole("columnheader")[2]).toHaveTextContent("ml_linear_modelrecommended");
+    expect(row(table, "Why on the shortlist")).toHaveTextContent("The floor.A simple reference.Enough rows for trees.");
+    expect(row(table, "Mean ± spread")).toHaveTextContent("0.5 ± 0" + "0.898 ± 0.0238");
+    expect(row(table, "Fold scores")).toHaveTextContent("0.91 · 0.88 · 0.93 · 0.9 · 0.87");
+    expect(row(table, "Gain over baseline")).toHaveTextContent("+0.398 ± 0.0145");
+    expect(row(table, "Verdict")).toHaveTextContent("the floorrecommendedclears the 1-SE bar");
+    expect(region).toHaveTextContent("Left off the shortlist: ml_gradient_boosting (Too few rows to trust.)");
     expect(region).toHaveTextContent(winner.reason);
     // A comparison is not a run of the flow.
     expect(screen.getByText("1 run")).toBeInTheDocument();
   });
 
-  it("applies the winner to the flow, citing the selection", async () => {
+  it("uses the recommended model with no reason asked", async () => {
     const applied = compared(winner);
-    await userEvent.click(await screen.findByRole("button", { name: "Apply ml_linear_model" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Use ml_linear_model" }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply ml_linear_model to a new version" }));
     await waitFor(() => expect(applied).toHaveLength(1));
     expect(applied[0]).toMatchObject({ alternative_id: "ml_linear_model" });
-    const reason = (applied[0] as { reason: string }).reason;
-    expect(reason).toContain(`Selected by cross-validation (${decisionOutput.artifact.id})`);
-    expect(reason).toContain(winner.reason);
+    expect(applied[0]).not.toHaveProperty("reason");
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(appliedDecision.pipeline.id));
   });
 
-  it("says when no model beats the baseline, offers nothing to apply and names what was left out", async () => {
+  it("uses another model only with a reason", async () => {
+    const applied = compared(winner);
+    await userEvent.click(await screen.findByRole("button", { name: "Use ml_random_forest" }));
+    const apply = screen.getByRole("button", { name: "Apply ml_random_forest to a new version" });
+    expect(apply).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Why ml_random_forest instead of the recommended ml_linear_model?"), "Need interactions.");
+    await userEvent.click(apply);
+    await waitFor(() => expect(applied).toHaveLength(1));
+    expect(applied[0]).toMatchObject({ alternative_id: "ml_random_forest", reason: "Need interactions." });
+  });
+
+  it("opens the recommendation and the best other model side by side, and any two on request", async () => {
+    compared(winner);
+    const detail = await screen.findByRole("region", { name: "Detail" });
+    expect(within(detail).getByRole("region", { name: "Detail of ml_linear_model" })).toBeInTheDocument();
+    expect(within(detail).getByRole("region", { name: "Detail of ml_random_forest" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Compare ml_dummy_baseline in detail" }));
+    const regions = within(screen.getByRole("region", { name: "Detail" })).getAllByRole("region").map((r) => r.getAttribute("aria-label"));
+    expect(regions).toEqual(["Detail of ml_random_forest", "Detail of ml_dummy_baseline"]);
+  });
+
+  it("says when no model beats the baseline, recommends none and names what was left out", async () => {
     compared(noWinner);
     const region = await screen.findByRole("region", { name: "Model comparison" });
     expect(await within(region).findByText(noWinner.reason)).toBeInTheDocument();
     expect(region).toHaveTextContent(noWinner.limitations[0]!);
-    expect(within(region).getAllByRole("row")[2]).toHaveTextContent("within 1 SE of baseline");
-    expect(within(region).queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
+    const table = within(region).getByRole("table", { name: "Candidates" });
+    expect(row(table, "Verdict")).toHaveTextContent("within 1 SE of baseline");
+    expect(region).not.toHaveTextContent("recommended");
   });
 
   it("shows why a comparison cannot be shown when its proposal cannot be read", async () => {
@@ -185,8 +216,8 @@ describe("model comparison", () => {
   it("calls a model clearly below the baseline worse, not within noise", async () => {
     const [floor, linear] = noWinner.candidates;
     compared({ ...noWinner, candidates: [floor, { ...linear, versus_baseline: { mean_difference: -0.2, corrected_se: 0.02, beats_baseline: false } }] });
-    const region = await screen.findByRole("region", { name: "Model comparison" });
-    expect((await within(region).findAllByRole("row"))[2]).toHaveTextContent("worse than baseline");
+    const table = await screen.findByRole("table", { name: "Candidates" });
+    expect(row(table, "Verdict")).toHaveTextContent("worse than baseline");
   });
 
   it("says why a comparison run failed", async () => {
@@ -215,5 +246,43 @@ describe("model comparison", () => {
     compared(winner);
     server.use(http.get(`/api/runs/${CRUN}/attempts`, () => HttpResponse.json([])));
     expect(await screen.findByRole("alert")).toHaveTextContent(`The comparison failed: run ${CRUN} has no select_model result`);
+  });
+
+  it("starts the model selection itself once the flow has run", async () => {
+    const posted: string[] = [];
+    compared(winner);
+    server.use(
+      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      http.post("/api/pipeline_versions/:id/model_selection/:node", ({ params }) => {
+        posted.push(`${String(params.id)}/${String(params.node)}`);
+        return HttpResponse.json({ proposal, comparison, run: comparisonRun }, { status: 201 });
+      }),
+    );
+    await waitFor(() => expect(posted).toEqual([`${PV}/model`]));
+  });
+
+  it("asks for a run before Sprisk can choose the model", async () => {
+    compared(winner);
+    server.use(
+      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      http.get("/api/runs", ({ request }) =>
+        HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : []),
+      ),
+    );
+    expect(await screen.findByText("Run the flow, and Sprisk will compare models for model.")).toBeInTheDocument();
+  });
+
+  it("warns when the model was chosen after another branch had scored the test rows", async () => {
+    const DECISION = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ5";
+    compared(winner);
+    server.use(
+      http.get("/api/pipeline_versions", () =>
+        HttpResponse.json([comparison, { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "model" ? { ...n, methodology_decision_id: DECISION } : n)) }]),
+      ),
+      http.get(`/api/methodology_decisions/${DECISION}`, () =>
+        HttpResponse.json({ ...seenDecision, id: DECISION, pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ4" }),
+      ),
+    );
+    expect(await screen.findByText(/This model was chosen after plv_01JABCDEFGHJKMNPQRSTVWXYZ1 had already scored the same test rows/)).toBeInTheDocument();
   });
 });

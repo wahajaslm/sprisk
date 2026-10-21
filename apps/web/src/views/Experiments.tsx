@@ -59,7 +59,7 @@ export function Experiments() {
         title={`${flowName(flow.head)}: every run, with what changed`}
       />
       <div className="exp-scroll">
-        <ModelComparisons flowIds={flow.ids} versions={all} />
+        <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} />
         <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
       </div>
       {runs.length < 2 ? (

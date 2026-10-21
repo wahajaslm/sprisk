@@ -35,22 +35,20 @@ export function useApplyMethodology() {
   });
 }
 
-/** Build the version that cross-validates a shortlist's models (ADR-0046), then run it. A
- * proposal has one comparison, so pressing Compare again runs the same one again. */
-export function useCompareModels() {
+/** How Sprisk is choosing a model step's model (ADR-0047): it resolves the shortlist, builds
+ * the comparison and starts its run, or returns those it has. It changes nothing in the flow. */
+export function useSelectModel() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (proposalId: string) => {
-      const comparison = await postOne("PipelineVersion", `/methodology_proposals/${proposalId}/compare`, {});
+    mutationFn: ({ pipelineId, nodeId }: { pipelineId: string; nodeId: string }) =>
+      postOne("ModelSelection", `/pipeline_versions/${pipelineId}/model_selection/${nodeId}`, {}),
+    onSuccess: (selection) => {
       client.setQueryData<PipelineVersion[]>(["pipeline_versions"], (versions) => [
-        comparison,
-        ...(versions ?? []).filter((v) => v.id !== comparison.id),
+        selection.comparison,
+        ...(versions ?? []).filter((v) => v.id !== selection.comparison.id),
       ]);
-      return postOne("Run", "/runs", { pipeline_version_id: comparison.id });
-    },
-    onSuccess: (run) => {
-      void client.invalidateQueries({ queryKey: ["pipeline_versions"] });
-      void client.invalidateQueries({ queryKey: ["runs", run.pipeline_version_id] });
+      client.setQueryData(["methodology_proposal", selection.proposal.id], selection.proposal);
+      void client.invalidateQueries({ queryKey: ["runs", selection.comparison.id] });
     },
   });
 }
