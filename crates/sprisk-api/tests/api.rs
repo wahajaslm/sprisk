@@ -3483,3 +3483,213 @@ async fn a_study_past_its_wall_time_ends_budget_reached_and_keeps_its_finished_t
     expected.sort_unstable();
     assert_eq!(states, expected, "{done}");
 }
+
+/// German credit (Statlog, UCI): load -> stratified split -> a 50-tree forest on `credit_risk`.
+async fn german_credit_flow(api: &Api) {
+    std::fs::copy(
+        root().join("tests/fixtures/datasets/german_credit.csv"),
+        &api.csv,
+    )
+    .unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["objective"]["value"] = json!("Tell good credit risks from bad before a loan is granted.");
+    q["target"]["value"] = json!("credit_risk");
+    q["unit_of_analysis"]["value"] = json!("applicant");
+    let facts = q.as_object_mut().unwrap();
+    facts.remove("time_column");
+    facts.remove("entity_column");
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    // Sex and marital status, and nationality, are not inputs. Proxies of them are not tested.
+    let features = [
+        "checking_status",
+        "duration_months",
+        "credit_history",
+        "purpose",
+        "credit_amount",
+        "savings",
+        "employment_since",
+        "installment_rate",
+        "other_debtors",
+        "residence_since",
+        "property",
+        "age",
+        "other_installment_plans",
+        "housing",
+        "existing_credits",
+        "job",
+        "people_liable",
+        "telephone",
+    ];
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    let nodes = flow["nodes"].as_array_mut().unwrap();
+    nodes.push(json!({
+        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        "params":{"test_fraction":0.25,"seed":42,"stratify":"credit_risk"}
+    }));
+    nodes.push(json!({
+        "id":"model", "operator":"sprisk.ml.random_forest@1.1.0",
+        "params":{"target":"credit_risk","features":features,"task":"classification","n_estimators":50}
+    }));
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (run, attempts) = run_version(api, BASE).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+}
+
+/// Gap 11's German credit case (ADR-0052). The study tunes the forest by random search and
+/// judges a minimum recall on "bad" for every candidate. 0.45 lies between the linear model's
+/// and the tuned forest's recall on these rows, so the forest fails it and the linear model
+/// wins. That a guardrail removes a model that would otherwise win is shown in
+/// `plugins/ml/tests/test_search.py`.
+#[tokio::test(flavor = "multi_thread")]
+async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_for_every_model() {
+    let api = api().await;
+    german_credit_flow(&api).await;
+    let guardrail = json!({ "metric": "recall", "label": "bad", "at_least": 0.45 });
+    let mut request = study_request("study-key-0014");
+    request["strategy"] = json!("random");
+    request["seed"] = json!(7);
+    request["max_trials"] = json!(5);
+    request["guardrails"] = json!([guardrail]);
+
+    let (status, detail) = create_study(&api, "model", request).await;
+    assert_eq!(status, StatusCode::CREATED, "{detail}");
+    let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
+    let study = &done["study"];
+    assert_eq!(study["status"], "completed", "{done}");
+    assert_eq!(study["strategy"], "random");
+    assert_eq!(study["seed"], 7);
+    assert_eq!(study["max_trials"], 5);
+
+    // Two one-trial models leave 3 of the 5 trials for the forest, each at its own settings.
+    let forest: Vec<&Value> = done["trials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|t| t["candidate"] == "ml_random_forest")
+        .collect();
+    assert_eq!(forest.len(), 3, "{done}");
+    for trial in &forest {
+        assert_eq!(trial["state"], "succeeded", "{trial}");
+        let settings = trial["settings"].as_object().unwrap();
+        assert_eq!(settings.len(), 2, "{trial}");
+        assert!(settings.contains_key("min_samples_leaf") && settings.contains_key("max_features"));
+    }
+    assert!(
+        forest[0]["settings"] != forest[1]["settings"]
+            && forest[1]["settings"] != forest[2]["settings"]
+            && forest[0]["settings"] != forest[2]["settings"],
+        "{done}"
+    );
+
+    let decision = selection_decision(&api, &done).await;
+    let candidates = decision["candidates"].as_array().unwrap();
+    let tuned = candidates
+        .iter()
+        .find(|c| c["id"] == "ml_random_forest")
+        .unwrap_or_else(|| panic!("{decision}"));
+    let searched = tuned["search"]["trials"].as_array().unwrap();
+    assert_eq!(searched.len(), 3, "{tuned}");
+    let chosen: u64 = searched
+        .iter()
+        .map(|t| t["chosen_in"].as_u64().unwrap())
+        .sum();
+    assert_eq!(chosen, 50, "every outer fold chose one trial");
+    assert!(
+        searched
+            .iter()
+            .any(|t| t["settings"] == tuned["search"]["settings"]),
+        "{tuned}"
+    );
+
+    assert_eq!(decision["guardrails"], json!([guardrail]), "{decision}");
+    assert_eq!(candidates.len(), 3, "{decision}");
+    for candidate in candidates {
+        assert_eq!(candidate["guardrails"][0]["label"], "bad", "{candidate}");
+    }
+    let passed = |id: &str| {
+        candidates.iter().find(|c| c["id"] == id).unwrap()["guardrails"][0]["passed"].clone()
+    };
+    assert_eq!(passed("ml_dummy_baseline"), false, "{decision}");
+    assert_eq!(passed("ml_random_forest"), false, "{decision}");
+    assert_eq!(passed("ml_linear_model"), true, "{decision}");
+    assert_eq!(decision["winner"], "ml_linear_model", "{decision}");
+
+    // The study's graph reads the loaded rows only through the split, and its trials read
+    // only the split's train rows. No step reads the split's test rows.
+    let (_, comparison) = call(
+        &api.app,
+        "GET",
+        &format!(
+            "/pipeline_versions/{}",
+            study["comparison_id"].as_str().unwrap()
+        ),
+        None,
+    )
+    .await;
+    let edges = comparison["edges"].as_array().unwrap();
+    let from = |port: &'static str| edges.iter().filter(move |e| e["from"] == port);
+    assert!(
+        from("load.data").all(|e| e["to"] == "split.data"),
+        "{comparison}"
+    );
+    assert_eq!(from("split.test").count(), 0, "{comparison}");
+    let into_trials: Vec<&Value> = edges
+        .iter()
+        .filter(|e| e["to"].as_str().unwrap().starts_with("cv_"))
+        .collect();
+    assert_eq!(into_trials.len(), 5, "{comparison}");
+    assert!(
+        into_trials.iter().all(|e| e["from"] == "split.train"),
+        "{comparison}"
+    );
+
+    // Using the forest is an override of the study's choice: it needs a reason, and the flow's
+    // model step gets the settings the study chose for the forest.
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        study["proposal_id"].as_str().unwrap()
+    );
+    let mut forest_choice =
+        json!({ "alternative_id": "ml_random_forest", "idempotency_key": "credit-apply-0001" });
+    let (status, body) = call(&api.app, "POST", &uri, Some(forest_choice.clone())).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "reason_required");
+    forest_choice["reason"] =
+        json!("The reviewer accepts the forest's shortfall in recall on bad credits.");
+    let (status, applied) = call(&api.app, "POST", &uri, Some(forest_choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let model = applied["pipeline"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.1.0");
+    for (setting, value) in tuned["search"]["settings"].as_object().unwrap() {
+        assert_eq!(&model["params"][setting], value, "{model}");
+    }
+    assert_eq!(
+        model["params"]["n_estimators"], 50,
+        "the flow's own settings stay"
+    );
+    assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
+    let (_, attempts) = call(
+        &api.app,
+        "GET",
+        &format!("/runs/{}/attempts", done["run"]["id"].as_str().unwrap()),
+        None,
+    )
+    .await;
+    assert_eq!(
+        applied["decision"]["selection_id"],
+        output_artifact(&api, &attempts, "select_model", "decision").await
+    );
+}
