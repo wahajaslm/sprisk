@@ -143,8 +143,8 @@ describe("studies", () => {
     studied("running", "running", "running");
     const region = await studyRegion();
     expect(region).toHaveTextContent("random search, seed 7");
-    await waitFor(() => expect(region).toHaveTextContent("4 of 4 trials"));
-    expect(region).toHaveTextContent("wall time 600 s, until 2026-10-21T10:10:01Z");
+    await waitFor(() => expect(region).toHaveTextContent("3 of 4 trials finished"));
+    expect(region).toHaveTextContent("budget 4 trials, wall time 600 s, until 2026-10-21T10:10:01Z");
     expect(region).toHaveTextContent("Guardrail: recall of bad at least 0.6, declared before this study's scores");
     expect(region).toHaveTextContent("Searched: ml_random_forest · min_samples_leaf: 1, 5");
     const table = within(region).getByRole("table", { name: "Trials" });
@@ -171,7 +171,7 @@ describe("studies", () => {
     const row = (label: string) => within(table).getByRole("row", { name: new RegExp(`^${label}`) });
     expect(row("Settings")).toHaveTextContent("the flow'sthe flow'smin_samples_leaf: 5");
     expect(row("Recall of bad")).toHaveTextContent("0.55 ± 0.04 misses0.55 ± 0.04 misses0.66 ± 0.04 meets it");
-    expect(region).toHaveTextContent("compared 1 time before on the same folds");
+    expect(region).toHaveTextContent("comparison was started 1 time before on the same folds");
     // The study's comparison is shown in the study, not again as a model comparison.
     expect(screen.queryByRole("region", { name: "Model comparison" })).not.toBeInTheDocument();
   });
@@ -185,6 +185,8 @@ describe("studies", () => {
     const rows = within(search).getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("min_samples_leaf: 10.713 of 50 folds");
     expect(rows[1]).toHaveTextContent("min_samples_leaf: 50.7447 of 50 folds · applied");
+    expect(detail).toHaveTextContent("not a performance estimate");
+    expect(detail).toHaveTextContent("No figure: the applied setting was chosen using these train rows");
   });
 
   it("uses a study's recommendation with no reason", async () => {
@@ -219,5 +221,66 @@ describe("studies", () => {
       guardrails: [{ metric: "recall", label: "bad", at_least: 0.6 }],
     });
     expect(await within(form).findByRole("alert")).toHaveTextContent("this study has 11 trials; its budget allows 4");
+  });
+});
+
+describe("study states and the form", () => {
+  it("says a study failed", async () => {
+    studied("failed", "failed", "failed");
+    const region = await studyRegion();
+    expect(await within(region).findByRole("alert")).toHaveTextContent("The study failed: a step failed after its retries.");
+  });
+
+  it("says when no shortlisted model declares settings to search", async () => {
+    studied("running", "running", "running");
+    server.use(
+      http.get(`/api/studies/${STD}`, () =>
+        HttpResponse.json({ study, trials: trials("running").slice(0, 2), run: { ...comparisonRun, status: "running" } }),
+      ),
+    );
+    const region = await studyRegion();
+    expect(await within(region).findByText(/Searched: nothing; no shortlisted model declares settings to tune/)).toBeInTheDocument();
+  });
+
+  it("sends nothing while a budget field is empty or a guardrail is half filled", async () => {
+    const { created } = studied("completed", "succeeded", "succeeded");
+    await userEvent.click(await screen.findByRole("button", { name: "Study model" }));
+    const form = screen.getByRole("form", { name: "New study of model" });
+    const start = within(form).getByRole("button", { name: "Start the study" });
+    await userEvent.type(within(form).getByLabelText("At least"), "0.6");
+    expect(start).toBeDisabled();
+    await userEvent.clear(within(form).getByLabelText("At least"));
+    await userEvent.clear(within(form).getByLabelText("Seed"));
+    await userEvent.click(start);
+    expect(created).toHaveLength(0);
+  });
+
+  it("shows why the studies cannot be listed", async () => {
+    studied("running", "running", "running");
+    server.use(
+      http.get(`/api/pipeline_versions/${PV}/studies`, () =>
+        HttpResponse.json({ errors: [{ code: "internal", message: "store down" }] }, { status: 500 }),
+      ),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("The flow's studies cannot be shown: internal: store down");
+  });
+});
+
+describe("several studies of one step", () => {
+  it("says the step has several studies and which settings make them not directly comparable", async () => {
+    studied("completed", "succeeded", "succeeded");
+    const other = { ...study, id: "std_01JABCDEFGHJKMNPQRSTVWXYZ1", seed: 8, status: "completed" };
+    server.use(
+      http.get(`/api/pipeline_versions/${PV}/studies`, () => HttpResponse.json([{ ...study, status: "completed" }, other])),
+      http.get(`/api/studies/${other.id}`, () =>
+        HttpResponse.json({ study: other, trials: trials("succeeded"), run: comparisonRun }),
+      ),
+    );
+    const cards = await screen.findAllByRole("region", { name: "Study of model" });
+    expect(cards).toHaveLength(2);
+    for (const card of cards) {
+      await waitFor(() => expect(card).toHaveTextContent("model has 2 studies on the same folds"));
+      expect(card).toHaveTextContent("Not directly comparable with the others: they differ in seed.");
+    }
   });
 });

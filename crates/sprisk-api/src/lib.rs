@@ -1842,12 +1842,10 @@ fn with_tuned_settings(
     let Some(search) = search else {
         return Ok(tuned);
     };
-    let settings =
-        serde_json::to_value(&search.settings).map_err(|e| ApiError::Internal(e.to_string()))?;
     let params = tuned["effect"]["params"].as_object_mut().ok_or_else(|| {
         ApiError::Internal(format!("tuned {} replaces no step", alternative["id"]))
     })?;
-    params.extend(settings.as_object().cloned().unwrap_or_default());
+    params.extend(search.settings.iter().map(|(k, v)| (k.clone(), v.clone())));
     Ok(tuned)
 }
 

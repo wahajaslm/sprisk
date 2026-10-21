@@ -34,7 +34,7 @@ export function Experiments() {
     ),
   ].sort();
   const nodes = useRunNodes(runs, evaluators);
-  const studies = useStudies(flow?.head.id).data ?? [];
+  const studies = useStudies(flow?.head.id);
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (!flow) {
@@ -62,8 +62,14 @@ export function Experiments() {
         title={`${flowName(flow.head)}: every run, with what changed`}
       />
       <div className="exp-scroll">
-        <Studies head={flow.head} versions={all} studies={studies} />
-        <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set(studies.map((s) => s.comparison_id))} />
+        {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
+        {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
+        {!studies.isPending && (
+          <>
+            <Studies head={flow.head} versions={all} studies={studies.data ?? []} />
+            <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
+          </>
+        )}
         <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
       </div>
       {runs.length < 2 ? (

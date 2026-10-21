@@ -144,7 +144,9 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
     <>
       <p className="muted">
         {decision.repeats && decision.repeats > 1 ? `${decision.repeats} × ` : ""}{decision.folds}-fold cross-validation, seed {decision.seed}, scored by {METRIC_LABEL[decision.metric]}, fixed before any score was seen. Train rows only: the test rows were not used.
-        {tuned ? " Tuned models chose their settings on inner folds of each fold's training rows." : ""}
+        {tuned
+          ? " Tuned models chose their settings on inner folds of each fold's training rows, so their scores describe the tuning, not the settings shown."
+          : ""}
       </p>
       <table className="exp-table" aria-label="Candidates">
         <thead>
@@ -165,7 +167,7 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
           <Row label={`Mean ± spread (${METRIC_LABEL[decision.metric]})`} mono cells={decision.candidates.map((c) => `${formatMetric(c.mean)} ± ${formatMetric(c.spread)}`)} />
           <Row label="Fold scores" mono cells={decision.candidates.map(foldRange)} />
           <Row label={`Gain over ${reference ? "the recommendation" : "baseline"} ± corrected SE`} mono cells={decision.candidates.map(gain)} />
-          {tuned && <Row label="Settings" mono cells={decision.candidates.map((c) => (c.search ? showSettings(c.search.settings) : "the flow's"))} />}
+          {tuned && <Row label="Settings Apply uses (best inner score on all train rows)" mono cells={decision.candidates.map((c) => (c.search ? showSettings(c.search.settings) : "the flow's"))} />}
           {(decision.guardrails ?? []).map((g, i) => (
             <Row key={i} label={`Recall of ${g.label} ≥ ${g.at_least}`} mono cells={decision.candidates.map((c) => guardrailCell(c, i))} />
           ))}
@@ -189,7 +191,7 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
       {earlier.length > 0 && (
         <div className="cautions">
           <p>
-            ⚠ This step was compared {earlier.length === 1 ? "1 time" : `${earlier.length} times`} before on the same folds ({earlier.join(", ")}). Keeping the best of several looks favours luck.
+            ⚠ This step's comparison was started {earlier.length === 1 ? "1 time" : `${earlier.length} times`} before on the same folds ({earlier.join(", ")}). Keeping the best of several looks favours luck.
           </p>
         </div>
       )}
@@ -209,7 +211,14 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
               <p className="mono">Fold scores: {decision.candidates.find((c) => c.id === id)?.fold_scores.map(formatMetric).join(" · ")}</p>
               <SearchTable candidate={decision.candidates.find((c) => c.id === id)} />
               <ChoiceSteps comparison={comparison} proposal={proposal} base={base} id={id} node={trialNodeOf(decision, id)} />
-              <FigurePort attempt={cvAttempt(id)} port="figures" />
+              {decision.candidates.find((c) => c.id === id)?.search ? (
+                <p className="muted">
+                  No figure: the applied setting was chosen using these train rows, so its out-of-fold figure would look better than
+                  it is. The fold scores above describe the tuning.
+                </p>
+              ) : (
+                <FigurePort attempt={cvAttempt(id)} port="figures" />
+              )}
             </section>
           ))}
         </section>
@@ -424,6 +433,11 @@ function SearchTable({ candidate }: { candidate: Candidate | undefined }) {
   const folds = search.trials.reduce((n, t) => n + t.chosen_in, 0);
   const applied = JSON.stringify(sorted(search.settings));
   return (
+    <>
+    <p className="muted">
+      What the search saw on inner folds: not a performance estimate. Applied is the trial with the best inner score on all
+      train rows.
+    </p>
     <table className="exp-table" aria-label={`Search of ${candidate.id}`}>
       <thead>
         <tr>
@@ -444,5 +458,6 @@ function SearchTable({ candidate }: { candidate: Candidate | undefined }) {
         ))}
       </tbody>
     </table>
+    </>
   );
 }
