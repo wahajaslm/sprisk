@@ -2883,6 +2883,10 @@
             "$ref": "#/$defs/Fact"
           }
         },
+        "costs": {
+          "$ref": "#/$defs/CostsFact",
+          "description": "What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same."
+        },
         "created_at": {
           "$ref": "#/$defs/Timestamp"
         }
@@ -2912,6 +2916,51 @@
         },
         "origin": {
           "$ref": "#/$defs/Origin"
+        }
+      }
+    },
+    "CostsFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "origin"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/Costs"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "explicit",
+            "confirmed"
+          ],
+          "description": "Costs are never inferred or measured."
+        }
+      }
+    },
+    "Costs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "positive",
+        "false_negative",
+        "false_positive"
+      ],
+      "properties": {
+        "positive": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The class whose miss costs, as text."
+        },
+        "false_negative": {
+          "type": "number",
+          "description": "Cost of predicting another class for a `positive` row. Positive; the API refuses others."
+        },
+        "false_positive": {
+          "type": "number",
+          "description": "Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing."
         }
       }
     },
@@ -3176,6 +3225,10 @@
             "$ref": "#/$defs/Guardrail"
           }
         },
+        "positive_share": {
+          "type": "number",
+          "description": "With costs: the share of the costed class in the train rows. Expected cost and each tuned cut-off hold at this share only (ADR-0053)."
+        },
         "earlier_looks": {
           "type": "array",
           "description": "Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0052). Absent: none.",
@@ -3187,9 +3240,10 @@
     },
     "SelectionMetric": {
       "type": "string",
-      "description": "Fixed before any score is seen: balanced_accuracy (higher is better) for classification, rmse (lower is better) for regression.",
+      "description": "Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression.",
       "enum": [
         "balanced_accuracy",
+        "expected_cost",
         "rmse"
       ]
     },

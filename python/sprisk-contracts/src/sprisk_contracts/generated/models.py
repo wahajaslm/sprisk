@@ -707,6 +707,32 @@ class Fact(StrictModel):
     origin: Origin
 
 
+class Origin1(StrEnum):
+    explicit = "explicit"
+    confirmed = "confirmed"
+
+
+class Costs(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    positive: Annotated[
+        str, Field(description="The class whose miss costs, as text.", min_length=1)
+    ]
+    false_negative: Annotated[
+        float,
+        Field(
+            description="Cost of predicting another class for a `positive` row. Positive; the API refuses others."
+        ),
+    ]
+    false_positive: Annotated[
+        float,
+        Field(
+            description="Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing."
+        ),
+    ]
+
+
 class TaskType(StrEnum):
     exploration = "exploration"
     classification = "classification"
@@ -759,6 +785,7 @@ class Limitation(RootModel[str]):
 
 class SelectionMetric(StrEnum):
     balanced_accuracy = "balanced_accuracy"
+    expected_cost = "expected_cost"
     rmse = "rmse"
 
 
@@ -1604,6 +1631,14 @@ class Edge(StrictModel):
     to: PortRef
 
 
+class CostsFact(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Costs
+    origin: Annotated[Origin1, Field(description="Costs are never inferred or measured.")]
+
+
 class TaskFact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2089,6 +2124,12 @@ class QuestionVersion(StrictModel):
     assumptions: list[Fact]
     unknowns: list[Unknown]
     acceptance_criteria: list[Fact]
+    costs: Annotated[
+        CostsFact | None,
+        Field(
+            description="What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same."
+        ),
+    ] = None
     created_at: Timestamp
 
 
@@ -2246,6 +2287,12 @@ class SelectionDecision(StrictModel):
         list[Guardrail] | None,
         Field(
             description="Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0052). Absent: none were declared."
+        ),
+    ] = None
+    positive_share: Annotated[
+        float | None,
+        Field(
+            description="With costs: the share of the costed class in the train rows. Expected cost and each tuned cut-off hold at this share only (ADR-0053)."
         ),
     ] = None
     earlier_looks: Annotated[

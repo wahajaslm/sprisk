@@ -80,7 +80,7 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-
 - The floor equals the cheaper of "approve everyone" and "refuse everyone" on each fold.
 - A question without costs gets `default_half`, with a reason naming the unknown costs.
 - With a time or entity column, `cost_optimal_threshold` is not applicable, and says why.
-- On German credit with UCI's costs: the rule proposes the cut-off; applying it sets `costs` on the model step; the study compares by expected cost; every candidate reports its cost and cut-off.
+- On German credit with UCI's costs: the rule proposes the cut-off; applying it sets `costs` on the model step; the study compares by expected cost; every candidate reports its cost; the evaluated model reports its cut-off.
 
 ## Arch doc edits
 - §3: a classification question may state costs.

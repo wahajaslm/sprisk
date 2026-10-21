@@ -41,6 +41,10 @@
         "assumptions": { "type": "array", "items": { "$ref": "#/$defs/Fact" } },
         "unknowns": { "type": "array", "items": { "$ref": "#/$defs/Unknown" } },
         "acceptance_criteria": { "type": "array", "items": { "$ref": "#/$defs/Fact" } },
+        "costs": {
+          "$ref": "#/$defs/CostsFact",
+          "description": "What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same."
+        },
         "created_at": { "$ref": "#/$defs/Timestamp" }
       }
     },
@@ -56,6 +60,25 @@
       "properties": {
         "value": { "type": "string", "minLength": 1 },
         "origin": { "$ref": "#/$defs/Origin" }
+      }
+    },
+    "CostsFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "origin"],
+      "properties": {
+        "value": { "$ref": "#/$defs/Costs" },
+        "origin": { "type": "string", "enum": ["explicit", "confirmed"], "description": "Costs are never inferred or measured." }
+      }
+    },
+    "Costs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["positive", "false_negative", "false_positive"],
+      "properties": {
+        "positive": { "type": "string", "minLength": 1, "description": "The class whose miss costs, as text." },
+        "false_negative": { "type": "number", "description": "Cost of predicting another class for a `positive` row. Positive; the API refuses others." },
+        "false_positive": { "type": "number", "description": "Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing." }
       }
     },
     "TaskFact": {

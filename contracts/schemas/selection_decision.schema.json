@@ -41,6 +41,10 @@
           "description": "Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0052). Absent: none were declared.",
           "items": { "$ref": "#/$defs/Guardrail" }
         },
+        "positive_share": {
+          "type": "number",
+          "description": "With costs: the share of the costed class in the train rows. Expected cost and each tuned cut-off hold at this share only (ADR-0053)."
+        },
         "earlier_looks": {
           "type": "array",
           "description": "Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0052). Absent: none.",
@@ -50,8 +54,8 @@
     },
     "SelectionMetric": {
       "type": "string",
-      "description": "Fixed before any score is seen: balanced_accuracy (higher is better) for classification, rmse (lower is better) for regression.",
-      "enum": ["balanced_accuracy", "rmse"]
+      "description": "Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression.",
+      "enum": ["balanced_accuracy", "expected_cost", "rmse"]
     },
     "BaselineRole": {
       "type": "string",

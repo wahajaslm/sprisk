@@ -286,12 +286,12 @@ export type AttemptState =
   | "skipped"
   | "cache_hit";
 /**
- * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, rmse (lower is better) for regression.
+ * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "SelectionMetric".
  */
-export type SelectionMetric = "balanced_accuracy" | "rmse";
+export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse";
 /**
  * What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0050).
  *
@@ -1702,6 +1702,7 @@ export interface QuestionVersion {
   assumptions: Fact[];
   unknowns: Unknown[];
   acceptance_criteria: Fact[];
+  costs?: CostsFact;
   created_at: Timestamp;
 }
 /**
@@ -1743,6 +1744,45 @@ export interface Unknown {
    * Earliest stage this unknown must be resolved before.
    */
   blocks: "planning" | "execution" | "release";
+}
+/**
+ * What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same.
+ */
+export interface CostsFact {
+  value: Costs;
+  /**
+   * Costs are never inferred or measured.
+   */
+  origin: "explicit" | "confirmed";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Costs".
+ */
+export interface Costs {
+  /**
+   * The class whose miss costs, as text.
+   */
+  positive: string;
+  /**
+   * Cost of predicting another class for a `positive` row. Positive; the API refuses others.
+   */
+  false_negative: number;
+  /**
+   * Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing.
+   */
+  false_positive: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CostsFact".
+ */
+export interface CostsFact1 {
+  value: Costs;
+  /**
+   * Costs are never inferred or measured.
+   */
+  origin: "explicit" | "confirmed";
 }
 /**
  * One try of one step (a node in a run). Retries create a new attempt with the next number; old attempts are never replaced (arch doc §9).
@@ -1825,6 +1865,10 @@ export interface SelectionDecision {
    * Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0052). Absent: none were declared.
    */
   guardrails?: Guardrail[];
+  /**
+   * With costs: the share of the costed class in the train rows. Expected cost and each tuned cut-off hold at this share only (ADR-0053).
+   */
+  positive_share?: number;
   /**
    * Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0052). Absent: none.
    */
