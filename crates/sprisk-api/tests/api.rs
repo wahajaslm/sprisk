@@ -3596,6 +3596,42 @@ async fn a_study_tunes_the_forest_on_inner_folds_and_a_rerun_reuses_its_trials()
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn using_a_model_that_missed_a_guardrail_records_what_it_missed() {
+    let api = api().await;
+    banded_forest_flow(&api).await;
+    let mut request = study_request("study-key-0015");
+    request["strategy"] = json!("random");
+    request["seed"] = json!(3);
+    request["max_trials"] = json!(4);
+    // No model recalls every row of class 1 on every fold, so each one misses this bound.
+    request["guardrails"] = json!([{ "metric": "recall", "label": "1", "at_least": 1.0 }]);
+    let (status, detail) = create_study(&api, "model", request).await;
+    assert_eq!(status, StatusCode::CREATED, "{detail}");
+    let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
+    assert_eq!(done["study"]["status"], "completed", "{done}");
+    let decision = selection_decision(&api, &done).await;
+    let missed = decision["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "ml_linear_model" && c["guardrails"][0]["passed"] == false)
+        .unwrap_or_else(|| panic!("{decision}"));
+
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        done["study"]["proposal_id"].as_str().unwrap()
+    );
+    let choice = json!({ "alternative_id": "ml_linear_model", "idempotency_key": "missed-0001",
+                         "reason": "A linear model is required for review." });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    assert_eq!(
+        applied["decision"]["missed_guardrails"], missed["guardrails"],
+        "{applied}"
+    );
+}
+
 #[tokio::test]
 async fn a_grid_larger_than_its_budget_and_a_random_budget_too_small_to_sample_are_refused() {
     let api = api().await;
@@ -3817,6 +3853,7 @@ async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule
         assert_eq!(trial["state"], "succeeded", "{trial}");
         let settings = trial["settings"].as_object().unwrap();
         assert_eq!(settings.len(), 2, "{trial}");
+        assert!(settings.contains_key("min_samples_leaf") && settings.contains_key("max_features"));
     }
     assert!(
         forest[0]["settings"] != forest[1]["settings"]
@@ -3863,10 +3900,26 @@ async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule
         .unwrap();
     let floor_mean = floor["mean"].as_f64().unwrap();
     assert!((floor_mean - (1.0 - share)).abs() < 0.01, "{floor}");
-    // A winner, if any, beat that floor on the corrected test.
-    if let Some(winner) = decision["winner"].as_str() {
-        let won = candidates.iter().find(|c| c["id"] == winner).unwrap();
-        assert_eq!(won["versus_baseline"]["beats_baseline"], true, "{decision}");
+    // The forest's search is on record: each outer fold chose one of its 3 trials.
+    let tuned = candidates
+        .iter()
+        .find(|c| c["id"] == "ml_random_forest")
+        .unwrap();
+    let searched = tuned["search"]["trials"].as_array().unwrap();
+    assert_eq!(searched.len(), 3, "{tuned}");
+    let chosen: u64 = searched
+        .iter()
+        .map(|t| t["chosen_in"].as_u64().unwrap())
+        .sum();
+    assert_eq!(chosen, 50, "every outer fold chose one trial");
+    // A winner beat the floor on the corrected test; with none, no model did.
+    let beats = |c: &Value| c["versus_baseline"]["beats_baseline"] == true;
+    match decision["winner"].as_str() {
+        Some(winner) => {
+            let won = candidates.iter().find(|c| c["id"] == winner).unwrap();
+            assert!(beats(won), "{decision}");
+        }
+        None => assert!(!candidates.iter().any(beats), "{decision}"),
     }
 
     // The study's graph reads the loaded rows only through the split, and its trials read
@@ -3905,10 +3958,6 @@ async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule
 
     // Using the forest writes its tuned settings, and keeps the costs, on the model step. A
     // reason is given, as using a model the study did not recommend needs one.
-    let tuned = candidates
-        .iter()
-        .find(|c| c["id"] == "ml_random_forest")
-        .unwrap();
     let uri = format!(
         "/methodology_proposals/{}/apply",
         study["proposal_id"].as_str().unwrap()
