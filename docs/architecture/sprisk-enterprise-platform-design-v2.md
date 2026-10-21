@@ -351,7 +351,7 @@ Architecturally represent source triggers, microbatch boundaries, watermark/late
 
 # 11. Experiments, evaluation and optimization
 
-**Study** (ADR-0044: a TrialSpec is a cross-validate step and its attempt; SelectionDecision is the select step's output) = = comparable candidate pipelines under an explicit protocol. **TrialSpec** = immutable configuration. **TrialAttempt** = actual worker run/retry. **TrialResult** = accepted attempt's evidence. **SelectionDecision** = authorized choice, not a sorting operation. (ADR-0050: a candidate must pass a corrected test against the baseline; the recommendation is the simplest within one standard error of the best; each decision records which versions already scored the holdout.)
+**Study** (ADR-0044: a TrialSpec is a cross-validate step and its attempt; SelectionDecision is the select step's output) = = comparable candidate pipelines under an explicit protocol. **TrialSpec** = immutable configuration. **TrialAttempt** = actual worker run/retry. **TrialResult** = accepted attempt's evidence. **SelectionDecision** = authorized choice, not a sorting operation. (ADR-0050: a candidate must pass a corrected test against the baseline; the recommendation is the simplest within one standard error of the best; each decision records which versions already scored the holdout.) (ADR-0051: a Study is a comparison version with search trials and a budget; a Trial is one cross-validate step, one candidate at one setting; tuning is nested inside the outer folds; a budget reached keeps partial evidence and makes no decision; guardrails stop a candidate from winning and are recorded per candidate; each decision lists the earlier looks at the same folds.)
 
 | Contract | Required contents |
 |---|---|
