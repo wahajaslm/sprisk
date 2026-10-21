@@ -9,6 +9,10 @@ pub const FACTS: &[&str] = &[
     "question.entity_column",
     "question.time_column",
     "question.prediction_horizon",
+    // Misclassification costs (ADR-0053), each part as text: numbers as decimals.
+    "question.costs.positive",
+    "question.costs.false_negative",
+    "question.costs.false_positive",
     // Families of the models seen downstream, joined by ", "; featureless when none declares one.
     "flow.model_families",
     // all, some or none: of the models downstream that are hidden, fill gaps, standardise.

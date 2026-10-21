@@ -54,12 +54,6 @@ pub enum CatalogError {
     },
     #[error("{path}: {problem} (ADR-0045)")]
     Manifest { path: PathBuf, problem: String },
-    #[error("operator {operator} has two active rules: {first} and {second}")]
-    SharedOperator {
-        operator: String,
-        first: String,
-        second: String,
-    },
     #[error("unknown methodology rule {0}")]
     UnknownRule(String),
     #[error("methodology rule {0} has no rule.py")]
@@ -109,7 +103,6 @@ impl RuleCatalog {
             }
         }
         catalog.refuse_shared_decisions()?;
-        catalog.refuse_shared_operators()?;
         Ok(catalog)
     }
 
@@ -130,11 +123,18 @@ impl RuleCatalog {
             .ok_or_else(|| CatalogError::NoModule(rule_ref.to_owned()))
     }
 
-    /// The active rule that decides steps running `operator` (`<id>@<version>`), if any.
-    pub fn rule_for_operator(&self, operator: &str) -> Option<&MethodologyRule> {
-        let name = operator.split('@').next()?;
-        self.rules()
-            .find(|rule| rule.applies_to.iter().any(|a| a.as_str() == name))
+    /// The active rules that decide steps running `operator` (`<id>@<version>`), in workflow
+    /// order: by stage, then id. Each decides something else: one owner per decision
+    /// (ADR-0042, ADR-0053).
+    pub fn rules_for_operator(&self, operator: &str) -> impl Iterator<Item = &MethodologyRule> {
+        let name = operator.split('@').next().unwrap_or_default();
+        let mut rules: Vec<&MethodologyRule> = self
+            .rules()
+            .filter(|rule| rule.applies_to.iter().any(|a| a.as_str() == name))
+            .collect();
+        // The stage enum lists stages in workflow order; rules() is already in id order.
+        rules.sort_by_key(|rule| rule.stage);
+        rules.into_iter()
     }
 
     fn entry(&self, rule_ref: &str) -> Result<&Entry, CatalogError> {
@@ -157,24 +157,6 @@ impl RuleCatalog {
             });
         }
         self.rules.insert(id, entry);
-        Ok(())
-    }
-
-    /// One active rule per operator, so a step has one rule (ADR-0045).
-    fn refuse_shared_operators(&self) -> Result<(), CatalogError> {
-        let mut owners: BTreeMap<String, String> = BTreeMap::new();
-        for rule in self.rules() {
-            for operator in &rule.applies_to {
-                let operator = operator.as_str().to_owned();
-                if let Some(first) = owners.insert(operator.clone(), rule.id.to_string()) {
-                    return Err(CatalogError::SharedOperator {
-                        operator,
-                        first,
-                        second: rule.id.to_string(),
-                    });
-                }
-            }
-        }
         Ok(())
     }
 

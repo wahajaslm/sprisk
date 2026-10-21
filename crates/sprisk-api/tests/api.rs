@@ -1388,6 +1388,44 @@ fn question(id: &str, parent: Option<&str>) -> Value {
 }
 
 #[tokio::test]
+async fn a_question_s_costs_must_be_positive_and_belong_to_a_classification() {
+    let api = api().await;
+    let costed = |fn_cost: f64, fp_cost: f64| {
+        let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+        q["costs"] = json!({
+            "value": { "positive": "1", "false_negative": fn_cost, "false_positive": fp_cost },
+            "origin": "explicit"
+        });
+        q
+    };
+    for (fn_cost, fp_cost) in [(0.0, 1.0), (5.0, -1.0)] {
+        let (status, body) = call(
+            &api.app,
+            "POST",
+            "/question_versions",
+            Some(costed(fn_cost, fp_cost)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["errors"][0]["code"], "invalid_costs", "{body}");
+    }
+    let mut regression = costed(5.0, 1.0);
+    regression["task"] = json!({ "value": "regression", "origin": "explicit" });
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(regression)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_costs", "{body}");
+
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/question_versions",
+        Some(costed(5.0, 1.0)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
 async fn question_ledger_is_immutable_filterable_and_revision_checked() {
     let api = api().await;
     let first = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
@@ -1450,6 +1488,48 @@ async fn a_flow_can_only_link_a_saved_question_revision() {
         saved["question_version_id"],
         "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"
     );
+}
+
+#[tokio::test]
+async fn a_step_s_proposal_can_be_asked_for_one_decision() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    assert_eq!(
+        call(&api.app, "POST", "/question_versions", Some(q))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().push(json!({
+        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        "params":{"test_fraction":0.2,"seed":42,"stratify":"returned_within_30d"}
+    }));
+    flow["edges"] = json!([{"from":"load.data","to":"split.data"}]);
+    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/split";
+
+    let (status, proposal) = call(
+        &api.app,
+        "POST",
+        &format!("{uri}/split.method"),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(proposal["rule"], "methodology.supervised.data_split@1.0.0");
+
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        &format!("{uri}/evaluation.decision_threshold"),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
 }
 
 #[tokio::test]
@@ -2426,6 +2506,93 @@ async fn a_model_step_with_costs_is_compared_by_expected_cost_and_each_candidate
     let decision = output(&api, &attempts, "select_model", "decision").await;
     assert_eq!(decision["metric"], "expected_cost", "{decision}");
     assert!(decision["positive_share"].is_number(), "{decision}");
+}
+
+#[tokio::test]
+async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step() {
+    let api = api().await;
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let facts = q.as_object_mut().unwrap();
+    facts.remove("time_column");
+    facts.remove("entity_column");
+    q["costs"] = json!({
+        "value": { "positive": "1", "false_negative": 5.0, "false_positive": 1.0 },
+        "origin": "explicit"
+    });
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+                "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@1.2.0",
+                "params":{"target":"returned_within_30d","features":["age"],"task":"classification","n_estimators":10} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let uri = format!("/pipeline_versions/{BASE}/methodology/proposals/model");
+
+    let (status, proposal) = call(
+        &api.app,
+        "POST",
+        &format!("{uri}/evaluation.decision_threshold"),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(
+        proposal["rule"],
+        "methodology.supervised.decision_threshold@1.0.0"
+    );
+    assert_eq!(
+        proposal["recommended_alternative_id"],
+        "cost_optimal_threshold"
+    );
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice =
+        json!({ "alternative_id": "cost_optimal_threshold", "idempotency_key": "threshold-0001" });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let model = applied["pipeline"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.2.0");
+    assert_eq!(
+        model["params"]["costs"],
+        json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 })
+    );
+    assert_eq!(
+        model["params"]["n_estimators"], 10,
+        "the step's own settings stay"
+    );
+    assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
+
+    // The step's first rule, in workflow order, is still the model shortlist. It measures
+    // the train rows, so the flow runs first.
+    let mut csv = String::from("age,returned_within_30d\n");
+    for age in 20..80 {
+        csv.push_str(&format!("{age},{}\n", u8::from(age >= 50)));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let (status, first) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{first}");
+    assert_eq!(
+        first["rule"],
+        "methodology.supervised.model_baseline_selection@2.0.0"
+    );
 }
 
 #[tokio::test]

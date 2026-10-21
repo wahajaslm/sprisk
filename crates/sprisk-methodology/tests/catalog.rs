@@ -117,7 +117,8 @@ fn a_python_module_beside_the_manifest_is_served_as_source() {
 fn a_step_is_routed_to_the_active_rule_that_applies_to_its_operator() {
     let catalog = RuleCatalog::load_dir(&repo_methodology()).unwrap();
     let rule = catalog
-        .rule_for_operator("sprisk.clean.scale@1.0.0")
+        .rules_for_operator("sprisk.clean.scale@1.0.0")
+        .next()
         .unwrap();
     assert_eq!(
         rule.id.to_string(),
@@ -125,7 +126,8 @@ fn a_step_is_routed_to_the_active_rule_that_applies_to_its_operator() {
     );
     assert!(
         catalog
-            .rule_for_operator("sprisk.io.file_source@1.0.0")
+            .rules_for_operator("sprisk.io.file_source@1.0.0")
+            .next()
             .is_none()
     );
 }
@@ -229,30 +231,23 @@ fn an_example_giving_a_fact_the_rule_does_not_read_is_refused() {
 }
 
 #[test]
-fn two_active_rules_on_one_operator_are_refused() {
+fn a_step_has_each_active_rule_that_decides_something_about_it_in_workflow_order() {
+    // ADR-0053: one rule per decision on a step, ordered by stage, then id.
     let dir = tempfile::tempdir().unwrap();
-    write_active(
-        dir.path(),
-        "a",
-        &active_yaml(
-            "methodology.pack.a@1.0.0",
-            "cleaning.a",
-            "sprisk.clean.scale",
-            READS_AND_EXAMPLE,
-        ),
-    );
-    write_active(
-        dir.path(),
-        "b",
-        &active_yaml(
-            "methodology.pack.b@1.0.0",
-            "cleaning.b",
-            "sprisk.clean.scale",
-            READS_AND_EXAMPLE,
-        ),
-    );
-    let err = RuleCatalog::load_dir(dir.path()).unwrap_err().to_string();
-    assert!(err.contains("sprisk.clean.scale"), "{err}");
+    for (folder, id, decides, stage) in [
+        ("a", "methodology.pack.a@1.0.0", "cleaning.a", "evaluation"),
+        ("b", "methodology.pack.b@1.0.0", "cleaning.b", "models"),
+    ] {
+        let manifest = active_yaml(id, decides, "sprisk.clean.scale", READS_AND_EXAMPLE)
+            .replace("stage: cleaning", &format!("stage: {stage}"));
+        write_active(dir.path(), folder, &manifest);
+    }
+    let catalog = RuleCatalog::load_dir(dir.path()).unwrap();
+    let decides: Vec<String> = catalog
+        .rules_for_operator("sprisk.clean.scale@1.0.0")
+        .map(|rule| rule.decides.to_string())
+        .collect();
+    assert_eq!(decides, ["cleaning.b", "cleaning.a"]);
 }
 
 #[test]

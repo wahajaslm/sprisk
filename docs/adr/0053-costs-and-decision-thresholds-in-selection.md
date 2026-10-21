@@ -1,7 +1,7 @@
 # ADR-0053: Costs and the decision cut-off are decided by a methodology rule
 Status: Accepted
 Date: 2026-10-21
-Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-0045 (one rule per step). Builds on ADR-0042, ADR-0050, ADR-0052. Activates the draft rule `probability_calibration` for its cost path.
+Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-0045 (one rule per step). Builds on ADR-0042, ADR-0050, ADR-0052. Replaces the draft rule `probability_calibration` with the active rule `decision_threshold`.
 
 ## Context
 - German credit (UCI) comes with costs: approving a bad applicant costs 5, refusing a good one costs 1.
@@ -30,18 +30,19 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-
 - A proposal names its decision. The proposals route takes the decision: `POST /pipeline_versions/{id}/methodology/proposals/{node_id}/{decides}`. The old route keeps meaning the step's first rule, so existing clients work.
 - The Parameters tab shows one panel per rule that decides the step.
 
-**The rule `probability_calibration` becomes active for the cut-off.**
-- It applies to the model operators and decides `evaluation.decision_threshold`. It reads `question.task`, `question.costs`, `question.time_column` and `question.entity_column`.
+**The draft `probability_calibration` becomes the active rule `decision_threshold`.**
+- It applies to the model operators and decides `evaluation.decision_threshold`. It reads `question.task`, `question.time_column`, `question.entity_column` and the costs, as `question.costs.positive`, `question.costs.false_negative` and `question.costs.false_positive` (text facts, numbers as decimals).
 - Its alternatives:
   - `cost_optimal_threshold`, when costs are stated: the model tunes its cut-off for least cost.
   - `default_half`, when no costs are stated: the 0.5 cut-off. Its proposal says the costs are unknown and that 0.5 assumes both mistakes cost the same.
-  - `platt_scaling` stays draft-only. It is not offered until it has an operator.
+  - Platt scaling, a draft alternative, is dropped. Calibration can return as its own rule when it has an operator.
 - With a time or entity column, `cost_optimal_threshold` is not applicable yet. Its reason says so: inner folds for the cut-off do not yet follow time or groups.
 - The rule's other text is checked against the course before activation (gap 10).
 
 **`update_estimator_params` is wired.**
 - An alternative with this action sets params on the step it decides. It sets nothing else.
-- The params are given in the manifest, from facts the rule reads, such as `"{question.costs}"`. Rust fills them in, and the compiler checks them against the operator's schema.
+- The manifest's `action.params` names the params the alternative may set, each as `"{decision}"`. The rule's decision gives their values; a named param the decision leaves out is removed. Any other param is refused. The compiler checks the result.
+- A step's rules are listed in workflow order (by stage, then id), so the old proposals route still gives a model step its shortlist rule.
 
 **A model with costs tunes its own cut-off.**
 - The two-class model operators gain an optional `costs` param.

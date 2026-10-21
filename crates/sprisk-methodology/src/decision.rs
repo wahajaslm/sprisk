@@ -28,8 +28,13 @@ pub fn observation(
     let question = serde_json::to_value(question)?;
     let mut facts: Map<String, Value> = facts::FACTS
         .iter()
-        .filter_map(|name| Some((*name, question.get(name.strip_prefix("question.")?)?)))
-        .map(|(name, fact)| (name.to_owned(), fact.clone()))
+        .filter_map(|name| {
+            Some((
+                *name,
+                question_fact(&question, name.strip_prefix("question.")?)?,
+            ))
+        })
+        .map(|(name, fact)| (name.to_owned(), fact))
         .collect();
     facts.extend(flow);
     // A rule sees only the facts it declares it reads (ADR-0045).
@@ -47,6 +52,20 @@ pub fn observation(
         })
         .to_string(),
     )?)
+}
+
+/// The question's fact at `path`. A part of a structured fact, such as `costs.positive`, is
+/// its own fact, as text, with the whole fact's origin.
+fn question_fact(question: &Value, path: &str) -> Option<Value> {
+    let Some((name, part)) = path.split_once('.') else {
+        return question.get(path).cloned();
+    };
+    let fact = question.get(name)?;
+    let value = fact.get("value")?.get(part)?;
+    let text = value
+        .as_str()
+        .map_or_else(|| value.to_string(), str::to_owned);
+    Some(json!({ "value": text, "origin": fact.get("origin")? }))
 }
 
 /// What the flow says about the models downstream of `node_id`, read from their manifests
@@ -409,6 +428,12 @@ pub fn proposal(
                 if applicable {
                     built["effect"] = json!({ "kind": "remove_node", "node_id": node_id });
                 }
+            } else if declared.action.type_ == RuleActionType::UpdateEstimatorParams {
+                if applicable {
+                    let params =
+                        updated_params(id, node, &declared.action.params, &decided.params)?;
+                    built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": node.operator, "params": params });
+                }
             } else if let (Some(params), Some(operator)) =
                 (&decided.params, &declared.action.operator)
             {
@@ -442,6 +467,31 @@ pub fn proposal(
         built["shortlist"] = json!(decision.shortlist);
     }
     Ok(parse(&built.to_string())?)
+}
+
+/// The step's params with each one the action names (ADR-0053) set from the decision, or
+/// dropped when the decision leaves it out. The model stays; only its settings change.
+fn updated_params(
+    id: &str,
+    node: &Node,
+    named: &Map<String, Value>,
+    decided: &Option<sprisk_contracts::Params>,
+) -> Result<Map<String, Value>, ResolveError> {
+    let named: Vec<&String> = named.keys().collect();
+    let decided: Map<String, Value> = decided.as_ref().map(|p| p.0.clone()).unwrap_or_default();
+    if let Some(other) = decided.keys().find(|k| !named.contains(k)) {
+        return Err(ResolveError::Selection(format!(
+            "{id} sets {other}, which its action does not name"
+        )));
+    }
+    let mut params: Map<String, Value> = node
+        .params
+        .iter()
+        .filter(|(name, _)| !named.contains(name))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    params.extend(decided);
+    Ok(params)
 }
 
 /// A recommend rule picks one alternative it offers; a shortlist rule puts forward some it

@@ -1649,3 +1649,127 @@ fn the_step_being_compared_may_run_its_own_code_since_every_choice_replaces_it()
     );
     assert!(compare_preparation(&pipeline, SCALING, &proposal).is_ok());
 }
+
+const THRESHOLD: &str = "methodology.supervised.decision_threshold@1.0.0";
+
+fn costed_question() -> QuestionVersion {
+    let mut question = serde_json::to_value(question()).unwrap();
+    question["costs"] = json!({
+        "value": { "positive": "bad", "false_negative": 5.0, "false_positive": 1.0 },
+        "origin": "explicit"
+    });
+    parse(&question.to_string()).unwrap()
+}
+
+fn forest_flow(params: Value) -> PipelineVersion {
+    parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+            "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "nodes": [{ "id": "model", "operator": "sprisk.ml.random_forest@1.2.0", "params": params }],
+            "edges": [],
+            "created_at": "2026-10-15T10:00:00Z"
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+fn threshold_proposal(decided: Value, pipeline: &PipelineVersion) -> Result<Value, ResolveError> {
+    let catalog = catalog();
+    let rule = catalog.rule(THRESHOLD).unwrap();
+    let decided: RuleDecision = parse(
+        &json!({
+            "schema_version": "sprisk.rule_decision/v1", "rule": THRESHOLD,
+            "recommended_alternative_id": "cost_optimal_threshold",
+            "alternatives": decided, "evidence": []
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let stamp = Stamp {
+        id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+        created_at: "2026-10-15T10:00:00Z",
+    };
+    let built = proposal(
+        rule,
+        &decided,
+        &costed_question(),
+        pipeline,
+        "model",
+        &Default::default(),
+        stamp,
+    )?;
+    Ok(serde_json::to_value(built).unwrap())
+}
+
+#[test]
+fn an_observation_carries_the_question_s_costs_as_text_facts_with_their_origin() {
+    let catalog = catalog();
+    let rule = catalog.rule(THRESHOLD).unwrap();
+    let observed = serde_json::to_value(
+        observation(
+            rule,
+            &costed_question(),
+            Default::default(),
+            Default::default(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let facts = &observed["facts"];
+    assert_eq!(
+        facts["question.costs.positive"],
+        json!({ "value": "bad", "origin": "explicit" })
+    );
+    assert_eq!(facts["question.costs.false_negative"]["value"], "5.0");
+    assert_eq!(facts["question.costs.false_positive"]["value"], "1.0");
+}
+
+#[test]
+fn updating_estimator_params_keeps_the_model_and_sets_or_drops_only_the_declared_params() {
+    let old = json!({ "positive": "bad", "false_negative": 2.0, "false_positive": 1.0 });
+    let flow = forest_flow(
+        json!({ "target": "risk", "features": ["x"], "task": "classification", "n_estimators": 50, "costs": old }),
+    );
+    let costs = json!({ "positive": "bad", "false_negative": 5.0, "false_positive": 1.0 });
+    let built = threshold_proposal(
+        json!([
+            { "id": "cost_optimal_threshold", "applicability": "applicable", "reason": "Costs.",
+              "params": { "costs": costs } },
+            { "id": "default_half", "applicability": "applicable", "reason": "Same.", "params": {} }
+        ]),
+        &flow,
+    )
+    .unwrap();
+    let kept = json!({ "target": "risk", "features": ["x"], "task": "classification", "n_estimators": 50 });
+    let mut set = kept.clone();
+    set["costs"] = costs;
+    assert_eq!(
+        built["alternatives"][0]["effect"],
+        json!({ "kind": "replace_node", "node_id": "model",
+                "operator": "sprisk.ml.random_forest@1.2.0", "params": set })
+    );
+    assert_eq!(built["alternatives"][1]["effect"]["params"], kept);
+}
+
+#[test]
+fn a_decision_setting_a_param_its_action_does_not_declare_is_refused() {
+    let flow =
+        forest_flow(json!({ "target": "risk", "features": ["x"], "task": "classification" }));
+    let err = threshold_proposal(
+        json!([
+            { "id": "cost_optimal_threshold", "applicability": "applicable", "reason": "Costs.",
+              "params": { "n_estimators": 10 } },
+            { "id": "default_half", "applicability": "applicable", "reason": "Same.", "params": {} }
+        ]),
+        &flow,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("cost_optimal_threshold sets n_estimators, which its action does not name"),
+        "{err}"
+    );
+}

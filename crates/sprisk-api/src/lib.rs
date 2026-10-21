@@ -89,6 +89,10 @@ pub fn router(state: AppState) -> Router {
             "/pipeline_versions/{id}/methodology/proposals/{node_id}",
             post(propose_node_methodology),
         )
+        .route(
+            "/pipeline_versions/{id}/methodology/proposals/{node_id}/{decides}",
+            post(propose_node_decision),
+        )
         .route("/methodology_proposals/{id}", get(get_methodology_proposal))
         .route("/methodology_proposals/{id}/apply", post(apply_methodology))
         .route(
@@ -806,6 +810,7 @@ async fn create_question_version(
     text: String,
 ) -> Result<(StatusCode, Json<QuestionVersion>), ApiError> {
     let question: QuestionVersion = body(&text)?;
+    check_costs(&question)?;
     if let Some(parent_id) = &question.parent_id {
         let parent =
             state
@@ -831,6 +836,35 @@ async fn create_question_version(
     }
     state.store.insert_question_version(&question).await?;
     Ok((StatusCode::CREATED, Json(question)))
+}
+
+/// Misclassification costs are positive and belong to a classification question (ADR-0053).
+fn check_costs(question: &QuestionVersion) -> Result<(), ApiError> {
+    let Some(costs) = &question.costs else {
+        return Ok(());
+    };
+    let invalid = |message: String| ApiError::BadRequest {
+        code: "invalid_costs",
+        message,
+    };
+    if question.task.value != TaskType::Classification {
+        return Err(invalid(format!(
+            "costs apply to a classification question, not a {} one",
+            question.task.value
+        )));
+    }
+    let costs = &costs.value;
+    for (name, cost) in [
+        ("false_negative", costs.false_negative),
+        ("false_positive", costs.false_positive),
+    ] {
+        if !(cost.is_finite() && cost > 0.0) {
+            return Err(invalid(format!(
+                "{name} must be a positive number, not {cost}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 async fn list_question_versions(
@@ -868,14 +902,22 @@ async fn propose_node_methodology(
     propose(&state, &raw, &node_id, None).await
 }
 
+/// The proposal of the one rule that makes `decides` for the step (ADR-0053).
+async fn propose_node_decision(
+    State(state): State<AppState>,
+    Path((raw, node_id, decides)): Path<(String, String, String)>,
+) -> Result<(StatusCode, Json<DecisionProposal>), ApiError> {
+    propose(&state, &raw, &node_id, Some(&decides)).await
+}
+
 /// What the split rule decides, whatever its version.
 const SPLIT_DECISION: &str = "split.method";
 
 /// A step the split rule decides, whatever its version.
 fn is_split(rules: &sprisk_methodology::RuleCatalog, node: &sprisk_contracts::Node) -> bool {
     rules
-        .rule_for_operator(node.operator.as_str())
-        .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
+        .rules_for_operator(node.operator.as_str())
+        .any(|r| r.decides.as_str() == SPLIT_DECISION)
 }
 
 /// Steps whose manifest says they fit on train and write train and test each from its own
@@ -955,8 +997,8 @@ async fn propose(
         })?;
     let rule = state
         .rules
-        .rule_for_operator(node.operator.as_str())
-        .filter(|rule| only.is_none_or(|only| rule.decides.as_str() == only))
+        .rules_for_operator(node.operator.as_str())
+        .find(|rule| only.is_none_or(|only| rule.decides.as_str() == only))
         .ok_or_else(|| {
             not_applicable(format!(
                 "no methodology rule decides operator {}",
@@ -1489,11 +1531,14 @@ async fn select_model(
                 .iter()
                 .find(|n| n.id == step)
                 .is_some_and(|n| {
-                    let Some(rule) = state.rules.rule_for_operator(n.operator.as_str()) else {
-                        return false;
-                    };
-                    rule.selection == Some(MethodologyRuleSelection::Shortlist)
-                        || keeps_train_rows(&state.registry, n)
+                    let rules: Vec<_> = state
+                        .rules
+                        .rules_for_operator(n.operator.as_str())
+                        .collect();
+                    let shortlisted = rules
+                        .iter()
+                        .any(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist));
+                    !rules.is_empty() && (shortlisted || keeps_train_rows(&state.registry, n))
                 });
             if !compared {
                 return Err(ApiError::BadRequest {
@@ -1572,8 +1617,8 @@ async fn create_study(
         .is_some_and(|n| {
             state
                 .rules
-                .rule_for_operator(n.operator.as_str())
-                .is_some_and(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist))
+                .rules_for_operator(n.operator.as_str())
+                .any(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist))
         });
     if !shortlisted {
         return Err(ApiError::BadRequest {
