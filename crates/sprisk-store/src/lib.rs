@@ -411,6 +411,7 @@ impl SqliteStore {
         parse_all(rows, "methodology decision")
     }
 
+    /// The decision saved under `key`; check that a request replays it with [`replays`].
     pub async fn methodology_decision_by_key(
         &self,
         key: &str,
@@ -441,7 +442,15 @@ impl SqliteStore {
                 .await?;
         if let Some(body) = existing {
             tx.rollback().await?;
-            return Ok(serde_json::from_str(&body)?);
+            let saved: MethodologyDecision = serde_json::from_str(&body)?;
+            replays(
+                &saved,
+                idempotency_key,
+                &decision.proposal_id,
+                decision.alternative_id.as_str(),
+                decision.reason.as_ref().map(|r| r.as_str()),
+            )?;
+            return Ok(saved);
         }
         sqlx::query("INSERT INTO pipeline_versions (id, project_id, body) VALUES (?, ?, ?)")
             .bind(pipeline.id.as_str())
@@ -1004,4 +1013,28 @@ fn from_json<T: DeserializeOwned>(
         id: id.to_owned(),
     })?;
     Ok(serde_json::from_str(&body)?)
+}
+
+/// Whether a request under idempotency `key` asks for what `saved` already chose: a retry gets
+/// that decision; the same key with another proposal, choice or reason is a conflict, never
+/// answered with the first (arch doc SCI-07).
+pub fn replays(
+    saved: &MethodologyDecision,
+    key: &str,
+    proposal: &MethodologyProposalId,
+    alternative: &str,
+    reason: Option<&str>,
+) -> Result<(), StoreError> {
+    let same = &saved.proposal_id == proposal
+        && saved.alternative_id.as_str() == alternative
+        && saved.reason.as_ref().map(|r| r.as_str()) == reason;
+    if same {
+        return Ok(());
+    }
+    Err(StoreError::Conflict(format!(
+        "idempotency key {key} was used for another request: decision {} chose {} from proposal {}",
+        saved.id.as_str(),
+        saved.alternative_id.as_str(),
+        saved.proposal_id.as_str()
+    )))
 }

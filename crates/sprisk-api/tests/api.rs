@@ -2598,3 +2598,89 @@ async fn a_preparation_step_with_nothing_to_compare_says_so() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "nothing_to_compare", "{body}");
 }
+
+/// A split proposal on a flow that loads and splits, as the split test makes it.
+async fn split_proposal(api: &Api) -> Value {
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, _) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().push(json!({
+        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        "params":{"test_fraction":0.2,"seed":42,"stratify":"returned_within_30d"}
+    }));
+    flow["edges"] = json!([{"from":"load.data","to":"split.data"}]);
+    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/split/split/proposals";
+    let (status, proposal) = call(&api.app, "POST", uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    proposal
+}
+
+#[tokio::test]
+async fn an_apply_key_reused_for_another_choice_conflicts_instead_of_replaying_the_first() {
+    // SCI-07: a retry gets the same version; a changed payload under the same key conflicts.
+    let api = api().await;
+    let proposal = split_proposal(&api).await;
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let first = json!({ "alternative_id": "temporal", "idempotency_key": "test-reused-key" });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(first)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+
+    for changed in [
+        json!({ "alternative_id": "stratified_random", "idempotency_key": "test-reused-key",
+                "reason": "Rows are independent." }),
+        json!({ "alternative_id": "temporal", "idempotency_key": "test-reused-key",
+                "reason": "A reason the first request did not give." }),
+    ] {
+        let (status, body) = call(&api.app, "POST", &uri, Some(changed.clone())).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{changed}: {body}");
+        assert_eq!(body["errors"][0]["code"], "conflict");
+        assert!(
+            body["errors"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("idempotency key test-reused-key was used for another request"),
+            "{body}"
+        );
+    }
+    let (_, decisions) = call(&api.app, "GET", "/methodology_decisions", None).await;
+    assert_eq!(decisions.as_array().unwrap().len(), 1, "{decisions}");
+}
+
+#[tokio::test]
+async fn two_applies_at_once_with_one_key_and_different_choices_make_one_decision() {
+    let api = api().await;
+    let proposal = split_proposal(&api).await;
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let temporal = json!({ "alternative_id": "temporal", "idempotency_key": "test-raced-key" });
+    let random = json!({ "alternative_id": "stratified_random", "idempotency_key": "test-raced-key",
+                         "reason": "Rows are independent." });
+
+    let ((one, first), (two, second)) = tokio::join!(
+        call(&api.app, "POST", &uri, Some(temporal)),
+        call(&api.app, "POST", &uri, Some(random))
+    );
+
+    // The loser is refused: as a conflicting key, or as stale once the winner's version exists.
+    let refused = [StatusCode::CONFLICT, StatusCode::UNPROCESSABLE_ENTITY];
+    let created = [one, two]
+        .iter()
+        .filter(|s| **s == StatusCode::CREATED)
+        .count();
+    assert_eq!(created, 1, "{first} {second}");
+    assert!(
+        refused.contains(&one) || refused.contains(&two),
+        "{first} {second}"
+    );
+    let (_, decisions) = call(&api.app, "GET", "/methodology_decisions", None).await;
+    assert_eq!(decisions.as_array().unwrap().len(), 1, "{decisions}");
+}

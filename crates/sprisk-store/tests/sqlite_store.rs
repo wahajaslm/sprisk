@@ -816,3 +816,37 @@ async fn a_proposal_s_own_branches_do_not_make_its_flow_changed() {
             .unwrap()
     );
 }
+
+#[tokio::test]
+async fn an_apply_key_gives_its_decision_to_the_same_choice_and_refuses_another() {
+    // Two requests racing with one key both reach the store; the second must not take the
+    // first's decision as its own when it asked for something else (SCI-07).
+    let (store, decision) = store_with_decision().await;
+    let applied: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ2"}),
+    );
+    let mut retry = decision.clone();
+    retry.id = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ8".parse().unwrap();
+    retry.pipeline_version_id = applied.id.clone();
+
+    let kept = store
+        .apply_methodology_decision(&retry, &applied, "key-0001")
+        .await
+        .unwrap();
+    assert_eq!(kept, decision);
+
+    let mut other = retry;
+    other.alternative_id = "stratified_random".parse().unwrap();
+    let err = store
+        .apply_methodology_decision(&other, &applied, "key-0001")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    assert!(
+        err.to_string()
+            .contains("idempotency key key-0001 was used for another request"),
+        "{err}"
+    );
+}

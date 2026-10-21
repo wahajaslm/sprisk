@@ -1076,6 +1076,13 @@ async fn apply_methodology(
         .methodology_decision_by_key(request.idempotency_key.as_str())
         .await?
     {
+        sprisk_store::replays(
+            &saved,
+            request.idempotency_key.as_str(),
+            &proposal.id,
+            request.alternative_id.as_str(),
+            request.reason.as_ref().map(|r| r.as_str()),
+        )?;
         let saved_pipeline = state
             .store
             .get_pipeline_version(&saved.pipeline_version_id)
