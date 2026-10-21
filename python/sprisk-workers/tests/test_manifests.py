@@ -52,7 +52,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.ml.evaluate@1.0.0",
         "sprisk.ml.feature_importance@1.0.0",
         "sprisk.ml.linear_model@1.0.0",
-        "sprisk.ml.random_forest@1.0.0",
+        "sprisk.ml.random_forest@1.1.0",
         "sprisk.ml.select_model@3.0.0",
         "sprisk.profile.chart@1.0.0",
         "sprisk.profile.distributions@1.0.0",

@@ -2512,6 +2512,7 @@ name = "sprisk-registry"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "jsonschema",
  "serde_json",
  "sha2 0.11.1",
  "sprisk-contracts",

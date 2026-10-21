@@ -228,7 +228,7 @@ fn a_scale_step_upstream_of_a_random_forest_reads_trees_that_fill_their_own_gaps
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest"),
+            ("rf", "ml.random_forest@1.1.0"),
             ("base", "ml.dummy_baseline"),
             ("eval", "ml.evaluate"),
         ],
@@ -251,7 +251,7 @@ fn models_of_several_families_are_all_listed() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest"),
+            ("rf", "ml.random_forest@1.1.0"),
             ("lin", "ml.linear_model"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "lin.train")],
@@ -269,7 +269,7 @@ fn a_clustering_step_beside_a_forest_means_only_some_models_fill_their_own_gaps(
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest"),
+            ("rf", "ml.random_forest@1.1.0"),
             ("km", "clustering.kmeans"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "km.data")],
@@ -344,7 +344,7 @@ fn a_hidden_model_beside_a_seen_one_means_only_some_prepare_themselves() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest"),
+            ("rf", "ml.random_forest@1.1.0"),
             ("code", "code.python@1.1.0"),
             ("lin", "ml.linear_model"),
         ],
@@ -366,7 +366,7 @@ fn a_step_with_no_model_after_it_hides_nothing() {
         &[
             ("scale", "clean.scale"),
             ("summary", "profile.summarize"),
-            ("rf", "ml.random_forest"),
+            ("rf", "ml.random_forest@1.1.0"),
         ],
         &[("scale.train", "summary.data"), ("scale.train", "rf.train")],
     );
@@ -460,7 +460,7 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
         .rule("methodology.supervised.outlier_treatment@2.0.0")
         .unwrap();
     let pipeline = flow(
-        &[("scale", "clean.scale"), ("rf", "ml.random_forest")],
+        &[("scale", "clean.scale"), ("rf", "ml.random_forest@1.1.0")],
         &[("scale.train", "rf.train")],
     );
     let observed = observation(
@@ -499,7 +499,7 @@ fn before_forest() -> PipelineVersion {
         &[
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest"),
+            ("rf", "ml.random_forest@1.1.0"),
             ("eval", "ml.evaluate"),
         ],
         &[
@@ -563,7 +563,7 @@ fn a_step_whose_output_has_no_input_of_the_same_name_cannot_be_removed() {
     let pipeline = flow(
         &[
             ("split", "validation.random_split"),
-            ("rf", "ml.random_forest"),
+            ("rf", "ml.random_forest@1.1.0"),
             ("eval", "ml.evaluate"),
         ],
         &[("split.train", "rf.train"), ("rf.model", "eval.model")],
@@ -639,7 +639,7 @@ fn every_flow_fact_in_the_catalog_is_one_rust_sends() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest"),
+            ("rf", "ml.random_forest@1.1.0"),
             ("summary", "profile.summarize"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "summary.data")],
@@ -782,10 +782,10 @@ fn a_shortlist_proposal_replaces_the_model_step_with_each_candidate() {
     );
     assert!(built.get("recommended_alternative_id").is_none());
     let forest = &built["alternatives"][2];
-    assert_eq!(forest["label"], "sprisk.ml.random_forest@1.0.0");
+    assert_eq!(forest["label"], "sprisk.ml.random_forest@1.1.0");
     assert_eq!(
         forest["effect"]["operator"],
-        "sprisk.ml.random_forest@1.0.0"
+        "sprisk.ml.random_forest@1.1.0"
     );
     assert_eq!(
         forest["effect"]["params"],
@@ -1570,7 +1570,7 @@ fn a_preparation_comparison_needs_a_recommendation() {
 fn a_step_that_prepares_two_models_is_compared_for_neither() {
     let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
     pipeline["nodes"].as_array_mut().unwrap().push(json!({
-        "id": "forest", "operator": "sprisk.ml.random_forest@1.0.0",
+        "id": "forest", "operator": "sprisk.ml.random_forest@1.1.0",
         "params": { "target": "churned", "features": ["age"], "task": "classification" }
     }));
     pipeline["edges"]

@@ -69,3 +69,20 @@ def test_random_forest_fits_and_scores(clf_frame: pl.DataFrame) -> None:
     model = random_forest(clf_frame[::2], **CLF, n_estimators=50, seed=0)
     m = evaluate(model, clf_frame[1::2], target="y", task="classification")["metrics"]
     assert m["estimator"] == "RandomForestClassifier" and m["accuracy"] > 0.8
+
+
+def test_random_forest_takes_its_searched_settings_and_keeps_its_task_defaults(
+    clf_frame: pl.DataFrame,
+) -> None:
+    from sprisk_ml.models import random_forest_estimator
+
+    schema = clf_frame.select(CLF["features"]).schema
+    tuned = random_forest_estimator(
+        schema, "classification", min_samples_leaf=5, max_features=0.5
+    ).named_steps["estimator"]
+    assert (tuned.min_samples_leaf, tuned.max_features) == (5, 0.5)
+    # Unset, each task keeps scikit-learn's own default.
+    forest = random_forest_estimator(schema, "classification").named_steps["estimator"]
+    assert (forest.min_samples_leaf, forest.max_features) == (1, "sqrt")
+    forest = random_forest_estimator(schema, "regression").named_steps["estimator"]
+    assert forest.max_features == 1.0

@@ -1,7 +1,8 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.random_forest@1.0.0
+id: sprisk.ml.random_forest@1.1.0
 capability_class: estimator
-model: { family: tree_ensemble, tasks: [classification, regression], prepares: [fill_gaps], estimator: "sprisk_ml.models:random_forest_estimator", complexity: 2 }
+model: { family: tree_ensemble, tasks: [classification, regression], prepares: [fill_gaps], estimator: "sprisk_ml.models:random_forest_estimator", complexity: 2,
+  search: [{ name: min_samples_leaf, values: [1, 5, 20] }, { name: max_features, values: [0.3, 0.6, 1.0] }] }
 description: Random forest (classification or regression) with imputation and one-hot encoding fit on train only.
 entrypoint: sprisk_ml.models:random_forest
 inputs: [{ name: train, kind: table }]
@@ -16,6 +17,8 @@ params_schema:
     task: { type: string, enum: [classification, regression], description: "Predict a class or a number." }
     n_estimators: { type: integer, minimum: 10, maximum: 2000, default: 200, description: "Number of trees." }
     seed: { type: integer, minimum: 0, default: 0, description: "Fixes the trees so runs repeat." }
+    min_samples_leaf: { type: integer, minimum: 1, maximum: 1000, default: 1, description: "Fewest train rows a leaf may hold; larger smooths the trees." }
+    max_features: { type: number, exclusiveMinimum: 0, maximum: 1, description: "Share of the features each split may look at. Unset: all of them for regression, their square root for classification." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

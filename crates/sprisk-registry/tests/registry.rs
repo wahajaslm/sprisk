@@ -285,3 +285,95 @@ fn source_never_follows_a_link_out_of_the_pack() {
         Err(RegistryError::NoSource { .. })
     ));
 }
+
+const FOREST: &str = r#"
+schema_version: sprisk.operator/v1
+id: sprisk.test.forest@1.0.0
+capability_class: estimator
+entrypoint: m:fit
+inputs: [{ name: train, kind: table }]
+outputs: [{ name: model, kind: model }]
+params_schema:
+  type: object
+  properties:
+    target: { type: string }
+    features: { type: array }
+    task: { type: string }
+    seed: { type: integer, minimum: 0 }
+    min_samples_leaf: { type: integer, minimum: 1 }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }
+"#;
+
+fn forest_searching(search: &str) -> String {
+    format!(
+        "{FOREST}model: {{ family: tree_ensemble, tasks: [classification], prepares: [], estimator: \"m:build\", complexity: 2, search: {search} }}\n"
+    )
+}
+
+#[test]
+fn a_model_s_search_is_kept_in_manifest_order() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "forest/manifest.yaml",
+        &forest_searching("[{ name: min_samples_leaf, values: [1, 5, 20] }]"),
+    );
+    let registry = Registry::load_dir(dir.path()).unwrap();
+    let search = &registry
+        .get("sprisk.test.forest@1.0.0")
+        .unwrap()
+        .model
+        .as_ref()
+        .unwrap()
+        .search;
+    assert_eq!(search[0].name.as_str(), "min_samples_leaf");
+    assert_eq!(search[0].values, [1, 5, 20].map(serde_json::Value::from));
+}
+
+#[test]
+fn a_search_the_model_cannot_take_is_refused_naming_the_file_and_why() {
+    let cases = [
+        (
+            "[{ name: max_depth, values: [3, 6] }]",
+            "max_depth is not a params property",
+        ),
+        (
+            "[{ name: target, values: [a, b] }]",
+            "target is fixed by the flow",
+        ),
+        (
+            "[{ name: seed, values: [0, 1] }]",
+            "seed is fixed by the flow",
+        ),
+        (
+            "[{ name: min_samples_leaf, values: [0, 5] }]",
+            "min_samples_leaf: 0 is not a valid value",
+        ),
+        (
+            "[{ name: min_samples_leaf, values: [5] }]",
+            "min_samples_leaf needs at least two values",
+        ),
+        (
+            "[{ name: min_samples_leaf, values: [5, 5] }]",
+            "min_samples_leaf lists 5 twice",
+        ),
+        (
+            "[{ name: min_samples_leaf, values: [1, 5] }, { name: min_samples_leaf, values: [2, 3] }]",
+            "min_samples_leaf is searched twice",
+        ),
+    ];
+    for (search, why) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "bad/manifest.yaml", &forest_searching(search));
+        let err = Registry::load_dir(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, RegistryError::BadSearch { .. }),
+            "{search}: {err}"
+        );
+        let text = err.to_string();
+        assert!(text.contains("bad/manifest.yaml"), "{text}");
+        assert!(text.contains(why), "{search}: {text}");
+    }
+}

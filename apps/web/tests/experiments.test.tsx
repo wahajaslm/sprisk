@@ -127,7 +127,7 @@ describe("model comparison", () => {
     alternatives: [
       { id: "ml_dummy_baseline", label: "sprisk.ml.dummy_baseline@1.0.0", description: "Dummy.", applicability: "applicable", reason: "The floor." },
       { id: "ml_linear_model", label: "sprisk.ml.linear_model@1.0.0", description: "Linear.", applicability: "applicable", reason: "A simple reference." },
-      { id: "ml_random_forest", label: "sprisk.ml.random_forest@1.0.0", description: "Forest.", applicability: "applicable", reason: "Enough rows for trees." },
+      { id: "ml_random_forest", label: "sprisk.ml.random_forest@1.1.0", description: "Forest.", applicability: "applicable", reason: "Enough rows for trees." },
       { id: "ml_gradient_boosting", label: "sprisk.ml.gradient_boosting@1.0.0", description: "Boosting.", applicability: "applicable", reason: "Too few rows to trust." },
     ],
     shortlist: ["ml_dummy_baseline", "ml_linear_model", "ml_random_forest"],

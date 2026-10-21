@@ -51,21 +51,35 @@ def random_forest(
     task: str,
     n_estimators: int = 200,
     seed: int = 0,
+    min_samples_leaf: int = 1,
+    max_features: float | None = None,
 ) -> Pipeline:
     """A forest of decision trees; captures interactions a linear model misses."""
-    model = random_forest_estimator(train.select(features).schema, task, n_estimators, seed)
+    model = random_forest_estimator(
+        train.select(features).schema, task, n_estimators, seed, min_samples_leaf, max_features
+    )
     return fit(model, train, target, features)
 
 
 def random_forest_estimator(
-    schema: pl.Schema, task: str, n_estimators: int = 200, seed: int = 0
+    schema: pl.Schema,
+    task: str,
+    n_estimators: int = 200,
+    seed: int = 0,
+    min_samples_leaf: int = 1,
+    max_features: float | None = None,
 ) -> Pipeline:
+    """`max_features` is the share of features each split may look at; unset, each task keeps
+    scikit-learn's default."""
     forest = RandomForestClassifier if task == "classification" else RandomForestRegressor
+    settings: dict[str, Any] = {"min_samples_leaf": min_samples_leaf}
+    if max_features is not None:
+        settings["max_features"] = max_features
     # Trees split on rank order, so scaling would change nothing.
     return Pipeline(
         [
             ("preprocess", preprocessor(schema, scale=False)),
-            ("estimator", forest(n_estimators=n_estimators, random_state=seed)),
+            ("estimator", forest(n_estimators=n_estimators, random_state=seed, **settings)),
         ]
     )
 

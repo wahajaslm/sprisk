@@ -1716,7 +1716,7 @@ async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
 async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
     let api = api().await;
     let forest = json!({
-        "id":"rf", "operator":"sprisk.ml.random_forest@1.0.0",
+        "id":"rf", "operator":"sprisk.ml.random_forest@1.1.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","seed":0}
     });
     scaling_flow_into(
@@ -1853,7 +1853,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
         .unwrap();
     assert_eq!(
         forest["effect"]["operator"],
-        "sprisk.ml.random_forest@1.0.0"
+        "sprisk.ml.random_forest@1.1.0"
     );
     assert_eq!(forest["effect"]["params"]["features"], json!(["age"]));
 }
@@ -1884,7 +1884,7 @@ async fn choosing_a_shortlisted_model_without_comparing_needs_a_reason() {
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.0.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.1.0");
 }
 
 #[tokio::test]

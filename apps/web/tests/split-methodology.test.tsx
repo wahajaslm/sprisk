@@ -62,7 +62,7 @@ describe("model shortlist", () => {
     ...pipeline,
     nodes: [{ id: "model", operator: "sprisk.ml.linear_model@1.0.0", params: { target: "y", features: ["age"], task: "classification" } }],
   };
-  const forestEffect = { kind: "replace_node" as const, node_id: "model", operator: "sprisk.ml.random_forest@1.0.0", params: { target: "y", features: ["age"], task: "classification" } };
+  const forestEffect = { kind: "replace_node" as const, node_id: "model", operator: "sprisk.ml.random_forest@1.1.0", params: { target: "y", features: ["age"], task: "classification" } };
   const shortlist = parse("DecisionProposal", {
     schema_version: "sprisk.decision_proposal/v1",
     id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
@@ -73,7 +73,7 @@ describe("model shortlist", () => {
     evidence: [],
     alternatives: [
       { id: "ml_dummy_baseline", label: "sprisk.ml.dummy_baseline@1.0.0", description: "Baseline.", applicability: "applicable", reason: "The floor.", effect: { ...forestEffect, operator: "sprisk.ml.dummy_baseline@1.0.0" } },
-      { id: "ml_random_forest", label: "sprisk.ml.random_forest@1.0.0", description: "Forest.", applicability: "applicable", reason: "Left off: too few rows.", effect: forestEffect },
+      { id: "ml_random_forest", label: "sprisk.ml.random_forest@1.1.0", description: "Forest.", applicability: "applicable", reason: "Left off: too few rows.", effect: forestEffect },
     ],
     shortlist: ["ml_dummy_baseline"],
     fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
@@ -86,7 +86,7 @@ describe("model shortlist", () => {
     await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
 
     expect(await screen.findByText(/dummy_baseline@1.0.0 · shortlisted/)).toBeInTheDocument();
-    expect(screen.queryByText(/random_forest@1.0.0 · shortlisted/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/random_forest@1.1.0 · shortlisted/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: /dummy_baseline/ }));
     expect(screen.getByLabelText(/Reason for choosing without comparing/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply to new flow version" })).toBeDisabled();

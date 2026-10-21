@@ -1,0 +1,100 @@
+{
+  "schema_version": "sprisk.operator/v1",
+  "id": "sprisk.ml.random_forest@1.1.0",
+  "capability_class": "estimator",
+  "model": {
+    "family": "tree_ensemble",
+    "tasks": [
+      "classification",
+      "regression"
+    ],
+    "prepares": [
+      "fill_gaps"
+    ],
+    "estimator": "sprisk_ml.models:random_forest_estimator",
+    "complexity": 2,
+    "search": [
+      {
+        "name": "min_samples_leaf",
+        "values": [
+          1,
+          5,
+          20
+        ]
+      },
+      {
+        "name": "max_features",
+        "values": [
+          0.3,
+          0.6,
+          1.0
+        ]
+      }
+    ]
+  },
+  "description": "Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.",
+  "entrypoint": "sprisk_ml.models:linear_model",
+  "inputs": [
+    {
+      "name": "train",
+      "kind": "table"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "model",
+      "kind": "model"
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "target",
+      "features",
+      "task"
+    ],
+    "properties": {
+      "target": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Column to predict."
+      },
+      "features": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uniqueItems": true,
+        "description": "Columns used as inputs."
+      },
+      "task": {
+        "type": "string",
+        "enum": [
+          "classification",
+          "regression"
+        ],
+        "description": "classification fits logistic regression; regression fits linear regression."
+      },
+      "min_samples_leaf": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 1
+      },
+      "max_features": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 1
+      }
+    }
+  },
+  "effects": "pure",
+  "network": "none",
+  "resources": {
+    "cpu_cores": 1,
+    "memory_mb": 2048,
+    "gpu": "none",
+    "timeout_seconds": 600
+  }
+}

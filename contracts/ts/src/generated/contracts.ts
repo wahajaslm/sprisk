@@ -1594,6 +1594,20 @@ export interface OperatorModel {
    * Python `module:function` returning the model unfitted, given `schema` (the feature columns' types) and its params except target and features, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model.
    */
   estimator?: string;
+  /**
+   * The settings a study may tune, in this order, each with the values it tries (ADR-0051). Left out for a model with nothing to tune.
+   */
+  search?: SearchSetting[];
+}
+/**
+ * One setting a study may tune: a params property of the model, and the finite list of values it tries. The registry checks each value against the property's schema.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SearchSetting".
+ */
+export interface SearchSetting {
+  name: string;
+  values: unknown[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

@@ -38,6 +38,8 @@ pub enum RegistryError {
         "{path}: a model with tasks must declare its estimator and complexity, so it can be cross-validated and ranked"
     )]
     IncompleteModel { path: PathBuf },
+    #[error("{path}: model.search: {reason}")]
+    BadSearch { path: PathBuf, reason: String },
     #[error("unknown operator {0}")]
     UnknownOperator(String),
     #[error("operator {operator} has no readable source in its pack")]
@@ -229,7 +231,49 @@ fn read_manifest(path: &Path) -> Result<Operator, RegistryError> {
             path: path.to_owned(),
         });
     }
+    check_search(&operator).map_err(|reason| RegistryError::BadSearch {
+        path: path.to_owned(),
+        reason,
+    })?;
     Ok(operator)
+}
+
+/// Params the flow sets, so a study never tunes them (ADR-0051).
+const FIXED_PARAMS: [&str; 4] = ["target", "features", "task", "seed"];
+
+/// Every searched setting is a params property the flow does not fix, searched once, with
+/// at least two distinct values its property's schema accepts.
+fn check_search(operator: &Operator) -> Result<(), String> {
+    let Some(model) = &operator.model else {
+        return Ok(());
+    };
+    let properties = operator.params_schema.get("properties");
+    let mut seen = std::collections::HashSet::new();
+    for setting in &model.search {
+        let name = setting.name.as_str();
+        if FIXED_PARAMS.contains(&name) {
+            return Err(format!("{name} is fixed by the flow"));
+        }
+        if !seen.insert(name) {
+            return Err(format!("{name} is searched twice"));
+        }
+        let schema = properties
+            .and_then(|p| p.get(name))
+            .ok_or_else(|| format!("{name} is not a params property"))?;
+        if setting.values.len() < 2 {
+            return Err(format!("{name} needs at least two values"));
+        }
+        let validator = jsonschema::validator_for(schema).map_err(|e| format!("{name}: {e}"))?;
+        for (i, value) in setting.values.iter().enumerate() {
+            if !validator.is_valid(value) {
+                return Err(format!("{name}: {value} is not a valid value"));
+            }
+            if setting.values[..i].contains(value) {
+                return Err(format!("{name} lists {value} twice"));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// sha256 over the manifest and every file under the pack's `src/`, by relative path.

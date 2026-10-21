@@ -582,6 +582,14 @@ class KernelShutdown(StrictModel):
     op: Literal["shutdown"]
 
 
+class SearchSetting(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    values: list[Any]
+
+
 class Entrypoint(RootModel[str]):
     root: Annotated[str, Field(pattern="^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*:[a-z_][a-z0-9_]*$")]
 
@@ -1505,6 +1513,12 @@ class OperatorModel(StrictModel):
         Entrypoint | None,
         Field(
             description="Python `module:function` returning the model unfitted, given `schema` (the feature columns' types) and its params except target and features, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model."
+        ),
+    ] = None
+    search: Annotated[
+        list[SearchSetting] | None,
+        Field(
+            description="The settings a study may tune, in this order, each with the values it tries (ADR-0051). Left out for a model with nothing to tune."
         ),
     ] = None
 
