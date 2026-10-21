@@ -960,6 +960,41 @@ export interface CellProblem {
   message: string;
 }
 /**
+ * A ready-made step's settings and the variables its inputs and outputs go by. Body of POST /operators/{id}/notebook_code (ADR-0055).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookCodeRequest".
+ */
+export interface NotebookCodeRequest {
+  /**
+   * The step's params as the flow has them.
+   */
+  settings: {
+    [k: string]: unknown;
+  };
+  /**
+   * The variable each input port reads, by port.
+   */
+  inputs: {
+    [k: string]: VariableName;
+  };
+  /**
+   * The variable each output port sets, by port.
+   */
+  outputs: {
+    [k: string]: VariableName;
+  };
+}
+/**
+ * A ready-made step written as plain Python for a notebook cell (ADR-0055).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookCode".
+ */
+export interface NotebookCode {
+  code: string;
+}
+/**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1664,6 +1699,10 @@ export interface Operator {
    * Python `module:function` the worker calls.
    */
   entrypoint: string;
+  /**
+   * Python `module:function` that writes this step as plain Python for a notebook cell, with its settings and names filled in (ADR-0055). A test runs that code against the step on fixtures. Absent: the step has no plain code yet.
+   */
+  notebook_code?: string;
   /**
    * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows.
    */

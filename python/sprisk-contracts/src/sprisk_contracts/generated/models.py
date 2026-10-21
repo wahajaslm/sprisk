@@ -173,6 +173,13 @@ class CellProblem(StrictModel):
     message: Annotated[str, Field(description="What is wrong and what to write instead.")]
 
 
+class NotebookCode(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    code: Annotated[str, Field(max_length=100000)]
+
+
 class ArtifactId(RootModel[str]):
     root: Annotated[str, Field(pattern="^art_[0-9A-HJKMNP-TV-Z]{26}$")]
 
@@ -1319,6 +1326,21 @@ class CellStep(StrictModel):
     ]
 
 
+class NotebookCodeRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    settings: Annotated[
+        dict[str, Any], Field(description="The step's params as the flow has them.")
+    ]
+    inputs: Annotated[
+        dict[str, VariableName], Field(description="The variable each input port reads, by port.")
+    ]
+    outputs: Annotated[
+        dict[str, VariableName], Field(description="The variable each output port sets, by port.")
+    ]
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2144,6 +2166,12 @@ class Operator(StrictModel):
     entrypoint: Annotated[
         Entrypoint, Field(description="Python `module:function` the worker calls.")
     ]
+    notebook_code: Annotated[
+        Entrypoint | None,
+        Field(
+            description="Python `module:function` that writes this step as plain Python for a notebook cell, with its settings and names filled in (ADR-0055). A test runs that code against the step on fixtures. Absent: the step has no plain code yet."
+        ),
+    ] = None
     fits_on_train: Annotated[
         bool | None,
         Field(

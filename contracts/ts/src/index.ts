@@ -29,6 +29,8 @@ export interface Entities {
   CodeSplit: C.CodeSplit;
   CellStepsRequest: C.CellStepsRequest;
   CellSteps: C.CellSteps;
+  NotebookCodeRequest: C.NotebookCodeRequest;
+  NotebookCode: C.NotebookCode;
   OperatorSource: C.OperatorSource;
   MethodologyRule: C.MethodologyRule;
   MethodologyRuleSource: C.MethodologyRuleSource;

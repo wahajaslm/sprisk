@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "test_fraction": 0.25,
+    "seed": 42,
+    "stratify": "credit_risk"
+  },
+  "inputs": {
+    "data": "load_data"
+  },
+  "outputs": {
+    "train": "split_train",
+    "test": "split_test"
+  }
+}

@@ -934,6 +934,53 @@
           "description": "What is wrong and what to write instead."
         }
       }
+    },
+    "NotebookCodeRequest": {
+      "title": "NotebookCodeRequest",
+      "description": "A ready-made step's settings and the variables its inputs and outputs go by. Body of POST /operators/{id}/notebook_code (ADR-0055).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "settings",
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "settings": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "The step's params as the flow has them."
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/VariableName"
+          },
+          "description": "The variable each input port reads, by port."
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/VariableName"
+          },
+          "description": "The variable each output port sets, by port."
+        }
+      }
+    },
+    "NotebookCode": {
+      "title": "NotebookCode",
+      "description": "A ready-made step written as plain Python for a notebook cell (ADR-0055).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      }
     }
   }
 }

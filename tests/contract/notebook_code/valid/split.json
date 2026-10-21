@@ -1,0 +1,3 @@
+{
+  "code": "shuffled = load_data.sample(fraction=1.0, shuffle=True, seed=42)\n"
+}

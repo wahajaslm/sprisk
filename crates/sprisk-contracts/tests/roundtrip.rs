@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    CellSteps, CellStepsRequest, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, CreateStudy,
+    CellSteps, CellStepsRequest, CodeDisplay, NotebookCode, NotebookCodeRequest, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, CreateStudy,
     DatasetProfile, DecisionProposal, FigureSet, LoadedTable, MethodologyCheck,
     MethodologyDecision, MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables,
@@ -79,6 +79,8 @@ const ENTITIES: &[&str] = &[
     "methodology_rule",
     "methodology_rule_source",
     "model_selection",
+    "notebook_code",
+    "notebook_code_request",
     "notebook_execute",
     "notebook_execution",
     "notebook_execution_event",
@@ -260,6 +262,16 @@ fn cell_steps() {
 #[test]
 fn cell_steps_request() {
     check::<CellStepsRequest>("cell_steps_request");
+}
+
+#[test]
+fn notebook_code() {
+    check::<NotebookCode>("notebook_code");
+}
+
+#[test]
+fn notebook_code_request() {
+    check::<NotebookCodeRequest>("notebook_code_request");
 }
 
 #[test]

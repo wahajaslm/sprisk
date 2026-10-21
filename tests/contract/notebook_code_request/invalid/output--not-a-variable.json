@@ -1,0 +1,7 @@
+{
+  "settings": {},
+  "inputs": {},
+  "outputs": {
+    "train": "split train"
+  }
+}
