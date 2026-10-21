@@ -43,3 +43,9 @@ check:
     pnpm -C apps/web typecheck
     pnpm -C apps/web test
     just contracts-check
+    just sweep
+
+# Delete Rust build outputs unused for 7 days. Cargo never removes stale copies on its own.
+sweep:
+    @command -v cargo-sweep >/dev/null || (echo "cargo-sweep is missing. Install it with 'cargo install cargo-sweep'." && exit 1)
+    cargo sweep --time 7

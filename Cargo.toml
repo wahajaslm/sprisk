@@ -13,3 +13,8 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+# Full debug info made target/ grow by gigabytes per day. Line tables keep
+# backtraces usable at a fraction of the size.
+[profile.dev]
+debug = "line-tables-only"
