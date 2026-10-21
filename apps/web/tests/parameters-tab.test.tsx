@@ -34,6 +34,16 @@ describe("methodology on a step", () => {
     expect(await screen.findByRole("button", { name: "Review methodology choices" })).toBeInTheDocument();
   });
 
+  it("shows one panel per rule that decides the step, in workflow order, titled by the rule", async () => {
+    const threshold = { ...shortlistRule, id: "methodology.supervised.decision_threshold@1.0.0", name: "Decision Threshold",
+      stage: "evaluation", decides: "evaluation.decision_threshold", selection: undefined };
+    server.use(http.get("/api/methodology_rules", () =>
+      HttpResponse.json([threshold, { ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }].map((r) => ({ ...r, applies_to: ["sprisk.ml.linear_model"] })))));
+    renderWithApi(<ParametersTab pipeline={pipeline} nodeId="model" operator={model} found={{ status: "none", reason: "" }} />);
+    const panels = await screen.findAllByRole("region", { name: /Model Shortlist|Decision Threshold/ });
+    expect(panels.map((p) => p.getAttribute("aria-label"))).toEqual(["Model Shortlist", "Decision Threshold"]);
+  });
+
   it("is not offered when no active rule decides it", async () => {
     render(["sprisk.ml.random_forest"]);
     await screen.findByLabelText(/target/);

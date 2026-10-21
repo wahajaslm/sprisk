@@ -11,10 +11,15 @@ export function useResolveSplit() {
   });
 }
 
+/** A step's proposal; with `decides`, that of the one rule making that decision (ADR-0053). */
 export function useResolveMethodology() {
   return useMutation({
-    mutationFn: ({ pipelineId, nodeId }: { pipelineId: string; nodeId: string }) =>
-      postOne("DecisionProposal", `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}`, {}),
+    mutationFn: ({ pipelineId, nodeId, decides }: { pipelineId: string; nodeId: string; decides?: string }) =>
+      postOne(
+        "DecisionProposal",
+        `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}${decides ? `/${decides}` : ""}`,
+        {},
+      ),
   });
 }
 

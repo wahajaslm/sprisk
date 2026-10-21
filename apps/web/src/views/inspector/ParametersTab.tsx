@@ -1,4 +1,4 @@
-import type { CodeInterface, CodeParameter, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { CodeInterface, CodeParameter, MethodologyRule, Operator, PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
 
 import type { Read } from "../../api/code.ts";
@@ -29,15 +29,28 @@ export function ParametersTab({ pipeline, nodeId, operator, found }: Props) {
     return <Expose key={JSON.stringify(found.value.parameters)} pipeline={pipeline} nodeId={nodeId} params={node.params} found={found.value} />;
   }
   if (!operator) return <Loading />;
-  // A step has methodology choices when an active rule decides its operator (ADR-0045).
+  // A step has one panel per active rule that decides its operator (ADR-0045, ADR-0053).
   const unversioned = node.operator.split("@")[0] ?? node.operator;
-  const hasMethodology = (rules.data ?? []).some((r) => r.status === "active" && r.applies_to?.includes(unversioned));
+  const deciding = (rules.data ?? [])
+    .filter((r) => r.status === "active" && r.applies_to?.includes(unversioned))
+    .sort(inWorkflowOrder);
 
   return <>
     {rules.isError && <p role="alert" className="error">Methodology rules could not be read: {rules.error.message}</p>}
-    {hasMethodology && <SplitMethodology key={`method/${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} />}
+    {deciding.map((rule) => (
+      <SplitMethodology key={`method/${pipeline.id}/${nodeId}/${rule.decides}`} pipeline={pipeline} nodeId={nodeId} rule={rule} />
+    ))}
     <Settings key={`${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} params={node.params} schema={operator.params_schema} />
   </>;
+}
+
+/** The schema's stage order, so a step's rules read as the work goes: the model, then its threshold. */
+const STAGE_ORDER: Record<MethodologyRule["stage"], number> = {
+  question: 0, data: 1, cleaning: 2, split: 3, features: 4, models: 5, evaluation: 6, reporting: 7,
+};
+
+function inWorkflowOrder(a: MethodologyRule, b: MethodologyRule): number {
+  return STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || a.id.localeCompare(b.id);
 }
 
 /** Exposed values as typed in the form, by parameter name. */

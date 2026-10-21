@@ -32,6 +32,14 @@ const proposal = parse("DecisionProposal", {
       reason: "Available.",
       effect: { kind: "replace_node", node_id: "scale", operator: "sprisk.clean.scale@1.0.0", params: { columns: ["age"], method: "robust" } },
     },
+    {
+      id: "clip_instead",
+      label: "Clip Outliers Instead",
+      description: "Clip extreme values rather than rescale.",
+      applicability: "applicable",
+      reason: "Available.",
+      effect: { kind: "replace_node", node_id: "scale", operator: "sprisk.clean.clip_outliers@1.0.0", params: { columns: ["age"] } },
+    },
   ],
 });
 
@@ -49,11 +57,49 @@ describe("methodology choice preview", () => {
     expect(screen.queryByText(/Replace/)).not.toBeInTheDocument();
   });
 
-  it("shows the operator and params a replacing choice puts in", async () => {
+  it("shows the params a choice keeping the step's operator puts in, as a settings change", async () => {
     await review();
     await userEvent.click(await screen.findByRole("radio", { name: /Robust Scaling/ }));
-    expect(screen.getByText(/Replace/)).toBeInTheDocument();
+    expect(screen.getByText(/Change the settings of/)).toBeInTheDocument();
     expect(screen.getByText(/"method": "robust"/)).toBeInTheDocument();
+  });
+});
+
+describe("a replacing choice", () => {
+  it("names the operator it puts in the step's place", async () => {
+    await review();
+    await userEvent.click(await screen.findByRole("radio", { name: /Clip Outliers Instead/ }));
+    expect(screen.getByText(/Replace/)).toHaveTextContent("Replace scale with sprisk.clean.clip_outliers@1.0.0.");
+  });
+});
+
+describe("a rule's panel", () => {
+  it("asks for its own decision and previews a settings change on the same model", async () => {
+    const asked: string[] = [];
+    const model: PipelineVersion = { ...pipeline, nodes: [{ id: "model", operator: "sprisk.ml.random_forest@1.2.0", params: { target: "y", features: ["x"], task: "classification" } }] };
+    const costs = { positive: "bad", false_negative: 5, false_positive: 1 };
+    const threshold = parse("DecisionProposal", {
+      ...scalingBeforeForest,
+      rule: "methodology.supervised.decision_threshold@1.0.0",
+      subject_node_id: "model",
+      recommended_alternative_id: "cost_optimal_threshold",
+      alternatives: [{
+        id: "cost_optimal_threshold", label: "Cost-Optimal Threshold", description: "Tuned for least cost.",
+        applicability: "applicable", reason: "Costs are stated.",
+        effect: { kind: "replace_node", node_id: "model", operator: "sprisk.ml.random_forest@1.2.0", params: { ...model.nodes[0]!.params, costs } },
+      }],
+    });
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", ({ params }) => {
+      asked.push(`${String(params.node)}/${String(params.decides)}`);
+      return HttpResponse.json(threshold, { status: 201 });
+    }));
+    renderWithApi(<SplitMethodology pipeline={model} nodeId="model" rule={{ name: "Decision Threshold", decides: "evaluation.decision_threshold" }} />);
+    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+    await userEvent.click(await screen.findByRole("radio", { name: /Cost-Optimal Threshold/ }));
+    expect(asked).toEqual(["model/evaluation.decision_threshold"]);
+    expect(screen.getByRole("region", { name: "Decision Threshold" })).toBeInTheDocument();
+    expect(screen.getByText(/Change the settings of/)).toBeInTheDocument();
+    expect(screen.queryByText(/Replace/)).not.toBeInTheDocument();
   });
 });
 
