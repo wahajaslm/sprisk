@@ -1,0 +1,49 @@
+{
+  "schema_version": "sprisk.selection_decision/v1",
+  "metric": "rmse",
+  "folds": 5,
+  "seed": 0,
+  "baseline": "standard_scaling",
+  "candidates": [
+    {
+      "id": "standard_scaling",
+      "fold_scores": [
+        2.5,
+        2.4,
+        2.6,
+        2.5,
+        2.5
+      ],
+      "mean": 2.5,
+      "spread": 0.0707
+    },
+    {
+      "id": "no_scaling",
+      "fold_scores": [
+        2.6,
+        2.3,
+        2.7,
+        2.4,
+        2.5
+      ],
+      "mean": 2.5,
+      "spread": 0.1581,
+      "versus_baseline": {
+        "mean_difference": 0.0,
+        "corrected_se": 0.0548,
+        "beats_baseline": false
+      }
+    }
+  ],
+  "reason": "No alternative beats the recommendation standard_scaling, so it stands.",
+  "limitations": [
+    "Steps scale between the split and the model were not part of the comparison."
+  ],
+  "baseline_role": "reference",
+  "winner": "standard_scaling",
+  "not_compared": [
+    {
+      "id": "maxabs_scaling_sparse"
+    }
+  ]
+}

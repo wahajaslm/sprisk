@@ -293,6 +293,13 @@ export type AttemptState =
  */
 export type SelectionMetric = "balanced_accuracy" | "rmse";
 /**
+ * What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0047).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BaselineRole".
+ */
+export type BaselineRole = "floor" | "reference";
+/**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1708,7 +1715,7 @@ export interface Error1 {
   message: string;
 }
 /**
- * Which shortlisted model cross-validation chose, and why (arch doc §11, ADR-0044). The output of a select step: immutable, like every artifact. A model wins only by beating the baseline on the same folds.
+ * Which compared alternative cross-validation chose, and why (arch doc §11, ADR-0044, ADR-0047): a shortlisted model, or one way of doing a preparation step. The output of a select step: immutable, like every artifact. An alternative wins only by beating the baseline on the same folds; a reference baseline wins when none does.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "SelectionDecision".
@@ -1729,15 +1736,23 @@ export interface SelectionDecision {
    */
   seed: number;
   /**
-   * The candidate every other must beat: a model that ignores its features.
+   * The candidate every other must beat. As a floor, a model that ignores its features; as a reference, the rule's recommended preparation.
    */
   baseline: string;
+  /**
+   * Absent: floor, as decided before ADR-0047 compared preparation.
+   */
+  baseline_role?: "floor" | "reference";
   candidates: CandidateResult[];
   /**
-   * The chosen candidate. Absent: no model beats the baseline.
+   * The chosen candidate. Absent: no model beats a floor baseline. A reference baseline is the winner when no alternative beats it.
    */
   winner?: string;
   reason: string;
+  /**
+   * Alternatives the comparison did not score, each with why (ADR-0047). Absent: decided before ADR-0047 recorded them.
+   */
+  not_compared?: NotCompared[];
   /**
    * What the comparison did not cover.
    */
@@ -1749,7 +1764,7 @@ export interface SelectionDecision {
  */
 export interface CandidateResult {
   /**
-   * The shortlist alternative.
+   * The compared alternative.
    */
   id: string;
   /**
@@ -1776,13 +1791,27 @@ export interface BaselineComparison {
    */
   corrected_se: number;
   /**
-   * One-sided p of the corrected repeated k-fold t-test that the model is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test.
+   * One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test.
    */
   p_value?: number;
   /**
-   * With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the candidates. Without: whether mean_difference is larger than one corrected_se, a screening rule.
+   * With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the other alternatives. Without: whether mean_difference is larger than one corrected_se, a screening rule.
    */
   beats_baseline: boolean;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotCompared".
+ */
+export interface NotCompared {
+  /**
+   * The proposal's alternative.
+   */
+  id: string;
+  /**
+   * Why it was not scored on the folds.
+   */
+  reason: string;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1798,11 +1827,11 @@ export interface BaselineComparison1 {
    */
   corrected_se: number;
   /**
-   * One-sided p of the corrected repeated k-fold t-test that the model is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test.
+   * One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test.
    */
   p_value?: number;
   /**
-   * With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the candidates. Without: whether mean_difference is larger than one corrected_se, a screening rule.
+   * With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the other alternatives. Without: whether mean_difference is larger than one corrected_se, a screening rule.
    */
   beats_baseline: boolean;
 }

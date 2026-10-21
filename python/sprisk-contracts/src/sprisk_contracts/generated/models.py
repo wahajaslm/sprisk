@@ -754,6 +754,21 @@ class SelectionMetric(StrEnum):
     rmse = "rmse"
 
 
+class BaselineRole(StrEnum):
+    floor = "floor"
+    reference = "reference"
+
+
+class NotCompared(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[
+        str, Field(description="The proposal's alternative.", pattern="^[a-z][a-z0-9_]{0,62}$")
+    ]
+    reason: Annotated[str, Field(description="Why it was not scored on the folds.", min_length=1)]
+
+
 class BaselineComparison(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -773,13 +788,13 @@ class BaselineComparison(StrictModel):
     p_value: Annotated[
         float | None,
         Field(
-            description="One-sided p of the corrected repeated k-fold t-test that the model is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test."
+            description="One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test."
         ),
     ] = None
     beats_baseline: Annotated[
         bool,
         Field(
-            description="With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the candidates. Without: whether mean_difference is larger than one corrected_se, a screening rule."
+            description="With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the other alternatives. Without: whether mean_difference is larger than one corrected_se, a screening rule."
         ),
     ]
 
@@ -1545,7 +1560,7 @@ class CandidateResult(StrictModel):
         extra="forbid",
     )
     id: Annotated[
-        str, Field(description="The shortlist alternative.", pattern="^[a-z][a-z0-9_]{0,62}$")
+        str, Field(description="The compared alternative.", pattern="^[a-z][a-z0-9_]{0,62}$")
     ]
     fold_scores: Annotated[
         list[float],
@@ -1930,19 +1945,29 @@ class SelectionDecision(StrictModel):
     baseline: Annotated[
         str,
         Field(
-            description="The candidate every other must beat: a model that ignores its features.",
+            description="The candidate every other must beat. As a floor, a model that ignores its features; as a reference, the rule's recommended preparation.",
             pattern="^[a-z][a-z0-9_]{0,62}$",
         ),
     ]
+    baseline_role: Annotated[
+        BaselineRole | None,
+        Field(description="Absent: floor, as decided before ADR-0047 compared preparation."),
+    ] = None
     candidates: list[CandidateResult]
     winner: Annotated[
         str | None,
         Field(
-            description="The chosen candidate. Absent: no model beats the baseline.",
+            description="The chosen candidate. Absent: no model beats a floor baseline. A reference baseline is the winner when no alternative beats it.",
             pattern="^[a-z][a-z0-9_]{0,62}$",
         ),
     ] = None
     reason: Annotated[str, Field(min_length=1)]
+    not_compared: Annotated[
+        list[NotCompared] | None,
+        Field(
+            description="Alternatives the comparison did not score, each with why (ADR-0047). Absent: decided before ADR-0047 recorded them."
+        ),
+    ] = None
     limitations: Annotated[
         list[Limitation], Field(description="What the comparison did not cover.")
     ]
