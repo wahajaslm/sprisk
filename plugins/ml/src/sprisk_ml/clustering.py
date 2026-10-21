@@ -16,16 +16,12 @@ def kmeans(
 ) -> pl.DataFrame:
     """Partition numerical features into K convex Voronoi clusters."""
     numeric_cols = [
-        col
-        for col, dtype in zip(data.columns, data.dtypes, strict=False)
-        if dtype.is_numeric()
+        col for col, dtype in zip(data.columns, data.dtypes, strict=False) if dtype.is_numeric()
     ]
     if not numeric_cols:
         raise ValueError("KMeans requires at least one numeric feature column")
     x = data.select(numeric_cols).to_numpy()
-    model = KMeans(
-        n_clusters=n_clusters, n_init=n_init, max_iter=max_iter, random_state=seed
-    )
+    model = KMeans(n_clusters=n_clusters, n_init=n_init, max_iter=max_iter, random_state=seed)
     labels = model.fit_predict(x)
     return data.with_columns(pl.Series("cluster", labels, dtype=pl.Int32))
 
@@ -37,9 +33,7 @@ def dbscan(
 ) -> pl.DataFrame:
     """Discover arbitrary non-convex density clusters and isolate noise (-1)."""
     numeric_cols = [
-        col
-        for col, dtype in zip(data.columns, data.dtypes, strict=False)
-        if dtype.is_numeric()
+        col for col, dtype in zip(data.columns, data.dtypes, strict=False) if dtype.is_numeric()
     ]
     if not numeric_cols:
         raise ValueError("DBSCAN requires at least one numeric feature column")
@@ -57,9 +51,7 @@ def gmm(
 ) -> pl.DataFrame:
     """Fit a mixture of K Gaussians and assign cluster labels by maximum posterior probability."""
     numeric_cols = [
-        col
-        for col, dtype in zip(data.columns, data.dtypes, strict=False)
-        if dtype.is_numeric()
+        col for col, dtype in zip(data.columns, data.dtypes, strict=False) if dtype.is_numeric()
     ]
     if not numeric_cols:
         raise ValueError("GaussianMixture requires at least one numeric feature column")

@@ -7,11 +7,13 @@ from sprisk_ml.clustering import dbscan, gmm, kmeans
 
 @pytest.fixture
 def numeric_data() -> pl.DataFrame:
-    return pl.DataFrame({
-        "x": [1.0, 1.1, 1.2, 8.0, 8.1, 8.2, 100.0],
-        "y": [1.0, 0.9, 1.1, 8.0, 7.9, 8.1, 100.0],
-        "category": ["a", "a", "b", "c", "c", "d", "e"],
-    })
+    return pl.DataFrame(
+        {
+            "x": [1.0, 1.1, 1.2, 8.0, 8.1, 8.2, 100.0],
+            "y": [1.0, 0.9, 1.1, 8.0, 7.9, 8.1, 100.0],
+            "category": ["a", "a", "b", "c", "c", "d", "e"],
+        }
+    )
 
 
 def test_kmeans_assigns_cluster_labels(numeric_data: pl.DataFrame) -> None:

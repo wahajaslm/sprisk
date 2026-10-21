@@ -72,9 +72,7 @@ def _spectral_gate_figure(
     sub = gated_train.head(150)
     orig_sub = train.head(150)
     x_vals = (
-        sub["sample_time"].to_list()
-        if "sample_time" in sub.schema
-        else list(range(sub.height))
+        sub["sample_time"].to_list() if "sample_time" in sub.schema else list(range(sub.height))
     )
     x_label = "Time (seconds)" if "sample_time" in sub.schema else "Frame Index"
 
@@ -123,4 +121,3 @@ def _spectral_gate_figure(
         margin=dict(l=40, r=40, t=50, b=40),
     )
     return fig
-
