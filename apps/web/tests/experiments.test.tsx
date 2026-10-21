@@ -102,7 +102,11 @@ describe("model comparison", () => {
     compares: MPR,
     nodes: [
       ...pipeline.nodes.filter((n) => n.id === "load" || n.id === "split"),
-      ...["ml_dummy_baseline", "ml_linear_model", "ml_random_forest"].map((id) => ({ id: `cv_${id}`, operator: "sprisk.ml.cross_validate@2.0.0", params: {} })),
+      ...["dummy_baseline", "linear_model", "random_forest"].map((name) => ({
+        id: `cv_ml_${name}`,
+        operator: "sprisk.ml.cross_validate@2.0.0",
+        params: { candidate: `sprisk.ml.${name}@1.0.0`, candidate_params: { target: "y", features: ["x"], task: "classification" }, prepare: [] },
+      })),
       { id: "select_model", operator: "sprisk.ml.select_model@3.0.0", params: {} },
     ],
   };
@@ -332,8 +336,8 @@ describe("model comparison", () => {
       rule: "methodology.supervised.missingness@1.1.0",
       subject_node_id: "impute",
       alternatives: [
-        { id: "impute_median", label: "Median", description: "Median.", applicability: "applicable", reason: "Skewed columns." },
-        { id: "impute_mean", label: "Mean", description: "Mean.", applicability: "applicable", reason: "Symmetric columns." },
+        { id: "impute_median", label: "Median", description: "Median.", applicability: "applicable", reason: "Skewed columns.", effect: { kind: "replace_node", node_id: "impute", operator: "sprisk.clean.impute@1.0.0", params: { columns: ["x"], method: "median" } } },
+        { id: "impute_mean", label: "Mean", description: "Mean.", applicability: "applicable", reason: "Symmetric columns.", effect: { kind: "replace_node", node_id: "impute", operator: "sprisk.clean.impute@1.0.0", params: { columns: ["x"], method: "mean" } } },
         { id: "drop_rows", label: "Drop rows", description: "Drop.", applicability: "applicable", reason: "Shrinks the data." },
       ],
       recommended_alternative_id: "impute_median",
@@ -352,7 +356,21 @@ describe("model comparison", () => {
       not_compared: [{ id: "drop_rows", reason: DROP_ROWS }],
       reason: "No alternative beats the recommendation impute_median. impute_median stands.",
     };
-    const prepComparison = { ...comparison, compares: PREP, nodes: comparison.nodes.filter((n) => !n.id.startsWith("cv_")) };
+    const imputed = (method: string) => ({
+      id: `cv_impute_${method}`,
+      operator: "sprisk.ml.cross_validate@2.0.0",
+      params: {
+        candidate: "sprisk.ml.linear_model@1.0.0",
+        candidate_params: { target: "y", features: ["x"], task: "classification" },
+        prepare: [{ operator: "sprisk.clean.impute@1.0.0", params: { columns: ["x"], method } }],
+      },
+    });
+    const prepComparison = {
+      ...comparison,
+      compares: PREP,
+      nodes: [...comparison.nodes.filter((n) => !n.id.startsWith("cv_")), imputed("median"), imputed("mean")],
+      edges: [...comparison.edges, ...["median", "mean"].map((m) => ({ from: "split.train", to: `cv_impute_${m}.train` }))],
+    };
 
     function prepared() {
       const applied = compared(stands);
@@ -401,6 +419,43 @@ describe("model comparison", () => {
         }),
       );
       await waitFor(() => expect(posted).toEqual([`${PV}/impute`]));
+    });
+
+    it("shows what each choice ran in every fold, how it differs from the flow, and each step's code", async () => {
+      prepared();
+      server.use(
+        http.get("/api/operators/:id/source", ({ params }) =>
+          HttpResponse.json({ operator: params.id, path: "sprisk_clean/impute.py", language: "python", text: "def impute(train, test, columns, method):\n    ...\n", digest: `sha256:${"a".repeat(64)}` }),
+        ),
+      );
+      const mean = await screen.findByRole("region", { name: "Detail of impute_mean" });
+      const steps = within(mean).getByRole("list", { name: "Steps of impute_mean" });
+      expect(within(steps).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+        expect.stringContaining("split.train: train rows only"),
+        expect.stringContaining('clean.impute · columns: ["x"], method: mean'),
+        expect.stringContaining('ml.linear_model · target: y, features: ["x"], task: classification'),
+      ]);
+      expect(mean).toHaveTextContent("Differs from the flow: impute · method: median → mean");
+      expect(screen.getByRole("region", { name: "Detail of impute_median" })).toHaveTextContent("Differs from the flow: nothing");
+      await userEvent.click(within(steps).getByRole("button", { name: "Code of sprisk.clean.impute@1.0.0" }));
+      expect(await within(mean).findByRole("textbox", { name: "Code of sprisk_clean/impute.py" })).toHaveValue("def impute(train, test, columns, method):\n    ...\n");
+    });
+
+    it("shows a choice that removes the step as removed, with only the model left to refit", async () => {
+      const removing = { id: "pass_through", label: "None", description: "None.", applicability: "applicable", reason: "The model fills gaps.", effect: { kind: "remove_node", node_id: "impute" } };
+      const removed = { ...imputed("median"), id: "cv_pass_through", params: { ...imputed("median").params, prepare: [] } };
+      prepared();
+      server.use(
+        http.get("/api/pipeline_versions", () => HttpResponse.json([{ ...prepComparison, nodes: [...prepComparison.nodes, removed] }, pipeline])),
+        http.get(`/api/methodology_proposals/${PREP}`, () => HttpResponse.json({ ...prepProposal, alternatives: [...prepProposal.alternatives, removing] })),
+        http.get(`/api/artifacts/${decisionOutput.artifact.id}/content`, () =>
+          HttpResponse.text(JSON.stringify({ ...stands, candidates: [...stands.candidates, { ...stands.candidates[1]!, id: "pass_through" }] })),
+        ),
+      );
+      await userEvent.click(await screen.findByRole("checkbox", { name: "Compare pass_through in detail" }));
+      const detail = await screen.findByRole("region", { name: "Detail of pass_through" });
+      expect(within(within(detail).getByRole("list", { name: "Steps of pass_through" })).getAllByRole("listitem")).toHaveLength(2);
+      expect(detail).toHaveTextContent("Differs from the flow: impute removed");
     });
 
     it("asks for a run before Sprisk can compare the step's choices", async () => {

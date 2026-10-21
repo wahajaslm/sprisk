@@ -2,10 +2,12 @@ import type { Attempt, DecisionProposal, PipelineVersion, SelectionDecision } fr
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client.ts";
-import { isLive, useOperators, useRuns } from "../api/hooks.ts";
+import { isLive, useOperators, useOperatorSource, usePipelineVersions, useRuns } from "../api/hooks.ts";
 import { useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../api/runs.ts";
+import { settingChanges, showValue } from "../flow/diff.ts";
 import { useSelection } from "../workbench/selection.ts";
+import { CodeInput } from "./CodeInput.tsx";
 import { FigurePort } from "./inspector/FiguresTab.tsx";
 import { formatMetric } from "./NodeFact.tsx";
 
@@ -87,7 +89,7 @@ function Comparison({ comparison, proposal }: { comparison: PipelineVersion; pro
     <section className="model-comparison" aria-label={models ? "Model comparison" : "Preparation comparison"}>
       <p className="eyebrow">{models ? "Model selection" : "Preparation"} · {proposal.subject_node_id}</p>
       {result.status === "decided" ? (
-        <Decided decision={result.decision} artifactId={result.artifactId} attempts={result.attempts} proposal={proposal} />
+        <Decided decision={result.decision} artifactId={result.artifactId} attempts={result.attempts} proposal={proposal} comparison={comparison} />
       ) : result.status === "failed" ? (
         <p role="alert" className="error">The comparison failed: {result.message}</p>
       ) : (
@@ -99,7 +101,13 @@ function Comparison({ comparison, proposal }: { comparison: PipelineVersion; pro
   );
 }
 
-function Decided({ decision, artifactId, attempts, proposal }: { decision: SelectionDecision; artifactId: string; attempts: Attempt[]; proposal: DecisionProposal }) {
+function Decided({ decision, artifactId, attempts, proposal, comparison }: {
+  decision: SelectionDecision;
+  artifactId: string;
+  attempts: Attempt[];
+  proposal: DecisionProposal;
+  comparison: PipelineVersion;
+}) {
   const [picked, setPicked] = useState<string[]>(() => defaultPair(decision));
   const [choosing, setChoosing] = useState<string>();
   const why = (id: string) => proposal.alternatives.find((a) => a.id === id)?.reason;
@@ -162,6 +170,7 @@ function Decided({ decision, artifactId, attempts, proposal }: { decision: Selec
             <section key={id} className="compare-col" aria-label={`Detail of ${id}`}>
               <p className="eyebrow">{id} · from held-out folds of the train rows</p>
               <p className="mono">Fold scores: {decision.candidates.find((c) => c.id === id)?.fold_scores.map(formatMetric).join(" · ")}</p>
+              <ChoiceSteps comparison={comparison} proposal={proposal} id={id} />
               <FigurePort attempt={cvAttempt(id)} port="figures" />
             </section>
           ))}
@@ -169,6 +178,58 @@ function Decided({ decision, artifactId, attempts, proposal }: { decision: Selec
       )}
     </>
   );
+}
+
+type Step = { operator: string; params: Record<string, unknown> };
+
+/** What a choice ran in every fold, read from its cross-validate step: the split's train rows,
+ * each preparation step refit, then the model (ADR-0047). The compiler checked these params
+ * against the step's schema. How it differs from the flow is its effect, as Apply would make it. */
+function ChoiceSteps({ comparison, proposal, id }: { comparison: PipelineVersion; proposal: DecisionProposal; id: string }) {
+  const versions = usePipelineVersions();
+  const [open, setOpen] = useState<string>();
+  const node = comparison.nodes.find((n) => n.id === `cv_${id}`);
+  if (!node) return <p role="alert" className="error">{comparison.id} has no step cv_{id}.</p>;
+  const rows = comparison.edges.find((e) => e.to === `${node.id}.train`)?.from;
+  const steps = [...(node.params.prepare as Step[]), { operator: node.params.candidate as string, params: node.params.candidate_params as Step["params"] }];
+  const base = versions.data?.find((v) => v.id === proposal.pipeline_version_id);
+  const effect = proposal.alternatives.find((a) => a.id === id)?.effect;
+  return (
+    <>
+      <ol className="choice-steps" aria-label={`Steps of ${id}`}>
+        <li className="mono">{rows}: train rows only</li>
+        {steps.map((step, i) => (
+          <li key={i}>
+            <span className="mono">{step.operator.replace(/^sprisk\./, "").split("@")[0]}</span> ·{" "}
+            {Object.entries(step.params).map(([k, v]) => `${k}: ${showValue(v)}`).join(", ")}{" "}
+            <button type="button" className="page-btn" aria-label={`Code of ${step.operator}`} onClick={() => setOpen(open === step.operator ? undefined : step.operator)}>
+              Code
+            </button>
+          </li>
+        ))}
+      </ol>
+      {open && <StepCode operator={open} />}
+      {base && effect && <p className="muted">Differs from the flow: {differences(base, effect)}</p>}
+    </>
+  );
+}
+
+function StepCode({ operator }: { operator: string }) {
+  const source = useOperatorSource(operator);
+  if (source.isPending) return <p className="muted">Loading code…</p>;
+  if (source.isError) return <p role="alert" className="error">{source.error.message}</p>;
+  return <CodeInput value={source.data.text} label={`Code of ${source.data.path}`} onChange={() => undefined} onRun={() => undefined} readOnly fit />;
+}
+
+/** How applying `effect` would change `base`, setting by setting. */
+function differences(base: PipelineVersion, effect: NonNullable<DecisionProposal["alternatives"][number]["effect"]>): string {
+  if (effect.kind === "remove_node") return `${effect.node_id} removed`;
+  const before = base.nodes.find((n) => n.id === effect.node_id);
+  if (!before) return `${effect.node_id} is not in the flow`;
+  const after = { ...before, operator: effect.operator, params: effect.params };
+  const changes = settingChanges({ ...base, nodes: [before] }, { ...base, nodes: [after] });
+  if (changes.length === 0) return "nothing";
+  return changes.map((c) => `${c.node} · ${c.key}: ${showValue(c.before)} → ${showValue(c.after)}`).join("; ");
 }
 
 function Row({ label, cells, mono }: { label: string; cells: string[]; mono?: boolean }) {

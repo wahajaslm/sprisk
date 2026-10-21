@@ -674,6 +674,8 @@ p { margin: 0; }
 .dots span { position: absolute; inset: 0 auto 0 0; background-image: radial-gradient(var(--soft) 1px, transparent 1.2px); background-size: 4px 6px; }
 .compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-top: 1px solid var(--line); background: var(--panel); max-height: 40vh; overflow: auto; }
 .compare-col { padding: var(--space-4) var(--space-5); border-right: 1px solid var(--line-soft); min-width: 0; }
+.choice-steps { margin: var(--space-2) 0; padding-left: var(--space-5); font-size: var(--text-sm); color: var(--soft); }
+.choice-steps li { margin: var(--space-1) 0; overflow-wrap: anywhere; }
 .compare-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 0; font-size: var(--text-sm); }
 .compare-run { font: var(--text-xs) var(--mono); color: var(--muted); padding: 0 var(--space-2) var(--space-2); }
 .compare-row { display: contents; }
