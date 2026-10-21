@@ -51,6 +51,7 @@
 | [0047](0047-embedded-and-resource-constrained-targets.md) | Embedded and resource-constrained targets in methodology and deployment | Proposed |
 | [0048](0048-copilot-via-subscription-bridges-and-local-models.md) | Copilot chat via subscription CLI bridges and local models | Proposed |
 | [0049](0049-remote-jupyter-and-colab-kernel-execution.md) | Remote Jupyter and Google Colab kernel execution for deep learning | Proposed |
+| [0047](0047-model-selection-methodology.md) | Sprisk's model-selection methodology | Accepted |
 
 ## Open questions (arch doc §17)
 
