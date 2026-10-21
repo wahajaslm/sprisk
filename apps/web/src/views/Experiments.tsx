@@ -7,7 +7,9 @@ import { settingChanges, showValue } from "../flow/diff.ts";
 import { flows } from "../flow/flows.ts";
 import { flowName } from "../flow/labels.ts";
 import { useSelection } from "../workbench/selection.ts";
+import { useStudies } from "../api/studies.ts";
 import { ModelComparisons } from "./ModelComparison.tsx";
+import { Studies } from "./Studies.tsx";
 import { formatMetric } from "./NodeFact.tsx";
 
 /** Runs shown in the table. Each costs a few cached reads per evaluator. */
@@ -32,6 +34,7 @@ export function Experiments() {
     ),
   ].sort();
   const nodes = useRunNodes(runs, evaluators);
+  const studies = useStudies(flow?.head.id).data ?? [];
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (!flow) {
@@ -59,7 +62,8 @@ export function Experiments() {
         title={`${flowName(flow.head)}: every run, with what changed`}
       />
       <div className="exp-scroll">
-        <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} />
+        <Studies head={flow.head} versions={all} studies={studies} />
+        <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set(studies.map((s) => s.comparison_id))} />
         <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
       </div>
       {runs.length < 2 ? (

@@ -16,8 +16,16 @@ type Candidate = SelectionDecision["candidates"][number];
 
 /** How Sprisk chose this flow's models and preparation steps (ADR-0050). For the flow's head it
  * starts each choice itself; every comparison of the flow's versions is shown. */
-export function ModelComparisons({ flowIds, head, versions }: { flowIds: string[]; head: PipelineVersion; versions: PipelineVersion[] }) {
-  const comparisons = versions.flatMap((v) => (v.compares === undefined ? [] : [{ version: v, proposalId: v.compares }]));
+export function ModelComparisons({ flowIds, head, versions, studied }: {
+  flowIds: string[];
+  head: PipelineVersion;
+  versions: PipelineVersion[];
+  /** Comparisons a study shows, so they are not shown twice. */
+  studied: ReadonlySet<string>;
+}) {
+  const comparisons = versions.flatMap((v) =>
+    v.compares === undefined || studied.has(v.id) ? [] : [{ version: v, proposalId: v.compares }],
+  );
   const proposals = useMethodologyProposals(comparisons.map((c) => c.proposalId));
   const mine = comparisons.flatMap((c, i) => {
     const proposal = proposals[i]?.data;
@@ -42,6 +50,14 @@ export function ModelComparisons({ flowIds, head, versions }: { flowIds: string[
  * says when such a step has nothing to compare. A step its own decision just chose is not
  * selected again: the head is that choice. */
 function AutoSelect({ head }: { head: PipelineVersion }) {
+  return useComparedSteps(head).map(({ node, models }) => (
+    <AutoSelectStep key={`${head.id}/${node.id}`} head={head} nodeId={node.id} decisionId={node.methodology_decision_id} models={models} />
+  ));
+}
+
+/** The head's steps Sprisk compares: model steps a shortlist rule decides (`models`), and
+ * steps a recommend rule decides that fit on train rows (ADR-0050). */
+export function useComparedSteps(head: PipelineVersion): { node: PipelineVersion["nodes"][number]; models: boolean }[] {
   const rules = useMethodologyRules();
   const operators = useOperators();
   const active = (rules.data ?? []).filter((r) => r.status === "active");
@@ -49,10 +65,9 @@ function AutoSelect({ head }: { head: PipelineVersion }) {
   const recommended = new Set(active.filter((r) => r.selection !== "shortlist").flatMap((r) => r.applies_to ?? []));
   const fitsOnTrain = (operator: string) => operators.data?.find((o) => o.id === operator)?.fits_on_train === true;
   const name = (operator: string) => operator.split("@")[0] ?? "";
-  const steps = head.nodes.filter((n) => shortlisted.has(name(n.operator)) || (recommended.has(name(n.operator)) && fitsOnTrain(n.operator)));
-  return steps.map((n) => (
-    <AutoSelectStep key={`${head.id}/${n.id}`} head={head} nodeId={n.id} decisionId={n.methodology_decision_id} models={shortlisted.has(name(n.operator))} />
-  ));
+  return head.nodes
+    .filter((n) => shortlisted.has(name(n.operator)) || (recommended.has(name(n.operator)) && fitsOnTrain(n.operator)))
+    .map((node) => ({ node, models: shortlisted.has(name(node.operator)) }));
 }
 
 function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVersion; nodeId: string; decisionId: string | undefined; models: boolean }) {
@@ -80,14 +95,20 @@ function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVe
   return null;
 }
 
-function Comparison({ comparison, proposal, base }: { comparison: PipelineVersion; proposal: DecisionProposal; base: PipelineVersion }) {
+export function Comparison({ comparison, proposal, base, label }: {
+  comparison: PipelineVersion;
+  proposal: DecisionProposal;
+  base: PipelineVersion;
+  /** The region's name; by default what is compared. */
+  label?: string;
+}) {
   const [latest] = useFlowRuns([comparison.id], 1);
   const selectNode = comparison.nodes.find((n) => n.operator.startsWith("sprisk.ml.select_model@"))?.id;
   const result = useSelectionDecision(latest, selectNode);
   const models = (proposal.shortlist ?? []).length > 0;
   const trials = comparison.nodes.filter((n) => n.operator.startsWith("sprisk.ml.cross_validate@")).length;
   return (
-    <section className="model-comparison" aria-label={models ? "Model comparison" : "Preparation comparison"}>
+    <section className="model-comparison" aria-label={label ?? (models ? "Model comparison" : "Preparation comparison")}>
       <p className="eyebrow">{models ? "Model selection" : "Preparation"} · {proposal.subject_node_id}</p>
       {result.status === "decided" ? (
         <Decided decision={result.decision} artifactId={result.artifactId} attempts={result.attempts} proposal={proposal} comparison={comparison} base={base} />
@@ -116,11 +137,14 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
   const reference = decision.baseline_role === "reference";
   const notCompared = decision.not_compared ?? [];
   const toggle = (id: string) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(-2));
-  const cvAttempt = (id: string) => attempts.filter((a) => a.node_id === `cv_${id}` && (a.state === "succeeded" || a.state === "cache_hit")).at(-1);
+  const cvAttempt = (id: string) => attempts.filter((a) => a.node_id === trialNodeOf(decision, id) && (a.state === "succeeded" || a.state === "cache_hit")).at(-1);
+  const tuned = decision.candidates.some((c) => c.search !== undefined);
+  const earlier = decision.earlier_looks ?? [];
   return (
     <>
       <p className="muted">
         {decision.repeats && decision.repeats > 1 ? `${decision.repeats} × ` : ""}{decision.folds}-fold cross-validation, seed {decision.seed}, scored by {METRIC_LABEL[decision.metric]}, fixed before any score was seen. Train rows only: the test rows were not used.
+        {tuned ? " Tuned models chose their settings on inner folds of each fold's training rows." : ""}
       </p>
       <table className="exp-table" aria-label="Candidates">
         <thead>
@@ -141,6 +165,10 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
           <Row label={`Mean ± spread (${METRIC_LABEL[decision.metric]})`} mono cells={decision.candidates.map((c) => `${formatMetric(c.mean)} ± ${formatMetric(c.spread)}`)} />
           <Row label="Fold scores" mono cells={decision.candidates.map(foldRange)} />
           <Row label={`Gain over ${reference ? "the recommendation" : "baseline"} ± corrected SE`} mono cells={decision.candidates.map(gain)} />
+          {tuned && <Row label="Settings" mono cells={decision.candidates.map((c) => (c.search ? showSettings(c.search.settings) : "the flow's"))} />}
+          {(decision.guardrails ?? []).map((g, i) => (
+            <Row key={i} label={`Recall of ${g.label} ≥ ${g.at_least}`} mono cells={decision.candidates.map((c) => guardrailCell(c, i))} />
+          ))}
           <Row label="Verdict" cells={decision.candidates.map((c) => verdict(c, decision))} />
           <tr>
             <th scope="row"><span className="sr-only">Use</span></th>
@@ -158,6 +186,13 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
         </p>
       )}
       <p>{decision.reason}</p>
+      {earlier.length > 0 && (
+        <div className="cautions">
+          <p>
+            ⚠ This step was compared {earlier.length === 1 ? "1 time" : `${earlier.length} times`} before on the same folds ({earlier.join(", ")}). Keeping the best of several looks favours luck.
+          </p>
+        </div>
+      )}
       {decision.limitations.length > 0 && (
         <div className="cautions">
           {decision.limitations.map((l) => (
@@ -172,7 +207,8 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
             <section key={id} className="compare-col" aria-label={`Detail of ${id}`}>
               <p className="eyebrow">{id} · from held-out folds of the train rows</p>
               <p className="mono">Fold scores: {decision.candidates.find((c) => c.id === id)?.fold_scores.map(formatMetric).join(" · ")}</p>
-              <ChoiceSteps comparison={comparison} proposal={proposal} base={base} id={id} />
+              <SearchTable candidate={decision.candidates.find((c) => c.id === id)} />
+              <ChoiceSteps comparison={comparison} proposal={proposal} base={base} id={id} node={trialNodeOf(decision, id)} />
               <FigurePort attempt={cvAttempt(id)} port="figures" />
             </section>
           ))}
@@ -187,10 +223,17 @@ type Step = { operator: string; params: Record<string, unknown> };
 /** What a choice ran in every fold, read from its cross-validate step: the split's train rows,
  * each preparation step refit, then the model (ADR-0050). The compiler checked these params
  * against the step's schema. How it differs from the flow is its effect, as Apply would make it. */
-function ChoiceSteps({ comparison, proposal, base, id }: { comparison: PipelineVersion; proposal: DecisionProposal; base: PipelineVersion; id: string }) {
+function ChoiceSteps({ comparison, proposal, base, id, node: nodeId }: {
+  comparison: PipelineVersion;
+  proposal: DecisionProposal;
+  base: PipelineVersion;
+  id: string;
+  /** Its cross-validate step: for a tuned candidate, the trial with the settings to apply. */
+  node: string;
+}) {
   const [open, setOpen] = useState<string>();
-  const node = comparison.nodes.find((n) => n.id === `cv_${id}`);
-  if (!node) return <p role="alert" className="error">{comparison.id} has no step cv_{id}.</p>;
+  const node = comparison.nodes.find((n) => n.id === nodeId);
+  if (!node) return <p role="alert" className="error">{comparison.id} has no step {nodeId}.</p>;
   const rows = comparison.edges.find((e) => e.to === `${node.id}.train`)?.from;
   if (!rows) return <p role="alert" className="error">{node.id} has no train rows input.</p>;
   const steps = [...(node.params.prepare as Step[]), { operator: node.params.candidate as string, params: node.params.candidate_params as Step["params"] }];
@@ -350,4 +393,56 @@ function foldRange(c: Candidate): string {
   const scores = c.fold_scores;
   if (scores.length === 0) return "—";
   return `${scores.length} scores, ${formatMetric(Math.min(...scores))} to ${formatMetric(Math.max(...scores))}`;
+}
+
+/** A candidate's cross-validate step: its own, or for a tuned one the trial whose settings it
+ * applies (ADR-0051). */
+function trialNodeOf(decision: SelectionDecision, id: string): string {
+  const search = decision.candidates.find((c) => c.id === id)?.search;
+  if (!search) return `cv_${id}`;
+  const applied = JSON.stringify(sorted(search.settings));
+  const trial = search.trials.find((t) => JSON.stringify(sorted(t.settings)) === applied);
+  return `cv_${trial?.id ?? id}`;
+}
+
+const sorted = (settings: Record<string, unknown>) => Object.fromEntries(Object.entries(settings).sort(([a], [b]) => a.localeCompare(b)));
+
+export const showSettings = (settings: Record<string, unknown>) =>
+  Object.entries(settings).map(([k, v]) => `${k}: ${showValue(v)}`).join(", ");
+
+function guardrailCell(c: Candidate, i: number): string {
+  const result = c.guardrails?.[i];
+  if (!result) return "—";
+  return `${formatMetric(result.mean)} ± ${formatMetric(result.corrected_se)} ${result.passed ? "meets it" : "misses"}`;
+}
+
+/** What a tuned candidate's search saw: each trial's inner mean, never a performance estimate,
+ * and how many outer folds chose it. */
+function SearchTable({ candidate }: { candidate: Candidate | undefined }) {
+  const search = candidate?.search;
+  if (!candidate || !search) return null;
+  const folds = search.trials.reduce((n, t) => n + t.chosen_in, 0);
+  const applied = JSON.stringify(sorted(search.settings));
+  return (
+    <table className="exp-table" aria-label={`Search of ${candidate.id}`}>
+      <thead>
+        <tr>
+          <th scope="col">Settings</th>
+          <th scope="col">Inner mean</th>
+          <th scope="col">Chosen by</th>
+        </tr>
+      </thead>
+      <tbody>
+        {search.trials.map((t) => (
+          <tr key={t.id}>
+            <td className="mono">{showSettings(t.settings)}</td>
+            <td className="mono">{formatMetric(t.inner_mean)}</td>
+            <td>
+              {t.chosen_in} of {folds} folds{JSON.stringify(sorted(t.settings)) === applied ? " · applied" : ""}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
