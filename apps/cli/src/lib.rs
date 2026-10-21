@@ -165,6 +165,15 @@ pub async fn serve_on(
             std::time::Duration::from_secs(60),
             2,
         ),
+        code_writer: sprisk_api::CodeWriter::new(
+            vec![
+                config.python.display().to_string(),
+                "-m".into(),
+                "sprisk_workers.notebook_code".into(),
+            ],
+            std::time::Duration::from_secs(10),
+            2,
+        ),
         rule_runner: sprisk_api::RuleRunner::new(
             vec![
                 config.python.display().to_string(),

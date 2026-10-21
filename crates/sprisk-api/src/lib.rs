@@ -6,11 +6,13 @@ use std::sync::Arc;
 mod bounded;
 mod figures;
 mod kernel;
+mod notebook_code;
 mod profile;
 mod rules;
 mod split;
 pub use bounded::ProcessError;
 pub use kernel::{KernelError, KernelLimits, Kernels};
+pub use notebook_code::CodeWriter;
 pub use profile::Profiler;
 pub use rules::RuleRunner;
 pub use split::{SplitError, Splitter};
@@ -28,11 +30,11 @@ use sprisk_contracts::{
     CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
     GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyAlternativeApplicability,
     MethodologyDecision, MethodologyProposalId, MethodologyRule, MethodologyRuleSelection,
-    MethodologyRuleSource, ModelSelection, NotebookExecute, NotebookExecution,
-    NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
-    Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
-    QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId, StudyStatus, TaskType,
-    Trial, parse,
+    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
+    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion,
+    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem,
+    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId,
+    StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -64,6 +66,8 @@ pub struct AppState {
     pub splitter: Splitter,
     /// Profiles one table for the Datasets view (ADR-0038).
     pub profiler: Profiler,
+    /// Writes a ready-made step as plain Python for a notebook cell (ADR-0055).
+    pub code_writer: CodeWriter,
     /// Runs a methodology rule's Python decide() (ADR-0042).
     pub rule_runner: RuleRunner,
     /// One live Python kernel per notebook being explored (ADR-0036).
@@ -118,6 +122,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/operators", get(list_operators))
         .route("/operators/{id}/source", get(get_operator_source))
+        .route("/operators/{id}/notebook_code", post(write_notebook_code))
         .route("/code/split", post(split_code))
         .route("/pipeline_versions/{id}", get(get_pipeline_version))
         .route("/runs", post(create_run).get(list_runs))
@@ -241,6 +246,10 @@ enum ApiError {
     Profile(#[from] ProcessError),
     #[error("running the methodology rule {0}")]
     Rule(ProcessError),
+    #[error("{0} has no plain code yet")]
+    NoPlainCode(String),
+    #[error("writing the step's plain code {0}")]
+    Code(ProcessError),
     #[error("{0}")]
     Internal(String),
 }
@@ -270,6 +279,18 @@ impl ApiError {
                 sprisk_registry::RegistryError::UnknownOperator(_)
                 | sprisk_registry::RegistryError::NoSource { .. },
             ) => (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())]),
+            ApiError::NoPlainCode(_) => (
+                StatusCode::NOT_FOUND,
+                vec![("no_plain_code", self.to_string())],
+            ),
+            ApiError::Code(ProcessError::Timeout(_)) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                vec![("code_timeout", self.to_string())],
+            ),
+            ApiError::Code(ProcessError::Busy) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                vec![("code_busy", self.to_string())],
+            ),
             ApiError::Rules(sprisk_methodology::CatalogError::UnknownRule(_)) => {
                 (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
             }
@@ -791,6 +812,28 @@ async fn get_operator_source(
     Path(operator_ref): Path<String>,
 ) -> Result<Json<OperatorSource>, ApiError> {
     Ok(Json(state.registry.source(&operator_ref)?.clone()))
+}
+
+async fn write_notebook_code(
+    State(state): State<AppState>,
+    Path(operator_ref): Path<String>,
+    text: String,
+) -> Result<Json<NotebookCode>, ApiError> {
+    let request: NotebookCodeRequest = body(&text)?;
+    let operator = state
+        .registry
+        .get(&operator_ref)
+        .ok_or_else(|| sprisk_registry::RegistryError::UnknownOperator(operator_ref.clone()))?;
+    let writer = operator
+        .notebook_code
+        .as_ref()
+        .ok_or_else(|| ApiError::NoPlainCode(operator_ref.clone()))?;
+    let code = state
+        .code_writer
+        .write(&writer.to_string(), &request)
+        .await
+        .map_err(ApiError::Code)?;
+    Ok(Json(code))
 }
 
 async fn list_pipeline_versions(

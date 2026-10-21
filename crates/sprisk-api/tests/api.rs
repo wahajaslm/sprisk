@@ -126,6 +126,15 @@ async fn api_with_clock(
         idle_worker: Default::default(),
         data_roots: vec![dir.path().canonicalize().unwrap()],
         splitter,
+        code_writer: sprisk_api::CodeWriter::new(
+            vec![
+                python.display().to_string(),
+                "-m".into(),
+                "sprisk_workers.notebook_code".into(),
+            ],
+            Duration::from_secs(30),
+            2,
+        ),
         rule_runner: sprisk_api::RuleRunner::new(
             vec![
                 python.display().to_string(),
@@ -562,6 +571,32 @@ async fn an_operators_source_can_be_read() {
 async fn source_of_an_unknown_operator_is_not_found() {
     let api = api().await;
     let (status, body) = call(&api.app, "GET", "/operators/acme.io.csv@0.1.0/source", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}
+
+/// A ready-made step written as plain Python for a notebook cell (ADR-0055).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_step_is_written_as_plain_python_with_its_settings_and_names() {
+    let api = api().await;
+    let request = json!({
+        "settings": {"test_fraction": 0.25, "seed": 42, "stratify": "credit_risk"},
+        "inputs": {"data": "load_data"},
+        "outputs": {"train": "split_train", "test": "split_test"}
+    });
+    let uri = "/operators/sprisk.validation.random_split@1.0.0/notebook_code";
+    let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let code = body["code"].as_str().unwrap();
+    assert!(code.contains("train_test_split("), "{code}");
+    assert!(code.contains("stratify=load_data['credit_risk']"), "{code}");
+
+    // A step with no plain code yet, and a step that does not exist.
+    let uri = "/operators/sprisk.clean.impute@1.0.0/notebook_code";
+    let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["errors"][0]["code"], "no_plain_code", "{body}");
+    let uri = "/operators/acme.io.csv@0.1.0/notebook_code";
+    let (status, body) = call(&api.app, "POST", uri, Some(request)).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
 
