@@ -27,6 +27,8 @@ params_schema:
           operator: { type: string, pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" }
           params: { type: object }
       x-sprisk-preparation: true
+    time_column: { type: string, minLength: 1, description: "After a time split: folds follow this column, each validating on later rows than it fits on." }
+    group_column: { type: string, minLength: 1, description: "After a group split: no value of this column is on both sides of a fold." }
     folds: { type: integer, minimum: 2, maximum: 20, description: "Number of folds. Every candidate in a comparison uses the same." }
     repeats: { type: integer, minimum: 1, maximum: 20, description: "How many times the rows are shuffled into folds; every candidate in a comparison uses the same (ADR-0047)." }
     seed: { type: integer, minimum: 0, description: "Shuffles the rows into folds, so every candidate gets the same folds." }

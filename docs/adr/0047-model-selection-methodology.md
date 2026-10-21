@@ -52,7 +52,7 @@ Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.
   - `TimeSeriesSplit` on rows ordered by the question's time column;
   - `StratifiedGroupKFold` (classification) or `GroupKFold` (regression) on its entity column.
 
-  Until then, compare refuses those flows (ADR-0046).
+  A temporal split's folds are not repeated, since time order allows one set; the decision says the test is then a rough guide.
 
 ## Alternatives considered
 - **Compare after every run, on the server.** Rejected: most runs are small edits, and the cost multiplies by the shortlist. A failure would have no one to show it to.

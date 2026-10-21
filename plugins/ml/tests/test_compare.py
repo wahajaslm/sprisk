@@ -170,6 +170,86 @@ def test_the_diagnostics_are_drawn_from_the_train_rows_only() -> None:
     ]
 
 
+def timed(n: int) -> pl.DataFrame:
+    """Rows shuffled out of time order, with a time column and a group of five rows each."""
+    rng = np.random.default_rng(5)
+    order = rng.permutation(n)
+    return rows(n, seed=1).with_columns(
+        t=pl.Series(order.tolist()), patient=pl.Series([f"p{k % (n // 5)}" for k in order])
+    )
+
+
+def test_time_ordered_folds_validate_only_on_rows_after_those_they_fit_on() -> None:
+    train = timed(100)
+    result = cross_validate(
+        train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1, [], time_column="t"
+    )
+    scores, predictions = result["scores"], result["predictions"]
+    assert scores["repeat"].to_list() == [1] * 5
+    times = train["t"].to_list()
+    for fold in range(1, 6):
+        held = predictions.filter(pl.col("fold") == fold)["row"].to_list()
+        fit_rows = scores.filter(pl.col("fold") == fold)["train_rows"][0]
+        assert min(times[r] for r in held) >= fit_rows
+    # The first block of time is only ever fit on, so it has no out-of-fold prediction.
+    assert predictions.height < train.height
+
+
+def test_group_folds_never_put_one_group_on_both_sides() -> None:
+    train = timed(100)
+    result = cross_validate(
+        train,
+        linear_model_estimator,
+        CLASSIFY,
+        5,
+        0,
+        "balanced_accuracy",
+        2,
+        [],
+        group_column="patient",
+    )
+    groups = train["patient"].to_list()
+    assert result["scores"]["repeat"].to_list() == [1] * 5 + [2] * 5
+    predictions = result["predictions"]
+    for fold in range(1, 6):
+        held = set(predictions.filter(pl.col("fold") == fold)["row"].to_list())
+        fit = set(range(100)) - held
+        assert {groups[r] for r in held}.isdisjoint({groups[r] for r in fit})
+
+
+def test_folds_follow_time_or_groups_not_both() -> None:
+    with pytest.raises(ValueError, match="folds follow time or groups, not both"):
+        cross_validate(
+            timed(100),
+            linear_model_estimator,
+            CLASSIFY,
+            5,
+            0,
+            "balanced_accuracy",
+            1,
+            [],
+            time_column="t",
+            group_column="patient",
+        )
+
+
+def test_time_ordered_folds_are_not_repeated() -> None:
+    with pytest.raises(
+        ValueError, match="time-ordered folds cannot be reshuffled; repeats must be 1"
+    ):
+        cross_validate(
+            timed(100),
+            linear_model_estimator,
+            CLASSIFY,
+            5,
+            0,
+            "balanced_accuracy",
+            3,
+            [],
+            time_column="t",
+        )
+
+
 def test_regression_is_scored_by_rmse_where_lower_is_better() -> None:
     train = rows(100, seed=1)
     dummy = scores(train, dummy_baseline_estimator, REGRESS, metric="rmse")
@@ -242,6 +322,7 @@ def trial(fold_scores: list[float], metric: str = "balanced_accuracy") -> pl.Dat
             "train_rows": [80] * k,
             "validate_rows": [20] * k,
             "rows_digest": [f"sha256:{f}" for f in range(k)],
+            "folds_by": ["shuffle"] * k,
         }
     )
 
@@ -494,3 +575,11 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     params |= {"complexity": {BASE: 0, "ml_lm": 1}}
     [decision] = operators["sprisk.ml.select_model@1.0.0"].run(params, cross_validated, out)
     assert SelectionDecision.model_validate_json(decision.path.read_text()).winner == "ml_lm"
+
+
+def test_a_time_ordered_comparison_says_its_test_is_a_rough_guide() -> None:
+    def timed_trial(scores: list[float]) -> pl.DataFrame:
+        return trial(scores).with_columns(folds_by=pl.lit("time"))
+
+    decision = select({BASE: timed_trial([0.5] * 5), "ml_linear_model": timed_trial([0.8] * 5)})
+    assert [limit.root for limit in decision.limitations][1].startswith("Folds follow time")

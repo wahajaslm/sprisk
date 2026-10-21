@@ -65,19 +65,13 @@ pub fn comparison<'a>(
     let (split, between) = chain
         .split_last()
         .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
-    // Folds shuffle rows. After a split that keeps time order or groups apart, they would
-    // validate on rows before the ones a fold fits on, or on groups it also fits on.
-    let split_operator = base
+    // Folds must keep what the split keeps apart: time order, or whole groups (ADR-0047).
+    let split_node = base
         .nodes
         .iter()
         .find(|n| n.id.as_str() == *split)
-        .map(|n| n.operator.as_str())
         .ok_or_else(|| ResolveError::UnknownNode((*split).to_owned()))?;
-    if !split_operator.starts_with("sprisk.validation.random_split@") {
-        return Err(ResolveError::Selection(format!(
-            "split step {split} ({split_operator}) keeps time order or groups apart, which shuffled folds would mix; only a flow with a random split can be compared yet"
-        )));
-    }
+    let (fold_by, repeats) = fold_by(split_node)?;
 
     // Every step between the split and the model fits on train (the walk above refuses any
     // other), so each fold refits them, in flow order, before the candidate (ADR-0047).
@@ -129,16 +123,17 @@ pub fn comparison<'a>(
             .ok_or_else(|| ResolveError::Selection(format!("{operator} declares no complexity")))?;
         complexity.insert(id.to_owned(), json!(rank));
         let step = format!("cv_{id}");
+        let mut cv_params = serde_json::Map::new();
+        cv_params.insert("candidate".into(), json!(operator));
+        cv_params.insert("candidate_params".into(), json!(params));
+        cv_params.insert("folds".into(), json!(FOLDS));
+        cv_params.insert("repeats".into(), json!(repeats));
+        cv_params.insert("seed".into(), json!(SEED));
+        cv_params.insert("metric".into(), json!(metric));
+        cv_params.insert("prepare".into(), json!(prepare));
+        cv_params.extend(fold_by.clone());
         nodes.push(parse(
-            &json!({
-                "id": step, "operator": CROSS_VALIDATE,
-                "params": {
-                    "candidate": operator, "candidate_params": params,
-                    "folds": FOLDS, "repeats": REPEATS, "seed": SEED, "metric": metric,
-                    "prepare": prepare
-                }
-            })
-            .to_string(),
+            &json!({ "id": step, "operator": CROSS_VALIDATE, "params": cv_params }).to_string(),
         )?);
         edges.push(edge(&format!("{split}.train"), &format!("{step}.train"))?);
         trials.push((id, step));
@@ -166,6 +161,40 @@ pub fn comparison<'a>(
         .to_string(),
     )?);
     Ok(Comparison { nodes, edges })
+}
+
+/// How folds must follow `split`, as cross-validate params, and how many repeats that allows:
+/// a time split's folds follow its time column and cannot be reshuffled; a group split's keep
+/// its groups whole; a random split's shuffle rows (ADR-0047).
+fn fold_by(
+    split: &Node,
+) -> Result<(serde_json::Map<String, serde_json::Value>, u64), ResolveError> {
+    let operator = split.operator.as_str();
+    let column = |name: &str| {
+        split
+            .params
+            .get(name)
+            .filter(|v| v.is_string())
+            .cloned()
+            .ok_or_else(|| {
+                ResolveError::Selection(format!("split step {} names no {name}", split.id.as_str()))
+            })
+    };
+    let mut by = serde_json::Map::new();
+    if operator.starts_with("sprisk.validation.temporal_split@") {
+        by.insert("time_column".into(), column("time_column")?);
+        Ok((by, 1))
+    } else if operator.starts_with("sprisk.validation.group_split@") {
+        by.insert("group_column".into(), column("group_column")?);
+        Ok((by, REPEATS))
+    } else if operator.starts_with("sprisk.validation.random_split@") {
+        Ok((by, REPEATS))
+    } else {
+        Err(ResolveError::Selection(format!(
+            "split step {} ({operator}) has no fold rule; compare knows random, temporal and group splits",
+            split.id.as_str()
+        )))
+    }
 }
 
 /// The operator and params a shortlisted alternative puts in the model step's place.

@@ -1130,21 +1130,33 @@ fn a_model_whose_train_rows_do_not_trace_to_a_split_cannot_be_compared() {
 }
 
 #[test]
-fn a_comparison_after_a_temporal_or_group_split_is_refused() {
-    // Shuffled folds would validate on rows from before, or groups also fit on (ADR-0046).
-    for split in ["temporal_split", "group_split"] {
+fn a_comparison_after_a_temporal_or_group_split_folds_the_same_way() {
+    // Shuffled folds would validate on earlier rows, or on groups also fit on (ADR-0047).
+    for (split, params, fold_by, repeats) in [
+        (
+            "temporal_split",
+            json!({ "time_column": "signup", "test_fraction": 0.2 }),
+            json!({ "time_column": "signup" }),
+            1,
+        ),
+        (
+            "group_split",
+            json!({ "group_column": "customer", "test_fraction": 0.2, "seed": 1 }),
+            json!({ "group_column": "customer" }),
+            10,
+        ),
+    ] {
         let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
         pipeline["nodes"][1]["operator"] = json!(format!("sprisk.validation.{split}@1.0.0"));
+        pipeline["nodes"][1]["params"] = params;
         let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
         let proposal = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
 
-        let err = compare(&pipeline, &proposal).unwrap_err();
-        assert!(matches!(err, ResolveError::Selection(_)), "{err}");
-        assert!(
-            err.to_string().contains(&format!(
-                "split step split (sprisk.validation.{split}@1.0.0) keeps"
-            )),
-            "{err}"
-        );
+        let built = compare(&pipeline, &proposal).unwrap();
+        let cv = serde_json::to_value(&built.nodes[2]).unwrap();
+        for (key, value) in fold_by.as_object().unwrap() {
+            assert_eq!(&cv["params"][key], value, "{split}");
+        }
+        assert_eq!(cv["params"]["repeats"], repeats, "{split}");
     }
 }

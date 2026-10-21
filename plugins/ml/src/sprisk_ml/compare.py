@@ -39,7 +39,12 @@ PROTOCOL = [
     "train_rows",
     "validate_rows",
     "rows_digest",
+    "folds_by",
 ]
+TIME_ORDERED = (
+    "Folds follow time, so they are not exchangeable: the corrected t-test is a rough guide "
+    "here, not an exact test."
+)
 
 
 def cross_validate(
@@ -51,6 +56,8 @@ def cross_validate(
     metric: str,
     repeats: int,
     prepare: list[Any],
+    time_column: str | None = None,
+    group_column: str | None = None,
 ) -> dict[str, Any]:
     """The candidate's score on each fold's validation rows, its whole pipeline, preparation
     included, refit on the fold's other rows; the rows are shuffled into folds `repeats` times.
@@ -58,7 +65,11 @@ def cross_validate(
     predicted for each train row while the first repeat held it out, how much each feature
     mattered on those held-out folds, and figures of both: all from the train rows, so looking
     at them never touches the test rows (ADR-0047). `prepare` are the preparation steps between
-    the split and the model, as transformers; each fold refits them before the model."""
+    the split and the model, as transformers; each fold refits them before the model.
+
+    After a time split, folds follow `time_column`: each validates on rows later than all it
+    fits on, and the earliest rows are only fit on. After a group split, no `group_column`
+    value is on both sides of a fold. Otherwise rows are shuffled (ADR-0047)."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
     # Rust picks the metric from the question's task; this checks a step built by hand.
     if task not in METRIC_OF_TASK:
@@ -82,7 +93,19 @@ def cross_validate(
     if prepare:
         steps = [(f"prepare_{i}", step) for i, step in enumerate(prepare)]
         model = Pipeline([*steps, ("model", model)])
-    splits = list(_splitter(task, y, folds, repeats, seed).split(np.zeros(len(y)), truth))
+    if time_column is not None and group_column is not None:
+        raise ValueError("folds follow time or groups, not both")
+    if time_column is not None:
+        splits, folds_by = _time_splits(train, time_column, folds, repeats), "time"
+    elif group_column is not None:
+        groups = train[group_column]
+        if groups.null_count():
+            raise ValueError(f"{group_column} has {groups.null_count()} missing values in train")
+        splits = _group_splits(task, truth, groups.to_numpy(), folds, repeats, seed)
+        folds_by = "group"
+    else:
+        splitter = _splitter(task, y, folds, repeats, seed)
+        splits, folds_by = list(splitter.split(np.zeros(len(y)), truth)), "shuffle"
     result = model_selection.cross_validate(
         model,
         x,
@@ -128,6 +151,7 @@ def cross_validate(
             "train_rows": [len(fit_rows) for fit_rows, _ in splits],
             "validate_rows": [len(held) for _, held in splits],
             "rows_digest": [_digest(held) for _, held in splits],
+            "folds_by": [folds_by] * n,
         }
     )
     return {
@@ -175,6 +199,36 @@ def _splitter(
     return model_selection.RepeatedStratifiedKFold(
         n_splits=folds, n_repeats=repeats, random_state=seed
     )
+
+
+def _time_splits(
+    train: pl.DataFrame, column: str, folds: int, repeats: int
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Expanding-window folds over the rows in `column` order, as row indices of `train`."""
+    if repeats != 1:
+        raise ValueError("time-ordered folds cannot be reshuffled; repeats must be 1")
+    times = train[column]
+    if times.null_count():
+        raise ValueError(f"{column} has {times.null_count()} missing values in train")
+    order = np.argsort(times.to_numpy(), kind="stable")
+    windows = model_selection.TimeSeriesSplit(n_splits=folds).split(order)
+    return [(order[fit], order[held]) for fit, held in windows]
+
+
+def _group_splits(
+    task: str, truth: np.ndarray, groups: np.ndarray, folds: int, repeats: int, seed: int
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Folds that keep each group whole, shuffled anew for each repeat."""
+    splits: list[tuple[np.ndarray, np.ndarray]] = []
+    for repeat in range(repeats):
+        shuffle = {"n_splits": folds, "shuffle": True, "random_state": seed + repeat}
+        splitter = (
+            model_selection.StratifiedGroupKFold(**shuffle)
+            if task == "classification"
+            else model_selection.GroupKFold(**shuffle)
+        )
+        splits += list(splitter.split(np.zeros(len(truth)), truth, groups))
+    return splits
 
 
 def _digest(rows: np.ndarray) -> str:
@@ -240,7 +294,7 @@ def select_model(
         "seed": int(protocol["seed"][0]),
         "baseline": baseline,
         "candidates": candidates,
-        "limitations": [TESTED],
+        "limitations": [TESTED, *([TIME_ORDERED] if protocol["folds_by"][0] == "time" else [])],
     }
     if not beating:
         decision["reason"] = (
