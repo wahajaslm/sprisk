@@ -106,6 +106,7 @@ Most important first.
 8. **Certification:** fit scope is proven by tests only; no runtime scope evidence (SCI-02, SCI-08).
 9. **In-app help:** operators and rules carry one-line descriptions only. Help pages for each step and rule can draw on the course in `knowledge/`, written in our own words.
 10. **Draft rules:** 24 of 30 rules are drafts. Each is checked against the matching course notebooks in `knowledge/` before it becomes active; its manifest still cites the primary sources.
+11. **Scenario library:** end-to-end tests cover iris, penguins and diabetes only. The course's worked cases in `knowledge/` (for example Titanic, German credit, air passengers, card fraud, wine quality) can become example flows and end-to-end tests, each aimed at an open gap. The notebooks hold no data: each dataset comes from its public source, licence checked.
 
 ## Explicitly deferred
 
