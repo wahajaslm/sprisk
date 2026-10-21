@@ -37,7 +37,7 @@ export const operators: Operator[] = [
   },
   op("sprisk.profile.summarize@1.0.0", "analyzer", [["data", "table"]], [["profile", "diagnostics"]]),
   op("sprisk.validation.random_split@1.0.0", "transform", [["data", "table"]], [["train", "table"], ["test", "table"]]),
-  op("sprisk.clean.impute@1.0.0", "transform", [["train", "table"], ["test", "table"]], [["train", "table"], ["test", "table"]]),
+  { ...op("sprisk.clean.impute@1.0.0", "transform", [["train", "table"], ["test", "table"]], [["train", "table"], ["test", "table"]]), fits_on_train: true },
   op("sprisk.ml.linear_model@1.0.0", "estimator", [["train", "table"]], [["model", "model"]]),
   op("sprisk.ml.evaluate@1.0.0", "evaluator", [["model", "model"], ["test", "table"]], [["metrics", "metrics"]]),
   {

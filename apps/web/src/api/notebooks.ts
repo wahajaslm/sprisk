@@ -2,7 +2,7 @@ import type { CodeSplitRequest, DisplayItem, NotebookExecute, NotebookExecution,
 import { parse } from "@sprisk/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { ApiError, getList, getOne, jsonLines, postEmpty, postOne, postStreamed, problemText } from "./client.ts";
+import { ApiError, getList, getOne, jsonLines, postEmpty, postOne, postStreamed, problemError } from "./client.ts";
 
 /** Each notebook's latest saved version (ADR-0036). */
 export const useNotebooks = () => useQuery({ queryKey: ["notebooks"], queryFn: () => getList("NotebookVersion", "/notebooks?limit=200") });
@@ -39,9 +39,9 @@ export async function executeCell(
     const event = parse("NotebookExecutionEvent", line);
     if (event.kind === "running") running(event.outputs);
     else if (event.kind === "done") return event.execution;
-    else throw new ApiError(response.status, problemText(event.problem) ?? "the cell failed");
+    else throw problemError(response.status, event.problem, "the cell failed");
   }
-  throw new ApiError(response.status, "the kernel's answer ended before the cell did");
+  throw new ApiError(response.status, "the kernel's answer ended before the cell did", []);
 }
 
 export const interruptKernel = (notebookId: string) => postEmpty(`/notebooks/${notebookId}/interrupt`);

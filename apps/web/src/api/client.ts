@@ -7,6 +7,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The Problem's error codes; none when the answer was not a Problem. */
+    readonly codes: string[],
   ) {
     super(message);
   }
@@ -20,7 +22,15 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`${API_BASE}${path}`, init);
   if (response.ok) return response;
   const body: unknown = await response.json().catch(() => undefined);
-  throw new ApiError(response.status, problemText(body) ?? `${response.status} ${response.statusText}`);
+  throw problemError(response.status, body, `${response.status} ${response.statusText}`);
+}
+
+/** An ApiError from a Problem body, or with `fallback` when the body is not one. */
+export function problemError(status: number, body: unknown, fallback: string): ApiError {
+  const problem = asProblem(body);
+  if (!problem) return new ApiError(status, fallback, []);
+  const text = problem.errors.map((e) => `${e.code}: ${e.message}`).join("\n");
+  return new ApiError(status, text, problem.errors.map((e) => e.code));
 }
 
 /** A POST answered as JSON lines when the server can stream (ADR-0041), else as JSON. */
@@ -43,11 +53,9 @@ export async function* jsonLines(response: Response): AsyncGenerator<unknown> {
   if (buffered.trim() !== "") yield JSON.parse(buffered);
 }
 
-export function problemText(body: unknown): string | undefined {
+function asProblem(body: unknown): Entities["Problem"] | undefined {
   try {
-    return parse("Problem", body)
-      .errors.map((e) => `${e.code}: ${e.message}`)
-      .join("\n");
+    return parse("Problem", body);
   } catch (e) {
     if (e instanceof ContractError) return undefined;
     throw e;

@@ -1,7 +1,8 @@
 import type { Attempt, DecisionProposal, PipelineVersion, SelectionDecision } from "@sprisk/contracts";
 import { useEffect, useRef, useState } from "react";
 
-import { isLive, useRuns } from "../api/hooks.ts";
+import { ApiError } from "../api/client.ts";
+import { isLive, useOperators, useRuns } from "../api/hooks.ts";
 import { useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../api/runs.ts";
 import { useSelection } from "../workbench/selection.ts";
@@ -11,8 +12,8 @@ import { formatMetric } from "./NodeFact.tsx";
 const METRIC_LABEL: Record<SelectionDecision["metric"], string> = { balanced_accuracy: "balanced accuracy", rmse: "RMSE" };
 type Candidate = SelectionDecision["candidates"][number];
 
-/** How Sprisk chose this flow's models (ADR-0047). For the flow's head it starts the choice
- * itself; every comparison of the flow's versions is shown. */
+/** How Sprisk chose this flow's models and preparation steps (ADR-0047). For the flow's head it
+ * starts each choice itself; every comparison of the flow's versions is shown. */
 export function ModelComparisons({ flowIds, head, versions }: { flowIds: string[]; head: PipelineVersion; versions: PipelineVersion[] }) {
   const comparisons = versions.flatMap((v) => (v.compares === undefined ? [] : [{ version: v, proposalId: v.compares }]));
   const proposals = useMethodologyProposals(comparisons.map((c) => c.proposalId));
@@ -33,18 +34,25 @@ export function ModelComparisons({ flowIds, head, versions }: { flowIds: string[
   );
 }
 
-/** The head's model steps that a shortlist rule decides, each selected once the head has run.
- * A step its own decision just chose is not selected again: the head is that choice. */
+/** The head's steps Sprisk compares, each once the head has run: model steps a shortlist rule
+ * decides, and steps a recommend rule decides that fit on train rows (ADR-0047). The server
+ * says when such a step has nothing to compare. A step its own decision just chose is not
+ * selected again: the head is that choice. */
 function AutoSelect({ head }: { head: PipelineVersion }) {
   const rules = useMethodologyRules();
-  const shortlisted = new Set(
-    (rules.data ?? []).filter((r) => r.status === "active" && r.selection === "shortlist").flatMap((r) => r.applies_to ?? []),
-  );
-  const steps = head.nodes.filter((n) => shortlisted.has(n.operator.split("@")[0] ?? ""));
-  return steps.map((n) => <AutoSelectStep key={`${head.id}/${n.id}`} head={head} nodeId={n.id} decisionId={n.methodology_decision_id} />);
+  const operators = useOperators();
+  const active = (rules.data ?? []).filter((r) => r.status === "active");
+  const shortlisted = new Set(active.filter((r) => r.selection === "shortlist").flatMap((r) => r.applies_to ?? []));
+  const recommended = new Set(active.filter((r) => r.selection !== "shortlist").flatMap((r) => r.applies_to ?? []));
+  const fitsOnTrain = (operator: string) => operators.data?.find((o) => o.id === operator)?.fits_on_train === true;
+  const name = (operator: string) => operator.split("@")[0] ?? "";
+  const steps = head.nodes.filter((n) => shortlisted.has(name(n.operator)) || (recommended.has(name(n.operator)) && fitsOnTrain(n.operator)));
+  return steps.map((n) => (
+    <AutoSelectStep key={`${head.id}/${n.id}`} head={head} nodeId={n.id} decisionId={n.methodology_decision_id} models={shortlisted.has(name(n.operator))} />
+  ));
 }
 
-function AutoSelectStep({ head, nodeId, decisionId }: { head: PipelineVersion; nodeId: string; decisionId: string | undefined }) {
+function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVersion; nodeId: string; decisionId: string | undefined; models: boolean }) {
   const runs = useRuns(head.id);
   const decision = useMethodologyDecision(decisionId);
   const select = useSelectModel();
@@ -60,8 +68,13 @@ function AutoSelectStep({ head, nodeId, decisionId }: { head: PipelineVersion; n
     fired.current = true;
     mutate({ pipelineId: head.id, nodeId });
   }, [due, head.id, nodeId, mutate]);
-  if (select.isError) return <p role="alert" className="error pad">Sprisk could not choose a model for {nodeId}: {select.error.message}</p>;
-  if (!hasRun && !runs.isPending && !chosenHere) return <p className="muted pad">Run the flow, and Sprisk will compare models for {nodeId}.</p>;
+  if (select.error instanceof ApiError && select.error.codes.includes("nothing_to_compare")) {
+    return <p className="muted pad">{nodeId}: {select.error.message.replace(/^nothing_to_compare: /, "")}</p>;
+  }
+  if (select.isError) return <p role="alert" className="error pad">Sprisk could not compare the choices for {nodeId}: {select.error.message}</p>;
+  if (!hasRun && !runs.isPending && !chosenHere) {
+    return <p className="muted pad">Run the flow, and Sprisk will compare {models ? "models" : "its choices"} for {nodeId}.</p>;
+  }
   return null;
 }
 
@@ -69,16 +82,18 @@ function Comparison({ comparison, proposal }: { comparison: PipelineVersion; pro
   const [latest] = useFlowRuns([comparison.id], 1);
   const selectNode = comparison.nodes.find((n) => n.operator.startsWith("sprisk.ml.select_model@"))?.id;
   const result = useSelectionDecision(latest, selectNode);
+  const models = (proposal.shortlist ?? []).length > 0;
+  const trials = comparison.nodes.filter((n) => n.operator.startsWith("sprisk.ml.cross_validate@")).length;
   return (
-    <section className="model-comparison" aria-label="Model comparison">
-      <p className="eyebrow">Model selection · {proposal.subject_node_id}</p>
+    <section className="model-comparison" aria-label={models ? "Model comparison" : "Preparation comparison"}>
+      <p className="eyebrow">{models ? "Model selection" : "Preparation"} · {proposal.subject_node_id}</p>
       {result.status === "decided" ? (
         <Decided decision={result.decision} artifactId={result.artifactId} attempts={result.attempts} proposal={proposal} />
       ) : result.status === "failed" ? (
         <p role="alert" className="error">The comparison failed: {result.message}</p>
       ) : (
         <p className="muted">
-          {result.status === "not_run" ? "Not run yet." : result.status === "running" || isLive(latest) ? `Cross-validating ${proposal.shortlist?.length ?? 0} models…` : "Loading…"}
+          {result.status === "not_run" ? "Not run yet." : result.status === "running" || isLive(latest) ? `Cross-validating ${trials} ${models ? "models" : "choices"}…` : "Loading…"}
         </p>
       )}
     </section>
@@ -86,11 +101,11 @@ function Comparison({ comparison, proposal }: { comparison: PipelineVersion; pro
 }
 
 function Decided({ decision, artifactId, attempts, proposal }: { decision: SelectionDecision; artifactId: string; attempts: Attempt[]; proposal: DecisionProposal }) {
-  const ids = decision.candidates.map((c) => c.id);
   const [picked, setPicked] = useState<string[]>(() => defaultPair(decision));
   const [choosing, setChoosing] = useState<string>();
   const why = (id: string) => proposal.alternatives.find((a) => a.id === id)?.reason;
-  const leftOff = proposal.alternatives.filter((a) => !ids.includes(a.id));
+  const reference = decision.baseline_role === "reference";
+  const notCompared = decision.not_compared ?? [];
   const toggle = (id: string) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(-2));
   const cvAttempt = (id: string) => attempts.filter((a) => a.node_id === `cv_${id}` && (a.state === "succeeded" || a.state === "cache_hit")).at(-1);
   return (
@@ -107,16 +122,16 @@ function Decided({ decision, artifactId, attempts, proposal }: { decision: Selec
                 <label>
                   <input type="checkbox" aria-label={`Compare ${c.id} in detail`} checked={picked.includes(c.id)} onChange={() => toggle(c.id)} /> <span className="mono">{c.id}</span>
                 </label>
-                <div className="muted">{c.id === decision.winner ? "recommended" : c.id === decision.baseline ? "baseline (the floor)" : ""}</div>
+                <div className="muted">{standing(c.id, decision)}</div>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          <Row label="Why on the shortlist" cells={decision.candidates.map((c) => why(c.id) ?? "—")} />
+          <Row label={reference ? "Why the rule offers it" : "Why on the shortlist"} cells={decision.candidates.map((c) => why(c.id) ?? "—")} />
           <Row label={`Mean ± spread (${METRIC_LABEL[decision.metric]})`} mono cells={decision.candidates.map((c) => `${formatMetric(c.mean)} ± ${formatMetric(c.spread)}`)} />
           <Row label="Fold scores" mono cells={decision.candidates.map(foldRange)} />
-          <Row label="Gain over baseline ± corrected SE" mono cells={decision.candidates.map(gain)} />
+          <Row label={`Gain over ${reference ? "the recommendation" : "baseline"} ± corrected SE`} mono cells={decision.candidates.map(gain)} />
           <Row label="Verdict" cells={decision.candidates.map((c) => verdict(c, decision))} />
           <tr>
             <th scope="row"><span className="sr-only">Use</span></th>
@@ -128,8 +143,10 @@ function Decided({ decision, artifactId, attempts, proposal }: { decision: Selec
           </tr>
         </tbody>
       </table>
-      {leftOff.length > 0 && (
-        <p className="muted">Left off the shortlist: {leftOff.map((a) => `${a.id} (${a.reason})`).join("; ")}</p>
+      {notCompared.length > 0 && (
+        <p className="muted">
+          {reference ? "Not measurable here" : "Not compared"}: {notCompared.map((n) => `${n.id} (${n.reason})`).join("; ")}
+        </p>
       )}
       <p>{decision.reason}</p>
       {decision.limitations.length > 0 && (
@@ -224,6 +241,14 @@ function TestRowsCaution({ decisionId }: { decisionId: string }) {
   );
 }
 
+/** Under a candidate's name: whether it is recommended, and what its baseline is for. */
+function standing(id: string, decision: SelectionDecision): string {
+  const baseline = id === decision.baseline;
+  if (decision.baseline_role === "reference" && baseline) return id === decision.winner ? "recommended, as the rule's reference" : "the rule's reference";
+  if (id === decision.winner) return "recommended";
+  return baseline ? "baseline (the floor)" : "";
+}
+
 /** The recommendation and the best other model that is not the baseline. */
 function defaultPair(decision: SelectionDecision): string[] {
   const sign = decision.metric === "rmse" ? -1 : 1;
@@ -243,11 +268,13 @@ function gain(c: Candidate): string {
 /** Where a candidate stands, claiming no more than was tested: with a p value the corrected
  * t-test decided; without one (older decisions) the one-SE screen did. */
 function verdict(c: Candidate, decision: SelectionDecision): string {
-  if (c.id === decision.baseline) return "the floor";
+  const reference = decision.baseline_role === "reference";
+  if (c.id === decision.baseline) return reference ? (c.id === decision.winner ? "stands: none beats it" : "beaten") : "the floor";
   if (c.id === decision.winner) return "recommended";
   const versus = c.versus_baseline;
   if (!versus) return "—";
-  if (versus.p_value !== undefined) return versus.beats_baseline ? "beats the baseline (tested)" : "not shown to beat the baseline";
+  const floor = reference ? "the recommendation" : "the baseline";
+  if (versus.p_value !== undefined) return versus.beats_baseline ? `beats ${floor} (tested)` : `not shown to beat ${floor}`;
   if (versus.beats_baseline) return "clears the 1-SE bar";
   if (versus.mean_difference < -versus.corrected_se) return "worse than baseline";
   return "within 1 SE of baseline";

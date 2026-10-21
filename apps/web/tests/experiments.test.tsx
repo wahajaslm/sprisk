@@ -100,7 +100,11 @@ describe("model comparison", () => {
     ...pipeline,
     id: CPV,
     compares: MPR,
-    nodes: [...pipeline.nodes.filter((n) => n.id === "load" || n.id === "split"), { id: "select_model", operator: "sprisk.ml.select_model@3.0.0", params: {} }],
+    nodes: [
+      ...pipeline.nodes.filter((n) => n.id === "load" || n.id === "split"),
+      ...["ml_dummy_baseline", "ml_linear_model", "ml_random_forest"].map((id) => ({ id: `cv_${id}`, operator: "sprisk.ml.cross_validate@2.0.0", params: {} })),
+      { id: "select_model", operator: "sprisk.ml.select_model@3.0.0", params: {} },
+    ],
   };
   const comparisonRun = { ...run, id: CRUN, pipeline_version_id: CPV };
   const selectAttempt = { ...scoreAttempt, id: "att_01JABCDEFGHJKMNPQRSTVWXY80", run_id: CRUN, node_id: "select_model" };
@@ -151,7 +155,7 @@ describe("model comparison", () => {
   const row = (table: HTMLElement, label: string) => within(table).getByRole("row", { name: new RegExp(`^${label}`) });
 
   it("shows every model side by side: why it was shortlisted, its scores, gain and verdict", async () => {
-    compared(winner);
+    compared({ ...winner, not_compared: [{ id: "ml_gradient_boosting", reason: "Not on the shortlist: Too few rows to trust." }] });
     const region = await screen.findByRole("region", { name: "Model comparison" });
     const table = await within(region).findByRole("table", { name: "Candidates" });
     expect(region).toHaveTextContent("5-fold cross-validation, seed 0, scored by balanced accuracy");
@@ -162,7 +166,7 @@ describe("model comparison", () => {
     expect(row(table, "Fold scores")).toHaveTextContent("5 scores, 0.87 to 0.93");
     expect(row(table, "Gain over baseline")).toHaveTextContent("+0.398 ± 0.0145");
     expect(row(table, "Verdict")).toHaveTextContent("the floorrecommendedclears the 1-SE bar");
-    expect(region).toHaveTextContent("Left off the shortlist: ml_gradient_boosting (Too few rows to trust.)");
+    expect(region).toHaveTextContent("Not compared: ml_gradient_boosting (Not on the shortlist: Too few rows to trust.)");
     expect(region).toHaveTextContent(winner.reason);
     // A comparison is not a run of the flow.
     expect(screen.getByText("1 run")).toBeInTheDocument();
@@ -318,5 +322,97 @@ describe("model comparison", () => {
     // Everything the page shows is drawn by now; a second effect would have posted already.
     await screen.findByRole("table", { name: "Candidates" });
     expect(posted).toHaveLength(1);
+  });
+
+  describe("of a preparation step", () => {
+    const PREP = "mpr_01JABCDEFGHJKMNPQRSTVWXYZ3";
+    const prepProposal = {
+      ...proposal,
+      id: PREP,
+      rule: "methodology.supervised.missingness@1.1.0",
+      subject_node_id: "impute",
+      alternatives: [
+        { id: "impute_median", label: "Median", description: "Median.", applicability: "applicable", reason: "Skewed columns." },
+        { id: "impute_mean", label: "Mean", description: "Mean.", applicability: "applicable", reason: "Symmetric columns." },
+        { id: "drop_rows", label: "Drop rows", description: "Drop.", applicability: "applicable", reason: "Shrinks the data." },
+      ],
+      recommended_alternative_id: "impute_median",
+      shortlist: undefined,
+    };
+    const DROP_ROWS = "sprisk.clean.drop_missing@1.0.0 does not fit on the train rows and keep train and test apart, so it cannot be refit within each fold.";
+    const stands = {
+      ...tested,
+      baseline: "impute_median",
+      baseline_role: "reference",
+      winner: "impute_median",
+      candidates: [
+        { ...tested.candidates[0]!, id: "impute_median", mean: 0.9 },
+        { ...tested.candidates[1]!, id: "impute_mean", versus_baseline: { mean_difference: 0.002, corrected_se: 0.01, p_value: 0.42, beats_baseline: false } },
+      ],
+      not_compared: [{ id: "drop_rows", reason: DROP_ROWS }],
+      reason: "No alternative beats the recommendation impute_median. impute_median stands.",
+    };
+    const prepComparison = { ...comparison, compares: PREP, nodes: comparison.nodes.filter((n) => !n.id.startsWith("cv_")) };
+
+    function prepared() {
+      const applied = compared(stands);
+      server.use(
+        http.get("/api/pipeline_versions", () => HttpResponse.json([prepComparison, pipeline])),
+        http.get(`/api/methodology_proposals/${PREP}`, () => HttpResponse.json(prepProposal)),
+        http.post(`/api/methodology_proposals/${PREP}/apply`, async ({ request }) => {
+          applied.push(await request.json());
+          return HttpResponse.json(appliedDecision, { status: 201 });
+        }),
+      );
+      return applied;
+    }
+
+    it("shows each way of doing the step against the rule's recommendation, and what could not be measured", async () => {
+      prepared();
+      const region = await screen.findByRole("region", { name: "Preparation comparison" });
+      const table = await within(region).findByRole("table", { name: "Candidates" });
+      expect(region).toHaveTextContent("Preparation · impute");
+      expect(within(table).getAllByRole("columnheader")[1]).toHaveTextContent("impute_medianrecommended, as the rule's reference");
+      expect(row(table, "Why the rule offers it")).toHaveTextContent("Skewed columns.Symmetric columns.");
+      expect(row(table, "Gain over the recommendation")).toHaveTextContent("+0.002 ± 0.01, p = 0.42");
+      expect(row(table, "Verdict")).toHaveTextContent("stands: none beats itnot shown to beat the recommendation");
+      expect(region).toHaveTextContent(`Not measurable here: drop_rows (${DROP_ROWS})`);
+    });
+
+    it("uses the recommendation with no reason, and another choice only with one", async () => {
+      const applied = prepared();
+      await userEvent.click(await screen.findByRole("button", { name: "Use impute_mean" }));
+      await userEvent.type(screen.getByLabelText("Why impute_mean instead of the recommended impute_median?"), "Means are reported.");
+      await userEvent.click(screen.getByRole("button", { name: "Apply impute_mean to a new version" }));
+      await waitFor(() => expect(applied).toHaveLength(1));
+      expect(applied[0]).toMatchObject({ alternative_id: "impute_mean", reason: "Means are reported." });
+    });
+
+    const missingness = { ...shortlistRule, id: "methodology.supervised.missingness@1.1.0", selection: undefined, applies_to: ["sprisk.clean.impute"] };
+
+    it("starts the comparison itself once the flow has run", async () => {
+      const posted: string[] = [];
+      prepared();
+      server.use(
+        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
+        http.post("/api/pipeline_versions/:id/model_selection/:node", ({ params }) => {
+          posted.push(`${String(params.id)}/${String(params.node)}`);
+          return HttpResponse.json({ proposal: prepProposal, comparison: prepComparison, run: comparisonRun }, { status: 201 });
+        }),
+      );
+      await waitFor(() => expect(posted).toEqual([`${PV}/impute`]));
+    });
+
+    it("says so, without alarm, when a step has nothing to compare", async () => {
+      prepared();
+      server.use(
+        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
+        http.post("/api/pipeline_versions/:id/model_selection/:node", () =>
+          HttpResponse.json({ errors: [{ code: "nothing_to_compare", message: "nothing to compare: only the recommendation drop_rows can be measured here" }] }, { status: 422 }),
+        ),
+      );
+      expect(await screen.findByText("impute: nothing to compare: only the recommendation drop_rows can be measured here")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
   });
 });
