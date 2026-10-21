@@ -3,7 +3,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from sprisk_io.file_source import file_source
+from sprisk_io.file_source import as_code, file_source
 
 
 def test_csv_is_read_as_a_table(tmp_path: Path) -> None:
@@ -35,3 +35,15 @@ def test_parquet_is_read_as_a_table(tmp_path: Path) -> None:
 def test_missing_file_is_an_error_naming_it(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="no file at .*nope.csv"):
         file_source(tmp_path / "nope.csv", "csv")
+
+
+@pytest.mark.parametrize("format", ["csv", "parquet"])
+def test_plain_code_reads_the_file_as_the_step_does(tmp_path: Path, format: str) -> None:
+    table = pl.DataFrame({"a": [1, None, 3], "b": ["x", "NA", "z"]})
+    path = tmp_path / f"t.{format}"
+    table.write_csv(path) if format == "csv" else table.write_parquet(path)
+    settings = {"path": str(path), "format": format, "missing_values": ["NA", "?"]}
+    namespace: dict[str, object] = {}
+    exec(as_code(settings, {}, {"data": "loans"}), namespace)
+    step = file_source(path, format, ["NA", "?"])
+    assert namespace["loans"].equals(step)  # type: ignore[attr-defined]

@@ -163,3 +163,85 @@ def preprocessor(schema: pl.Schema, scale: bool) -> ColumnTransformer:
             ),
         ]
     )
+
+
+def random_forest_as_code(
+    settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]
+) -> str:
+    """This step as plain Python for a notebook cell (ADR-0055); a test checks it predicts as
+    the step does. Helper names start with the model's own name, so they never replace a
+    person's names."""
+    train, model = inputs["train"], outputs["model"]
+    classify = settings["task"] == "classification"
+    forest = "RandomForestClassifier" if classify else "RandomForestRegressor"
+    options = [
+        f"n_estimators={settings.get('n_estimators', 200)!r}",
+        f"random_state={settings.get('seed', 0)!r}",
+        f"min_samples_leaf={settings.get('min_samples_leaf', 1)!r}",
+    ]
+    if settings.get("max_features") is not None:
+        options.append(f"max_features={settings['max_features']!r}")
+    features, numeric, other = f"{model}_features", f"{model}_numeric", f"{model}_categories"
+    fit = f"{train}.select({features}), {train}[{settings['target']!r}].to_numpy()"
+    code = (
+        "import numpy as np\n"
+        "from sklearn.compose import ColumnTransformer\n"
+        f"from sklearn.ensemble import {forest}\n"
+        "from sklearn.impute import SimpleImputer\n"
+        "from sklearn.pipeline import Pipeline, make_pipeline\n"
+        "from sklearn.preprocessing import FunctionTransformer, OneHotEncoder\n"
+        "\n"
+        f"{features} = {settings['features']!r}\n"
+        f"{numeric} = [c for c in {features} if {train}.schema[c].is_numeric()]\n"
+        f"{other} = [c for c in {features} if c not in {numeric}]\n"
+        "\n"
+        "# Numbers: gaps get the median. Text: gaps get the most frequent value, then one\n"
+        "# column per category; a category seen only later is ignored. Trees need no scaling.\n"
+        f"{model} = Pipeline([\n"
+        '    ("preprocess", ColumnTransformer([\n'
+        f'        ("numeric", SimpleImputer(strategy="median"), {numeric}),\n'
+        '        ("categorical", make_pipeline(\n'
+        "            FunctionTransformer(lambda x: np.asarray(x, dtype=object)),\n"
+        '            SimpleImputer(missing_values=None, strategy="most_frequent"),\n'
+        '            OneHotEncoder(handle_unknown="ignore"),\n'
+        f"        ), {other}),\n"
+        "    ])),\n"
+        f'    ("forest", {forest}({", ".join(options)})),\n'
+        "])\n"
+    )
+    costs = settings.get("costs")
+    if not costs:
+        return code + f"{model}.fit({fit})\n"
+    return code + _costed_code(model, fit, costs, settings.get("seed", 0))
+
+
+def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
+    """The cut-off tuned for least cost on the model's own training rows (ADR-0053)."""
+    positive, fn, fp = costs["positive"], costs["false_negative"], costs["false_positive"]
+    return (
+        "\n"
+        "from sklearn.frozen import FrozenEstimator\n"
+        "from sklearn.metrics import make_scorer\n"
+        "from sklearn.model_selection import (\n"
+        "    FixedThresholdClassifier, StratifiedKFold, TunedThresholdClassifierCV,\n"
+        ")\n"
+        "\n"
+        "\n"
+        f"def {model}_cost(y_true, y_pred, pos_label):\n"
+        f'    """Mean cost per row: a missed {positive} costs {fn}, a false alarm {fp}."""\n'
+        "    truth, said = np.asarray(y_true) == pos_label, np.asarray(y_pred) == pos_label\n"
+        f"    return float(({fn!r} * (truth & ~said).sum() + {fp!r} * (~truth & said).sum()) / len(truth))\n"
+        "\n"
+        "\n"
+        "# The cut-off is tuned on 3 folds of the training rows only.\n"
+        f"{model}_tuned = TunedThresholdClassifierCV(\n"
+        f"    {model},\n"
+        f"    scoring=make_scorer({model}_cost, greater_is_better=False, pos_label={positive!r}),\n"
+        f"    cv=StratifiedKFold(3, shuffle=True, random_state={seed!r}),\n"
+        f").fit({fit})\n"
+        f"{model} = FixedThresholdClassifier(\n"
+        f"    FrozenEstimator({model}_tuned.estimator_),\n"
+        f"    threshold=float({model}_tuned.best_threshold_),\n"
+        f"    pos_label={positive!r},\n"
+        f").fit({fit})\n"
+    )

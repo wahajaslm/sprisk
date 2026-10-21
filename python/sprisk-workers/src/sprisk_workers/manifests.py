@@ -95,6 +95,9 @@ def _loaded(
     preparations: Mapping[str, CheckedFunction],
 ) -> LoadedOperator:
     function = _function(path, "entrypoint", operator.entrypoint.root)
+    # A step's plain code (ADR-0055) is written on request; a typo fails here, at load.
+    if operator.notebook_code is not None:
+        _function(path, "notebook_code", operator.notebook_code.root)
     ports = frozenset(port.name.root for port in operator.outputs)
     return LoadedOperator(
         run=adapt(function, operator, models=models, preparations=preparations),

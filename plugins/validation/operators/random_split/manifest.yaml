@@ -3,6 +3,7 @@ id: sprisk.validation.random_split@1.0.0
 capability_class: transform
 description: Shuffle rows with a fixed seed into train and test.
 entrypoint: sprisk_validation.random_split:random_split
+notebook_code: sprisk_validation.random_split:as_code
 inputs: [{ name: data, kind: table }]
 outputs: [{ name: train, kind: table }, { name: test, kind: table }]
 params_schema:

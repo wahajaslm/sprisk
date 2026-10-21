@@ -79,6 +79,12 @@ def test_missing_entrypoint_function_is_an_error(tmp_path: Path) -> None:
         load_operators(tmp_path)
 
 
+def test_a_missing_plain_code_writer_is_an_error(tmp_path: Path) -> None:
+    write(tmp_path, "sprisk_validation.temporal_split:temporal_split\nnotebook_code: sprisk_validation.temporal_split:nope")
+    with pytest.raises(ManifestError, match="notebook_code|nope"):
+        load_operators(tmp_path)
+
+
 def test_unimportable_entrypoint_module_is_an_error(tmp_path: Path) -> None:
     write(tmp_path, "sprisk_ml.nope:f")
     with pytest.raises(ManifestError, match="cannot import"):

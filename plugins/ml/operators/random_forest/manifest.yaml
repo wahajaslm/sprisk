@@ -5,6 +5,7 @@ model: { family: tree_ensemble, tasks: [classification, regression], prepares: [
   search: [{ name: min_samples_leaf, values: [1, 5, 20] }, { name: max_features, values: [0.3, 0.6, 1.0] }] }
 description: Random forest (classification or regression) with imputation and one-hot encoding fit on train only.
 entrypoint: sprisk_ml.models:random_forest
+notebook_code: sprisk_ml.models:random_forest_as_code
 inputs: [{ name: train, kind: table }]
 outputs: [{ name: model, kind: model }]
 params_schema:
