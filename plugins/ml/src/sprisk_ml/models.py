@@ -230,7 +230,8 @@ def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
         f"def {model}_cost(y_true, y_pred, pos_label):\n"
         f'    """Mean cost per row: a missed {positive} costs {fn}, a false alarm {fp}."""\n'
         "    truth, said = np.asarray(y_true) == pos_label, np.asarray(y_pred) == pos_label\n"
-        f"    return float(({fn!r} * (truth & ~said).sum() + {fp!r} * (~truth & said).sum()) / len(truth))\n"
+        f"    missed, alarms = (truth & ~said).sum(), (~truth & said).sum()\n"
+        f"    return float(({fn!r} * missed + {fp!r} * alarms) / len(truth))\n"
         "\n"
         "\n"
         "# The cut-off is tuned on 3 folds of the training rows only.\n"

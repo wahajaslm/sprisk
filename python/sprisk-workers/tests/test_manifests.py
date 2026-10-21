@@ -80,7 +80,11 @@ def test_missing_entrypoint_function_is_an_error(tmp_path: Path) -> None:
 
 
 def test_a_missing_plain_code_writer_is_an_error(tmp_path: Path) -> None:
-    write(tmp_path, "sprisk_validation.temporal_split:temporal_split\nnotebook_code: sprisk_validation.temporal_split:nope")
+    write(
+        tmp_path,
+        "sprisk_validation.temporal_split:temporal_split\n"
+        "notebook_code: sprisk_validation.temporal_split:nope",
+    )
     with pytest.raises(ManifestError, match="notebook_code|nope"):
         load_operators(tmp_path)
 
