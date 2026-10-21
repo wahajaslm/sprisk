@@ -56,10 +56,12 @@ export function notebookSteps(pipeline: PipelineVersion, operators: Operators): 
   });
 }
 
-/** The name an output goes by where it is read: a code step's variable, or `<step>_<port>`. */
-function outputName(pipeline: PipelineVersion, end: string): string {
-  const node = pipeline.nodes.find((n) => n.id === stepOf(end));
-  return node && isNotebookStep(node.operator) ? portOf(end) : `${stepOf(end)}_${portOf(end)}`;
+/** The name an output goes by where it is read (ADR-0055): a code step's variable, the name a
+ * step keeps for it, or `<step>_<port>`. */
+export function outputName(pipeline: PipelineVersion, end: string): string {
+  const node = nodeOf(pipeline, stepOf(end));
+  if (isNotebookStep(node.operator)) return portOf(end);
+  return node.names?.[portOf(end)] ?? `${stepOf(end)}_${portOf(end)}`;
 }
 
 /** Every name a non-notebook step's output goes by: `<step>_<port>`, and each name a code step
@@ -67,7 +69,7 @@ function outputName(pipeline: PipelineVersion, end: string): string {
 function outputNames(pipeline: PipelineVersion, nodeId: string, port: string): string[] {
   const end = `${nodeId}.${port}`;
   const readers = pipeline.edges.filter((e) => e.from === end && isNotebookStep(nodeOf(pipeline, stepOf(e.to)).operator));
-  return [...new Set([`${nodeId}_${port}`, ...readers.map((e) => portOf(e.to))])];
+  return [...new Set([outputName(pipeline, end), ...readers.map((e) => portOf(e.to))])];
 }
 
 function outputPorts(pipeline: PipelineVersion, operators: Operators, node: Node): string[] {

@@ -130,6 +130,7 @@ describe("deleting a notebook (ADR-0041)", () => {
     expect(posts[1]!.body).toMatchObject({ notebook_id: NB, parent_id: sales.id, removed: true });
     await waitFor(() => expect(within(screen.getByRole("list", { name: "This flow's notebooks" })).queryByRole("button", { name: "Sales analysis" })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Scratch" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Explore" })).toBeInTheDocument();
   });
 
   it("Cancel saves nothing", async () => {
@@ -215,20 +216,20 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
     const items = within(await stages()).getAllByRole("button").map((b) => b.textContent);
     expect(items).toEqual(["Explore2 steps", "Split1 step", "Clean1 step", "Model1 step", "Evaluate1 step"]);
-    const explore = await screen.findByRole("region", { name: "Explore notebook" });
-    expect(within(explore).getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual(["Step load", "Step profile"]);
+    expect(await screen.findByRole("heading", { name: "Explore" })).toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: /^Cell / })).toHaveLength(2);
     expect(posts).toEqual([]);
   });
 
   it("shows a ready-made step as its settings form and the names it reads and gives", async () => {
     noNotebooks();
     renderWithApi(<NotebooksPage />);
-    const load = await screen.findByRole("article", { name: "Step load" });
-    expect(within(load).getByText("reads nothing → gives data")).toBeInTheDocument();
+    const load = await screen.findByRole("group", { name: "Cell 1" });
+    expect(await within(load).findByText("reads nothing → gives load_data")).toBeInTheDocument();
     expect(await within(load).findByRole("combobox", { name: "format" })).toHaveValue("csv");
     await userEvent.click(within(await stages()).getByRole("button", { name: /Split/ }));
-    const split = await screen.findByRole("article", { name: "Step split" });
-    expect(within(split).getByText("reads data → gives split_train, split_test")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Split" })).toBeInTheDocument();
+    expect(await screen.findByText("reads load_data → gives split_train, split_test")).toBeInTheDocument();
   });
 
   it("says so when a step's operator is not installed", async () => {
@@ -236,7 +237,7 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     const gone = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "load" ? { ...n, operator: "sprisk.io.gone@9.0.0" } : n)) };
     server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([gone])));
     renderWithApi(<NotebooksPage />);
-    const load = await screen.findByRole("article", { name: "Step load" });
+    const load = await screen.findByRole("group", { name: "Cell 1" });
     expect(await within(load).findByRole("alert")).toHaveTextContent("sprisk.io.gone@9.0.0 is not installed");
   });
 
@@ -244,6 +245,6 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     noNotebooks();
     useSelection.setState({ stageTarget: "Model" });
     renderWithApi(<NotebooksPage />);
-    expect(await screen.findByRole("region", { name: "Model notebook" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Model" })).toBeInTheDocument();
   });
 });

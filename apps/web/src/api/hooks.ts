@@ -95,6 +95,17 @@ export function useStartRun() {
   });
 }
 
+/** Run a saved version again, reusing every unchanged step of `onScreen` (ADR-0026): a stage
+ * notebook's Run on a step whose settings did not change (ADR-0055). */
+export function useRunAgain(onScreen: string | undefined) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (pipelineVersionId: string) =>
+      postOne("Run", "/runs", { pipeline_version_id: pipelineVersionId, ...(onScreen ? { reuse_run_id: onScreen } : {}) }),
+    onSuccess: (run) => client.invalidateQueries({ queryKey: ["runs", run.pipeline_version_id] }),
+  });
+}
+
 /** Save an edited flow as a new pipeline version, then run it. Rust compiles and checks
  * the version; the UI never does (rule 3). */
 /** Save a new version without running it: a flow made from someone's notebook runs only when

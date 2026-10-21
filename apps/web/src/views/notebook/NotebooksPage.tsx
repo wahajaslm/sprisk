@@ -6,7 +6,7 @@ import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { flowOf, flows } from "../../flow/flows.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { AddIcon } from "../Icons.tsx";
-import { FlowNotebook } from "./FlowNotebook.tsx";
+import { StageNotebook } from "./StageNotebook.tsx";
 import { NotebookList } from "./NotebookList.tsx";
 import { SessionNotebook } from "./SessionNotebook.tsx";
 
@@ -88,7 +88,7 @@ export function NotebooksPage() {
         )}
       </nav>
       {stageOpen && shownFlow ? (
-        <FlowNotebook pipeline={shownFlow} stage={stageOpen} />
+        <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} />
       ) : open ? (
         <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
       ) : (

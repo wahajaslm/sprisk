@@ -33,6 +33,15 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
     expect(ids(flow).find((entry) => (entry[1] as string[]).includes("model"))?.[0]).toBe("Clean");
   });
 
+  it("never puts a step before a stage it reads, even when the step keeps its own", () => {
+    const flow = {
+      ...pipeline,
+      nodes: pipeline.nodes.map((n) => (n.id === "profile" ? { ...n, stage: "explore" as const } : n)),
+      edges: [...pipeline.edges.filter((e) => e.to !== "profile.data"), { from: "impute.train", to: "profile.data" }],
+    };
+    expect(ids(flow)[2]).toEqual(["Clean", ["impute", "profile"]]);
+  });
+
   it("leaves out a stage with no steps", () => {
     const flow = { ...pipeline, nodes: pipeline.nodes.filter((n) => n.id !== "impute"), edges: [] };
     expect(ids(flow).map(([stage]) => stage)).toEqual(["Explore", "Split", "Model", "Evaluate"]);
@@ -40,13 +49,10 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
 });
 
 describe("the names a step's cell reads and gives", () => {
-  it("are its outputs' port names when no other step gives that name", () => {
-    expect(stepNames(pipeline, byRef, "load")).toEqual({ reads: [], gives: ["data"] });
-    expect(stepNames(pipeline, byRef, "model")).toEqual({ reads: ["impute_train"], gives: ["model"] });
-  });
-
-  it("are <step>_<port> where two steps give the same port", () => {
-    expect(stepNames(pipeline, byRef, "split")).toEqual({ reads: ["data"], gives: ["split_train", "split_test"] });
+  it("are <step>_<port>, the names a code cell reads them by", () => {
+    expect(stepNames(pipeline, byRef, "load")).toEqual({ reads: [], gives: ["load_data"] });
+    expect(stepNames(pipeline, byRef, "split")).toEqual({ reads: ["load_data"], gives: ["split_train", "split_test"] });
+    expect(stepNames(pipeline, byRef, "model")).toEqual({ reads: ["impute_train"], gives: ["model_model"] });
   });
 
   it("are the step's own names when it keeps them", () => {
