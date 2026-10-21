@@ -98,8 +98,7 @@ Checked against the course in `knowledge/` (git-ignored), mainly `Sprint_5_-_Mac
 Most important first.
 
 1. **M4 experiments:** studies, trials, budgets, grid and random search and recall guardrails exist (ADR-0052), proven end to end on German credit. Open:
-   - Gate B's `split_leakage` says `not_assessed` on a study's graph, because it has no evaluator. So no check confirms that a study keeps off the test rows; only the graph's shape does.
-   - The only guardrail is a minimum recall. There is no cost or decision threshold, though UCI gives German credit a cost matrix.
+   - The only guardrail is a minimum recall. Costs and decision thresholds are proposed in ADR-0053: at the 0.5 cut-off, German credit's models cost more per applicant than refusing everyone.
    - Search is over finite lists only: no adaptive search or continuous ranges.
 2. **Checks cite decisions for the split only.** Other Gate B checks do not link to the decision that set a step.
 3. **Encoding:** no standalone one-hot step, and the `categorical_encoding` rule is a draft (SCI-03, SCI-05).
