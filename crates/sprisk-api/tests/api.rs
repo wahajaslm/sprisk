@@ -2717,12 +2717,10 @@ async fn column(api: &Api, artifact: &str, name: &str) -> Vec<Option<String>> {
         .collect()
 }
 
-#[tokio::test]
-async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_applied_decision() {
-    // Arch doc §21.2: data -> train-row profile -> missingness finding -> median alternative ->
-    // graph diff -> Apply -> fold-local fit -> check -> result.
-    let api = api().await;
-    // Skewed x with a gap in every fifth row: the mean is pulled far from the median.
+/// Rows with a skewed x, its mean far from its median, that has a gap in every fifth row; and
+/// a flow that loads, splits and fills `columns` with the train mean. `y_gap` says which rows
+/// lack the target.
+async fn gappy_flow(api: &Api, columns: &[&str], y_gap: impl Fn(usize) -> bool) {
     let mut csv = String::from("x,y\n");
     for i in 0..40 {
         let x = if i % 5 == 0 {
@@ -2732,7 +2730,12 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
         } else {
             (i % 7).to_string()
         };
-        csv.push_str(&format!("{x},{}\n", i % 2));
+        let y = if y_gap(i) {
+            String::new()
+        } else {
+            (i % 2).to_string()
+        };
+        csv.push_str(&format!("{x},{y}\n"));
     }
     std::fs::write(&api.csv, csv).unwrap();
     let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
@@ -2750,11 +2753,11 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     let nodes = flow["nodes"].as_array_mut().unwrap();
     nodes.push(
         json!({ "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
-                       "params": { "test_fraction": 0.25, "seed": 42, "stratify": "y" } }),
+                       "params": { "test_fraction": 0.25, "seed": 42 } }),
     );
     nodes.push(
         json!({ "id": "impute", "operator": "sprisk.clean.impute@1.0.0",
-                       "params": { "columns": ["x"], "method": "mean" } }),
+                       "params": { "columns": columns, "method": "mean" } }),
     );
     flow["edges"] = json!([
         { "from": "load.data", "to": "split.data" },
@@ -2763,6 +2766,14 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     ]);
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
+async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_applied_decision() {
+    // Arch doc §21.2: data -> train-row profile -> missingness finding -> median alternative ->
+    // graph diff -> Apply -> fold-local fit -> check -> result.
+    let api = api().await;
+    gappy_flow(&api, &["x"], |_| false).await;
     let (run, attempts) = run_to_end(&api).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 
@@ -2788,7 +2799,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
         drop["reason"]
             .as_str()
             .unwrap()
-            .starts_with("sprisk.clean.drop_missing@1.0.0 cannot take step impute's place: "),
+            .starts_with("Applied to step impute, the flow would not compile: "),
         "{drop}"
     );
     let evidence = proposal["evidence"].to_string();
@@ -2810,6 +2821,11 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
+    let drop = json!({ "alternative_id": "drop_rows", "idempotency_key": "test-slice-drop",
+                       "reason": "Fewer rows are fine." });
+    let (status, body) = call(&api.app, "POST", &apply, Some(drop)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "alternative_not_applicable");
     let request =
         json!({ "alternative_id": "impute_median", "idempotency_key": "test-slice-median" });
     let (status, applied) = call(&api.app, "POST", &apply, Some(request.clone())).await;
@@ -2888,7 +2904,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
         "{filled:?} vs {train_median}"
     );
 
-    // The check: Gate B passes the step's fit as train-only and names it.
+    // The check: Gate B passes the flow's fits as train-only.
     let checks = output(&api, &attempts, "gate_b", "checks").await;
     let leakage = checks
         .as_array()
@@ -2917,5 +2933,25 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     assert_eq!(
         decisions[0]["alternative_id"], "impute_median",
         "{decisions}"
+    );
+}
+
+#[tokio::test]
+async fn a_rule_pick_that_cannot_take_the_step_s_place_is_no_proposal() {
+    // A target with gaps means dropping rows, which reads one table, not train and test.
+    let api = api().await;
+    gappy_flow(&api, &["x", "y"], |i| i % 9 == 4).await;
+    let (run, attempts) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+
+    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/impute";
+    let (status, body) = call(&api.app, "POST", uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
+    assert!(
+        body["errors"][0]["message"].as_str().unwrap().starts_with(
+            "the rule picks drop_rows, but Applied to step impute, the flow would not compile"
+        ),
+        "{body}"
     );
 }

@@ -26,12 +26,12 @@ use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
     CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
-    GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyDecision,
-    MethodologyProposalId, MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource,
-    ModelSelection, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
-    NotebookVariables, NotebookVersion, NotebookVersionId, Operator, OperatorSource,
-    PipelineVersion, PipelineVersionId, Problem, QuestionVersion, QuestionVersionId, Run, RunId,
-    parse,
+    GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyAlternativeApplicability,
+    MethodologyDecision, MethodologyProposalId, MethodologyRule, MethodologyRuleSelection,
+    MethodologyRuleSource, ModelSelection, NotebookExecute, NotebookExecution,
+    NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
+    Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
+    QuestionVersionId, Run, RunId, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -1007,15 +1007,28 @@ async fn propose(
     )
     .map_err(resolve)?;
 
-    let mut value =
-        serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;
-    for alternative in value["alternatives"].as_array_mut().into_iter().flatten() {
-        let Some(effect) = alternative.get("effect") else {
+    let mut proposal = proposal;
+    let mut picked: Vec<String> = proposal
+        .shortlist
+        .iter()
+        .map(|s| s.as_str().to_owned())
+        .collect();
+    picked.extend(
+        proposal
+            .recommended_alternative_id
+            .iter()
+            .map(|r| r.as_str().to_owned()),
+    );
+    for at in 0..proposal.alternatives.len() {
+        let alternative = &proposal.alternatives[at];
+        if alternative.effect.is_none() {
             continue;
-        };
+        }
+        let value = serde_json::to_value(alternative)
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
         let preview = materialize_effect(
             &pipeline,
-            alternative,
+            &value,
             "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
             "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
             &proposal.created_at.to_string(),
@@ -1024,7 +1037,8 @@ async fn propose(
             continue;
         };
         // An operator whose ports differ from the step's cannot take its place, such as one
-        // that reads a single table in place of train and test. Any other error is a bug.
+        // that reads a single table in place of train and test. Any other error fails the
+        // proposal.
         let ports_only = errors.iter().all(|e| {
             matches!(
                 e,
@@ -1042,18 +1056,19 @@ async fn propose(
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("; ");
-        let reason = match effect["operator"].as_str() {
-            Some(operator) => format!("{operator} cannot take step {node_id}'s place: {why}"),
-            None => format!("Removing step {node_id} leaves the flow unable to compile: {why}"),
-        };
-        alternative["applicability"] = json!("not_applicable");
-        alternative["reason"] = json!(reason);
-        if let Some(fields) = alternative.as_object_mut() {
-            fields.remove("effect");
+        let id = alternative.id.as_str().to_owned();
+        let reason = format!("Applied to step {node_id}, the flow would not compile: {why}");
+        // A rule's own pick that cannot be applied here is no proposal at all.
+        if picked.contains(&id) {
+            return Err(not_applicable(format!("the rule picks {id}, but {reason}")));
         }
+        let alternative = &mut proposal.alternatives[at];
+        alternative.applicability = MethodologyAlternativeApplicability::NotApplicable;
+        alternative.reason = reason
+            .parse()
+            .map_err(|error| ApiError::Internal(format!("reason of {id}: {error}")))?;
+        alternative.effect = None;
     }
-    let proposal: DecisionProposal =
-        parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
     state.store.insert_methodology_proposal(&proposal).await?;
     Ok((StatusCode::CREATED, Json(proposal)))
 }
@@ -1184,8 +1199,13 @@ async fn apply_methodology(
         });
     }
     if alternative["applicability"] != "applicable" {
+        let code = if alternative["applicability"] == "needs_fact" {
+            "missing_fact"
+        } else {
+            "alternative_not_applicable"
+        };
         return Err(ApiError::BadRequest {
-            code: "missing_fact",
+            code,
             message: alternative["reason"]
                 .as_str()
                 .unwrap_or("required evidence is missing")
