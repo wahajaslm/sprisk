@@ -2684,3 +2684,238 @@ async fn two_applies_at_once_with_one_key_and_different_choices_make_one_decisio
     let (_, decisions) = call(&api.app, "GET", "/methodology_decisions", None).await;
     assert_eq!(decisions.as_array().unwrap().len(), 1, "{decisions}");
 }
+
+/// The cell values of column `name` in a table artifact, as display text; None where missing.
+async fn column(api: &Api, artifact: &str, name: &str) -> Vec<Option<String>> {
+    let (status, page) = call(
+        &api.app,
+        "GET",
+        &format!("/artifacts/{artifact}/rows"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(
+        page["total_rows"].as_u64().unwrap() as usize,
+        page["rows"].as_array().unwrap().len(),
+        "the table must fit one page"
+    );
+    let at = page["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|c| c["name"] == name)
+        .unwrap();
+    page["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            let missing = row["missing"].as_array().unwrap().contains(&json!(at));
+            (!missing).then(|| row["values"][at].as_str().unwrap().to_owned())
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_applied_decision() {
+    // Arch doc §21.2: data -> train-row profile -> missingness finding -> median alternative ->
+    // graph diff -> Apply -> fold-local fit -> check -> result.
+    let api = api().await;
+    // Skewed x with a gap in every fifth row: the mean is pulled far from the median.
+    let mut csv = String::from("x,y\n");
+    for i in 0..40 {
+        let x = if i % 5 == 0 {
+            String::new()
+        } else if i % 10 == 3 {
+            "1000".into()
+        } else {
+            (i % 7).to_string()
+        };
+        csv.push_str(&format!("{x},{}\n", i % 2));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let facts = q.as_object_mut().unwrap();
+    facts.remove("time_column");
+    facts.remove("entity_column");
+    facts.insert(
+        "target".into(),
+        json!({"value": "y", "origin": "confirmed"}),
+    );
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    let nodes = flow["nodes"].as_array_mut().unwrap();
+    nodes.push(
+        json!({ "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
+                       "params": { "test_fraction": 0.25, "seed": 42, "stratify": "y" } }),
+    );
+    nodes.push(
+        json!({ "id": "impute", "operator": "sprisk.clean.impute@1.0.0",
+                       "params": { "columns": ["x"], "method": "mean" } }),
+    );
+    flow["edges"] = json!([
+        { "from": "load.data", "to": "split.data" },
+        { "from": "split.train", "to": "impute.train" },
+        { "from": "split.test", "to": "impute.test" }
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (run, attempts) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+
+    // The rule measures the train rows the split gives the step, and finds them skewed.
+    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/impute";
+    let (status, proposal) = call(&api.app, "POST", uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(proposal["rule"], "methodology.supervised.missingness@1.1.0");
+    assert_eq!(
+        proposal["recommended_alternative_id"], "impute_median",
+        "{proposal}"
+    );
+    // Dropping rows reads one table, not train and test, so it cannot take this step's place.
+    let drop = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "drop_rows")
+        .unwrap();
+    assert_eq!(drop["applicability"], "not_applicable", "{drop}");
+    assert!(drop.get("effect").is_none(), "{drop}");
+    assert!(
+        drop["reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("sprisk.clean.drop_missing@1.0.0 cannot take step impute's place: "),
+        "{drop}"
+    );
+    let evidence = proposal["evidence"].to_string();
+    assert!(evidence.contains("x missing share"), "{evidence}");
+    // The preview: the effect Apply would make, and nothing else.
+    let median = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "impute_median")
+        .unwrap();
+    assert_eq!(
+        median["effect"],
+        json!({ "kind": "replace_node", "node_id": "impute", "operator": "sprisk.clean.impute@1.0.0",
+                "params": { "columns": ["x"], "method": "median" } })
+    );
+
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let request =
+        json!({ "alternative_id": "impute_median", "idempotency_key": "test-slice-median" });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(request.clone())).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let (status, again) = call(&api.app, "POST", &apply, Some(request)).await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again, applied, "Apply changes the graph exactly once");
+    let version = applied["pipeline"]["id"].as_str().unwrap();
+    assert_eq!(
+        applied["pipeline"]["parent_id"],
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+    );
+    let step = &applied["pipeline"]["nodes"][2];
+    assert_eq!(step["params"]["method"], "median");
+    assert_eq!(step["methodology_decision_id"], applied["decision"]["id"]);
+
+    // Then the model and its evaluation join the flow, as an edit of the applied version.
+    // Every model here fills gaps itself, so the rule asked before they were added.
+    let mut edited = applied["pipeline"].clone();
+    edited["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
+    edited["parent_id"] = json!(version);
+    let nodes = edited["nodes"].as_array_mut().unwrap();
+    nodes.push(
+        json!({ "id": "model", "operator": "sprisk.ml.linear_model@1.0.0",
+                       "params": { "target": "y", "features": ["x"], "task": "classification" } }),
+    );
+    nodes.push(
+        json!({ "id": "eval", "operator": "sprisk.ml.evaluate@1.0.0",
+                       "params": { "target": "y", "task": "classification" } }),
+    );
+    let edges = edited["edges"].as_array_mut().unwrap();
+    edges.push(json!({ "from": "impute.train", "to": "model.train" }));
+    edges.push(json!({ "from": "model.model", "to": "eval.model" }));
+    edges.push(json!({ "from": "impute.test", "to": "eval.test" }));
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(edited)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (run, attempts) = run_version(&api, "plv_01JABCDEFGHJKMNPQRSTVWXYZ5").await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+
+    // Fold-local fit: every test gap holds the median of the train rows, not of all rows.
+    let train = column(
+        &api,
+        &output_artifact(&api, &attempts, "split", "train").await,
+        "x",
+    )
+    .await;
+    let mut seen: Vec<f64> = train.iter().flatten().map(|v| v.parse().unwrap()).collect();
+    seen.sort_by(f64::total_cmp);
+    let n = seen.len();
+    let train_median = if n % 2 == 1 {
+        seen[n / 2]
+    } else {
+        (seen[n / 2 - 1] + seen[n / 2]) / 2.0
+    };
+    let before = column(
+        &api,
+        &output_artifact(&api, &attempts, "split", "test").await,
+        "x",
+    )
+    .await;
+    let after = column(
+        &api,
+        &output_artifact(&api, &attempts, "impute", "test").await,
+        "x",
+    )
+    .await;
+    let filled: Vec<f64> = before
+        .iter()
+        .zip(&after)
+        .filter(|(b, _)| b.is_none())
+        .map(|(_, a)| a.as_ref().expect("a test gap was left").parse().unwrap())
+        .collect();
+    assert!(!filled.is_empty(), "the test rows have no gap to fill");
+    assert!(
+        filled.iter().all(|v| *v == train_median),
+        "{filled:?} vs {train_median}"
+    );
+
+    // The check: Gate B passes the step's fit as train-only and names it.
+    let checks = output(&api, &attempts, "gate_b", "checks").await;
+    let leakage = checks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["check"].as_str().unwrap().contains("split_leakage"))
+        .unwrap_or_else(|| panic!("no split leakage check: {checks}"));
+    assert_eq!(leakage["verdict"], "pass", "{leakage}");
+    assert_eq!(
+        leakage["pipeline_version_id"],
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ5"
+    );
+
+    // The result: the model scored once on the test rows, which the median fill reached.
+    let metrics = output(&api, &attempts, "eval", "metrics").await;
+    assert!(metrics["balanced_accuracy"].is_number(), "{metrics}");
+
+    // The record: the decision is listed with the version it made.
+    let (_, decisions) = call(
+        &api.app,
+        "GET",
+        &format!("/methodology_decisions?pipeline_version_id={version}"),
+        None,
+    )
+    .await;
+    assert_eq!(
+        decisions[0]["alternative_id"], "impute_median",
+        "{decisions}"
+    );
+}

@@ -1007,20 +1007,53 @@ async fn propose(
     )
     .map_err(resolve)?;
 
-    let value =
+    let mut value =
         serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;
-    for alternative in value["alternatives"].as_array().into_iter().flatten() {
-        if alternative.get("effect").is_some() {
-            let preview = materialize_effect(
-                &pipeline,
-                alternative,
-                "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
-                "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
-                &proposal.created_at.to_string(),
-            )?;
-            compile(&preview, &state.registry).map_err(ApiError::Compile)?;
+    for alternative in value["alternatives"].as_array_mut().into_iter().flatten() {
+        let Some(effect) = alternative.get("effect") else {
+            continue;
+        };
+        let preview = materialize_effect(
+            &pipeline,
+            alternative,
+            "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
+            "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
+            &proposal.created_at.to_string(),
+        )?;
+        let Err(errors) = compile(&preview, &state.registry) else {
+            continue;
+        };
+        // An operator whose ports differ from the step's cannot take its place, such as one
+        // that reads a single table in place of train and test. Any other error is a bug.
+        let ports_only = errors.iter().all(|e| {
+            matches!(
+                e,
+                CompileError::NotAnInput(_)
+                    | CompileError::NotAnOutput(_)
+                    | CompileError::Unconnected(_)
+                    | CompileError::KindMismatch { .. }
+            )
+        });
+        if !ports_only {
+            return Err(ApiError::Compile(errors));
+        }
+        let why = errors
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ");
+        let reason = match effect["operator"].as_str() {
+            Some(operator) => format!("{operator} cannot take step {node_id}'s place: {why}"),
+            None => format!("Removing step {node_id} leaves the flow unable to compile: {why}"),
+        };
+        alternative["applicability"] = json!("not_applicable");
+        alternative["reason"] = json!(reason);
+        if let Some(fields) = alternative.as_object_mut() {
+            fields.remove("effect");
         }
     }
+    let proposal: DecisionProposal =
+        parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
     state.store.insert_methodology_proposal(&proposal).await?;
     Ok((StatusCode::CREATED, Json(proposal)))
 }
