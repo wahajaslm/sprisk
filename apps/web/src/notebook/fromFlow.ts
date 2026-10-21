@@ -30,10 +30,9 @@ export function flowNotebooks(flow: PipelineVersion, operators: Map<string, Oper
 }
 
 function builtInCells(id: string, ref: string, operator: Operator | undefined, source: OperatorSource | undefined, call: string): NotebookCell[] {
-  const text = source ? (source.text.endsWith("\n") ? source.text : `${source.text}\n`) : undefined;
-  const code = text
-    ? `Code of \`${ref}\` (${source!.path}):\n\n\`\`\`python\n${text}\`\`\``
-    : `The code of \`${ref}\` could not be read.`;
+  if (!source) throw new Error(`no code was read for ${ref}`);
+  const text = source.text.endsWith("\n") ? source.text : `${source.text}\n`;
+  const code = `Code of \`${ref}\` (${source.path}):\n\n\`\`\`python\n${text}\`\`\``;
   const [module, fn] = operator?.entrypoint.split(":") ?? [];
   const imports = [...(call.includes("Path(") ? ["from pathlib import Path"] : []), ...(module && fn ? [`from ${module} import ${fn} as ${id}`] : [])];
   return [cell("markdown", `### Stage Step: \`${id}\``), cell("markdown", code), cell("code", [...imports, call].join("\n"))];

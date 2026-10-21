@@ -22,6 +22,9 @@ const hasCall = (cells: NotebookCell[], id: string) => {
   return cells.some((c) => c.kind === "code" && call.test(c.source));
 };
 
+/** The import a call cell written from the flow starts with: `from <module> import <fn> as <id>`. */
+const importsAs = (source: string, id: string) => new RegExp(`^from \\S+ import \\S+ as ${escaped(id)}$`, "m").test(source);
+
 const hasHeader = (cells: NotebookCell[], id: string) =>
   cells.some((c) => c.kind === "markdown" && STEP_HEADER.exec(c.source.trim())?.[1] === id);
 
@@ -54,11 +57,12 @@ export function stepsIntoFlow({ base, projectId, notebook, split, previous }: { 
   // Other steps reading this notebook's outputs: they must still find them.
   const outward = (base?.edges ?? []).filter((e) => ownedIds.has(stepOf(e.from)) && !ownedIds.has(stepOf(e.to)));
 
-  // A call cell written from the flow (ADR-0054) is its built-in step, not a new code step.
-  // What a code cell reads from it, by the name the call wrote, is that step's output.
+  // A call cell written from the flow (ADR-0054), which imports its operator under the step's
+  // name, is that built-in step, not a new code step. What a code cell reads from it, by the
+  // name the call wrote, is that step's output.
   const builtIn = (i: number) => {
     const cell = code[i];
-    return cell && kept.find((n) => !n.from_notebook && !isNotebookStep(n.operator) && hasCall([cell], n.id));
+    return cell && kept.find((n) => !n.from_notebook && !isNotebookStep(n.operator) && importsAs(cell.source, n.id));
   };
   const calls = split.steps.map((step) => (step.cells.length > 0 && step.cells.every((i) => builtIn(i)) ? builtIn(step.cells[0]!) : undefined));
   const steps = split.steps.filter((_, k) => !calls[k]);

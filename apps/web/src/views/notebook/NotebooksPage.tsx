@@ -1,8 +1,8 @@
-import type { OperatorSource } from "@sprisk/contracts";
-import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 
 import { useNotebooks, useSaveNotebook } from "../../api/notebooks.ts";
-import { useOperators, useOperatorSources, usePipelineVersions } from "../../api/hooks.ts";
+import { operatorSourceQuery, useOperators, usePipelineVersions } from "../../api/hooks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.ts";
 import { flowNotebooks } from "../../notebook/fromFlow.ts";
@@ -25,27 +25,35 @@ export function NotebooksPage() {
   const openNotebook = useSelection((s) => s.openNotebook);
   const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
   const flow = flowOf(flows(versions.data ?? []), pipelineVersionId);
-  const builtIns = [...new Set((flow?.head.nodes ?? []).filter((n) => !isCodeOperator(n.operator)).map((n) => n.operator))];
-  const sources = useOperatorSources(builtIns);
+  const client = useQueryClient();
   const made = useRef(new Set<string>());
+  const [problem, setProblem] = useState<string>();
 
-  const createFromFlow = () => {
+  /** The flow's notebooks, each built-in step with its operator's code, read only now. */
+  const createFromFlow = async () => {
     if (!flow?.head) return;
+    setProblem(undefined);
     const byRef = new Map((operators.data ?? []).map((op) => [op.id, op]));
-    const code = new Map(sources.flatMap((s): [string, OperatorSource][] => (s.data ? [[s.data.operator, s.data]] : [])));
-    flowNotebooks(flow.head, byRef, code).forEach(({ title, cells }, i) => {
-      const version = firstVersion(flow.head.project_id, title, cells.length > 0 ? cells : [{ id: newCellId(), kind: "code", source: "" }], flow.head.id);
-      save.mutate(version, { onSuccess: (saved) => i === 0 && openNotebook(saved.notebook_id) });
-    });
+    const builtIns = [...new Set(flow.head.nodes.filter((n) => !isCodeOperator(n.operator)).map((n) => n.operator))];
+    try {
+      const code = await Promise.all(builtIns.map((ref) => client.fetchQuery(operatorSourceQuery(ref))));
+      flowNotebooks(flow.head, byRef, new Map(code.map((s) => [s.operator, s]))).forEach(({ title, cells }, i) => {
+        const version = firstVersion(flow.head.project_id, title, cells.length > 0 ? cells : [{ id: newCellId(), kind: "code", source: "" }], flow.head.id);
+        save.mutate(version, { onSuccess: (saved) => i === 0 && openNotebook(saved.notebook_id) });
+      });
+    } catch (e) {
+      setProblem(`The flow's notebook was not made: ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
 
-  const ready = flow && notebooks.data && operators.data && sources.every((s) => !s.isPending);
-  const hasOwn = (notebooks.data ?? []).some((v) => v.pipeline_version_id !== undefined && flow?.ids.includes(v.pipeline_version_id));
+  const ready = flow && notebooks.data && operators.data;
+  // A notebook outside any flow is listed here too, and joins the flow when saved.
+  const shown = (notebooks.data ?? []).some((v) => v.pipeline_version_id === undefined || flow?.ids.includes(v.pipeline_version_id));
   useEffect(() => {
     // Once per flow, also when React runs the effect twice.
-    if (!ready || hasOwn || made.current.has(flow.head.id)) return;
+    if (!ready || shown || made.current.has(flow.head.id)) return;
     made.current.add(flow.head.id);
-    createFromFlow();
+    void createFromFlow();
   });
 
   if (notebooks.isError) return <p role="alert" className="error pad">{notebooks.error.message}</p>;
@@ -82,13 +90,14 @@ export function NotebooksPage() {
               <AddIcon /> New notebook
             </button>
             {flow?.head && (
-              <button type="button" className="page-btn" disabled={save.isPending} onClick={createFromFlow} title="Generate interactive notebook cells directly from flow DAG nodes">
+              <button type="button" className="page-btn" disabled={save.isPending} onClick={() => void createFromFlow()} title="Generate interactive notebook cells directly from flow DAG nodes">
                 <AddIcon /> Sync from flow
               </button>
             )}
           </div>
         </header>
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
+        {problem && <p role="alert" className="error">{problem}</p>}
         <NotebookList label="This flow's notebooks" notebooks={mine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
         {loose.length > 0 && (
           <>

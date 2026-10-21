@@ -226,6 +226,14 @@ describe("a flow's own notebook (ADR-0054)", () => {
     expect(posts.every((p) => (p.body as NotebookVersion).pipeline_version_id === pipeline.id)).toBe(true);
   });
 
+  it("is not made, and says why, when a step's code cannot be read", async () => {
+    const posts = noNotebooks();
+    server.use(http.get("/api/operators/:id/source", () => HttpResponse.json({ errors: [{ code: "not_found", message: "no source" }] }, { status: 404 })));
+    renderWithApi(<NotebooksPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The flow's notebook was not made:");
+    expect(posts).toEqual([]);
+  });
+
   it("is not made when the flow has a notebook", async () => {
     const posts = noNotebooks([sales]);
     renderWithApi(<NotebooksPage />);
