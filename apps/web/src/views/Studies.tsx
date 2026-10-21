@@ -6,7 +6,7 @@ import { type StudyRequest, useCreateStudy, useStudy } from "../api/studies.ts";
 import { showValue } from "../flow/diff.ts";
 import { Comparison, showSettings, useComparedSteps } from "./ModelComparison.tsx";
 
-/** The head's studies (ADR-0051), newest first, and a way to start one per model step. */
+/** The head's studies (ADR-0052), newest first, and a way to start one per model step. */
 export function Studies({ head, versions, studies }: { head: PipelineVersion; versions: PipelineVersion[]; studies: Study[] }) {
   const steps = useComparedSteps(head).filter((s) => s.models);
   return (
@@ -21,7 +21,7 @@ export function Studies({ head, versions, studies }: { head: PipelineVersion; ve
   );
 }
 
-/** What makes two studies of one step not directly comparable (ADR-0051, SCI-10). */
+/** What makes two studies of one step not directly comparable (ADR-0052, SCI-10). */
 const PROTOCOL: { field: keyof Study; label: string }[] = [
   { field: "strategy", label: "strategy" },
   { field: "seed", label: "seed" },

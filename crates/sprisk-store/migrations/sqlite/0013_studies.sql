@@ -1,4 +1,4 @@
--- One row per study (ADR-0051). The request is kept as sent, so a replayed idempotency key
+-- One row per study (ADR-0052). The request is kept as sent, so a replayed idempotency key
 -- is answered only when it asks for the same study. Trials are not stored: they are the
 -- comparison's cross-validate steps and their attempts.
 CREATE TABLE studies (

@@ -23,7 +23,7 @@ use crate::search;
 pub const FOLDS: u64 = 5;
 pub const REPEATS: u64 = 10;
 pub const SEED: u64 = 0;
-/// Inner folds of a study's trial: they only rank settings, so 3 bounds the cost (ADR-0051).
+/// Inner folds of a study's trial: they only rank settings, so 3 bounds the cost (ADR-0052).
 pub const INNER_FOLDS: u64 = 3;
 const CROSS_VALIDATE: &str = "sprisk.ml.cross_validate@3.0.0";
 const SELECT: &str = "sprisk.ml.select_model@4.0.0";
@@ -50,7 +50,7 @@ pub fn comparison<'a>(
     build(base, &shortlist, &Study::default())
 }
 
-/// What a study asks of a comparison (ADR-0051).
+/// What a study asks of a comparison (ADR-0052).
 pub struct StudySearch<'s> {
     pub strategy: StudyStrategy,
     pub seed: u64,
@@ -60,7 +60,7 @@ pub struct StudySearch<'s> {
     pub earlier_looks: &'s [PipelineVersionId],
 }
 
-/// A study of `proposal`'s shortlist (ADR-0051): a model whose manifest declares a search
+/// A study of `proposal`'s shortlist (ADR-0052): a model whose manifest declares a search
 /// gets one trial per setting the strategy lists, tuned on inner folds; any other gets one
 /// trial at the flow's settings. Every trial scores the recall each guardrail names.
 pub fn study_comparison<'a>(
@@ -440,7 +440,7 @@ fn build(
     Ok(Comparison { nodes, edges })
 }
 
-/// One cross-validate step of a comparison: a candidate at one set of settings (ADR-0051).
+/// One cross-validate step of a comparison: a candidate at one set of settings (ADR-0052).
 #[derive(Debug, PartialEq)]
 pub struct TrialStep<'p> {
     pub node_id: &'p str,

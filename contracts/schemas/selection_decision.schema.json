@@ -38,12 +38,12 @@
         },
         "guardrails": {
           "type": "array",
-          "description": "Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0051). Absent: none were declared.",
+          "description": "Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0052). Absent: none were declared.",
           "items": { "$ref": "#/$defs/Guardrail" }
         },
         "earlier_looks": {
           "type": "array",
-          "description": "Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0051). Absent: none.",
+          "description": "Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0052). Absent: none.",
           "items": { "$ref": "#/$defs/PipelineVersionId" }
         }
       }
@@ -78,7 +78,7 @@
         "mean": { "type": "number" },
         "spread": { "type": "number", "description": "Standard deviation of the fold scores." },
         "versus_baseline": { "$ref": "#/$defs/BaselineComparison", "description": "Absent for the baseline itself." },
-        "search": { "$ref": "#/$defs/CandidateSearch", "description": "How its settings were tuned (ADR-0051). Absent: it ran at the flow's settings." },
+        "search": { "$ref": "#/$defs/CandidateSearch", "description": "How its settings were tuned (ADR-0052). Absent: it ran at the flow's settings." },
         "guardrails": {
           "type": "array",
           "description": "Each declared guardrail, in declared order, as this candidate met it. Absent: none were declared.",

@@ -2510,7 +2510,7 @@
         },
         "search": {
           "type": "array",
-          "description": "The settings a study may tune, in this order, each with the values it tries (ADR-0051). Left out for a model with nothing to tune.",
+          "description": "The settings a study may tune, in this order, each with the values it tries (ADR-0052). Left out for a model with nothing to tune.",
           "items": {
             "$ref": "#/$defs/SearchSetting"
           }
@@ -3164,14 +3164,14 @@
         },
         "guardrails": {
           "type": "array",
-          "description": "Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0051). Absent: none were declared.",
+          "description": "Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0052). Absent: none were declared.",
           "items": {
             "$ref": "#/$defs/Guardrail"
           }
         },
         "earlier_looks": {
           "type": "array",
-          "description": "Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0051). Absent: none.",
+          "description": "Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0052). Absent: none.",
           "items": {
             "$ref": "#/$defs/PipelineVersionId"
           }
@@ -3250,7 +3250,7 @@
         },
         "search": {
           "$ref": "#/$defs/CandidateSearch",
-          "description": "How its settings were tuned (ADR-0051). Absent: it ran at the flow's settings."
+          "description": "How its settings were tuned (ADR-0052). Absent: it ran at the flow's settings."
         },
         "guardrails": {
           "type": "array",
@@ -3374,7 +3374,7 @@
     },
     "Study": {
       "title": "Study",
-      "description": "A comparison of a flow's model step with search trials and a budget (arch doc §11, ADR-0051). Its trials are the cross-validate steps of its comparison version; status is the transactionally maintained current state, like a run's.",
+      "description": "A comparison of a flow's model step with search trials and a budget (arch doc §11, ADR-0052). Its trials are the cross-validate steps of its comparison version; status is the transactionally maintained current state, like a run's.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -3450,7 +3450,7 @@
           "items": {
             "$ref": "#/$defs/Guardrail"
           },
-          "description": "Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0051)."
+          "description": "Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0052)."
         },
         "status": {
           "$ref": "#/$defs/StudyStatus"
@@ -3470,7 +3470,7 @@
     },
     "StudyStrategy": {
       "type": "string",
-      "description": "grid: every combination of the manifest's values. random: a seeded sample of them, without replacement (ADR-0051).",
+      "description": "grid: every combination of the manifest's values. random: a seeded sample of them, without replacement (ADR-0052).",
       "enum": [
         "grid",
         "random"
@@ -3515,7 +3515,7 @@
     },
     "CreateStudy": {
       "title": "CreateStudy",
-      "description": "Request to study a model step (ADR-0051). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.",
+      "description": "Request to study a model step (ADR-0052). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.",
       "type": "object",
       "additionalProperties": false,
       "required": [

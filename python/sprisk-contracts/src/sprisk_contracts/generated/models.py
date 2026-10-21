@@ -1549,7 +1549,7 @@ class OperatorModel(StrictModel):
     search: Annotated[
         list[SearchSetting] | None,
         Field(
-            description="The settings a study may tune, in this order, each with the values it tries (ADR-0051). Left out for a model with nothing to tune."
+            description="The settings a study may tune, in this order, each with the values it tries (ADR-0052). Left out for a model with nothing to tune."
         ),
     ] = None
 
@@ -1684,7 +1684,7 @@ class Study(StrictModel):
     guardrails: Annotated[
         list[Guardrail],
         Field(
-            description="Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0051)."
+            description="Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0052)."
         ),
     ]
     status: StudyStatus
@@ -2107,7 +2107,7 @@ class CandidateResult(StrictModel):
     search: Annotated[
         CandidateSearch | None,
         Field(
-            description="How its settings were tuned (ADR-0051). Absent: it ran at the flow's settings."
+            description="How its settings were tuned (ADR-0052). Absent: it ran at the flow's settings."
         ),
     ] = None
     guardrails: Annotated[
@@ -2239,12 +2239,12 @@ class SelectionDecision(StrictModel):
     guardrails: Annotated[
         list[Guardrail] | None,
         Field(
-            description="Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0051). Absent: none were declared."
+            description="Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0052). Absent: none were declared."
         ),
     ] = None
     earlier_looks: Annotated[
         list[PipelineVersionId] | None,
         Field(
-            description="Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0051). Absent: none."
+            description="Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0052). Absent: none."
         ),
     ] = None

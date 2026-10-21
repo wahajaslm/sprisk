@@ -1,4 +1,4 @@
-//! The settings a study tries (ADR-0051). Trials are graph steps, so they are listed here,
+//! The settings a study tries (ADR-0052). Trials are graph steps, so they are listed here,
 //! before the run, from the finite value lists in a model's manifest.
 
 use itertools::Itertools;

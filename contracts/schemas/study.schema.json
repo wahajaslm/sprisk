@@ -7,7 +7,7 @@
     },
     "Study": {
       "title": "Study",
-      "description": "A comparison of a flow's model step with search trials and a budget (arch doc §11, ADR-0051). Its trials are the cross-validate steps of its comparison version; status is the transactionally maintained current state, like a run's.",
+      "description": "A comparison of a flow's model step with search trials and a budget (arch doc §11, ADR-0052). Its trials are the cross-validate steps of its comparison version; status is the transactionally maintained current state, like a run's.",
       "type": "object",
       "additionalProperties": false,
       "required": ["schema_version", "id", "project_id", "pipeline_version_id", "node_id", "proposal_id", "comparison_id", "run_id", "strategy", "seed", "max_trials", "max_wall_seconds", "guardrails", "status", "created_at"],
@@ -24,7 +24,7 @@
         "seed": { "type": "integer", "minimum": 0, "description": "Shuffles the grid for random search." },
         "max_trials": { "type": "integer", "minimum": 0, "description": "Most trials the study may hold; checked when it is built." },
         "max_wall_seconds": { "type": "integer", "minimum": 0, "description": "Longest the study's run may take, counted from its start." },
-        "guardrails": { "type": "array", "items": { "$ref": "#/$defs/Guardrail" }, "description": "Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0051)." },
+        "guardrails": { "type": "array", "items": { "$ref": "#/$defs/Guardrail" }, "description": "Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0052)." },
         "status": { "$ref": "#/$defs/StudyStatus" },
         "deadline": { "$ref": "#/$defs/Timestamp", "description": "When the budget runs out: the scheduler leases no step after it. Absent until the run starts." },
         "created_at": { "$ref": "#/$defs/Timestamp" },
@@ -33,7 +33,7 @@
     },
     "StudyStrategy": {
       "type": "string",
-      "description": "grid: every combination of the manifest's values. random: a seeded sample of them, without replacement (ADR-0051).",
+      "description": "grid: every combination of the manifest's values. random: a seeded sample of them, without replacement (ADR-0052).",
       "enum": ["grid", "random"]
     },
     "StudyStatus": {
@@ -54,7 +54,7 @@
     },
     "CreateStudy": {
       "title": "CreateStudy",
-      "description": "Request to study a model step (ADR-0051). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.",
+      "description": "Request to study a model step (ADR-0052). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.",
       "type": "object",
       "additionalProperties": false,
       "required": ["idempotency_key", "strategy", "seed", "max_trials", "max_wall_seconds", "guardrails"],

@@ -8,7 +8,7 @@ import { getList, getOne, postOne } from "./client.ts";
 const LIVE_MS = 1000;
 const STUDIES_SHOWN = 20;
 
-/** A version's studies, newest first (ADR-0051). */
+/** A version's studies, newest first (ADR-0052). */
 export const useStudies = (pipelineVersionId: string | undefined) =>
   useQuery({
     queryKey: ["studies", pipelineVersionId],

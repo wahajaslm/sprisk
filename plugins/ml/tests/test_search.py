@@ -1,5 +1,5 @@
 """Tuning inside the outer folds (nested cross-validation) and guardrails on the choice
-(ADR-0051)."""
+(ADR-0052)."""
 
 import json
 from typing import Any

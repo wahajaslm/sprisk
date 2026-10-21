@@ -55,6 +55,7 @@
 | [0051](0051-enterprise-intelligence-capabilities.md) | Adopting enterprise intelligence capabilities: automated compliance documentation, portable serving bundles, fairness auditing, and specialized agent fleets | Proposed |
 | [0051](0051-studies-trials-and-bounded-search.md) | Studies, trials and bounded search | Proposed |
 | [0051](0051-studies-trials-and-bounded-search.md) | Studies, trials and bounded search | Accepted |
+| [0052](0052-studies-trials-and-bounded-search.md) | Studies, trials and bounded search | Accepted |
 
 ## Open questions (arch doc §17)
 

@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.select_model@4.0.0
 capability_class: decision_evaluator
-description: Choose among cross-validated candidates (ADR-0044). Of the candidates that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0050). If none beats it, a floor baseline means no winner and a reference baseline stands. A study's tuned candidate takes each outer fold's score from the trial its inner folds chose, and a candidate that misses a guardrail cannot win (ADR-0051). Writes a SelectionDecision.
+description: Choose among cross-validated candidates (ADR-0044). Of the candidates that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0050). If none beats it, a floor baseline means no winner and a reference baseline stands. A study's tuned candidate takes each outer fold's score from the trial its inner folds chose, and a candidate that misses a guardrail cannot win (ADR-0052). Writes a SelectionDecision.
 entrypoint: sprisk_ml.compare:select_model
 inputs: []
 outputs: [{ name: decision, kind: report }]
@@ -25,7 +25,7 @@ params_schema:
       additionalProperties: { type: integer, minimum: 0 }
     tuned:
       type: object
-      description: "A study's tuned candidates: each candidate's trials, in study order; ties go to the first (ADR-0051)."
+      description: "A study's tuned candidates: each candidate's trials, in study order; ties go to the first (ADR-0052)."
       additionalProperties:
         type: array
         items: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$" }

@@ -42,7 +42,7 @@ use sprisk_store::{SqliteStore, StoreError};
 
 #[derive(Clone)]
 pub struct AppState {
-    /// Reads the time for study deadlines (ADR-0051); a test passes a fake one.
+    /// Reads the time for study deadlines (ADR-0052); a test passes a fake one.
     pub clock: sprisk_scheduler::Clock,
     pub store: Arc<SqliteStore>,
     pub artifacts: Arc<ArtifactStore>,
@@ -1536,7 +1536,7 @@ async fn select_model(
     ))
 }
 
-/// Studies the model step `node_id` (ADR-0051): its own shortlist proposal, compared with
+/// Studies the model step `node_id` (ADR-0052): its own shortlist proposal, compared with
 /// one trial per candidate and setting, within a budget. A replayed key gets the saved study.
 async fn create_study(
     State(state): State<AppState>,
@@ -1628,7 +1628,7 @@ async fn create_study(
     Ok((status, Json(study_detail(&state, kept).await?)))
 }
 
-/// Bounds on one study's work: each trial is a full nested cross-validation (ADR-0051).
+/// Bounds on one study's work: each trial is a full nested cross-validation (ADR-0052).
 const MAX_TRIALS: u64 = 200;
 const MAX_WALL_SECONDS: u64 = 7 * 24 * 60 * 60;
 const MAX_GUARDRAILS: usize = 10;
@@ -1701,7 +1701,7 @@ async fn list_studies(
     ))
 }
 
-/// How a study ends when its run has. Only its deadline cancels a study's run (ADR-0051).
+/// How a study ends when its run has. Only its deadline cancels a study's run (ADR-0052).
 fn ended_as(run: RunStatus) -> Option<StudyStatus> {
     match run {
         RunStatus::Queued | RunStatus::Running => None,
@@ -1753,7 +1753,7 @@ async fn record_end(state: &AppState, id: &StudyId) -> Result<Study, ApiError> {
     }
 }
 
-/// The study with its trials, read from its comparison and its run's attempts (ADR-0051).
+/// The study with its trials, read from its comparison and its run's attempts (ADR-0052).
 async fn study_detail(state: &AppState, study: Study) -> Result<StudyDetail, ApiError> {
     let study = record_end(state, &study.id).await?;
     let comparison = state
@@ -1826,7 +1826,7 @@ fn trial_state(
 }
 
 /// `alternative` with the settings a study chose for it added to its step's params
-/// (ADR-0051); unchanged when the comparison tuned nothing for it.
+/// (ADR-0052); unchanged when the comparison tuned nothing for it.
 fn with_tuned_settings(
     alternative: &serde_json::Value,
     decided: Option<&sprisk_contracts::SelectionDecision>,

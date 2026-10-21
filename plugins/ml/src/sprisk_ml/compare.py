@@ -89,7 +89,7 @@ def cross_validate(
     only fit on. After a group split, no `group_column`
     value is on both sides of a fold. Otherwise rows are shuffled (ADR-0050).
 
-    With `inner_folds`, a trial of a study (ADR-0051): each outer fold also scores the
+    With `inner_folds`, a trial of a study (ADR-0052): each outer fold also scores the
     candidate on that many inner folds of its own training rows (`inner_score`), and all the
     train rows are scored the same way once (`train_inner_score`), so the select step can tune
     without an outer validation row. Inner folds keep what the outer ones keep: classes, time
@@ -349,7 +349,7 @@ def select_model(
     is the correction of Nadeau & Bengio (2003), applied to repeated k-fold as Bouckaert &
     Frank do.
 
-    A study (ADR-0051) may `tune` a candidate over several trials: on each outer fold, the
+    A study (ADR-0052) may `tune` a candidate over several trials: on each outer fold, the
     trial with the best inner score on that fold's training rows gives the candidate's score,
     so the outer validation rows never choose a setting and the tests above stay valid. Its
     settings to apply are the trial with the best inner score on all train rows. A candidate

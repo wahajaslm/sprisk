@@ -405,7 +405,7 @@ function foldRange(c: Candidate): string {
 }
 
 /** A candidate's cross-validate step: its own, or for a tuned one the trial whose settings it
- * applies (ADR-0051). */
+ * applies (ADR-0052). */
 function trialNodeOf(decision: SelectionDecision, id: string): string {
   const search = decision.candidates.find((c) => c.id === id)?.search;
   if (!search) return `cv_${id}`;

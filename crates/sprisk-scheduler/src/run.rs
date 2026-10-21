@@ -123,7 +123,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
     }
 
     /// Lease no step once `clock` reads `deadline` or later: the run ends cancelled, and the
-    /// steps that finished keep their attempts (ADR-0051). A step in flight finishes; its
+    /// steps that finished keep their attempts (ADR-0052). A step in flight finishes; its
     /// operator's timeout bounds how far past the deadline that goes.
     pub fn until(mut self, deadline: jiff::Timestamp, clock: Clock) -> Self {
         self.deadline = Some((deadline, clock));

@@ -241,7 +241,7 @@ fn read_manifest(path: &Path) -> Result<Operator, RegistryError> {
 /// Most settings combinations a model may declare: a study's trial budget allows no more.
 pub const MAX_SEARCH_POINTS: usize = 200;
 
-/// Params the flow sets, so a study never tunes them (ADR-0051).
+/// Params the flow sets, so a study never tunes them (ADR-0052).
 const FIXED_PARAMS: [&str; 4] = ["target", "features", "task", "seed"];
 
 /// Every searched setting is a params property the flow does not fix, searched once, with

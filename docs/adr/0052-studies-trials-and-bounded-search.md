@@ -1,4 +1,4 @@
-# ADR-0051: Studies, trials and bounded search
+# ADR-0052: Studies, trials and bounded search
 Status: Accepted
 Date: 2026-10-21
 Arch doc sections: §3 (Experiment), §5, §11, §21 (M4), §22 (EXP-01, EXP-02, SCI-09, SCI-10). Builds on ADR-0044, ADR-0046, ADR-0050.

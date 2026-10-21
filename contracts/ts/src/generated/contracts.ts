@@ -305,7 +305,7 @@ export type BaselineRole = "floor" | "reference";
  */
 export type StudyId = string;
 /**
- * grid: every combination of the manifest's values. random: a seeded sample of them, without replacement (ADR-0051).
+ * grid: every combination of the manifest's values. random: a seeded sample of them, without replacement (ADR-0052).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "StudyStrategy".
@@ -1595,7 +1595,7 @@ export interface OperatorModel {
    */
   estimator?: string;
   /**
-   * The settings a study may tune, in this order, each with the values it tries (ADR-0051). Left out for a model with nothing to tune.
+   * The settings a study may tune, in this order, each with the values it tries (ADR-0052). Left out for a model with nothing to tune.
    */
   search?: SearchSetting[];
 }
@@ -1798,11 +1798,11 @@ export interface SelectionDecision {
    */
   limitations: string[];
   /**
-   * Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0051). Absent: none were declared.
+   * Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0052). Absent: none were declared.
    */
   guardrails?: Guardrail[];
   /**
-   * Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0051). Absent: none.
+   * Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0052). Absent: none.
    */
   earlier_looks?: PipelineVersionId[];
 }
@@ -1853,7 +1853,7 @@ export interface BaselineComparison {
   beats_baseline: boolean;
 }
 /**
- * How its settings were tuned (ADR-0051). Absent: it ran at the flow's settings.
+ * How its settings were tuned (ADR-0052). Absent: it ran at the flow's settings.
  */
 export interface CandidateSearch {
   trials: SearchedTrial[];
@@ -1961,7 +1961,7 @@ export interface BaselineComparison1 {
   beats_baseline: boolean;
 }
 /**
- * A comparison of a flow's model step with search trials and a budget (arch doc §11, ADR-0051). Its trials are the cross-validate steps of its comparison version; status is the transactionally maintained current state, like a run's.
+ * A comparison of a flow's model step with search trials and a budget (arch doc §11, ADR-0052). Its trials are the cross-validate steps of its comparison version; status is the transactionally maintained current state, like a run's.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Study".
@@ -2004,7 +2004,7 @@ export interface Study {
    */
   max_wall_seconds: number;
   /**
-   * Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0051).
+   * Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0052).
    */
   guardrails: Guardrail[];
   status: StudyStatus;
@@ -2019,7 +2019,7 @@ export interface Study {
   finished_at?: string;
 }
 /**
- * Request to study a model step (ADR-0051). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.
+ * Request to study a model step (ADR-0052). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "CreateStudy".
