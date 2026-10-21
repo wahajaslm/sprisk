@@ -9,7 +9,8 @@ use sprisk_contracts::{
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
     Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, flow_facts,
-    observation, preparation_comparison, profile_facts, proposal, train_rows_source, without_node,
+    observation, preparation_comparison, profile_facts, proposal, train_rows_source,
+    with_node_before, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -570,6 +571,164 @@ fn a_step_whose_output_has_no_input_of_the_same_name_cannot_be_removed() {
 #[test]
 fn removing_an_unknown_step_is_refused() {
     assert!(without_node(&before_forest(), "nope").is_err());
+}
+
+const ENCODING: &str = "methodology.supervised.categorical_encoding@2.0.0";
+
+/// The encoding rule's one-hot pick for the forest of `pipeline`, as a proposal's alternative.
+fn one_hot_for_forest(pipeline: &PipelineVersion) -> Value {
+    let decided: RuleDecision = parse(
+        &json!({
+            "schema_version": "sprisk.rule_decision/v1",
+            "rule": ENCODING,
+            "recommended_alternative_id": "one_hot_encoding",
+            "alternatives": [{ "id": "one_hot_encoding", "applicability": "applicable", "reason": "r",
+                               "params": { "columns": ["purpose"] } }],
+            "evidence": []
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let catalog = catalog();
+    let built = proposal(
+        catalog.rule(ENCODING).unwrap(),
+        &decided,
+        &question(),
+        pipeline,
+        "rf",
+        &Default::default(),
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-22T10:00:00Z",
+        },
+    )
+    .unwrap();
+    serde_json::to_value(built).unwrap()["alternatives"][0].clone()
+}
+
+#[test]
+fn an_applicable_alternative_that_adds_a_step_gets_an_insert_node_effect_before_its_step() {
+    assert_eq!(
+        one_hot_for_forest(&before_forest())["effect"],
+        json!({ "kind": "insert_node", "node_id": "categories", "operator": "sprisk.clean.encode@1.0.0",
+                "params": { "columns": ["purpose"] }, "before": "rf" })
+    );
+}
+
+#[test]
+fn a_step_added_under_a_taken_id_gets_the_first_free_suffix() {
+    let mut pipeline = serde_json::to_value(before_forest()).unwrap();
+    pipeline["nodes"][1]["id"] = json!("categories");
+    pipeline["edges"] = json!([]);
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    assert_eq!(
+        one_hot_for_forest(&pipeline)["effect"]["node_id"],
+        "categories_2"
+    );
+}
+
+fn encode_step(id: &str) -> Node {
+    parse(&json!({ "id": id, "operator": "sprisk.clean.encode@1.0.0", "params": { "columns": ["c"] } }).to_string())
+        .unwrap()
+}
+
+fn inserted(
+    pipeline: &PipelineVersion,
+    step: Node,
+    before: &str,
+) -> Result<(Vec<String>, Vec<String>), ResolveError> {
+    let registry = registry();
+    let (nodes, edges) = with_node_before(pipeline, step, before, |o| registry.get(o))?;
+    let mut edges: Vec<String> = edges
+        .iter()
+        .map(|e| format!("{} -> {}", e.from.as_str(), e.to.as_str()))
+        .collect();
+    edges.sort();
+    Ok((
+        nodes.iter().map(|n| n.id.as_str().to_owned()).collect(),
+        edges,
+    ))
+}
+
+#[test]
+fn a_step_added_before_a_model_reads_the_split_and_feeds_the_model_and_its_evaluation() {
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("chart", "profile.chart"),
+            ("rf", "ml.random_forest@2.0.0"),
+            ("eval", "ml.evaluate"),
+        ],
+        &[
+            ("split.train", "chart.data"),
+            ("split.train", "rf.train"),
+            ("rf.model", "eval.model"),
+            ("split.test", "eval.test"),
+        ],
+    );
+    let (nodes, edges) = inserted(&pipeline, encode_step("categories"), "rf").unwrap();
+    assert_eq!(nodes, ["split", "chart", "categories", "rf", "eval"]);
+    // The chart still shows the rows as they were.
+    assert_eq!(
+        edges,
+        [
+            "categories.test -> eval.test",
+            "categories.train -> rf.train",
+            "rf.model -> eval.model",
+            "split.test -> categories.test",
+            "split.train -> categories.train",
+            "split.train -> chart.data",
+        ]
+    );
+}
+
+#[test]
+fn a_step_added_before_a_clean_step_takes_both_its_train_and_test_rows() {
+    let (_, edges) = inserted(&before_forest(), encode_step("categories"), "scale").unwrap();
+    assert_eq!(
+        edges,
+        [
+            "categories.test -> scale.test",
+            "categories.train -> scale.train",
+            "rf.model -> eval.model",
+            "scale.test -> eval.test",
+            "scale.train -> rf.train",
+            "split.test -> categories.test",
+            "split.train -> categories.train",
+        ]
+    );
+}
+
+#[test]
+fn only_a_step_that_learns_from_train_rows_can_be_added() {
+    let summary: Node = parse(
+        &json!({ "id": "summary", "operator": "sprisk.profile.summarize@1.0.0", "params": {} })
+            .to_string(),
+    )
+    .unwrap();
+    let err = inserted(&before_forest(), summary, "rf").unwrap_err();
+    assert!(
+        err.to_string().contains("sprisk.profile.summarize@1.0.0"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_step_is_added_only_where_train_and_test_rows_feed_it() {
+    // The model reads loaded rows, not a split's train rows.
+    let pipeline = flow(
+        &[("load", "io.file_source"), ("rf", "ml.random_forest@2.0.0")],
+        &[("load.data", "rf.train")],
+    );
+    let err = inserted(&pipeline, encode_step("categories"), "rf").unwrap_err();
+    assert!(err.to_string().contains("rf"), "{err}");
+    assert!(inserted(&before_forest(), encode_step("categories"), "nope").is_err());
+}
+
+#[test]
+fn an_added_step_needs_an_id_no_step_has() {
+    let err = inserted(&before_forest(), encode_step("scale"), "rf").unwrap_err();
+    assert!(err.to_string().contains("scale"), "{err}");
 }
 
 #[test]

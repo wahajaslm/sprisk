@@ -2,11 +2,13 @@
 # Sprisk Methodology Rule: Categorical Encoding Strategy
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.categorical_encoding@1.0.0
+id: methodology.supervised.categorical_encoding@2.0.0
 name: "Categorical Encoding Strategy"
 stage: features
 decides: features.encoding_strategy
-status: draft
+status: active
+applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
+reads: [column.*.data_type, column.*.distinct]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -20,103 +22,45 @@ provenance:
     - "Rare categories: Low-frequency categories (e.g. <10 instances) need Bayesian smoothing towards the global prior to prevent overfitting."
     - "Ordinal features: Variables with natural sequence (e.g. low/med/high) lose structural ordering if one-hot encoded instead of ordinal-mapped."
 
-# 2. What This Rule Observes
-# ------------------------------------------------------------------------------
-observes:
-  - profile: categorical_columns
-    description: "List of discrete nominal/ordinal columns"
-    required: true
-  - profile: column_cardinality
-    description: "Distinct category count per categorical column"
-    required: true
-  - fact: planned_model_family
-    description: "Linear/logistic models vs tree ensembles vs neural nets"
-    required: true
-  - fact: question.target
-    description: "Target column name"
-    required: true
-
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
 policy_thresholds:
+  # Most categories a column may have for one 0/1 column each.
   high_cardinality_threshold: 15
-  default_smoothing_weight: 10.0
 
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------
 alternatives:
   - id: one_hot_encoding
     label: "One-Hot Encoding"
-    description: "Convert discrete categories into orthogonal binary indicator columns."
-    condition: "column_cardinality <= high_cardinality_threshold"
-    rationale: "Low cardinality (<= 15 levels). One-hot encoding creates no artificial ordering and avoids dimensional explosion."
-    settings_schema:
-      type: object
-      properties:
-        drop_first:
-          type: boolean
-          default: true
-          description: "Drop first category to prevent dummy variable trap in linear/logistic models."
-        handle_unknown:
-          type: string
-          enum: ["ignore", "error"]
-          default: "ignore"
-          description: "Encode unknown production categories as all zeros rather than crashing."
+    description: "One 0/1 column per category, with the categories the train rows have, in a step added before the model."
+    rationale: "Few categories (at most 15): one-hot creates no artificial order and few columns. A category seen only in test rows gets zeros."
     action:
       type: insert_step
-      placement: after_split
-      fit_on: train_partition_only
-      operator: sprisk.features.one_hot@1.0.0
-      params:
-        drop_first: "{settings.drop_first}"
-        handle_unknown: "{settings.handle_unknown}"
-
+      placement: before
+      operator: sprisk.clean.encode@1.0.0
+      node_id: categories
+  - id: no_encoding
+    label: "No Encoding"
+    description: "Leave the columns as they are."
+    rationale: "Only when every column the model reads is already a number: a model fits only the model and refuses categories (ADR-0056)."
+    action:
+      type: pass_through
   - id: target_encoding_oof
     label: "Out-of-Fold Target Encoding with Bayesian Smoothing"
     description: "Encode categories as regularized posterior target expectations using inner cross-validation."
-    condition: "column_cardinality > high_cardinality_threshold"
-    rationale: "High cardinality (> 15 levels). Target encoding condenses high-cardinality levels into a single informative scalar while inner CV and smoothing prevent overfitting."
-    settings_schema:
-      type: object
-      properties:
-        smoothing:
-          type: number
-          default: 10.0
-          minimum: 1.0
-          maximum: 100.0
-          description: "Weight allocated to global target mean for smoothing rare categories."
-        cv_folds:
-          type: integer
-          default: 5
-          minimum: 3
-          maximum: 10
+    rationale: "For many categories. Not available: no step for it yet, and it leaks the target without cross-fitting."
     action:
       type: insert_step
-      placement: after_split
-      fit_on: train_partition_only
+      placement: before
       operator: sprisk.features.target_encoder@1.0.0
-      params:
-        cv: "{settings.cv_folds}"
-        smoothing: "{settings.smoothing}"
-
   - id: ordinal_encoding
     label: "Ordinal / Integer Mapping"
     description: "Map naturally ordered levels (e.g. low/medium/high) to sequential integers [0, 1, 2]."
-    condition: "column_is_ordinal is true"
-    rationale: "Preserves natural monotonic ordering among discrete categories."
-    settings_schema:
-      type: object
-      properties:
-        handle_unknown:
-          type: string
-          default: "use_encoded_value"
-        unknown_value:
-          type: integer
-          default: -1
+    rationale: "Only for levels with a real order. Not available: no step for it yet."
     action:
       type: insert_step
-      placement: after_split
-      fit_on: train_partition_only
+      placement: before
       operator: sprisk.features.ordinal_encoder@1.0.0
 
 # 5. Matching Gate B Verification Check
@@ -124,3 +68,11 @@ alternatives:
 verification:
   check_id: sprisk.checks.supervised.target_encoding_leakage@1.0.0
   invariant: "Target encoding must use out-of-fold cross-fitting on training folds and never access validation partition labels during category mapping."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: { column.purpose.data_type: String, column.purpose.distinct: 10, column.age.data_type: Int64, column.age.distinct: 53 }
+    picks: one_hot_encoding
+  - given: { column.age.data_type: Int64, column.age.distinct: 53 }
+    picks: no_encoding

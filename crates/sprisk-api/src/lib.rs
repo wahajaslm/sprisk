@@ -956,6 +956,24 @@ async fn propose_node_decision(
 /// What the split rule decides, whatever its version.
 const SPLIT_DECISION: &str = "split.method";
 
+/// The decision a comparison of `node` measures: its model shortlist when a shortlist rule
+/// decides it (ADR-0044), else the first rule of a step that fits on train rows (ADR-0050).
+/// None when nothing about the step is compared.
+fn compared_decision(state: &AppState, node: &sprisk_contracts::Node) -> Option<String> {
+    let mut rules = state.rules.rules_for_operator(node.operator.as_str());
+    let shortlist = state
+        .rules
+        .rules_for_operator(node.operator.as_str())
+        .find(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist));
+    shortlist
+        .or_else(|| {
+            rules
+                .next()
+                .filter(|_| keeps_train_rows(&state.registry, node))
+        })
+        .map(|rule| rule.decides.as_str().to_owned())
+}
+
 /// A step the split rule decides, whatever its version.
 fn is_split(rules: &sprisk_methodology::RuleCatalog, node: &sprisk_contracts::Node) -> bool {
     rules
@@ -1121,6 +1139,7 @@ async fn propose(
         let value = serde_json::to_value(alternative)
             .map_err(|error| ApiError::Internal(error.to_string()))?;
         let preview = materialize_effect(
+            &state.registry,
             &pipeline,
             &value,
             "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
@@ -1322,7 +1341,14 @@ async fn apply_methodology(
     let decision_id = format!("mdc_{}", ulid::Ulid::new());
     let pipeline_id = format!("plv_{}", ulid::Ulid::new());
     let alternative = &with_tuned_settings(alternative, selection.as_ref().map(|(d, _)| d))?;
-    let pipeline = materialize_effect(&base, alternative, &pipeline_id, &decision_id, &at)?;
+    let pipeline = materialize_effect(
+        &state.registry,
+        &base,
+        alternative,
+        &pipeline_id,
+        &decision_id,
+        &at,
+    )?;
     compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     let mut decision_json = json!({
         "schema_version":"sprisk.methodology_decision/v1", "id":decision_id,
@@ -1581,29 +1607,18 @@ async fn select_model(
         Some((comparison, run)) => (comparison, run, false),
         None => {
             let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
-            let compared = pipeline
+            let decides = pipeline
                 .nodes
                 .iter()
                 .find(|n| n.id == step)
-                .is_some_and(|n| {
-                    let rules: Vec<_> = state
-                        .rules
-                        .rules_for_operator(n.operator.as_str())
-                        .collect();
-                    let shortlisted = rules
-                        .iter()
-                        .any(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist));
-                    !rules.is_empty() && (shortlisted || keeps_train_rows(&state.registry, n))
-                });
-            if !compared {
-                return Err(ApiError::BadRequest {
+                .and_then(|n| compared_decision(&state, n))
+                .ok_or_else(|| ApiError::BadRequest {
                     code: "not_compared",
                     message: format!(
                         "no rule compares step {node_id}: only a model step a shortlist rule decides, or a step a rule decides that fits on train rows, is compared"
                     ),
-                });
-            }
-            let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
+                })?;
+            let (_, Json(proposal)) = propose(&state, &raw, &node_id, Some(&decides)).await?;
             let made = comparison_version(&state, &proposal, None).await?;
             let (comparison, built) = state
                 .store
@@ -1692,7 +1707,12 @@ async fn create_study(
     let question = state.store.get_question_version(question_id).await?;
     check_guardrails(&request, question.task.value)?;
     let earlier = state.store.earlier_comparisons(&pipeline_id, &step).await?;
-    let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
+    let decides = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id == step)
+        .and_then(|n| compared_decision(&state, n));
+    let (_, Json(proposal)) = propose(&state, &raw, &node_id, decides.as_deref()).await?;
     let search = sprisk_methodology::StudySearch {
         strategy: request.strategy,
         seed: request.seed,
@@ -1960,6 +1980,7 @@ fn with_tuned_settings(
 }
 
 fn materialize_effect(
+    registry: &Registry,
     base: &PipelineVersion,
     alternative: &serde_json::Value,
     pipeline_id: &str,
@@ -2006,6 +2027,27 @@ fn materialize_effect(
             node["operator"] = json!(operator);
             node["params"] = json!(params);
             node["methodology_decision_id"] = json!(decision_id);
+        }
+        GraphEffect::InsertNode {
+            node_id,
+            operator,
+            params,
+            before,
+        } => {
+            let step = json!({ "id": node_id, "operator": operator, "params": params,
+                               "methodology_decision_id": decision_id });
+            let step =
+                parse(&step.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
+            let (nodes, edges) =
+                sprisk_methodology::with_node_before(base, step, before.as_str(), |o| {
+                    registry.get(o)
+                })
+                .map_err(|e| ApiError::BadRequest {
+                    code: "cannot_add_step",
+                    message: e.to_string(),
+                })?;
+            value["nodes"] = json!(nodes);
+            value["edges"] = json!(edges);
         }
     }
     parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()))

@@ -126,7 +126,7 @@ export type MethodologyRuleRef = string;
 export type MethodologyStage =
   "question" | "data" | "cleaning" | "split" | "features" | "models" | "evaluation" | "reporting";
 /**
- * What choosing an alternative does to the flow. Rust builds graph effects for replace_node and remove_node (ADR-0043); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.
+ * What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RuleActionType".
@@ -159,6 +159,13 @@ export type GraphEffect =
   | {
       kind: "remove_node";
       node_id: NodeId;
+    }
+  | {
+      kind: "insert_node";
+      node_id: NodeId;
+      operator: OperatorRef;
+      params: Params;
+      before: NodeId;
     };
 /**
  * Pinned rule: <pack>.<rule>@<semver>.
@@ -1170,6 +1177,10 @@ export interface MethodologyRule {
        */
       operator?: string;
       placement?: string;
+      /**
+       * Node name, unique within a pipeline version.
+       */
+      node_id?: string;
       fit_on?: string;
       apply_to?: string;
       /**

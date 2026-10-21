@@ -456,9 +456,20 @@ class GraphEffect2(StrictModel):
     node_id: NodeId
 
 
-class GraphEffect(RootModel[GraphEffect1 | GraphEffect2]):
+class GraphEffect3(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["insert_node"]
+    node_id: NodeId
+    operator: OperatorRef
+    params: Params
+    before: NodeId
+
+
+class GraphEffect(RootModel[GraphEffect1 | GraphEffect2 | GraphEffect3]):
     root: Annotated[
-        GraphEffect1 | GraphEffect2,
+        GraphEffect1 | GraphEffect2 | GraphEffect3,
         Field(
             description="Typed mutation previewed and compiled before it can create a pipeline version."
         ),
@@ -1400,6 +1411,12 @@ class Action(StrictModel):
         ),
     ] = None
     placement: Annotated[str | None, Field(min_length=1)] = None
+    node_id: Annotated[
+        NodeId | None,
+        Field(
+            description="insert_step: the id of the step it adds, saying what the step is about (ADR-0057)."
+        ),
+    ] = None
     fit_on: Annotated[str | None, Field(min_length=1)] = None
     apply_to: Annotated[str | None, Field(min_length=1)] = None
     params: Annotated[

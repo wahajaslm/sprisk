@@ -58,6 +58,7 @@
 | [0054](0054-flow-notebook-shows-every-steps-code.md) | A flow's notebook shows every step's code, and is made when the flow has none | Superseded by ADR-0055 |
 | [0055](0055-a-flow-is-its-notebooks.md) | A flow is its notebooks: one notebook per stage, one cell per step | Accepted |
 | [0056](0056-cleaning-is-its-own-steps.md) | Cleaning is its own steps; a model step fits only the model | Accepted |
+| [0057](0057-a-rule-can-add-a-step.md) | A rule can add a step | Accepted |
 
 ## Open questions (arch doc §17)
 

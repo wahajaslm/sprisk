@@ -277,6 +277,7 @@ function StepCode({ operator }: { operator: string }) {
 /** How applying `effect` would change `base`, setting by setting. */
 function differences(base: PipelineVersion, effect: NonNullable<DecisionProposal["alternatives"][number]["effect"]>): string {
   if (effect.kind === "remove_node") return `${effect.node_id} removed`;
+  if (effect.kind === "insert_node") return `${effect.node_id} added before ${effect.before}`;
   const before = base.nodes.find((n) => n.id === effect.node_id);
   if (!before) return `${effect.node_id} is not in the flow`;
   const after = { ...before, operator: effect.operator, params: effect.params };

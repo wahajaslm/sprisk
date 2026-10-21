@@ -1,0 +1,38 @@
+{
+  "schema_version": "sprisk.decision_proposal/v1",
+  "id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "rule": "methodology.supervised.categorical_encoding@2.0.0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "subject_node_id": "model",
+  "evidence": [
+    {
+      "kind": "profile_fact",
+      "label": "purpose categories",
+      "value": "10",
+      "origin": "measured"
+    }
+  ],
+  "alternatives": [
+    {
+      "id": "one_hot_encoding",
+      "label": "One-Hot Encoding",
+      "description": "One 0/1 column per category, learnt from the train rows.",
+      "applicability": "applicable",
+      "reason": "purpose has 10 categories.",
+      "effect": {
+        "kind": "insert_node",
+        "node_id": "categories",
+        "operator": "sprisk.clean.encode@1.0.0",
+        "params": {
+          "columns": [
+            "purpose"
+          ]
+        }
+      }
+    }
+  ],
+  "recommended_alternative_id": "one_hot_encoding",
+  "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "created_at": "2026-10-22T10:00:00Z"
+}

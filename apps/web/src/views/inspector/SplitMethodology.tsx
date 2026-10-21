@@ -65,6 +65,8 @@ export function SplitMethodology({ pipeline, nodeId, rule }: {
       </div>
       {chosen?.effect && <div className="method-preview"><strong>Preview</strong>{chosen.effect.kind === "remove_node"
         ? <p>Remove <code>{chosen.effect.node_id}</code>. The steps after it read its inputs directly.</p>
+        : chosen.effect.kind === "insert_node"
+        ? <><p>Add <code>{chosen.effect.node_id}</code> ({chosen.effect.operator}) before <code>{chosen.effect.before}</code>.</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>
         : <><p>{chosen.effect.operator === current?.operator
           ? <>Change the settings of <code>{chosen.effect.node_id}</code>.</>
           : <>Replace <code>{chosen.effect.node_id}</code> with <code>{chosen.effect.operator}</code>.</>}</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>}</div>}

@@ -1951,11 +1951,12 @@ async fn model_flow(api: &Api) {
     assert_eq!(run["status"], "succeeded", "{run}");
 }
 
+/// The model shortlist of step `model`: a model step has several rules, so it is named.
 async fn propose_model(api: &Api) -> (StatusCode, Value) {
     call(
         &api.app,
         "POST",
-        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/model",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/model/modeling.estimator_selection",
         Some(json!({})),
     )
     .await
@@ -2640,8 +2641,8 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     );
     assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
 
-    // The step's first rule, in workflow order, is still the model shortlist. It measures
-    // the train rows, so the flow runs first.
+    // The step's first rule, in workflow order, is encoding: inputs are prepared before a
+    // model is chosen (ADR-0057). It measures the train rows, so the flow runs first.
     let mut csv = String::from("age,returned_within_30d\n");
     for age in 20..80 {
         csv.push_str(&format!("{age},{}\n", u8::from(age >= 50)));
@@ -2653,7 +2654,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     assert_eq!(status, StatusCode::CREATED, "{first}");
     assert_eq!(
         first["rule"],
-        "methodology.supervised.model_baseline_selection@2.0.0"
+        "methodology.supervised.categorical_encoding@2.0.0"
     );
 }
 
@@ -3794,10 +3795,9 @@ async fn a_study_past_its_wall_time_ends_budget_reached_and_keeps_its_finished_t
     assert_eq!(states, expected, "{done}");
 }
 
-/// German credit (Statlog, UCI): load -> keep the inputs -> stratified split -> encode the
-/// text columns -> a 50-tree forest on `credit_risk`. The question states UCI's published costs before anything runs: a bad credit approved costs
-/// 5, a good one refused costs 1. Nothing here is set from a result.
-async fn german_credit_flow(api: &Api) {
+/// German credit's rows in the test's CSV, and its question: tell good credit risks from bad,
+/// with UCI's costs stated before anything runs.
+async fn german_credit_question(api: &Api) {
     std::fs::copy(
         root().join("tests/fixtures/datasets/german_credit.csv"),
         &api.csv,
@@ -3816,7 +3816,13 @@ async fn german_credit_flow(api: &Api) {
     facts.remove("entity_column");
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
 
+/// German credit (Statlog, UCI): load -> keep the inputs -> stratified split -> encode the
+/// text columns -> a 50-tree forest on `credit_risk`. The question states UCI's published costs before anything runs: a bad credit approved costs
+/// 5, a good one refused costs 1. Nothing here is set from a result.
+async fn german_credit_flow(api: &Api) {
+    german_credit_question(api).await;
     // Sex and marital status, and nationality, are not inputs. Proxies of them are not tested.
     let inputs = [
         "credit_risk",
@@ -3881,6 +3887,93 @@ async fn german_credit_flow(api: &Api) {
     ]);
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+/// ADR-0057: from Load, Split and a forest alone, the encoding rule adds the Encode step the
+/// forest needs. Every German credit text column has at most 10 categories, so all 13 are
+/// one-hot encoded on the train rows, and the forest and its evaluation read them.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_encoding_rule_adds_the_encode_step_a_model_needs() {
+    let api = api().await;
+    german_credit_question(&api).await;
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    let nodes = flow["nodes"].as_array_mut().unwrap();
+    nodes.push(json!({
+        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+        "params":{"test_fraction":0.25,"seed":42,"stratify":"credit_risk"}
+    }));
+    nodes.push(json!({
+        "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        "params":{"target":"credit_risk","task":"classification","n_estimators":50}
+    }));
+    nodes.push(json!({
+        "id":"score", "operator":"sprisk.ml.evaluate@1.0.0",
+        "params":{"target":"credit_risk","task":"classification"}
+    }));
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"},
+        {"from":"model.model","to":"score.model"},
+        {"from":"split.test","to":"score.test"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (run, _) = run_version(&api, BASE).await;
+    assert_eq!(run["status"], "failed", "the forest refuses text: {run}");
+
+    let uri =
+        format!("/pipeline_versions/{BASE}/methodology/proposals/model/features.encoding_strategy");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(proposal["recommended_alternative_id"], "one_hot_encoding");
+    let one_hot = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "one_hot_encoding")
+        .unwrap();
+    assert_eq!(one_hot["effect"]["kind"], "insert_node", "{one_hot}");
+    assert_eq!(
+        one_hot["effect"]["params"]["columns"]
+            .as_array()
+            .unwrap()
+            .len(),
+        13,
+        "{one_hot}"
+    );
+
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice =
+        json!({ "alternative_id": "one_hot_encoding", "idempotency_key": "credit-encode-0001" });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let edges = applied["pipeline"]["edges"].as_array().unwrap();
+    for (from, to) in [
+        ("split.train", "categories.train"),
+        ("split.test", "categories.test"),
+        ("categories.train", "model.train"),
+        ("categories.test", "score.test"),
+    ] {
+        assert!(
+            edges.iter().any(|e| e["from"] == from && e["to"] == to),
+            "{from} -> {to}: {applied}"
+        );
+    }
+    let version = applied["pipeline"]["id"].as_str().unwrap().to_owned();
+    let (run, attempts) = run_version(&api, &version).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let checks = output(&api, &attempts, "gate_b", "checks").await;
+    let leakage = checks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["check"] == "supervised.split_leakage@1.0.0")
+        .unwrap_or_else(|| panic!("{checks}"));
+    assert_eq!(leakage["verdict"], "pass", "{leakage}");
 }
 
 /// Gap 11's German credit case (ADR-0052, ADR-0053). The decision threshold rule reads the

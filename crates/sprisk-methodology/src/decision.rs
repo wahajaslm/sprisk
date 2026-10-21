@@ -14,6 +14,7 @@ use sprisk_contracts::{
     RuleObservation, TaskType, parse,
 };
 
+use crate::compare::edge;
 use crate::{ResolveError, facts};
 
 /// The rule's observation of this question, of the flow around the step (`flow_facts`)
@@ -286,6 +287,81 @@ pub fn without_node(
     Ok((nodes, edges))
 }
 
+/// The steps and edges of `pipeline` with `step` added before `before` (ADR-0057), on the
+/// rows `before` learns from. `step` reads the train and test rows of S, the step whose
+/// `train` output feeds `before`'s `train`. `before` reads `step` in place of S, and so does
+/// any step that reads an output of `before` and S's test rows, so a model's evaluation
+/// scores rows prepared the same way. Every other reader of S keeps reading S. Refused
+/// unless `step` learns from train rows and keeps train and test apart.
+pub fn with_node_before<'a>(
+    pipeline: &PipelineVersion,
+    step: Node,
+    before: &str,
+    operator_of: impl Fn(&str) -> Option<&'a Operator>,
+) -> Result<(Vec<Node>, Vec<Edge>), ResolveError> {
+    let refuse = |why: String| Err(ResolveError::NotInsertable(why));
+    let id = step.id.as_str().to_owned();
+    if pipeline.nodes.iter().any(|n| n.id.as_str() == id) {
+        return refuse(format!("a step named {id} already exists"));
+    }
+    let at = pipeline
+        .nodes
+        .iter()
+        .position(|n| n.id.as_str() == before)
+        .ok_or_else(|| ResolveError::UnknownNode(before.to_owned()))?;
+    let operator = step.operator.as_str();
+    let ports = |ports: &[sprisk_contracts::Port]| -> BTreeSet<String> {
+        ports.iter().map(|p| p.name.as_str().to_owned()).collect()
+    };
+    let train_test = BTreeSet::from(["test".to_owned(), "train".to_owned()]);
+    let learns_from_train = operator_of(operator).is_some_and(|o| {
+        o.fits_on_train == Some(true)
+            && ports(&o.inputs) == train_test
+            && ports(&o.outputs) == train_test
+    });
+    if !learns_from_train {
+        return refuse(format!(
+            "{operator} does not learn from train rows and keep train and test apart"
+        ));
+    }
+    let Some(source) = pipeline
+        .edges
+        .iter()
+        .find(|e| e.to.step_and_port() == (before, "train"))
+        .map(|e| e.from.step_and_port())
+        .filter(|(_, port)| *port == "train")
+        .map(|(source, _)| source)
+    else {
+        return refuse(format!(
+            "step {before} takes no train output into its train input"
+        ));
+    };
+    let readers: HashSet<&str> = pipeline
+        .edges
+        .iter()
+        .filter(|e| e.from.step_and_port().0 == before)
+        .map(|e| e.to.step_and_port().0)
+        .collect();
+    let mut edges = vec![
+        edge(&format!("{source}.train"), &format!("{id}.train"))?,
+        edge(&format!("{source}.test"), &format!("{id}.test"))?,
+    ];
+    for e in &pipeline.edges {
+        let (from, port) = e.from.step_and_port();
+        let (to, input) = e.to.step_and_port();
+        let moves = from == source
+            && ((to == before && input == port) || (port == "test" && readers.contains(to)));
+        if moves {
+            edges.push(edge(&format!("{id}.{port}"), e.to.as_str())?);
+        } else {
+            edges.push(e.clone());
+        }
+    }
+    let mut nodes = pipeline.nodes.clone();
+    nodes.insert(at, step);
+    Ok((nodes, edges))
+}
+
 /// The step whose `train` output feeds `node_id`'s `train` input, walked back to a split's
 /// train output through steps that `keep_train` (ADR-0044, rule 8). Every hop is a train port
 /// through a step that writes train rows from train rows only, so the table holds no test row.
@@ -422,6 +498,23 @@ pub fn proposal(
                         updated_params(id, node, &declared.action.params, &decided.params)?;
                     built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": node.operator, "params": params });
                 }
+            } else if declared.action.type_ == RuleActionType::InsertStep {
+                // Only an insert before the rule's step is wired (ADR-0057).
+                let before = declared
+                    .action
+                    .placement
+                    .as_ref()
+                    .is_some_and(|p| p.as_str() == "before");
+                if let (true, Some(params), Some(operator), Some(wanted)) = (
+                    before,
+                    &decided.params,
+                    &declared.action.operator,
+                    &declared.action.node_id,
+                ) {
+                    let step = free_id(pipeline, wanted.as_str());
+                    built["effect"] = json!({ "kind": "insert_node", "node_id": step, "operator": operator,
+                                              "params": params, "before": node_id });
+                }
             } else if let (Some(params), Some(operator)) =
                 (&decided.params, &declared.action.operator)
             {
@@ -522,6 +615,18 @@ fn params_for(operator: &Operator, node: &Node) -> Map<String, Value> {
         .filter(|(name, _)| accepted.is_some_and(|a| a.contains_key(*name)))
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect()
+}
+
+/// `wanted`, or `wanted` with the first suffix `_2`, `_3`, … that no step of `pipeline` has.
+fn free_id(pipeline: &PipelineVersion, wanted: &str) -> String {
+    let taken = |id: &str| pipeline.nodes.iter().any(|n| n.id.as_str() == id);
+    let mut id = wanted.to_owned();
+    let mut n = 1;
+    while taken(&id) {
+        n += 1;
+        id = format!("{wanted}_{n}");
+    }
+    id
 }
 
 /// The id a candidate model goes by: its operator name without `sprisk.`, with dots as

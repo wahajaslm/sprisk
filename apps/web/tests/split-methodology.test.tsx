@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
+import encodingBeforeModel from "../../../tests/contract/decision_proposal/valid/encoding-before-model.json";
 import scalingBeforeForest from "../../../tests/contract/decision_proposal/valid/scaling-before-forest.json";
 import { SplitMethodology } from "../src/views/inspector/SplitMethodology.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
@@ -70,6 +71,19 @@ describe("a replacing choice", () => {
     await review();
     await userEvent.click(await screen.findByRole("radio", { name: /Clip Outliers Instead/ }));
     expect(screen.getByText(/Replace/)).toHaveTextContent("Replace scale with sprisk.clean.clip_outliers@1.0.0.");
+  });
+});
+
+describe("an adding choice", () => {
+  it("names the step it adds and the step it goes before (ADR-0057)", async () => {
+    const model: PipelineVersion = { ...pipeline, nodes: [{ id: "model", operator: "sprisk.ml.random_forest@2.0.0", params: { target: "y", task: "classification" } }] };
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(parse("DecisionProposal", encodingBeforeModel), { status: 201 })));
+    renderWithApi(<SplitMethodology pipeline={model} nodeId="model" />);
+    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+    await userEvent.click(await screen.findByRole("radio", { name: /One-Hot Encoding/ }));
+    expect(screen.getByText(/^Add/)).toHaveTextContent("Add categories (sprisk.clean.encode@1.0.0) before model.");
+    expect(screen.getByText(/"purpose"/)).toBeInTheDocument();
+    expect(screen.queryByText(/Replace/)).not.toBeInTheDocument();
   });
 });
 

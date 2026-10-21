@@ -1580,6 +1580,10 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "node_id": {
+                    "$ref": "#/$defs/NodeId",
+                    "description": "insert_step: the id of the step it adds, saying what the step is about (ADR-0057)."
+                  },
                   "fit_on": {
                     "type": "string",
                     "minLength": 1
@@ -1753,7 +1757,7 @@
     },
     "RuleActionType": {
       "type": "string",
-      "description": "What choosing an alternative does to the flow. Rust builds graph effects for replace_node and remove_node (ADR-0043); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.",
+      "description": "What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.",
       "enum": [
         "replace_node",
         "remove_node",
@@ -1808,6 +1812,35 @@
               "const": "remove_node"
             },
             "node_id": {
+              "$ref": "#/$defs/NodeId"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Adds step node_id before step `before`, on the train and test rows `before` learns from (ADR-0057).",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "node_id",
+            "operator",
+            "params",
+            "before"
+          ],
+          "properties": {
+            "kind": {
+              "const": "insert_node"
+            },
+            "node_id": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "operator": {
+              "$ref": "#/$defs/OperatorRef"
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            },
+            "before": {
               "$ref": "#/$defs/NodeId"
             }
           }

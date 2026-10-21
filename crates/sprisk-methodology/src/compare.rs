@@ -578,6 +578,9 @@ fn measured_step<'a>(
     match &alternative.effect {
         None => Err("The rule builds no step for it yet.".into()),
         Some(GraphEffect::RemoveNode { .. }) => Ok(None),
+        Some(GraphEffect::InsertNode { .. }) => {
+            Err("A comparison does not measure an added step yet (ADR-0057).".into())
+        }
         Some(GraphEffect::ReplaceNode {
             operator, params, ..
         }) => {
@@ -704,6 +707,6 @@ fn upstream<'p>(pipeline: &'p PipelineVersion, step: &str) -> HashSet<&'p str> {
     found
 }
 
-fn edge(from: &str, to: &str) -> Result<Edge, ResolveError> {
+pub(crate) fn edge(from: &str, to: &str) -> Result<Edge, ResolveError> {
     Ok(parse(&json!({ "from": from, "to": to }).to_string())?)
 }

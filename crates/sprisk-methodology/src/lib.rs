@@ -13,7 +13,7 @@ pub use compare::{
 };
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts, proposal,
-    train_rows_source, without_node,
+    train_rows_source, with_node_before, without_node,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -40,6 +40,8 @@ pub enum ResolveError {
     Selection(String),
     #[error("cannot remove the step: output {0} has no input of the same name to take its place")]
     Unremovable(String),
+    #[error("cannot add the step: {0}")]
+    NotInsertable(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]
     UndeclaredAlternative(String),
     #[error("could not construct proposal: {0}")]
