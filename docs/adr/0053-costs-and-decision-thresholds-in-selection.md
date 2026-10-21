@@ -6,7 +6,7 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02, SCI-09). Buil
 ## Context
 - German credit (UCI) comes with a cost matrix: calling a bad customer good costs 5, refusing a good one costs 1.
 - Sprisk compares classifiers by balanced accuracy, and each model predicts the class with probability over 0.5.
-- Measured on German credit with 5-fold CV, cost per applicant:
+- Measured on German credit with stratified 5-fold CV (seed 0, scikit-learn 1.9.1), cost per applicant:
   - approve everyone: 1.50; refuse everyone: 0.70;
   - logistic at 0.5: 0.86; forest at 0.5: 1.05;
   - logistic refusing when P(bad) ≥ 1/6: 0.52; forest the same: 0.53.
@@ -15,7 +15,7 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02, SCI-09). Buil
 
 ## Decision
 **Costs are question facts.**
-- A classification `QuestionVersion` may state `costs`: the class whose miss costs (`positive`), the cost of a miss (`false_negative`) and the cost of a false alarm (`false_positive`). Both costs are positive numbers.
+- A classification `QuestionVersion` may state `costs`: the class whose miss costs (`positive`), the cost of a miss (`false_negative`) and the cost of a false alarm (`false_positive`). Both costs are positive numbers. A correct decision costs nothing.
 - Only two-class targets. A question with costs on a target with more than two classes is refused.
 
 **With costs, the comparison metric is expected cost per row.**
@@ -23,16 +23,26 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02, SCI-09). Buil
 - Lower is better, as for `rmse`. The corrected t-test, Holm and the one-SE rule are unchanged.
 
 **Each candidate's cut-off is tuned inside the folds.**
-- `cross_validate` wraps each candidate in scikit-learn's `TunedThresholdClassifierCV`, scored by expected cost, with 3 inner folds of the training rows.
+- `cross_validate` wraps each candidate's whole pipeline (preparation and model) in scikit-learn's `TunedThresholdClassifierCV`. It scores by expected cost (`make_scorer`, `greater_is_better=False`, `pos_label` = `positive`).
+- Its 3 inner folds split the outer training rows the way the outer folds split all train rows: stratified, by group (groups passed through metadata routing), or by time.
 - It tunes the cut-off on scores, so it needs no calibrated probabilities. A forest's probabilities are not calibrated.
 - Not chosen: the fixed cut-off c_FP / (c_FP + c_FN). It is right only for calibrated probabilities.
-- The dummy baseline is tuned too. Its scores are constant, so it becomes the cheaper of "approve everyone" and "refuse everyone". That is the floor a lender would compare with.
 - With a study (ADR-0052), the cut-off is tuned within each trial. The outer folds are unchanged.
+- The tuned cut-off is noisy on small data. German credit's innermost folds hold about 180 rows, about 55 of them bad.
+
+**The floor is the cheaper constant decision.**
+- scikit-learn refuses to tune a cut-off for a model with constant predictions, so the dummy baseline is not tuned.
+- On each outer fold, the baseline is "approve everyone" or "refuse everyone", whichever costs less on that fold's training rows. It is then scored on the fold's validation rows.
+- That is the floor a lender compares with. A model that cannot beat it does not win.
+
+**Guardrails and prevalence.**
+- Recall guardrails (ADR-0052) are measured at each candidate's tuned cut-off.
+- Expected cost and the cut-off depend on the share of `positive` rows. The SelectionDecision records that share in the train rows. Its limitations say the cut-off holds only at that share. German credit's 30% bad is a sampled mix, not a population rate.
 
 **The chosen cut-off is applied.**
 - Two-class model operators gain an optional `threshold` param, the cut-off for `positive`.
 - The cut-off to apply is tuned on all train rows, as study settings are. Using a choice writes it into the model step.
-- `evaluate` reports expected cost on the test rows when the question has costs.
+- `evaluate` reports, when the question has costs: expected cost on the test rows, the cut-off applied, the confusion matrix, and the floor's cost on the same rows.
 
 **The draft rule.**
 - `probability_calibration`'s `cost_optimal_threshold` alternative is met by this design. It inserts no separate step.
@@ -46,13 +56,14 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02, SCI-09). Buil
 ## Consequences (good and bad)
 - Good: the decision answers the lender's question in the lender's units.
 - Good: "refuse everyone" becomes a real floor, so a model that cannot beat it does not win.
-- Bad: inner threshold folds cost 3 extra fits per outer fold and candidate.
+- Bad: inner threshold folds cost 3 extra fits per outer fold and candidate, and per trial in a study. In a study that is 3 × (inner folds + 1) extra fits per trial and outer fold.
 - Bad: `cross_validate`, `select_model`, the model operators and `evaluate` change versions. Stored comparisons at the old versions no longer rerun.
 - Bad: two-class only.
 
 ## Validation
 - With costs 5 and 1, a model that predicts at 0.5 and costs more than "refuse everyone" does not beat the baseline.
-- The tuned cut-off never sees an outer validation row. This is checked by row digests, as for inner folds.
+- The floor equals the cheaper of "approve everyone" and "refuse everyone" on each fold.
+- The tuned cut-off never sees an outer validation row, after a random, group or time split. This is checked by row digests, as for inner folds.
 - On German credit with UCI's costs, the decision reports cost per applicant for every candidate, and the applied model step carries its cut-off.
 
 ## Arch doc edits
