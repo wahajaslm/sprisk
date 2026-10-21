@@ -23,7 +23,7 @@ def spectral_gating(
         raise ValueError(f"SNR column '{snr_column}' not found in train schema")
 
     # The noise floor is learned from train only, so test frames never shape their own gain.
-    noise_floor = train[snr_column].min()
+    noise_floor = pl.lit(train[snr_column].min())
 
     def _apply_gate(df: pl.DataFrame) -> pl.DataFrame:
         # Linear ramp from attenuation_factor at the train noise floor up to 1.0 at threshold_db.
@@ -107,7 +107,10 @@ def _spectral_gate_figure(
         )
     )
     fig.update_layout(
-        title=f"Spectral Noise Gating (Threshold {threshold_db:.1f} dB, Floor {attenuation_factor:.2f}×)",
+        title=(
+            f"Spectral Noise Gating (Threshold {threshold_db:.1f} dB, "
+            f"Floor {attenuation_factor:.2f}×)"
+        ),
         xaxis=dict(title=x_label),
         yaxis=dict(title="Amplitude"),
         yaxis2=dict(

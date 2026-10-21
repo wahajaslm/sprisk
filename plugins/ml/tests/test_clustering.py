@@ -2,6 +2,7 @@
 
 import polars as pl
 import pytest
+
 from sprisk_ml.clustering import dbscan, gmm, kmeans
 
 

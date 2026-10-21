@@ -1,8 +1,11 @@
+from typing import Any
+
 import polars as pl
+
 from sprisk_clean.spectral_gating import spectral_gating
 
 
-def test_spectral_gating_attenuates_low_snr():
+def test_spectral_gating_attenuates_low_snr() -> None:
     train = pl.DataFrame(
         {
             "speech_signal": [1.0, 0.5, 0.2, 0.1],
@@ -45,9 +48,9 @@ def test_spectral_gating_attenuates_low_snr():
     assert len(result["figures"]) == 1
 
 
-def test_spectral_gating_test_gain_uses_only_the_train_noise_floor():
+def test_spectral_gating_test_gain_uses_only_the_train_noise_floor() -> None:
     train = pl.DataFrame({"speech_signal": [1.0, 1.0], "snr_db": [-10.0, 5.0]})
-    params = dict(
+    params: dict[str, Any] = dict(
         signal_column="speech_signal", snr_column="snr_db", threshold_db=0.0, attenuation_factor=0.2
     )
     alone = pl.DataFrame({"speech_signal": [1.0], "snr_db": [-5.0]})

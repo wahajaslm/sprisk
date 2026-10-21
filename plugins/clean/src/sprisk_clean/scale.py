@@ -4,7 +4,8 @@ import polars as pl
 def scale(
     train: pl.DataFrame, test: pl.DataFrame, columns: list[str], method: str
 ) -> dict[str, pl.DataFrame]:
-    """Min-max, z-score or robust (median and IQR) with train statistics; test may fall outside [0, 1].
+    """Min-max, z-score or robust (median and IQR) with train statistics; test may fall
+    outside [0, 1].
 
     NaN counts as missing, so it never sets the range."""
     nan_to_null = [pl.col(c).fill_nan(None) for c in columns if train.schema[c].is_float()]
