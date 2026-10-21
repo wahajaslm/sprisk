@@ -119,8 +119,11 @@ def fit(
     x, y = train.select(features), train[target].to_numpy()
     if not costs:
         return model.fit(x, y)
-    costs = resolved(costs, y, target)
-    return fixed(costed(model, costs, seed).fit(x, y), x, y, costs["positive"])
+    by_class = resolved(costs, y, target)
+    fitted = fixed(costed(model, by_class, seed).fit(x, y), x, y, by_class["positive"])
+    # Saved with the model, so its evaluation scores the cost it was chosen by.
+    fitted.costs_ = costs
+    return fitted
 
 
 class AsObject(TransformerMixin, BaseEstimator):  # type: ignore[misc]

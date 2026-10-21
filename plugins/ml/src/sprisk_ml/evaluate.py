@@ -9,10 +9,12 @@ from sklearn.frozen import FrozenEstimator
 from sklearn.model_selection import FixedThresholdClassifier
 from sklearn.pipeline import Pipeline
 
+from .costs import expected_cost, resolved
+
 
 def evaluate(model: Any, test: pl.DataFrame, target: str, task: str) -> dict[str, Any]:
     """Score a fitted model on the test table, and draw how it went. It never sees training rows.
-    A model that decides by costs (ADR-0053) also reports its cut-off."""
+    A model that decides by costs (ADR-0053) also reports its cut-off and expected cost."""
     if is_classifier(model) != (task == "classification"):
         raise ValueError(f"model is not a {task} model")
     if test[target].null_count():
@@ -29,6 +31,10 @@ def evaluate(model: Any, test: pl.DataFrame, target: str, task: str) -> dict[str
     }
     if isinstance(model, FixedThresholdClassifier):
         result["cut_off"] = {"positive": str(model.pos_label), "at": float(model.threshold)}
+        costs = resolved(model.costs_, y_true, target)
+        result["expected_cost"] = expected_cost(
+            y_true, y_pred, costs["positive"], costs["false_negative"], costs["false_positive"]
+        )
     if task == "classification":
         result["accuracy"] = float(metrics.accuracy_score(y_true, y_pred))
         result["balanced_accuracy"] = float(metrics.balanced_accuracy_score(y_true, y_pred))

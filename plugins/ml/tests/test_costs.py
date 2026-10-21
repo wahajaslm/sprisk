@@ -63,10 +63,15 @@ def test_a_costed_model_saves_and_loads_with_only_trusted_types() -> None:
     assert (loaded.predict(rows) == model.predict(rows)).all()
 
 
-def test_evaluate_reports_the_cut_off_of_a_costed_model() -> None:
+def test_evaluate_reports_the_cut_off_and_expected_cost_of_a_costed_model() -> None:
     model = linear_model(risky(), **params(costs=COSTS))
-    metrics = evaluate(model, risky(seed=1), target="y", task="classification")["metrics"]
+    # As the step's model file: the costs travel with the model.
+    model = skops.io.loads(skops.io.dumps(model), trusted=TRUSTED_MODEL_TYPES)
+    test = risky(seed=1)
+    metrics = evaluate(model, test, target="y", task="classification")["metrics"]
     assert metrics["cut_off"] == {"positive": "bad", "at": pytest.approx(model.threshold)}
+    expected = expected_cost(test["y"].to_numpy(), model.predict(test.select("x")), "bad", 5.0, 1.0)
+    assert metrics["expected_cost"] == pytest.approx(expected)
     assert metrics["estimator"] == "LogisticRegression"
 
 

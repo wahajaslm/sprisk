@@ -103,7 +103,8 @@ def cross_validate(
 
     A candidate whose params state `costs` (ADR-0053) is scored by expected cost. Its whole
     pipeline, preparation included, tunes its cut-off on inner folds of each fold's training
-    rows, as the model step does on all train rows."""
+    rows. The model step tunes its own on all train rows after the flow's preparation, which
+    was fit on all of them, so its cut-off's folds share that preparation."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
     costs = candidate_params.get("costs")
     # Rust picks the metric from the question's task and the step's costs; this checks a

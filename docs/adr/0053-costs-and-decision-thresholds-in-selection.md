@@ -6,7 +6,7 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-
 ## Context
 - German credit (UCI) comes with costs: approving a bad applicant costs 5, refusing a good one costs 1.
 - Every classifier in Sprisk predicts a class when its probability is over 0.5. Models are compared by balanced accuracy.
-- Measured on German credit (stratified 5-fold CV, seed 0, scikit-learn 1.9.1), loss per 100 applicants:
+- Measured on all 1,000 German credit rows (stratified 5-fold CV, seed 0, scikit-learn 1.9.1), loss per 100 applicants. These rows include what a flow's split later holds out, so German credit's test score is no confirmation of this ADR:
   - approve everyone: 150; refuse everyone: 70;
   - logistic at 0.5: 86; forest at 0.5: 105;
   - logistic refusing when P(bad) ≥ 1/6: 52; forest the same: 53.
@@ -52,14 +52,15 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-
 - It tunes on scores, so it needs no calibrated probabilities. A forest's are not calibrated.
 - Not chosen: the fixed cut-off c_FP / (c_FP + c_FN). It is right only for calibrated probabilities.
 - The dummy baseline cannot be tuned: scikit-learn refuses a model with constant predictions. With costs, it predicts the cheaper of "approve everyone" and "refuse everyone" on its training rows, through `FixedThresholdClassifier` at c_FP / (c_FP + c_FN) on its class prior. That is the floor a lender compares with.
-- Because the cut-off belongs to the model, every fold of a comparison refits it on that fold's training rows. The applied model step tunes it on all train rows. Nothing else carries a cut-off.
+- Because the cut-off belongs to the model, every fold of a comparison refits it on that fold's training rows, preparation included. The applied model step tunes it on all train rows after the flow's preparation, which was fit on all of them; its cut-off is slightly more optimistic than the comparison's. Nothing else carries a cut-off.
+- The fitted model keeps its costs, so `evaluate` reports its expected cost on the test rows, the measure it was chosen by.
 
 **With costs, models are compared by expected cost.**
 - The comparison reads the model step's `costs`. With them, its metric is `expected_cost`, lower is better, and each candidate gets the same costs. Without them, it stays `balanced_accuracy`.
 - The corrected t-test, Holm and the one-SE rule are unchanged.
 - Recall guardrails (ADR-0052) are measured at each candidate's tuned cut-off.
 - The SelectionDecision records the share of `positive` rows in the train rows. Its limitations say the cut-off holds only at that share. German credit's 30% bad is a sampled mix, not a population rate.
-- `evaluate` reports each tuned model's cut-off with its scores.
+- `evaluate` reports a costed model's cut-off and expected cost with its scores.
 
 ## Alternatives considered
 - **Hard-wire "costs in the question, so compare by cost" in Rust.** Rejected: it hides a methodology decision in code. The person sees no proposal, rationale or source, and cannot choose otherwise.
@@ -73,15 +74,15 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-
 - Good: "refuse everyone" becomes a real floor.
 - Bad: tuning adds 3 fits per model fit, per fold and per study trial.
 - Bad: the model operators, `cross_validate` and `select_model` change versions. Stored flows that pin the old ones no longer compare until their model step is chosen again. `evaluate` keeps its version: its settings do not change, and it only reports the cut-off as well.
-- Bad: two-class targets and random splits only, for now.
+- Bad: two-class targets and random splits only, for now. Comparisons refuse costs after a time or group split, and the rule does not offer them with a time or entity column. Costs set by hand on a model after such a split are not refused yet: its cut-off would be tuned on shuffled folds.
 - Bad: the tuned cut-off is noisy on small data. German credit's innermost folds hold about 180 rows.
 
 ## Validation
-- With costs 5 and 1, a model whose cut-off is 0.5 and that loses more than "refuse everyone" does not beat the baseline.
+- With costs, a model tuned for them costs less than at 0.5 on held-out rows (`test_costs.py`).
 - The floor equals the cheaper of "approve everyone" and "refuse everyone" on each fold.
 - A question without costs gets `default_half`, with a reason naming the unknown costs.
 - With a time or entity column, `cost_optimal_threshold` is not applicable, and says why.
-- On German credit with UCI's costs: the rule proposes the cut-off; applying it sets `costs` on the model step; the study compares by expected cost; every candidate reports its cost; the evaluated model reports its cut-off.
+- On German credit with UCI's costs: the rule proposes the cut-off; applying it sets `costs` on the model step; the study compares by expected cost; every candidate reports its cost. Evaluating a costed model reports its cut-off and expected cost (`test_costs.py`).
 
 ## Arch doc edits
 - §3: a classification question may state costs.
