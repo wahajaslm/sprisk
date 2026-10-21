@@ -9,8 +9,8 @@ from sprisk_ml.models import dummy_baseline, linear_model
 CLF: dict[str, Any] = {"target": "y", "task": "classification", "features": ["x", "c"]}
 
 
-def test_logistic_beats_dummy_on_separable_data(clf_frame: pl.DataFrame) -> None:
-    train, test = clf_frame[::2], clf_frame[1::2]
+def test_logistic_beats_dummy_on_separable_data(clf_numbers: pl.DataFrame) -> None:
+    train, test = clf_numbers[::2], clf_numbers[1::2]
     dummy = evaluate(dummy_baseline(train, **CLF), test, target="y", task="classification")[
         "metrics"
     ]

@@ -52,7 +52,7 @@ def nested(train: pl.DataFrame, build: Any, **extra: Any) -> dict[str, Any]:
 @pytest.mark.parametrize("split", [{}, {"group_column": "g"}, {"time_column": "t"}])
 def test_inner_folds_fit_only_on_their_outer_fold_s_training_rows(split: dict[str, str]) -> None:
     RowRecorder.fits = []
-    result = nested(labelled(60), lambda schema, task: RowRecorder(), **split)
+    result = nested(labelled(60), lambda task: RowRecorder(), **split)
     held = result["predictions"].group_by("fold").agg(pl.col("row")).sort("fold")["row"].to_list()
     all_rows = set(range(60))
     # Five outer fits, then three inner fits per outer fold, then three on all train rows.

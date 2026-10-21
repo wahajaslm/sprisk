@@ -1,70 +1,60 @@
-"""Models fit on the training table: preprocessing and estimator together, so nothing about
-the test rows is learned."""
+"""Models fit on the training table. A model step fits only the model (ADR-0056): Clean
+steps before it encode text and fill gaps, each fit on the train rows."""
 
 from typing import Any
 
-import numpy as np
 import polars as pl
-import polars.selectors as cs
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.compose import ColumnTransformer
+from sklearn.base import BaseEstimator
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .costs import costed, fixed, resolved
+
+CATEGORIES = (pl.String, pl.Categorical, pl.Enum, pl.Boolean)
 
 
 def dummy_baseline(
     train: pl.DataFrame,
     target: str,
-    features: list[str],
     task: str,
+    features: list[str] | None = None,
     costs: dict[str, Any] | None = None,
 ) -> Any:
     """Always predicts the most frequent class, or the mean. Any real model should beat it.
     With `costs`, the class whose prediction for every row costs least."""
-    model = dummy_baseline_estimator(train.select(features).schema, task)
-    return fit(model, train, target, features, costs)
+    return fit(dummy_baseline_estimator(task), train, target, features, costs)
 
 
-def dummy_baseline_estimator(schema: pl.Schema, task: str) -> Pipeline:
-    estimator = (
-        DummyClassifier(strategy="most_frequent")
-        if task == "classification"
-        else DummyRegressor(strategy="mean")
-    )
-    return Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
+def dummy_baseline_estimator(task: str) -> BaseEstimator:
+    if task == "classification":
+        return DummyClassifier(strategy="most_frequent")
+    return DummyRegressor(strategy="mean")
 
 
 def linear_model(
     train: pl.DataFrame,
     target: str,
-    features: list[str],
     task: str,
+    features: list[str] | None = None,
     costs: dict[str, Any] | None = None,
 ) -> Any:
     """Logistic regression for classes, linear regression for numbers. With `costs`, it
     predicts a class by the threshold that costs least on its training rows."""
-    model = linear_model_estimator(train.select(features).schema, task)
-    return fit(model, train, target, features, costs)
+    return fit(linear_model_estimator(task), train, target, features, costs)
 
 
-def linear_model_estimator(schema: pl.Schema, task: str) -> Pipeline:
-    estimator = (
-        LogisticRegression(max_iter=1000) if task == "classification" else LinearRegression()
-    )
-    return Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
+def linear_model_estimator(task: str) -> BaseEstimator:
+    if task == "classification":
+        return LogisticRegression(max_iter=1000)
+    return LinearRegression()
 
 
 def random_forest(
     train: pl.DataFrame,
     target: str,
-    features: list[str],
     task: str,
+    features: list[str] | None = None,
     n_estimators: int = 200,
     seed: int = 0,
     min_samples_leaf: int = 1,
@@ -73,50 +63,41 @@ def random_forest(
 ) -> Any:
     """A forest of decision trees; captures interactions a linear model misses. With `costs`,
     it predicts a class by the threshold that costs least on its training rows."""
-    model = random_forest_estimator(
-        train.select(features).schema, task, n_estimators, seed, min_samples_leaf, max_features
-    )
+    model = random_forest_estimator(task, n_estimators, seed, min_samples_leaf, max_features)
     return fit(model, train, target, features, costs, seed)
 
 
 def random_forest_estimator(
-    schema: pl.Schema,
     task: str,
     n_estimators: int = 200,
     seed: int = 0,
     min_samples_leaf: int = 1,
     max_features: float | None = None,
-) -> Pipeline:
+) -> BaseEstimator:
     """`max_features` is the share of features each split may look at; unset, each task keeps
     scikit-learn's default."""
     forest = RandomForestClassifier if task == "classification" else RandomForestRegressor
     settings: dict[str, Any] = {"min_samples_leaf": min_samples_leaf}
     if max_features is not None:
         settings["max_features"] = max_features
-    # Trees split on rank order, so scaling would change nothing.
-    return Pipeline(
-        [
-            ("preprocess", preprocessor(schema, scale=False)),
-            ("estimator", forest(n_estimators=n_estimators, random_state=seed, **settings)),
-        ]
-    )
+    return forest(n_estimators=n_estimators, random_state=seed, **settings)
 
 
 def fit(
-    model: Pipeline,
+    model: BaseEstimator,
     train: pl.DataFrame,
     target: str,
-    features: list[str],
+    features: list[str] | None,
     costs: dict[str, Any] | None = None,
     seed: int = 0,
 ) -> Any:
     """`model` fit on the train rows. With `costs` (ADR-0053), it first tunes its threshold
     for least cost on its own training rows."""
-    if target in features:
+    if features is not None and target in features:
         raise ValueError(f"target {target!r} is listed as a feature")
     if train[target].null_count():
         raise ValueError(f"{target} has {train[target].null_count()} missing values in train")
-    x, y = train.select(features), train[target].to_numpy()
+    x, y = model_input(train.drop(target), features), train[target].to_numpy()
     if not costs:
         return model.fit(x, y)
     by_class = resolved(costs, y, target)
@@ -126,43 +107,33 @@ def fit(
     return fitted
 
 
-class AsObject(TransformerMixin, BaseEstimator):  # type: ignore[misc]
-    """Category columns as an object array. Its own class with no settings, so a model file
-    names only this type: skops would let a file that names a numpy function call it."""
+def model_input(rows: pl.DataFrame, features: list[str] | None) -> pl.DataFrame:
+    """The columns a model fits on: `features`, or every column of `rows`. They must be
+    numbers with no gaps (ADR-0056); anything else is refused, naming the step to add."""
+    x = rows if features is None else rows.select(features)
+    categories = [c for c, kind in x.schema.items() if kind in CATEGORIES]
+    if categories:
+        raise ValueError(f"{_not_numbers(categories)}: add an Encode step before the model")
+    other = [c for c, kind in x.schema.items() if not kind.is_numeric()]
+    if other:
+        raise ValueError(
+            f"{_not_numbers(other)}: leave it out with a Select columns step, or list the "
+            "model's features"
+        )
+    gaps = [c for c in x.columns if x[c].null_count()]
+    if gaps:
+        has = "has" if len(gaps) == 1 else "have"
+        raise ValueError(
+            f"{', '.join(gaps)} {has} missing values: add an Impute or Drop missing step "
+            "before the model"
+        )
+    return x
 
-    def fit(self, x: Any, y: Any = None) -> "AsObject":
-        return self
 
-    def transform(self, x: Any) -> Any:
-        return np.asarray(x, dtype=object)
-
-
-def preprocessor(schema: pl.Schema, scale: bool) -> ColumnTransformer:
-    """Numbers: fill gaps with the median, then standardise if `scale`. Text: fill with the
-    most frequent value, then one-hot encode; a category seen only in test is ignored."""
-    numeric = list(cs.expand_selector(schema, cs.numeric()))
-    categorical = list(cs.expand_selector(schema, cs.string() | cs.categorical() | cs.boolean()))
-    unsupported = sorted(set(schema) - set(numeric) - set(categorical))
-    if unsupported:
-        raise ValueError(f"columns {unsupported} are not numeric or categorical")
-    numbers = SimpleImputer(strategy="median")
-    return ColumnTransformer(
-        [
-            ("numeric", make_pipeline(numbers, StandardScaler()) if scale else numbers, numeric),
-            (
-                "categorical",
-                make_pipeline(
-                    # A gap-free boolean column arrives as a bool array, which the imputer
-                    # refuses; as objects, every category column looks the same to it.
-                    AsObject(),
-                    # Polars text and boolean gaps reach sklearn as None, not NaN.
-                    SimpleImputer(missing_values=None, strategy="most_frequent"),
-                    OneHotEncoder(handle_unknown="ignore"),
-                ),
-                categorical,
-            ),
-        ]
-    )
+def _not_numbers(columns: list[str]) -> str:
+    if len(columns) == 1:
+        return f"{columns[0]} is not a number"
+    return f"{', '.join(columns)} are not numbers"
 
 
 def random_forest_as_code(
@@ -183,7 +154,7 @@ def random_forest_as_code(
     if settings.get("max_features") is not None:
         options.append(f"max_features={settings['max_features']!r}")
     estimator = (f"from sklearn.ensemble import {forest}", f"{forest}({', '.join(options)})")
-    return _model_code(settings, inputs, outputs, estimator, scale=False, tuned=True)
+    return _model_code(settings, inputs, outputs, estimator, tuned=True)
 
 
 def linear_model_as_code(
@@ -198,7 +169,7 @@ def linear_model_as_code(
         )
     else:
         estimator = ("from sklearn.linear_model import LinearRegression", "LinearRegression()")
-    return _model_code(settings, inputs, outputs, estimator, scale=True, tuned=True)
+    return _model_code(settings, inputs, outputs, estimator, tuned=True)
 
 
 def dummy_baseline_as_code(
@@ -219,7 +190,7 @@ def dummy_baseline_as_code(
             "from sklearn.dummy import DummyClassifier",
             'DummyClassifier(strategy="most_frequent")',
         )
-    return _model_code(settings, inputs, outputs, estimator, scale=True, tuned=False)
+    return _model_code(settings, inputs, outputs, estimator, tuned=False)
 
 
 def _model_code(
@@ -227,53 +198,17 @@ def _model_code(
     inputs: dict[str, str],
     outputs: dict[str, str],
     estimator: tuple[str, str],
-    scale: bool,
     tuned: bool,
 ) -> str:
-    """A model step's pipeline as plain Python: the preprocessing `preprocessor` builds, then
-    `estimator` (its import and its expression), fit on the train rows. With costs, the
-    cut-off is tuned (`tuned`) or fixed by the costs alone. Helper names start with the
-    model's own name, so they never replace a person's names."""
-    train, model = inputs["train"], outputs["model"]
-    features, numeric, other = f"{model}_features", f"{model}_numeric", f"{model}_categories"
-    fit = f"{train}.select({features}), {train}[{settings['target']!r}].to_numpy()"
-    numbers = (
-        'make_pipeline(SimpleImputer(strategy="median"), StandardScaler())'
-        if scale
-        else 'SimpleImputer(strategy="median")'
-    )
-    preprocessing = (
-        "from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler\n"
-        if scale
-        else "from sklearn.preprocessing import FunctionTransformer, OneHotEncoder\n"
-    )
-    numbers_note = "the median, then scaled" if scale else "the median; trees need no scaling"
-    code = (
-        "import numpy as np\n"
-        "from sklearn.compose import ColumnTransformer\n"
-        f"{estimator[0]}\n"
-        "from sklearn.impute import SimpleImputer\n"
-        "from sklearn.pipeline import Pipeline, make_pipeline\n"
-        f"{preprocessing}"
-        "\n"
-        f"{features} = {settings['features']!r}\n"
-        f"{numeric} = [c for c in {features} if {train}.schema[c].is_numeric()]\n"
-        f"{other} = [c for c in {features} if c not in {numeric}]\n"
-        "\n"
-        f"# Numbers: gaps get {numbers_note}. Text: gaps get the most frequent value,\n"
-        "# then one column per category; a category seen only later is ignored.\n"
-        f"{model} = Pipeline([\n"
-        '    ("preprocess", ColumnTransformer([\n'
-        f'        ("numeric", {numbers}, {numeric}),\n'
-        '        ("categorical", make_pipeline(\n'
-        "            FunctionTransformer(lambda x: np.asarray(x, dtype=object)),\n"
-        '            SimpleImputer(missing_values=None, strategy="most_frequent"),\n'
-        '            OneHotEncoder(handle_unknown="ignore"),\n'
-        f"        ), {other}),\n"
-        "    ])),\n"
-        f'    ("estimator", {estimator[1]}),\n'
-        "])\n"
-    )
+    """A model step as plain Python: `estimator` (its import and its expression) fit on the
+    train rows' features, or every column but the target. With costs, the cut-off is tuned
+    (`tuned`) or fixed by the costs alone. Helper names start with the model's own name, so
+    they never replace a person's names."""
+    train, model, target = inputs["train"], outputs["model"], settings["target"]
+    features = settings.get("features")
+    rows = f"{train}.drop({target!r})" if features is None else f"{train}.select({features!r})"
+    fit = f"{rows}, {train}[{target!r}]"
+    code = f"{estimator[0]}\n\n{model} = {estimator[1]}\n"
     costs = settings.get("costs") if settings["task"] == "classification" else None
     if not costs:
         return code + f"{model}.fit({fit})\n"
@@ -302,6 +237,7 @@ def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
     positive, fn, fp = costs["positive"], costs["false_negative"], costs["false_positive"]
     return (
         "\n"
+        "import numpy as np\n"
         "from sklearn.frozen import FrozenEstimator\n"
         "from sklearn.metrics import make_scorer\n"
         "from sklearn.model_selection import (\n"

@@ -33,8 +33,7 @@ from sprisk_workers.serve import OperatorFn
 # every input's hash is checked against the recorded one before it is loaded (serve.py).
 # numpy.dtype is listed because fitted imputers and encoders store dtypes.
 # Never list a function: skops lets a file call a trusted name and set the result's state.
-# sprisk_ml.models.AsObject is a first-party transformer with no settings.
-TRUSTED_MODEL_TYPES = ["numpy.dtype", "sklearn.tree._tree.Tree", "sprisk_ml.models.AsObject"]
+TRUSTED_MODEL_TYPES = ["numpy.dtype", "sklearn.tree._tree.Tree"]
 
 
 @dataclass(frozen=True)

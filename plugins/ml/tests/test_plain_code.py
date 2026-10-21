@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 import pytest
+import skops.io
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -17,8 +18,14 @@ from sprisk_ml.models import (
     random_forest,
     random_forest_as_code,
 )
+from sprisk_workers.plain import TRUSTED_MODEL_TYPES
 
 COSTS = {"positive": "hi", "false_negative": 5.0, "false_positive": 1.0}
+WRITERS = [
+    (random_forest, random_forest_as_code),
+    (linear_model, linear_model_as_code),
+    (dummy_baseline, dummy_baseline_as_code),
+]
 
 
 def fitted_by_code(
@@ -29,29 +36,23 @@ def fitted_by_code(
     return namespace["forest"]
 
 
-@pytest.mark.parametrize(
-    ("step", "write"),
-    [(linear_model, linear_model_as_code), (dummy_baseline, dummy_baseline_as_code)],
-)
-@pytest.mark.parametrize("extra", [{}, {"costs": COSTS}])
-def test_linear_and_baseline_code_predict_as_the_step_does(
-    clf_frame: pl.DataFrame, step: Any, write: Any, extra: dict[str, Any]
+@pytest.mark.parametrize(("step", "write"), WRITERS)
+@pytest.mark.parametrize("extra", [{}, {"features": ["c", "x"]}, {"costs": COSTS}])
+def test_the_code_predicts_as_the_step_does(
+    clf_numbers: pl.DataFrame, step: Any, write: Any, extra: dict[str, Any]
 ) -> None:
-    settings = {"target": "y", "features": ["x", "c"], "task": "classification", **extra}
-    train, test = clf_frame[::2], clf_frame[1::2].select("x", "c")
+    settings = {"target": "y", "task": "classification", **extra}
+    train, test = clf_numbers[::2], clf_numbers[1::2].select(extra.get("features", ["x", "c"]))
     fitted = step(train, **settings)
     code = fitted_by_code(settings, train, write)
     assert np.array_equal(code.predict(test), fitted.predict(test))
 
 
-@pytest.mark.parametrize(
-    ("step", "write"),
-    [(linear_model, linear_model_as_code), (dummy_baseline, dummy_baseline_as_code)],
-)
-def test_linear_and_baseline_regression_code_predict_as_the_step_does(
-    clf_frame: pl.DataFrame, step: Any, write: Any
+@pytest.mark.parametrize(("step", "write"), WRITERS)
+def test_regression_code_predicts_as_the_step_does(
+    clf_numbers: pl.DataFrame, step: Any, write: Any
 ) -> None:
-    rows = clf_frame.with_columns(pl.col("x").fill_null(0.0).alias("t"))
+    rows = clf_numbers.drop("y").with_columns(t=pl.col("x") * 2)
     settings = {"target": "t", "features": ["x", "c"], "task": "regression"}
     test = rows.select("x", "c")
     assert np.allclose(
@@ -59,31 +60,27 @@ def test_linear_and_baseline_regression_code_predict_as_the_step_does(
     )
 
 
-@pytest.mark.parametrize(
-    "extra",
-    [
-        {},
-        {"n_estimators": 30, "seed": 4, "min_samples_leaf": 3, "max_features": 0.5},
-        {"costs": {"positive": "hi", "false_negative": 5.0, "false_positive": 1.0}},
-    ],
-)
-def test_forest_code_predicts_as_the_step_does(
-    clf_frame: pl.DataFrame, extra: dict[str, Any]
-) -> None:
-    settings = {"target": "y", "features": ["x", "c"], "task": "classification", **extra}
-    train, test = clf_frame[::2], clf_frame[1::2].select("x", "c")
+def test_a_tuned_forest_code_predicts_as_the_step_does(clf_numbers: pl.DataFrame) -> None:
+    settings: dict[str, Any] = {
+        "target": "y",
+        "task": "classification",
+        **{"n_estimators": 30, "seed": 4, "min_samples_leaf": 3, "max_features": 0.5},
+    }
+    train, test = clf_numbers[::2], clf_numbers[1::2].drop("y")
     step = random_forest(train, **settings)
-    code = fitted_by_code(settings, train)
-    assert np.array_equal(code.predict(test), step.predict(test))
+    assert np.array_equal(fitted_by_code(settings, train).predict(test), step.predict(test))
 
 
-def test_regression_forest_code_predicts_as_the_step_does(clf_frame: pl.DataFrame) -> None:
-    rows = clf_frame.with_columns(pl.col("x").fill_null(0.0).alias("t"))
-    settings = {"target": "t", "features": ["x", "c"], "task": "regression", "n_estimators": 20}
-    step = random_forest(rows, **settings)
-    code = fitted_by_code(settings, rows)
-    test = rows.select("x", "c")
-    assert np.allclose(code.predict(test), step.predict(test))
+@pytest.mark.parametrize(("step", "write"), WRITERS)
+@pytest.mark.parametrize("extra", [{}, {"costs": COSTS}])
+def test_the_model_the_code_fits_saves_as_a_model_file(
+    clf_numbers: pl.DataFrame, step: Any, write: Any, extra: dict[str, Any]
+) -> None:
+    # A person's code step saves its model the way a model step does: no function inside.
+    model = fitted_by_code({"target": "y", "task": "classification", **extra}, clf_numbers, write)
+    loaded = skops.io.loads(skops.io.dumps(model), trusted=TRUSTED_MODEL_TYPES)
+    rows = clf_numbers.drop("y")
+    assert np.array_equal(loaded.predict(rows), model.predict(rows))
 
 
 def _shape(code: str) -> str:
@@ -105,6 +102,7 @@ def test_dataset_text_never_becomes_code(write: Any, label: str, column: str) ->
     def code(positive: str, name: str) -> str:
         costs = {"positive": positive, "false_negative": 5.0, "false_positive": 1.0}
         settings_ = {"target": name, "features": [name], "task": "classification", "costs": costs}
-        return write(settings_, {"train": "rows"}, {"model": "model"})
+        written: str = write(settings_, {"train": "rows"}, {"model": "model"})
+        return written
 
     assert _shape(code(label, column)) == _shape(code("bad", "y"))

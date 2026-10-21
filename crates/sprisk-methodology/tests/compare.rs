@@ -15,8 +15,8 @@ fn comparison(select_params: Value) -> PipelineVersion {
             "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ2",
             "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
             "nodes": [
-                cv("ml_linear_model", "sprisk.ml.linear_model@1.1.0"),
-                cv("ml_dummy_baseline", "sprisk.ml.dummy_baseline@1.1.0"),
+                cv("ml_linear_model", "sprisk.ml.linear_model@2.0.0"),
+                cv("ml_dummy_baseline", "sprisk.ml.dummy_baseline@2.0.0"),
                 { "id": "select_model", "operator": "sprisk.ml.select_model@5.0.0", "params": select_params },
             ],
             "edges": [],
@@ -36,13 +36,13 @@ fn trials_are_the_cross_validate_steps_in_the_select_step_s_order() {
             TrialStep {
                 node_id: "cv_ml_dummy_baseline",
                 candidate: "ml_dummy_baseline",
-                operator: "sprisk.ml.dummy_baseline@1.1.0",
+                operator: "sprisk.ml.dummy_baseline@2.0.0",
                 settings: serde_json::Map::new(),
             },
             TrialStep {
                 node_id: "cv_ml_linear_model",
                 candidate: "ml_linear_model",
-                operator: "sprisk.ml.linear_model@1.1.0",
+                operator: "sprisk.ml.linear_model@2.0.0",
                 settings: serde_json::Map::new(),
             },
         ]

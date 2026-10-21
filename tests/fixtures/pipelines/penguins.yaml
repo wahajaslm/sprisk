@@ -1,6 +1,8 @@
 # Predict a penguin's species from its measurements, island and sex (Palmer Penguins, raw).
 # One model against a baseline on one held-out test set: choosing between several models
-# needs cross-validation, not the test set. $DATASETS is replaced with an absolute path.
+# needs cross-validation, not the test set. The models fit only the model (ADR-0056): rows
+# without a sex are dropped, and island and sex are encoded on the train rows.
+# $DATASETS is replaced with an absolute path.
 nodes:
   - { id: load, operator: sprisk.io.file_source@1.0.0, params: { path: $DATASETS/penguins_raw.csv, format: csv } }
   - { id: tidy_text, operator: sprisk.clean.clean_text@1.0.0, params: { columns: [Species, Island, Sex] } }
@@ -11,9 +13,11 @@ nodes:
   - { id: mass_histogram, operator: sprisk.profile.chart@1.0.0, params: { kind: histogram, x: "Body Mass (g)" } }
   - { id: mass_by_species, operator: sprisk.profile.chart@1.0.0, params: { kind: box, x: Species, y: "Body Mass (g)" } }
   - { id: flipper_vs_mass, operator: sprisk.profile.chart@1.0.0, params: { kind: scatter, x: "Flipper Length (mm)", y: "Body Mass (g)" } }
+  - { id: has_sex, operator: sprisk.clean.drop_missing@1.0.0, params: { columns: [Sex] } }
   - { id: split, operator: sprisk.validation.random_split@1.0.0, params: { test_fraction: 0.25, seed: 42, stratify: Species } }
-  - { id: baseline, operator: sprisk.ml.dummy_baseline@1.1.0, params: { target: Species, features: [Island, Sex, "Culmen Length (mm)", "Culmen Depth (mm)", "Flipper Length (mm)", "Body Mass (g)"], task: classification } }
-  - { id: forest, operator: sprisk.ml.random_forest@1.2.0, params: { target: Species, features: [Island, Sex, "Culmen Length (mm)", "Culmen Depth (mm)", "Flipper Length (mm)", "Body Mass (g)"], task: classification, seed: 42 } }
+  - { id: island_and_sex, operator: sprisk.clean.encode@1.0.0, params: { columns: [Island, Sex] } }
+  - { id: baseline, operator: sprisk.ml.dummy_baseline@2.0.0, params: { target: Species, task: classification } }
+  - { id: forest, operator: sprisk.ml.random_forest@2.0.0, params: { target: Species, task: classification, seed: 42 } }
   - { id: score_baseline, operator: sprisk.ml.evaluate@1.0.0, params: { target: Species, task: classification } }
   - { id: score_forest, operator: sprisk.ml.evaluate@1.0.0, params: { target: Species, task: classification } }
   - { id: importance, operator: sprisk.ml.feature_importance@1.0.0, params: { target: Species, seed: 42 } }
@@ -26,12 +30,15 @@ edges:
   - { from: columns.data, to: mass_histogram.data }
   - { from: columns.data, to: mass_by_species.data }
   - { from: columns.data, to: flipper_vs_mass.data }
-  - { from: columns.data, to: split.data }
-  - { from: split.train, to: baseline.train }
-  - { from: split.train, to: forest.train }
+  - { from: columns.data, to: has_sex.data }
+  - { from: has_sex.data, to: split.data }
+  - { from: split.train, to: island_and_sex.train }
+  - { from: split.test, to: island_and_sex.test }
+  - { from: island_and_sex.train, to: baseline.train }
+  - { from: island_and_sex.train, to: forest.train }
   - { from: baseline.model, to: score_baseline.model }
   - { from: forest.model, to: score_forest.model }
-  - { from: split.test, to: score_baseline.test }
-  - { from: split.test, to: score_forest.test }
+  - { from: island_and_sex.test, to: score_baseline.test }
+  - { from: island_and_sex.test, to: score_forest.test }
   - { from: forest.model, to: importance.model }
-  - { from: split.test, to: importance.test }
+  - { from: island_and_sex.test, to: importance.test }

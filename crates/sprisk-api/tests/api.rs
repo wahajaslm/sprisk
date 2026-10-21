@@ -1849,7 +1849,7 @@ async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
 async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
     let api = api().await;
     let forest = json!({
-        "id":"rf", "operator":"sprisk.ml.random_forest@1.2.0",
+        "id":"rf", "operator":"sprisk.ml.random_forest@2.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","seed":0}
     });
     scaling_flow_into(
@@ -1907,7 +1907,7 @@ async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play(
     let nodes = [
         json!({"id":"fill", "operator":"sprisk.clean.impute@1.0.0",
                "params":{"columns":["age"],"method":"zero"}}),
-        json!({"id":"lin", "operator":"sprisk.ml.linear_model@1.1.0",
+        json!({"id":"lin", "operator":"sprisk.ml.linear_model@2.0.0",
                "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}}),
     ];
     let edges = [
@@ -1938,7 +1938,7 @@ async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play(
 /// The scaling flow with a linear model after the scale step, run to the end.
 async fn model_flow(api: &Api) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -1986,9 +1986,36 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
         .unwrap();
     assert_eq!(
         forest["effect"]["operator"],
-        "sprisk.ml.random_forest@1.2.0"
+        "sprisk.ml.random_forest@2.0.0"
     );
     assert_eq!(forest["effect"]["params"]["features"], json!(["age"]));
+}
+
+#[tokio::test]
+async fn a_model_with_no_features_is_measured_on_every_column_but_its_target() {
+    let api = api().await;
+    let model = json!({
+        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+        "params":{"target":"returned_within_30d","task":"classification"}
+    });
+    scaling_flow_into(
+        &api,
+        &[model],
+        &[json!({"from":"scale.train","to":"model.train"})],
+    )
+    .await;
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let (status, proposal) = propose_model(&api).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let features = proposal["evidence"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["label"] == "Feature columns")
+        .unwrap();
+    assert_eq!(features["value"], "1", "age alone: {proposal}");
 }
 
 #[tokio::test]
@@ -2017,7 +2044,7 @@ async fn choosing_a_shortlisted_model_without_comparing_needs_a_reason() {
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.2.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@2.0.0");
 }
 
 #[tokio::test]
@@ -2419,7 +2446,7 @@ async fn gate_b_stops_a_hand_built_comparison_that_reads_the_test_rows() {
 /// The model flow on rows whose target is age 40 or more, so a linear model can learn it.
 async fn learnable_model_flow(api: &Api) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -2511,7 +2538,7 @@ async fn a_model_step_with_costs_is_compared_by_expected_cost_and_each_candidate
     let api = api().await;
     let costs = json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 });
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","costs":costs}
     });
     scaling_flow_into(
@@ -2561,7 +2588,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     flow["nodes"].as_array_mut().unwrap().extend([
         json!({ "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
                 "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@1.2.0",
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
                 "params":{"target":"returned_within_30d","features":["age"],"task":"classification","n_estimators":10} }),
     ]);
     flow["edges"] = json!([
@@ -2602,7 +2629,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.2.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@2.0.0");
     assert_eq!(
         model["params"]["costs"],
         json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 })
@@ -2634,7 +2661,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
 async fn only_a_model_step_that_has_run_has_a_model_selection() {
     let api = api().await;
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -2735,10 +2762,10 @@ async fn sprisk_compares_a_preparation_step_by_itself_once_per_version() {
 
     let (status, selection) = select_model(&api, "scale").await;
     assert_eq!(status, StatusCode::CREATED, "{selection}");
-    // The linear model standardises its own inputs, so the rule recommends no scaling.
+    // The linear model takes its inputs as they are and age has light tails (ADR-0056).
     assert_eq!(
         selection["proposal"]["recommended_alternative_id"],
-        "no_scaling"
+        "standard_scaling"
     );
     let select = selection["comparison"]["nodes"]
         .as_array()
@@ -2746,7 +2773,7 @@ async fn sprisk_compares_a_preparation_step_by_itself_once_per_version() {
         .iter()
         .find(|n| n["id"] == "select_model")
         .unwrap();
-    assert_eq!(select["params"]["baseline"], "no_scaling", "{select}");
+    assert_eq!(select["params"]["baseline"], "standard_scaling", "{select}");
     assert_eq!(select["params"]["baseline_role"], "reference");
 
     let (status, again) = select_model(&api, "scale").await;
@@ -2758,14 +2785,14 @@ async fn sprisk_compares_a_preparation_step_by_itself_once_per_version() {
     let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
     assert_eq!(run["status"], "succeeded", "{run}");
     let decision = output(&api, &attempts, "select_model", "decision").await;
-    // Rescaling before a model that standardises changes nothing, so none beats it.
-    assert_eq!(decision["winner"], "no_scaling", "{decision}");
+    // Ages this easy to separate leave no other choice room to score better.
+    assert_eq!(decision["winner"], "standard_scaling", "{decision}");
     assert_eq!(decision["baseline_role"], "reference");
     assert!(
         decision["reason"]
             .as_str()
             .unwrap()
-            .ends_with("no_scaling stands."),
+            .ends_with("standard_scaling stands."),
         "{decision}"
     );
 }
@@ -2791,24 +2818,25 @@ async fn a_preparation_choice_other_than_the_comparisons_needs_a_reason_and_each
         body["errors"][0]["message"]
             .as_str()
             .unwrap()
-            .contains("it is not the comparison's recommendation, no_scaling"),
+            .contains("it is not the comparison's recommendation, standard_scaling"),
         "{body}"
     );
 
-    let winner = json!({ "alternative_id": "no_scaling", "idempotency_key": "test-prep-none" });
-    let (status, removed) = call(&api.app, "POST", &uri, Some(winner)).await;
-    assert_eq!(status, StatusCode::CREATED, "{removed}");
+    let winner =
+        json!({ "alternative_id": "standard_scaling", "idempotency_key": "test-prep-standard" });
+    let (status, standard) = call(&api.app, "POST", &uri, Some(winner)).await;
+    assert_eq!(status, StatusCode::CREATED, "{standard}");
     assert!(
-        removed["decision"].get("selection_id").is_some(),
-        "{removed}"
+        standard["decision"].get("selection_id").is_some(),
+        "{standard}"
     );
-    let steps: Vec<&str> = removed["pipeline"]["nodes"]
+    let scale = standard["pipeline"]["nodes"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|n| n["id"].as_str().unwrap())
-        .collect();
-    assert!(!steps.contains(&"scale"), "{steps:?}");
+        .find(|n| n["id"] == "scale")
+        .unwrap();
+    assert_eq!(scale["params"]["method"], "z_score", "{scale}");
 
     // A second choice from the same comparison is another branch, not a stale proposal.
     let other = json!({ "alternative_id": "robust_scaling", "idempotency_key": "test-prep-robust-2",
@@ -2817,7 +2845,7 @@ async fn a_preparation_choice_other_than_the_comparisons_needs_a_reason_and_each
     assert_eq!(status, StatusCode::CREATED, "{robust}");
     assert_eq!(
         robust["pipeline"]["parent_id"],
-        removed["pipeline"]["parent_id"]
+        standard["pipeline"]["parent_id"]
     );
 }
 
@@ -3107,7 +3135,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     edited["parent_id"] = json!(version);
     let nodes = edited["nodes"].as_array_mut().unwrap();
     nodes.push(
-        json!({ "id": "model", "operator": "sprisk.ml.linear_model@1.1.0",
+        json!({ "id": "model", "operator": "sprisk.ml.linear_model@2.0.0",
                        "params": { "target": "y", "features": ["x"], "task": "classification" } }),
     );
     nodes.push(
@@ -3433,7 +3461,7 @@ async fn a_study_needs_a_budget_a_guardrail_in_range_and_a_model_step() {
 async fn a_study_whose_trials_cannot_be_scored_ends_failed_with_its_trials() {
     let api = api().await;
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -3470,7 +3498,7 @@ async fn a_study_whose_trials_cannot_be_scored_ends_failed_with_its_trials() {
 /// The flow's forest grows 10 trees, so studies of it stay quick.
 async fn banded_forest_flow(api: &Api) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.random_forest@1.2.0",
+        "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","n_estimators":10}
     });
     scaling_flow_into(
@@ -3766,8 +3794,8 @@ async fn a_study_past_its_wall_time_ends_budget_reached_and_keeps_its_finished_t
     assert_eq!(states, expected, "{done}");
 }
 
-/// German credit (Statlog, UCI): load -> stratified split -> a 50-tree forest on `credit_risk`.
-/// The question states UCI's published costs before anything runs: a bad credit approved costs
+/// German credit (Statlog, UCI): load -> keep the inputs -> stratified split -> encode the
+/// text columns -> a 50-tree forest on `credit_risk`. The question states UCI's published costs before anything runs: a bad credit approved costs
 /// 5, a good one refused costs 1. Nothing here is set from a result.
 async fn german_credit_flow(api: &Api) {
     std::fs::copy(
@@ -3790,7 +3818,8 @@ async fn german_credit_flow(api: &Api) {
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
     // Sex and marital status, and nationality, are not inputs. Proxies of them are not tested.
-    let features = [
+    let inputs = [
+        "credit_risk",
         "checking_status",
         "duration_months",
         "credit_history",
@@ -3810,20 +3839,45 @@ async fn german_credit_flow(api: &Api) {
         "people_liable",
         "telephone",
     ];
+    // A model fits only the model (ADR-0056): text is encoded with the train rows' categories.
+    let text = [
+        "checking_status",
+        "credit_history",
+        "purpose",
+        "savings",
+        "employment_since",
+        "other_debtors",
+        "property",
+        "other_installment_plans",
+        "housing",
+        "job",
+        "telephone",
+    ];
     let mut flow = pipeline(&api.csv);
     flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
     let nodes = flow["nodes"].as_array_mut().unwrap();
+    nodes.push(json!({
+        "id":"inputs", "operator":"sprisk.clean.select_columns@1.0.0",
+        "params":{"columns":inputs}
+    }));
     nodes.push(json!({
         "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
         "params":{"test_fraction":0.25,"seed":42,"stratify":"credit_risk"}
     }));
     nodes.push(json!({
-        "id":"model", "operator":"sprisk.ml.random_forest@1.2.0",
-        "params":{"target":"credit_risk","features":features,"task":"classification","n_estimators":50}
+        "id":"categories", "operator":"sprisk.clean.encode@1.0.0",
+        "params":{"columns":text}
+    }));
+    nodes.push(json!({
+        "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        "params":{"target":"credit_risk","task":"classification","n_estimators":50}
     }));
     flow["edges"] = json!([
-        {"from":"load.data","to":"split.data"},
-        {"from":"split.train","to":"model.train"}
+        {"from":"load.data","to":"inputs.data"},
+        {"from":"inputs.data","to":"split.data"},
+        {"from":"split.train","to":"categories.train"},
+        {"from":"split.test","to":"categories.test"},
+        {"from":"categories.train","to":"model.train"}
     ]);
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -3962,7 +4016,11 @@ async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule
     let edges = comparison["edges"].as_array().unwrap();
     let from = |port: &'static str| edges.iter().filter(move |e| e["from"] == port);
     assert!(
-        from("load.data").all(|e| e["to"] == "split.data"),
+        from("load.data").all(|e| e["to"] == "inputs.data"),
+        "{comparison}"
+    );
+    assert!(
+        from("inputs.data").all(|e| e["to"] == "split.data"),
         "{comparison}"
     );
     assert_eq!(from("split.test").count(), 0, "{comparison}");
@@ -4007,7 +4065,7 @@ async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.2.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@2.0.0");
     for (setting, value) in tuned["search"]["settings"].as_object().unwrap() {
         assert_eq!(&model["params"][setting], value, "{model}");
     }
@@ -4078,7 +4136,12 @@ async fn german_credit_runs_as_stage_notebooks_with_one_chart_per_step() {
     );
     assert_eq!(chart["items"][0]["kind"], "figure", "{chart}");
 
-    let split = &flow["nodes"][1];
+    let split = flow["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "split")
+        .unwrap();
     let request = json!({
         "settings": split["params"], "inputs": {"data": "df"},
         "outputs": {"train": "train", "test": "test"}

@@ -1167,8 +1167,9 @@ async fn propose(
     Ok((StatusCode::CREATED, Json(proposal)))
 }
 
-/// Profile facts of the step's `columns`, measured on the table a split step's `train` port
-/// gives it in this version's latest run. Only train rows: a rule that saw held-out rows
+/// Profile facts of the step's `columns` or `features`, measured on the table a split step's
+/// `train` port gives it in this version's latest run. A model that lists no features reads
+/// every column but its target (ADR-0056). Only train rows: a rule that saw held-out rows
 /// would leak them into the flow (rule 8). A version never changes, so its run matches it.
 async fn train_profile_facts(
     state: &AppState,
@@ -1180,13 +1181,16 @@ async fn train_profile_facts(
     let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps)
         .map_err(|e| evidence_unavailable(e.to_string()))?;
-    let columns: Vec<String> = ["columns", "features"]
+    let named: Option<Vec<String>> = ["columns", "features"]
         .iter()
         .find_map(|name| node.params.get(*name))
-        .and_then(|c| serde_json::from_value(c.clone()).ok())
-        .ok_or_else(|| {
-            not_applicable(format!("step {step} names no list of columns or features"))
-        })?;
+        .and_then(|c| serde_json::from_value(c.clone()).ok());
+    let target = node.params.get("target").and_then(|t| t.as_str());
+    if named.is_none() && target.is_none() {
+        return Err(not_applicable(format!(
+            "step {step} names no columns, features or target"
+        )));
+    }
     let artifact = state
         .store
         .latest_outputs(std::slice::from_ref(&pipeline.id))
@@ -1200,6 +1204,14 @@ async fn train_profile_facts(
             ))
         })?;
     let profile = state.profiler.profile(&local_table(&artifact)?).await?;
+    let columns = named.unwrap_or_else(|| {
+        profile
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .filter(|name| Some(name.as_str()) != target)
+            .collect()
+    });
     Ok(sprisk_methodology::profile_facts(&profile, &columns))
 }
 

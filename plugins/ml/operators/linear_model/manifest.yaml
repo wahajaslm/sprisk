@@ -1,8 +1,8 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.linear_model@1.1.0
+id: sprisk.ml.linear_model@2.0.0
 capability_class: estimator
-model: { family: linear, tasks: [classification, regression], prepares: [fill_gaps, standardize], estimator: "sprisk_ml.models:linear_model_estimator", complexity: 1 }
-description: Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.
+model: { family: linear, tasks: [classification, regression], prepares: [], estimator: "sprisk_ml.models:linear_model_estimator", complexity: 1 }
+description: Logistic (classification) or linear (regression) regression. It fits only the model; Clean steps before it encode text, fill gaps and scale.
 entrypoint: sprisk_ml.models:linear_model
 notebook_code: sprisk_ml.models:linear_model_as_code
 inputs: [{ name: train, kind: table }]
@@ -10,10 +10,10 @@ outputs: [{ name: model, kind: model }]
 params_schema:
   type: object
   additionalProperties: false
-  required: [target, features, task]
+  required: [target, task]
   properties:
     target: { type: string, minLength: 1, description: "Column to predict." }
-    features: { type: array, items: { type: string, minLength: 1 }, uniqueItems: true, description: "Columns used as inputs." }
+    features: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns used as inputs, all numbers with no gaps. Unset: every column but the target." }
     task: { type: string, enum: [classification, regression], description: "classification fits logistic regression; regression fits linear regression." }
     costs:
       type: object

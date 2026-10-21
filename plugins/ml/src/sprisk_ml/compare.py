@@ -14,10 +14,12 @@ from scipy import stats
 from sklearn import metrics, model_selection
 from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
 
 from .costs import costed, resolved, scorer
 from .evaluate import confusion_figure, predicted_figure
 from .importance import importance_figure, permutation
+from .models import model_input
 
 METRIC_OF_TASK = {"classification": "balanced_accuracy", "regression": "rmse"}
 SCORING = {"balanced_accuracy": "balanced_accuracy", "rmse": "neg_root_mean_squared_error"}
@@ -84,10 +86,11 @@ def cross_validate(
     """The candidate's score on each fold's validation rows, its whole pipeline, preparation
     included, refit on the fold's other rows; the rows are shuffled into folds `repeats` times.
     The same rows, folds, repeats and seed give every candidate the same folds. Also what it
-    predicted for each train row while the first repeat held it out, how much each feature
+    predicted for each train row while the first repeat held it out, how much each column
     mattered on those held-out folds, and figures of both: all from the train rows, so looking
     at them never touches the test rows (ADR-0050). `prepare` are the preparation steps between
-    the split and the model, as transformers; each fold refits them before the model.
+    the split and the model, as transformers; each fold refits them before the model, which
+    takes its features from what they make (ADR-0056).
 
     After a time split, folds follow `time_column`: each validates on rows no earlier than
     any it fits on (rows sharing a time may fall on both sides), and the earliest rows are
@@ -105,8 +108,8 @@ def cross_validate(
     pipeline, preparation included, tunes its cut-off on inner folds of each fold's training
     rows. The model step tunes its own on all train rows after the flow's preparation, which
     was fit on all of them, so its cut-off's folds share that preparation."""
-    target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
-    costs = candidate_params.get("costs")
+    target, task = candidate_params["target"], candidate_params["task"]
+    features, costs = candidate_params.get("features"), candidate_params.get("costs")
     # Rust picks the metric from the question's task and the step's costs; this checks a
     # step built by hand.
     if task not in METRIC_OF_TASK:
@@ -119,7 +122,7 @@ def cross_validate(
         raise ValueError(
             f"metric {metric} does not fit a {task} task; it is {METRIC_OF_TASK[task]}"
         )
-    if target in features:
+    if features is not None and target in features:
         raise ValueError(f"target {target!r} is listed as a feature")
     y = train[target]
     if y.null_count():
@@ -128,14 +131,15 @@ def cross_validate(
     settings = {
         k: v for k, v in candidate_params.items() if k not in ("target", "features", "costs")
     }
-    # The model sees the feature columns' types before preparation; filling and rescaling
-    # keep numbers numbers and text text.
-    model = candidate(schema=train.select(features).schema, **settings)
     # Preparation may read columns the model does not, so it gets every column but the target.
-    x = train.drop(target) if prepare else train.select(features)
-    if prepare:
-        steps = [(f"prepare_{i}", step) for i, step in enumerate(prepare)]
-        model = Pipeline([*steps, ("model", model)])
+    x = train.drop(target) if prepare or features is None else train.select(features)
+    model = Pipeline(
+        [
+            *[(f"prepare_{i}", step) for i, step in enumerate(prepare)],
+            ("input", FunctionTransformer(model_input, kw_args={"features": features})),
+            ("model", candidate(**settings)),
+        ]
+    )
     if time_column is not None and group_column is not None:
         raise ValueError("folds follow time or groups, not both")
     if costs is not None:
@@ -184,12 +188,11 @@ def cross_validate(
         fold_of += [fold] * len(held)
         predicted += fitted.predict(rows).tolist()
         means, _ = permutation(fitted, rows, truth[held], seed, IMPORTANCE_REPEATS, by_metric)
-        by_name = dict(zip(x.columns, means, strict=True))
-        importances.append([by_name[f] for f in features])
+        importances.append(means)
     by_fold = np.array(importances)
     importance = pl.DataFrame(
         {
-            "feature": features,
+            "feature": x.columns,
             "importance": by_fold.mean(axis=0),
             "spread": by_fold.std(axis=0, ddof=1),
         }

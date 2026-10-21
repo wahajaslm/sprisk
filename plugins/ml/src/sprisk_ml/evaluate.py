@@ -7,7 +7,6 @@ from sklearn import metrics
 from sklearn.base import is_classifier
 from sklearn.frozen import FrozenEstimator
 from sklearn.model_selection import FixedThresholdClassifier
-from sklearn.pipeline import Pipeline
 
 from .costs import expected_cost, resolved
 
@@ -19,14 +18,13 @@ def evaluate(model: Any, test: pl.DataFrame, target: str, task: str) -> dict[str
         raise ValueError(f"model is not a {task} model")
     if test[target].null_count():
         raise ValueError(f"{target} has {test[target].null_count()} missing values in test")
-    pipeline = _pipeline(model)
     # The model selects exactly the columns it was fit on.
-    features = list(pipeline.feature_names_in_)
+    features = list(model.feature_names_in_)
     y_true = test[target].to_numpy()
     y_pred = model.predict(test.select(features))
     result: dict[str, Any] = {
         "n_rows": test.height,
-        "estimator": type(pipeline[-1]).__name__,
+        "estimator": type(_estimator(model)).__name__,
         "sklearn_version": sklearn.__version__,
     }
     if isinstance(model, FixedThresholdClassifier):
@@ -52,8 +50,8 @@ def evaluate(model: Any, test: pl.DataFrame, target: str, task: str) -> dict[str
     return {"metrics": result, "figures": [figure]}
 
 
-def _pipeline(model: Any) -> Pipeline:
-    """The preparation-and-estimator pipeline inside a model that decides by costs."""
+def _estimator(model: Any) -> Any:
+    """The estimator inside a model that decides by costs."""
     if not isinstance(model, FixedThresholdClassifier):
         return model
     inner = model.estimator_

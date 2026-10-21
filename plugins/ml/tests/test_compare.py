@@ -23,14 +23,14 @@ from sprisk_workers.manifests import load_operators
 
 
 def rows(n: int, seed: int, signal: bool = True) -> pl.DataFrame:
-    """x drives y when `signal`; c is a category of noise; every seventh x is missing."""
+    """x drives y when `signal`; c is noise, a category as its Clean steps leave it."""
     rng = np.random.default_rng(seed)
     x = rng.normal(size=n)
     y = x + rng.normal(scale=0.5, size=n) > 0 if signal else rng.random(n) > 0.5
     return pl.DataFrame(
         {
-            "x": [None if k % 7 == 0 else float(v) for k, v in enumerate(x)],
-            "c": ["abc"[k % 3] for k in range(n)],
+            "x": x,
+            "c": [k % 3 for k in range(n)],
             "y": np.where(y, "yes", "no"),
             "amount": x * 3.0 + rng.normal(scale=0.3, size=n),
         }
@@ -68,7 +68,7 @@ def test_each_fold_scores_the_model_refit_on_the_other_rows() -> None:
     FitRecorder.seen = []
     train = rows(100, seed=1)
 
-    result = scores(train, lambda schema, task: FitRecorder(), CLASSIFY)
+    result = scores(train, lambda task: FitRecorder(), CLASSIFY)
 
     assert result["fold"].to_list() == [1, 2, 3, 4, 5]
     assert FitRecorder.seen == result["train_rows"].to_list()
@@ -96,11 +96,10 @@ def test_preparation_between_the_split_and_the_model_is_refit_on_each_fold() -> 
     )
     # One fit per fold on the fold's own rows, then permutation importance refits nothing.
     assert RecordingStep.fits == result["scores"]["train_rows"].to_list()
-    assert result["importance"]["feature"].to_list() == ["x", "c"]
 
 
-def test_importance_keeps_each_features_name_when_preparation_reads_all_columns() -> None:
-    # The frame holds x before c; the features list c first.
+def test_importance_covers_every_column_the_preparation_reads() -> None:
+    # The frame holds x before c; the features list c first; amount reaches no model.
     result = cross_validate(
         rows(200, seed=3),
         linear_model_estimator,
@@ -112,8 +111,9 @@ def test_importance_keeps_each_features_name_when_preparation_reads_all_columns(
         [RecordingStep()],
     )
     importance = result["importance"]
-    assert importance["feature"][0] == "x"
-    assert importance["importance"][0] > 0.2 > abs(importance["importance"][1])
+    assert importance["feature"].to_list()[0] == "x"
+    assert set(importance["feature"]) == {"x", "c", "amount"}
+    assert importance["importance"][0] > 0.2 > importance["importance"].abs()[1:].max()
 
 
 def test_folds_are_stratified_so_a_rare_class_is_in_every_fold() -> None:
@@ -323,7 +323,7 @@ class FailsOnThirdFit(FitRecorder):
 def test_one_fold_that_fails_fails_the_step_instead_of_scoring_it_nan() -> None:
     FitRecorder.seen = []
     with pytest.raises(ValueError, match="fit failed on fold 3"):
-        scores(rows(100, seed=1), lambda schema, task: FailsOnThirdFit(), CLASSIFY)
+        scores(rows(100, seed=1), lambda task: FailsOnThirdFit(), CLASSIFY)
 
 
 def trial(fold_scores: list[float], metric: str = "balanced_accuracy") -> pl.DataFrame:
@@ -579,8 +579,8 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     rows(200, seed=3).write_parquet(train)
     cross_validated = {}
     for name, ref in [
-        (BASE, "sprisk.ml.dummy_baseline@1.1.0"),
-        ("ml_lm", "sprisk.ml.linear_model@1.1.0"),
+        (BASE, "sprisk.ml.dummy_baseline@2.0.0"),
+        ("ml_lm", "sprisk.ml.linear_model@2.0.0"),
     ]:
         out = tmp_path / name
         out.mkdir()
