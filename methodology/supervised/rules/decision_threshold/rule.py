@@ -36,8 +36,19 @@ def decide(observation: RuleObservation) -> RuleDecision:
     )
     evidence = question_evidence(observation, LABELS)
 
+    standard = applicable(
+        "default_half",
+        "Predicts the more likely class, as if both mistakes cost the same.",
+        {},
+    )
+    if task is None:
+        confirm = needs_fact(
+            "cost_optimal_threshold",
+            "Confirm the task: only a classification question has a decision threshold.",
+        )
+        return decision(observation, "default_half", [confirm, standard], evidence)
     if task != "classification":
-        reason = "A regression model predicts numbers, so it has no decision threshold."
+        reason = f"A {task} question has no classes to predict, so no decision threshold."
         return decision(
             observation,
             "default_half",
@@ -48,11 +59,6 @@ def decide(observation: RuleObservation) -> RuleDecision:
             evidence,
         )
 
-    standard = applicable(
-        "default_half",
-        "Predicts the more likely class, as if both mistakes cost the same.",
-        {},
-    )
     if positive is None or missed is None or alarm is None:
         costed = needs_fact(
             "cost_optimal_threshold",

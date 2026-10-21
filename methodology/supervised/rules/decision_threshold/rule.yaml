@@ -62,3 +62,5 @@ examples:
     picks: default_half
   - given: { question.task: regression }
     picks: default_half
+  - given: { question.costs.positive: bad, question.costs.false_negative: "5.0", question.costs.false_positive: "1.0" }
+    picks: default_half
