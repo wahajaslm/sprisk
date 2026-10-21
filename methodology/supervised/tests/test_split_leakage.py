@@ -360,6 +360,22 @@ def test_a_comparison_on_rows_that_were_never_split_fails() -> None:
     assert [n.root for n in result.cited_nodes] == ["cv_a", "load"]
 
 
+def test_a_comparison_whose_test_rows_another_step_reads_is_not_assessed() -> None:
+    nodes, edges = nodes_edges(cross_validated("split.train"))
+    nodes["profile_test"] = "sprisk.profile.summarize@1.0.0"
+    result = check(pipeline(nodes, [*edges, ("split.test", "profile_test.data")]))
+    assert result.verdict == Verdict.not_assessed
+    assert result.rationale.startswith("profile_test reads the test set (split.test)")
+    assert [n.root for n in result.cited_nodes] == ["profile_test"]
+
+
+def test_a_model_on_another_dataset_than_the_split_s_is_not_unsplit() -> None:
+    nodes, edges = nodes_edges(cross_validated("split.train"))
+    nodes |= {"other": SOURCE, "model": LINEAR}
+    result = check(pipeline(nodes, [*edges, ("other.data", "model.train")]))
+    assert result.verdict == Verdict.pass_
+
+
 def test_a_model_on_unsplit_rows_without_any_split_is_not_assessed() -> None:
     p = pipeline({"load": SOURCE, "model": LINEAR}, [("load.data", "model.train")])
     assert check(p).verdict == Verdict.not_assessed

@@ -63,10 +63,13 @@ def split_leakage(
 
     splits = [n for n, op in op_of.items() if unversioned(op.id.root) in HOLDOUT_PORTS]
     sources = {n for n, op in op_of.items() if op.capability_class == CapabilityClass.source}
+    # Cut every split's train port; any data source still reachable bypassed the split.
+    cut = graph.copy()
+    cut.remove_nodes_from(f"{s}.{TRAIN_PORT}" for s in splits)
     for node in sorted(
         n for n, op in op_of.items() if unversioned(op.id.root) in FITTING_TRANSFORMS
     ):
-        problem = _fit_problem(graph, node, splits, sources, holdouts)
+        problem = _fit_problem(graph, cut, node, splits, sources, holdouts)
         if problem:
             rationale, cited = problem
             return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
@@ -74,9 +77,8 @@ def split_leakage(
     estimators = sorted(
         n for n, op in op_of.items() if op.capability_class == CapabilityClass.estimator
     )
-    # Cut every split's train port; a data source an estimator still reaches bypassed the split.
-    cut = graph.copy()
-    cut.remove_nodes_from(f"{s}.{TRAIN_PORT}" for s in splits)
+    # Only a source a split reads holds test rows; another dataset is not this split's.
+    split_sources = sources & {a for s in splits for a in nx.ancestors(graph, s)}
     for node in estimators:
         fitted_on = sorted(holdouts & nx.ancestors(graph, node))
         if fitted_on:
@@ -86,8 +88,8 @@ def split_leakage(
             )
             cited = [node, fitted_on[0].split(".")[0]]
             return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
-        unsplit = sorted(p for p in nx.ancestors(cut, node) if p.split(".")[0] in sources)
-        if holdouts and unsplit:
+        unsplit = sorted(p for p in nx.ancestors(cut, node) if p.split(".")[0] in split_sources)
+        if unsplit:
             port = next(p for p in unsplit if "." in p)
             rationale = (
                 f"{node} learns from rows that were never split ({port}), so it sees the "
@@ -100,9 +102,17 @@ def split_leakage(
         n for n, op in op_of.items() if op.capability_class == CapabilityClass.evaluator
     )
     if not evaluators and holdouts and estimators:
+        readers = sorted({str(n) for h in holdouts for n in graph.successors(h)})
+        if readers:
+            read = next(h for h in sorted(holdouts) if graph.has_edge(h, readers[0]))
+            rationale = (
+                f"{readers[0]} reads the test set ({read}) and "
+                "is not an evaluator, so this check cannot tell whether it compares models on it."
+            )
+            return _result(pipeline, check_id, now, Verdict.not_assessed, rationale, readers)
         rationale = (
             f"No model learns from the test set ({', '.join(sorted(holdouts))}) or from rows "
-            "that were never split, and no step scores a model on it."
+            "that were never split, and no step reads the test set."
         )
         cited = sorted({*estimators, *(h.split(".")[0] for h in holdouts)})
         return _result(pipeline, check_id, now, Verdict.pass_, rationale, cited)
@@ -177,20 +187,22 @@ def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> Por
 
 
 def _fit_problem(
-    graph: PortGraph, node: str, splits: list[str], sources: set[str], holdouts: set[str]
+    graph: PortGraph,
+    cut: PortGraph,
+    node: str,
+    splits: list[str],
+    sources: set[str],
+    holdouts: set[str],
 ) -> tuple[str, list[str]] | None:
     """Why a fitting transform's inputs are wrong, or None.
 
     `train` must reach data sources only through one split's train port, and `test`
-    must come from that same split's holdout.
+    must come from that same split's holdout. `cut` is `graph` without the splits' train ports.
     """
     train_src = _source_of(graph, node, TRAIN_PORT)
     test_src = _source_of(graph, node, "test")
     train_lineage = nx.ancestors(graph, train_src) | {train_src}
     fed_by = [s for s in splits if f"{s}.{TRAIN_PORT}" in train_lineage]
-    # Cut every split's train port; any data source still reachable bypassed the split.
-    cut = graph.copy()
-    cut.remove_nodes_from(f"{s}.{TRAIN_PORT}" for s in splits)
     reach = (
         (nx.ancestors(cut, train_src) | {train_src.split(".")[0]}) if train_src in cut else set()
     )
