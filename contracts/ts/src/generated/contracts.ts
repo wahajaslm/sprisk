@@ -1797,6 +1797,14 @@ export interface SelectionDecision {
    * What the comparison did not cover.
    */
   limitations: string[];
+  /**
+   * Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0051). Absent: none were declared.
+   */
+  guardrails?: Guardrail[];
+  /**
+   * Earlier comparisons of the same version and step, scored on the same folds before this one (ADR-0051). Absent: none.
+   */
+  earlier_looks?: PipelineVersionId[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1817,6 +1825,11 @@ export interface CandidateResult {
    */
   spread: number;
   versus_baseline?: BaselineComparison;
+  search?: CandidateSearch;
+  /**
+   * Each declared guardrail, in declared order, as this candidate met it. Absent: none were declared.
+   */
+  guardrails?: GuardrailResult[];
 }
 /**
  * Absent for the baseline itself.
@@ -1840,6 +1853,49 @@ export interface BaselineComparison {
   beats_baseline: boolean;
 }
 /**
+ * How its settings were tuned (ADR-0051). Absent: it ran at the flow's settings.
+ */
+export interface CandidateSearch {
+  trials: SearchedTrial[];
+  settings: Params;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SearchedTrial".
+ */
+export interface SearchedTrial {
+  id: string;
+  settings: Params;
+  /**
+   * Mean inner score over the outer folds: what the search saw. Not a performance estimate.
+   */
+  inner_mean: number;
+  /**
+   * How many outer folds chose this trial.
+   */
+  chosen_in: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "GuardrailResult".
+ */
+export interface GuardrailResult {
+  label: string;
+  at_least: number;
+  /**
+   * Mean over the outer folds of the recall of `label`.
+   */
+  mean: number;
+  /**
+   * Its standard error, corrected for folds that share train rows as for the scores.
+   */
+  corrected_se: number;
+  /**
+   * Whether `mean` is at least `at_least`.
+   */
+  passed: boolean;
+}
+/**
  * An alternative the comparison could not score on the folds, and why (ADR-0050).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1854,6 +1910,33 @@ export interface NotCompared {
    * Why it was not scored on the folds.
    */
   reason: string;
+}
+/**
+ * A constraint a candidate must meet to win (EXP-02). recall: the mean over outer folds of the recall of `label` must be at least `at_least`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Guardrail".
+ */
+export interface Guardrail {
+  metric: "recall";
+  /**
+   * The target value, as text.
+   */
+  label: string;
+  /**
+   * Between 0 and 1.
+   */
+  at_least: number;
+}
+/**
+ * A tuned candidate: on each outer fold, the trial with the best inner score on that fold's training rows gave the fold score, so the fold scores describe the tuning, not one setting. `settings` is the trial with the best inner score on all train rows: the one to apply.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CandidateSearch".
+ */
+export interface CandidateSearch1 {
+  trials: SearchedTrial[];
+  settings: Params;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1934,23 +2017,6 @@ export interface Study {
    * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
    */
   finished_at?: string;
-}
-/**
- * A constraint a candidate must meet to win (EXP-02). recall: the mean over outer folds of the recall of `label` must be at least `at_least`.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Guardrail".
- */
-export interface Guardrail {
-  metric: "recall";
-  /**
-   * The target value, as text.
-   */
-  label: string;
-  /**
-   * Between 0 and 1.
-   */
-  at_least: number;
 }
 /**
  * Request to study a model step (ADR-0051). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.

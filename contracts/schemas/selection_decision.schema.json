@@ -35,6 +35,16 @@
           "type": "array",
           "description": "What the comparison did not cover.",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "guardrails": {
+          "type": "array",
+          "description": "Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0051). Absent: none were declared.",
+          "items": { "$ref": "#/$defs/Guardrail" }
+        },
+        "earlier_looks": {
+          "type": "array",
+          "description": "Earlier comparisons of the same version and step, scored on the same folds before this one (ADR-0051). Absent: none.",
+          "items": { "$ref": "#/$defs/PipelineVersionId" }
         }
       }
     },
@@ -67,7 +77,46 @@
         "fold_scores": { "type": "array", "items": { "type": "number" }, "description": "The metric on each fold's validation rows, in fold order, repeat after repeat." },
         "mean": { "type": "number" },
         "spread": { "type": "number", "description": "Standard deviation of the fold scores." },
-        "versus_baseline": { "$ref": "#/$defs/BaselineComparison", "description": "Absent for the baseline itself." }
+        "versus_baseline": { "$ref": "#/$defs/BaselineComparison", "description": "Absent for the baseline itself." },
+        "search": { "$ref": "#/$defs/CandidateSearch", "description": "How its settings were tuned (ADR-0051). Absent: it ran at the flow's settings." },
+        "guardrails": {
+          "type": "array",
+          "description": "Each declared guardrail, in declared order, as this candidate met it. Absent: none were declared.",
+          "items": { "$ref": "#/$defs/GuardrailResult" }
+        }
+      }
+    },
+    "CandidateSearch": {
+      "type": "object",
+      "description": "A tuned candidate: on each outer fold, the trial with the best inner score on that fold's training rows gave the fold score, so the fold scores describe the tuning, not one setting. `settings` is the trial with the best inner score on all train rows: the one to apply.",
+      "additionalProperties": false,
+      "required": ["trials", "settings"],
+      "properties": {
+        "trials": { "type": "array", "items": { "$ref": "#/$defs/SearchedTrial" } },
+        "settings": { "$ref": "#/$defs/Params" }
+      }
+    },
+    "SearchedTrial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "settings", "inner_mean", "chosen_in"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+        "settings": { "$ref": "#/$defs/Params" },
+        "inner_mean": { "type": "number", "description": "Mean inner score over the outer folds: what the search saw. Not a performance estimate." },
+        "chosen_in": { "type": "integer", "minimum": 0, "description": "How many outer folds chose this trial." }
+      }
+    },
+    "GuardrailResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "at_least", "mean", "corrected_se", "passed"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "at_least": { "type": "number" },
+        "mean": { "type": "number", "description": "Mean over the outer folds of the recall of `label`." },
+        "corrected_se": { "type": "number", "description": "Its standard error, corrected for folds that share train rows as for the scores." },
+        "passed": { "type": "boolean", "description": "Whether `mean` is at least `at_least`." }
       }
     },
     "BaselineComparison": {

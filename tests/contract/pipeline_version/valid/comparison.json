@@ -7,7 +7,7 @@
   "nodes": [
     { "id": "ingest", "operator": "sprisk.source.parquet@1.0.0", "params": { "dataset_version": "dv_01JABCDEFGHJKMNPQRSTVWXYZ0" } },
     { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": { "test_fraction": 0.25 } },
-    { "id": "cv_ml_dummy_baseline", "operator": "sprisk.ml.cross_validate@2.0.0", "params": { "candidate": "sprisk.ml.dummy_baseline@1.0.0", "candidate_params": { "target": "y", "features": ["x"], "task": "classification" }, "folds": 5, "seed": 0, "metric": "balanced_accuracy" } }
+    { "id": "cv_ml_dummy_baseline", "operator": "sprisk.ml.cross_validate@3.0.0", "params": { "candidate": "sprisk.ml.dummy_baseline@1.0.0", "candidate_params": { "target": "y", "features": ["x"], "task": "classification" }, "folds": 5, "seed": 0, "metric": "balanced_accuracy" } }
   ],
   "edges": [
     { "from": "ingest.data", "to": "split.data" },

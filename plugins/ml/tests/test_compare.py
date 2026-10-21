@@ -598,7 +598,7 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
                 }
             ],
         }
-        written = operators["sprisk.ml.cross_validate@2.0.0"].run(
+        written = operators["sprisk.ml.cross_validate@3.0.0"].run(
             params | {"metric": "balanced_accuracy"}, {"train": train}, out
         )
         by_port = {o.port: o.path for o in written}
@@ -608,7 +608,7 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     out.mkdir()
     params = {"trials": [BASE, "ml_lm"], "baseline": BASE, "metric": "balanced_accuracy"}
     params |= {"complexity": {BASE: 0, "ml_lm": 1}, "baseline_role": "floor", "not_compared": []}
-    [decision] = operators["sprisk.ml.select_model@3.0.0"].run(params, cross_validated, out)
+    [decision] = operators["sprisk.ml.select_model@4.0.0"].run(params, cross_validated, out)
     assert SelectionDecision.model_validate_json(decision.path.read_text()).winner == "ml_lm"
 
 

@@ -4,6 +4,7 @@ test rows are never an input: they stay for the chosen model's final evaluation.
 import hashlib
 import math
 from collections.abc import Callable
+from functools import partial
 from typing import Any, Literal
 
 import numpy as np
@@ -50,6 +51,11 @@ PROTOCOL = [
     "rows_digest",
     "folds_by",
 ]
+TUNED = (
+    "Each tuned model's fold score comes from the setting its inner folds chose on that fold's "
+    "training rows, so it describes the tuning, not one fixed setting. Settings were tuned on "
+    "{metric} only, not on any guardrail."
+)
 TIME_ORDERED = (
     "Folds follow time, so they are not exchangeable: the corrected t-test is a rough guide "
     "here, not an exact test."
@@ -67,6 +73,8 @@ def cross_validate(
     prepare: list[Any],
     time_column: str | None = None,
     group_column: str | None = None,
+    inner_folds: int | None = None,
+    recall_of: list[str] | None = None,
 ) -> dict[str, Any]:
     """The candidate's score on each fold's validation rows, its whole pipeline, preparation
     included, refit on the fold's other rows; the rows are shuffled into folds `repeats` times.
@@ -79,7 +87,14 @@ def cross_validate(
     After a time split, folds follow `time_column`: each validates on rows no earlier than
     any it fits on (rows sharing a time may fall on both sides), and the earliest rows are
     only fit on. After a group split, no `group_column`
-    value is on both sides of a fold. Otherwise rows are shuffled (ADR-0050)."""
+    value is on both sides of a fold. Otherwise rows are shuffled (ADR-0050).
+
+    With `inner_folds`, a trial of a study (ADR-0051): each outer fold also scores the
+    candidate on that many inner folds of its own training rows (`inner_score`), and all the
+    train rows are scored the same way once (`train_inner_score`), so the select step can tune
+    without an outer validation row. Inner folds keep what the outer ones keep: classes, time
+    order or whole groups. `recall_of` adds, per outer fold, the recall of each named class
+    (`recall_0`, ...), for guardrails."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
     # Rust picks the metric from the question's task; this checks a step built by hand.
     if task not in METRIC_OF_TASK:
@@ -105,18 +120,25 @@ def cross_validate(
         model = Pipeline([*steps, ("model", model)])
     if time_column is not None and group_column is not None:
         raise ValueError("folds follow time or groups, not both")
+    groups = None
     if time_column is not None:
         splits, folds_by = _time_splits(train, time_column, folds, repeats), "time"
     elif group_column is not None:
-        groups = train[group_column]
-        if groups.null_count():
-            raise ValueError(f"{group_column} has {groups.null_count()} missing values in train")
-        splits = _group_splits(task, truth, groups.to_numpy(), folds, repeats, seed)
+        group_values = train[group_column]
+        if group_values.null_count():
+            raise ValueError(
+                f"{group_column} has {group_values.null_count()} missing values in train"
+            )
+        groups = group_values.to_numpy()
+        splits = _group_splits(task, truth, groups, folds, repeats, seed)
         folds_by = "group"
     else:
         splitter = _splitter(task, y, folds, repeats, seed)
         splits, folds_by = list(splitter.split(np.zeros(len(y)), truth)), "shuffle"
-    run = {"scoring": SCORING[metric], "error_score": "raise"}
+    scoring: dict[str, Any] = {"score": SCORING[metric]}
+    recalls = _recall_scorers(task, target, truth, recall_of or [])
+    scoring.update(recalls)
+    run = {"scoring": scoring, "error_score": "raise"}
     # Only the first repeat's fitted pipelines feed the diagnostics; the rest are not kept.
     shown = model_selection.cross_validate(
         model, x, truth, cv=splits[:folds], return_estimator=True, **run
@@ -162,12 +184,99 @@ def cross_validate(
             "folds_by": [folds_by] * n,
         }
     )
+    for name in recalls:
+        scores = scores.with_columns(
+            pl.Series(
+                name,
+                np.concatenate(
+                    [shown[f"test_{name}"], rest[f"test_{name}"] if rest else np.array([])]
+                ),
+            )
+        )
+    if inner_folds is not None:
+        inner = _InnerFolds(task, folds_by, inner_folds, train, time_column, groups, truth)
+        score_inner = partial(_inner_score, model, x, truth, sign, SCORING[metric])
+        scores = scores.with_columns(
+            inner_score=pl.Series(
+                [score_inner(fit, inner.of(fit, seed + i)) for i, (fit, _) in enumerate(splits)]
+            ),
+            train_inner_score=pl.lit(
+                score_inner(np.arange(len(truth)), inner.of(np.arange(len(truth)), seed))
+            ),
+        )
     return {
         "scores": scores,
         "predictions": predictions,
         "importance": importance,
         "figures": [_fit_figure(task, predictions), _importance_figure(importance)],
     }
+
+
+def _recall_scorers(task: str, target: str, truth: np.ndarray, labels: list[str]) -> dict[str, Any]:
+    """A scorer per named class, by its text, for the recall of that class."""
+    if labels and task != "classification":
+        raise ValueError(f"recall of a class needs a classification task, not {task}")
+    classes = {str(c): c for c in np.unique(truth)}
+    scorers = {}
+    for i, label in enumerate(labels):
+        if label not in classes:
+            raise ValueError(
+                f"{label!r} is not a class of {target}; its classes are {sorted(classes)}"
+            )
+        scorers[f"recall_{i}"] = metrics.make_scorer(
+            metrics.recall_score, labels=[classes[label]], average="macro", zero_division=0.0
+        )
+    return scorers
+
+
+class _InnerFolds:
+    """Inner folds of some train rows, kept apart the way the outer folds are."""
+
+    def __init__(
+        self,
+        task: str,
+        folds_by: str,
+        folds: int,
+        train: pl.DataFrame,
+        time_column: str | None,
+        groups: np.ndarray | None,
+        truth: np.ndarray,
+    ) -> None:
+        self.task, self.folds_by, self.folds = task, folds_by, folds
+        self.train, self.time_column, self.groups, self.truth = train, time_column, groups, truth
+
+    def of(self, rows: np.ndarray, seed: int) -> list[tuple[np.ndarray, np.ndarray]]:
+        """Folds of `rows`, as indices into `rows`."""
+        truth = self.truth[rows]
+        if self.folds_by == "time" and self.time_column is not None:
+            return _time_splits(self.train[rows], self.time_column, self.folds, 1)
+        if self.folds_by == "group" and self.groups is not None:
+            return _group_splits(self.task, truth, self.groups[rows], self.folds, 1, seed)
+        if self.folds_by != "shuffle":
+            raise ValueError(f"inner folds by {self.folds_by} need its column")
+        shuffle = {"n_splits": self.folds, "shuffle": True, "random_state": seed}
+        splitter = (
+            model_selection.StratifiedKFold(**shuffle)
+            if self.task == "classification"
+            else model_selection.KFold(**shuffle)
+        )
+        return list(splitter.split(np.zeros(len(rows)), truth))
+
+
+def _inner_score(
+    model: BaseEstimator,
+    x: pl.DataFrame,
+    truth: np.ndarray,
+    sign: float,
+    scoring: str,
+    rows: np.ndarray,
+    folds: list[tuple[np.ndarray, np.ndarray]],
+) -> float:
+    """Mean score of `model` refit on inner folds of `rows`, in the scores' own units."""
+    scored = model_selection.cross_val_score(
+        model, x[rows], truth[rows], cv=folds, scoring=scoring, error_score="raise"
+    )
+    return float(sign * scored.mean())
 
 
 def _fit_figure(task: str, predictions: pl.DataFrame) -> go.Figure:
@@ -250,6 +359,10 @@ def select_model(
     complexity: dict[str, int],
     baseline_role: Literal["floor", "reference"],
     not_compared: list[dict[str, str]],
+    tuned: dict[str, list[str]] | None = None,
+    settings: dict[str, dict[str, Any]] | None = None,
+    guardrails: list[dict[str, Any]] | None = None,
+    earlier_looks: list[str] | None = None,
 ) -> dict[str, Any]:
     """A SelectionDecision (ADR-0050). Of the candidates that beat the baseline on the same
     folds, the simplest whose mean is within one standard error of the best mean wins: the
@@ -261,23 +374,33 @@ def select_model(
     Both standard errors are corrected for folds that share train rows: the variance of a
     mean of n fold values is (1/n + n_validate/n_train) times their variance, not 1/n. That
     is the correction of Nadeau & Bengio (2003), applied to repeated k-fold as Bouckaert &
-    Frank do."""
+    Frank do.
+
+    A study (ADR-0051) may `tune` a candidate over several trials: on each outer fold, the
+    trial with the best inner score on that fold's training rows gives the candidate's score,
+    so the outer validation rows never choose a setting and the tests above stay valid. Its
+    settings to apply are the trial with the best inner score on all train rows. A candidate
+    that misses a `guardrail` (a minimum mean recall of a class over the folds) cannot win,
+    and does not set the one-SE bar. `earlier_looks` are recorded as given."""
     if both := sorted(set(trials) & {n["id"] for n in not_compared}):
         raise ValueError(f"{', '.join(both)} is both a trial and not compared")
     if baseline not in trials:
         raise ValueError(f"baseline {baseline} is not one of the trials {sorted(trials)}")
-    if missing := sorted(set(trials) - set(complexity)):
-        raise ValueError(f"no complexity for {missing}")
     protocol = trials[baseline].select(PROTOCOL)
     for name, trial in trials.items():
         if not trial.select(PROTOCOL).equals(protocol):
             raise ValueError(f"{name} was not scored on the same folds as {baseline}")
+    sign = 1.0 if GREATER_IS_BETTER[metric] else -1.0
+    declared = guardrails or []
+    scored, searches = _candidates(trials, tuned or {}, settings or {}, sign)
+    if missing := sorted(set(scored) - set(complexity)):
+        raise ValueError(f"no complexity for {missing}")
+    trials = scored
     if protocol["metric"][0] != metric:
         raise ValueError(f"trials were scored by {protocol['metric'][0]}, not {metric}")
     k = protocol.height
     repeats = int(protocol["repeat"].max())  # type: ignore[arg-type]
     ratio = float((protocol["validate_rows"] / protocol["train_rows"]).mean())  # type: ignore[arg-type]
-    sign = 1.0 if GREATER_IS_BETTER[metric] else -1.0
     floor = trials[baseline]["score"].to_numpy()
 
     candidates = []
@@ -289,6 +412,12 @@ def select_model(
             "mean": float(scores.mean()),
             "spread": float(scores.std(ddof=1)),
         }
+        if name in searches:
+            result["search"] = searches[name]
+        if declared:
+            result["guardrails"] = [
+                _guardrail(trials[name], i, g, k, ratio) for i, g in enumerate(declared)
+            ]
         if name != baseline:
             gain = sign * (scores - floor)
             se = _corrected_se(gain, k, ratio)
@@ -301,8 +430,14 @@ def select_model(
     _holm([c["versus_baseline"] for c in candidates if "versus_baseline" in c])
 
     beating = [c for c in candidates if c.get("versus_baseline", {}).get("beats_baseline")]
+    missing_guardrail = [
+        c for c in beating if not all(g["passed"] for g in c.get("guardrails", []))
+    ]
+    beating = [c for c in beating if c not in missing_guardrail]
     reference = baseline_role == "reference"
     tested = [TESTED_REFERENCE, ONE_STEP] if reference else [TESTED]
+    if searches:
+        tested.append(TUNED.format(metric=LABEL[metric]))
     decision: dict[str, Any] = {
         "schema_version": "sprisk.selection_decision/v1",
         "metric": metric,
@@ -315,6 +450,11 @@ def select_model(
         "not_compared": not_compared,
         "limitations": [*tested, *([TIME_ORDERED] if protocol["folds_by"][0] == "time" else [])],
     }
+    if declared:
+        decision["guardrails"] = declared
+    if earlier_looks:
+        decision["earlier_looks"] = earlier_looks
+    missed = _missed(missing_guardrail, declared)
     if not beating and reference:
         decision["winner"] = baseline
         decision["reason"] = (
@@ -322,6 +462,9 @@ def select_model(
             f"t-test against its {LABEL[metric]} at α = {ALPHA} after a Holm adjustment, over "
             f"the same {k} folds. {baseline} stands."
         )
+        return decision
+    if not beating and missed:
+        decision["reason"] = f"No model that beats the baseline meets every guardrail: {missed}"
         return decision
     if not beating:
         decision["reason"] = (
@@ -351,7 +494,7 @@ def select_model(
         decision["reason"] = (
             f"{' and '.join(c['id'] for c in near)} are within one standard error "
             f"({best_se:.3f}) of the best mean {LABEL[metric]} ({best['mean']:.3f}) and beat "
-            f"{against}. {then}"
+            f"{against}. {then}{f' {missed}' if missed else ''}"
         )
         return decision
     versus = winner["versus_baseline"]
@@ -361,9 +504,90 @@ def select_model(
         f"that beats {against} is within one standard error of it. Over the same {k} folds it "
         f"improves on {baseline} by "
         f"{versus['mean_difference']:.3f} (corrected standard error {versus['corrected_se']:.3f}, "
-        f"one-sided p = {versus['p_value']:.2g})."
+        f"one-sided p = {versus['p_value']:.2g}).{f' {missed}' if missed else ''}"
     )
     return decision
+
+
+def _candidates(
+    trials: dict[str, pl.DataFrame],
+    tuned: dict[str, list[str]],
+    settings: dict[str, dict[str, Any]],
+    sign: float,
+) -> tuple[dict[str, pl.DataFrame], dict[str, dict[str, Any]]]:
+    """Each candidate's scores, a tuned one's taken fold by fold from the trial its inner
+    folds chose, and how each tuned one was searched."""
+    grouped = [t for group in tuned.values() for t in group]
+    if repeated := sorted({t for t in grouped if grouped.count(t) > 1}):
+        raise ValueError(f"{', '.join(repeated)} is tuned for more than one candidate")
+    if unknown := sorted(set(grouped) - set(trials)):
+        raise ValueError(f"tuned trials {unknown} are not among the trials")
+    if clash := sorted(set(tuned) & set(trials)):
+        raise ValueError(f"{', '.join(clash)} is both a tuned candidate and a trial")
+    scored = {name: frame for name, frame in trials.items() if name not in grouped}
+    searches = {}
+    for candidate, group in tuned.items():
+        frames = [trials[t] for t in group]
+        if any("inner_score" not in f.columns for f in frames):
+            raise ValueError(f"{candidate}'s trials were not scored on inner folds")
+        inner = sign * np.column_stack([f["inner_score"].to_numpy() for f in frames])
+        # argmax takes the first best, so ties go to the trial listed first.
+        chosen = inner.argmax(axis=1)
+        rows = np.arange(len(chosen))
+        picked = {
+            column: np.column_stack([f[column].to_numpy() for f in frames])[rows, chosen]
+            for column in frames[0].columns
+            if column == "score" or column.startswith("recall_")
+        }
+        scored[candidate] = (
+            frames[0]
+            .select(PROTOCOL)
+            .with_columns(**{column: pl.Series(values) for column, values in picked.items()})
+        )
+        on_train = sign * np.array([f["train_inner_score"][0] for f in frames])
+        searches[candidate] = {
+            "trials": [
+                {
+                    "id": t,
+                    "settings": settings.get(t, {}),
+                    "inner_mean": float(f["inner_score"].mean()),  # type: ignore[arg-type]
+                    "chosen_in": int((chosen == i).sum()),
+                }
+                for i, (t, f) in enumerate(zip(group, frames, strict=True))
+            ],
+            "settings": settings.get(group[int(on_train.argmax())], {}),
+        }
+    return scored, searches
+
+
+def _guardrail(
+    scores: pl.DataFrame, index: int, guardrail: dict[str, Any], k: int, ratio: float
+) -> dict[str, Any]:
+    column = f"recall_{index}"
+    if column not in scores.columns:
+        raise ValueError(f"no recall of {guardrail['label']!r} was scored for a guardrail")
+    recall = scores[column].to_numpy()
+    mean = float(recall.mean())
+    return {
+        "label": guardrail["label"],
+        "at_least": guardrail["at_least"],
+        "mean": mean,
+        "corrected_se": _corrected_se(recall, k, ratio),
+        "passed": mean >= guardrail["at_least"],
+    }
+
+
+def _missed(candidates: list[dict[str, Any]], declared: list[dict[str, Any]]) -> str:
+    """Why each candidate that beat the baseline was left out by a guardrail."""
+    parts = []
+    for c in candidates:
+        for g, result in zip(declared, c["guardrails"], strict=True):
+            if not result["passed"]:
+                parts.append(
+                    f"{c['id']} is left out: its mean recall of {g['label']} is "
+                    f"{result['mean']:.3f}, below {g['at_least']}."
+                )
+    return " ".join(parts)
 
 
 def _corrected_se(values: np.ndarray, k: int, ratio: float) -> float:

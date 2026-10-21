@@ -6,7 +6,7 @@ use sprisk_methodology::{ResolveError, TrialStep, trial_steps};
 
 fn comparison(select_params: Value) -> PipelineVersion {
     let cv = |id: &str, model: &str| {
-        json!({ "id": format!("cv_{id}"), "operator": "sprisk.ml.cross_validate@2.0.0",
+        json!({ "id": format!("cv_{id}"), "operator": "sprisk.ml.cross_validate@3.0.0",
                 "params": { "candidate": model } })
     };
     parse(
@@ -17,7 +17,7 @@ fn comparison(select_params: Value) -> PipelineVersion {
             "nodes": [
                 cv("ml_linear_model", "sprisk.ml.linear_model@1.0.0"),
                 cv("ml_dummy_baseline", "sprisk.ml.dummy_baseline@1.0.0"),
-                { "id": "select_model", "operator": "sprisk.ml.select_model@3.0.0", "params": select_params },
+                { "id": "select_model", "operator": "sprisk.ml.select_model@4.0.0", "params": select_params },
             ],
             "edges": [],
             "created_at": "2026-10-21T10:00:00Z",

@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.select_model@3.0.0
+id: sprisk.ml.select_model@4.0.0
 capability_class: decision_evaluator
-description: Choose among cross-validated candidates (ADR-0044). Of the candidates that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0050). If none beats it, a floor baseline means no winner and a reference baseline stands. Writes a SelectionDecision.
+description: Choose among cross-validated candidates (ADR-0044). Of the candidates that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0050). If none beats it, a floor baseline means no winner and a reference baseline stands. A study's tuned candidate takes each outer fold's score from the trial its inner folds chose, and a candidate that misses a guardrail cannot win (ADR-0051). Writes a SelectionDecision.
 entrypoint: sprisk_ml.compare:select_model
 inputs: []
 outputs: [{ name: decision, kind: report }]
@@ -23,6 +23,31 @@ params_schema:
       type: object
       description: "Each trial's complexity: a model's from its manifest; for preparation, 0 when the step is removed, else 1. Of the trials within one standard error of the best, the simplest wins (ADR-0050)."
       additionalProperties: { type: integer, minimum: 0 }
+    tuned:
+      type: object
+      description: "A study's tuned candidates: each candidate's trials, in study order; ties go to the first (ADR-0051)."
+      additionalProperties:
+        type: array
+        items: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$" }
+    settings:
+      type: object
+      description: "Each tuned trial's settings, recorded in the decision."
+      additionalProperties: { type: object }
+    guardrails:
+      type: array
+      description: "Declared with the study; guardrail i reads each trial's recall_i column."
+      items:
+        type: object
+        additionalProperties: false
+        required: [metric, label, at_least]
+        properties:
+          metric: { type: string, enum: [recall] }
+          label: { type: string, minLength: 1 }
+          at_least: { type: number, minimum: 0, maximum: 1 }
+    earlier_looks:
+      type: array
+      description: "Earlier comparisons of the same version and step on the same folds, recorded as given."
+      items: { type: string, pattern: "^plv_[0-9A-HJKMNP-TV-Z]{26}$" }
     not_compared:
       type: array
       description: "Alternatives that were not scored, each with why; recorded in the decision as given."

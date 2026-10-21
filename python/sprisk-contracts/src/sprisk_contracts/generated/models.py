@@ -777,6 +777,37 @@ class NotCompared(StrictModel):
     reason: Annotated[str, Field(description="Why it was not scored on the folds.", min_length=1)]
 
 
+class SearchedTrial(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    settings: Params
+    inner_mean: Annotated[
+        float,
+        Field(
+            description="Mean inner score over the outer folds: what the search saw. Not a performance estimate."
+        ),
+    ]
+    chosen_in: Annotated[int, Field(description="How many outer folds chose this trial.", ge=0)]
+
+
+class GuardrailResult(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    label: Annotated[str, Field(min_length=1)]
+    at_least: float
+    mean: Annotated[float, Field(description="Mean over the outer folds of the recall of `label`.")]
+    corrected_se: Annotated[
+        float,
+        Field(
+            description="Its standard error, corrected for folds that share train rows as for the scores."
+        ),
+    ]
+    passed: Annotated[bool, Field(description="Whether `mean` is at least `at_least`.")]
+
+
 class BaselineComparison(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1614,24 +1645,12 @@ class Attempt(StrictModel):
     created_at: Timestamp
 
 
-class CandidateResult(StrictModel):
+class CandidateSearch(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    id: Annotated[
-        str, Field(description="The compared alternative.", pattern="^[a-z][a-z0-9_]{0,62}$")
-    ]
-    fold_scores: Annotated[
-        list[float],
-        Field(
-            description="The metric on each fold's validation rows, in fold order, repeat after repeat."
-        ),
-    ]
-    mean: float
-    spread: Annotated[float, Field(description="Standard deviation of the fold scores.")]
-    versus_baseline: Annotated[
-        BaselineComparison | None, Field(description="Absent for the baseline itself.")
-    ] = None
+    trials: list[SearchedTrial]
+    settings: Params
 
 
 class Study(StrictModel):
@@ -2069,53 +2088,36 @@ class QuestionVersion(StrictModel):
     created_at: Timestamp
 
 
-class SelectionDecision(StrictModel):
+class CandidateResult(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["sprisk.selection_decision/v1"]
-    metric: SelectionMetric
-    folds: Annotated[
-        int,
-        Field(description="Number of cross-validation folds every candidate was scored on.", ge=0),
+    id: Annotated[
+        str, Field(description="The compared alternative.", pattern="^[a-z][a-z0-9_]{0,62}$")
     ]
-    repeats: Annotated[
-        int | None,
+    fold_scores: Annotated[
+        list[float],
         Field(
-            description="How many times the rows were shuffled into folds (ADR-0050). Absent: once, as before repeated folds.",
-            ge=0,
-        ),
-    ] = None
-    seed: Annotated[int, Field(description="Seed that shuffled the rows into folds.", ge=0)]
-    baseline: Annotated[
-        str,
-        Field(
-            description="The candidate every other must beat. As a floor, a model that ignores its features; as a reference, the rule's recommended preparation.",
-            pattern="^[a-z][a-z0-9_]{0,62}$",
+            description="The metric on each fold's validation rows, in fold order, repeat after repeat."
         ),
     ]
-    baseline_role: Annotated[
-        BaselineRole | None,
-        Field(description="Absent: floor, as decided before ADR-0050 compared preparation."),
+    mean: float
+    spread: Annotated[float, Field(description="Standard deviation of the fold scores.")]
+    versus_baseline: Annotated[
+        BaselineComparison | None, Field(description="Absent for the baseline itself.")
     ] = None
-    candidates: list[CandidateResult]
-    winner: Annotated[
-        str | None,
+    search: Annotated[
+        CandidateSearch | None,
         Field(
-            description="The chosen candidate. Absent: no model beats a floor baseline. A reference baseline is the winner when no alternative beats it.",
-            pattern="^[a-z][a-z0-9_]{0,62}$",
+            description="How its settings were tuned (ADR-0051). Absent: it ran at the flow's settings."
         ),
     ] = None
-    reason: Annotated[str, Field(min_length=1)]
-    not_compared: Annotated[
-        list[NotCompared] | None,
+    guardrails: Annotated[
+        list[GuardrailResult] | None,
         Field(
-            description="Alternatives the comparison did not score, each with why (ADR-0050). Absent: decided before ADR-0050 recorded them."
+            description="Each declared guardrail, in declared order, as this candidate met it. Absent: none were declared."
         ),
     ] = None
-    limitations: Annotated[
-        list[Limitation], Field(description="What the comparison did not cover.")
-    ]
 
 
 class WorkerMessage(
@@ -2187,3 +2189,64 @@ class ModelSelection(StrictModel):
     proposal: DecisionProposal
     comparison: PipelineVersion
     run: Run
+
+
+class SelectionDecision(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.selection_decision/v1"]
+    metric: SelectionMetric
+    folds: Annotated[
+        int,
+        Field(description="Number of cross-validation folds every candidate was scored on.", ge=0),
+    ]
+    repeats: Annotated[
+        int | None,
+        Field(
+            description="How many times the rows were shuffled into folds (ADR-0050). Absent: once, as before repeated folds.",
+            ge=0,
+        ),
+    ] = None
+    seed: Annotated[int, Field(description="Seed that shuffled the rows into folds.", ge=0)]
+    baseline: Annotated[
+        str,
+        Field(
+            description="The candidate every other must beat. As a floor, a model that ignores its features; as a reference, the rule's recommended preparation.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ]
+    baseline_role: Annotated[
+        BaselineRole | None,
+        Field(description="Absent: floor, as decided before ADR-0050 compared preparation."),
+    ] = None
+    candidates: list[CandidateResult]
+    winner: Annotated[
+        str | None,
+        Field(
+            description="The chosen candidate. Absent: no model beats a floor baseline. A reference baseline is the winner when no alternative beats it.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ] = None
+    reason: Annotated[str, Field(min_length=1)]
+    not_compared: Annotated[
+        list[NotCompared] | None,
+        Field(
+            description="Alternatives the comparison did not score, each with why (ADR-0050). Absent: decided before ADR-0050 recorded them."
+        ),
+    ] = None
+    limitations: Annotated[
+        list[Limitation], Field(description="What the comparison did not cover.")
+    ]
+    guardrails: Annotated[
+        list[Guardrail] | None,
+        Field(
+            description="Constraints a candidate had to meet to win, declared with the study (EXP-02, ADR-0051). Absent: none were declared."
+        ),
+    ] = None
+    earlier_looks: Annotated[
+        list[PipelineVersionId] | None,
+        Field(
+            description="Earlier comparisons of the same version and step, scored on the same folds before this one (ADR-0051). Absent: none."
+        ),
+    ] = None

@@ -46,7 +46,7 @@ Arch doc sections: §3 (Experiment), §5, §11, §21 (M4), §22 (EXP-01, EXP-02,
   - scores itself on 3 inner folds of that outer fold's training rows;
   - is fit on the outer training rows and scored on the outer validation rows.
 - Inner folds follow the split as outer folds do: stratified, by group, or by time. Within one outer fold, every trial of a candidate uses the same inner folds, seeded by the outer fold.
-- A time-split study is refused when an outer fold's training rows cannot hold 3 inner time folds.
+- A time-split trial fails when an outer fold's training rows cannot hold 3 inner time folds. scikit-learn's `TimeSeriesSplit` error says why, and the study ends `failed`.
 - `sprisk.ml.select_model` tunes each candidate one outer fold at a time:
   - it takes the trial with the best inner mean, ties going to the first in study order;
   - it uses that trial's outer score as the candidate's score for that fold.

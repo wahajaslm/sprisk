@@ -104,10 +104,10 @@ describe("model comparison", () => {
       ...pipeline.nodes.filter((n) => n.id === "load" || n.id === "split"),
       ...["dummy_baseline", "linear_model", "random_forest"].map((name) => ({
         id: `cv_ml_${name}`,
-        operator: "sprisk.ml.cross_validate@2.0.0",
+        operator: "sprisk.ml.cross_validate@3.0.0",
         params: { candidate: `sprisk.ml.${name}@1.0.0`, candidate_params: { target: "y", features: ["x"], task: "classification" }, prepare: [] },
       })),
-      { id: "select_model", operator: "sprisk.ml.select_model@3.0.0", params: {} },
+      { id: "select_model", operator: "sprisk.ml.select_model@4.0.0", params: {} },
     ],
   };
   const comparisonRun = { ...run, id: CRUN, pipeline_version_id: CPV };
@@ -358,7 +358,7 @@ describe("model comparison", () => {
     };
     const imputed = (method: string) => ({
       id: `cv_impute_${method}`,
-      operator: "sprisk.ml.cross_validate@2.0.0",
+      operator: "sprisk.ml.cross_validate@3.0.0",
       params: {
         candidate: "sprisk.ml.linear_model@1.0.0",
         candidate_params: { target: "y", features: ["x"], task: "classification" },
