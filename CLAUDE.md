@@ -6,7 +6,7 @@ Architecture target: [docs/architecture/sprisk-enterprise-platform-design-v2.md]
 
 ## Status
 
-Current milestone: **M0 — repository reconciliation for the core workbench** (v2 §21). Existing execution work remains usable, but it does not establish that question, methodology decision or evidence contracts exist. External auth, hosted storage and other platform integrations are deferred until the local core acceptance gate.
+Current milestone: **M4 — Experiments and selection** (v2 §21). M0 was signed off on 21 October 2026. M3 is done. M1 and M2 are partly open. Open gaps, most important first, are in [docs/architecture/architecture-integration-map.md](docs/architecture/architecture-integration-map.md). External auth, hosted storage and other platform integrations are deferred until the local core acceptance gate (end of M4).
 
 ## Layout (arch doc §14)
 

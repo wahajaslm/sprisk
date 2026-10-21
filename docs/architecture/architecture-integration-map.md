@@ -1,6 +1,6 @@
 # Sprisk core workbench integration map
 
-**Status:** M0 reconciliation, revised 21 October 2026. Awaiting sign-off.
+**Status:** M0 reconciliation, signed off 21 October 2026.
 **Target:** [`sprisk-enterprise-platform-design-v2.md`](sprisk-enterprise-platform-design-v2.md) §21.1.
 **Scope:** the local core workbench. External auth, hosted storage and deployment stay deferred.
 
