@@ -7,7 +7,8 @@ mod decision;
 pub mod facts;
 pub use catalog::{CatalogError, RuleCatalog};
 pub use compare::{
-    Comparison, FOLDS, REPEATS, SEED, SELECT_NODE, comparison, preparation_comparison,
+    Comparison, FOLDS, REPEATS, SEED, SELECT_NODE, TrialStep, comparison, preparation_comparison,
+    trial_steps,
 };
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts, proposal,

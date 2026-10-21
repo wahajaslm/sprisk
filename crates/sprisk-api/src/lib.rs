@@ -31,7 +31,8 @@ use sprisk_contracts::{
     MethodologyRuleSource, ModelSelection, NotebookExecute, NotebookExecution,
     NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
     Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
-    QuestionVersionId, Run, RunId, parse,
+    QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId, StudyStatus, TaskType,
+    Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -96,6 +97,12 @@ pub fn router(state: AppState) -> Router {
             "/pipeline_versions/{id}/model_selection/{node_id}",
             post(select_model),
         )
+        .route(
+            "/pipeline_versions/{id}/studies/{node_id}",
+            post(create_study),
+        )
+        .route("/pipeline_versions/{id}/studies", get(list_studies))
+        .route("/studies/{id}", get(get_study))
         .route("/methodology_decisions", get(list_methodology_decisions))
         .route("/methodology_decisions/{id}", get(get_methodology_decision))
         .route("/methodology_rules", get(list_methodology_rules))
@@ -1511,6 +1518,219 @@ async fn select_model(
     ))
 }
 
+/// Studies the model step `node_id` (ADR-0051): its own shortlist proposal, compared with
+/// one trial per candidate and setting, within a budget. A replayed key gets the saved study.
+async fn create_study(
+    State(state): State<AppState>,
+    Path((raw, node_id)): Path<(String, String)>,
+    text: String,
+) -> Result<(StatusCode, Json<StudyDetail>), ApiError> {
+    let pipeline_id: PipelineVersionId = id(&raw)?;
+    let step: sprisk_contracts::NodeId = id(&node_id)?;
+    let request: sprisk_contracts::CreateStudy = body(&text)?;
+    if let Some(saved) = state
+        .store
+        .study_replay(&pipeline_id, &step, &request)
+        .await?
+    {
+        return Ok((StatusCode::OK, Json(study_detail(&state, saved).await?)));
+    }
+    check_budget(&request)?;
+    let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
+    let shortlisted = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id == step)
+        .is_some_and(|n| {
+            state
+                .rules
+                .rule_for_operator(n.operator.as_str())
+                .is_some_and(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist))
+        });
+    if !shortlisted {
+        return Err(ApiError::BadRequest {
+            code: "not_studied",
+            message: format!("step {node_id} is not a model step that a shortlist rule decides"),
+        });
+    }
+    let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
+    let question = state
+        .store
+        .get_question_version(&proposal.question_version_id)
+        .await?;
+    check_guardrails(&request, question.task.value)?;
+    let comparison = comparison_version(&state, &proposal).await?;
+    let trials = sprisk_methodology::trial_steps(&comparison)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .len() as u64;
+    if trials > request.max_trials {
+        return Err(ApiError::BadRequest {
+            code: "over_budget",
+            message: format!(
+                "this study has {trials} trials; its budget allows {}",
+                request.max_trials
+            ),
+        });
+    }
+    let (run, plan) = queued_run(&state, &comparison).await?;
+    let study: Study = parse(
+        &json!({
+            "schema_version": "sprisk.study/v1",
+            "id": format!("std_{}", ulid::Ulid::new()),
+            "project_id": pipeline.project_id,
+            "pipeline_version_id": pipeline_id,
+            "node_id": step,
+            "proposal_id": proposal.id,
+            "comparison_id": comparison.id,
+            "run_id": run.id,
+            "strategy": request.strategy,
+            "seed": request.seed,
+            "max_trials": request.max_trials,
+            "max_wall_seconds": request.max_wall_seconds,
+            "guardrails": request.guardrails,
+            "status": "running",
+            "created_at": now(),
+        })
+        .to_string(),
+    )
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let (kept, created) = state
+        .store
+        .insert_study(&study, &request, &comparison, &run)
+        .await?;
+    if created {
+        spawn_study(&state, &kept, comparison, plan);
+    }
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(study_detail(&state, kept).await?)))
+}
+
+fn check_budget(request: &sprisk_contracts::CreateStudy) -> Result<(), ApiError> {
+    if request.max_trials == 0 || request.max_wall_seconds == 0 {
+        return Err(ApiError::BadRequest {
+            code: "invalid_budget",
+            message: "max_trials and max_wall_seconds must each be at least 1".into(),
+        });
+    }
+    Ok(())
+}
+
+fn check_guardrails(
+    request: &sprisk_contracts::CreateStudy,
+    task: TaskType,
+) -> Result<(), ApiError> {
+    for guardrail in &request.guardrails {
+        let at_least = guardrail.at_least;
+        if !(0.0..=1.0).contains(&at_least) {
+            return Err(ApiError::BadRequest {
+                code: "invalid_guardrail",
+                message: format!("a minimum recall is between 0 and 1, not {at_least}"),
+            });
+        }
+        if task != TaskType::Classification {
+            return Err(ApiError::BadRequest {
+                code: "invalid_guardrail",
+                message: format!("recall of a class needs a classification question, not {task}"),
+            });
+        }
+    }
+    Ok(())
+}
+
+async fn get_study(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Json<StudyDetail>, ApiError> {
+    let study = state.store.get_study(&id::<StudyId>(&raw)?).await?;
+    Ok(Json(study_detail(&state, study).await?))
+}
+
+async fn list_studies(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    query: Query,
+) -> Result<Json<Vec<Study>>, ApiError> {
+    let pipeline_id: PipelineVersionId = id(&raw)?;
+    Ok(Json(
+        state.store.studies_of(&pipeline_id, limit(&query)?).await?,
+    ))
+}
+
+/// The study with its trials, read from its comparison and its run's attempts (ADR-0051).
+async fn study_detail(state: &AppState, study: Study) -> Result<StudyDetail, ApiError> {
+    let comparison = state
+        .store
+        .get_pipeline_version(&study.comparison_id)
+        .await?;
+    let run = state.store.get_run(&study.run_id).await?;
+    let attempts = state.store.list_attempts(&run.id).await?;
+    let outputs = state
+        .store
+        .latest_outputs(std::slice::from_ref(&comparison.id))
+        .await?;
+    let steps = sprisk_methodology::trial_steps(&comparison)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut trials = Vec::new();
+    for step in steps {
+        let of_step: Vec<&sprisk_contracts::Attempt> = attempts
+            .iter()
+            .filter(|a| a.node_id.as_str() == step.node_id)
+            .collect();
+        let scores = outputs
+            .iter()
+            .find(|o| o.run_id == run.id && o.node_id == step.node_id && o.port == "scores")
+            .map(|o| o.artifact.id.clone());
+        let mut doc = json!({
+            "schema_version": "sprisk.trial/v1",
+            "study_id": study.id,
+            "node_id": step.node_id,
+            "candidate": step.candidate,
+            "operator": step.operator,
+            "settings": {},
+            "state": trial_state(&of_step, run.status),
+            "attempts": of_step.iter().map(|a| &a.id).collect::<Vec<_>>(),
+        });
+        if let Some(scores) = scores {
+            doc["scores"] = json!(scores);
+        }
+        let trial: Trial =
+            parse(&doc.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?;
+        trials.push(trial);
+    }
+    Ok(StudyDetail { study, trials, run })
+}
+
+/// A trial's state from its attempts, oldest first, and its run's status.
+fn trial_state(
+    attempts: &[&sprisk_contracts::Attempt],
+    run: RunStatus,
+) -> sprisk_contracts::TrialState {
+    use sprisk_contracts::{AttemptState as A, TrialState as T};
+    if attempts
+        .iter()
+        .any(|a| matches!(a.state, A::Succeeded | A::CacheHit))
+    {
+        return T::Succeeded;
+    }
+    let Some(last) = attempts.last() else {
+        return T::NotStarted;
+    };
+    let ended = matches!(
+        run,
+        RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled
+    );
+    match last.state {
+        A::Cancelled if ended => T::Cancelled,
+        A::Failed | A::TimedOut | A::Skipped | A::Cancelled if ended => T::Failed,
+        // The run goes on, so a retry is due.
+        _ => T::Running,
+    }
+}
+
 fn materialize_effect(
     base: &PipelineVersion,
     alternative: &serde_json::Value,
@@ -1683,6 +1903,22 @@ async fn queued_run(state: &AppState, pipeline: &PipelineVersion) -> Result<(Run
     Ok((run, plan))
 }
 
+/// Runs a study's comparison in the background, then records how the study ended.
+fn spawn_study(state: &AppState, study: &Study, comparison: PipelineVersion, plan: Plan) {
+    let state = state.clone();
+    let (study_id, run_id) = (study.id.clone(), study.run_id.clone());
+    tokio::spawn(async move {
+        let ended = match drive_run(&state, &run_id, &comparison, &plan, None).await {
+            Ok(RunStatus::Succeeded) => StudyStatus::Completed,
+            // Nothing cancels a study's run yet; its wall-time budget will (ADR-0051).
+            Ok(_) | Err(_) => StudyStatus::Failed,
+        };
+        if let Err(e) = state.store.set_study_status(&study_id, ended, &now()).await {
+            tracing::error!(study = study_id.as_str(), error = %e, "could not record how the study ended");
+        }
+    });
+}
+
 /// Runs a stored run in the background, reusing `reuse` up to the first changed step.
 fn spawn_run(
     state: &AppState,
@@ -1696,29 +1932,44 @@ fn spawn_run(
     let run_id = run.id.clone();
     let state = state.clone();
     tokio::spawn(async move {
-        let workers = ProcessWorkers {
-            command: state.worker_command.clone(),
-            idle: state.idle_worker.clone(),
-        };
-        let mut scheduler = Scheduler::new(
-            &state.store,
-            &state.artifacts,
-            workers,
-            state.settings.clone(),
-        );
-        if let Some(gate) = state.gate.clone() {
-            scheduler = scheduler.with_gate(gate);
-        }
-        if let Some(check) = state.split_check.clone() {
-            scheduler = scheduler.with_split_check(check);
-        }
-        if let Some(reuse) = reuse {
-            scheduler = scheduler.reusing(reuse);
-        }
-        if let Err(e) = scheduler.run(&run_id, &pipeline, &plan).await {
-            tracing::error!(run = run_id.as_str(), error = %e, "run stopped");
-        }
+        // drive_run logs a run that stops.
+        let _ = drive_run(&state, &run_id, &pipeline, &plan, reuse).await;
     });
+}
+
+/// Runs `run_id` to its end in this process. The database stays the truth, so a restart can
+/// resume the run (backlog: separate runner process).
+async fn drive_run(
+    state: &AppState,
+    run_id: &RunId,
+    pipeline: &PipelineVersion,
+    plan: &Plan,
+    reuse: Option<RunId>,
+) -> Result<RunStatus, sprisk_scheduler::SchedulerError> {
+    let workers = ProcessWorkers {
+        command: state.worker_command.clone(),
+        idle: state.idle_worker.clone(),
+    };
+    let mut scheduler = Scheduler::new(
+        &state.store,
+        &state.artifacts,
+        workers,
+        state.settings.clone(),
+    );
+    if let Some(gate) = state.gate.clone() {
+        scheduler = scheduler.with_gate(gate);
+    }
+    if let Some(check) = state.split_check.clone() {
+        scheduler = scheduler.with_split_check(check);
+    }
+    if let Some(reuse) = reuse {
+        scheduler = scheduler.reusing(reuse);
+    }
+    let result = scheduler.run(run_id, pipeline, plan).await;
+    if let Err(e) = &result {
+        tracing::error!(run = run_id.as_str(), error = %e, "run stopped");
+    }
+    result
 }
 
 async fn get_run(
@@ -1967,6 +2218,46 @@ async fn list_loaded_tables(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn attempt(state: &str) -> sprisk_contracts::Attempt {
+        parse(
+            &json!({
+                "schema_version": "sprisk.attempt/v1",
+                "id": "att_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                "run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ0",
+                "node_id": "cv_ml_linear_model",
+                "number": 1,
+                "state": state,
+                "created_at": "2026-10-21T10:00:00Z",
+            })
+            .to_string(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    #[test]
+    fn a_trial_s_state_is_read_from_its_attempts_and_its_run() {
+        use sprisk_contracts::TrialState as T;
+        let state = |states: &[&str], run| {
+            let attempts: Vec<_> = states.iter().map(|s| attempt(s)).collect();
+            trial_state(&attempts.iter().collect::<Vec<_>>(), run)
+        };
+        assert_eq!(state(&[], RunStatus::Running), T::NotStarted);
+        assert_eq!(state(&[], RunStatus::Failed), T::NotStarted);
+        assert_eq!(state(&["running"], RunStatus::Running), T::Running);
+        // A failed attempt in a run that goes on is retried.
+        assert_eq!(state(&["failed"], RunStatus::Running), T::Running);
+        assert_eq!(
+            state(&["failed", "timed_out"], RunStatus::Failed),
+            T::Failed
+        );
+        assert_eq!(state(&["cancelled"], RunStatus::Cancelled), T::Cancelled);
+        assert_eq!(
+            state(&["failed", "succeeded"], RunStatus::Failed),
+            T::Succeeded
+        );
+        assert_eq!(state(&["cache_hit"], RunStatus::Succeeded), T::Succeeded);
+    }
 
     #[test]
     fn content_over_the_display_cap_is_refused_unless_downloaded() {

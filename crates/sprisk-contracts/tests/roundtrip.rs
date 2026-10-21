@@ -8,12 +8,13 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, CreateStudy, DatasetProfile,
-    DecisionProposal, FigureSet, LoadedTable, MethodologyCheck, MethodologyDecision,
-    MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookExecute, NotebookExecution,
-    NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator,
-    OperatorSource, PipelineVersion, Problem, QuestionVersion, RuleDecision, RuleObservation, Run,
-    SelectionDecision, Study, StudyDetail, TablePage, Trial, WorkerMessage, parse,
+    CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, CreateStudy,
+    DatasetProfile, DecisionProposal, FigureSet, LoadedTable, MethodologyCheck,
+    MethodologyDecision, MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookExecute,
+    NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables,
+    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
+    RuleDecision, RuleObservation, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial,
+    WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {

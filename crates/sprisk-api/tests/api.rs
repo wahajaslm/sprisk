@@ -2955,3 +2955,206 @@ async fn a_rule_pick_that_cannot_take_the_step_s_place_is_no_proposal() {
         "{body}"
     );
 }
+
+const BASE: &str = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";
+
+fn study_request(key: &str) -> Value {
+    json!({
+        "idempotency_key": key,
+        "strategy": "grid",
+        "seed": 0,
+        "max_trials": 10,
+        "max_wall_seconds": 600,
+        "guardrails": [],
+    })
+}
+
+async fn create_study(api: &Api, step: &str, request: Value) -> (StatusCode, Value) {
+    let uri = format!("/pipeline_versions/{BASE}/studies/{step}");
+    call(&api.app, "POST", &uri, Some(request)).await
+}
+
+async fn wait_study(api: &Api, id: &str) -> Value {
+    for _ in 0..1200 {
+        let (_, detail) = call(&api.app, "GET", &format!("/studies/{id}"), None).await;
+        if detail["study"]["status"] != "running" {
+            return detail;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("study {id} did not end");
+}
+
+#[tokio::test]
+async fn a_study_compares_the_shortlist_and_its_trials_are_read_from_the_run() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+
+    let (status, detail) = create_study(&api, "model", study_request("study-key-0001")).await;
+    assert_eq!(status, StatusCode::CREATED, "{detail}");
+    let study = &detail["study"];
+    assert_eq!(study["status"], "running");
+    assert_eq!(study["pipeline_version_id"], BASE);
+    assert_eq!(study["run_id"], detail["run"]["id"]);
+    assert_eq!(detail["run"]["pipeline_version_id"], study["comparison_id"]);
+    let (_, comparison) = call(
+        &api.app,
+        "GET",
+        &format!(
+            "/pipeline_versions/{}",
+            study["comparison_id"].as_str().unwrap()
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(comparison["compares"], study["proposal_id"]);
+    // 40 train rows shortlist the baseline and the linear model; neither declares a search.
+    let candidates: Vec<&str> = detail["trials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["candidate"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        candidates,
+        ["ml_dummy_baseline", "ml_linear_model"],
+        "{detail}"
+    );
+    for trial in detail["trials"].as_array().unwrap() {
+        assert_eq!(trial["settings"], json!({}));
+        assert_eq!(trial["study_id"], study["id"]);
+    }
+
+    let id = study["id"].as_str().unwrap();
+    let done = wait_study(&api, id).await;
+    assert_eq!(done["study"]["status"], "completed", "{done}");
+    assert!(done["study"]["finished_at"].is_string());
+    for trial in done["trials"].as_array().unwrap() {
+        assert_eq!(trial["state"], "succeeded", "{trial}");
+        assert_eq!(trial["attempts"].as_array().unwrap().len(), 1, "{trial}");
+        assert!(
+            trial["scores"].as_str().unwrap().starts_with("art_"),
+            "{trial}"
+        );
+    }
+
+    let (_, listed) = call(
+        &api.app,
+        "GET",
+        &format!("/pipeline_versions/{BASE}/studies"),
+        None,
+    )
+    .await;
+    assert_eq!(listed, json!([done["study"]]));
+}
+
+#[tokio::test]
+async fn a_study_key_replays_the_same_request_and_refuses_another() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+    let (_, first) = create_study(&api, "model", study_request("study-key-0002")).await;
+
+    let (status, again) = create_study(&api, "model", study_request("study-key-0002")).await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["study"]["id"], first["study"]["id"]);
+    assert_eq!(again["run"]["id"], first["run"]["id"]);
+
+    let mut other = study_request("study-key-0002");
+    other["max_trials"] = json!(11);
+    let (status, refused) = create_study(&api, "model", other).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert_eq!(refused["errors"][0]["code"], "conflict");
+}
+
+#[tokio::test]
+async fn two_study_requests_at_once_with_one_key_make_one_study_and_one_run() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+
+    let ((one, first), (two, second)) = tokio::join!(
+        create_study(&api, "model", study_request("study-key-0003")),
+        create_study(&api, "model", study_request("study-key-0003")),
+    );
+    assert!(one.is_success() && two.is_success(), "{first} {second}");
+    assert_eq!(first["study"]["id"], second["study"]["id"]);
+    assert_eq!(first["run"]["id"], second["run"]["id"]);
+    let (_, listed) = call(
+        &api.app,
+        "GET",
+        &format!("/pipeline_versions/{BASE}/studies"),
+        None,
+    )
+    .await;
+    assert_eq!(listed.as_array().unwrap().len(), 1, "{listed}");
+    let comparison = first["study"]["comparison_id"].as_str().unwrap();
+    let (_, runs) = call(
+        &api.app,
+        "GET",
+        &format!("/runs?pipeline_version_id={comparison}"),
+        None,
+    )
+    .await;
+    assert_eq!(runs.as_array().unwrap().len(), 1, "{runs}");
+}
+
+#[tokio::test]
+async fn a_study_with_more_trials_than_its_budget_is_refused_and_nothing_is_stored() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+    let mut request = study_request("study-key-0004");
+    request["max_trials"] = json!(1);
+
+    let (status, body) = create_study(&api, "model", request).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "over_budget");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("2 trials"),
+        "{body}"
+    );
+    let (_, listed) = call(
+        &api.app,
+        "GET",
+        &format!("/pipeline_versions/{BASE}/studies"),
+        None,
+    )
+    .await;
+    assert_eq!(listed, json!([]));
+}
+
+#[tokio::test]
+async fn a_study_needs_a_budget_a_guardrail_in_range_and_a_model_step() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+    let cases = [
+        ("max_trials", json!(0), "invalid_budget"),
+        ("max_wall_seconds", json!(0), "invalid_budget"),
+        (
+            "guardrails",
+            json!([{ "metric": "recall", "label": "1", "at_least": 1.5 }]),
+            "invalid_guardrail",
+        ),
+    ];
+    for (field, value, code) in cases {
+        let mut request = study_request("study-key-0005");
+        request[field] = value;
+        let (status, body) = create_study(&api, "model", request).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{field}: {body}");
+        assert_eq!(body["errors"][0]["code"], code, "{field}: {body}");
+    }
+
+    let (status, body) = create_study(&api, "split", study_request("study-key-0006")).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "not_studied");
+
+    let (status, body) = call(
+        &api.app,
+        "GET",
+        "/studies/std_01JABCDEFGHJKMNPQRSTVWXYZ9",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}

@@ -287,6 +287,44 @@ fn build(
     Ok(Comparison { nodes, edges })
 }
 
+/// One cross-validate step of a comparison: a candidate at one set of settings (ADR-0051).
+#[derive(Debug, PartialEq)]
+pub struct TrialStep<'p> {
+    pub node_id: &'p str,
+    pub candidate: &'p str,
+    pub operator: &'p str,
+}
+
+/// The trials of `comparison`, in the order its select step lists them.
+pub fn trial_steps(comparison: &PipelineVersion) -> Result<Vec<TrialStep<'_>>, ResolveError> {
+    let select = step_of(comparison, SELECT_NODE)?;
+    let ids = select
+        .params
+        .get("trials")
+        .and_then(|t| t.as_array())
+        .ok_or_else(|| ResolveError::Selection(format!("{SELECT_NODE} lists no trials")))?;
+    ids.iter()
+        .map(|id| {
+            let candidate = id
+                .as_str()
+                .ok_or_else(|| ResolveError::Selection(format!("trial {id} is not an id")))?;
+            let node = step_of(comparison, &format!("cv_{candidate}"))?;
+            let operator = node
+                .params
+                .get("candidate")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| {
+                    ResolveError::Selection(format!("{} names no candidate", node.id.as_str()))
+                })?;
+            Ok(TrialStep {
+                node_id: node.id.as_str(),
+                candidate,
+                operator,
+            })
+        })
+        .collect()
+}
+
 /// Fixed before any score is seen (ADR-0044).
 fn metric_of(task: TaskType) -> Result<&'static str, ResolveError> {
     match task {

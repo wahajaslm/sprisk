@@ -282,17 +282,21 @@ impl SqliteStore {
             return Ok((study.clone(), true));
         }
         tx.rollback().await?;
-        let saved = self.study_replay(study, request).await?.ok_or_else(|| {
-            StoreError::Conflict(format!("study with idempotency key {key} lost"))
-        })?;
+        let saved = self
+            .study_replay(&study.pipeline_version_id, &study.node_id, request)
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict(format!("study with idempotency key {key} lost"))
+            })?;
         Ok((saved, false))
     }
 
     /// The study already stored under `request`'s key, if it was asked for the same way (same
     /// version, step and request). The same key asking for anything else is a conflict.
-    async fn study_replay(
+    pub async fn study_replay(
         &self,
-        study: &Study,
+        pipeline: &PipelineVersionId,
+        step_asked: &NodeId,
         request: &CreateStudy,
     ) -> Result<Option<Study>, StoreError> {
         let key = request.idempotency_key.as_str();
@@ -306,8 +310,8 @@ impl SqliteStore {
             return Ok(None);
         };
         let saved: Study = serde_json::from_str(&body)?;
-        let same = version == study.pipeline_version_id.as_str()
-            && step == study.node_id.as_str()
+        let same = version == pipeline.as_str()
+            && step == step_asked.as_str()
             && serde_json::from_str::<CreateStudy>(&saved_request)? == *request;
         if !same {
             return Err(StoreError::Conflict(format!(
