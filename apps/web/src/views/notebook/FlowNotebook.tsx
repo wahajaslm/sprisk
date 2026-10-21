@@ -10,7 +10,7 @@ import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { TabBody, useStep } from "../inspector/step.tsx";
 import { stageDescription } from "../StageArtwork.tsx";
-import { markdownUrl } from "./SessionNotebook.tsx";
+import { markdownUrl } from "./NotebookCells.tsx";
 
 /** One stage of the flow as a notebook (ADR-0055): each step is a cell, read from the flow
  * itself, so the canvas and the notebook show one record. A ready-made step is its settings
