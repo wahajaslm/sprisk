@@ -1,5 +1,5 @@
 import type { Attempt, DecisionProposal, PipelineVersion, SelectionDecision } from "@sprisk/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { isLive, useRuns } from "../api/hooks.ts";
 import { useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
@@ -28,7 +28,7 @@ export function ModelComparisons({ flowIds, head, versions }: { flowIds: string[
       {mine.map(({ version, proposal }) => (
         <Comparison key={version.id} comparison={version} proposal={proposal} />
       ))}
-      <TestRowsCaution head={head} />
+      <TestRowsCautions head={head} />
     </>
   );
 }
@@ -53,8 +53,12 @@ function AutoSelectStep({ head, nodeId, decisionId }: { head: PipelineVersion; n
   const waiting = decisionId !== undefined && decision.isPending;
   const due = hasRun && !chosenHere && !waiting;
   const { mutate } = select;
+  // Once per mount: the server shares one selection between requests anyway (ADR-0047).
+  const fired = useRef(false);
   useEffect(() => {
-    if (due) mutate({ pipelineId: head.id, nodeId });
+    if (!due || fired.current) return;
+    fired.current = true;
+    mutate({ pipelineId: head.id, nodeId });
   }, [due, head.id, nodeId, mutate]);
   if (select.isError) return <p role="alert" className="error pad">Sprisk could not choose a model for {nodeId}: {select.error.message}</p>;
   if (!hasRun && !runs.isPending && !chosenHere) return <p className="muted pad">Run the flow, and Sprisk will compare models for {nodeId}.</p>;
@@ -202,16 +206,20 @@ function UseModel({ id, recommended, winner, artifactId, proposal, onCancel }: {
   );
 }
 
-/** Warns when this version's model was chosen after another branch had scored the test rows:
- * its test score is then no longer an unbiased estimate (arch doc §11). */
-function TestRowsCaution({ head }: { head: PipelineVersion }) {
-  const decided = head.nodes.find((n) => n.methodology_decision_id !== undefined)?.methodology_decision_id;
-  const decision = useMethodologyDecision(decided);
+/** One caution per step of the head whose choice was made after the test rows had been
+ * scored: its test score is then no longer an unbiased estimate (arch doc §11). */
+function TestRowsCautions({ head }: { head: PipelineVersion }) {
+  const decided = head.nodes.flatMap((n) => (n.methodology_decision_id ? [n.methodology_decision_id] : []));
+  return decided.map((id) => <TestRowsCaution key={id} decisionId={id} />);
+}
+
+function TestRowsCaution({ decisionId }: { decisionId: string }) {
+  const decision = useMethodologyDecision(decisionId);
   const seen = decision.data?.test_rows_seen_by ?? [];
   if (seen.length === 0) return null;
   return (
     <div className="cautions pad">
-      <p>⚠ This model was chosen after {seen.join(", ")} had already scored the same test rows. Its test score is no longer an unbiased estimate.</p>
+      <p>⚠ {decision.data?.subject_node_id} was chosen after {seen.join(", ")} had already scored the same test rows. Its test score is no longer an unbiased estimate.</p>
     </div>
   );
 }
@@ -232,13 +240,15 @@ function gain(c: Candidate): string {
   return `${versus.mean_difference >= 0 ? "+" : "−"}${formatMetric(Math.abs(versus.mean_difference))} ± ${formatMetric(versus.corrected_se)}${p}`;
 }
 
-/** Where a candidate stands: one corrected SE is a screening bar, not a test. */
+/** Where a candidate stands, claiming no more than was tested: with a p value the corrected
+ * t-test decided; without one (older decisions) the one-SE screen did. */
 function verdict(c: Candidate, decision: SelectionDecision): string {
   if (c.id === decision.baseline) return "the floor";
   if (c.id === decision.winner) return "recommended";
   const versus = c.versus_baseline;
   if (!versus) return "—";
-  if (versus.beats_baseline) return versus.p_value === undefined ? "clears the 1-SE bar" : "beats the baseline (tested)";
+  if (versus.p_value !== undefined) return versus.beats_baseline ? "beats the baseline (tested)" : "not shown to beat the baseline";
+  if (versus.beats_baseline) return "clears the 1-SE bar";
   if (versus.mean_difference < -versus.corrected_se) return "worse than baseline";
   return "within 1 SE of baseline";
 }

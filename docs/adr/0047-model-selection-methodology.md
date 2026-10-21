@@ -23,7 +23,8 @@ Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.
   - A preparation operator declares `fits_on_train: true`: it reads train and test, fits on train only, and writes each from its own rows.
   - The worker wraps that step's own function as a fold transformer: fit stores the fold's training rows, and transform applies the step to new rows. A fold runs exactly the code the flow runs, and nothing is reimplemented.
   - The same flag replaces the API's hard-coded list of steps that keep train rows apart.
-  - If a step between the split and the model lacks the flag, the SelectionDecision names it as left out (ADR-0044).
+  - A step between the split and the model without the flag stops the comparison: such a step may mix rows, so the train rows cannot be traced to the split (ADR-0044).
+  - A step refit per fold must also be pure and read no files: each fold runs it again, with no approval and no data-root check of its own.
 - **Sprisk compares on its own.**
   - `POST /pipeline_versions/{id}/model_selection/{node_id}` resolves the model step's shortlist, builds its comparison and starts its run, or returns the ones it already has.
   - It changes nothing in the flow. The UI calls it when it shows a flow version that has run and whose model step a shortlist rule decides.
@@ -36,7 +37,7 @@ Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.
 - **"Beats the baseline" becomes a test.**
   - The protocol becomes repeated stratified k-fold: 10 repeats × 5 folds.
   - The corrected repeated k-fold t-test is one-sided at α = 0.05 (Nadeau & Bengio 2003; Bouckaert & Frank 2004), with a Holm adjustment over the candidates.
-  - Until it lands, the one-SE screen stays, and the decision says so.
+  - Decisions made before the test have no p value; the UI then shows the one-SE screen they used.
 - **Applying the recommendation needs no reason.** Apply reads the latest SelectionDecision of the proposal's comparison, checked against its contract. If the chosen model is its recommendation, it is not an override. Any other model needs a reason.
 - **People may try other models.**
   - Each **Use this model** is a new flow version, branched from the compared version.
@@ -76,3 +77,4 @@ Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.
 
 ## Amendments
 - 2026-10-21: Preparation joins the folds through `fits_on_train` and a wrapper around the step's own function, not through a second `transformer` function per operator. One implementation per step, as rule 10 asks.
+- 2026-10-21: Review fixes. `sprisk.ml.cross_validate` and `sprisk.ml.select_model` become `@2.0.0`, since their params changed; comparisons stored at `@1.0.0` can no longer be rerun, and Sprisk builds a new one when a version is next shown. Each version's step has one model selection, claimed in the store (`model_selections`), so concurrent requests share one comparison and one run. `model.complexity`, like `model.estimator`, is optional in the contract but required by the registry for a model with tasks. A temporal split that also keeps entities apart cannot be compared yet: time folds would mix entities.

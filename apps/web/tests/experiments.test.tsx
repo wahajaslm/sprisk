@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { StrictMode } from "react";
 import { describe, expect, it } from "vitest";
 
 import appliedDecision from "../../../tests/contract/applied_methodology_decision/valid/applied.json";
@@ -126,7 +127,7 @@ describe("model comparison", () => {
     created_at: "2026-10-19T10:00:00Z",
   };
 
-  function compared(decision: object) {
+  function compared(decision: object, strict = false) {
     const applied: unknown[] = [];
     server.use(
       http.get("/api/pipeline_versions", () => HttpResponse.json([comparison, pipeline])),
@@ -143,7 +144,7 @@ describe("model comparison", () => {
       }),
     );
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    renderWithApi(<Experiments />);
+    renderWithApi(strict ? <StrictMode><Experiments /></StrictMode> : <Experiments />);
     return applied;
   }
 
@@ -284,7 +285,7 @@ describe("model comparison", () => {
         HttpResponse.json({ ...seenDecision, id: DECISION, pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ4" }),
       ),
     );
-    expect(await screen.findByText(/This model was chosen after plv_01JABCDEFGHJKMNPQRSTVWXYZ1 had already scored the same test rows/)).toBeInTheDocument();
+    expect(await screen.findByText(/model was chosen after plv_01JABCDEFGHJKMNPQRSTVWXYZ1 had already scored the same test rows/)).toBeInTheDocument();
   });
 
   it("names repeated folds and each model's p against the baseline", async () => {
@@ -294,5 +295,28 @@ describe("model comparison", () => {
     expect(region).toHaveTextContent("10 × 5-fold cross-validation, seed 0");
     expect(row(table, "Gain over baseline")).toHaveTextContent("+0.398 ± 0.0145, p = 0.0001");
     expect(row(table, "Fold scores")).toHaveTextContent("5 scores, 0.87 to 0.93");
+  });
+
+  it("says only what the test showed for a model that did not pass it", async () => {
+    const [floor, linear] = tested.candidates;
+    compared({ ...tested, winner: undefined, candidates: [floor, { ...linear!, versus_baseline: { ...linear!.versus_baseline!, p_value: 0.07, beats_baseline: false } }] });
+    const table = await screen.findByRole("table", { name: "Candidates" });
+    expect(row(table, "Verdict")).toHaveTextContent("not shown to beat the baseline");
+  });
+
+  it("asks the server once even when React runs the effect twice", async () => {
+    const posted: string[] = [];
+    compared(winner, true);
+    server.use(
+      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      http.post("/api/pipeline_versions/:id/model_selection/:node", () => {
+        posted.push("select");
+        return HttpResponse.json({ proposal, comparison, run: comparisonRun }, { status: 201 });
+      }),
+    );
+    await waitFor(() => expect(posted).toHaveLength(1));
+    // Everything the page shows is drawn by now; a second effect would have posted already.
+    await screen.findByRole("table", { name: "Candidates" });
+    expect(posted).toHaveLength(1);
   });
 });
