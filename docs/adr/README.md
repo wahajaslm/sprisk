@@ -54,7 +54,7 @@
 | [0050](0050-model-selection-methodology.md) | Sprisk's model-selection methodology | Accepted |
 | [0051](0051-enterprise-intelligence-capabilities.md) | Adopting enterprise intelligence capabilities: automated compliance documentation, portable serving bundles, fairness auditing, and specialized agent fleets | Proposed |
 | [0052](0052-studies-trials-and-bounded-search.md) | Studies, trials and bounded search | Accepted |
-| [0053](0053-costs-and-decision-thresholds-in-selection.md) | Costs and decision thresholds in model selection | Proposed |
+| [0053](0053-costs-and-decision-thresholds-in-selection.md) | Costs and the decision cut-off are decided by a methodology rule | Accepted |
 
 ## Open questions (arch doc §17)
 

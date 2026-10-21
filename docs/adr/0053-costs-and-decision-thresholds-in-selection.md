@@ -1,71 +1,87 @@
-# ADR-0053: Costs and decision thresholds in model selection
-Status: Proposed
+# ADR-0053: Costs and the decision cut-off are decided by a methodology rule
+Status: Accepted
 Date: 2026-10-21
-Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02, SCI-09). Builds on ADR-0050 and ADR-0052. Gives the draft rule `probability_calibration` its `cost_optimal_threshold` path.
+Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-0045 (one rule per step). Builds on ADR-0042, ADR-0050, ADR-0052. Activates the draft rule `probability_calibration` for its cost path.
 
 ## Context
-- German credit (UCI) comes with a cost matrix: calling a bad customer good costs 5, refusing a good one costs 1.
-- Sprisk compares classifiers by balanced accuracy, and each model predicts the class with probability over 0.5.
-- Measured on German credit with stratified 5-fold CV (seed 0, scikit-learn 1.9.1), cost per applicant:
-  - approve everyone: 1.50; refuse everyone: 0.70;
-  - logistic at 0.5: 0.86; forest at 0.5: 1.05;
-  - logistic refusing when P(bad) ≥ 1/6: 0.52; forest the same: 0.53.
-- So at 0.5 both models are worse than refusing everyone. With a cut-off that follows the costs, both beat it.
-- A minimum recall (ADR-0052) cannot say this. Its bound is a guess, and it ignores the cost of refusing good customers.
+- German credit (UCI) comes with costs: approving a bad applicant costs 5, refusing a good one costs 1.
+- Every classifier in Sprisk predicts a class when its probability is over 0.5. Models are compared by balanced accuracy.
+- Measured on German credit (stratified 5-fold CV, seed 0, scikit-learn 1.9.1), loss per 100 applicants:
+  - approve everyone: 150; refuse everyone: 70;
+  - logistic at 0.5: 86; forest at 0.5: 105;
+  - logistic refusing when P(bad) ≥ 1/6: 52; forest the same: 53.
+- So at 0.5 both models lose more than refusing everyone. With a cut-off that follows the costs, both beat it.
+- Nothing in Sprisk knows this. Only a person did, by reading the data's documentation.
+- The draft rule `probability_calibration` already describes the fix: with stated costs, set the cut-off from them. It cannot become active: a step has one active rule (ADR-0045), and model steps already have the shortlist rule.
 
 ## Decision
-**Costs are question facts.**
-- A classification `QuestionVersion` may state `costs`: the class whose miss costs (`positive`), the cost of a miss (`false_negative`) and the cost of a false alarm (`false_positive`). Both costs are positive numbers. A correct decision costs nothing.
-- Only two-class targets. A question with costs on a target with more than two classes is refused.
+**Costs are a fact of the question.**
+- A classification `QuestionVersion` may state `costs`, with its origin, like every fact:
+  - `positive`: the class whose miss costs, as text;
+  - `false_negative`: the cost of missing it;
+  - `false_positive`: the cost of a false alarm.
+- Both costs are positive. A correct decision costs nothing.
+- Only a person can state them, so the origin is `explicit` or `confirmed`. Sprisk never infers costs.
+- The fact catalog gains `question.costs`.
 
-**With costs, the comparison metric is expected cost per row.**
-- `metric_of` gives `expected_cost` when the question has costs, else `balanced_accuracy` as now.
-- Lower is better, as for `rmse`. The corrected t-test, Holm and the one-SE rule are unchanged.
+**A step may have one active rule per decision (changes ADR-0045).**
+- A model step needs several decisions: which model, which cut-off, later how to weigh classes.
+- So a rule is routed by operator and decision. Two active rules that decide the same thing on one operator are still refused when packs load.
+- A proposal names its decision. The proposals route takes the decision: `POST /pipeline_versions/{id}/methodology/proposals/{node_id}/{decides}`. The old route keeps meaning the step's first rule, so existing clients work.
+- The Parameters tab shows one panel per rule that decides the step.
 
-**Each candidate's cut-off is tuned inside the folds.**
-- `cross_validate` wraps each candidate's whole pipeline (preparation and model) in scikit-learn's `TunedThresholdClassifierCV`. It scores by expected cost (`make_scorer`, `greater_is_better=False`, `pos_label` = `positive`).
-- Its 3 inner folds split the outer training rows the way the outer folds split all train rows: stratified, by group (groups passed through metadata routing), or by time.
-- It tunes the cut-off on scores, so it needs no calibrated probabilities. A forest's probabilities are not calibrated.
+**The rule `probability_calibration` becomes active for the cut-off.**
+- It applies to the model operators and decides `evaluation.decision_threshold`. It reads `question.task`, `question.costs`, `question.time_column` and `question.entity_column`.
+- Its alternatives:
+  - `cost_optimal_threshold`, when costs are stated: the model tunes its cut-off for least cost.
+  - `default_half`, when no costs are stated: the 0.5 cut-off. Its proposal says the costs are unknown and that 0.5 assumes both mistakes cost the same.
+  - `platt_scaling` stays draft-only. It is not offered until it has an operator.
+- With a time or entity column, `cost_optimal_threshold` is not applicable yet. Its reason says so: inner folds for the cut-off do not yet follow time or groups.
+- The rule's other text is checked against the course before activation (gap 10).
+
+**`update_estimator_params` is wired.**
+- An alternative with this action sets params on the step it decides. It sets nothing else.
+- The params are given in the manifest, from facts the rule reads, such as `"{question.costs}"`. Rust fills them in, and the compiler checks them against the operator's schema.
+
+**A model with costs tunes its own cut-off.**
+- The two-class model operators gain an optional `costs` param.
+- With it, the model is wrapped in scikit-learn's `TunedThresholdClassifierCV`:
+  - scored by expected cost (`make_scorer`, `greater_is_better=False`, `pos_label` = `positive`);
+  - with 3 stratified, shuffled inner folds of its own training rows, seeded by its `seed`.
+- It tunes on scores, so it needs no calibrated probabilities. A forest's are not calibrated.
 - Not chosen: the fixed cut-off c_FP / (c_FP + c_FN). It is right only for calibrated probabilities.
-- With a study (ADR-0052), the cut-off is tuned within each trial. The outer folds are unchanged.
-- The tuned cut-off is noisy on small data. German credit's innermost folds hold about 180 rows, about 55 of them bad.
+- The dummy baseline cannot be tuned: scikit-learn refuses a model with constant predictions. With costs, it predicts the cheaper of "approve everyone" and "refuse everyone" on its training rows, through `FixedThresholdClassifier` at c_FP / (c_FP + c_FN) on its class prior. That is the floor a lender compares with.
+- Because the cut-off belongs to the model, every fold of a comparison refits it on that fold's training rows. The applied model step tunes it on all train rows. Nothing else carries a cut-off.
 
-**The floor is the cheaper constant decision.**
-- scikit-learn refuses to tune a cut-off for a model with constant predictions, so the dummy baseline is not tuned.
-- On each outer fold, the baseline is "approve everyone" or "refuse everyone", whichever costs less on that fold's training rows. It is then scored on the fold's validation rows.
-- That is the floor a lender compares with. A model that cannot beat it does not win.
-
-**Guardrails and prevalence.**
+**With costs, models are compared by expected cost.**
+- The comparison reads the model step's `costs`. With them, its metric is `expected_cost`, lower is better, and each candidate gets the same costs. Without them, it stays `balanced_accuracy`.
+- The corrected t-test, Holm and the one-SE rule are unchanged.
 - Recall guardrails (ADR-0052) are measured at each candidate's tuned cut-off.
-- Expected cost and the cut-off depend on the share of `positive` rows. The SelectionDecision records that share in the train rows. Its limitations say the cut-off holds only at that share. German credit's 30% bad is a sampled mix, not a population rate.
-
-**The chosen cut-off is applied.**
-- Two-class model operators gain an optional `threshold` param, the cut-off for `positive`.
-- The cut-off to apply is tuned on all train rows, as study settings are. Using a choice writes it into the model step.
-- `evaluate` reports, when the question has costs: expected cost on the test rows, the cut-off applied, the confusion matrix, and the floor's cost on the same rows.
-
-**The draft rule.**
-- `probability_calibration`'s `cost_optimal_threshold` alternative is met by this design. It inserts no separate step.
-- The rule stays draft until its other alternatives are checked against the course (gap 10).
+- The SelectionDecision records the share of `positive` rows in the train rows. Its limitations say the cut-off holds only at that share. German credit's 30% bad is a sampled mix, not a population rate.
+- `evaluate` reports each tuned model's cut-off with its scores.
 
 ## Alternatives considered
-- **A cost guardrail with a bound.** Rejected: a guard on top of balanced accuracy still picks models by the wrong measure, and the bound would be a second guess.
-- **Calibrate, then use the fixed cut-off.** Rejected for now: one more fitted step per fold, and the fixed cut-off is still only as good as the calibration.
-- **Tune the cut-off on the outer validation rows.** Rejected: that chooses on rows used to score, which overstates the result.
+- **Hard-wire "costs in the question, so compare by cost" in Rust.** Rejected: it hides a methodology decision in code. The person sees no proposal, rationale or source, and cannot choose otherwise.
+- **Put the cut-off in the shortlist rule.** Rejected: one rule would own two decisions (ADR-0042).
+- **A separate cut-off step after the model**, as the draft rule's `insert_step` said. Rejected: a comparison refits only preparation and the model per fold, so a later step's cut-off would be tuned outside the folds.
+- **A cost guardrail with a bound.** Rejected: models would still be chosen by the wrong measure, and the bound would be a guess.
 
 ## Consequences (good and bad)
-- Good: the decision answers the lender's question in the lender's units.
-- Good: "refuse everyone" becomes a real floor, so a model that cannot beat it does not win.
-- Bad: inner threshold folds cost 3 extra fits per outer fold and candidate, and per trial in a study. In a study that is 3 × (inner folds + 1) extra fits per trial and outer fold.
-- Bad: `cross_validate`, `select_model`, the model operators and `evaluate` change versions. Stored comparisons at the old versions no longer rerun.
-- Bad: two-class only.
+- Good: the decision is a rule's, with its source and rationale, and the same for every flow and client (rule 4).
+- Good: the draft rules for model steps (`class_imbalance`, `model_interpretability`) can become active later the same way.
+- Good: "refuse everyone" becomes a real floor.
+- Bad: tuning adds 3 fits per model fit, per fold and per study trial.
+- Bad: the model operators, `cross_validate`, `select_model` and `evaluate` change versions. Stored flows that pin the old ones no longer compare until their model step is chosen again.
+- Bad: two-class targets and random splits only, for now.
+- Bad: the tuned cut-off is noisy on small data. German credit's innermost folds hold about 180 rows.
 
 ## Validation
-- With costs 5 and 1, a model that predicts at 0.5 and costs more than "refuse everyone" does not beat the baseline.
+- With costs 5 and 1, a model whose cut-off is 0.5 and that loses more than "refuse everyone" does not beat the baseline.
 - The floor equals the cheaper of "approve everyone" and "refuse everyone" on each fold.
-- The tuned cut-off never sees an outer validation row, after a random, group or time split. This is checked by row digests, as for inner folds.
-- On German credit with UCI's costs, the decision reports cost per applicant for every candidate, and the applied model step carries its cut-off.
+- A question without costs gets `default_half`, with a reason naming the unknown costs.
+- With a time or entity column, `cost_optimal_threshold` is not applicable, and says why.
+- On German credit with UCI's costs: the rule proposes the cut-off; applying it sets `costs` on the model step; the study compares by expected cost; every candidate reports its cost and cut-off.
 
 ## Arch doc edits
 - §3: a classification question may state costs.
-- §11: with costs, models are compared by expected cost, and each candidate's cut-off is tuned inside the folds.
+- §11: a step may have one rule per decision. With costs, the cut-off rule makes models tune their cut-off, and models are compared by expected cost.
