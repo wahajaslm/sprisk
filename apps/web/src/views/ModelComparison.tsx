@@ -40,7 +40,7 @@ export function ModelComparisons({ flowIds, head, versions, studied }: {
       {mine.map(({ version, proposal, base }) => (
         <Comparison key={version.id} comparison={version} proposal={proposal} base={base} />
       ))}
-      <TestRowsCautions head={head} />
+      <ChoiceCautions head={head} />
     </>
   );
 }
@@ -342,18 +342,29 @@ function UseModel({ id, recommended, winner, artifactId, proposal, onCancel }: {
 
 /** One caution per step of the head whose choice was made after the test rows had been
  * scored: its test score is then no longer an unbiased estimate (arch doc §11). */
-function TestRowsCautions({ head }: { head: PipelineVersion }) {
+function ChoiceCautions({ head }: { head: PipelineVersion }) {
   const decided = head.nodes.flatMap((n) => (n.methodology_decision_id ? [n.methodology_decision_id] : []));
-  return decided.map((id) => <TestRowsCaution key={id} decisionId={id} />);
+  return decided.map((id) => <ChoiceCaution key={id} decisionId={id} />);
 }
 
-function TestRowsCaution({ decisionId }: { decisionId: string }) {
+/** What a choice cost: test rows already scored by another branch, guardrails it missed. */
+function ChoiceCaution({ decisionId }: { decisionId: string }) {
   const decision = useMethodologyDecision(decisionId);
   const seen = decision.data?.test_rows_seen_by ?? [];
-  if (seen.length === 0) return null;
+  const missed = decision.data?.missed_guardrails ?? [];
+  if (seen.length === 0 && missed.length === 0) return null;
+  const step = decision.data?.subject_node_id;
   return (
     <div className="cautions pad">
-      <p>⚠ {decision.data?.subject_node_id} was chosen after {seen.join(", ")} had already scored the same test rows. Its test score is no longer an unbiased estimate.</p>
+      {seen.length > 0 && (
+        <p>⚠ {step} was chosen after {seen.join(", ")} had already scored the same test rows. Its test score is no longer an unbiased estimate.</p>
+      )}
+      {missed.length > 0 && (
+        <p>
+          ⚠ {step} was chosen though it missed a guardrail:{" "}
+          {missed.map((g) => `recall of ${g.label} ${g.mean.toFixed(3)}, below ${g.at_least}`).join("; ")}.
+        </p>
+      )}
     </div>
   );
 }

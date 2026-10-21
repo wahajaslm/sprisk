@@ -296,6 +296,21 @@ describe("model comparison", () => {
     expect(await screen.findByText(/model was chosen after plv_01JABCDEFGHJKMNPQRSTVWXYZ1 had already scored the same test rows/)).toBeInTheDocument();
   });
 
+  it("warns when the model was chosen though it missed a guardrail", async () => {
+    const DECISION = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ6";
+    compared(winner);
+    const missed = [{ label: "bad", at_least: 0.45, mean: 0.424, corrected_se: 0.032, passed: false }];
+    server.use(
+      http.get("/api/pipeline_versions", () =>
+        HttpResponse.json([comparison, { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "model" ? { ...n, methodology_decision_id: DECISION } : n)) }]),
+      ),
+      http.get(`/api/methodology_decisions/${DECISION}`, () =>
+        HttpResponse.json({ ...seenDecision, id: DECISION, test_rows_seen_by: undefined, missed_guardrails: missed }),
+      ),
+    );
+    expect(await screen.findByText("⚠ model was chosen though it missed a guardrail: recall of bad 0.424, below 0.45.")).toBeInTheDocument();
+  });
+
   it("names repeated folds and each model's p against the baseline", async () => {
     compared(tested);
     const region = await screen.findByRole("region", { name: "Model comparison" });
