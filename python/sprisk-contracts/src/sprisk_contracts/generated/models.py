@@ -681,8 +681,9 @@ class Resources(StrictModel):
 
 
 class Stage(StrEnum):
-    explore = "explore"
+    load = "load"
     split = "split"
+    explore = "explore"
     clean = "clean"
     model = "model"
     evaluate = "evaluate"

@@ -2909,13 +2909,14 @@
     "Stage": {
       "type": "string",
       "enum": [
-        "explore",
+        "load",
         "split",
+        "explore",
         "clean",
         "model",
         "evaluate"
       ],
-      "description": "A flow's stages in order; each is one notebook (ADR-0055)."
+      "description": "A flow's stages in order; each is one notebook (ADR-0055). Load reads the data and looks at all rows; Explore looks at the training rows, after the split."
     },
     "NodeNotes": {
       "type": "object",

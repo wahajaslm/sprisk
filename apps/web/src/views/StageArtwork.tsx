@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
  */
 export function StageArtwork({ stage }: { stage: string }): ReactNode {
   const norm = stage.toLowerCase();
-  if (norm.includes("explore")) return <ExploreArt />;
+  if (norm.includes("load") || norm.includes("explore")) return <ExploreArt />;
   if (norm.includes("split")) return <SplitArt />;
   if (norm.includes("clean")) return <CleanArt />;
   if (norm.includes("model")) return <ModelArt />;
@@ -19,7 +19,8 @@ export function StageArtwork({ stage }: { stage: string }): ReactNode {
 
 export function stageDescription(stage: string): string {
   const norm = stage.toLowerCase();
-  if (norm.includes("explore")) return "Inspect distributions, profiling statistics, and baseline signal characteristics.";
+  if (norm.includes("load")) return "Read the data and check it on all rows: types, missing values, profiles.";
+  if (norm.includes("explore")) return "Look at the training rows only: how each column relates to the target.";
   if (norm.includes("split")) return "Stratified partition of observations into train and validation sets without leakage.";
   if (norm.includes("clean")) return "Signal noise suppression, outlier clipping, and adaptive spectral gating.";
   if (norm.includes("model")) return "Train estimators, optimize clustering parameters, and fit architecture.";
@@ -29,7 +30,8 @@ export function stageDescription(stage: string): string {
 
 export function stagePhaseTag(stage: string): string {
   const norm = stage.toLowerCase();
-  if (norm.includes("explore")) return "DATA INGESTION";
+  if (norm.includes("load")) return "DATA INGESTION";
+  if (norm.includes("explore")) return "EXPLORATION";
   if (norm.includes("split")) return "VALIDATION SPLIT";
   if (norm.includes("clean")) return "SIGNAL CLEANING";
   if (norm.includes("model")) return "MODEL ESTIMATION";
@@ -39,12 +41,13 @@ export function stagePhaseTag(stage: string): string {
 
 export function stageIndex(stage: string): string {
   const norm = stage.toLowerCase();
-  if (norm.includes("explore")) return "01";
+  if (norm.includes("load")) return "01";
   if (norm.includes("split")) return "02";
-  if (norm.includes("clean")) return "03";
-  if (norm.includes("model")) return "04";
-  if (norm.includes("eval")) return "05";
-  return "06";
+  if (norm.includes("explore")) return "03";
+  if (norm.includes("clean")) return "04";
+  if (norm.includes("model")) return "05";
+  if (norm.includes("eval")) return "06";
+  return "07";
 }
 
 function ExploreArt() {

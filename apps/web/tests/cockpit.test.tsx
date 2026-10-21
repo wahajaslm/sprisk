@@ -225,10 +225,10 @@ describe("flow canvas", () => {
   });
 
   it("groups steps of one stage only where they sit together in the flow", async () => {
-    const { stageGroups } = await import("../src/flow/stages.ts");
+    const { stageGroups } = await import("../src/notebook/stageNotebooks.ts");
     const byRef = new Map(operators.map((o) => [o.id, o]));
     const groups = stageGroups(pipeline, byRef);
-    // load → profile and split: profile (Explore) reads load (Explore), so they share a heading.
+    // profile looks at all loaded rows, so it shares Load's heading.
     expect(groups.get("profile")).toBe(groups.get("load"));
     // split is the only Split step; impute (Clean) is apart from the Explore steps.
     expect(groups.get("split")).not.toBe(groups.get("impute"));

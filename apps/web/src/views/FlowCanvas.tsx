@@ -44,7 +44,7 @@ import {
   STAGE_HEAD_HEIGHT,
   STAGE_PAD_X,
 } from "../flow/layout.ts";
-import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, stageGroups } from "../flow/stages.ts";
+import { figurePortOf, kindOf, type NodeKind, roleOf, shortName } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -53,6 +53,7 @@ import { useNotebooks } from "../api/notebooks.ts";
 import { KindIcon, KindMark, NotebookIcon, PlayIcon, RestartIcon, StopIcon, TrashIcon } from "./Icons.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 import { useEscape } from "../hooks/useEscape.ts";
+import { stageGroups } from "../notebook/stageNotebooks.ts";
 import { stageDescription } from "./StageArtwork.tsx";
 import { stepOf } from "../flow/ports.ts";
 

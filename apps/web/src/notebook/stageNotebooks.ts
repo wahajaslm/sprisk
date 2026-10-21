@@ -8,26 +8,40 @@ import { type Stage, STAGES, stageOf } from "../flow/stages.ts";
 type Operators = Map<string, Operator>;
 
 const STAGE_OF_NODE: Record<NonNullable<Node["stage"]>, Stage> = {
-  explore: "Explore",
+  load: "Load",
   split: "Split",
+  explore: "Explore",
   clean: "Clean",
   model: "Model",
   evaluate: "Evaluate",
 };
 
-/** The flow as one notebook per stage, in stage order, each step after the steps it reads.
- * A step is in the stage it keeps (ADR-0055), else the one its operator implies, but never
- * before a stage it reads from: a chart of cleaned rows is Clean. */
-export function stageNotebooks(pipeline: PipelineVersion, operators: Operators): { stage: Stage; nodes: Node[] }[] {
-  const order = notebookOrder(pipeline);
+/** Each step's stage (ADR-0055): the one it keeps, else the one its operator implies, but
+ * never before a stage it reads from. A look at the data (an analyzer or code) is in Load while
+ * it reads only loaded rows, and in Explore once it reads the split's training rows. */
+export function stagesOf(pipeline: PipelineVersion, operators: Operators): Map<string, Stage> {
   const placed = new Map<string, Stage>();
-  for (const node of order) {
+  for (const node of notebookOrder(pipeline)) {
     const operator = operators.get(node.operator);
+    const read = pipeline.edges.filter((e) => stepOf(e.to) === node.id).map((e) => placed.get(stepOf(e.from)) ?? "Load");
     const own = node.stage ? STAGE_OF_NODE[node.stage] : operator ? stageOf(operator) : "Explore";
-    const read = pipeline.edges.filter((e) => stepOf(e.to) === node.id).map((e) => placed.get(stepOf(e.from)) ?? "Explore");
-    placed.set(node.id, latest([own, ...read]));
+    const looksAtLoaded = own === "Explore" && !node.stage && read.every((s) => s === "Load");
+    placed.set(node.id, looksAtLoaded ? "Load" : latest([own, ...read]));
   }
+  return placed;
+}
+
+/** The flow as one notebook per stage, in stage order, each step after the steps it reads. */
+export function stageNotebooks(pipeline: PipelineVersion, operators: Operators): { stage: Stage; nodes: Node[] }[] {
+  const placed = stagesOf(pipeline, operators);
+  const order = notebookOrder(pipeline);
   return STAGES.map((stage) => ({ stage, nodes: order.filter((n) => placed.get(n.id) === stage) })).filter((s) => s.nodes.length > 0);
+}
+
+/** Heading groups on the canvas, one per stage, placed as the notebooks are. Keys look like
+ * "Clean#clean"; the part before "#" is the stage shown. */
+export function stageGroups(pipeline: PipelineVersion, operators: Operators): Map<string, string> {
+  return new Map([...stagesOf(pipeline, operators)].map(([id, stage]) => [id, `${stage}#${stage.toLowerCase()}`]));
 }
 
 const latest = (stages: Stage[]): Stage => stages.reduce((a, b) => (STAGES.indexOf(b) > STAGES.indexOf(a) ? b : a));

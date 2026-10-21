@@ -276,12 +276,12 @@ export type Entrypoint = string;
  */
 export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "density_based";
 /**
- * A flow's stages in order; each is one notebook (ADR-0055).
+ * A flow's stages in order; each is one notebook (ADR-0055). Load reads the data and looks at all rows; Explore looks at the training rows, after the split.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Stage".
  */
-export type Stage = "explore" | "split" | "clean" | "model" | "evaluate";
+export type Stage = "load" | "split" | "explore" | "clean" | "model" | "evaluate";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "AttemptState".
@@ -1399,7 +1399,7 @@ export interface Node {
   /**
    * The stage notebook this step's cell is in (ADR-0055). Omitted: the stage its operator implies.
    */
-  stage?: "explore" | "split" | "clean" | "model" | "evaluate";
+  stage?: "load" | "split" | "explore" | "clean" | "model" | "evaluate";
   notes?: NodeNotes;
   /**
    * The variable each output port goes by in the notebook, by port (ADR-0055). Omitted: the port names.

@@ -9,8 +9,9 @@ import { stageNotebooks } from "./stageNotebooks.ts";
 type Operators = Map<string, Operator>;
 
 const STAGE_KEY: Record<Stage, NonNullable<Node["stage"]> | undefined> = {
-  Explore: "explore",
+  Load: "load",
   Split: "split",
+  Explore: "explore",
   Clean: "clean",
   Model: "model",
   Evaluate: "evaluate",

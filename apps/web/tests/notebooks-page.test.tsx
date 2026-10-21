@@ -130,7 +130,7 @@ describe("deleting a notebook (ADR-0041)", () => {
     expect(posts[1]!.body).toMatchObject({ notebook_id: NB, parent_id: sales.id, removed: true });
     await waitFor(() => expect(within(screen.getByRole("list", { name: "This flow's notebooks" })).queryByRole("button", { name: "Sales analysis" })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Scratch" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Explore" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Load" })).toBeInTheDocument();
   });
 
   it("Cancel saves nothing", async () => {
@@ -215,8 +215,8 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     const posts = noNotebooks();
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
     const items = within(await stages()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Explore · 2 steps", "Split · 1 step", "Clean · 1 step", "Model · 1 step", "Evaluate · 1 step"]);
-    expect(await screen.findByRole("heading", { name: "Explore" })).toBeInTheDocument();
+    expect(items).toEqual(["Load · 2 steps", "Split · 1 step", "Clean · 1 step", "Model · 1 step", "Evaluate · 1 step"]);
+    expect(await screen.findByRole("heading", { name: "Load" })).toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: /^Cell / })).toHaveLength(2);
     expect(posts).toEqual([]);
   });

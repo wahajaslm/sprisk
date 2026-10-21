@@ -3,7 +3,9 @@ import { isCodeOperator } from "./edit.ts";
 import { stepOf } from "./ports.ts";
 
 /** Presentation grouping only (rule 9: layout is not provenance). */
-export const STAGES = ["Explore", "Split", "Clean", "Model", "Evaluate", "Unknown"] as const;
+/** In working order (ADR-0055): read the data and look at all of it, set the test rows aside,
+ * then explore the training rows, clean, model and evaluate. */
+export const STAGES = ["Load", "Split", "Explore", "Clean", "Model", "Evaluate", "Unknown"] as const;
 export type Stage = (typeof STAGES)[number];
 
 /** Studio node kinds: they pick the icon and its tint. */
@@ -16,6 +18,7 @@ export function stageOf(operator: Operator): Stage {
   if (domain === "clustering") return "Model";
   switch (operator.capability_class) {
     case "source":
+      return "Load";
     case "analyzer":
       return "Explore";
     case "estimator":
@@ -61,24 +64,6 @@ export const roleOf = (operator: Operator) => (operator.id.startsWith("sprisk.co
  * `figure` port (ADR-0024). Undefined when the step draws nothing. */
 export const figurePortOf = (operator: Operator): string | undefined =>
   isCodeOperator(operator.id) ? "display" : operator.outputs.find((o) => o.kind === "figure")?.name;
-
-/** Heading groups on the canvas: steps of one stage share a heading only where they sit
- * together in the flow (one reads the other, or both read the same step). Otherwise the
- * heading would pull them together and bend lines backwards. Keys look like "Clean#impute";
- * the part before "#" is the stage shown. */
-export function stageGroups(pipeline: PipelineVersion, operators: Map<string, Operator>): Map<string, string> {
-  const stage = new Map(pipeline.nodes.map((n) => [n.id, operators.get(n.operator)]));
-  const stageName = (id: string) => {
-    const op = stage.get(id);
-    return op ? stageOf(op) : undefined;
-  };
-  const groups = new Map<string, string>();
-  for (const n of pipeline.nodes) {
-    const name = stageName(n.id);
-    if (name !== undefined) groups.set(n.id, `${name}#${name.toLowerCase()}`);
-  }
-  return groups;
-}
 
 /** "sprisk.clean.impute@1.0.0" → "impute". */
 export const shortName = (ref: string) => ref.split("@")[0]?.split(".").at(-1) ?? ref;
