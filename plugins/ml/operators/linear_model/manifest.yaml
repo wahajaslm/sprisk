@@ -4,6 +4,7 @@ capability_class: estimator
 model: { family: linear, tasks: [classification, regression], prepares: [fill_gaps, standardize], estimator: "sprisk_ml.models:linear_model_estimator", complexity: 1 }
 description: Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.
 entrypoint: sprisk_ml.models:linear_model
+notebook_code: sprisk_ml.models:linear_model_as_code
 inputs: [{ name: train, kind: table }]
 outputs: [{ name: model, kind: model }]
 params_schema:

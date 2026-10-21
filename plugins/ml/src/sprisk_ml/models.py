@@ -169,11 +169,12 @@ def random_forest_as_code(
     settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]
 ) -> str:
     """This step as plain Python for a notebook cell (ADR-0055); a test checks it predicts as
-    the step does. Helper names start with the model's own name, so they never replace a
-    person's names."""
-    train, model = inputs["train"], outputs["model"]
-    classify = settings["task"] == "classification"
-    forest = "RandomForestClassifier" if classify else "RandomForestRegressor"
+    the step does."""
+    forest = (
+        "RandomForestClassifier"
+        if settings["task"] == "classification"
+        else "RandomForestRegressor"
+    )
     options = [
         f"n_estimators={settings.get('n_estimators', 200)!r}",
         f"random_state={settings.get('seed', 0)!r}",
@@ -181,38 +182,118 @@ def random_forest_as_code(
     ]
     if settings.get("max_features") is not None:
         options.append(f"max_features={settings['max_features']!r}")
+    estimator = (f"from sklearn.ensemble import {forest}", f"{forest}({', '.join(options)})")
+    return _model_code(settings, inputs, outputs, estimator, scale=False, tuned=True)
+
+
+def linear_model_as_code(
+    settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]
+) -> str:
+    """This step as plain Python for a notebook cell (ADR-0055); a test checks it predicts as
+    the step does."""
+    if settings["task"] == "classification":
+        estimator = (
+            "from sklearn.linear_model import LogisticRegression",
+            "LogisticRegression(max_iter=1000)",
+        )
+    else:
+        estimator = ("from sklearn.linear_model import LinearRegression", "LinearRegression()")
+    return _model_code(settings, inputs, outputs, estimator, scale=True, tuned=True)
+
+
+def dummy_baseline_as_code(
+    settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]
+) -> str:
+    """This step as plain Python for a notebook cell (ADR-0055); a test checks it predicts as
+    the step does. With costs it predicts by its class shares, so it cannot be tuned: its
+    cut-off is fixed where approving and refusing everyone cost the same (ADR-0053)."""
+    if settings["task"] != "classification":
+        estimator = ("from sklearn.dummy import DummyRegressor", 'DummyRegressor(strategy="mean")')
+    elif settings.get("costs"):
+        estimator = (
+            "from sklearn.dummy import DummyClassifier",
+            'DummyClassifier(strategy="prior")',
+        )
+    else:
+        estimator = (
+            "from sklearn.dummy import DummyClassifier",
+            'DummyClassifier(strategy="most_frequent")',
+        )
+    return _model_code(settings, inputs, outputs, estimator, scale=True, tuned=False)
+
+
+def _model_code(
+    settings: dict[str, Any],
+    inputs: dict[str, str],
+    outputs: dict[str, str],
+    estimator: tuple[str, str],
+    scale: bool,
+    tuned: bool,
+) -> str:
+    """A model step's pipeline as plain Python: the preprocessing `preprocessor` builds, then
+    `estimator` (its import and its expression), fit on the train rows. With costs, the
+    cut-off is tuned (`tuned`) or fixed by the costs alone. Helper names start with the
+    model's own name, so they never replace a person's names."""
+    train, model = inputs["train"], outputs["model"]
     features, numeric, other = f"{model}_features", f"{model}_numeric", f"{model}_categories"
     fit = f"{train}.select({features}), {train}[{settings['target']!r}].to_numpy()"
+    numbers = (
+        'make_pipeline(SimpleImputer(strategy="median"), StandardScaler())'
+        if scale
+        else 'SimpleImputer(strategy="median")'
+    )
+    preprocessing = (
+        "from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler\n"
+        if scale
+        else "from sklearn.preprocessing import FunctionTransformer, OneHotEncoder\n"
+    )
+    numbers_note = "the median, then scaled" if scale else "the median; trees need no scaling"
     code = (
         "import numpy as np\n"
         "from sklearn.compose import ColumnTransformer\n"
-        f"from sklearn.ensemble import {forest}\n"
+        f"{estimator[0]}\n"
         "from sklearn.impute import SimpleImputer\n"
         "from sklearn.pipeline import Pipeline, make_pipeline\n"
-        "from sklearn.preprocessing import FunctionTransformer, OneHotEncoder\n"
+        f"{preprocessing}"
         "\n"
         f"{features} = {settings['features']!r}\n"
         f"{numeric} = [c for c in {features} if {train}.schema[c].is_numeric()]\n"
         f"{other} = [c for c in {features} if c not in {numeric}]\n"
         "\n"
-        "# Numbers: gaps get the median. Text: gaps get the most frequent value, then one\n"
-        "# column per category; a category seen only later is ignored. Trees need no scaling.\n"
+        f"# Numbers: gaps get {numbers_note}. Text: gaps get the most frequent value,\n"
+        "# then one column per category; a category seen only later is ignored.\n"
         f"{model} = Pipeline([\n"
         '    ("preprocess", ColumnTransformer([\n'
-        f'        ("numeric", SimpleImputer(strategy="median"), {numeric}),\n'
+        f'        ("numeric", {numbers}, {numeric}),\n'
         '        ("categorical", make_pipeline(\n'
         "            FunctionTransformer(lambda x: np.asarray(x, dtype=object)),\n"
         '            SimpleImputer(missing_values=None, strategy="most_frequent"),\n'
         '            OneHotEncoder(handle_unknown="ignore"),\n'
         f"        ), {other}),\n"
         "    ])),\n"
-        f'    ("forest", {forest}({", ".join(options)})),\n'
+        f'    ("estimator", {estimator[1]}),\n'
         "])\n"
     )
-    costs = settings.get("costs")
+    costs = settings.get("costs") if settings["task"] == "classification" else None
     if not costs:
         return code + f"{model}.fit({fit})\n"
+    if not tuned:
+        return code + _fixed_code(model, fit, costs)
     return code + _costed_code(model, fit, costs, settings.get("seed", 0))
+
+
+def _fixed_code(model: str, fit: str, costs: dict[str, Any]) -> str:
+    """A cut-off set by the costs alone, for a model whose scores cannot be tuned (ADR-0053)."""
+    fn, fp = costs["false_negative"], costs["false_positive"]
+    return (
+        "\n"
+        "from sklearn.model_selection import FixedThresholdClassifier\n"
+        "\n"
+        f"# Predict {costs['positive']} when its share is at least {fp} / ({fp} + {fn}).\n"
+        f"{model} = FixedThresholdClassifier(\n"
+        f"    {model}, threshold={fp / (fp + fn)!r}, pos_label={costs['positive']!r}\n"
+        f").fit({fit})\n"
+    )
 
 
 def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
