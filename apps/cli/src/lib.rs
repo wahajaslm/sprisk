@@ -132,6 +132,7 @@ pub async fn serve_on(
         },
     );
     let state = sprisk_api::AppState {
+        clock: sprisk_scheduler::system_clock(),
         store: Arc::new(sprisk_store::SqliteStore::open(&config.data_dir.join("sprisk.db")).await?),
         artifacts: Arc::new(sprisk_artifacts::ArtifactStore::local(
             &config.data_dir.join("artifacts"),

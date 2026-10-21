@@ -71,6 +71,23 @@ async fn api_with_kernel_host(
     limits: KernelLimits,
     host: Vec<String>,
 ) -> Api {
+    api_with_clock(
+        python,
+        splitter,
+        limits,
+        host,
+        sprisk_scheduler::system_clock(),
+    )
+    .await
+}
+
+async fn api_with_clock(
+    python: PathBuf,
+    splitter: Splitter,
+    limits: KernelLimits,
+    host: Vec<String>,
+    clock: sprisk_scheduler::Clock,
+) -> Api {
     let dir = tempfile::tempdir().unwrap();
     let kernels = Kernels::new(host, dir.path().to_owned(), limits);
     let csv = dir.path().join("d.csv");
@@ -87,6 +104,7 @@ async fn api_with_kernel_host(
         .clone();
     let store = Arc::new(SqliteStore::in_memory().await.unwrap());
     let state = AppState {
+        clock,
         store: store.clone(),
         artifacts: Arc::new(ArtifactStore::local(&dir.path().join("store")).unwrap()),
         registry: Arc::new(Registry::load_dir(&root.join("plugins")).unwrap()),
@@ -3128,9 +3146,19 @@ async fn a_study_with_more_trials_than_its_budget_is_refused_and_no_study_or_run
 async fn a_study_needs_a_budget_a_guardrail_in_range_and_a_model_step() {
     let api = api().await;
     learnable_model_flow(&api).await;
+    let many = vec![json!({ "metric": "recall", "label": "1", "at_least": 0.5 }); 11];
+    let long = json!([{ "metric": "recall", "label": "x".repeat(257), "at_least": 0.5 }]);
     let cases = [
         ("max_trials", json!(0), "invalid_budget"),
+        ("max_trials", json!(201), "invalid_budget"),
         ("max_wall_seconds", json!(0), "invalid_budget"),
+        (
+            "max_wall_seconds",
+            json!(1_000_000_000_000_u64),
+            "invalid_budget",
+        ),
+        ("guardrails", json!(many), "invalid_guardrail"),
+        ("guardrails", long, "invalid_guardrail"),
         (
             "guardrails",
             json!([{ "metric": "recall", "label": "1", "at_least": 1.5 }]),
@@ -3375,28 +3403,57 @@ async fn a_guardrail_on_a_class_the_target_never_takes_fails_the_study() {
     assert_eq!(done["study"]["status"], "failed", "{done}");
 }
 
+/// A clock that reads `at` for its first `reads` reads, then ten days later.
+fn passing_after(reads: usize) -> sprisk_scheduler::Clock {
+    let at: jiff::Timestamp = "2026-10-21T10:00:00Z".parse().unwrap();
+    let read = std::sync::atomic::AtomicUsize::new(0);
+    Arc::new(move || {
+        let n = read.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if n < reads {
+            at
+        } else {
+            at + jiff::SignedDuration::from_hours(240)
+        }
+    })
+}
+
 #[tokio::test(flavor = "multi_thread")]
-async fn a_study_past_its_wall_time_ends_budget_reached_and_leases_no_more_trials() {
-    let api = api().await;
+async fn a_study_past_its_wall_time_ends_budget_reached_and_keeps_its_finished_trial() {
+    let python = root().join(".venv/bin/python");
+    let command = vec![
+        python.display().to_string(),
+        "-m".into(),
+        "sprisk_code.cells".into(),
+    ];
+    let host = session_host(&python);
+    // One read sets the deadline; three more let ingest, the split and one trial start.
+    let api = api_with_clock(
+        python,
+        Splitter::new(command, Duration::from_secs(30), 2),
+        KERNEL_LIMITS,
+        host,
+        passing_after(4),
+    )
+    .await;
     banded_forest_flow(&api).await;
     let mut request = study_request("study-key-0013");
     request["max_trials"] = json!(11);
-    // The deadline is whole seconds from the start; starting the worker and running Gate B
-    // take longer than that, so the deadline passes before the trials.
-    request["max_wall_seconds"] = json!(1);
 
     let (status, detail) = create_study(&api, "model", request).await;
     assert_eq!(status, StatusCode::CREATED, "{detail}");
     let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
     assert_eq!(done["study"]["status"], "budget_reached", "{done}");
-    assert!(done["study"]["deadline"].is_string(), "{done}");
+    assert_eq!(done["study"]["deadline"], "2026-10-21T10:10:01Z", "{done}");
     assert_eq!(done["run"]["status"], "cancelled", "{done}");
-    let states: Vec<&str> = done["trials"]
+    let mut states: Vec<&str> = done["trials"]
         .as_array()
         .unwrap()
         .iter()
         .map(|t| t["state"].as_str().unwrap())
         .collect();
-    assert!(states.contains(&"not_started"), "{done}");
-    assert!(!states.contains(&"running"), "{done}");
+    states.sort_unstable();
+    let mut expected = vec!["not_started"; 10];
+    expected.push("succeeded");
+    expected.sort_unstable();
+    assert_eq!(states, expected, "{done}");
 }

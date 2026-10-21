@@ -238,6 +238,9 @@ fn read_manifest(path: &Path) -> Result<Operator, RegistryError> {
     Ok(operator)
 }
 
+/// Most settings combinations a model may declare: a study's trial budget allows no more.
+pub const MAX_SEARCH_POINTS: usize = 200;
+
 /// Params the flow sets, so a study never tunes them (ADR-0051).
 const FIXED_PARAMS: [&str; 4] = ["target", "features", "task", "seed"];
 
@@ -248,6 +251,12 @@ fn check_search(operator: &Operator) -> Result<(), String> {
         return Ok(());
     };
     let properties = operator.params_schema.get("properties");
+    let points: usize = model.search.iter().map(|s| s.values.len()).product();
+    if !model.search.is_empty() && points > MAX_SEARCH_POINTS {
+        return Err(format!(
+            "the search has {points} combinations; at most {MAX_SEARCH_POINTS}"
+        ));
+    }
     let mut seen = std::collections::HashSet::new();
     for setting in &model.search {
         let name = setting.name.as_str();

@@ -42,6 +42,8 @@ use sprisk_store::{SqliteStore, StoreError};
 
 #[derive(Clone)]
 pub struct AppState {
+    /// Reads the time for study deadlines (ADR-0051); a test passes a fake one.
+    pub clock: sprisk_scheduler::Clock,
     pub store: Arc<SqliteStore>,
     pub artifacts: Arc<ArtifactStore>,
     pub registry: Arc<Registry>,
@@ -1625,11 +1627,21 @@ async fn create_study(
     Ok((status, Json(study_detail(&state, kept).await?)))
 }
 
+/// Bounds on one study's work: each trial is a full nested cross-validation (ADR-0051).
+const MAX_TRIALS: u64 = 200;
+const MAX_WALL_SECONDS: u64 = 7 * 24 * 60 * 60;
+const MAX_GUARDRAILS: usize = 10;
+const MAX_LABEL_CHARS: usize = 256;
+
 fn check_budget(request: &sprisk_contracts::CreateStudy) -> Result<(), ApiError> {
-    if request.max_trials == 0 || request.max_wall_seconds == 0 {
+    if !(1..=MAX_TRIALS).contains(&request.max_trials)
+        || !(1..=MAX_WALL_SECONDS).contains(&request.max_wall_seconds)
+    {
         return Err(ApiError::BadRequest {
             code: "invalid_budget",
-            message: "max_trials and max_wall_seconds must each be at least 1".into(),
+            message: format!(
+                "max_trials must be 1 to {MAX_TRIALS}, and max_wall_seconds 1 to {MAX_WALL_SECONDS}"
+            ),
         });
     }
     Ok(())
@@ -1639,7 +1651,19 @@ fn check_guardrails(
     request: &sprisk_contracts::CreateStudy,
     task: TaskType,
 ) -> Result<(), ApiError> {
+    if request.guardrails.len() > MAX_GUARDRAILS {
+        return Err(ApiError::BadRequest {
+            code: "invalid_guardrail",
+            message: format!("a study has at most {MAX_GUARDRAILS} guardrails"),
+        });
+    }
     for guardrail in &request.guardrails {
+        if guardrail.label.chars().count() > MAX_LABEL_CHARS {
+            return Err(ApiError::BadRequest {
+                code: "invalid_guardrail",
+                message: format!("a guardrail's label is at most {MAX_LABEL_CHARS} characters"),
+            });
+        }
         let at_least = guardrail.at_least;
         if !(0.0..=1.0).contains(&at_least) {
             return Err(ApiError::BadRequest {
@@ -1693,8 +1717,10 @@ async fn start_study(state: &AppState, id: &StudyId) -> Result<jiff::Timestamp, 
         jiff::SignedDuration::from_secs(i64::try_from(study.max_wall_seconds).map_err(|_| {
             ApiError::Internal(format!("study {} has no usable budget", id.as_str()))
         })?);
-    let deadline = jiff::Timestamp::now()
+    // Stored to the whole second, so rounded up: the study gets at least its budget.
+    let deadline = (state.clock)()
         .checked_add(budget)
+        .and_then(|d| d.checked_add(jiff::SignedDuration::from_secs(1)))
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     let started = state
         .store
@@ -1979,6 +2005,17 @@ fn spawn_study(state: &AppState, study: &Study, comparison: PipelineVersion, pla
             Ok(deadline) => deadline,
             Err(e) => {
                 tracing::error!(study = study_id.as_str(), error = %e, "could not start the study");
+                // A run that never starts would hold the step's one running study for ever.
+                if let Err(e) = state
+                    .store
+                    .set_run_status(&run_id, RunStatus::Failed, &now())
+                    .await
+                {
+                    tracing::error!(run = run_id.as_str(), error = %e, "could not fail the run");
+                }
+                if let Err(e) = record_end(&state, &study_id).await {
+                    tracing::error!(study = study_id.as_str(), error = %e, "could not record how the study ended");
+                }
                 return;
             }
         };
@@ -2036,7 +2073,7 @@ async fn drive_run(
         scheduler = scheduler.reusing(reuse);
     }
     if let Some(deadline) = deadline {
-        scheduler = scheduler.until(deadline, std::sync::Arc::new(jiff::Timestamp::now));
+        scheduler = scheduler.until(deadline, state.clock.clone());
     }
     let result = scheduler.run(run_id, pipeline, plan).await;
     if let Err(e) = &result {
@@ -2306,6 +2343,27 @@ mod tests {
             .to_string(),
         )
         .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    #[test]
+    fn a_recall_guardrail_needs_a_classification_question() {
+        let request: sprisk_contracts::CreateStudy = parse(
+            &json!({
+                "idempotency_key": "study-key-unit", "strategy": "grid", "seed": 0,
+                "max_trials": 10, "max_wall_seconds": 60,
+                "guardrails": [{ "metric": "recall", "label": "1", "at_least": 0.5 }],
+            })
+            .to_string(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert!(check_guardrails(&request, TaskType::Classification).is_ok());
+        assert!(matches!(
+            check_guardrails(&request, TaskType::Regression),
+            Err(ApiError::BadRequest {
+                code: "invalid_guardrail",
+                ..
+            })
+        ));
     }
 
     #[test]

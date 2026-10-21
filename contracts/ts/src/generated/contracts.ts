@@ -1802,7 +1802,7 @@ export interface SelectionDecision {
    */
   guardrails?: Guardrail[];
   /**
-   * Earlier comparisons of the same version and step, scored on the same folds before this one (ADR-0051). Absent: none.
+   * Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0051). Absent: none.
    */
   earlier_looks?: PipelineVersionId[];
 }

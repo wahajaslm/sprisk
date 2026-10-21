@@ -64,6 +64,11 @@ pub enum SchedulerError {
 /// Reads the time, for deadlines. A fake clock lets a test pass a deadline between steps.
 pub type Clock = std::sync::Arc<dyn Fn() -> jiff::Timestamp + Send + Sync>;
 
+/// The system's clock.
+pub fn system_clock() -> Clock {
+    std::sync::Arc::new(jiff::Timestamp::now)
+}
+
 /// Attempts of the methodology gate use this node id (ADR-0017); Gate A reserves it.
 pub const GATE_NODE: &str = "gate_b";
 

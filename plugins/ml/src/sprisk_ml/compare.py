@@ -194,15 +194,24 @@ def cross_validate(
             )
         )
     if inner_folds is not None:
-        inner = _InnerFolds(task, folds_by, inner_folds, train, time_column, groups, truth)
+
+        def inner_splits(rows: np.ndarray, at: int) -> list[tuple[np.ndarray, np.ndarray]]:
+            """Folds of `rows`, as indices into `rows`, kept apart as the outer folds are."""
+            if time_column is not None:
+                return _time_splits(train[rows], time_column, inner_folds, 1)
+            if groups is not None:
+                return _group_splits(task, truth[rows], groups[rows], inner_folds, 1, at)
+            splitter = _splitter(task, y[rows], inner_folds, 1, at)
+            return list(splitter.split(np.zeros(len(rows)), truth[rows]))
+
         score_inner = partial(_inner_score, model, x, truth, sign, SCORING[metric])
+        every = np.arange(len(truth))
         scores = scores.with_columns(
+            inner_folds=pl.lit(inner_folds),
             inner_score=pl.Series(
-                [score_inner(fit, inner.of(fit, seed + i)) for i, (fit, _) in enumerate(splits)]
+                [score_inner(fit, inner_splits(fit, seed + i)) for i, (fit, _) in enumerate(splits)]
             ),
-            train_inner_score=pl.lit(
-                score_inner(np.arange(len(truth)), inner.of(np.arange(len(truth)), seed))
-            ),
+            train_inner_score=pl.lit(score_inner(every, inner_splits(every, seed))),
         )
     return {
         "scores": scores,
@@ -220,47 +229,11 @@ def _recall_scorers(task: str, target: str, truth: np.ndarray, labels: list[str]
     scorers = {}
     for i, label in enumerate(labels):
         if label not in classes:
-            raise ValueError(
-                f"{label!r} is not a class of {target}; its classes are {sorted(classes)}"
-            )
+            raise ValueError(f"{label!r} is not one of the {len(classes)} classes of {target}")
         scorers[f"recall_{i}"] = metrics.make_scorer(
-            metrics.recall_score, labels=[classes[label]], average="macro", zero_division=0.0
+            metrics.recall_score, labels=[classes[label]], average="macro", zero_division=np.nan
         )
     return scorers
-
-
-class _InnerFolds:
-    """Inner folds of some train rows, kept apart the way the outer folds are."""
-
-    def __init__(
-        self,
-        task: str,
-        folds_by: str,
-        folds: int,
-        train: pl.DataFrame,
-        time_column: str | None,
-        groups: np.ndarray | None,
-        truth: np.ndarray,
-    ) -> None:
-        self.task, self.folds_by, self.folds = task, folds_by, folds
-        self.train, self.time_column, self.groups, self.truth = train, time_column, groups, truth
-
-    def of(self, rows: np.ndarray, seed: int) -> list[tuple[np.ndarray, np.ndarray]]:
-        """Folds of `rows`, as indices into `rows`."""
-        truth = self.truth[rows]
-        if self.folds_by == "time" and self.time_column is not None:
-            return _time_splits(self.train[rows], self.time_column, self.folds, 1)
-        if self.folds_by == "group" and self.groups is not None:
-            return _group_splits(self.task, truth, self.groups[rows], self.folds, 1, seed)
-        if self.folds_by != "shuffle":
-            raise ValueError(f"inner folds by {self.folds_by} need its column")
-        shuffle = {"n_splits": self.folds, "shuffle": True, "random_state": seed}
-        splitter = (
-            model_selection.StratifiedKFold(**shuffle)
-            if self.task == "classification"
-            else model_selection.KFold(**shuffle)
-        )
-        return list(splitter.split(np.zeros(len(rows)), truth))
 
 
 def _inner_score(
@@ -392,6 +365,8 @@ def select_model(
             raise ValueError(f"{name} was not scored on the same folds as {baseline}")
     sign = 1.0 if GREATER_IS_BETTER[metric] else -1.0
     declared = guardrails or []
+    if declared and baseline_role == "reference":
+        raise ValueError("guardrails apply to choosing a model, not to a reference baseline")
     scored, searches = _candidates(trials, tuned or {}, settings or {}, sign)
     if missing := sorted(set(scored) - set(complexity)):
         raise ValueError(f"no complexity for {missing}")
@@ -475,6 +450,8 @@ def select_model(
     kind, against = (
         ("alternative", "the recommendation") if reference else ("model", "the baseline")
     )
+    if declared:
+        against += " and meet every guardrail"
     others = "others" if reference else "more flexible ones"
     best = max(beating, key=lambda c: sign * c["mean"])
     best_se = _corrected_se(trials[best["id"]]["score"].to_numpy(), k, ratio)
@@ -524,12 +501,16 @@ def _candidates(
         raise ValueError(f"tuned trials {unknown} are not among the trials")
     if clash := sorted(set(tuned) & set(trials)):
         raise ValueError(f"{', '.join(clash)} is both a tuned candidate and a trial")
+    if unset := sorted(set(grouped) - set(settings)):
+        raise ValueError(f"no settings for tuned trials {unset}")
     scored = {name: frame for name, frame in trials.items() if name not in grouped}
     searches = {}
     for candidate, group in tuned.items():
         frames = [trials[t] for t in group]
         if any("inner_score" not in f.columns for f in frames):
             raise ValueError(f"{candidate}'s trials were not scored on inner folds")
+        if len({f["inner_folds"][0] for f in frames}) > 1:
+            raise ValueError(f"{candidate}'s trials were scored on different inner folds")
         inner = sign * np.column_stack([f["inner_score"].to_numpy() for f in frames])
         # argmax takes the first best, so ties go to the trial listed first.
         chosen = inner.argmax(axis=1)
@@ -549,13 +530,13 @@ def _candidates(
             "trials": [
                 {
                     "id": t,
-                    "settings": settings.get(t, {}),
+                    "settings": settings[t],
                     "inner_mean": float(f["inner_score"].mean()),  # type: ignore[arg-type]
                     "chosen_in": int((chosen == i).sum()),
                 }
                 for i, (t, f) in enumerate(zip(group, frames, strict=True))
             ],
-            "settings": settings.get(group[int(on_train.argmax())], {}),
+            "settings": settings[group[int(on_train.argmax())]],
         }
     return scored, searches
 
@@ -567,6 +548,12 @@ def _guardrail(
     if column not in scores.columns:
         raise ValueError(f"no recall of {guardrail['label']!r} was scored for a guardrail")
     recall = scores[column].to_numpy()
+    # A fold without the class has no recall; scoring it 0 would fail the guardrail unseen.
+    if missing := int(np.isnan(recall).sum()):
+        raise ValueError(
+            f"{missing} outer folds hold no row of class {guardrail['label']!r}, so its recall "
+            "there is undefined"
+        )
     mean = float(recall.mean())
     return {
         "label": guardrail["label"],

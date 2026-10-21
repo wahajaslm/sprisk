@@ -363,6 +363,11 @@ fn a_search_the_model_cannot_take_is_refused_naming_the_file_and_why() {
             "[{ name: min_samples_leaf, values: [1, 5] }, { name: min_samples_leaf, values: [2, 3] }]",
             "min_samples_leaf is searched twice",
         ),
+        (
+            "[{ name: min_samples_leaf, values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] }, \
+              { name: target, values: [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o] }]",
+            "the search has 225 combinations; at most 200",
+        ),
     ];
     for (search, why) in cases {
         let dir = tempfile::tempdir().unwrap();

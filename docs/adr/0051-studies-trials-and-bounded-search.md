@@ -68,6 +68,7 @@ Arch doc sections: §3 (Experiment), §5, §11, §21 (M4), §22 (EXP-01, EXP-02,
 
 **Budgets are enforced in Rust.**
 - A study request must state `max_trials` and `max_wall_seconds`. Neither has a default.
+- Both are bounded: at most 200 trials and 7 days. A manifest may declare at most 200 settings combinations. A study has at most 10 guardrails, with labels of at most 256 characters.
 - `max_trials` is checked when the study is built:
   - **Grid:** more trials than the budget is refused with `422 over_budget`, naming the count.
   - **Random:** each tuned candidate gets *n* = (`max_trials` − one-trial candidates) ÷ tuned candidates, rounded down and capped at its grid size. Below 2 is refused. Any remainder is unused. The trials show *n*.
@@ -127,6 +128,7 @@ Arch doc sections: §3 (Experiment), §5, §11, §21 (M4), §22 (EXP-01, EXP-02,
 - Bad: a study cut short gives no decision until it is rerun with a larger budget.
 - Bad: the guardrail checks a mean, and settings are not tuned for it. A model just above the bar may fall below it on new rows.
 - Bad: `cross_validate` and `select_model` change params. Stored comparisons at the old versions can no longer rerun, as in ADR-0050.
+- Bad: the forest gains settings, so it becomes `random_forest@1.1.0`. A stored flow that pins `@1.0.0` no longer runs until its model step is chosen again. Keeping both versions registered would put two forests on the shortlist under one candidate id.
 - Bad: `test_rows_seen_by` does not yet cover branches made from other proposals on the same step.
 
 ## Validation

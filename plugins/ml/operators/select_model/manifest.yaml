@@ -46,7 +46,7 @@ params_schema:
           at_least: { type: number, minimum: 0, maximum: 1 }
     earlier_looks:
       type: array
-      description: "Earlier comparisons of the same version and step on the same folds, recorded as given."
+      description: "Earlier comparisons of the same version and step, started on the same folds, recorded as given."
       items: { type: string, pattern: "^plv_[0-9A-HJKMNP-TV-Z]{26}$" }
     not_compared:
       type: array

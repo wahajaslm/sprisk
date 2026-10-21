@@ -290,8 +290,8 @@ impl SqliteStore {
         Ok(Some(saved))
     }
 
-    /// Comparisons of `step` of `pipeline` that have a run: its model selection's and every
-    /// study's, oldest first. A new study records them as earlier looks at the same folds.
+    /// Comparisons of `step` of `pipeline` that were started: its model selection's and every
+    /// study's, finished or not, oldest first. A new study records them as earlier looks.
     pub async fn earlier_comparisons(
         &self,
         pipeline: &PipelineVersionId,

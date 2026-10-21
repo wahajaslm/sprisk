@@ -108,7 +108,9 @@ pub fn study_comparison<'a>(
             trials.push(candidate);
             continue;
         }
-        let n = counts.next().unwrap_or_default();
+        let n = counts.next().ok_or_else(|| {
+            ResolveError::Selection(format!("no trial count for {}", candidate.id))
+        })?;
         let points = match asked.strategy {
             StudyStrategy::Grid => search::grid(&space),
             StudyStrategy::Random => search::random(&space, asked.seed, n),

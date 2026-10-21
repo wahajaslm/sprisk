@@ -17,9 +17,15 @@ CLASSIFY = {"target": "y", "features": ["row"], "task": "classification"}
 
 
 def labelled(n: int) -> pl.DataFrame:
-    """`row` is the row's index; y is "yes" on one row in three."""
+    """`row` is the row's index and its time `t`; `g` groups four rows; y is "yes" on one row
+    in three."""
     return pl.DataFrame(
-        {"row": list(range(n)), "y": ["yes" if k % 3 == 0 else "no" for k in range(n)]}
+        {
+            "row": list(range(n)),
+            "t": list(range(n)),
+            "g": [k // 4 for k in range(n)],
+            "y": ["yes" if k % 3 == 0 else "no" for k in range(n)],
+        }
     )
 
 
@@ -43,9 +49,10 @@ def nested(train: pl.DataFrame, build: Any, **extra: Any) -> dict[str, Any]:
     )
 
 
-def test_inner_folds_fit_only_on_their_outer_fold_s_training_rows() -> None:
+@pytest.mark.parametrize("split", [{}, {"group_column": "g"}, {"time_column": "t"}])
+def test_inner_folds_fit_only_on_their_outer_fold_s_training_rows(split: dict[str, str]) -> None:
     RowRecorder.fits = []
-    result = nested(labelled(60), lambda schema, task: RowRecorder())
+    result = nested(labelled(60), lambda schema, task: RowRecorder(), **split)
     held = result["predictions"].group_by("fold").agg(pl.col("row")).sort("fold")["row"].to_list()
     all_rows = set(range(60))
     # Five outer fits, then three inner fits per outer fold, then three on all train rows.
@@ -53,7 +60,11 @@ def test_inner_folds_fit_only_on_their_outer_fold_s_training_rows() -> None:
     for fold, validation in enumerate(held):
         for inner in RowRecorder.fits[5 + 3 * fold : 8 + 3 * fold]:
             assert inner < all_rows - set(validation), f"outer fold {fold + 1}"
-    assert set().union(*RowRecorder.fits[-3:]) == all_rows
+            if "group_column" in split:
+                assert inner == {r for r in all_rows if r // 4 in {k // 4 for k in inner}}
+            if "time_column" in split:
+                assert inner == set(range(len(inner))), "an inner fit is the earliest rows"
+    assert set().union(*RowRecorder.fits[-3:]) <= all_rows
 
 
 def test_a_tuned_trial_writes_its_inner_scores_beside_its_outer_ones() -> None:
@@ -85,9 +96,7 @@ def test_recall_of_a_class_is_written_for_every_outer_fold() -> None:
 
 
 def test_recall_of_a_value_the_target_never_takes_is_refused() -> None:
-    with pytest.raises(
-        ValueError, match=r"'maybe' is not a class of y; its classes are \['no', 'yes'\]"
-    ):
+    with pytest.raises(ValueError, match="'maybe' is not one of the 2 classes of y"):
         cross_validate(
             labelled(60),
             linear_model_estimator,
@@ -121,6 +130,7 @@ def frame(
         "folds_by": ["shuffle"] * k,
     }
     if inner is not None:
+        columns["inner_folds"] = [3] * k
         columns["inner_score"] = inner
         columns["train_inner_score"] = [train_inner] * k
     if recall is not None:
@@ -210,6 +220,7 @@ def test_a_candidate_below_a_guardrail_cannot_win_and_does_not_set_the_bar() -> 
         guardrails=guardrails,
     )
     assert decision.winner == "ml_linear_model"
+    assert "of the models that beat the baseline and meet every guardrail" in decision.reason
     assert decision.guardrails is not None and decision.guardrails[0].label == "bad"
     by_id = {c.id: c for c in decision.candidates}
     forest = by_id["ml_random_forest"].guardrails
@@ -240,3 +251,101 @@ def test_earlier_looks_at_the_same_folds_are_recorded() -> None:
     assert [
         str(v.root) if hasattr(v, "root") else str(v) for v in decision.earlier_looks
     ] == earlier
+
+
+GUARD = [{"metric": "recall", "label": "bad", "at_least": 0.6}]
+TUNED_FRAMES = {
+    BASE: frame([0.5] * 5),
+    f"{FOREST}_t1": frame([0.8] * 5, inner=[0.7] * 5, train_inner=0.7),
+    f"{FOREST}_t2": frame([0.8] * 5, inner=[0.7] * 5, train_inner=0.7),
+}
+
+
+@pytest.mark.parametrize(
+    ("trials", "extra", "error"),
+    [
+        (
+            TUNED_FRAMES,
+            {
+                "tuned": {FOREST: [f"{FOREST}_t1"], "ml_other": [f"{FOREST}_t1"]},
+                "settings": SETTINGS,
+            },
+            "is tuned for more than one candidate",
+        ),
+        (
+            TUNED_FRAMES,
+            {"tuned": {FOREST: [f"{FOREST}_t9"]}, "settings": {f"{FOREST}_t9": {}}},
+            "are not among the trials",
+        ),
+        (
+            {**TUNED_FRAMES, FOREST: frame([0.8] * 5)},
+            {"tuned": TUNED, "settings": SETTINGS},
+            "is both a tuned candidate and a trial",
+        ),
+        (
+            {**TUNED_FRAMES, f"{FOREST}_t2": frame([0.8] * 5)},
+            {"tuned": TUNED, "settings": SETTINGS},
+            "were not scored on inner folds",
+        ),
+        (
+            {
+                **TUNED_FRAMES,
+                f"{FOREST}_t2": frame([0.8] * 5, inner=[0.7] * 5, train_inner=0.7).with_columns(
+                    inner_folds=pl.lit(5)
+                ),
+            },
+            {"tuned": TUNED, "settings": SETTINGS},
+            "were scored on different inner folds",
+        ),
+        (TUNED_FRAMES, {"tuned": TUNED, "settings": {}}, "no settings for tuned trials"),
+        (
+            {BASE: frame([0.5] * 5), "ml_linear_model": frame([0.8] * 5)},
+            {"guardrails": GUARD},
+            "no recall of 'bad' was scored",
+        ),
+        (
+            {
+                BASE: frame([0.5] * 5, recall=[0.0] * 5),
+                "ml_linear_model": frame([0.8] * 5, recall=[0.7, float("nan"), 0.7, 0.7, 0.7]),
+            },
+            {"guardrails": GUARD},
+            "1 outer folds hold no row of class 'bad'",
+        ),
+        (
+            {BASE: frame([0.5] * 5, recall=[0.0] * 5)},
+            {"guardrails": GUARD, "baseline_role": "reference"},
+            "not to a reference baseline",
+        ),
+    ],
+)
+def test_a_select_step_it_cannot_decide_honestly_fails_naming_why(
+    trials: dict[str, pl.DataFrame], extra: dict[str, Any], error: str
+) -> None:
+    extra = dict(extra)
+    role = extra.pop("baseline_role", "floor")
+    with pytest.raises(ValueError, match=error):
+        select_model(
+            trials,
+            baseline=BASE,
+            metric="balanced_accuracy",
+            complexity={**COMPLEXITY, "ml_other": 2},
+            baseline_role=role,
+            not_compared=[],
+            **extra,
+        )
+
+
+def test_recall_of_a_class_needs_a_classification_task() -> None:
+    numbers = labelled(60).with_columns(y=pl.col("row").cast(pl.Float64))
+    with pytest.raises(ValueError, match="recall of a class needs a classification task"):
+        cross_validate(
+            numbers,
+            dummy_baseline_estimator,
+            {**CLASSIFY, "task": "regression"},
+            5,
+            0,
+            "rmse",
+            1,
+            [],
+            recall_of=["1.0"],
+        )
