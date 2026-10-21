@@ -57,6 +57,9 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
     let mut noisy = shift.clone();
     noisy["id"] = json!("sprisk.clean.noisy@1.0.0");
     noisy["effects"] = json!("nondeterministic");
+    let mut online = shift.clone();
+    online["id"] = json!("sprisk.clean.online@1.0.0");
+    online["network"] = json!("egress_allowlisted");
     let mut reader = shift.clone();
     reader["id"] = json!("sprisk.clean.reader@1.0.0");
     reader["params_schema"] = json!({
@@ -67,6 +70,7 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
         model,
         shift,
         noisy,
+        online,
         reader,
         operator(
             "sprisk.ml.compare@1.0.0",
@@ -622,10 +626,13 @@ fn preparing(prepare: Value) -> Value {
 }
 
 #[test]
-fn a_preparation_step_must_be_registered_and_fit_on_train() {
+fn a_preparation_step_must_be_registered_fit_on_train_and_be_pure_offline_and_read_no_files() {
     for operator in [
         "sprisk.clean.missing@1.0.0",
         "sprisk.validation.split@1.0.0",
+        "sprisk.clean.noisy@1.0.0",
+        "sprisk.clean.online@1.0.0",
+        "sprisk.clean.reader@1.0.0",
     ] {
         let found = errors(
             preparing(json!([{ "operator": operator, "params": {} }])),

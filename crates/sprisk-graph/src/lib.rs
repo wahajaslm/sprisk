@@ -460,6 +460,7 @@ fn named_preparations<'r>(
             let foldable = |o: &Operator| {
                 o.fits_on_train == Some(true)
                     && o.effects == sprisk_contracts::Effects::Pure
+                    && o.network == sprisk_contracts::NetworkAccess::None
                     && !properties(o).any(|(_, v)| v.get("x-sprisk-local-path").is_some())
             };
             let Some((found, digest)) = registry.resolve(operator).filter(|(o, _)| foldable(o))
