@@ -3301,6 +3301,7 @@ async fn a_study_tunes_the_forest_on_inner_folds_and_a_rerun_reuses_its_trials()
     let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
     assert_eq!(done["study"]["status"], "completed", "{done}");
     let decision = selection_decision(&api, &done).await;
+    let first = decision.clone();
     let tuned = decision["candidates"]
         .as_array()
         .unwrap()
@@ -3351,11 +3352,36 @@ async fn a_study_tunes_the_forest_on_inner_folds_and_a_rerun_reuses_its_trials()
             .unwrap();
         assert_eq!(attempt["state"], "cache_hit", "{trial}");
     }
-    let decision = selection_decision(&api, &again).await;
+    let rerun = selection_decision(&api, &again).await;
     assert_eq!(
-        decision["earlier_looks"],
+        rerun["earlier_looks"],
         json!([done["study"]["comparison_id"]]),
-        "{decision}"
+        "{rerun}"
+    );
+
+    // Bands of age: a line cannot follow them, so the tuned forest is recommended. Using it
+    // applies the settings the study chose for it.
+    assert_eq!(first["winner"], "ml_random_forest", "{first}");
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        done["study"]["proposal_id"].as_str().unwrap()
+    );
+    let choice =
+        json!({ "alternative_id": "ml_random_forest", "idempotency_key": "study-apply-0001" });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let model = applied["pipeline"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    for (setting, value) in tuned["search"]["settings"].as_object().unwrap() {
+        assert_eq!(&model["params"][setting], value, "{model}");
+    }
+    assert_eq!(
+        model["params"]["n_estimators"], 10,
+        "the flow's own settings stay"
     );
 }
 

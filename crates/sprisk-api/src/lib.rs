@@ -1224,6 +1224,7 @@ async fn apply_methodology(
     let at = now();
     let decision_id = format!("mdc_{}", ulid::Ulid::new());
     let pipeline_id = format!("plv_{}", ulid::Ulid::new());
+    let alternative = &with_tuned_settings(alternative, selection.as_ref().map(|(d, _)| d))?;
     let pipeline = materialize_effect(&base, alternative, &pipeline_id, &decision_id, &at)?;
     compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     let mut decision_json = json!({
@@ -1822,6 +1823,32 @@ fn trial_state(
         // The run goes on: the attempt is in flight, or a retry is due.
         _ => T::Running,
     }
+}
+
+/// `alternative` with the settings a study chose for it added to its step's params
+/// (ADR-0051); unchanged when the comparison tuned nothing for it.
+fn with_tuned_settings(
+    alternative: &serde_json::Value,
+    decided: Option<&sprisk_contracts::SelectionDecision>,
+) -> Result<serde_json::Value, ApiError> {
+    let mut tuned = alternative.clone();
+    let search = decided
+        .and_then(|d| {
+            d.candidates
+                .iter()
+                .find(|c| alternative["id"] == c.id.as_str())
+        })
+        .and_then(|c| c.search.as_ref());
+    let Some(search) = search else {
+        return Ok(tuned);
+    };
+    let settings =
+        serde_json::to_value(&search.settings).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let params = tuned["effect"]["params"].as_object_mut().ok_or_else(|| {
+        ApiError::Internal(format!("tuned {} replaces no step", alternative["id"]))
+    })?;
+    params.extend(settings.as_object().cloned().unwrap_or_default());
+    Ok(tuned)
 }
 
 fn materialize_effect(
