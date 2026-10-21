@@ -7,6 +7,7 @@ import appliedDecision from "../../../tests/contract/applied_methodology_decisio
 import seenDecision from "../../../tests/contract/methodology_decision/valid/second-branch-of-a-comparison.json";
 import shortlistRule from "../../../tests/contract/methodology_rule/valid/shortlist.json";
 import noWinner from "../../../tests/contract/selection_decision/valid/no-winner-with-limitations.json";
+import tested from "../../../tests/contract/selection_decision/valid/tested.json";
 import winner from "../../../tests/contract/selection_decision/valid/winner.json";
 import { Experiments } from "../src/views/Experiments.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
@@ -157,7 +158,7 @@ describe("model comparison", () => {
     expect(within(table).getAllByRole("columnheader")[2]).toHaveTextContent("ml_linear_modelrecommended");
     expect(row(table, "Why on the shortlist")).toHaveTextContent("The floor.A simple reference.Enough rows for trees.");
     expect(row(table, "Mean ± spread")).toHaveTextContent("0.5 ± 0" + "0.898 ± 0.0238");
-    expect(row(table, "Fold scores")).toHaveTextContent("0.91 · 0.88 · 0.93 · 0.9 · 0.87");
+    expect(row(table, "Fold scores")).toHaveTextContent("5 scores, 0.87 to 0.93");
     expect(row(table, "Gain over baseline")).toHaveTextContent("+0.398 ± 0.0145");
     expect(row(table, "Verdict")).toHaveTextContent("the floorrecommendedclears the 1-SE bar");
     expect(region).toHaveTextContent("Left off the shortlist: ml_gradient_boosting (Too few rows to trust.)");
@@ -190,7 +191,7 @@ describe("model comparison", () => {
   it("opens the recommendation and the best other model side by side, and any two on request", async () => {
     compared(winner);
     const detail = await screen.findByRole("region", { name: "Detail" });
-    expect(within(detail).getByRole("region", { name: "Detail of ml_linear_model" })).toBeInTheDocument();
+    expect(within(detail).getByRole("region", { name: "Detail of ml_linear_model" })).toHaveTextContent("Fold scores: 0.91 · 0.88 · 0.93 · 0.9 · 0.87");
     expect(within(detail).getByRole("region", { name: "Detail of ml_random_forest" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("checkbox", { name: "Compare ml_dummy_baseline in detail" }));
     const regions = within(screen.getByRole("region", { name: "Detail" })).getAllByRole("region").map((r) => r.getAttribute("aria-label"));
@@ -284,5 +285,14 @@ describe("model comparison", () => {
       ),
     );
     expect(await screen.findByText(/This model was chosen after plv_01JABCDEFGHJKMNPQRSTVWXYZ1 had already scored the same test rows/)).toBeInTheDocument();
+  });
+
+  it("names repeated folds and each model's p against the baseline", async () => {
+    compared(tested);
+    const region = await screen.findByRole("region", { name: "Model comparison" });
+    const table = await within(region).findByRole("table", { name: "Candidates" });
+    expect(region).toHaveTextContent("10 × 5-fold cross-validation, seed 0");
+    expect(row(table, "Gain over baseline")).toHaveTextContent("+0.398 ± 0.0145, p = 0.0001");
+    expect(row(table, "Fold scores")).toHaveTextContent("5 scores, 0.87 to 0.93");
   });
 });

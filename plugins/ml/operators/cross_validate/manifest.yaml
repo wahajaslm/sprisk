@@ -8,7 +8,7 @@ outputs: [{ name: scores, kind: table }, { name: predictions, kind: table }, { n
 params_schema:
   type: object
   additionalProperties: false
-  required: [candidate, candidate_params, folds, seed, metric]
+  required: [candidate, candidate_params, folds, repeats, seed, metric]
   properties:
     candidate:
       type: string
@@ -17,6 +17,7 @@ params_schema:
       x-sprisk-model-operator: candidate_params
     candidate_params: { type: object, description: "The model's params, as its own step would take them." }
     folds: { type: integer, minimum: 2, maximum: 20, description: "Number of folds. Every candidate in a comparison uses the same." }
+    repeats: { type: integer, minimum: 1, maximum: 20, description: "How many times the rows are shuffled into folds; every candidate in a comparison uses the same (ADR-0047)." }
     seed: { type: integer, minimum: 0, description: "Shuffles the rows into folds, so every candidate gets the same folds." }
     metric: { type: string, enum: [balanced_accuracy, rmse], description: "Fixed before any score is seen: balanced_accuracy for classification, rmse for regression." }
 effects: pure

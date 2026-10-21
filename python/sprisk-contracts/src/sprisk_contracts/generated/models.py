@@ -770,10 +770,16 @@ class BaselineComparison(StrictModel):
             description="Standard error of that mean, corrected for folds that share train rows: the correction of Nadeau & Bengio (2003), applied to k-fold as in Bouckaert & Frank (2004)."
         ),
     ]
+    p_value: Annotated[
+        float | None,
+        Field(
+            description="One-sided p of the corrected repeated k-fold t-test that the model is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test."
+        ),
+    ] = None
     beats_baseline: Annotated[
         bool,
         Field(
-            description="Whether mean_difference is larger than one corrected_se: a screening rule, not a significance test."
+            description="With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the candidates. Without: whether mean_difference is larger than one corrected_se, a screening rule."
         ),
     ]
 
@@ -1542,7 +1548,10 @@ class CandidateResult(StrictModel):
         str, Field(description="The shortlist alternative.", pattern="^[a-z][a-z0-9_]{0,62}$")
     ]
     fold_scores: Annotated[
-        list[float], Field(description="The metric on each fold's validation rows, in fold order.")
+        list[float],
+        Field(
+            description="The metric on each fold's validation rows, in fold order, repeat after repeat."
+        ),
     ]
     mean: float
     spread: Annotated[float, Field(description="Standard deviation of the fold scores.")]
@@ -1904,6 +1913,13 @@ class SelectionDecision(StrictModel):
         int,
         Field(description="Number of cross-validation folds every candidate was scored on.", ge=0),
     ]
+    repeats: Annotated[
+        int | None,
+        Field(
+            description="How many times the rows were shuffled into folds (ADR-0047). Absent: once, as before repeated folds.",
+            ge=0,
+        ),
+    ] = None
     seed: Annotated[int, Field(description="Seed that shuffled the rows into folds.", ge=0)]
     baseline: Annotated[
         str,

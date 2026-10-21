@@ -92,7 +92,7 @@ function Decided({ decision, artifactId, attempts, proposal }: { decision: Selec
   return (
     <>
       <p className="muted">
-        {decision.folds}-fold cross-validation, seed {decision.seed}, scored by {METRIC_LABEL[decision.metric]}, fixed before any score was seen. Train rows only: the test rows were not used.
+        {decision.repeats && decision.repeats > 1 ? `${decision.repeats} × ` : ""}{decision.folds}-fold cross-validation, seed {decision.seed}, scored by {METRIC_LABEL[decision.metric]}, fixed before any score was seen. Train rows only: the test rows were not used.
       </p>
       <table className="exp-table" aria-label="Candidates">
         <thead>
@@ -111,7 +111,7 @@ function Decided({ decision, artifactId, attempts, proposal }: { decision: Selec
         <tbody>
           <Row label="Why on the shortlist" cells={decision.candidates.map((c) => why(c.id) ?? "—")} />
           <Row label={`Mean ± spread (${METRIC_LABEL[decision.metric]})`} mono cells={decision.candidates.map((c) => `${formatMetric(c.mean)} ± ${formatMetric(c.spread)}`)} />
-          <Row label="Fold scores" mono cells={decision.candidates.map((c) => c.fold_scores.map(formatMetric).join(" · "))} />
+          <Row label="Fold scores" mono cells={decision.candidates.map(foldRange)} />
           <Row label="Gain over baseline ± corrected SE" mono cells={decision.candidates.map(gain)} />
           <Row label="Verdict" cells={decision.candidates.map((c) => verdict(c, decision))} />
           <tr>
@@ -141,6 +141,7 @@ function Decided({ decision, artifactId, attempts, proposal }: { decision: Selec
           {picked.map((id) => (
             <section key={id} className="compare-col" aria-label={`Detail of ${id}`}>
               <p className="eyebrow">{id} · from held-out folds of the train rows</p>
+              <p className="mono">Fold scores: {decision.candidates.find((c) => c.id === id)?.fold_scores.map(formatMetric).join(" · ")}</p>
               <FigurePort attempt={cvAttempt(id)} port="figures" />
             </section>
           ))}
@@ -227,7 +228,8 @@ function defaultPair(decision: SelectionDecision): string[] {
 function gain(c: Candidate): string {
   const versus = c.versus_baseline;
   if (!versus) return "—";
-  return `${versus.mean_difference >= 0 ? "+" : "−"}${formatMetric(Math.abs(versus.mean_difference))} ± ${formatMetric(versus.corrected_se)}`;
+  const p = versus.p_value === undefined ? "" : `, p = ${formatMetric(versus.p_value)}`;
+  return `${versus.mean_difference >= 0 ? "+" : "−"}${formatMetric(Math.abs(versus.mean_difference))} ± ${formatMetric(versus.corrected_se)}${p}`;
 }
 
 /** Where a candidate stands: one corrected SE is a screening bar, not a test. */
@@ -236,7 +238,14 @@ function verdict(c: Candidate, decision: SelectionDecision): string {
   if (c.id === decision.winner) return "recommended";
   const versus = c.versus_baseline;
   if (!versus) return "—";
-  if (versus.beats_baseline) return "clears the 1-SE bar";
+  if (versus.beats_baseline) return versus.p_value === undefined ? "clears the 1-SE bar" : "beats the baseline (tested)";
   if (versus.mean_difference < -versus.corrected_se) return "worse than baseline";
   return "within 1 SE of baseline";
+}
+
+/** How many fold scores a model has, and their range; its detail lists every one. */
+function foldRange(c: Candidate): string {
+  const scores = c.fold_scores;
+  if (scores.length === 0) return "—";
+  return `${scores.length} scores, ${formatMetric(Math.min(...scores))} to ${formatMetric(Math.max(...scores))}`;
 }

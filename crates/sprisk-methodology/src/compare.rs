@@ -14,8 +14,10 @@ use sprisk_contracts::{
 use crate::ResolveError;
 use crate::decision::train_rows_chain;
 
-/// Folds and seed of every comparison, recorded in each cross-validate step's params.
+/// Folds, repeats and seed of every comparison, recorded in each cross-validate step's params:
+/// ten shuffles into five folds, for the corrected repeated k-fold t-test (ADR-0047).
 pub const FOLDS: u64 = 5;
+pub const REPEATS: u64 = 10;
 pub const SEED: u64 = 0;
 const CROSS_VALIDATE: &str = "sprisk.ml.cross_validate@1.0.0";
 const SELECT: &str = "sprisk.ml.select_model@1.0.0";
@@ -117,7 +119,7 @@ pub fn comparison<'a>(
                 "id": step, "operator": CROSS_VALIDATE,
                 "params": {
                     "candidate": operator, "candidate_params": params,
-                    "folds": FOLDS, "seed": SEED, "metric": metric
+                    "folds": FOLDS, "repeats": REPEATS, "seed": SEED, "metric": metric
                 }
             })
             .to_string(),

@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import plotly.graph_objects as go
 import polars as pl
+from scipy import stats
 from sklearn import metrics, model_selection
 from sklearn.base import BaseEstimator
 
@@ -21,13 +22,23 @@ GREATER_IS_BETTER = {"balanced_accuracy": True, "rmse": False}
 LABEL = {"balanced_accuracy": "balanced accuracy", "rmse": "RMSE"}
 # Shuffles per feature and fold; with five folds, 25 per feature in all.
 IMPORTANCE_REPEATS = 5
-SCREENING = (
-    "A model beats the baseline when its mean gain is larger than one corrected standard "
-    "error. That is a screening rule, not a significance test, and it is not adjusted for "
-    "comparing several models."
+ALPHA = 0.05
+TESTED = (
+    "Beating the baseline means a corrected repeated k-fold t-test (Bouckaert & Frank 2004) "
+    "rejects 'no better than the baseline' at α = 0.05 after a Holm adjustment over the "
+    "candidates. Folds share rows, so the test is approximate."
 )
 # What every candidate's folds must share for their paired differences to mean anything.
-PROTOCOL = ["metric", "folds", "seed", "fold", "train_rows", "validate_rows", "rows_digest"]
+PROTOCOL = [
+    "metric",
+    "folds",
+    "seed",
+    "repeat",
+    "fold",
+    "train_rows",
+    "validate_rows",
+    "rows_digest",
+]
 
 
 def cross_validate(
@@ -37,12 +48,14 @@ def cross_validate(
     folds: int,
     seed: int,
     metric: str,
+    repeats: int,
 ) -> dict[str, Any]:
     """The candidate's score on each fold's validation rows, its whole pipeline, preparation
-    included, refit on the fold's other rows. The same rows, folds and seed give every
-    candidate the same folds. Also what it predicted for each train row while that row was
-    held out, how much each feature mattered on held-out folds, and figures of both: all from
-    the train rows, so looking at them never touches the test rows (ADR-0047)."""
+    included, refit on the fold's other rows; the rows are shuffled into folds `repeats` times.
+    The same rows, folds, repeats and seed give every candidate the same folds. Also what it
+    predicted for each train row while the first repeat held it out, how much each feature
+    mattered on those held-out folds, and figures of both: all from the train rows, so looking
+    at them never touches the test rows (ADR-0047)."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
     # Rust picks the metric from the question's task; this checks a step built by hand.
     if task not in METRIC_OF_TASK:
@@ -60,7 +73,7 @@ def cross_validate(
     truth = y.to_numpy()
     settings = {k: v for k, v in candidate_params.items() if k not in ("target", "features")}
     model = candidate(schema=x.schema, **settings)
-    splits = list(_splitter(task, y, folds, seed).split(np.zeros(len(y)), truth))
+    splits = list(_splitter(task, y, folds, repeats, seed).split(np.zeros(len(y)), truth))
     result = model_selection.cross_validate(
         model,
         x,
@@ -73,7 +86,8 @@ def cross_validate(
     sign = 1.0 if GREATER_IS_BETTER[metric] else -1.0
     scorer = metrics.get_scorer(SCORING[metric])
     held_out, fold_of, predicted, importances = [], [], [], []
-    for fold, ((_, held), fitted) in enumerate(zip(splits, result["estimator"], strict=True), 1):
+    first = zip(splits[:folds], result["estimator"][:folds], strict=True)
+    for fold, ((_, held), fitted) in enumerate(first, 1):
         rows = x[held]
         held_out += held.tolist()
         fold_of += [fold] * len(held)
@@ -91,12 +105,14 @@ def cross_validate(
     predictions = pl.DataFrame(
         {"row": held_out, "fold": fold_of, "actual": truth[held_out], "predicted": predicted}
     )
+    n = folds * repeats
     scores = pl.DataFrame(
         {
-            "metric": [metric] * folds,
-            "folds": [folds] * folds,
-            "seed": [seed] * folds,
-            "fold": list(range(1, folds + 1)),
+            "metric": [metric] * n,
+            "folds": [folds] * n,
+            "seed": [seed] * n,
+            "repeat": [1 + i // folds for i in range(n)],
+            "fold": [1 + i % folds for i in range(n)],
             "score": (sign * result["test_score"]).tolist(),
             "train_rows": [len(fit_rows) for fit_rows, _ in splits],
             "validate_rows": [len(held) for _, held in splits],
@@ -133,9 +149,11 @@ def _importance_figure(importance: pl.DataFrame) -> go.Figure:
     )
 
 
-def _splitter(task: str, y: pl.Series, folds: int, seed: int) -> model_selection.BaseCrossValidator:
+def _splitter(
+    task: str, y: pl.Series, folds: int, repeats: int, seed: int
+) -> model_selection.BaseCrossValidator:
     if task != "classification":
-        return model_selection.KFold(folds, shuffle=True, random_state=seed)
+        return model_selection.RepeatedKFold(n_splits=folds, n_repeats=repeats, random_state=seed)
     # A class with fewer rows than folds leaves some folds without it.
     counts = y.value_counts(name="rows").sort("rows")
     if counts["rows"][0] < folds:
@@ -143,7 +161,9 @@ def _splitter(task: str, y: pl.Series, folds: int, seed: int) -> model_selection
             f"class {counts[y.name][0]!r} has {counts['rows'][0]} train rows; "
             f"{folds} folds need at least {folds} of each class"
         )
-    return model_selection.StratifiedKFold(folds, shuffle=True, random_state=seed)
+    return model_selection.RepeatedStratifiedKFold(
+        n_splits=folds, n_repeats=repeats, random_state=seed
+    )
 
 
 def _digest(rows: np.ndarray) -> str:
@@ -159,12 +179,12 @@ def select_model(
 ) -> dict[str, Any]:
     """A SelectionDecision (ADR-0047). Of the candidates that beat the baseline on the same
     folds, the simplest whose mean is within one standard error of the best mean wins: the
-    one-SE rule (Breiman et al. 1984; ESL §7.10). Beating the baseline means a mean paired
-    improvement larger than one standard error. Both standard errors are corrected for folds
-    that share train rows: the variance of a mean is (1/k + n_validate/n_train) times the
-    variance of its fold values, not 1/k. That is the correction of Nadeau & Bengio (2003),
-    applied to k-fold as Bouckaert & Frank (2004) do. The baseline bar is ours, a screening
-    rule, not a test."""
+    one-SE rule (Breiman et al. 1984; ESL §7.10). Beating the baseline means the corrected
+    repeated k-fold t-test (Bouckaert & Frank 2004) rejects "no better than the baseline",
+    one-sided at α = 0.05, after a Holm adjustment over the candidates. Both standard errors
+    are corrected for folds that share train rows: the variance of a mean of n fold values
+    is (1/n + n_validate/n_train) times their variance, not 1/n. That is the correction of
+    Nadeau & Bengio (2003), applied to repeated k-fold as Bouckaert & Frank do."""
     if baseline not in trials:
         raise ValueError(f"baseline {baseline} is not one of the trials {sorted(trials)}")
     if missing := sorted(set(trials) - set(complexity)):
@@ -176,6 +196,7 @@ def select_model(
     if protocol["metric"][0] != metric:
         raise ValueError(f"trials were scored by {protocol['metric'][0]}, not {metric}")
     k = protocol.height
+    repeats = int(protocol["repeat"].max())  # type: ignore[arg-type]
     ratio = float((protocol["validate_rows"] / protocol["train_rows"]).mean())  # type: ignore[arg-type]
     sign = 1.0 if GREATER_IS_BETTER[metric] else -1.0
     floor = trials[baseline]["score"].to_numpy()
@@ -195,9 +216,10 @@ def select_model(
             result["versus_baseline"] = {
                 "mean_difference": float(gain.mean()),
                 "corrected_se": se,
-                "beats_baseline": bool(gain.mean() > se),
+                "p_value": _one_sided_p(float(gain.mean()), se, k - 1),
             }
         candidates.append(result)
+    _holm([c["versus_baseline"] for c in candidates if "versus_baseline" in c])
 
     beating = [c for c in candidates if c.get("versus_baseline", {}).get("beats_baseline")]
     left_out = (
@@ -211,16 +233,17 @@ def select_model(
     decision: dict[str, Any] = {
         "schema_version": "sprisk.selection_decision/v1",
         "metric": metric,
-        "folds": k,
+        "folds": int(protocol["folds"][0]),
+        "repeats": repeats,
         "seed": int(protocol["seed"][0]),
         "baseline": baseline,
         "candidates": candidates,
-        "limitations": [*left_out, SCREENING],
+        "limitations": [*left_out, TESTED],
     }
     if not beating:
         decision["reason"] = (
-            f"No model beats the baseline: none improves on {baseline}'s {LABEL[metric]} by more "
-            f"than one corrected standard error of its paired differences over the same {k} folds."
+            f"No model beats the baseline: none passes the corrected t-test against {baseline}'s "
+            f"{LABEL[metric]} at α = {ALPHA} after a Holm adjustment, over the same {k} folds."
         )
         return decision
     best = max(beating, key=lambda c: sign * c["mean"])
@@ -243,8 +266,8 @@ def select_model(
         f"{winner['id']} has the best mean {LABEL[metric]} ({winner['mean']:.3f} ± "
         f"{winner['spread']:.3f}) of the models that beat the baseline, and no simpler model is "
         f"within one standard error of it. Over the same {k} folds it improves on {baseline} by "
-        f"{versus['mean_difference']:.3f}, more than one corrected standard error "
-        f"({versus['corrected_se']:.3f})."
+        f"{versus['mean_difference']:.3f} (corrected standard error {versus['corrected_se']:.3f}, "
+        f"one-sided p = {versus['p_value']:.2g})."
     )
     return decision
 
@@ -252,3 +275,22 @@ def select_model(
 def _corrected_se(values: np.ndarray, k: int, ratio: float) -> float:
     """Standard error of the mean of `values`, one per fold, corrected for overlapping folds."""
     return math.sqrt((1 / k + ratio) * float(values.var(ddof=1)))
+
+
+def _one_sided_p(mean: float, se: float, df: int) -> float:
+    """p that a mean gain this large arises when the model is no better than the baseline."""
+    if se == 0:
+        # Every fold gained the same: a real gain is certain, none is no evidence.
+        return 0.0 if mean > 0 else 1.0
+    return float(stats.t.sf(mean / se, df))
+
+
+def _holm(comparisons: list[dict[str, Any]]) -> None:
+    """Holm's step-down adjustment: the i-th smallest p must be at most α / (m - i)."""
+    for c in comparisons:
+        c["beats_baseline"] = False
+    ordered = sorted(comparisons, key=lambda c: c["p_value"])
+    for i, c in enumerate(ordered):
+        if c["p_value"] > ALPHA / (len(ordered) - i):
+            break
+        c["beats_baseline"] = True

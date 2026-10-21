@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 import pytest
+from scipy import stats
 from sklearn.base import BaseEstimator, ClassifierMixin
 
 from sprisk_contracts import SelectionDecision
@@ -43,9 +44,9 @@ REGRESS = {"target": "amount", "features": ["x", "c"], "task": "regression"}
 def scores(
     train: pl.DataFrame, build: Any, params: dict[str, Any], metric: str = "balanced_accuracy"
 ) -> pl.DataFrame:
-    scored: pl.DataFrame = cross_validate(train, build, params, folds=5, seed=0, metric=metric)[
-        "scores"
-    ]
+    scored: pl.DataFrame = cross_validate(
+        train, build, params, folds=5, seed=0, metric=metric, repeats=1
+    )["scores"]
     return scored
 
 
@@ -97,13 +98,13 @@ def test_every_candidate_gets_the_same_folds() -> None:
 def test_another_seed_gives_other_folds() -> None:
     train = rows(100, seed=1)
     first = scores(train, dummy_baseline_estimator, CLASSIFY)
-    other = cross_validate(train, dummy_baseline_estimator, CLASSIFY, 5, 1, "balanced_accuracy")
+    other = cross_validate(train, dummy_baseline_estimator, CLASSIFY, 5, 1, "balanced_accuracy", 1)
     assert first["rows_digest"].to_list() != other["scores"]["rows_digest"].to_list()
 
 
 def test_every_train_row_is_predicted_once_by_a_model_that_did_not_see_it() -> None:
     train = rows(100, seed=1)
-    result = cross_validate(train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy")
+    result = cross_validate(train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1)
     predictions = result["predictions"]
     assert sorted(predictions["row"].to_list()) == list(range(100))
     assert predictions["actual"].to_list() == train["y"].gather(predictions["row"]).to_list()
@@ -113,7 +114,7 @@ def test_every_train_row_is_predicted_once_by_a_model_that_did_not_see_it() -> N
 
 def test_the_feature_that_drives_the_target_matters_most_on_held_out_folds() -> None:
     result = cross_validate(
-        rows(200, seed=3), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy"
+        rows(200, seed=3), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1
     )
     importance = result["importance"]
     assert importance["feature"].to_list() == ["x", "c"]
@@ -123,9 +124,9 @@ def test_the_feature_that_drives_the_target_matters_most_on_held_out_folds() -> 
 
 def test_the_diagnostics_are_drawn_from_the_train_rows_only() -> None:
     classified = cross_validate(
-        rows(100, seed=1), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy"
+        rows(100, seed=1), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1
     )
-    regressed = cross_validate(rows(100, seed=1), linear_model_estimator, REGRESS, 5, 0, "rmse")
+    regressed = cross_validate(rows(100, seed=1), linear_model_estimator, REGRESS, 5, 0, "rmse", 1)
     titles = [[f.layout.title.text for f in r["figures"]] for r in (classified, regressed)]
     assert titles == [
         [
@@ -205,6 +206,7 @@ def trial(fold_scores: list[float], metric: str = "balanced_accuracy") -> pl.Dat
             "metric": [metric] * k,
             "folds": [k] * k,
             "seed": [0] * k,
+            "repeat": [1] * k,
             "fold": list(range(1, k + 1)),
             "score": fold_scores,
             "train_rows": [80] * k,
@@ -285,6 +287,41 @@ def test_every_trial_needs_a_complexity() -> None:
         )
 
 
+def test_folds_are_repeated_with_new_shuffles_and_each_row_is_predicted_once() -> None:
+    train = rows(100, seed=1)
+    result = cross_validate(train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 3)
+    scores = result["scores"]
+    assert scores["repeat"].to_list() == [1] * 5 + [2] * 5 + [3] * 5
+    assert scores["fold"].to_list() == [1, 2, 3, 4, 5] * 3
+    assert scores["rows_digest"].n_unique() == 15
+    assert sorted(result["predictions"]["row"].to_list()) == list(range(100))
+
+
+def test_beating_the_baseline_is_a_corrected_repeated_k_fold_t_test() -> None:
+    linear = [0.6, 0.55, 0.7, 0.52, 0.65]
+    decision = select({BASE: trial([0.5] * 5), "ml_linear_model": trial(linear)})
+    [compared] = [c.versus_baseline for c in decision.candidates if c.versus_baseline]
+    gain = np.array(linear) - 0.5
+    t = gain.mean() / math.sqrt((1 / 5 + 20 / 80) * gain.var(ddof=1))
+    assert compared.p_value == pytest.approx(stats.t.sf(t, df=4))
+    assert compared.beats_baseline == (stats.t.sf(t, df=4) <= 0.05)
+
+
+def test_two_marginal_models_do_not_both_pass_once_adjusted_for_comparing_two() -> None:
+    # Each alone would pass at 0.05; Holm compares the smaller p with 0.025.
+    marginal = [0.6, 0.53, 0.67, 0.565, 0.635]
+    decision = select(
+        {
+            BASE: trial([0.5] * 5),
+            "ml_linear_model": trial(marginal),
+            "ml_random_forest": trial(marginal),
+        }
+    )
+    ps = [c.versus_baseline.p_value for c in decision.candidates if c.versus_baseline]
+    assert all(p is not None and 0.025 < p <= 0.05 for p in ps), ps
+    assert decision.winner is None
+
+
 def test_the_standard_error_is_corrected_for_folds_that_share_train_rows() -> None:
     linear = [0.6, 0.55, 0.7, 0.52, 0.65]
     decision = select({BASE: trial([0.5] * 5), "ml_linear_model": trial(linear)})
@@ -331,13 +368,13 @@ def test_steps_left_out_of_the_comparison_are_named_as_a_limitation() -> None:
 
 
 SCREENING = (
-    "A model beats the baseline when its mean gain is larger than one corrected standard "
-    "error. That is a screening rule, not a significance test, and it is not adjusted for "
-    "comparing several models."
+    "Beating the baseline means a corrected repeated k-fold t-test (Bouckaert & Frank 2004) "
+    "rejects 'no better than the baseline' at α = 0.05 after a Holm adjustment over the "
+    "candidates. Folds share rows, so the test is approximate."
 )
 
 
-def test_every_decision_says_beating_the_baseline_is_a_screening_rule() -> None:
+def test_every_decision_says_how_beating_the_baseline_was_tested() -> None:
     decision = select({BASE: trial([0.5] * 5), "ml_linear_model": trial([0.8] * 5)})
     assert [limit.root for limit in decision.limitations] == [SCREENING]
 
@@ -412,7 +449,13 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     ]:
         out = tmp_path / name
         out.mkdir()
-        params = {"candidate": ref, "candidate_params": CLASSIFY, "folds": 5, "seed": 0}
+        params = {
+            "candidate": ref,
+            "candidate_params": CLASSIFY,
+            "folds": 5,
+            "seed": 0,
+            "repeats": 2,
+        }
         written = operators["sprisk.ml.cross_validate@1.0.0"].run(
             params | {"metric": "balanced_accuracy"}, {"train": train}, out
         )

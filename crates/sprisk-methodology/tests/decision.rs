@@ -1039,7 +1039,7 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
             "params": {
                 "candidate": "sprisk.ml.linear_model@1.0.0",
                 "candidate_params": { "target": "churned", "features": ["age", "plan"], "task": "classification" },
-                "folds": 5, "seed": 0, "metric": "balanced_accuracy"
+                "folds": 5, "repeats": 10, "seed": 0, "metric": "balanced_accuracy"
             }
         })
     );

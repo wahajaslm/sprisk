@@ -1717,6 +1717,10 @@ export interface SelectionDecision {
    */
   folds: number;
   /**
+   * How many times the rows were shuffled into folds (ADR-0047). Absent: once, as before repeated folds.
+   */
+  repeats?: number;
+  /**
    * Seed that shuffled the rows into folds.
    */
   seed: number;
@@ -1745,7 +1749,7 @@ export interface CandidateResult {
    */
   id: string;
   /**
-   * The metric on each fold's validation rows, in fold order.
+   * The metric on each fold's validation rows, in fold order, repeat after repeat.
    */
   fold_scores: number[];
   mean: number;
@@ -1768,7 +1772,11 @@ export interface BaselineComparison {
    */
   corrected_se: number;
   /**
-   * Whether mean_difference is larger than one corrected_se: a screening rule, not a significance test.
+   * One-sided p of the corrected repeated k-fold t-test that the model is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test.
+   */
+  p_value?: number;
+  /**
+   * With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the candidates. Without: whether mean_difference is larger than one corrected_se, a screening rule.
    */
   beats_baseline: boolean;
 }
@@ -1786,7 +1794,11 @@ export interface BaselineComparison1 {
    */
   corrected_se: number;
   /**
-   * Whether mean_difference is larger than one corrected_se: a screening rule, not a significance test.
+   * One-sided p of the corrected repeated k-fold t-test that the model is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test.
+   */
+  p_value?: number;
+  /**
+   * With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the candidates. Without: whether mean_difference is larger than one corrected_se, a screening rule.
    */
   beats_baseline: boolean;
 }
