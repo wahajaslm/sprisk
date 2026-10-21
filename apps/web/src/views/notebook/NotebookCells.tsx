@@ -130,7 +130,7 @@ export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove
                         <OutputItems items={live.outputs} />
                       </div>
                     ) : stepOutput ? (
-                      <div className="nb-output">{stepOutput}</div>
+                      <div className="nb-output nb-step-output">{stepOutput}</div>
                     ) : (
                       result && <CellOutputs result={result} />
                     )}

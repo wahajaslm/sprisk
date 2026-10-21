@@ -55,7 +55,7 @@ export function NotebooksPage() {
     <div className="notebooks-page">
       <nav className="notebooks-list" aria-label="Notebooks">
         <header className="dsx-side-head">
-          <p className="eyebrow">Notebooks · {mine.length + loose.length}</p>
+          <p className="eyebrow">Notebooks</p>
           <div className="side-actions">
             <button type="button" className="page-btn" disabled={save.isPending} onClick={create}>
               <AddIcon /> New notebook
@@ -70,8 +70,7 @@ export function NotebooksPage() {
               {stages.map(({ stage, nodes }) => (
                 <li key={stage} className="nb-item">
                   <button type="button" className="nb-item-open" aria-current={stage === stageOpen} onClick={() => openStage(stage)}>
-                    <span>{stage}</span>
-                    <span className="muted">{nodes.length === 1 ? "1 step" : `${nodes.length} steps`}</span>
+                    {stage} <span className="muted">· {nodes.length === 1 ? "1 step" : `${nodes.length} steps`}</span>
                   </button>
                 </li>
               ))}

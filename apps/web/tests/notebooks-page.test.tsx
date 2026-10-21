@@ -215,7 +215,7 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     const posts = noNotebooks();
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
     const items = within(await stages()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Explore2 steps", "Split1 step", "Clean1 step", "Model1 step", "Evaluate1 step"]);
+    expect(items).toEqual(["Explore · 2 steps", "Split · 1 step", "Clean · 1 step", "Model · 1 step", "Evaluate · 1 step"]);
     expect(await screen.findByRole("heading", { name: "Explore" })).toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: /^Cell / })).toHaveLength(2);
     expect(posts).toEqual([]);
