@@ -1177,6 +1177,14 @@ export interface MethodologyDecision {
   subject_node_id: NodeId;
   alternative_id: string;
   reason?: string;
+  /**
+   * The SelectionDecision this choice followed or overrode (ADR-0047). Absent when no comparison had decided.
+   */
+  selection_id?: string;
+  /**
+   * Earlier versions applied from the same proposal whose runs had already scored the test rows (arch doc §11). Absent when none had.
+   */
+  test_rows_seen_by?: PipelineVersionId[];
   created_at: Timestamp;
 }
 /**

@@ -2029,8 +2029,8 @@ async fn run_version(api: &Api, version: &str) -> (Value, Value) {
     panic!("run {run_uri} did not end");
 }
 
-/// The JSON a step's attempt wrote on `port`.
-async fn output(api: &Api, attempts: &Value, node: &str, port: &str) -> Value {
+/// The artifact a step's attempt wrote on `port`.
+async fn output_artifact(api: &Api, attempts: &Value, node: &str, port: &str) -> String {
     let attempt = attempts
         .as_array()
         .unwrap()
@@ -2048,6 +2048,12 @@ async fn output(api: &Api, attempts: &Value, node: &str, port: &str) -> Value {
         .as_str()
         .unwrap()
         .to_owned();
+    artifact
+}
+
+/// The JSON a step's attempt wrote on `port`.
+async fn output(api: &Api, attempts: &Value, node: &str, port: &str) -> Value {
+    let artifact = output_artifact(api, attempts, node, port).await;
     use tower::ServiceExt;
     let request = Request::builder()
         .uri(format!("/artifacts/{artifact}/content"))
@@ -2235,4 +2241,61 @@ async fn gate_b_stops_a_hand_built_comparison_that_reads_the_test_rows() {
             .starts_with("cv_ml_linear_model learns from the test set"),
         "{leak}"
     );
+}
+
+/// The model flow on rows whose target is age 40 or more, so a linear model can learn it.
+async fn learnable_model_flow(api: &Api) {
+    let model = json!({
+        "id":"model", "operator":"sprisk.ml.linear_model@1.0.0",
+        "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
+    });
+    scaling_flow_into(
+        api,
+        &[model],
+        &[json!({"from":"scale.train","to":"model.train"})],
+    )
+    .await;
+    let mut csv = String::from("age,returned_within_30d\n");
+    for age in 20..60 {
+        csv.push_str(&format!("{age},{}\n", u8::from(age >= 40)));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, _) = run_to_end(api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+}
+
+#[tokio::test]
+async fn applying_the_comparisons_recommendation_needs_no_reason_and_cites_it() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+    let (_, proposal) = propose_model(&api).await;
+    let (_, comparison) = compare(&api, &proposal).await;
+    let (run, attempts) = run_version(&api, comparison["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let selection = output_artifact(&api, &attempts, "select_model", "decision").await;
+    let decision = output(&api, &attempts, "select_model", "decision").await;
+    assert_eq!(decision["winner"], "ml_linear_model", "{decision}");
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+
+    let other =
+        json!({ "alternative_id": "ml_dummy_baseline", "idempotency_key": "test-apply-other" });
+    let (status, body) = call(&api.app, "POST", &uri, Some(other)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "reason_required");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("it is not the comparison's recommendation, ml_linear_model"),
+        "{body}"
+    );
+
+    let winner =
+        json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-apply-winner" });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(winner)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    assert_eq!(applied["decision"]["selection_id"], selection);
 }

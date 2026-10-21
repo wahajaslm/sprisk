@@ -1110,20 +1110,36 @@ async fn apply_methodology(
             ),
         })?;
     // Choosing other than the recommendation, or from a shortlist without comparing, is an
-    // override: it needs a reason on every path, not only in the UI (ADR-0042).
+    // override: it needs a reason on every path, not only in the UI (ADR-0042). A shortlist's
+    // recommendation is its comparison's winner (ADR-0047).
+    let selection = if proposal.shortlist.is_empty() {
+        None
+    } else {
+        selection_of(&state, &proposal.id).await?
+    };
     let recommended = proposal
         .recommended_alternative_id
         .as_ref()
-        .map(|r| r.as_str());
+        .map(|r| r.as_str())
+        .or_else(|| {
+            selection
+                .as_ref()
+                .and_then(|(s, _)| s.winner.as_ref().map(|w| w.as_str()))
+        });
     let has_reason = request
         .reason
         .as_ref()
         .is_some_and(|r| !r.as_str().trim().is_empty());
     if recommended != Some(request.alternative_id.as_str()) && !has_reason {
-        let why = if proposal.shortlist.is_empty() {
-            "it is not the recommended alternative"
-        } else {
-            "it is chosen from a shortlist without comparing"
+        let why = match (&selection, recommended) {
+            (None, _) if proposal.shortlist.is_empty() => {
+                "it is not the recommended alternative".to_owned()
+            }
+            (None, _) => "it is chosen from a shortlist without comparing".to_owned(),
+            (Some(_), Some(winner)) => {
+                format!("it is not the comparison's recommendation, {winner}")
+            }
+            (Some(_), None) => "the comparison found no model that beats the baseline".to_owned(),
         };
         return Err(ApiError::BadRequest {
             code: "reason_required",
@@ -1158,6 +1174,9 @@ async fn apply_methodology(
     if let Some(reason) = &request.reason {
         decision_json["reason"] = json!(reason);
     }
+    if let Some((_, artifact)) = &selection {
+        decision_json["selection_id"] = json!(artifact);
+    }
     let decision: MethodologyDecision =
         parse(&decision_json.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
     let saved = state
@@ -1175,6 +1194,40 @@ async fn apply_methodology(
             pipeline: saved_pipeline,
         }),
     ))
+}
+
+/// The latest SelectionDecision of `proposal`'s comparison and its artifact, read through
+/// the contract (ADR-0047). None until a comparison run has decided.
+async fn selection_of(
+    state: &AppState,
+    proposal: &MethodologyProposalId,
+) -> Result<Option<(sprisk_contracts::SelectionDecision, ArtifactId)>, ApiError> {
+    let Some(comparison) = state.store.comparison_of(proposal).await? else {
+        return Ok(None);
+    };
+    let Some(output) = state
+        .store
+        .latest_outputs(std::slice::from_ref(&comparison.id))
+        .await?
+        .into_iter()
+        .find(|o| o.node_id == sprisk_methodology::SELECT_NODE && o.port == "decision")
+    else {
+        return Ok(None);
+    };
+    let bytes = state
+        .artifacts
+        .get(output.artifact.content_hash.as_str())
+        .await?;
+    let text = std::str::from_utf8(&bytes).map_err(|e| {
+        ApiError::Internal(format!("selection {}: {e}", output.artifact.id.as_str()))
+    })?;
+    let decision = parse(text).map_err(|e| {
+        ApiError::Internal(format!(
+            "selection {} is not a SelectionDecision: {e}",
+            output.artifact.id.as_str()
+        ))
+    })?;
+    Ok(Some((decision, output.artifact.id)))
 }
 
 /// The version that cross-validates a shortlist proposal's models on its flow's train rows

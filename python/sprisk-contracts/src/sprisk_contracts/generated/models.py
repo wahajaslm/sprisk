@@ -1278,6 +1278,18 @@ class MethodologyDecision(StrictModel):
     subject_node_id: NodeId
     alternative_id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
     reason: Annotated[str | None, Field(min_length=1)] = None
+    selection_id: Annotated[
+        ArtifactId | None,
+        Field(
+            description="The SelectionDecision this choice followed or overrode (ADR-0047). Absent when no comparison had decided."
+        ),
+    ] = None
+    test_rows_seen_by: Annotated[
+        list[PipelineVersionId] | None,
+        Field(
+            description="Earlier versions applied from the same proposal whose runs had already scored the test rows (arch doc §11). Absent when none had."
+        ),
+    ] = None
     created_at: Timestamp
 
 
