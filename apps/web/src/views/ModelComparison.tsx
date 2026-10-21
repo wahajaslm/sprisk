@@ -14,7 +14,7 @@ import { formatMetric } from "./NodeFact.tsx";
 const METRIC_LABEL: Record<SelectionDecision["metric"], string> = { balanced_accuracy: "balanced accuracy", rmse: "RMSE" };
 type Candidate = SelectionDecision["candidates"][number];
 
-/** How Sprisk chose this flow's models and preparation steps (ADR-0047). For the flow's head it
+/** How Sprisk chose this flow's models and preparation steps (ADR-0050). For the flow's head it
  * starts each choice itself; every comparison of the flow's versions is shown. */
 export function ModelComparisons({ flowIds, head, versions }: { flowIds: string[]; head: PipelineVersion; versions: PipelineVersion[] }) {
   const comparisons = versions.flatMap((v) => (v.compares === undefined ? [] : [{ version: v, proposalId: v.compares }]));
@@ -38,7 +38,7 @@ export function ModelComparisons({ flowIds, head, versions }: { flowIds: string[
 }
 
 /** The head's steps Sprisk compares, each once the head has run: model steps a shortlist rule
- * decides, and steps a recommend rule decides that fit on train rows (ADR-0047). The server
+ * decides, and steps a recommend rule decides that fit on train rows (ADR-0050). The server
  * says when such a step has nothing to compare. A step its own decision just chose is not
  * selected again: the head is that choice. */
 function AutoSelect({ head }: { head: PipelineVersion }) {
@@ -64,7 +64,7 @@ function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVe
   const waiting = decisionId !== undefined && decision.isPending;
   const due = hasRun && !chosenHere && !waiting;
   const { mutate } = select;
-  // Once per mount: the server shares one selection between requests anyway (ADR-0047).
+  // Once per mount: the server shares one selection between requests anyway (ADR-0050).
   const fired = useRef(false);
   useEffect(() => {
     if (!due || fired.current) return;
@@ -185,7 +185,7 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
 type Step = { operator: string; params: Record<string, unknown> };
 
 /** What a choice ran in every fold, read from its cross-validate step: the split's train rows,
- * each preparation step refit, then the model (ADR-0047). The compiler checked these params
+ * each preparation step refit, then the model (ADR-0050). The compiler checked these params
  * against the step's schema. How it differs from the flow is its effect, as Apply would make it. */
 function ChoiceSteps({ comparison, proposal, base, id }: { comparison: PipelineVersion; proposal: DecisionProposal; base: PipelineVersion; id: string }) {
   const [open, setOpen] = useState<string>();
@@ -248,7 +248,7 @@ function Row({ label, cells, mono }: { label: string; cells: string[]; mono?: bo
   );
 }
 
-/** Applying the recommendation needs no reason; any other choice does (ADR-0047). Each choice is
+/** Applying the recommendation needs no reason; any other choice does (ADR-0050). Each choice is
  * a new version branched from the compared one. */
 function UseModel({ id, recommended, winner, artifactId, proposal, onCancel }: {
   id: string;

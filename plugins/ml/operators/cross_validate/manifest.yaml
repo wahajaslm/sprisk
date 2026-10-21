@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.cross_validate@2.0.0
 capability_class: estimator
-description: Score one candidate model by k-fold cross-validation of the split's train rows, refitting its whole pipeline in every fold (ADR-0044). One row per fold, plus out-of-fold predictions, permutation importance on held-out folds and their figures, all from train rows (ADR-0047). After a random split, stratified folds for classification; after a time or group split, folds that keep time order or whole groups.
+description: Score one candidate model by k-fold cross-validation of the split's train rows, refitting its whole pipeline in every fold (ADR-0044). One row per fold, plus out-of-fold predictions, permutation importance on held-out folds and their figures, all from train rows (ADR-0050). After a random split, stratified folds for classification; after a time or group split, folds that keep time order or whole groups.
 entrypoint: sprisk_ml.compare:cross_validate
 inputs: [{ name: train, kind: table }]
 outputs: [{ name: scores, kind: table }, { name: predictions, kind: table }, { name: importance, kind: diagnostics }, { name: figures, kind: figure }]
@@ -18,7 +18,7 @@ params_schema:
     candidate_params: { type: object, description: "The model's params, as its own step would take them." }
     prepare:
       type: array
-      description: "The preparation steps between the split and the model, in flow order; each fold refits them on its training rows before the model (ADR-0047)."
+      description: "The preparation steps between the split and the model, in flow order; each fold refits them on its training rows before the model (ADR-0050)."
       items:
         type: object
         additionalProperties: false
@@ -30,7 +30,7 @@ params_schema:
     time_column: { type: string, minLength: 1, description: "After a time split: folds follow this column, each validating on later rows than it fits on." }
     group_column: { type: string, minLength: 1, description: "After a group split: no value of this column is on both sides of a fold." }
     folds: { type: integer, minimum: 2, maximum: 20, description: "Number of folds. Every candidate in a comparison uses the same." }
-    repeats: { type: integer, minimum: 1, maximum: 20, description: "How many times the rows are shuffled into folds; every candidate in a comparison uses the same (ADR-0047)." }
+    repeats: { type: integer, minimum: 1, maximum: 20, description: "How many times the rows are shuffled into folds; every candidate in a comparison uses the same (ADR-0050)." }
     seed: { type: integer, minimum: 0, description: "Shuffles the rows into folds, so every candidate gets the same folds." }
     metric: { type: string, enum: [balanced_accuracy, rmse], description: "Fixed before any score is seen: balanced_accuracy for classification, rmse for regression." }
 effects: pure

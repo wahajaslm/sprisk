@@ -293,7 +293,7 @@ export type AttemptState =
  */
 export type SelectionMetric = "balanced_accuracy" | "rmse";
 /**
- * What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0047).
+ * What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0050).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "BaselineRole".
@@ -1185,7 +1185,7 @@ export interface MethodologyDecision {
   alternative_id: string;
   reason?: string;
   /**
-   * The SelectionDecision this choice followed or overrode (ADR-0047). Absent when no comparison had decided.
+   * The SelectionDecision this choice followed or overrode (ADR-0050). Absent when no comparison had decided.
    */
   selection_id?: string;
   /**
@@ -1276,7 +1276,7 @@ export interface Edge {
   to: PortRef;
 }
 /**
- * How Sprisk is choosing one step of a flow's model pipeline (ADR-0047): a model step's shortlist proposal, or a preparation step's proposal; the version that cross-validates it; and that version's latest run. Its select step's output is the SelectionDecision.
+ * How Sprisk is choosing one step of a flow's model pipeline (ADR-0050): a model step's shortlist proposal, or a preparation step's proposal; the version that cross-validates it; and that version's latest run. Its select step's output is the SelectionDecision.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ModelSelection".
@@ -1526,7 +1526,7 @@ export interface Operator {
    */
   entrypoint: string;
   /**
-   * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0047). Absent: it may mix rows.
+   * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows.
    */
   fits_on_train?: boolean;
   inputs: Port[];
@@ -1561,7 +1561,7 @@ export interface OperatorModel {
    */
   prepares: ModelPreparation[];
   /**
-   * How flexible the model is, for the one-SE rule (ADR-0047): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model.
+   * How flexible the model is, for the one-SE rule (ADR-0050): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model.
    */
   complexity?: number;
   /**
@@ -1715,7 +1715,7 @@ export interface Error1 {
   message: string;
 }
 /**
- * Which compared alternative cross-validation chose, and why (arch doc §11, ADR-0044, ADR-0047): a shortlisted model, or one way of doing a preparation step. The output of a select step: immutable, like every artifact. An alternative wins only by beating the baseline on the same folds; a reference baseline wins when none does.
+ * Which compared alternative cross-validation chose, and why (arch doc §11, ADR-0044, ADR-0050): a shortlisted model, or one way of doing a preparation step. The output of a select step: immutable, like every artifact. An alternative wins only by beating the baseline on the same folds; a reference baseline wins when none does.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "SelectionDecision".
@@ -1728,7 +1728,7 @@ export interface SelectionDecision {
    */
   folds: number;
   /**
-   * How many times the rows were shuffled into folds (ADR-0047). Absent: once, as before repeated folds.
+   * How many times the rows were shuffled into folds (ADR-0050). Absent: once, as before repeated folds.
    */
   repeats?: number;
   /**
@@ -1740,7 +1740,7 @@ export interface SelectionDecision {
    */
   baseline: string;
   /**
-   * Absent: floor, as decided before ADR-0047 compared preparation.
+   * Absent: floor, as decided before ADR-0050 compared preparation.
    */
   baseline_role?: "floor" | "reference";
   candidates: CandidateResult[];
@@ -1750,7 +1750,7 @@ export interface SelectionDecision {
   winner?: string;
   reason: string;
   /**
-   * Alternatives the comparison did not score, each with why (ADR-0047). Absent: decided before ADR-0047 recorded them.
+   * Alternatives the comparison did not score, each with why (ADR-0050). Absent: decided before ADR-0050 recorded them.
    */
   not_compared?: NotCompared[];
   /**
@@ -1791,7 +1791,7 @@ export interface BaselineComparison {
    */
   corrected_se: number;
   /**
-   * One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test.
+   * One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0050's test.
    */
   p_value?: number;
   /**
@@ -1800,7 +1800,7 @@ export interface BaselineComparison {
   beats_baseline: boolean;
 }
 /**
- * An alternative the comparison could not score on the folds, and why (ADR-0047).
+ * An alternative the comparison could not score on the folds, and why (ADR-0050).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "NotCompared".
@@ -1829,7 +1829,7 @@ export interface BaselineComparison1 {
    */
   corrected_se: number;
   /**
-   * One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test.
+   * One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0050's test.
    */
   p_value?: number;
   /**

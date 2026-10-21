@@ -1,5 +1,5 @@
 //! The steps that compare a shortlist of models (ADR-0044, ADR-0046), or the ways of doing one
-//! preparation step (ADR-0047): the split and every step before it, one cross-validate step
+//! preparation step (ADR-0050): the split and every step before it, one cross-validate step
 //! per trial fed by the split's train rows, and one select step reading their scores. Nothing
 //! reads the split's other outputs.
 
@@ -18,7 +18,7 @@ use crate::ResolveError;
 use crate::decision::train_rows_chain;
 
 /// Folds, repeats and seed of every comparison, recorded in each cross-validate step's params:
-/// ten shuffles into five folds, for the corrected repeated k-fold t-test (ADR-0047).
+/// ten shuffles into five folds, for the corrected repeated k-fold t-test (ADR-0050).
 pub const FOLDS: u64 = 5;
 pub const REPEATS: u64 = 10;
 pub const SEED: u64 = 0;
@@ -60,7 +60,7 @@ pub fn comparison<'a>(
         .split_last()
         .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
     // Every step between the split and the model fits on train (the walk above refuses any
-    // other), so each fold refits them, in flow order, before the candidate (ADR-0047).
+    // other), so each fold refits them, in flow order, before the candidate (ADR-0050).
     let prepare = between
         .iter()
         .rev()
@@ -80,7 +80,7 @@ pub fn comparison<'a>(
         if model.family.is_none() {
             baselines.push(id);
         }
-        // The one-SE rule ranks candidates by it (ADR-0047); the registry requires it.
+        // The one-SE rule ranks candidates by it (ADR-0050); the registry requires it.
         let complexity = model
             .complexity
             .ok_or_else(|| ResolveError::Selection(format!("{operator} declares no complexity")))?;
@@ -119,7 +119,7 @@ pub fn comparison<'a>(
     )
 }
 
-/// The comparison of the ways `proposal` offers of doing its preparation step (ADR-0047):
+/// The comparison of the ways `proposal` offers of doing its preparation step (ADR-0050):
 /// each alternative that can be refit within each fold is one trial of the flow's model,
 /// unchanged, with the step replaced or removed. The rule's recommendation is the reference:
 /// it stands unless another beats it. `rule` is the proposal's manifest, which says where an
@@ -181,7 +181,7 @@ pub fn preparation_comparison<'a>(
             model: model.operator.as_str(),
             model_params: &model.params,
             prepare,
-            // Removing the step is simplest; every way of keeping it ranks the same (ADR-0047).
+            // Removing the step is simplest; every way of keeping it ranks the same (ADR-0050).
             complexity: u64::from(step.is_some()),
         });
     }
@@ -233,7 +233,7 @@ fn build(
     baseline: Baseline,
     not_compared: Vec<serde_json::Value>,
 ) -> Result<Comparison, ResolveError> {
-    // Folds must keep what the split keeps apart: time order, or whole groups (ADR-0047).
+    // Folds must keep what the split keeps apart: time order, or whole groups (ADR-0050).
     let (fold_by, repeats) = fold_by(step_of(base, split)?)?;
     let kept = upstream(base, split);
     let mut nodes: Vec<Node> = base
@@ -408,7 +408,7 @@ fn refits_as_flow_runs(step: &Node) -> Result<(), ResolveError> {
 
 /// How folds must follow `split`, as cross-validate params, and how many repeats that allows:
 /// a time split's folds follow its time column and cannot be reshuffled; a group split's keep
-/// its groups whole; a random split's shuffle rows (ADR-0047).
+/// its groups whole; a random split's shuffle rows (ADR-0050).
 fn fold_by(
     split: &Node,
 ) -> Result<(serde_json::Map<String, serde_json::Value>, u64), ResolveError> {

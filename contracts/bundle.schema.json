@@ -1862,7 +1862,7 @@
         },
         "selection_id": {
           "$ref": "#/$defs/ArtifactId",
-          "description": "The SelectionDecision this choice followed or overrode (ADR-0047). Absent when no comparison had decided."
+          "description": "The SelectionDecision this choice followed or overrode (ADR-0050). Absent when no comparison had decided."
         },
         "test_rows_seen_by": {
           "type": "array",
@@ -1895,7 +1895,7 @@
     },
     "ModelSelection": {
       "title": "ModelSelection",
-      "description": "How Sprisk is choosing one step of a flow's model pipeline (ADR-0047): a model step's shortlist proposal, or a preparation step's proposal; the version that cross-validates it; and that version's latest run. Its select step's output is the SelectionDecision.",
+      "description": "How Sprisk is choosing one step of a flow's model pipeline (ADR-0050): a model step's shortlist proposal, or a preparation step's proposal; the version that cross-validates it; and that version's latest run. Its select step's output is the SelectionDecision.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -2443,7 +2443,7 @@
         },
         "fits_on_train": {
           "type": "boolean",
-          "description": "True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0047). Absent: it may mix rows."
+          "description": "True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
         },
         "inputs": {
           "type": "array",
@@ -2502,7 +2502,7 @@
         "complexity": {
           "type": "integer",
           "minimum": 0,
-          "description": "How flexible the model is, for the one-SE rule (ADR-0047): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model."
+          "description": "How flexible the model is, for the one-SE rule (ADR-0050): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model."
         },
         "estimator": {
           "$ref": "#/$defs/Entrypoint",
@@ -3059,7 +3059,7 @@
     },
     "SelectionDecision": {
       "title": "SelectionDecision",
-      "description": "Which compared alternative cross-validation chose, and why (arch doc §11, ADR-0044, ADR-0047): a shortlisted model, or one way of doing a preparation step. The output of a select step: immutable, like every artifact. An alternative wins only by beating the baseline on the same folds; a reference baseline wins when none does.",
+      "description": "Which compared alternative cross-validation chose, and why (arch doc §11, ADR-0044, ADR-0050): a shortlisted model, or one way of doing a preparation step. The output of a select step: immutable, like every artifact. An alternative wins only by beating the baseline on the same folds; a reference baseline wins when none does.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -3090,7 +3090,7 @@
         "repeats": {
           "type": "integer",
           "minimum": 0,
-          "description": "How many times the rows were shuffled into folds (ADR-0047). Absent: once, as before repeated folds."
+          "description": "How many times the rows were shuffled into folds (ADR-0050). Absent: once, as before repeated folds."
         },
         "seed": {
           "type": "integer",
@@ -3104,7 +3104,7 @@
         },
         "baseline_role": {
           "$ref": "#/$defs/BaselineRole",
-          "description": "Absent: floor, as decided before ADR-0047 compared preparation."
+          "description": "Absent: floor, as decided before ADR-0050 compared preparation."
         },
         "candidates": {
           "type": "array",
@@ -3123,7 +3123,7 @@
         },
         "not_compared": {
           "type": "array",
-          "description": "Alternatives the comparison did not score, each with why (ADR-0047). Absent: decided before ADR-0047 recorded them.",
+          "description": "Alternatives the comparison did not score, each with why (ADR-0050). Absent: decided before ADR-0050 recorded them.",
           "items": {
             "$ref": "#/$defs/NotCompared"
           }
@@ -3148,7 +3148,7 @@
     },
     "BaselineRole": {
       "type": "string",
-      "description": "What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0047).",
+      "description": "What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0050).",
       "enum": [
         "floor",
         "reference"
@@ -3156,7 +3156,7 @@
     },
     "NotCompared": {
       "type": "object",
-      "description": "An alternative the comparison could not score on the folds, and why (ADR-0047).",
+      "description": "An alternative the comparison could not score on the folds, and why (ADR-0050).",
       "additionalProperties": false,
       "required": [
         "id",
@@ -3229,7 +3229,7 @@
         },
         "p_value": {
           "type": "number",
-          "description": "One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test."
+          "description": "One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0050's test."
         },
         "beats_baseline": {
           "type": "boolean",

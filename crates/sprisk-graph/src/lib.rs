@@ -434,7 +434,7 @@ fn named_models<'r>(
 }
 
 /// A setting marked `x-sprisk-preparation` lists `{operator, params}` steps that the step refits
-/// per fold (ADR-0047). Each must be a registered operator that fits on train, with params its
+/// per fold (ADR-0050). Each must be a registered operator that fits on train, with params its
 /// schema accepts. Gives their digests, so the step's cache key follows their code.
 fn named_preparations<'r>(
     node: &str,

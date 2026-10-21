@@ -43,7 +43,7 @@
         },
         "fits_on_train": {
           "type": "boolean",
-          "description": "True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0047). Absent: it may mix rows."
+          "description": "True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
         },
         "inputs": {
           "type": "array",
@@ -96,7 +96,7 @@
         "complexity": {
           "type": "integer",
           "minimum": 0,
-          "description": "How flexible the model is, for the one-SE rule (ADR-0047): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model."
+          "description": "How flexible the model is, for the one-SE rule (ADR-0050): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model."
         },
         "estimator": {
           "$ref": "#/$defs/Entrypoint",

@@ -1132,7 +1132,7 @@ fn a_model_whose_train_rows_do_not_trace_to_a_split_cannot_be_compared() {
 
 #[test]
 fn a_comparison_after_a_temporal_or_group_split_folds_the_same_way() {
-    // Shuffled folds would validate on earlier rows, or on groups also fit on (ADR-0047).
+    // Shuffled folds would validate on earlier rows, or on groups also fit on (ADR-0050).
     for (split, params, fold_by, repeats) in [
         (
             "temporal_split",

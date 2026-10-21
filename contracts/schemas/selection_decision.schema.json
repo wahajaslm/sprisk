@@ -3,7 +3,7 @@
   "$defs": {
     "SelectionDecision": {
       "title": "SelectionDecision",
-      "description": "Which compared alternative cross-validation chose, and why (arch doc §11, ADR-0044, ADR-0047): a shortlisted model, or one way of doing a preparation step. The output of a select step: immutable, like every artifact. An alternative wins only by beating the baseline on the same folds; a reference baseline wins when none does.",
+      "description": "Which compared alternative cross-validation chose, and why (arch doc §11, ADR-0044, ADR-0050): a shortlisted model, or one way of doing a preparation step. The output of a select step: immutable, like every artifact. An alternative wins only by beating the baseline on the same folds; a reference baseline wins when none does.",
       "type": "object",
       "additionalProperties": false,
       "required": ["schema_version", "metric", "folds", "seed", "baseline", "candidates", "reason", "limitations"],
@@ -11,14 +11,14 @@
         "schema_version": { "type": "string", "enum": ["sprisk.selection_decision/v1"] },
         "metric": { "$ref": "#/$defs/SelectionMetric" },
         "folds": { "type": "integer", "minimum": 0, "description": "Number of cross-validation folds every candidate was scored on." },
-        "repeats": { "type": "integer", "minimum": 0, "description": "How many times the rows were shuffled into folds (ADR-0047). Absent: once, as before repeated folds." },
+        "repeats": { "type": "integer", "minimum": 0, "description": "How many times the rows were shuffled into folds (ADR-0050). Absent: once, as before repeated folds." },
         "seed": { "type": "integer", "minimum": 0, "description": "Seed that shuffled the rows into folds." },
         "baseline": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_]{0,62}$",
           "description": "The candidate every other must beat. As a floor, a model that ignores its features; as a reference, the rule's recommended preparation."
         },
-        "baseline_role": { "$ref": "#/$defs/BaselineRole", "description": "Absent: floor, as decided before ADR-0047 compared preparation." },
+        "baseline_role": { "$ref": "#/$defs/BaselineRole", "description": "Absent: floor, as decided before ADR-0050 compared preparation." },
         "candidates": { "type": "array", "items": { "$ref": "#/$defs/CandidateResult" } },
         "winner": {
           "type": "string",
@@ -28,7 +28,7 @@
         "reason": { "type": "string", "minLength": 1 },
         "not_compared": {
           "type": "array",
-          "description": "Alternatives the comparison did not score, each with why (ADR-0047). Absent: decided before ADR-0047 recorded them.",
+          "description": "Alternatives the comparison did not score, each with why (ADR-0050). Absent: decided before ADR-0050 recorded them.",
           "items": { "$ref": "#/$defs/NotCompared" }
         },
         "limitations": {
@@ -45,12 +45,12 @@
     },
     "BaselineRole": {
       "type": "string",
-      "description": "What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0047).",
+      "description": "What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0050).",
       "enum": ["floor", "reference"]
     },
     "NotCompared": {
       "type": "object",
-      "description": "An alternative the comparison could not score on the folds, and why (ADR-0047).",
+      "description": "An alternative the comparison could not score on the folds, and why (ADR-0050).",
       "additionalProperties": false,
       "required": ["id", "reason"],
       "properties": {
@@ -77,7 +77,7 @@
       "properties": {
         "mean_difference": { "type": "number", "description": "Mean fold-by-fold improvement over the baseline on the same folds; positive is better for either metric." },
         "corrected_se": { "type": "number", "description": "Standard error of that mean, corrected for folds that share train rows: the correction of Nadeau & Bengio (2003), applied to k-fold as in Bouckaert & Frank (2004)." },
-        "p_value": { "type": "number", "description": "One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test." },
+        "p_value": { "type": "number", "description": "One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0050's test." },
         "beats_baseline": { "type": "boolean", "description": "With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the other alternatives. Without: whether mean_difference is larger than one corrected_se, a screening rule." }
       }
     }

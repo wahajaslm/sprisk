@@ -1,4 +1,4 @@
-# ADR-0047: Sprisk's model-selection methodology
+# ADR-0050: Sprisk's model-selection methodology
 Status: Accepted
 Date: 2026-10-21
 Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.1. Builds on ADR-0042, ADR-0044, ADR-0046.

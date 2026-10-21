@@ -40,7 +40,7 @@ TRUSTED_MODEL_TYPES = ["numpy.dtype", "sklearn.tree._tree.Tree", "sprisk_ml.mode
 @dataclass(frozen=True)
 class CheckedFunction:
     """A function another step may be handed, and the params it accepts: a model operator's
-    unfitted-estimator function (ADR-0046), or a preparation step's own function (ADR-0047)."""
+    unfitted-estimator function (ADR-0046), or a preparation step's own function (ADR-0050)."""
 
     build: Callable[..., Any]
     params_schema: Mapping[str, Any]
@@ -51,7 +51,7 @@ NONE: Mapping[str, CheckedFunction] = MappingProxyType({})
 
 class FoldStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """A preparation step that fits on train (`fits_on_train`) as a scikit-learn transformer,
-    so cross-validation refits it per fold with the step's own code (ADR-0047). Fitting keeps
+    so cross-validation refits it per fold with the step's own code (ADR-0050). Fitting keeps
     the rows it is fit on; transforming runs the step with those rows as train."""
 
     def __init__(self, step: Callable[..., Any], settings: Mapping[str, Any]) -> None:
@@ -157,7 +157,7 @@ def _build(ref: str, params: Mapping[str, Any], models: Mapping[str, CheckedFunc
 
 
 def preparation_settings(operator: Operator) -> list[str]:
-    """The settings that list preparation steps to refit per fold (ADR-0047)."""
+    """The settings that list preparation steps to refit per fold (ADR-0050)."""
     properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
     return [
         key

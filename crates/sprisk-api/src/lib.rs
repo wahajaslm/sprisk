@@ -1111,7 +1111,7 @@ async fn apply_methodology(
         })?;
     // Choosing other than the recommendation, or from a shortlist without comparing, is an
     // override: it needs a reason on every path, not only in the UI (ADR-0042). Once a
-    // comparison has decided, its winner is the recommendation (ADR-0047).
+    // comparison has decided, its winner is the recommendation (ADR-0050).
     let selection = selection_of(&state, &proposal.id).await?;
     let recommended = match &selection {
         Some((decided, _)) => decided.winner.as_ref().map(|w| w.as_str()),
@@ -1195,7 +1195,7 @@ async fn apply_methodology(
 }
 
 /// Refuses a proposal whose flow changed after it. A compared proposal's own branches are no
-/// change: each choice from it is a branch of the flow it compared (ADR-0047).
+/// change: each choice from it is a branch of the flow it compared (ADR-0050).
 async fn check_current(state: &AppState, proposal: &DecisionProposal) -> Result<(), ApiError> {
     let base = &proposal.pipeline_version_id;
     let compared =
@@ -1235,7 +1235,7 @@ async fn test_rows_seen_by(
 }
 
 /// The latest SelectionDecision of `proposal`'s comparison and its artifact, read through
-/// the contract (ADR-0047). None until a comparison run has decided.
+/// the contract (ADR-0050). None until a comparison run has decided.
 async fn selection_of(
     state: &AppState,
     proposal: &MethodologyProposalId,
@@ -1315,7 +1315,7 @@ async fn build_comparison(
 }
 
 /// `proposal`'s comparison, built and checked but not stored: of its shortlist's models, or,
-/// for a recommend rule's proposal, of the ways of doing its preparation step (ADR-0047).
+/// for a recommend rule's proposal, of the ways of doing its preparation step (ADR-0050).
 async fn comparison_version(
     state: &AppState,
     proposal: &DecisionProposal,
@@ -1373,7 +1373,7 @@ async fn comparison_version(
     Ok(pipeline)
 }
 
-/// How Sprisk is choosing step `node_id` of the model pipeline (ADR-0047): a model step's
+/// How Sprisk is choosing step `node_id` of the model pipeline (ADR-0050): a model step's
 /// shortlist, or a preparation step's proposal, the comparison and the comparison's latest
 /// run, each made once if missing. It changes nothing in the flow, so the UI may ask whenever
 /// it shows a version that has run.

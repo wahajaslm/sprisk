@@ -35,7 +35,7 @@ export function useApplyMethodology() {
   });
 }
 
-/** How Sprisk is choosing a model step's model (ADR-0047): it resolves the shortlist, builds
+/** How Sprisk is choosing a model step's model (ADR-0050): it resolves the shortlist, builds
  * the comparison and starts its run, or returns those it has. It changes nothing in the flow. */
 export function useSelectModel() {
   const client = useQueryClient();

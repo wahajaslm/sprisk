@@ -625,7 +625,7 @@ PREPARATION = {REFERENCE: 1, "robust_scaling": 1, "no_scaling": 0}
 
 
 def prepared(trials: dict[str, pl.DataFrame], **settings: Any) -> SelectionDecision:
-    """A preparation comparison: the rule's recommendation is the reference (ADR-0047)."""
+    """A preparation comparison: the rule's recommendation is the reference (ADR-0050)."""
     return select(
         trials, baseline=REFERENCE, baseline_role="reference", complexity=PREPARATION, **settings
     )

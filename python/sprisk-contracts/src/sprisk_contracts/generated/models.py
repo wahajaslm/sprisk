@@ -788,7 +788,7 @@ class BaselineComparison(StrictModel):
     p_value: Annotated[
         float | None,
         Field(
-            description="One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0047's test."
+            description="One-sided p of the corrected repeated k-fold t-test that the alternative is no better than the baseline (Bouckaert & Frank 2004). Absent: decided by the one-SE screen, before ADR-0050's test."
         ),
     ] = None
     beats_baseline: Annotated[
@@ -1302,7 +1302,7 @@ class MethodologyDecision(StrictModel):
     selection_id: Annotated[
         ArtifactId | None,
         Field(
-            description="The SelectionDecision this choice followed or overrode (ADR-0047). Absent when no comparison had decided."
+            description="The SelectionDecision this choice followed or overrode (ADR-0050). Absent when no comparison had decided."
         ),
     ] = None
     test_rows_seen_by: Annotated[
@@ -1452,7 +1452,7 @@ class OperatorModel(StrictModel):
     complexity: Annotated[
         int | None,
         Field(
-            description="How flexible the model is, for the one-SE rule (ADR-0047): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model.",
+            description="How flexible the model is, for the one-SE rule (ADR-0050): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model.",
             ge=0,
         ),
     ] = None
@@ -1843,7 +1843,7 @@ class Operator(StrictModel):
     fits_on_train: Annotated[
         bool | None,
         Field(
-            description="True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0047). Absent: it may mix rows."
+            description="True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
         ),
     ] = None
     inputs: list[Port]
@@ -1937,7 +1937,7 @@ class SelectionDecision(StrictModel):
     repeats: Annotated[
         int | None,
         Field(
-            description="How many times the rows were shuffled into folds (ADR-0047). Absent: once, as before repeated folds.",
+            description="How many times the rows were shuffled into folds (ADR-0050). Absent: once, as before repeated folds.",
             ge=0,
         ),
     ] = None
@@ -1951,7 +1951,7 @@ class SelectionDecision(StrictModel):
     ]
     baseline_role: Annotated[
         BaselineRole | None,
-        Field(description="Absent: floor, as decided before ADR-0047 compared preparation."),
+        Field(description="Absent: floor, as decided before ADR-0050 compared preparation."),
     ] = None
     candidates: list[CandidateResult]
     winner: Annotated[
@@ -1965,7 +1965,7 @@ class SelectionDecision(StrictModel):
     not_compared: Annotated[
         list[NotCompared] | None,
         Field(
-            description="Alternatives the comparison did not score, each with why (ADR-0047). Absent: decided before ADR-0047 recorded them."
+            description="Alternatives the comparison did not score, each with why (ADR-0050). Absent: decided before ADR-0050 recorded them."
         ),
     ] = None
     limitations: Annotated[

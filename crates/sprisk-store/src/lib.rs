@@ -112,7 +112,7 @@ impl SqliteStore {
         Ok(())
     }
 
-    /// The model selection of `step` of `pipeline` (ADR-0047): its comparison, and its run
+    /// The model selection of `step` of `pipeline` (ADR-0050): its comparison, and its run
     /// once one was claimed.
     pub async fn selection_for(
         &self,
@@ -256,7 +256,7 @@ impl SqliteStore {
         Ok(found.is_some())
     }
 
-    /// Whether `id` has a child that is not a branch applied from `proposal` (ADR-0047).
+    /// Whether `id` has a child that is not a branch applied from `proposal` (ADR-0050).
     pub async fn has_other_child(
         &self,
         id: &PipelineVersionId,

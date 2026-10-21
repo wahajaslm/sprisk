@@ -1,5 +1,5 @@
 """Each manifest's `fits_on_train` claim, checked on the code. Rules trust it to treat a step's
-train output as train rows only, and comparisons refit the step on each fold (ADR-0047)."""
+train output as train rows only, and comparisons refit the step on each fold (ADR-0050)."""
 
 import importlib
 from collections.abc import Callable

@@ -220,7 +220,7 @@ fn read_manifest(path: &Path) -> Result<Operator, RegistryError> {
             source,
         })?;
     // A shortlist offers every model with tasks; comparing one refits its estimator, and the
-    // one-SE rule ranks it by complexity (ADR-0044, ADR-0047).
+    // one-SE rule ranks it by complexity (ADR-0044, ADR-0050).
     if let Some(model) = &operator.model
         && !model.tasks.is_empty()
         && (model.estimator.is_none() || model.complexity.is_none())

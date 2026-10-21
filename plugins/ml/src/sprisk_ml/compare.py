@@ -73,13 +73,13 @@ def cross_validate(
     The same rows, folds, repeats and seed give every candidate the same folds. Also what it
     predicted for each train row while the first repeat held it out, how much each feature
     mattered on those held-out folds, and figures of both: all from the train rows, so looking
-    at them never touches the test rows (ADR-0047). `prepare` are the preparation steps between
+    at them never touches the test rows (ADR-0050). `prepare` are the preparation steps between
     the split and the model, as transformers; each fold refits them before the model.
 
     After a time split, folds follow `time_column`: each validates on rows no earlier than
     any it fits on (rows sharing a time may fall on both sides), and the earliest rows are
     only fit on. After a group split, no `group_column`
-    value is on both sides of a fold. Otherwise rows are shuffled (ADR-0047)."""
+    value is on both sides of a fold. Otherwise rows are shuffled (ADR-0050)."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
     # Rust picks the metric from the question's task; this checks a step built by hand.
     if task not in METRIC_OF_TASK:
@@ -251,7 +251,7 @@ def select_model(
     baseline_role: Literal["floor", "reference"],
     not_compared: list[dict[str, str]],
 ) -> dict[str, Any]:
-    """A SelectionDecision (ADR-0047). Of the candidates that beat the baseline on the same
+    """A SelectionDecision (ADR-0050). Of the candidates that beat the baseline on the same
     folds, the simplest whose mean is within one standard error of the best mean wins: the
     one-SE rule (Breiman et al. 1984; ESL §7.10). A `floor` baseline, a model that ignores its
     features, never wins; a `reference` baseline, the rule's recommended preparation, wins

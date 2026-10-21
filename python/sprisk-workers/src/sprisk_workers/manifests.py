@@ -40,7 +40,7 @@ def load_operators(*roots: Path) -> dict[str, LoadedOperator]:
         for ref, (path, operator) in manifests.items()
         if operator.model is not None and operator.model.estimator is not None
     }
-    # ...and refits the preparation steps between the split and the model per fold (ADR-0047).
+    # ...and refits the preparation steps between the split and the model per fold (ADR-0050).
     preparations = {
         ref: CheckedFunction(
             _function(path, "entrypoint", operator.entrypoint.root), operator.params_schema
