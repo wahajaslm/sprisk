@@ -1893,6 +1893,28 @@
         }
       }
     },
+    "ModelSelection": {
+      "title": "ModelSelection",
+      "description": "How Sprisk is choosing a flow's model (ADR-0047): the shortlist proposal, the version that cross-validates it, and that version's latest run. Its select step's output is the SelectionDecision.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proposal",
+        "comparison",
+        "run"
+      ],
+      "properties": {
+        "proposal": {
+          "$ref": "#/$defs/DecisionProposal"
+        },
+        "comparison": {
+          "$ref": "#/$defs/PipelineVersion"
+        },
+        "run": {
+          "$ref": "#/$defs/Run"
+        }
+      }
+    },
     "MethodologyCheck": {
       "title": "MethodologyCheck",
       "description": "Result of one Gate B methodology rule on one pipeline version (arch doc §4, §8). Immutable; re-checking creates a new record.",

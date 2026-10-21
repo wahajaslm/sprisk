@@ -42,6 +42,7 @@ export interface Entities {
   NotebookVariables: C.NotebookVariables;
   NotebookKernelRequest: C.NotebookKernelRequest;
   SelectionDecision: C.SelectionDecision;
+  ModelSelection: C.ModelSelection;
 }
 
 export class ContractError extends Error {}

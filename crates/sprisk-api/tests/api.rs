@@ -2017,7 +2017,12 @@ async fn run_version(api: &Api, version: &str) -> (Value, Value) {
     let create = json!({ "pipeline_version_id": version });
     let (status, run) = call(&api.app, "POST", "/runs", Some(create)).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{run}");
-    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
+    wait_run(api, run["id"].as_str().unwrap()).await
+}
+
+/// Waits, bounded, for run `id` to end; gives the run and its attempts.
+async fn wait_run(api: &Api, id: &str) -> (Value, Value) {
+    let run_uri = format!("/runs/{id}");
     for _ in 0..1200 {
         let (_, body) = call(&api.app, "GET", &run_uri, None).await;
         if body["status"] == "succeeded" || body["status"] == "failed" {
@@ -2297,4 +2302,63 @@ async fn applying_the_comparisons_recommendation_needs_no_reason_and_cites_it() 
     let (status, applied) = call(&api.app, "POST", &uri, Some(winner)).await;
     assert_eq!(status, StatusCode::CREATED, "{applied}");
     assert_eq!(applied["decision"]["selection_id"], selection);
+}
+
+async fn select_model(api: &Api, step: &str) -> (StatusCode, Value) {
+    let uri = format!("/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/model_selection/{step}");
+    call(&api.app, "POST", &uri, Some(json!({}))).await
+}
+
+#[tokio::test]
+async fn sprisk_selects_a_model_by_itself_once_per_version() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+
+    let (status, selection) = select_model(&api, "model").await;
+    assert_eq!(status, StatusCode::CREATED, "{selection}");
+    assert_eq!(
+        selection["comparison"]["compares"],
+        selection["proposal"]["id"]
+    );
+    assert_eq!(
+        selection["run"]["pipeline_version_id"],
+        selection["comparison"]["id"]
+    );
+
+    let (status, again) = select_model(&api, "model").await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    for part in ["proposal", "comparison", "run"] {
+        assert_eq!(again[part]["id"], selection[part]["id"], "{part}");
+    }
+
+    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let decision = output(&api, &attempts, "select_model", "decision").await;
+    assert_eq!(decision["winner"], "ml_linear_model", "{decision}");
+}
+
+#[tokio::test]
+async fn only_a_model_step_that_has_run_has_a_model_selection() {
+    let api = api().await;
+    let model = json!({
+        "id":"model", "operator":"sprisk.ml.linear_model@1.0.0",
+        "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
+    });
+    scaling_flow_into(
+        &api,
+        &[model],
+        &[json!({"from":"scale.train","to":"model.train"})],
+    )
+    .await;
+
+    let (status, body) = select_model(&api, "model").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(
+        body["errors"][0]["code"],
+        "methodology_evidence_unavailable"
+    );
+
+    let (status, body) = select_model(&api, "scale").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "not_a_model_step");
 }

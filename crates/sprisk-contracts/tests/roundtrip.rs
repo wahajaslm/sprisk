@@ -10,7 +10,7 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile,
     DecisionProposal, FigureSet, LoadedTable, MethodologyCheck, MethodologyDecision,
-    MethodologyRule, MethodologyRuleSource, NotebookExecute, NotebookExecution,
+    MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookExecute, NotebookExecution,
     NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator,
     OperatorSource, PipelineVersion, Problem, QuestionVersion, RuleDecision, RuleObservation, Run,
     SelectionDecision, TablePage, WorkerMessage, parse,
@@ -74,6 +74,7 @@ const ENTITIES: &[&str] = &[
     "methodology_decision",
     "methodology_rule",
     "methodology_rule_source",
+    "model_selection",
     "notebook_execute",
     "notebook_execution",
     "notebook_execution_event",
@@ -282,4 +283,9 @@ fn notebook_kernel_request() {
 #[test]
 fn selection_decision() {
     check::<SelectionDecision>("selection_decision");
+}
+
+#[test]
+fn model_selection() {
+    check::<ModelSelection>("model_selection");
 }

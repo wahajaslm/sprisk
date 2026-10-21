@@ -1986,3 +1986,12 @@ class AppliedMethodologyDecision(StrictModel):
     )
     decision: MethodologyDecision
     pipeline: PipelineVersion
+
+
+class ModelSelection(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    proposal: DecisionProposal
+    comparison: PipelineVersion
+    run: Run

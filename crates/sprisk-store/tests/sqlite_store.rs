@@ -736,3 +736,25 @@ async fn a_comparison_is_found_by_its_proposal_and_a_proposal_has_one() {
     let err = store.insert_pipeline_version(&second).await.unwrap_err();
     assert!(matches!(err, StoreError::Conflict(_)), "{err}");
 }
+
+#[tokio::test]
+async fn a_comparison_is_found_by_the_version_and_step_its_proposal_decides() {
+    let (store, decision) = store_with_decision().await;
+    let comparison: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "comparison.json",
+        serde_json::json!({ "compares": decision.proposal_id, "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0" }),
+    );
+    let base = decision.base_pipeline_version_id.clone();
+    let step: sprisk_contracts::NodeId = decision.subject_node_id.clone();
+    assert_eq!(store.comparison_for(&base, &step).await.unwrap(), None);
+
+    store.insert_pipeline_version(&comparison).await.unwrap();
+
+    assert_eq!(
+        store.comparison_for(&base, &step).await.unwrap(),
+        Some(comparison)
+    );
+    let other: sprisk_contracts::NodeId = "model".parse().unwrap();
+    assert_eq!(store.comparison_for(&base, &other).await.unwrap(), None);
+}

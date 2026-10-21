@@ -42,6 +42,7 @@ const entities: [keyof Entities, string][] = [
   ["NotebookVariables", "notebook_variables"],
   ["NotebookKernelRequest", "notebook_kernel_request"],
   ["SelectionDecision", "selection_decision"],
+  ["ModelSelection", "model_selection"],
 ];
 
 it("every fixture dir has an entity", () => {

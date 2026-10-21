@@ -176,6 +176,11 @@ export type NotebookCellId = string;
 export type PortRef = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RunStatus".
+ */
+export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodologyCheckId".
  */
 export type MethodologyCheckId = string;
@@ -263,11 +268,6 @@ export type Entrypoint = string;
  * via the `definition` "ModelFamily".
  */
 export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "density_based";
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "RunStatus".
- */
-export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "AttemptState".
@@ -1269,6 +1269,39 @@ export interface Edge {
   to: PortRef;
 }
 /**
+ * How Sprisk is choosing a flow's model (ADR-0047): the shortlist proposal, the version that cross-validates it, and that version's latest run. Its select step's output is the SelectionDecision.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ModelSelection".
+ */
+export interface ModelSelection {
+  proposal: DecisionProposal;
+  comparison: PipelineVersion;
+  run: Run;
+}
+/**
+ * One execution of a pipeline version against its inputs (arch doc §4, §9). Status is the transactionally maintained current state; history lives in attempts and audit events.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Run".
+ */
+export interface Run {
+  schema_version: "sprisk.run/v1";
+  id: RunId;
+  project_id: ProjectId;
+  pipeline_version_id: PipelineVersionId;
+  status: RunStatus;
+  /**
+   * The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start.
+   */
+  reuse_run_id?: string;
+  created_at: Timestamp;
+  /**
+   * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
+   */
+  finished_at?: string;
+}
+/**
  * Result of one Gate B methodology rule on one pipeline version (arch doc §4, §8). Immutable; re-checking creates a new record.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1635,28 +1668,6 @@ export interface Unknown {
    * Earliest stage this unknown must be resolved before.
    */
   blocks: "planning" | "execution" | "release";
-}
-/**
- * One execution of a pipeline version against its inputs (arch doc §4, §9). Status is the transactionally maintained current state; history lives in attempts and audit events.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Run".
- */
-export interface Run {
-  schema_version: "sprisk.run/v1";
-  id: RunId;
-  project_id: ProjectId;
-  pipeline_version_id: PipelineVersionId;
-  status: RunStatus;
-  /**
-   * The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start.
-   */
-  reuse_run_id?: string;
-  created_at: Timestamp;
-  /**
-   * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
-   */
-  finished_at?: string;
 }
 /**
  * One try of one step (a node in a run). Retries create a new attempt with the next number; old attempts are never replaced (arch doc §9).

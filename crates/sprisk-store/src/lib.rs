@@ -6,9 +6,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, ArtifactId, Attempt, AttemptId, AttemptState, DecisionProposal, InvestigationId,
-    MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, NotebookId, NotebookVersion,
-    NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Run,
-    RunId, RunStatus, Timestamp, WorkerId,
+    MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, NodeId, NotebookId,
+    NotebookVersion, NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion,
+    QuestionVersionId, Run, RunId, RunStatus, Timestamp, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -110,6 +110,25 @@ impl SqliteStore {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// The newest comparison of a proposal for `step` of `pipeline` (ADR-0047), if one was built.
+    pub async fn comparison_for(
+        &self,
+        pipeline: &PipelineVersionId,
+        step: &NodeId,
+    ) -> Result<Option<PipelineVersion>, StoreError> {
+        let body: Option<String> = sqlx::query_scalar(
+            "SELECT v.body FROM pipeline_versions v \
+             JOIN methodology_proposals p ON p.id = v.compares_proposal_id \
+             WHERE p.pipeline_version_id = ? AND p.subject_node_id = ? \
+             ORDER BY v.id DESC LIMIT 1",
+        )
+        .bind(pipeline.as_str())
+        .bind(step.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(body.map(|b| serde_json::from_str(&b)).transpose()?)
     }
 
     /// The version comparing `proposal`'s shortlist (ADR-0046), if one was built.

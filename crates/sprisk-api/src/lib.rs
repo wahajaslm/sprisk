@@ -28,9 +28,10 @@ use sprisk_contracts::{
     CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
     GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyDecision,
     MethodologyProposalId, MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource,
-    NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookVariables,
-    NotebookVersion, NotebookVersionId, Operator, OperatorSource, PipelineVersion,
-    PipelineVersionId, Problem, QuestionVersion, QuestionVersionId, Run, RunId, parse,
+    ModelSelection, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
+    NotebookVariables, NotebookVersion, NotebookVersionId, Operator, OperatorSource,
+    PipelineVersion, PipelineVersionId, Problem, QuestionVersion, QuestionVersionId, Run, RunId,
+    parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -90,6 +91,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/methodology_proposals/{id}/compare",
             post(compare_methodology),
+        )
+        .route(
+            "/pipeline_versions/{id}/model_selection/{node_id}",
+            post(select_model),
         )
         .route("/methodology_decisions", get(list_methodology_decisions))
         .route("/methodology_decisions/{id}", get(get_methodology_decision))
@@ -1241,8 +1246,22 @@ async fn compare_methodology(
         .store
         .get_methodology_proposal(&id::<MethodologyProposalId>(&raw)?)
         .await?;
+    let (comparison, created) = build_comparison(&state, &proposal).await?;
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(comparison)))
+}
+
+/// `proposal`'s comparison, built and stored unless it exists, and whether this call built it.
+async fn build_comparison(
+    state: &AppState,
+    proposal: &DecisionProposal,
+) -> Result<(PipelineVersion, bool), ApiError> {
     if let Some(saved) = state.store.comparison_of(&proposal.id).await? {
-        return Ok((StatusCode::OK, Json(saved)));
+        return Ok((saved, false));
     }
     let base = state
         .store
@@ -1260,7 +1279,7 @@ async fn compare_methodology(
         .await?;
     let built = sprisk_methodology::comparison(
         &base,
-        &proposal,
+        proposal,
         question.task.value,
         |n| is_split(&state.rules, n),
         keeps_train_rows,
@@ -1284,14 +1303,76 @@ async fn compare_methodology(
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     check_local_paths(&plan, &state.data_roots)?;
     match state.store.insert_pipeline_version(&pipeline).await {
-        Ok(()) => Ok((StatusCode::CREATED, Json(pipeline))),
+        Ok(()) => Ok((pipeline, true)),
         // A concurrent request stored this proposal's comparison first.
         Err(StoreError::Conflict(why)) => match state.store.comparison_of(&proposal.id).await? {
-            Some(saved) => Ok((StatusCode::OK, Json(saved))),
+            Some(saved) => Ok((saved, false)),
             None => Err(ApiError::Store(StoreError::Conflict(why))),
         },
         Err(other) => Err(other.into()),
     }
+}
+
+/// How Sprisk is choosing the model of `node_id` (ADR-0047): its shortlist, the comparison
+/// and the comparison's latest run, each made once if missing. It changes nothing in the flow,
+/// so the UI may ask whenever it shows a version that has run.
+async fn select_model(
+    State(state): State<AppState>,
+    Path((raw, node_id)): Path<(String, String)>,
+) -> Result<(StatusCode, Json<ModelSelection>), ApiError> {
+    let pipeline_id: PipelineVersionId = id(&raw)?;
+    let step: sprisk_contracts::NodeId = id(&node_id)?;
+    let (proposal, comparison, built) =
+        match state.store.comparison_for(&pipeline_id, &step).await? {
+            Some(comparison) => {
+                let proposal_id = comparison.compares.clone().ok_or_else(|| {
+                    ApiError::Internal(format!("{} compares no proposal", comparison.id.as_str()))
+                })?;
+                let proposal = state.store.get_methodology_proposal(&proposal_id).await?;
+                (proposal, comparison, false)
+            }
+            None => {
+                let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
+                let shortlisted = pipeline
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == step)
+                    .and_then(|n| state.rules.rule_for_operator(n.operator.as_str()))
+                    .is_some_and(|r| r.selection == Some(MethodologyRuleSelection::Shortlist));
+                if !shortlisted {
+                    return Err(ApiError::BadRequest {
+                        code: "not_a_model_step",
+                        message: format!("no shortlist rule decides step {node_id}"),
+                    });
+                }
+                let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
+                let (comparison, _) = build_comparison(&state, &proposal).await?;
+                (proposal, comparison, true)
+            }
+        };
+    let latest = state
+        .store
+        .list_runs(Some(&comparison.id), None, 1)
+        .await?
+        .into_iter()
+        .next();
+    let (run, started) = match latest {
+        Some(run) => (run, false),
+        None => (start_run(&state, comparison.clone(), None).await?, true),
+    };
+    let status = if built || started {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((
+        status,
+        Json(ModelSelection {
+            proposal,
+            comparison,
+            run,
+        }),
+    ))
 }
 
 fn materialize_effect(
@@ -1407,12 +1488,23 @@ async fn create_run(
         .store
         .get_pipeline_version(&request.pipeline_version_id)
         .await?;
+    let run = start_run(&state, pipeline, request.reuse_run_id).await?;
+    Ok((StatusCode::ACCEPTED, Json(run)))
+}
+
+/// Queues a run of `pipeline` and runs it in the background, reusing `reuse` up to the first
+/// changed step (ADR-0026).
+async fn start_run(
+    state: &AppState,
+    pipeline: PipelineVersion,
+    reuse: Option<RunId>,
+) -> Result<Run, ApiError> {
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     // Checked again: the files or the configured roots may have changed since submit.
     check_local_paths(&plan, &state.data_roots)?;
     // An edit reuses the run on screen up to the edited step (ADR-0026); it must exist and
     // belong to the same project, or its results are not ours to reuse.
-    if let Some(reuse) = &request.reuse_run_id {
+    if let Some(reuse) = &reuse {
         let earlier = state.store.get_run(reuse).await?;
         if earlier.project_id != pipeline.project_id {
             return Err(ApiError::Forbidden(format!(
@@ -1430,7 +1522,7 @@ async fn create_run(
         "status": "queued",
         "created_at": now,
     });
-    if let Some(reuse) = &request.reuse_run_id {
+    if let Some(reuse) = &reuse {
         doc["reuse_run_id"] = json!(reuse);
     }
     let run: Run = parse(&doc.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -1439,6 +1531,7 @@ async fn create_run(
     // Local mode runs in this process; the database stays the truth, so a restart
     // can resume the run (backlog: separate runner process).
     let run_id = run.id.clone();
+    let state = state.clone();
     tokio::spawn(async move {
         let workers = ProcessWorkers {
             command: state.worker_command.clone(),
@@ -1456,14 +1549,14 @@ async fn create_run(
         if let Some(check) = state.split_check.clone() {
             scheduler = scheduler.with_split_check(check);
         }
-        if let Some(reuse) = request.reuse_run_id {
+        if let Some(reuse) = reuse {
             scheduler = scheduler.reusing(reuse);
         }
         if let Err(e) = scheduler.run(&run_id, &pipeline, &plan).await {
             tracing::error!(run = run_id.as_str(), error = %e, "run stopped");
         }
     });
-    Ok((StatusCode::ACCEPTED, Json(run)))
+    Ok(run)
 }
 
 async fn get_run(
