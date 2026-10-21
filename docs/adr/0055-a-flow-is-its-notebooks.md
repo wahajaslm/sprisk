@@ -16,6 +16,7 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 ## Decision
 **One record.** The flow (`PipelineVersion`) holds every cell. Notebooks and the canvas are two views of it. Nothing is copied, so nothing drifts.
 - A stage (Explore, Split, Clean, Model, Evaluate) is one notebook. A code cell is one step. A cell's id is its step's id.
+- **A step does one thing** (a rule, from the user). One load, one split, one model, one chart per step. Never pack several charts or tasks into one cell: the canvas and the notebook must show the analysis step by step.
 - `Node.stage` places a step in a stage. Absent: the stage its operator implies, as today.
 - `Node.notes` holds the Markdown cells shown before the step (`before`) and, for the last step of a stage, after it (`after`).
 - Cell order is the order of `nodes`, by stage. A cell reads only names set by cells above it or in earlier stages.
