@@ -3443,7 +3443,7 @@
         "max_wall_seconds": {
           "type": "integer",
           "minimum": 0,
-          "description": "Longest the study's run may take, counted from its start. Recorded now; enforced from ADR-0051 step 3."
+          "description": "Longest the study's run may take, counted from its start."
         },
         "guardrails": {
           "type": "array",
@@ -3457,7 +3457,7 @@
         },
         "deadline": {
           "$ref": "#/$defs/Timestamp",
-          "description": "When the budget runs out. Absent until the run starts."
+          "description": "When the budget runs out: the scheduler leases no step after it. Absent until the run starts."
         },
         "created_at": {
           "$ref": "#/$defs/Timestamp"

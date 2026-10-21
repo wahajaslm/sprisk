@@ -23,10 +23,10 @@
         "strategy": { "$ref": "#/$defs/StudyStrategy" },
         "seed": { "type": "integer", "minimum": 0, "description": "Shuffles the grid for random search." },
         "max_trials": { "type": "integer", "minimum": 0, "description": "Most trials the study may hold; checked when it is built." },
-        "max_wall_seconds": { "type": "integer", "minimum": 0, "description": "Longest the study's run may take, counted from its start. Recorded now; enforced from ADR-0051 step 3." },
+        "max_wall_seconds": { "type": "integer", "minimum": 0, "description": "Longest the study's run may take, counted from its start." },
         "guardrails": { "type": "array", "items": { "$ref": "#/$defs/Guardrail" }, "description": "Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0051)." },
         "status": { "$ref": "#/$defs/StudyStatus" },
-        "deadline": { "$ref": "#/$defs/Timestamp", "description": "When the budget runs out. Absent until the run starts." },
+        "deadline": { "$ref": "#/$defs/Timestamp", "description": "When the budget runs out: the scheduler leases no step after it. Absent until the run starts." },
         "created_at": { "$ref": "#/$defs/Timestamp" },
         "finished_at": { "$ref": "#/$defs/Timestamp", "description": "Set once the study reaches a terminal status." }
       }

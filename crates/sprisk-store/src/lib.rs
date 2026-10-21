@@ -336,6 +336,32 @@ impl SqliteStore {
         parse_all(rows, "study")
     }
 
+    /// Sets the study's deadline to `deadline` unless it has one, and gives the study: a run
+    /// resumed after a restart keeps the deadline it started with.
+    pub async fn start_study(&self, id: &StudyId, deadline: &str) -> Result<Study, StoreError> {
+        let mut tx = self.pool.begin().await?;
+        let body: Option<String> = sqlx::query_scalar("SELECT body FROM studies WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&mut *tx)
+            .await?;
+        let mut study: Study = from_json(body, "study", id.as_str())?;
+        if study.deadline.is_some() {
+            return Ok(study);
+        }
+        study.deadline = Some(
+            deadline
+                .parse()
+                .map_err(|_| StoreError::BadTimestamp(deadline.to_owned()))?,
+        );
+        sqlx::query("UPDATE studies SET body = ? WHERE id = ?")
+            .bind(to_json(&study)?)
+            .bind(id.as_str())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(study)
+    }
+
     /// Ends a study as `ended`, recording `at` as when. A finished study never changes again.
     pub async fn finish_study(
         &self,

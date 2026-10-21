@@ -3374,3 +3374,29 @@ async fn a_guardrail_on_a_class_the_target_never_takes_fails_the_study() {
     let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
     assert_eq!(done["study"]["status"], "failed", "{done}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_study_past_its_wall_time_ends_budget_reached_and_leases_no_more_trials() {
+    let api = api().await;
+    banded_forest_flow(&api).await;
+    let mut request = study_request("study-key-0013");
+    request["max_trials"] = json!(11);
+    // The deadline is whole seconds from the start; starting the worker and running Gate B
+    // take longer than that, so the deadline passes before the trials.
+    request["max_wall_seconds"] = json!(1);
+
+    let (status, detail) = create_study(&api, "model", request).await;
+    assert_eq!(status, StatusCode::CREATED, "{detail}");
+    let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
+    assert_eq!(done["study"]["status"], "budget_reached", "{done}");
+    assert!(done["study"]["deadline"].is_string(), "{done}");
+    assert_eq!(done["run"]["status"], "cancelled", "{done}");
+    let states: Vec<&str> = done["trials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["state"].as_str().unwrap())
+        .collect();
+    assert!(states.contains(&"not_started"), "{done}");
+    assert!(!states.contains(&"running"), "{done}");
+}

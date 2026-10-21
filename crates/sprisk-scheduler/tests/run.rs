@@ -337,6 +337,8 @@ struct Case {
     split_check: bool,
     /// Run `decided_pipeline()`, whose split was set by a stored methodology decision.
     decided: bool,
+    /// A deadline the clock passes after this many reads of it.
+    deadline_after: Option<usize>,
 }
 
 impl Default for Case {
@@ -350,6 +352,7 @@ impl Default for Case {
             gate: false,
             split_check: false,
             decided: false,
+            deadline_after: None,
         }
     }
 }
@@ -364,6 +367,7 @@ async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::Schedule
         gate,
         split_check,
         decided,
+        deadline_after,
     } = case;
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteStore::in_memory().await.unwrap();
@@ -406,6 +410,20 @@ async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::Schedule
     }
     if split_check {
         scheduler = scheduler.with_split_check(split_check_operator());
+    }
+    if let Some(reads) = deadline_after {
+        let deadline: jiff::Timestamp = "2026-10-21T10:00:00Z".parse().unwrap();
+        let read = std::sync::atomic::AtomicUsize::new(0);
+        let clock = move || {
+            let n = read.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let second = jiff::SignedDuration::from_secs(1);
+            if n < reads {
+                deadline - second
+            } else {
+                deadline + second
+            }
+        };
+        scheduler = scheduler.until(deadline, Arc::new(clock));
     }
     let status = scheduler.run(&run.id, &pipeline, &plan).await;
     (
@@ -1314,4 +1332,42 @@ async fn a_resumed_run_stops_at_a_split_check_that_already_failed() {
         .map(|l| l.node_id.to_string())
         .collect();
     assert!(leased.is_empty(), "{leased:?}");
+}
+
+#[tokio::test]
+async fn a_run_past_its_deadline_leases_nothing_and_ends_cancelled() {
+    let (env, status) = setup(Case {
+        deadline_after: Some(0),
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Cancelled);
+    assert!(env.log.lock().unwrap().leases.is_empty());
+    let run = env.store.get_run(&RUN.parse().unwrap()).await.unwrap();
+    assert_eq!(run.status, RunStatus::Cancelled);
+    assert!(run.finished_at.is_some());
+}
+
+#[tokio::test]
+async fn a_deadline_passed_between_steps_keeps_the_finished_ones_and_starts_no_more() {
+    let (env, status) = setup(Case {
+        deadline_after: Some(2),
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Cancelled);
+    assert_eq!(states(&env, "load").await, vec![AttemptState::Succeeded]);
+    assert_eq!(states(&env, "split").await, vec![AttemptState::Succeeded]);
+    assert!(states(&env, "model").await.is_empty());
+    assert!(states(&env, "score").await.is_empty());
+}
+
+#[tokio::test]
+async fn a_run_that_finishes_before_its_deadline_succeeds() {
+    let (_, status) = setup(Case {
+        deadline_after: Some(100),
+        ..Case::default()
+    })
+    .await;
+    assert_eq!(status.unwrap(), RunStatus::Succeeded);
 }

@@ -1676,14 +1676,36 @@ async fn list_studies(
     ))
 }
 
-/// How a study ends when its run has: decided, or failed. Nothing cancels a study's run until
-/// its wall-time budget is enforced, so a cancelled run counts as failed.
+/// How a study ends when its run has. Only its deadline cancels a study's run (ADR-0051).
 fn ended_as(run: RunStatus) -> Option<StudyStatus> {
     match run {
         RunStatus::Queued | RunStatus::Running => None,
         RunStatus::Succeeded => Some(StudyStatus::Completed),
-        RunStatus::Failed | RunStatus::Cancelled => Some(StudyStatus::Failed),
+        RunStatus::Failed => Some(StudyStatus::Failed),
+        RunStatus::Cancelled => Some(StudyStatus::BudgetReached),
     }
+}
+
+/// The study's deadline: `max_wall_seconds` from the first start, kept on a resume.
+async fn start_study(state: &AppState, id: &StudyId) -> Result<jiff::Timestamp, ApiError> {
+    let study = state.store.get_study(id).await?;
+    let budget =
+        jiff::SignedDuration::from_secs(i64::try_from(study.max_wall_seconds).map_err(|_| {
+            ApiError::Internal(format!("study {} has no usable budget", id.as_str()))
+        })?);
+    let deadline = jiff::Timestamp::now()
+        .checked_add(budget)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let started = state
+        .store
+        .start_study(id, &sprisk_core::time::format(deadline))
+        .await?;
+    let kept = started
+        .deadline
+        .ok_or_else(|| ApiError::Internal(format!("study {} has no deadline", id.as_str())))?;
+    kept.as_str()
+        .parse()
+        .map_err(|e: jiff::Error| ApiError::Internal(e.to_string()))
 }
 
 /// Records how `id` ended if its run has, once: a later caller finds it finished. A study
@@ -1953,8 +1975,15 @@ fn spawn_study(state: &AppState, study: &Study, comparison: PipelineVersion, pla
     let state = state.clone();
     let (study_id, run_id) = (study.id.clone(), study.run_id.clone());
     tokio::spawn(async move {
+        let deadline = match start_study(&state, &study_id).await {
+            Ok(deadline) => deadline,
+            Err(e) => {
+                tracing::error!(study = study_id.as_str(), error = %e, "could not start the study");
+                return;
+            }
+        };
         // drive_run logs a run that stops; the run is then failed, which the study records.
-        let _ = drive_run(&state, &run_id, &comparison, &plan, None).await;
+        let _ = drive_run(&state, &run_id, &comparison, &plan, None, Some(deadline)).await;
         if let Err(e) = record_end(&state, &study_id).await {
             tracing::error!(study = study_id.as_str(), error = %e, "could not record how the study ended");
         }
@@ -1973,7 +2002,7 @@ fn spawn_run(
     let state = state.clone();
     tokio::spawn(async move {
         // drive_run logs a run that stops.
-        let _ = drive_run(&state, &run_id, &pipeline, &plan, reuse).await;
+        let _ = drive_run(&state, &run_id, &pipeline, &plan, reuse, None).await;
     });
 }
 
@@ -1985,6 +2014,7 @@ async fn drive_run(
     pipeline: &PipelineVersion,
     plan: &Plan,
     reuse: Option<RunId>,
+    deadline: Option<jiff::Timestamp>,
 ) -> Result<RunStatus, sprisk_scheduler::SchedulerError> {
     let workers = ProcessWorkers {
         command: state.worker_command.clone(),
@@ -2004,6 +2034,9 @@ async fn drive_run(
     }
     if let Some(reuse) = reuse {
         scheduler = scheduler.reusing(reuse);
+    }
+    if let Some(deadline) = deadline {
+        scheduler = scheduler.until(deadline, std::sync::Arc::new(jiff::Timestamp::now));
     }
     let result = scheduler.run(run_id, pipeline, plan).await;
     if let Err(e) = &result {

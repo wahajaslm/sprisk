@@ -1679,11 +1679,7 @@ class Study(StrictModel):
         int, Field(description="Most trials the study may hold; checked when it is built.", ge=0)
     ]
     max_wall_seconds: Annotated[
-        int,
-        Field(
-            description="Longest the study's run may take, counted from its start. Recorded now; enforced from ADR-0051 step 3.",
-            ge=0,
-        ),
+        int, Field(description="Longest the study's run may take, counted from its start.", ge=0)
     ]
     guardrails: Annotated[
         list[Guardrail],
@@ -1694,7 +1690,9 @@ class Study(StrictModel):
     status: StudyStatus
     deadline: Annotated[
         Timestamp | None,
-        Field(description="When the budget runs out. Absent until the run starts."),
+        Field(
+            description="When the budget runs out: the scheduler leases no step after it. Absent until the run starts."
+        ),
     ] = None
     created_at: Timestamp
     finished_at: Annotated[

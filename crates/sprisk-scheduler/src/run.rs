@@ -61,6 +61,9 @@ pub enum SchedulerError {
     UnknownDecision { node: String, decision: String },
 }
 
+/// Reads the time, for deadlines. A fake clock lets a test pass a deadline between steps.
+pub type Clock = std::sync::Arc<dyn Fn() -> jiff::Timestamp + Send + Sync>;
+
 /// Attempts of the methodology gate use this node id (ADR-0017); Gate A reserves it.
 pub const GATE_NODE: &str = "gate_b";
 
@@ -91,6 +94,7 @@ pub struct Scheduler<'a, W: Workers> {
     split_check: Option<Operator>,
     worker: Option<W::Worker>,
     reuse: Option<RunId>,
+    deadline: Option<(jiff::Timestamp, Clock)>,
 }
 
 impl<'a, W: Workers> Scheduler<'a, W> {
@@ -109,7 +113,16 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             split_check: None,
             worker: None,
             reuse: None,
+            deadline: None,
         }
+    }
+
+    /// Lease no step once `clock` reads `deadline` or later: the run ends cancelled, and the
+    /// steps that finished keep their attempts (ADR-0051). A step in flight finishes; its
+    /// operator's timeout bounds how far past the deadline that goes.
+    pub fn until(mut self, deadline: jiff::Timestamp, clock: Clock) -> Self {
+        self.deadline = Some((deadline, clock));
+        self
     }
 
     /// Reuse `run`'s result for every step whose definition is unchanged (ADR-0026): an edit
@@ -206,6 +219,12 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 Next::Done => return self.finish(run_id, RunStatus::Succeeded).await,
                 Next::Run(step) => step,
             };
+            if let Some((deadline, clock)) = &self.deadline
+                && clock() >= *deadline
+            {
+                tracing::info!(run = run_id.as_str(), %deadline, "deadline reached");
+                return self.finish(run_id, RunStatus::Cancelled).await;
+            }
             match self.run_step(run_id, step, &done, Inputs::Upstream).await? {
                 Some(attempt) => {
                     done.insert(step.node_id.clone(), attempt);

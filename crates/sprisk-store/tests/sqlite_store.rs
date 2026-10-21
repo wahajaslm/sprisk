@@ -1063,3 +1063,23 @@ async fn a_step_has_one_running_study_at_a_time() {
         .unwrap();
     assert!(created);
 }
+
+#[tokio::test]
+async fn a_study_s_deadline_is_set_once_so_a_resumed_run_keeps_it() {
+    let (store, decision) = store_with_decision().await;
+    let (study, request, comparison, run) = study_parts(&decision);
+    store
+        .insert_study(&study, &request, &comparison, &run)
+        .await
+        .unwrap();
+    let started = store
+        .start_study(&study.id, "2026-10-21T10:10:00Z")
+        .await
+        .unwrap();
+    assert_eq!(started.deadline.unwrap().as_str(), "2026-10-21T10:10:00Z");
+    let resumed = store
+        .start_study(&study.id, "2026-10-21T11:00:00Z")
+        .await
+        .unwrap();
+    assert_eq!(resumed.deadline.unwrap().as_str(), "2026-10-21T10:10:00Z");
+}
