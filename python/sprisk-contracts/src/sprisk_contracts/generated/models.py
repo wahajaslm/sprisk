@@ -1416,6 +1416,13 @@ class OperatorModel(StrictModel):
             description="Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are."
         ),
     ]
+    complexity: Annotated[
+        int | None,
+        Field(
+            description="How flexible the model is, for the one-SE rule (ADR-0047): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model.",
+            ge=0,
+        ),
+    ] = None
     estimator: Annotated[
         Entrypoint | None,
         Field(

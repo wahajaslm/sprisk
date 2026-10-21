@@ -45,8 +45,7 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
         }),
     );
     model["description"] = json!(about);
-    model["model"] =
-        json!({ "tasks": ["classification"], "prepares": [], "estimator": "ops:build" });
+    model["model"] = json!({ "tasks": ["classification"], "prepares": [], "estimator": "ops:build", "complexity": 1 });
     let ops = [
         model,
         operator(

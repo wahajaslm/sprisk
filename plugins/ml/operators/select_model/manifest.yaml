@@ -1,14 +1,14 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.select_model@1.0.0
 capability_class: decision_evaluator
-description: Choose among cross-validated candidates (ADR-0044). A model wins only if it beats the baseline on the same folds by more than the corrected standard error of their paired differences; otherwise none does. Writes a SelectionDecision.
+description: Choose among cross-validated candidates (ADR-0044). Of the models that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0047); if none beats it, none does. Writes a SelectionDecision.
 entrypoint: sprisk_ml.compare:select_model
 inputs: []
 outputs: [{ name: decision, kind: report }]
 params_schema:
   type: object
   additionalProperties: false
-  required: [trials, baseline, metric, not_compared]
+  required: [trials, baseline, metric, not_compared, complexity]
   properties:
     trials:
       type: array
@@ -18,6 +18,10 @@ params_schema:
       x-sprisk-ports: input
     baseline: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$", description: "The trial of the model that ignores its features: the floor to beat." }
     metric: { type: string, enum: [balanced_accuracy, rmse], description: "The metric every trial was scored by." }
+    complexity:
+      type: object
+      description: "Each trial's model complexity, from its manifest; of the models within one standard error of the best, the simplest wins (ADR-0047)."
+      additionalProperties: { type: integer, minimum: 0 }
     not_compared:
       type: array
       description: "Steps between the split and the model in the flow, which the comparison leaves out."

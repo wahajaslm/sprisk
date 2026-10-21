@@ -93,17 +93,23 @@ pub fn comparison<'a>(
 
     let mut trials = Vec::new();
     let mut baselines = Vec::new();
+    let mut complexity = serde_json::Map::new();
     for id in &proposal.shortlist {
         let id = id.as_str();
         let (operator, params) = candidate(proposal, id)?;
-        let is_baseline = operator_of(operator)
+        let model = operator_of(operator)
             .ok_or_else(|| ResolveError::UnknownOperator(operator.to_owned()))?
             .model
             .as_ref()
-            .is_some_and(|m| m.family.is_none());
-        if is_baseline {
+            .ok_or_else(|| ResolveError::Selection(format!("{operator} is not a model")))?;
+        if model.family.is_none() {
             baselines.push(id);
         }
+        // The one-SE rule ranks candidates by it (ADR-0047); the registry requires it.
+        let rank = model
+            .complexity
+            .ok_or_else(|| ResolveError::Selection(format!("{operator} declares no complexity")))?;
+        complexity.insert(id.to_owned(), json!(rank));
         let step = format!("cv_{id}");
         nodes.push(parse(
             &json!({
@@ -135,7 +141,8 @@ pub fn comparison<'a>(
             "id": SELECT_NODE, "operator": SELECT,
             "params": {
                 "trials": trials.iter().map(|(id, _)| id).collect::<Vec<_>>(),
-                "baseline": baseline, "metric": metric, "not_compared": between
+                "baseline": baseline, "metric": metric, "not_compared": between,
+                "complexity": complexity
             }
         })
         .to_string(),

@@ -176,12 +176,16 @@ def trial(fold_scores: list[float], metric: str = "balanced_accuracy") -> pl.Dat
 BASE = "ml_dummy_baseline"
 
 
+COMPLEXITY = {BASE: 0, "ml_linear_model": 1, "ml_random_forest": 2, "ml_lm": 1}
+
+
 def select(trials: dict[str, pl.DataFrame], **settings: Any) -> SelectionDecision:
     chosen = select_model(
         trials,
         baseline=settings.get("baseline", BASE),
         metric=settings.get("metric", "balanced_accuracy"),
         not_compared=settings.get("not_compared", []),
+        complexity=settings.get("complexity", COMPLEXITY),
     )
     # Through JSON, as the worker writes it.
     return SelectionDecision.model_validate_json(json.dumps(chosen))
@@ -196,12 +200,48 @@ def test_the_best_model_that_beats_the_baseline_wins() -> None:
         }
     )
     assert decision.winner == "ml_random_forest"
-    assert decision.reason.startswith("ml_random_forest has the best mean balanced accuracy")
+    assert decision.reason.startswith(
+        "ml_random_forest has the best mean balanced accuracy (0.844 ± 0.011) of the models "
+        "that beat the baseline, and no simpler model is within one standard error of it"
+    )
     by_id = {c.id: c for c in decision.candidates}
     assert by_id[BASE].versus_baseline is None
     assert by_id[BASE].mean == 0.5
     assert by_id["ml_linear_model"].versus_baseline is not None
     assert by_id["ml_linear_model"].versus_baseline.beats_baseline
+
+
+def test_a_simpler_model_within_one_standard_error_of_the_best_is_recommended() -> None:
+    # Iris: linear and forest score the same, so the forest adds nothing measurable.
+    same = [1.0, 0.958, 0.958, 0.958, 0.958]
+    decision = select(
+        {BASE: trial([0.333] * 5), "ml_linear_model": trial(same), "ml_random_forest": trial(same)}
+    )
+    assert decision.winner == "ml_linear_model"
+    assert decision.reason == (
+        "ml_linear_model and ml_random_forest are within one standard error (0.013) of the best "
+        "mean balanced accuracy (0.966) and beat the baseline. ml_linear_model is the simplest of "
+        "them, so the more flexible models add no measurable gain on these rows."
+    )
+
+
+def test_a_model_clearly_better_than_a_simpler_one_is_recommended() -> None:
+    decision = select(
+        {
+            BASE: trial([0.5] * 5),
+            "ml_linear_model": trial([0.70, 0.72, 0.69, 0.71, 0.70]),
+            "ml_random_forest": trial([0.90, 0.91, 0.89, 0.92, 0.90]),
+        }
+    )
+    assert decision.winner == "ml_random_forest"
+
+
+def test_every_trial_needs_a_complexity() -> None:
+    with pytest.raises(ValueError, match=r"no complexity for \['ml_linear_model'\]"):
+        select(
+            {BASE: trial([0.5] * 5), "ml_linear_model": trial([0.8] * 5)},
+            complexity={BASE: 0},
+        )
 
 
 def test_the_standard_error_is_corrected_for_folds_that_share_train_rows() -> None:
@@ -339,6 +379,7 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     out = tmp_path / "select"
     out.mkdir()
     params = {"trials": [BASE, "ml_lm"], "baseline": BASE, "metric": "balanced_accuracy"}
+    params |= {"complexity": {BASE: 0, "ml_lm": 1}}
     [written] = operators["sprisk.ml.select_model@1.0.0"].run(
         params | {"not_compared": []}, cross_validated, out
     )

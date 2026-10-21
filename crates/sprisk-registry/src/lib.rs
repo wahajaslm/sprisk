@@ -34,8 +34,10 @@ pub enum RegistryError {
         path: PathBuf,
         source: ContractError,
     },
-    #[error("{path}: a model with tasks must name its estimator, so it can be cross-validated")]
-    NoEstimator { path: PathBuf },
+    #[error(
+        "{path}: a model with tasks must declare its estimator and complexity, so it can be cross-validated and ranked"
+    )]
+    IncompleteModel { path: PathBuf },
     #[error("unknown operator {0}")]
     UnknownOperator(String),
     #[error("operator {operator} has no readable source in its pack")]
@@ -217,12 +219,13 @@ fn read_manifest(path: &Path) -> Result<Operator, RegistryError> {
             path: path.to_owned(),
             source,
         })?;
-    // A shortlist offers every model with tasks; comparing one refits its estimator (ADR-0044).
+    // A shortlist offers every model with tasks; comparing one refits its estimator, and the
+    // one-SE rule ranks it by complexity (ADR-0044, ADR-0047).
     if let Some(model) = &operator.model
         && !model.tasks.is_empty()
-        && model.estimator.is_none()
+        && (model.estimator.is_none() || model.complexity.is_none())
     {
-        return Err(RegistryError::NoEstimator {
+        return Err(RegistryError::IncompleteModel {
             path: path.to_owned(),
         });
     }

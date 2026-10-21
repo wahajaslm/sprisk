@@ -1048,7 +1048,8 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
         select["params"],
         json!({
             "trials": ["ml_dummy_baseline", "ml_linear_model"], "baseline": "ml_dummy_baseline",
-            "metric": "balanced_accuracy", "not_compared": ["scale"]
+            "metric": "balanced_accuracy", "not_compared": ["scale"],
+            "complexity": { "ml_dummy_baseline": 0, "ml_linear_model": 1 }
         })
     );
 }

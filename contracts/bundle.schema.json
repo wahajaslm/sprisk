@@ -2462,6 +2462,11 @@
             "$ref": "#/$defs/ModelPreparation"
           }
         },
+        "complexity": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How flexible the model is, for the one-SE rule (ADR-0047): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model."
+        },
         "estimator": {
           "$ref": "#/$defs/Entrypoint",
           "description": "Python `module:function` returning the model unfitted, given `schema` (the feature columns' types) and its params except target and features, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model."

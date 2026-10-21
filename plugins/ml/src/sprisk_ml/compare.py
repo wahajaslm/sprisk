@@ -88,16 +88,24 @@ def _digest(rows: np.ndarray) -> str:
 
 
 def select_model(
-    trials: dict[str, pl.DataFrame], baseline: str, metric: str, not_compared: list[str]
+    trials: dict[str, pl.DataFrame],
+    baseline: str,
+    metric: str,
+    not_compared: list[str],
+    complexity: dict[str, int],
 ) -> dict[str, Any]:
-    """A SelectionDecision: the candidate with the best mean score among those that beat the
-    baseline on the same folds, or none. Beating it means a mean paired improvement larger
-    than one standard error, corrected for folds that share train rows: the variance of the
-    mean is (1/k + n_validate/n_train) times the variance of the differences, not 1/k. That
-    is the correction of Nadeau & Bengio (2003), applied to k-fold as Bouckaert & Frank
-    (2004) do. The one-standard-error bar is ours, a screening rule, not a test."""
+    """A SelectionDecision (ADR-0047). Of the candidates that beat the baseline on the same
+    folds, the simplest whose mean is within one standard error of the best mean wins: the
+    one-SE rule (Breiman et al. 1984; ESL §7.10). Beating the baseline means a mean paired
+    improvement larger than one standard error. Both standard errors are corrected for folds
+    that share train rows: the variance of a mean is (1/k + n_validate/n_train) times the
+    variance of its fold values, not 1/k. That is the correction of Nadeau & Bengio (2003),
+    applied to k-fold as Bouckaert & Frank (2004) do. The baseline bar is ours, a screening
+    rule, not a test."""
     if baseline not in trials:
         raise ValueError(f"baseline {baseline} is not one of the trials {sorted(trials)}")
+    if missing := sorted(set(trials) - set(complexity)):
+        raise ValueError(f"no complexity for {missing}")
     protocol = trials[baseline].select(PROTOCOL)
     for name, trial in trials.items():
         if not trial.select(PROTOCOL).equals(protocol):
@@ -120,7 +128,7 @@ def select_model(
         }
         if name != baseline:
             gain = sign * (scores - floor)
-            se = math.sqrt((1 / k + ratio) * float(gain.var(ddof=1)))
+            se = _corrected_se(gain, k, ratio)
             result["versus_baseline"] = {
                 "mean_difference": float(gain.mean()),
                 "corrected_se": se,
@@ -152,14 +160,32 @@ def select_model(
             f"than one corrected standard error of its paired differences over the same {k} folds."
         )
         return decision
-    # Ties go to the first by id, so the same scores always give the same winner.
-    winner = max(beating, key=lambda c: sign * c["mean"])
-    versus = winner["versus_baseline"]
+    best = max(beating, key=lambda c: sign * c["mean"])
+    best_se = _corrected_se(trials[best["id"]]["score"].to_numpy(), k, ratio)
+    near = [c for c in beating if sign * (best["mean"] - c["mean"]) <= best_se]
+    # Ties of complexity go to the better mean, then the id, so the same scores always give
+    # the same winner.
+    winner = min(near, key=lambda c: (complexity[c["id"]], -sign * c["mean"], c["id"]))
     decision["winner"] = winner["id"]
+    if len(near) > 1:
+        decision["reason"] = (
+            f"{' and '.join(c['id'] for c in near)} are within one standard error "
+            f"({best_se:.3f}) of the best mean {LABEL[metric]} ({best['mean']:.3f}) and beat the "
+            f"baseline. {winner['id']} is the simplest of them, so the more flexible models add "
+            "no measurable gain on these rows."
+        )
+        return decision
+    versus = winner["versus_baseline"]
     decision["reason"] = (
         f"{winner['id']} has the best mean {LABEL[metric]} ({winner['mean']:.3f} ± "
-        f"{winner['spread']:.3f}) of the models that beat the baseline. Over the same {k} folds "
-        f"it improves on {baseline} by {versus['mean_difference']:.3f}, more than one corrected "
-        f"standard error ({versus['corrected_se']:.3f})."
+        f"{winner['spread']:.3f}) of the models that beat the baseline, and no simpler model is "
+        f"within one standard error of it. Over the same {k} folds it improves on {baseline} by "
+        f"{versus['mean_difference']:.3f}, more than one corrected standard error "
+        f"({versus['corrected_se']:.3f})."
     )
     return decision
+
+
+def _corrected_se(values: np.ndarray, k: int, ratio: float) -> float:
+    """Standard error of the mean of `values`, one per fold, corrected for overlapping folds."""
+    return math.sqrt((1 / k + ratio) * float(values.var(ddof=1)))
