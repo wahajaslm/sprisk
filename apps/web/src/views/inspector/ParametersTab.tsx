@@ -2,6 +2,7 @@ import type { CodeInterface, CodeParameter, Operator, PipelineVersion } from "@s
 import { useState } from "react";
 
 import type { Read } from "../../api/code.ts";
+import { useMethodologyRules } from "../../api/methodology.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { useRunEdit } from "./useRunEdit.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
@@ -18,6 +19,7 @@ type Props = {
  * steps: literal settings found in the code, exposed on request (ADR-0021). Running with
  * changed settings saves a new version; the code itself is never edited. */
 export function ParametersTab({ pipeline, nodeId, operator, found }: Props) {
+  const rules = useMethodologyRules();
   const node = pipeline.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
   if (isCodeOperator(node.operator)) {
@@ -27,18 +29,12 @@ export function ParametersTab({ pipeline, nodeId, operator, found }: Props) {
     return <Expose key={JSON.stringify(found.value.parameters)} pipeline={pipeline} nodeId={nodeId} params={node.params} found={found.value} />;
   }
   if (!operator) return <Loading />;
-  const hasMethodology =
-    node.operator.includes("split@") ||
-    node.operator.includes("clustering.") ||
-    node.operator.includes("kmeans") ||
-    node.operator.includes("dbscan") ||
-    node.operator.includes("gmm") ||
-    node.operator.includes("impute@") ||
-    node.operator.includes("drop_missing@") ||
-    node.operator.includes("scale@") ||
-    node.operator.includes("clip_outliers@");
+  // A step has methodology choices when an active rule decides its operator (ADR-0045).
+  const unversioned = node.operator.split("@")[0] ?? node.operator;
+  const hasMethodology = (rules.data ?? []).some((r) => r.status === "active" && r.applies_to?.includes(unversioned));
 
   return <>
+    {rules.isError && <p role="alert" className="error">Methodology rules could not be read: {rules.error.message}</p>}
     {hasMethodology && <SplitMethodology key={`method/${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} />}
     <Settings key={`${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} params={node.params} schema={operator.params_schema} />
   </>;
