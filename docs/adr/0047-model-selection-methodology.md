@@ -20,8 +20,10 @@ Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.
 **The protocol above is Sprisk's model-selection methodology.** Each part is built as follows.
 
 - **A candidate is a pipeline.** It is the preparation steps between the split and the model, plus the model, refit together on each fold's training rows.
-  - A preparation operator declares `transformer`: a function that returns the step as an unfitted scikit-learn transformer. Models already declare `model.estimator`.
-  - Until every preparation step between the split and the model declares one, the SelectionDecision names the steps left out (ADR-0044).
+  - A preparation operator declares `fits_on_train: true`: it reads train and test, fits on train only, and writes each from its own rows.
+  - The worker wraps that step's own function as a fold transformer: fit stores the fold's training rows, and transform applies the step to new rows. A fold runs exactly the code the flow runs, and nothing is reimplemented.
+  - The same flag replaces the API's hard-coded list of steps that keep train rows apart.
+  - If a step between the split and the model lacks the flag, the SelectionDecision names it as left out (ADR-0044).
 - **Sprisk compares on its own.**
   - `POST /pipeline_versions/{id}/model_selection/{node_id}` resolves the model step's shortlist, builds its comparison and starts its run, or returns the ones it already has.
   - It changes nothing in the flow. The UI calls it when it shows a flow version that has run and whose model step a shortlist rule decides.
@@ -71,3 +73,6 @@ Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.
 
 ## Arch doc edits
 - §11: SelectionDecision follows the one-SE rule after a corrected test against the baseline; holdout reuse is recorded per decision.
+
+## Amendments
+- 2026-10-21: Preparation joins the folds through `fits_on_train` and a wrapper around the step's own function, not through a second `transformer` function per operator. One implementation per step, as rule 10 asks.
