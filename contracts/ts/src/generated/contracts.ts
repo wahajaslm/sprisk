@@ -1276,7 +1276,7 @@ export interface Edge {
   to: PortRef;
 }
 /**
- * How Sprisk is choosing a flow's model (ADR-0047): the shortlist proposal, the version that cross-validates it, and that version's latest run. Its select step's output is the SelectionDecision.
+ * How Sprisk is choosing one step of a flow's model pipeline (ADR-0047): a model step's shortlist proposal, or a preparation step's proposal; the version that cross-validates it; and that version's latest run. Its select step's output is the SelectionDecision.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ModelSelection".
