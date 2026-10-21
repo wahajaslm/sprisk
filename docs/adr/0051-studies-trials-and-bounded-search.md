@@ -70,7 +70,7 @@ Arch doc sections: §3 (Experiment), §5, §11, §21 (M4), §22 (EXP-01, EXP-02,
 - A study request must state `max_trials` and `max_wall_seconds`. Neither has a default.
 - `max_trials` is checked when the study is built:
   - **Grid:** more trials than the budget is refused with `422 over_budget`, naming the count.
-  - **Random:** each tuned candidate gets *n* = (`max_trials` − one-trial candidates) ÷ tuned candidates, rounded down and capped at its grid size. Below 2 is refused. Any remainder is unused. The study records *n*.
+  - **Random:** each tuned candidate gets *n* = (`max_trials` − one-trial candidates) ÷ tuned candidates, rounded down and capped at its grid size. Below 2 is refused. Any remainder is unused. The trials show *n*.
 - `max_wall_seconds` sets a deadline, stored on the study row when its run starts. A resumed run keeps it.
   - The scheduler checks the deadline before leasing each step. Past it, the run ends `cancelled`, and the study ends `budget_reached`.
   - A trial already in flight finishes. Its overshoot is bounded by its operator's `timeout_seconds`.

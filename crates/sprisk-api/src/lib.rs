@@ -31,8 +31,8 @@ use sprisk_contracts::{
     MethodologyRuleSource, ModelSelection, NotebookExecute, NotebookExecution,
     NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
     Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
-    QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId, StudyStatus, Trial,
-    parse,
+    QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId, StudyStatus, TaskType,
+    Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -1369,7 +1369,7 @@ async fn build_comparison(
     if let Some(saved) = state.store.comparison_of(&proposal.id).await? {
         return Ok((saved, false));
     }
-    let pipeline = comparison_version(state, proposal).await?;
+    let pipeline = comparison_version(state, proposal, None).await?;
     match state.store.insert_pipeline_version(&pipeline).await {
         Ok(()) => Ok((pipeline, true)),
         // A concurrent request stored this proposal's comparison first.
@@ -1386,6 +1386,7 @@ async fn build_comparison(
 async fn comparison_version(
     state: &AppState,
     proposal: &DecisionProposal,
+    study: Option<&sprisk_methodology::StudySearch<'_>>,
 ) -> Result<PipelineVersion, ApiError> {
     check_current(state, proposal).await?;
     let base = state
@@ -1411,12 +1412,26 @@ async fn comparison_version(
             keeps_train,
             operator_of,
         )
+    } else if let Some(study) = study {
+        sprisk_methodology::study_comparison(
+            &base,
+            proposal,
+            task,
+            is_split,
+            keeps_train,
+            operator_of,
+            study,
+        )
     } else {
         sprisk_methodology::comparison(&base, proposal, task, is_split, keeps_train, operator_of)
     }
     .map_err(|e| match e {
         sprisk_methodology::ResolveError::NothingToCompare(_) => ApiError::BadRequest {
             code: "nothing_to_compare",
+            message: e.to_string(),
+        },
+        sprisk_methodology::ResolveError::OverBudget(_) => ApiError::BadRequest {
+            code: "over_budget",
             message: e.to_string(),
         },
         other => not_applicable(other.to_string()),
@@ -1476,7 +1491,7 @@ async fn select_model(
                 });
             }
             let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
-            let made = comparison_version(&state, &proposal).await?;
+            let made = comparison_version(&state, &proposal, None).await?;
             let (comparison, built) = state
                 .store
                 .insert_selection(&pipeline_id, &step, &made)
@@ -1536,7 +1551,6 @@ async fn create_study(
         return Ok((StatusCode::OK, Json(study_detail(&state, saved).await?)));
     }
     check_budget(&request)?;
-    check_not_yet_built(&request)?;
     let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
     let shortlisted = pipeline
         .nodes
@@ -1554,20 +1568,26 @@ async fn create_study(
             message: format!("step {node_id} is not a model step that a shortlist rule decides"),
         });
     }
+    let question_id =
+        pipeline
+            .question_version_id
+            .as_ref()
+            .ok_or_else(|| ApiError::BadRequest {
+                code: "question_required",
+                message: "link a question revision to this flow before studying it".into(),
+            })?;
+    let question = state.store.get_question_version(question_id).await?;
+    check_guardrails(&request, question.task.value)?;
+    let earlier = state.store.earlier_comparisons(&pipeline_id, &step).await?;
     let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
-    let comparison = comparison_version(&state, &proposal).await?;
-    let trials = sprisk_methodology::trial_steps(&comparison)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .len() as u64;
-    if trials > request.max_trials {
-        return Err(ApiError::BadRequest {
-            code: "over_budget",
-            message: format!(
-                "this study has {trials} trials; its budget allows {}",
-                request.max_trials
-            ),
-        });
-    }
+    let search = sprisk_methodology::StudySearch {
+        strategy: request.strategy,
+        seed: request.seed,
+        max_trials: request.max_trials,
+        guardrails: &request.guardrails,
+        earlier_looks: &earlier,
+    };
+    let comparison = comparison_version(&state, &proposal, Some(&search)).await?;
     let (run, plan) = queued_run(&state, &comparison).await?;
     let study: Study = parse(
         &json!({
@@ -1615,20 +1635,24 @@ fn check_budget(request: &sprisk_contracts::CreateStudy) -> Result<(), ApiError>
     Ok(())
 }
 
-/// What step 3 of ADR-0051 builds is refused until then, so a study never records a search
-/// or a guardrail it did not apply.
-fn check_not_yet_built(request: &sprisk_contracts::CreateStudy) -> Result<(), ApiError> {
-    if request.strategy != sprisk_contracts::StudyStrategy::Grid {
-        return Err(ApiError::BadRequest {
-            code: "strategy_not_available",
-            message: format!("{} search is not available yet; use grid", request.strategy),
-        });
-    }
-    if !request.guardrails.is_empty() {
-        return Err(ApiError::BadRequest {
-            code: "guardrails_not_enforced",
-            message: "guardrails are not enforced by selection yet; send none".into(),
-        });
+fn check_guardrails(
+    request: &sprisk_contracts::CreateStudy,
+    task: TaskType,
+) -> Result<(), ApiError> {
+    for guardrail in &request.guardrails {
+        let at_least = guardrail.at_least;
+        if !(0.0..=1.0).contains(&at_least) {
+            return Err(ApiError::BadRequest {
+                code: "invalid_guardrail",
+                message: format!("a minimum recall is between 0 and 1, not {at_least}"),
+            });
+        }
+        if task != TaskType::Classification {
+            return Err(ApiError::BadRequest {
+                code: "invalid_guardrail",
+                message: format!("recall of a class needs a classification question, not {task}"),
+            });
+        }
     }
     Ok(())
 }
@@ -1653,7 +1677,7 @@ async fn list_studies(
 }
 
 /// How a study ends when its run has: decided, or failed. Nothing cancels a study's run until
-/// its wall-time budget is enforced (ADR-0051 step 3), so a cancelled run counts as failed.
+/// its wall-time budget is enforced, so a cancelled run counts as failed.
 fn ended_as(run: RunStatus) -> Option<StudyStatus> {
     match run {
         RunStatus::Queued | RunStatus::Running => None,
@@ -1711,7 +1735,7 @@ async fn study_detail(state: &AppState, study: Study) -> Result<StudyDetail, Api
             "node_id": step.node_id,
             "candidate": step.candidate,
             "operator": step.operator,
-            "settings": {},
+            "settings": step.settings,
             "state": trial_state(&of_step, run.status),
             "attempts": of_step.iter().map(|a| &a.id).collect::<Vec<_>>(),
         });

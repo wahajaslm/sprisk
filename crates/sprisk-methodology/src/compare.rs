@@ -9,19 +9,22 @@ use petgraph::graph::DiGraph;
 use petgraph::visit::Dfs;
 use serde_json::json;
 use sprisk_contracts::{
-    BaselineRole, DecisionProposal, Edge, GraphEffect, MethodologyAlternative,
+    BaselineRole, DecisionProposal, Edge, GraphEffect, Guardrail, MethodologyAlternative,
     MethodologyAlternativeApplicability, MethodologyRule, Node, Operator, PipelineVersion,
-    TaskType, parse,
+    PipelineVersionId, StudyStrategy, TaskType, parse,
 };
 
 use crate::ResolveError;
 use crate::decision::train_rows_chain;
+use crate::search;
 
 /// Folds, repeats and seed of every comparison, recorded in each cross-validate step's params:
 /// ten shuffles into five folds, for the corrected repeated k-fold t-test (ADR-0050).
 pub const FOLDS: u64 = 5;
 pub const REPEATS: u64 = 10;
 pub const SEED: u64 = 0;
+/// Inner folds of a study's trial: they only rank settings, so 3 bounds the cost (ADR-0051).
+pub const INNER_FOLDS: u64 = 3;
 const CROSS_VALIDATE: &str = "sprisk.ml.cross_validate@3.0.0";
 const SELECT: &str = "sprisk.ml.select_model@4.0.0";
 /// The select step of every comparison; its `decision` output is the SelectionDecision.
@@ -43,6 +46,115 @@ pub fn comparison<'a>(
     keeps_train: impl Fn(&Node) -> bool,
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
 ) -> Result<Comparison, ResolveError> {
+    let shortlist = shortlist(base, proposal, task, is_split, keeps_train, &operator_of)?;
+    build(base, &shortlist, &Study::default())
+}
+
+/// What a study asks of a comparison (ADR-0051).
+pub struct StudySearch<'s> {
+    pub strategy: StudyStrategy,
+    pub seed: u64,
+    pub max_trials: u64,
+    pub guardrails: &'s [Guardrail],
+    /// Earlier comparisons of the same version and step, recorded in the decision.
+    pub earlier_looks: &'s [PipelineVersionId],
+}
+
+/// A study of `proposal`'s shortlist (ADR-0051): a model whose manifest declares a search
+/// gets one trial per setting the strategy lists, tuned on inner folds; any other gets one
+/// trial at the flow's settings. Every trial scores the recall each guardrail names.
+pub fn study_comparison<'a>(
+    base: &PipelineVersion,
+    proposal: &DecisionProposal,
+    task: TaskType,
+    is_split: impl Fn(&Node) -> bool,
+    keeps_train: impl Fn(&Node) -> bool,
+    operator_of: impl Fn(&str) -> Option<&'a Operator>,
+    asked: &StudySearch,
+) -> Result<Comparison, ResolveError> {
+    let mut shortlist = shortlist(base, proposal, task, is_split, keeps_train, &operator_of)?;
+    let searches: Vec<_> = shortlist
+        .trials
+        .iter()
+        .map(|t| {
+            operator_of(&t.model)
+                .and_then(|o| o.model.as_ref())
+                .map(|m| m.search.clone())
+                .unwrap_or_default()
+        })
+        .collect();
+    let sizes: Vec<usize> = searches
+        .iter()
+        .filter(|s| !s.is_empty())
+        .map(|s| search::grid(s).len())
+        .collect();
+    let one_trial = searches.len() - sizes.len();
+    let mut counts =
+        search::trials_per_candidate(asked.strategy, asked.max_trials, one_trial, &sizes)?
+            .into_iter();
+    let mut study = Study {
+        recall_of: asked
+            .guardrails
+            .iter()
+            .map(|g| g.label.to_string())
+            .collect(),
+        guardrails: asked.guardrails.to_vec(),
+        earlier_looks: asked.earlier_looks.to_vec(),
+        ..Study::default()
+    };
+    let mut trials = Vec::new();
+    for (candidate, space) in shortlist.trials.drain(..).zip(searches) {
+        if space.is_empty() {
+            trials.push(candidate);
+            continue;
+        }
+        let n = counts.next().unwrap_or_default();
+        let points = match asked.strategy {
+            StudyStrategy::Grid => search::grid(&space),
+            StudyStrategy::Random => search::random(&space, asked.seed, n),
+        };
+        let mut group = Vec::new();
+        for (k, point) in points.into_iter().enumerate() {
+            let id = format!("{}_t{}", candidate.id, k + 1);
+            let mut model_params = candidate.model_params.clone();
+            model_params.extend(point.clone());
+            study
+                .settings
+                .insert(id.clone(), serde_json::Value::Object(point));
+            group.push(id.clone());
+            trials.push(Trial {
+                id,
+                model_params,
+                inner_folds: true,
+                ..candidate.clone()
+            });
+        }
+        study
+            .complexity_of
+            .push((candidate.id.clone(), candidate.complexity));
+        study.tuned.insert(candidate.id, json!(group));
+    }
+    shortlist.trials = trials;
+    build(base, &shortlist, &study)
+}
+
+/// The shortlist's trials at the flow's settings, and what every comparison of it shares.
+struct Shortlist<'p> {
+    split: &'p str,
+    metric: &'static str,
+    trials: Vec<Trial>,
+    baseline: Baseline,
+    not_compared: Vec<serde_json::Value>,
+}
+
+fn shortlist<'p, 'a>(
+    base: &'p PipelineVersion,
+    proposal: &DecisionProposal,
+    task: TaskType,
+    is_split: impl Fn(&Node) -> bool,
+    keeps_train: impl Fn(&Node) -> bool,
+    operator_of: &impl Fn(&str) -> Option<&'a Operator>,
+) -> Result<Shortlist<'p>, ResolveError> {
     if proposal.shortlist.is_empty() {
         return Err(ResolveError::Selection(format!(
             "proposal {} has no shortlist to compare",
@@ -85,11 +197,12 @@ pub fn comparison<'a>(
             .complexity
             .ok_or_else(|| ResolveError::Selection(format!("{operator} declares no complexity")))?;
         trials.push(Trial {
-            id,
-            model: operator,
-            model_params: params,
+            id: id.to_owned(),
+            model: operator.to_owned(),
+            model_params: params.clone(),
             prepare: prepare.clone(),
             complexity,
+            inner_folds: false,
         });
     }
     let [baseline] = baselines[..] else {
@@ -106,17 +219,16 @@ pub fn comparison<'a>(
             json!({ "id": a.id.as_str(), "reason": format!("Not on the shortlist: {}", a.reason.as_str()) })
         })
         .collect();
-    build(
-        base,
+    Ok(Shortlist {
         split,
         metric,
-        &trials,
-        Baseline {
-            id: baseline,
+        trials,
+        baseline: Baseline {
+            id: baseline.to_owned(),
             role: BaselineRole::Floor,
         },
         not_compared,
-    )
+    })
 }
 
 /// The comparison of the ways `proposal` offers of doing its preparation step (ADR-0050):
@@ -177,12 +289,13 @@ pub fn preparation_comparison<'a>(
             }
         }
         trials.push(Trial {
-            id,
-            model: model.operator.as_str(),
-            model_params: &model.params,
+            id: id.to_owned(),
+            model: model.operator.to_string(),
+            model_params: model.params.clone().into(),
             prepare,
             // Removing the step is simplest; every way of keeping it ranks the same (ADR-0050).
             complexity: u64::from(step.is_some()),
+            inner_folds: false,
         });
     }
     if let Some(why) = reference_unmeasured {
@@ -195,44 +308,64 @@ pub fn preparation_comparison<'a>(
             "only the recommendation {reference} can be measured here; there is nothing to compare it with"
         )));
     }
-    build(
-        base,
+    let shortlist = Shortlist {
         split,
         metric,
-        &trials,
-        Baseline {
-            id: reference,
+        trials,
+        baseline: Baseline {
+            id: reference.to_owned(),
             role: BaselineRole::Reference,
         },
         not_compared,
-    )
+    };
+    build(base, &shortlist, &Study::default())
 }
 
-/// One cross-validate step: `model` refit after `prepare` on each fold.
-struct Trial<'p> {
-    id: &'p str,
-    model: &'p str,
-    model_params: &'p serde_json::Map<String, serde_json::Value>,
+/// One cross-validate step: `model` refit after `prepare` on each fold; with `inner_folds`,
+/// a study's trial that its candidate is tuned over.
+#[derive(Clone)]
+struct Trial {
+    id: String,
+    model: String,
+    model_params: serde_json::Map<String, serde_json::Value>,
     prepare: Vec<serde_json::Value>,
     complexity: u64,
+    inner_folds: bool,
 }
 
 /// The trial every other must beat, and whether it may win (`reference`) or not (`floor`).
-struct Baseline<'p> {
-    id: &'p str,
+struct Baseline {
+    id: String,
     role: BaselineRole,
+}
+
+/// What a study adds to its select step; empty for any other comparison.
+#[derive(Default)]
+struct Study {
+    tuned: serde_json::Map<String, serde_json::Value>,
+    settings: serde_json::Map<String, serde_json::Value>,
+    /// A tuned candidate's complexity; its trials are not candidates themselves.
+    complexity_of: Vec<(String, u64)>,
+    recall_of: Vec<String>,
+    guardrails: Vec<Guardrail>,
+    earlier_looks: Vec<PipelineVersionId>,
 }
 
 /// The split and every step before it, one cross-validate step per trial fed by the split's
 /// train rows, and the select step reading their scores.
 fn build(
     base: &PipelineVersion,
-    split: &str,
-    metric: &str,
-    trials: &[Trial],
-    baseline: Baseline,
-    not_compared: Vec<serde_json::Value>,
+    shortlist: &Shortlist,
+    study: &Study,
 ) -> Result<Comparison, ResolveError> {
+    let Shortlist {
+        split,
+        metric,
+        trials,
+        baseline,
+        not_compared,
+    } = shortlist;
+    let split = *split;
     // Folds must keep what the split keeps apart: time order, or whole groups (ADR-0050).
     let (fold_by, repeats) = fold_by(step_of(base, split)?)?;
     let kept = upstream(base, split);
@@ -262,6 +395,12 @@ fn build(
         params.insert("metric".into(), json!(metric));
         params.insert("prepare".into(), json!(trial.prepare));
         params.extend(fold_by.clone());
+        if trial.inner_folds {
+            params.insert("inner_folds".into(), json!(INNER_FOLDS));
+        }
+        if !study.recall_of.is_empty() {
+            params.insert("recall_of".into(), json!(study.recall_of));
+        }
         nodes.push(parse(
             &json!({ "id": step, "operator": CROSS_VALIDATE, "params": params }).to_string(),
         )?);
@@ -270,19 +409,31 @@ fn build(
             &format!("{step}.scores"),
             &format!("{SELECT_NODE}.{}", trial.id),
         )?);
-        complexity.insert(trial.id.to_owned(), json!(trial.complexity));
+        if !trial.inner_folds {
+            complexity.insert(trial.id.clone(), json!(trial.complexity));
+        }
+    }
+    for (candidate, of) in &study.complexity_of {
+        complexity.insert(candidate.clone(), json!(of));
     }
     edges.extend(scores);
+    let mut select = json!({
+        "trials": trials.iter().map(|t| &t.id).collect::<Vec<_>>(),
+        "baseline": baseline.id, "baseline_role": baseline.role,
+        "metric": metric, "complexity": complexity, "not_compared": not_compared
+    });
+    if !study.tuned.is_empty() {
+        select["tuned"] = json!(study.tuned);
+        select["settings"] = json!(study.settings);
+    }
+    if !study.guardrails.is_empty() {
+        select["guardrails"] = json!(study.guardrails);
+    }
+    if !study.earlier_looks.is_empty() {
+        select["earlier_looks"] = json!(study.earlier_looks);
+    }
     nodes.push(parse(
-        &json!({
-            "id": SELECT_NODE, "operator": SELECT,
-            "params": {
-                "trials": trials.iter().map(|t| t.id).collect::<Vec<_>>(),
-                "baseline": baseline.id, "baseline_role": baseline.role,
-                "metric": metric, "complexity": complexity, "not_compared": not_compared
-            }
-        })
-        .to_string(),
+        &json!({ "id": SELECT_NODE, "operator": SELECT, "params": select }).to_string(),
     )?);
     Ok(Comparison { nodes, edges })
 }
@@ -293,6 +444,8 @@ pub struct TrialStep<'p> {
     pub node_id: &'p str,
     pub candidate: &'p str,
     pub operator: &'p str,
+    /// The searched settings; empty for a trial at the flow's settings.
+    pub settings: serde_json::Map<String, serde_json::Value>,
 }
 
 /// The trials of `comparison`, in the order its select step lists them.
@@ -303,12 +456,14 @@ pub fn trial_steps(comparison: &PipelineVersion) -> Result<Vec<TrialStep<'_>>, R
         .get("trials")
         .and_then(|t| t.as_array())
         .ok_or_else(|| ResolveError::Selection(format!("{SELECT_NODE} lists no trials")))?;
+    let tuned = select.params.get("tuned").and_then(|t| t.as_object());
+    let settings = select.params.get("settings").and_then(|s| s.as_object());
     ids.iter()
         .map(|id| {
-            let candidate = id
+            let trial = id
                 .as_str()
                 .ok_or_else(|| ResolveError::Selection(format!("trial {id} is not an id")))?;
-            let node = step_of(comparison, &format!("cv_{candidate}"))?;
+            let node = step_of(comparison, &format!("cv_{trial}"))?;
             let operator = node
                 .params
                 .get("candidate")
@@ -316,10 +471,22 @@ pub fn trial_steps(comparison: &PipelineVersion) -> Result<Vec<TrialStep<'_>>, R
                 .ok_or_else(|| {
                     ResolveError::Selection(format!("{} names no candidate", node.id.as_str()))
                 })?;
+            let candidate = tuned
+                .and_then(|t| {
+                    t.iter()
+                        .find(|(_, group)| group.as_array().is_some_and(|g| g.contains(id)))
+                })
+                .map_or(trial, |(candidate, _)| candidate.as_str());
+            let settings = settings
+                .and_then(|s| s.get(trial))
+                .and_then(|s| s.as_object())
+                .cloned()
+                .unwrap_or_default();
             Ok(TrialStep {
                 node_id: node.id.as_str(),
                 candidate,
                 operator,
+                settings,
             })
         })
         .collect()

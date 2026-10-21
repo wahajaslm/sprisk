@@ -290,6 +290,28 @@ impl SqliteStore {
         Ok(Some(saved))
     }
 
+    /// Comparisons of `step` of `pipeline` that have a run: its model selection's and every
+    /// study's, oldest first. A new study records them as earlier looks at the same folds.
+    pub async fn earlier_comparisons(
+        &self,
+        pipeline: &PipelineVersionId,
+        step: &NodeId,
+    ) -> Result<Vec<PipelineVersionId>, StoreError> {
+        let ids: Vec<String> = sqlx::query_scalar(
+            "SELECT comparison_id FROM model_selections \
+             WHERE pipeline_version_id = ?1 AND node_id = ?2 AND run_id IS NOT NULL \
+             UNION SELECT comparison_id FROM studies WHERE pipeline_version_id = ?1 AND node_id = ?2 \
+             ORDER BY comparison_id",
+        )
+        .bind(pipeline.as_str())
+        .bind(step.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+        ids.into_iter()
+            .map(|id| id.parse().map_err(|_| StoreError::BadId(id)))
+            .collect()
+    }
+
     pub async fn get_study(&self, id: &StudyId) -> Result<Study, StoreError> {
         let body: Option<String> = sqlx::query_scalar("SELECT body FROM studies WHERE id = ?")
             .bind(id.as_str())

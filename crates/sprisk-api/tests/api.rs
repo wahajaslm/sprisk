@@ -3125,19 +3125,17 @@ async fn a_study_with_more_trials_than_its_budget_is_refused_and_no_study_or_run
 }
 
 #[tokio::test]
-async fn a_study_needs_a_budget_and_a_model_step_and_asks_only_for_what_is_built() {
+async fn a_study_needs_a_budget_a_guardrail_in_range_and_a_model_step() {
     let api = api().await;
     learnable_model_flow(&api).await;
     let cases = [
         ("max_trials", json!(0), "invalid_budget"),
         ("max_wall_seconds", json!(0), "invalid_budget"),
-        // Refused until selection applies them (ADR-0051 step 3).
         (
             "guardrails",
-            json!([{ "metric": "recall", "label": "1", "at_least": 0.5 }]),
-            "guardrails_not_enforced",
+            json!([{ "metric": "recall", "label": "1", "at_least": 1.5 }]),
+            "invalid_guardrail",
         ),
-        ("strategy", json!("random"), "strategy_not_available"),
     ];
     for (field, value, code) in cases {
         let mut request = study_request("study-key-0005");
@@ -3196,4 +3194,183 @@ async fn a_study_whose_trials_cannot_be_scored_ends_failed_with_its_trials() {
         .collect();
     assert!(states.contains(&"failed"), "{done}");
     assert!(!states.contains(&"running"), "{done}");
+}
+
+/// 200 rows whose class follows age in bands of 50 years: a forest learns it, a line cannot.
+/// The flow's forest grows 10 trees, so studies of it stay quick.
+async fn banded_forest_flow(api: &Api) {
+    let model = json!({
+        "id":"model", "operator":"sprisk.ml.random_forest@1.1.0",
+        "params":{"target":"returned_within_30d","features":["age"],"task":"classification","n_estimators":10}
+    });
+    scaling_flow_into(
+        api,
+        &[model],
+        &[json!({"from":"scale.train","to":"model.train"})],
+    )
+    .await;
+    let mut csv = String::from("age,returned_within_30d\n");
+    for age in 0..200 {
+        csv.push_str(&format!("{age},{}\n", u8::from(age % 100 >= 50)));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, _) = run_to_end(api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+}
+
+async fn selection_decision(api: &Api, detail: &Value) -> Value {
+    let (_, attempts) = call(
+        &api.app,
+        "GET",
+        &format!("/runs/{}/attempts", detail["run"]["id"].as_str().unwrap()),
+        None,
+    )
+    .await;
+    let decision = output(api, &attempts, "select_model", "decision").await;
+    parse::<sprisk_contracts::SelectionDecision>(&decision.to_string()).unwrap();
+    decision
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_study_tunes_the_forest_on_inner_folds_and_a_rerun_reuses_its_trials() {
+    let api = api().await;
+    banded_forest_flow(&api).await;
+    let mut request = study_request("study-key-0008");
+    request["strategy"] = json!("random");
+    request["seed"] = json!(3);
+    request["max_trials"] = json!(4);
+    request["guardrails"] = json!([{ "metric": "recall", "label": "1", "at_least": 0.0 }]);
+
+    let (status, detail) = create_study(&api, "model", request.clone()).await;
+    assert_eq!(status, StatusCode::CREATED, "{detail}");
+    let trials = detail["trials"].as_array().unwrap();
+    let candidates: Vec<&str> = trials
+        .iter()
+        .map(|t| t["candidate"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        candidates,
+        [
+            "ml_dummy_baseline",
+            "ml_linear_model",
+            "ml_random_forest",
+            "ml_random_forest"
+        ],
+        "{detail}"
+    );
+    // Two one-trial models leave 2 of the 4 trials for the forest's 9 settings.
+    let forest: Vec<&Value> = trials
+        .iter()
+        .filter(|t| t["candidate"] == "ml_random_forest")
+        .collect();
+    for trial in &forest {
+        let settings = trial["settings"].as_object().unwrap();
+        assert_eq!(settings.len(), 2, "{trial}");
+        assert!(settings.contains_key("min_samples_leaf") && settings.contains_key("max_features"));
+    }
+    assert_ne!(forest[0]["settings"], forest[1]["settings"]);
+
+    let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
+    assert_eq!(done["study"]["status"], "completed", "{done}");
+    let decision = selection_decision(&api, &done).await;
+    let tuned = decision["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "ml_random_forest")
+        .unwrap_or_else(|| panic!("{decision}"));
+    assert_eq!(
+        tuned["fold_scores"].as_array().unwrap().len(),
+        50,
+        "{tuned}"
+    );
+    let searched = tuned["search"]["trials"].as_array().unwrap();
+    assert_eq!(searched.len(), 2, "{tuned}");
+    let chosen: u64 = searched
+        .iter()
+        .map(|t| t["chosen_in"].as_u64().unwrap())
+        .sum();
+    assert_eq!(chosen, 50, "every outer fold chose one trial");
+    assert!(
+        searched
+            .iter()
+            .any(|t| t["settings"] == tuned["search"]["settings"]),
+        "{tuned}"
+    );
+    assert_eq!(tuned["guardrails"][0]["passed"], true, "{tuned}");
+    assert_eq!(decision["guardrails"][0]["label"], "1");
+    assert!(decision.get("earlier_looks").is_none(), "{decision}");
+
+    // A second study with a new key and the same search runs nothing again.
+    request["idempotency_key"] = json!("study-key-0009");
+    let (status, again) = create_study(&api, "model", request).await;
+    assert_eq!(status, StatusCode::CREATED, "{again}");
+    let again = wait_study(&api, again["study"]["id"].as_str().unwrap()).await;
+    assert_eq!(again["study"]["status"], "completed", "{again}");
+    let (_, attempts) = call(
+        &api.app,
+        "GET",
+        &format!("/runs/{}/attempts", again["run"]["id"].as_str().unwrap()),
+        None,
+    )
+    .await;
+    for trial in again["trials"].as_array().unwrap() {
+        let attempt = attempts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["node_id"] == trial["node_id"])
+            .unwrap();
+        assert_eq!(attempt["state"], "cache_hit", "{trial}");
+    }
+    let decision = selection_decision(&api, &again).await;
+    assert_eq!(
+        decision["earlier_looks"],
+        json!([done["study"]["comparison_id"]]),
+        "{decision}"
+    );
+}
+
+#[tokio::test]
+async fn a_grid_larger_than_its_budget_and_a_random_budget_too_small_to_sample_are_refused() {
+    let api = api().await;
+    banded_forest_flow(&api).await;
+    let mut grid = study_request("study-key-0010");
+    grid["max_trials"] = json!(10);
+    let (status, body) = create_study(&api, "model", grid).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "over_budget");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("this study has 11 trials"),
+        "{body}"
+    );
+
+    let mut random = study_request("study-key-0011");
+    random["strategy"] = json!("random");
+    random["max_trials"] = json!(3);
+    let (status, body) = create_study(&api, "model", random).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "over_budget");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("random search needs at least 2"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn a_guardrail_on_a_class_the_target_never_takes_fails_the_study() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+    let mut request = study_request("study-key-0012");
+    request["guardrails"] = json!([{ "metric": "recall", "label": "maybe", "at_least": 0.5 }]);
+    let (status, detail) = create_study(&api, "model", request).await;
+    assert_eq!(status, StatusCode::CREATED, "{detail}");
+    let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
+    assert_eq!(done["study"]["status"], "failed", "{done}");
 }

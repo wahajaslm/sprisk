@@ -8,8 +8,8 @@ pub mod facts;
 pub mod search;
 pub use catalog::{CatalogError, RuleCatalog};
 pub use compare::{
-    Comparison, FOLDS, REPEATS, SEED, SELECT_NODE, TrialStep, comparison, preparation_comparison,
-    trial_steps,
+    Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, StudySearch, TrialStep, comparison,
+    preparation_comparison, study_comparison, trial_steps,
 };
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts, proposal,
@@ -44,6 +44,8 @@ pub enum ResolveError {
     UndeclaredAlternative(String),
     #[error("could not construct proposal: {0}")]
     Contract(#[from] sprisk_contracts::ContractError),
+    #[error(transparent)]
+    OverBudget(#[from] search::BudgetError),
     #[error("could not serialize proposal input: {0}")]
     Json(#[from] serde_json::Error),
 }
