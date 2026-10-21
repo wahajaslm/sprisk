@@ -221,6 +221,7 @@ def test_a_candidate_below_a_guardrail_cannot_win_and_does_not_set_the_bar() -> 
     )
     assert decision.winner == "ml_linear_model"
     assert "of the models that beat the baseline and meet every guardrail" in decision.reason
+    assert "no simpler model that beats the baseline and meets every guardrail" in decision.reason
     assert decision.guardrails is not None and decision.guardrails[0].label == "bad"
     by_id = {c.id: c for c in decision.candidates}
     forest = by_id["ml_random_forest"].guardrails

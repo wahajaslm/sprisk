@@ -450,8 +450,11 @@ def select_model(
     kind, against = (
         ("alternative", "the recommendation") if reference else ("model", "the baseline")
     )
+    # One phrase per verb form: "models that beat ... and meet", "a model that beats ... and meets".
+    beat, beats = against, against
     if declared:
-        against += " and meet every guardrail"
+        beat += " and meet every guardrail"
+        beats += " and meets every guardrail"
     others = "others" if reference else "more flexible ones"
     best = max(beating, key=lambda c: sign * c["mean"])
     best_se = _corrected_se(trials[best["id"]]["score"].to_numpy(), k, ratio)
@@ -471,14 +474,14 @@ def select_model(
         decision["reason"] = (
             f"{' and '.join(c['id'] for c in near)} are within one standard error "
             f"({best_se:.3f}) of the best mean {LABEL[metric]} ({best['mean']:.3f}) and beat "
-            f"{against}. {then}{f' {missed}' if missed else ''}"
+            f"{beat}. {then}{f' {missed}' if missed else ''}"
         )
         return decision
     versus = winner["versus_baseline"]
     decision["reason"] = (
         f"{winner['id']} has the best mean {LABEL[metric]} ({winner['mean']:.3f} ± "
-        f"{winner['spread']:.3f}) of the {kind}s that beat {against}, and no simpler {kind} "
-        f"that beats {against} is within one standard error of it. Over the same {k} folds it "
+        f"{winner['spread']:.3f}) of the {kind}s that beat {beat}, and no simpler {kind} "
+        f"that beats {beats} is within one standard error of it. Over the same {k} folds it "
         f"improves on {baseline} by "
         f"{versus['mean_difference']:.3f} (corrected standard error {versus['corrected_se']:.3f}, "
         f"one-sided p = {versus['p_value']:.2g}).{f' {missed}' if missed else ''}"
