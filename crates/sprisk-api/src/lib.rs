@@ -1238,8 +1238,18 @@ async fn apply_methodology(
     if let Some(reason) = &request.reason {
         decision_json["reason"] = json!(reason);
     }
-    if let Some((_, artifact)) = &selection {
+    if let Some((decided, artifact)) = &selection {
         decision_json["selection_id"] = json!(artifact);
+        let missed: Vec<_> = decided
+            .candidates
+            .iter()
+            .filter(|c| c.id.as_str() == request.alternative_id.as_str())
+            .flat_map(|c| &c.guardrails)
+            .filter(|g| !g.passed)
+            .collect();
+        if !missed.is_empty() {
+            decision_json["missed_guardrails"] = json!(missed);
+        }
     }
     let seen = test_rows_seen_by(&state, &proposal).await?;
     if !seen.is_empty() {

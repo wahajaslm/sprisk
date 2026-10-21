@@ -554,6 +554,11 @@
           "$ref": "#/$defs/ArtifactId",
           "description": "The SelectionDecision this choice followed or overrode (ADR-0050). Absent when no comparison had decided."
         },
+        "missed_guardrails": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GuardrailResult" },
+          "description": "The guardrails the chosen alternative failed in the SelectionDecision this choice overrode, with its values (ADR-0052). Absent when it failed none."
+        },
         "test_rows_seen_by": {
           "type": "array",
           "items": { "$ref": "#/$defs/PipelineVersionId" },

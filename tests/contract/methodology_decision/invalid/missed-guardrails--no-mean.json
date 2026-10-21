@@ -1,0 +1,21 @@
+{
+  "schema_version": "sprisk.methodology_decision/v1",
+  "id": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ2",
+  "proposal_id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "rule": "methodology.supervised.model_baseline_selection@2.0.0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "base_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ3",
+  "subject_node_id": "model",
+  "alternative_id": "ml_random_forest",
+  "reason": "The reviewer accepts the forest's shortfall in recall on bad credits.",
+  "selection_id": "art_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "created_at": "2026-10-21T10:00:00Z",
+  "missed_guardrails": [
+    {
+      "label": "bad",
+      "at_least": 0.45,
+      "passed": false
+    }
+  ]
+}

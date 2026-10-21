@@ -2992,8 +2992,10 @@ async fn create_study(api: &Api, step: &str, request: Value) -> (StatusCode, Val
     call(&api.app, "POST", &uri, Some(request)).await
 }
 
+/// Waits, bounded at three minutes, for study `id` to end. German credit's study takes about
+/// a minute when other tests run beside it.
 async fn wait_study(api: &Api, id: &str) -> Value {
-    for _ in 0..1200 {
+    for _ in 0..3600 {
         let (_, detail) = call(&api.app, "GET", &format!("/studies/{id}"), None).await;
         if detail["study"]["status"] != "running" {
             return detail;
@@ -3383,6 +3385,10 @@ async fn a_study_tunes_the_forest_on_inner_folds_and_a_rerun_reuses_its_trials()
         model["params"]["n_estimators"], 10,
         "the flow's own settings stay"
     );
+    assert!(
+        applied["decision"].get("missed_guardrails").is_none(),
+        "{applied}"
+    );
 }
 
 #[tokio::test]
@@ -3696,6 +3702,10 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
         "the flow's own settings stay"
     );
     assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
+    assert_eq!(
+        applied["decision"]["missed_guardrails"], tuned["guardrails"],
+        "the choice records the guardrail the forest failed"
+    );
     assert_eq!(
         applied["decision"]["selection_id"],
         output_artifact(&api, &attempts, "select_model", "decision").await

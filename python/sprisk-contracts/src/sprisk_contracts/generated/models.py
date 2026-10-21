@@ -1389,6 +1389,12 @@ class MethodologyDecision(StrictModel):
             description="The SelectionDecision this choice followed or overrode (ADR-0050). Absent when no comparison had decided."
         ),
     ] = None
+    missed_guardrails: Annotated[
+        list[GuardrailResult] | None,
+        Field(
+            description="The guardrails the chosen alternative failed in the SelectionDecision this choice overrode, with its values (ADR-0052). Absent when it failed none."
+        ),
+    ] = None
     test_rows_seen_by: Annotated[
         list[PipelineVersionId] | None,
         Field(

@@ -101,6 +101,7 @@ Arch doc sections: §3 (Experiment), §5, §11, §21 (M4), §22 (EXP-01, EXP-02,
 **Choosing.**
 - "Use this choice" works as for a comparison. The study's winner needs no reason; any other candidate needs one.
 - The applied model step gets the candidate's flow params plus the settings the study chose for that candidate. The compiler checks them.
+- A candidate that failed a guardrail can still be chosen, with a reason. The MethodologyDecision then lists the guardrails it missed, with their values, in `missed_guardrails`.
 
 **API and storage.**
 - `POST /pipeline_versions/{id}/studies/{node_id}` builds the study and starts its run. Body: `idempotency_key`, `strategy`, `seed`, `max_trials`, `max_wall_seconds`, `guardrails`.

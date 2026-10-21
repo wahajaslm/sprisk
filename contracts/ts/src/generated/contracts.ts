@@ -1215,10 +1215,34 @@ export interface MethodologyDecision {
    */
   selection_id?: string;
   /**
+   * The guardrails the chosen alternative failed in the SelectionDecision this choice overrode, with its values (ADR-0052). Absent when it failed none.
+   */
+  missed_guardrails?: GuardrailResult[];
+  /**
    * Earlier versions applied from the same proposal whose runs had already scored the test rows (arch doc §11). Absent when none had.
    */
   test_rows_seen_by?: PipelineVersionId[];
   created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "GuardrailResult".
+ */
+export interface GuardrailResult {
+  label: string;
+  at_least: number;
+  /**
+   * Mean over the outer folds of the recall of `label`.
+   */
+  mean: number;
+  /**
+   * Its standard error, corrected for folds that share train rows as for the scores.
+   */
+  corrected_se: number;
+  /**
+   * Whether `mean` is at least `at_least`.
+   */
+  passed: boolean;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1874,26 +1898,6 @@ export interface SearchedTrial {
    * How many outer folds chose this trial.
    */
   chosen_in: number;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "GuardrailResult".
- */
-export interface GuardrailResult {
-  label: string;
-  at_least: number;
-  /**
-   * Mean over the outer folds of the recall of `label`.
-   */
-  mean: number;
-  /**
-   * Its standard error, corrected for folds that share train rows as for the scores.
-   */
-  corrected_se: number;
-  /**
-   * Whether `mean` is at least `at_least`.
-   */
-  passed: boolean;
 }
 /**
  * An alternative the comparison could not score on the folds, and why (ADR-0050).
