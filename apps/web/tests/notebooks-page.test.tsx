@@ -45,6 +45,7 @@ function withApi(base: PipelineVersion = flow) {
   server.use(
     http.get("/api/pipeline_versions", () => HttpResponse.json([base])),
     http.get("/api/notebooks", () => HttpResponse.json(listed)),
+    http.post("/api/operators/:id/notebook_code", () => HttpResponse.json({ errors: [{ code: "no_plain_code", message: "none yet" }] }, { status: 404 })),
     http.post("/api/notebook_versions", async ({ request }) => {
       const body = (await request.json()) as NotebookVersion;
       posts.push({ path: "notebook_versions", body });

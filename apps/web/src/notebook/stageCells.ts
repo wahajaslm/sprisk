@@ -1,7 +1,8 @@
 import type { Node, NotebookCell, Operator, PipelineVersion } from "@sprisk/contracts";
 
 import { isCodeOperator } from "../flow/edit.ts";
-import { isNotebookStep, type NotebookStep, notebookSteps, withSource } from "../flow/notebook.ts";
+import { isNotebookStep, NOTEBOOK_OPERATOR, type NotebookStep, notebookSteps, outputName, withSource } from "../flow/notebook.ts";
+import { stepOf } from "../flow/ports.ts";
 import type { Stage } from "../flow/stages.ts";
 import { stageNotebooks } from "./stageNotebooks.ts";
 
@@ -16,21 +17,22 @@ const STAGE_KEY: Record<Stage, NonNullable<Node["stage"]> | undefined> = {
   Unknown: undefined,
 };
 
-const stageNodes = (pipeline: PipelineVersion, operators: Operators, stage: Stage) =>
+/** A stage's steps, in notebook order. */
+export const stageNodes = (pipeline: PipelineVersion, operators: Operators, stage: Stage) =>
   stageNotebooks(pipeline, operators).find((s) => s.stage === stage)?.nodes ?? [];
 
 /** A stage's cells, read from the flow (ADR-0055): each step's notes as Markdown around one
  * code cell named by the step. A code step's cell holds its code; a ready-made step's holds
- * none, since its cell shows its settings form. */
-export function stageCells(pipeline: PipelineVersion, operators: Operators, stage: Stage): NotebookCell[] {
+ * its plain Python (`code`, by step), or nothing when it has none yet and shows its form. */
+export function stageCells(pipeline: PipelineVersion, operators: Operators, stage: Stage, code: Map<string, string> = new Map()): NotebookCell[] {
   return stageNodes(pipeline, operators, stage).flatMap((node) => [
     ...(node.notes?.before ?? []).map((source, k): NotebookCell => ({ id: `${node.id}-before-${k}`, kind: "markdown", source })),
-    { id: node.id, kind: "code" as const, source: isCodeOperator(node.operator) ? String(node.params["source"] ?? "") : "" },
+    { id: node.id, kind: "code" as const, source: isCodeOperator(node.operator) ? String(node.params["source"] ?? "") : (code.get(node.id) ?? "") },
     ...(node.notes?.after ?? []).map((source, k): NotebookCell => ({ id: `${node.id}-after-${k}`, kind: "markdown", source })),
   ]);
 }
 
-/** Whether a cell is a ready-made step of the flow: shown as its form, never as code. */
+/** Whether a cell is a ready-made step of the flow. */
 export const isReadyMade = (pipeline: PipelineVersion, cellId: string) => {
   const node = pipeline.nodes.find((n) => n.id === cellId);
   return node !== undefined && !isCodeOperator(node.operator);
@@ -39,13 +41,15 @@ export const isReadyMade = (pipeline: PipelineVersion, cellId: string) => {
 /** The flow with a stage's cells as edited: Markdown kept as the notes of the step below it
  * (after the last step for text at the end), edited code in its step, and each new code cell
  * as a new step right after the step above it. `steps` go to Python to read their links
- * (POST /code/split); `base` holds the notes and v1 code edits. Steps whose cells were
- * deleted are removed when deleted, not here. */
+ * (POST /code/split); `base` holds the notes and v1 code edits. A ready-made step whose plain
+ * Python (`code`) was edited becomes a code step running the edited code. Steps whose cells
+ * were deleted are removed when deleted, not here. */
 export function stageEdits(
   pipeline: PipelineVersion,
   operators: Operators,
   stage: Stage,
   cells: NotebookCell[],
+  code: Map<string, string> = new Map(),
 ): { base: PipelineVersion; steps: NotebookStep[] } | { refused: string } {
   const ids = new Set(pipeline.nodes.map((n) => n.id));
   const stepCells = cells.filter((c) => c.kind === "code" && ids.has(c.id));
@@ -62,10 +66,12 @@ export function stageEdits(
   if (waiting.length > 0 && !last) return { refused: `Text in ${stage} needs a step in the same notebook to stay with.` };
   if (last) notes.get(last.id)!.after.push(...waiting);
 
-  const sources = new Map(stepCells.filter((c) => isCodeOperator(pipeline.nodes.find((n) => n.id === c.id)!.operator)).map((c) => [c.id, c.source]));
+  const edited = new Set(stepCells.filter((c) => code.has(c.id) && c.source !== code.get(c.id)).map((c) => c.id));
+  const sources = new Map(stepCells.filter((c) => edited.has(c.id) || isCodeOperator(pipeline.nodes.find((n) => n.id === c.id)!.operator)).map((c) => [c.id, c.source]));
+  const owned = asCodeSteps(pipeline, edited);
   const base: PipelineVersion = {
-    ...pipeline,
-    nodes: pipeline.nodes.map((n) => {
+    ...owned,
+    nodes: owned.nodes.map((n) => {
       const kept = notes.get(n.id);
       const { notes: _old, ...rest } = n;
       const withNotes: Node = kept && (kept.before.length > 0 || kept.after.length > 0) ? { ...rest, notes: noteFields(kept) } : kept ? rest : n;
@@ -91,6 +97,19 @@ export function stageEdits(
     at += 1;
   }
   return { base, steps };
+}
+
+/** `pipeline` with each step in `ids` as a code step: Python links what its code reads, and
+ * the steps that read its outputs read them by the names its code set (ADR-0055). */
+function asCodeSteps(pipeline: PipelineVersion, ids: Set<string>): PipelineVersion {
+  if (ids.size === 0) return pipeline;
+  return {
+    ...pipeline,
+    nodes: pipeline.nodes.map((n) => (ids.has(n.id) ? { id: n.id, operator: NOTEBOOK_OPERATOR, params: { source: "", inputs: [], outputs: [] }, ...(n.stage ? { stage: n.stage } : {}), ...(n.notes ? { notes: n.notes } : {}) } : n)),
+    edges: pipeline.edges
+      .filter((e) => !ids.has(stepOf(e.to)))
+      .map((e) => (ids.has(stepOf(e.from)) ? { ...e, from: `${stepOf(e.from)}.${outputName(pipeline, e.from)}` } : e)),
+  };
 }
 
 const noteFields = ({ before, after }: { before: string[]; after: string[] }) => ({

@@ -25,16 +25,26 @@ function withApi() {
     http.post("/api/code/split", async ({ request }) => {
       const body = (await request.json()) as CodeSplitRequest;
       sent.split.push(body);
-      // As Python reads them: a stand-in `a = b = object(x, y)` sets a and b and reads x and y;
-      // the code cell reads impute_train. Each name links to the latest cell that set it.
-      const read = (cell: string) => (cell.includes("object(") ? [...cell.matchAll(/object\(([^)]*)\)/g)][0]![1]!.split(", ").filter(Boolean) : ["impute_train"]);
-      const sets = (cell: string) => (cell.includes("object(") ? cell.split(" = object(")[0]!.split(" = ") : []);
-      const steps = body.cells.map((source, i) => ({ source, cells: [i], parameters: [], inputs: read(source), outputs: sets(source) }));
+      // As Python reads them, for one-line cells: the left of ` = ` sets names, and a name on
+      // the right that an earlier cell set is read. Each name links to its latest setter.
+      const sets = (cell: string) => (cell.includes(" = ") ? cell.split(" = ").slice(0, -1).flatMap((side) => side.split(", ")) : []);
+      const steps = body.cells.map((source, i) => {
+        const right = source.split(" = ").at(-1) ?? "";
+        const earlier = new Set(body.cells.slice(0, i).flatMap(sets));
+        const inputs = [...new Set(right.match(/[a-z_]+/g) ?? [])].filter((n) => earlier.has(n));
+        return { source, cells: [i], parameters: [], inputs, outputs: sets(source) };
+      });
       const links = steps.flatMap((step, to) =>
         step.inputs.map((name) => ({ from_step: steps.findLastIndex((s, i) => i < to && s.outputs.includes(name)), to_step: to, name })),
       );
       return HttpResponse.json({ steps, links, notes: [] });
     }),
+    // Impute has plain code; other steps have none yet.
+    http.post("/api/operators/:id/notebook_code", ({ params }) =>
+      String(params.id).startsWith("sprisk.clean.impute@")
+        ? HttpResponse.json({ code: "impute_train, impute_test = fill(split_train, split_test)\n" })
+        : HttpResponse.json({ errors: [{ code: "no_plain_code", message: "none yet" }] }, { status: 404 }),
+    ),
     http.post("/api/pipeline_versions", async ({ request }) => {
       const body = (await request.json()) as PipelineVersion;
       sent.versions.push(body);
@@ -51,13 +61,31 @@ function withApi() {
 }
 
 describe("a stage in the notebook editor (ADR-0055)", () => {
-  it("shows each step as a cell: a ready-made step as its form, a code step as its code", async () => {
+  it("shows each step as plain Python: a ready-made step's code, a code step's own", async () => {
     withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
-    const [impute, rate] = await screen.findAllByRole("group", { name: /^Cell / });
-    expect(await within(impute!).findByText("reads split_train, split_test → gives impute_train, impute_test")).toBeInTheDocument();
-    expect(within(impute!).queryByRole("textbox", { name: "Cell 1" })).not.toBeInTheDocument();
-    expect(within(rate!).getByRole("textbox", { name: "Cell 2" })).toHaveValue("rate = impute_train.height");
+    expect(await screen.findByRole("textbox", { name: "Cell 1" })).toHaveValue("impute_train, impute_test = fill(split_train, split_test)\n");
+    expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("rate = impute_train.height");
+  });
+
+  it("shows a ready-made step with no plain code yet as its settings form", async () => {
+    withApi();
+    renderWithApi(<StageNotebook pipeline={flow} stage="Split" />);
+    expect(await screen.findByText("reads load_data → gives split_train, split_test")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Cell 1" })).not.toBeInTheDocument();
+  });
+
+  it("editing a ready-made step's code makes it a code step running that code", async () => {
+    const sent = withApi();
+    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    const code = await screen.findByRole("textbox", { name: "Cell 1" });
+    await userEvent.clear(code);
+    await userEvent.type(code, "impute_train, impute_test = fill(split_train, split_test, 0)");
+    await userEvent.click(screen.getByRole("button", { name: "Run cell 1" }));
+    await waitFor(() => expect(sent.versions).toHaveLength(1));
+    const impute = sent.versions[0]!.nodes.find((n) => n.id === "impute")!;
+    expect(impute.operator).toBe(notebookOperator.id);
+    expect(impute.params["source"]).toBe("impute_train, impute_test = fill(split_train, split_test, 0)");
   });
 
   it("running an edited code cell saves its step in a new flow version and runs it", async () => {

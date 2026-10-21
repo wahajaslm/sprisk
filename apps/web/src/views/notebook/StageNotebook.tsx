@@ -1,16 +1,18 @@
-import type { Attempt, NotebookCell, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { Attempt, NotebookCell, NotebookCodeRequest, Operator, PipelineVersion } from "@sprisk/contracts";
+import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { useCodeDisplay, useSplitCells } from "../../api/code.ts";
+import { plainCodeQuery, useCodeDisplay, useSplitCells } from "../../api/code.ts";
 import { useOperators, useRunAgain, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
 import { readersOf, removeStep } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
-import { splitRequest, versionFromSplit } from "../../flow/notebook.ts";
+import { nodeOf, outputName, splitRequest, versionFromSplit } from "../../flow/notebook.ts";
+import { portOf, stepOf } from "../../flow/ports.ts";
 import { type Stage, stepTitle } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useCollapsed } from "../../notebook/collapsed.ts";
 import type { Ran } from "../../notebook/outputs.ts";
-import { isReadyMade, newStepsIn, stageCells, stageEdits } from "../../notebook/stageCells.ts";
+import { isReadyMade, newStepsIn, stageCells, stageEdits, stageNodes } from "../../notebook/stageCells.ts";
 import { stepNames } from "../../notebook/stageNotebooks.ts";
 import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
@@ -29,17 +31,34 @@ const LIVE = new Set<Attempt["state"]>(["created", "validated", "queued", "lease
  * version: a save shows the new version's cells. */
 export function StageNotebook({ pipeline, stage }: { pipeline: PipelineVersion; stage: Stage }) {
   const operators = useOperators();
+  const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
+  const readyMade = operators.data ? stageNodes(pipeline, byRef, stage).filter((n) => isReadyMade(pipeline, n.id)) : [];
+  const plain = useQueries({ queries: readyMade.map((n) => plainCodeQuery(n.operator, codeRequest(pipeline, byRef, n.id))) });
   if (operators.isError) return <p role="alert" className="error pad">Steps could not be read: {operators.error.message}</p>;
-  if (!operators.data) return <Loading text="Loading the stage…" pad />;
-  return <StageEditor pipeline={pipeline} stage={stage} byRef={new Map(operators.data.map((o) => [o.id, o]))} />;
+  const failed = plain.find((q) => q.isError)?.error;
+  if (failed) return <p role="alert" className="error pad">A step's code could not be written: {failed.message}</p>;
+  if (!operators.data || plain.some((q) => q.isPending)) return <Loading text="Loading the stage…" pad />;
+  const code = new Map(readyMade.flatMap((n, i) => (plain[i]?.data ? [[n.id, plain[i].data] as const] : [])));
+  return <StageEditor pipeline={pipeline} stage={stage} byRef={byRef} code={code} />;
 }
 
-/** The editor, made once the operators are known: its cells are read from the flow once. */
-function StageEditor({ pipeline, stage, byRef }: { pipeline: PipelineVersion; stage: Stage; byRef: Map<string, Operator> }) {
+/** What a ready-made step's plain Python is written from: its settings and the variables its
+ * ports go by, as cells read and set them. */
+function codeRequest(pipeline: PipelineVersion, byRef: Map<string, Operator>, nodeId: string): NotebookCodeRequest {
+  const node = nodeOf(pipeline, nodeId);
+  const inputs = Object.fromEntries(pipeline.edges.filter((e) => stepOf(e.to) === nodeId).map((e) => [portOf(e.to), outputName(pipeline, e.from)]));
+  const ports = byRef.get(node.operator)?.outputs.map((o) => String(o.name)) ?? [];
+  const outputs = Object.fromEntries(ports.map((p) => [p, outputName(pipeline, `${nodeId}.${p}`)]));
+  return { settings: node.params, inputs, outputs };
+}
+
+/** The editor, made once the operators and the steps' code are known: its cells are read from
+ * the flow once. */
+function StageEditor({ pipeline, stage, byRef, code }: { pipeline: PipelineVersion; stage: Stage; byRef: Map<string, Operator>; code: Map<string, string> }) {
   const runId = useSelection((s) => s.runId);
   const showRun = useSelection((s) => s.showRun);
   const attempts = useRunAttempts(pipeline.id, runId);
-  const edit = useCellEditing(stageCells(pipeline, byRef, stage), stage);
+  const edit = useCellEditing(stageCells(pipeline, byRef, stage, code), stage);
   const { cells, active } = edit;
   const foldKey = `stage:${stage}`;
   const toggleFold = useCollapsed((s) => s.toggle);
@@ -58,11 +77,11 @@ function StageEditor({ pipeline, stage, byRef }: { pipeline: PipelineVersion; st
     setStarting(show);
     try {
       // Cells as the flow has them: run it again, no new version.
-      if (sameCells(now, stageCells(pipeline, byRef, stage))) {
+      if (sameCells(now, stageCells(pipeline, byRef, stage, code))) {
         const run = await runAgain.mutateAsync(pipeline.id);
         return showRun(pipeline.id, run.id, show);
       }
-      const edits = stageEdits(pipeline, byRef, stage, now);
+      const edits = stageEdits(pipeline, byRef, stage, now, code);
       if ("refused" in edits) return setProblem(edits.refused);
       const request = splitRequest(edits.base, byRef, edits.steps);
       const found = await split.mutateAsync(request.cells);
@@ -106,7 +125,7 @@ function StageEditor({ pipeline, stage, byRef }: { pipeline: PipelineVersion; st
   const onKeyDown = notebookKeys(edit, { onRun: runCell, onRemove: remove, onSave: runAll, foldKey, toggleFold });
 
   const latest = latestByNode(attempts.data ?? []);
-  const runs = cellRuns(cells, latest, pipeline, starting);
+  const runs = cellRuns(cells, latest, pipeline, code, starting);
   const cellPin = (nodeId: string) => ({ pipelineVersionId: pipeline.id, runId, nodeId });
 
   return (
@@ -158,7 +177,7 @@ function StageEditor({ pipeline, stage, byRef }: { pipeline: PipelineVersion; st
           onRunAbove={() => runAll()}
           onRemove={remove}
           stepOf={(cell) =>
-            isReadyMade(pipeline, cell.id) ? (
+            isReadyMade(pipeline, cell.id) && !code.has(cell.id) ? (
               <ViewInstance pin={cellPin(cell.id)} setPin={undefined}>
                 <StepForm names={stepNames(pipeline, byRef, cell.id)} />
               </ViewInstance>
@@ -178,7 +197,7 @@ function StageEditor({ pipeline, stage, byRef }: { pipeline: PipelineVersion; st
 }
 
 /** Each step cell's state in the run on screen, as a kernel's result would show it. */
-function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline: PipelineVersion, starting: string | undefined) {
+function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline: PipelineVersion, code: Map<string, string>, starting: string | undefined) {
   const results: Record<string, Ran> = {};
   const live: string[] = [];
   cells.forEach((cell, index) => {
@@ -186,10 +205,10 @@ function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline:
     if (!attempt) return;
     if (LIVE.has(attempt.state)) return void live.push(cell.id);
     const node = pipeline.nodes.find((n) => n.id === cell.id);
-    const code = node && !isReadyMade(pipeline, cell.id) ? String(node.params["source"] ?? "") : cell.source;
+    const ran = node && !isReadyMade(pipeline, cell.id) ? String(node.params["source"] ?? "") : (code.get(cell.id) ?? cell.source);
     const ok = attempt.state === "succeeded" || attempt.state === "cache_hit";
     results[cell.id] = {
-      code,
+      code: ran,
       result: ok
         ? { status: "ok", execution_count: index + 1, outputs: [] }
         : { status: attempt.state === "timed_out" ? "timed_out" : "error", outputs: [], error: { name: attempt.state, message: attempt.error?.message ?? attempt.state, traceback: [] } },

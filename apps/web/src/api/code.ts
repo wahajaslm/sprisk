@@ -1,8 +1,8 @@
-import type { Attempt, CodeDisplay, CodeInterface } from "@sprisk/contracts";
+import type { Attempt, CodeDisplay, CodeInterface, NotebookCodeRequest } from "@sprisk/contracts";
 import { parse } from "@sprisk/contracts";
 import { useMutation } from "@tanstack/react-query";
 
-import { artifactDownloadUrl, postOne } from "./client.ts";
+import { ApiError, artifactDownloadUrl, postOne } from "./client.ts";
 import { useArtifactText, useOutputs } from "./hooks.ts";
 
 /** Code output carries figures, so it may be larger than other JSON; still capped (rule 9). */
@@ -53,3 +53,18 @@ export const useConsole = (attempt: Attempt | undefined): Read<CodeDisplay> =>
 /** Python reads notebook cells into suggested code steps (ADR-0031). It never runs them. */
 export const useSplitCells = () =>
   useMutation({ mutationFn: (cells: string[]) => postOne("CodeSplit", "/code/split", { cells }) });
+
+/** A ready-made step as plain Python for its notebook cell (ADR-0055); null while the step has
+ * none yet. */
+export const plainCodeQuery = (operator: string, request: NotebookCodeRequest) => ({
+  queryKey: ["notebook_code", operator, request],
+  queryFn: async (): Promise<string | null> => {
+    try {
+      return (await postOne("NotebookCode", `/operators/${encodeURIComponent(operator)}/notebook_code`, request)).code;
+    } catch (e) {
+      if (e instanceof ApiError && e.errors.some((x) => x.code === "no_plain_code")) return null;
+      throw e;
+    }
+  },
+  staleTime: Infinity,
+});

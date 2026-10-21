@@ -28,6 +28,32 @@ describe("a stage's cells (ADR-0055)", () => {
       { id: "rate", kind: "code", source: "rate = impute_train.height" },
     ]);
   });
+
+  it("show a ready-made step as its plain Python when it has some", () => {
+    const code = new Map([["split", "split_train, split_test = cut(load_data)\n"]]);
+    expect(stageCells(flow, byRef, "Split", code)[1]).toEqual({ id: "split", kind: "code", source: "split_train, split_test = cut(load_data)\n" });
+  });
+});
+
+describe("editing a ready-made step's plain Python", () => {
+  const code = new Map([["split", "split_train, split_test = cut(load_data)\n"]]);
+
+  it("makes it a code step with that code, whose outputs still reach the steps that read them", () => {
+    const cells = stageCells(flow, byRef, "Split", code).map((c) => (c.id === "split" ? { ...c, source: "split_train, split_test = cut(load_data, 0.3)\n" } : c));
+    const done = stageEdits(flow, byRef, "Split", cells, code);
+    if ("refused" in done) throw new Error(done.refused);
+    const split = done.base.nodes.find((n) => n.id === "split")!;
+    expect(split.operator).toBe(notebookOperator.id);
+    expect(done.steps.find((s) => s.nodeId === "split")).toEqual({ kind: "cells", nodeId: "split", cells: ["split_train, split_test = cut(load_data, 0.3)"] });
+    expect(done.base.edges).toContainEqual({ from: "split.split_train", to: "impute.train" });
+    expect(done.base.edges.some((e) => e.to === "split.data")).toBe(false);
+  });
+
+  it("leaves an unedited one as the ready-made step", () => {
+    const done = stageEdits(flow, byRef, "Split", stageCells(flow, byRef, "Split", code), code);
+    if ("refused" in done) throw new Error(done.refused);
+    expect(done.base.nodes.find((n) => n.id === "split")?.operator).toBe("sprisk.validation.random_split@1.0.0");
+  });
 });
 
 describe("saving a stage's cells", () => {
