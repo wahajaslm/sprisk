@@ -2039,7 +2039,7 @@ async fn output_artifact(api: &Api, attempts: &Value, node: &str, port: &str) ->
         .unwrap_or_else(|| panic!("no attempt of {node}: {attempts}"));
     let uri = format!("/attempts/{}/outputs", attempt["id"].as_str().unwrap());
     let (_, outputs) = call(&api.app, "GET", &uri, None).await;
-    let artifact = outputs
+    outputs
         .as_array()
         .unwrap()
         .iter()
@@ -2047,8 +2047,7 @@ async fn output_artifact(api: &Api, attempts: &Value, node: &str, port: &str) ->
         .unwrap()["artifact"]["id"]
         .as_str()
         .unwrap()
-        .to_owned();
-    artifact
+        .to_owned()
 }
 
 /// The JSON a step's attempt wrote on `port`.
