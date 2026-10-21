@@ -59,6 +59,7 @@
 | [0055](0055-a-flow-is-its-notebooks.md) | A flow is its notebooks: one notebook per stage, one cell per step | Accepted |
 | [0056](0056-cleaning-is-its-own-steps.md) | Cleaning is its own steps; a model step fits only the model | Accepted |
 | [0057](0057-a-rule-can-add-a-step.md) | A rule can add a step | Accepted |
+| [0058](0058-text-becomes-word-features.md) | Free text becomes word features, passed between steps as a matrix | Proposed |
 
 ## Open questions (arch doc §17)
 
