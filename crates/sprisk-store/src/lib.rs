@@ -166,6 +166,41 @@ impl SqliteStore {
         Ok(found.is_some())
     }
 
+    /// Whether `id` has a child that is not a branch applied from `proposal` (ADR-0047).
+    pub async fn has_other_child(
+        &self,
+        id: &PipelineVersionId,
+        proposal: &MethodologyProposalId,
+    ) -> Result<bool, StoreError> {
+        let pattern = format!("%\"parent_id\":\"{}\"%", id.as_str());
+        let found: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM pipeline_versions WHERE body LIKE ? AND id NOT IN \
+             (SELECT pipeline_version_id FROM methodology_decisions WHERE proposal_id = ?) LIMIT 1",
+        )
+        .bind(pattern)
+        .bind(proposal.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(found.is_some())
+    }
+
+    /// Every decision applied from `proposal`, oldest first.
+    pub async fn decisions_of(
+        &self,
+        proposal: &MethodologyProposalId,
+    ) -> Result<Vec<MethodologyDecision>, StoreError> {
+        let bodies: Vec<String> = sqlx::query_scalar(
+            "SELECT body FROM methodology_decisions WHERE proposal_id = ? ORDER BY id",
+        )
+        .bind(proposal.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+        bodies
+            .iter()
+            .map(|b| Ok(serde_json::from_str(b)?))
+            .collect()
+    }
+
     pub async fn insert_question_version(
         &self,
         question: &QuestionVersion,

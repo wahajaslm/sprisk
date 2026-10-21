@@ -758,3 +758,32 @@ async fn a_comparison_is_found_by_the_version_and_step_its_proposal_decides() {
     let other: sprisk_contracts::NodeId = "model".parse().unwrap();
     assert_eq!(store.comparison_for(&base, &other).await.unwrap(), None);
 }
+
+#[tokio::test]
+async fn a_proposal_s_own_branches_do_not_make_its_flow_changed() {
+    let (store, decision) = store_with_decision().await;
+    let base = decision.base_pipeline_version_id.clone();
+    // The decision's version is a child of the base, made by this proposal.
+    let mut child: sprisk_contracts::PipelineVersion =
+        fixture("pipeline_version", "single-node-no-parent.json");
+    assert!(
+        !store
+            .has_other_child(&base, &decision.proposal_id)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        store.decisions_of(&decision.proposal_id).await.unwrap(),
+        vec![decision.clone()]
+    );
+
+    child.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8".parse().unwrap();
+    child.parent_id = Some(base.clone());
+    store.insert_pipeline_version(&child).await.unwrap();
+    assert!(
+        store
+            .has_other_child(&base, &decision.proposal_id)
+            .await
+            .unwrap()
+    );
+}

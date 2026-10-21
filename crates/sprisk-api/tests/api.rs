@@ -2184,7 +2184,7 @@ async fn only_a_shortlist_proposal_can_be_compared() {
 }
 
 #[tokio::test]
-async fn a_proposal_whose_flow_changed_cannot_be_compared() {
+async fn a_proposal_whose_flow_was_edited_cannot_be_compared_but_its_own_branch_is_no_edit() {
     let api = api().await;
     model_flow(&api).await;
     let (_, proposal) = propose_model(&api).await;
@@ -2198,8 +2198,25 @@ async fn a_proposal_whose_flow_changed_cannot_be_compared() {
         call(&api.app, "POST", &uri, Some(apply)).await.0,
         StatusCode::CREATED
     );
-
     let (status, body) = compare(&api, &proposal).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (_, base) = call(
+        &api.app,
+        "GET",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        None,
+    )
+    .await;
+    let mut edited = base.clone();
+    edited["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ7");
+    edited["parent_id"] = base["id"].clone();
+    edited["nodes"][1]["params"]["seed"] = json!(7);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(edited)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    // A proposal resolved on the base now sees a flow that was edited after it.
+    let (_, other) = propose_model(&api).await;
+    let (status, body) = compare(&api, &other).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "stale_proposal");
 }
@@ -2361,4 +2378,42 @@ async fn only_a_model_step_that_has_run_has_a_model_selection() {
     let (status, body) = select_model(&api, "scale").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "not_a_model_step");
+}
+
+#[tokio::test]
+async fn another_model_can_be_tried_as_a_branch_and_test_row_reuse_is_recorded() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+    let (_, selection) = select_model(&api, "model").await;
+    let (run, _) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        selection["proposal"]["id"].as_str().unwrap()
+    );
+
+    let first =
+        json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-branch-linear" });
+    let (status, linear) = call(&api.app, "POST", &uri, Some(first)).await;
+    assert_eq!(status, StatusCode::CREATED, "{linear}");
+    assert!(
+        linear["decision"].get("test_rows_seen_by").is_none(),
+        "{linear}"
+    );
+    let linear_version = linear["pipeline"]["id"].as_str().unwrap();
+    let (run, _) = run_version(&api, linear_version).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let second = json!({ "alternative_id": "ml_dummy_baseline", "idempotency_key": "test-branch-dummy",
+                         "reason": "To see the floor on the test rows." });
+    let (status, dummy) = call(&api.app, "POST", &uri, Some(second)).await;
+    assert_eq!(status, StatusCode::CREATED, "{dummy}");
+    assert_eq!(
+        dummy["pipeline"]["parent_id"],
+        linear["pipeline"]["parent_id"]
+    );
+    assert_eq!(
+        dummy["decision"]["test_rows_seen_by"],
+        json!([linear_version])
+    );
 }

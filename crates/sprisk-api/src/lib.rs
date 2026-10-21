@@ -1092,12 +1092,7 @@ async fn apply_methodology(
         .store
         .get_pipeline_version(&proposal.pipeline_version_id)
         .await?;
-    if state.store.has_pipeline_child(&base.id).await? {
-        return Err(ApiError::BadRequest {
-            code: "stale_proposal",
-            message: "the flow changed after this proposal; resolve it again".into(),
-        });
-    }
+    check_current(&state, &proposal).await?;
     let proposal_value =
         serde_json::to_value(&proposal).map_err(|error| ApiError::Internal(error.to_string()))?;
     let alternative = proposal_value["alternatives"]
@@ -1182,6 +1177,10 @@ async fn apply_methodology(
     if let Some((_, artifact)) = &selection {
         decision_json["selection_id"] = json!(artifact);
     }
+    let seen = test_rows_seen_by(&state, &proposal.id).await?;
+    if !seen.is_empty() {
+        decision_json["test_rows_seen_by"] = json!(seen);
+    }
     let decision: MethodologyDecision =
         parse(&decision_json.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
     let saved = state
@@ -1199,6 +1198,45 @@ async fn apply_methodology(
             pipeline: saved_pipeline,
         }),
     ))
+}
+
+/// Refuses a proposal whose flow changed after it. A shortlist's own branches are no change:
+/// each choice from it is a branch of the flow it compared (ADR-0047).
+async fn check_current(state: &AppState, proposal: &DecisionProposal) -> Result<(), ApiError> {
+    let base = &proposal.pipeline_version_id;
+    let changed = if proposal.shortlist.is_empty() {
+        state.store.has_pipeline_child(base).await?
+    } else {
+        state.store.has_other_child(base, &proposal.id).await?
+    };
+    if changed {
+        return Err(ApiError::BadRequest {
+            code: "stale_proposal",
+            message: "the flow changed after this proposal; resolve it again".into(),
+        });
+    }
+    Ok(())
+}
+
+/// The versions applied from `proposal` that have run, so have scored its test rows: a
+/// later choice was made after seeing them (arch doc §11).
+async fn test_rows_seen_by(
+    state: &AppState,
+    proposal: &MethodologyProposalId,
+) -> Result<Vec<PipelineVersionId>, ApiError> {
+    let mut seen = Vec::new();
+    for earlier in state.store.decisions_of(proposal).await? {
+        let version = earlier.pipeline_version_id;
+        if !state
+            .store
+            .list_runs(Some(&version), None, 1)
+            .await?
+            .is_empty()
+        {
+            seen.push(version);
+        }
+    }
+    Ok(seen)
 }
 
 /// The latest SelectionDecision of `proposal`'s comparison and its artifact, read through
@@ -1267,12 +1305,7 @@ async fn build_comparison(
         .store
         .get_pipeline_version(&proposal.pipeline_version_id)
         .await?;
-    if state.store.has_pipeline_child(&base.id).await? {
-        return Err(ApiError::BadRequest {
-            code: "stale_proposal",
-            message: "the flow changed after this proposal; resolve it again".into(),
-        });
-    }
+    check_current(state, proposal).await?;
     let question = state
         .store
         .get_question_version(&proposal.question_version_id)
