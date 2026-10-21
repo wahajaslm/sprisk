@@ -47,8 +47,8 @@ Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.
   - Each cross-validate step also writes out-of-fold diagnostics from the training rows only: a confusion matrix or a predicted-against-actual plot, the fold scores, and permutation importance on each fold's validation rows.
   - The Experiments page shows the protocol, the shortlist and why, every model side by side, the rule step by step, and what was left out. Any two models can be compared in detail.
 - **Data preparation is compared the same way, one decision at a time.**
-  - A preparation rule's measurable alternatives are compared on the same folds, holding the other decisions at their recommendation.
-  - Changes that alter the rows or the target change the question. Their scores are marked "not directly comparable" and never ranked.
+  - A preparation rule's measurable alternatives are compared on the same folds. The model and the other steps stay as the flow has them.
+  - Changes that alter the rows or the target change the question. They are not scored, and the decision says why.
 - **Splits that keep time or groups apart** get matching folds:
   - `TimeSeriesSplit` on rows ordered by the question's time column;
   - `StratifiedGroupKFold` (classification) or `GroupKFold` (regression) on its entity column.
@@ -78,3 +78,15 @@ Arch doc sections: §8, §11 (selection, final evaluation, holdout reuse), §15.
 ## Amendments
 - 2026-10-21: Preparation joins the folds through `fits_on_train` and a wrapper around the step's own function, not through a second `transformer` function per operator. One implementation per step, as rule 10 asks.
 - 2026-10-21: Review fixes. `sprisk.ml.cross_validate` and `sprisk.ml.select_model` become `@2.0.0`, since their params changed; comparisons stored at `@1.0.0` can no longer be rerun, and Sprisk builds a new one when a version is next shown. Each version's step has one model selection, claimed in the store (`model_selections`), so concurrent requests share one comparison and one run. `model.complexity`, like `model.estimator`, is optional in the contract but required by the registry for a model with tasks. A temporal split that also keeps entities apart cannot be compared yet: time folds would mix entities.
+- 2026-10-21: Preparation is compared one decision at a time.
+  - **What runs.** `POST /pipeline_versions/{id}/model_selection/{node_id}` also takes a step that a recommend rule decides and that fits on train rows. Choosing a preparation step is part of choosing the model pipeline, so the route, `ModelSelection` and `model_selections` keep their names. Each alternative that can be refit within each fold is one `cross_validate` trial of the flow's model step, unchanged. Its `prepare` is the steps between the split and the model, with this step replaced or removed. All trials share the folds.
+  - **The reference stands unless beaten.** The rule's recommendation is the baseline, with `baseline_role: reference`. An alternative replaces it only if the corrected t-test, Holm-adjusted over the other alternatives, says it beats it. Otherwise it wins, and the reason says it stands. A model comparison's baseline is a `floor`: it never wins. `sprisk.ml.select_model` becomes `@3.0.0`.
+  - **Simplicity order.** Removing the step has complexity 0. Every way of keeping it has complexity 1. Within one SE of the best alternative that beats the reference, removal wins. Ties between ways of keeping the step go to the best mean, then the id. No finer order is claimed: no measure says median filling is simpler than mean filling.
+  - **Not measurable here.** Each such alternative goes into the decision's `not_compared`, with its reason:
+    - an action placed before the split, such as dropping a column with a select step;
+    - a replacement operator that does not declare `fits_on_train`, such as `drop_missing`, which drops rows;
+    - an alternative the rule finds not applicable, or that needs a fact first.
+
+    If the recommendation itself is not measurable, or nothing else is, the route answers `nothing_to_compare`. A step that prepares the train rows of more than one model gets the same answer.
+  - **Applying.** Once any comparison of a proposal has decided, its winner needs no reason, and any other choice needs one. A compared proposal may be applied more than once; each choice is a branch.
+  - **What it does not cover.** The choice holds for the flow's model, not for every model. A choice applied on one branch makes the other comparisons of the same version stale. The new version gets comparisons of its own.
