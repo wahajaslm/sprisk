@@ -15,3 +15,8 @@ CREATE TABLE studies (
 );
 
 CREATE INDEX studies_of_version ON studies (pipeline_version_id, id);
+
+-- One running study per version and step: each study is a full comparison run, so a client
+-- that sends new keys cannot start them without limit.
+CREATE UNIQUE INDEX studies_running_per_step ON studies (pipeline_version_id, node_id)
+    WHERE status = 'running';

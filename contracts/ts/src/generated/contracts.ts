@@ -1903,11 +1903,11 @@ export interface Study {
    */
   max_trials: number;
   /**
-   * Longest the study's run may take, counted from its start.
+   * Longest the study's run may take, counted from its start. Recorded now; enforced from ADR-0051 step 3.
    */
   max_wall_seconds: number;
   /**
-   * Declared when the study is created, before its scores exist (EXP-02).
+   * Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0051).
    */
   guardrails: Guardrail[];
   status: StudyStatus;

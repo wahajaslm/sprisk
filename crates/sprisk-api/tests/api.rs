@@ -3098,7 +3098,7 @@ async fn two_study_requests_at_once_with_one_key_make_one_study_and_one_run() {
 }
 
 #[tokio::test]
-async fn a_study_with_more_trials_than_its_budget_is_refused_and_nothing_is_stored() {
+async fn a_study_with_more_trials_than_its_budget_is_refused_and_no_study_or_run_is_stored() {
     let api = api().await;
     learnable_model_flow(&api).await;
     let mut request = study_request("study-key-0004");
@@ -3125,17 +3125,19 @@ async fn a_study_with_more_trials_than_its_budget_is_refused_and_nothing_is_stor
 }
 
 #[tokio::test]
-async fn a_study_needs_a_budget_a_guardrail_in_range_and_a_model_step() {
+async fn a_study_needs_a_budget_and_a_model_step_and_asks_only_for_what_is_built() {
     let api = api().await;
     learnable_model_flow(&api).await;
     let cases = [
         ("max_trials", json!(0), "invalid_budget"),
         ("max_wall_seconds", json!(0), "invalid_budget"),
+        // Refused until selection applies them (ADR-0051 step 3).
         (
             "guardrails",
-            json!([{ "metric": "recall", "label": "1", "at_least": 1.5 }]),
-            "invalid_guardrail",
+            json!([{ "metric": "recall", "label": "1", "at_least": 0.5 }]),
+            "guardrails_not_enforced",
         ),
+        ("strategy", json!("random"), "strategy_not_available"),
     ];
     for (field, value, code) in cases {
         let mut request = study_request("study-key-0005");
@@ -3157,4 +3159,41 @@ async fn a_study_needs_a_budget_a_guardrail_in_range_and_a_model_step() {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}
+
+#[tokio::test]
+async fn a_study_whose_trials_cannot_be_scored_ends_failed_with_its_trials() {
+    let api = api().await;
+    let model = json!({
+        "id":"model", "operator":"sprisk.ml.linear_model@1.0.0",
+        "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
+    });
+    scaling_flow_into(
+        &api,
+        &[model],
+        &[json!({"from":"scale.train","to":"model.train"})],
+    )
+    .await;
+    // Three positive rows: the flow's model fits, but five stratified folds cannot be made.
+    let mut csv = String::from("age,returned_within_30d\n");
+    for age in 20..60 {
+        csv.push_str(&format!("{age},{}\n", u8::from(age >= 57)));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let (status, detail) = create_study(&api, "model", study_request("study-key-0007")).await;
+    assert_eq!(status, StatusCode::CREATED, "{detail}");
+    let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
+    assert_eq!(done["study"]["status"], "failed", "{done}");
+    assert!(done["study"]["finished_at"].is_string());
+    let states: Vec<&str> = done["trials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["state"].as_str().unwrap())
+        .collect();
+    assert!(states.contains(&"failed"), "{done}");
+    assert!(!states.contains(&"running"), "{done}");
 }

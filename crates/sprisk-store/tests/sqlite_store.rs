@@ -1008,14 +1008,14 @@ async fn a_finished_study_keeps_its_status_and_when_it_ended() {
         .await
         .unwrap();
     let ended = store
-        .set_study_status(&study.id, sprisk_contracts::StudyStatus::BudgetReached, NOW)
+        .finish_study(&study.id, sprisk_contracts::StudyStatus::BudgetReached, NOW)
         .await
         .unwrap();
     assert_eq!(ended.status, sprisk_contracts::StudyStatus::BudgetReached);
     assert_eq!(ended.finished_at.as_ref().unwrap().as_str(), NOW);
     assert_eq!(store.get_study(&study.id).await.unwrap(), ended);
     let err = store
-        .set_study_status(&study.id, sprisk_contracts::StudyStatus::Completed, NOW)
+        .finish_study(&study.id, sprisk_contracts::StudyStatus::Completed, NOW)
         .await
         .unwrap_err();
     assert!(matches!(err, StoreError::StudyFinished { .. }), "{err}");
@@ -1032,4 +1032,34 @@ async fn an_unknown_study_is_not_found() {
             ..
         })
     ));
+}
+
+#[tokio::test]
+async fn a_step_has_one_running_study_at_a_time() {
+    let (store, decision) = store_with_decision().await;
+    let (study, request, comparison, run) = study_parts(&decision);
+    store
+        .insert_study(&study, &request, &comparison, &run)
+        .await
+        .unwrap();
+    let (other, other_comparison, other_run) = rebuilt(&study, &comparison, &run);
+    let mut other_request = request.clone();
+    other_request.idempotency_key = "study-forest-2".parse().unwrap();
+
+    let err = store
+        .insert_study(&other, &other_request, &other_comparison, &other_run)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    assert!(err.to_string().contains("still running"), "{err}");
+
+    store
+        .finish_study(&study.id, sprisk_contracts::StudyStatus::Completed, NOW)
+        .await
+        .unwrap();
+    let (_, created) = store
+        .insert_study(&other, &other_request, &other_comparison, &other_run)
+        .await
+        .unwrap();
+    assert!(created);
 }

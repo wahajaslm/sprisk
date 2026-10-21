@@ -103,15 +103,7 @@ impl SqliteStore {
         &self,
         pipeline: &PipelineVersion,
     ) -> Result<(), StoreError> {
-        sqlx::query(
-            "INSERT INTO pipeline_versions (id, project_id, compares_proposal_id, body) VALUES (?, ?, ?, ?)",
-        )
-        .bind(pipeline.id.as_str())
-        .bind(pipeline.project_id.as_str())
-        .bind(pipeline.compares.as_ref().map(|p| p.as_str()))
-        .bind(to_json(pipeline)?)
-        .execute(&self.pool)
-        .await?;
+        insert_version(&self.pool, pipeline).await?;
         Ok(())
     }
 
@@ -149,15 +141,7 @@ impl SqliteStore {
         comparison: &PipelineVersion,
     ) -> Result<(PipelineVersion, bool), StoreError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            "INSERT INTO pipeline_versions (id, project_id, compares_proposal_id, body) VALUES (?, ?, ?, ?)",
-        )
-        .bind(comparison.id.as_str())
-        .bind(comparison.project_id.as_str())
-        .bind(comparison.compares.as_ref().map(|p| p.as_str()))
-        .bind(to_json(comparison)?)
-        .execute(&mut *tx)
-        .await?;
+        insert_version(&mut *tx, comparison).await?;
         let claimed = sqlx::query(
             "INSERT INTO model_selections (pipeline_version_id, node_id, comparison_id) VALUES (?, ?, ?) \
              ON CONFLICT (pipeline_version_id, node_id) DO NOTHING",
@@ -189,16 +173,7 @@ impl SqliteStore {
         run: &Run,
     ) -> Result<Run, StoreError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            "INSERT INTO runs (id, project_id, pipeline_version_id, status, body) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(run.id.as_str())
-        .bind(run.project_id.as_str())
-        .bind(run.pipeline_version_id.as_str())
-        .bind(run.status.to_string())
-        .bind(to_json(run)?)
-        .execute(&mut *tx)
-        .await?;
+        insert_run(&mut *tx, run).await?;
         let claimed = sqlx::query(
             "UPDATE model_selections SET run_id = ? \
              WHERE pipeline_version_id = ? AND node_id = ? AND run_id IS NULL",
@@ -239,25 +214,8 @@ impl SqliteStore {
         let key = request.idempotency_key.as_str();
         let asked = to_json(request)?;
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            "INSERT INTO pipeline_versions (id, project_id, compares_proposal_id, body) VALUES (?, ?, ?, ?)",
-        )
-        .bind(comparison.id.as_str())
-        .bind(comparison.project_id.as_str())
-        .bind(comparison.compares.as_ref().map(|p| p.as_str()))
-        .bind(to_json(comparison)?)
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query(
-            "INSERT INTO runs (id, project_id, pipeline_version_id, status, body) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(run.id.as_str())
-        .bind(run.project_id.as_str())
-        .bind(run.pipeline_version_id.as_str())
-        .bind(run.status.to_string())
-        .bind(to_json(run)?)
-        .execute(&mut *tx)
-        .await?;
+        insert_version(&mut *tx, comparison).await?;
+        insert_run(&mut *tx, run).await?;
         let claimed = sqlx::query(
             "INSERT INTO studies (id, project_id, pipeline_version_id, node_id, comparison_id, run_id, \
              idempotency_key, request, status, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
@@ -274,7 +232,17 @@ impl SqliteStore {
         .bind(study.status.to_string())
         .bind(to_json(study)?)
         .execute(&mut *tx)
-        .await?
+        .await
+        .map_err(|e| match e.as_database_error() {
+            Some(db) if db.message().contains("studies.pipeline_version_id, studies.node_id") => {
+                StoreError::Conflict(format!(
+                    "step {} of {} has a study still running",
+                    study.node_id.as_str(),
+                    study.pipeline_version_id.as_str()
+                ))
+            }
+            _ => StoreError::from(e),
+        })?
         .rows_affected()
             == 1;
         if claimed {
@@ -346,14 +314,19 @@ impl SqliteStore {
         parse_all(rows, "study")
     }
 
-    /// Moves a study to `to`; a terminal status records `at` as when it ended. A finished
-    /// study never changes again.
-    pub async fn set_study_status(
+    /// Ends a study as `ended`, recording `at` as when. A finished study never changes again.
+    pub async fn finish_study(
         &self,
         id: &StudyId,
-        to: StudyStatus,
+        ended: StudyStatus,
         at: &str,
     ) -> Result<Study, StoreError> {
+        if ended == StudyStatus::Running {
+            return Err(StoreError::Conflict(format!(
+                "study {} cannot finish as running",
+                id.as_str()
+            )));
+        }
         let mut tx = self.pool.begin().await?;
         let body: Option<String> = sqlx::query_scalar("SELECT body FROM studies WHERE id = ?")
             .bind(id.as_str())
@@ -367,20 +340,18 @@ impl SqliteStore {
                 status: from,
             });
         }
-        study.status = to;
-        if to != StudyStatus::Running {
-            study.finished_at = Some(
-                at.parse()
-                    .map_err(|_| StoreError::BadTimestamp(at.to_owned()))?,
-            );
-        }
+        study.status = ended;
+        study.finished_at = Some(
+            at.parse()
+                .map_err(|_| StoreError::BadTimestamp(at.to_owned()))?,
+        );
         sqlx::query("UPDATE studies SET status = ?, body = ? WHERE id = ?")
-            .bind(to.to_string())
+            .bind(ended.to_string())
             .bind(to_json(&study)?)
             .bind(id.as_str())
             .execute(&mut *tx)
             .await?;
-        audit(&mut tx, at, id.as_str(), &format!("study.{from}->{to}")).await?;
+        audit(&mut tx, at, id.as_str(), &format!("study.{from}->{ended}")).await?;
         tx.commit().await?;
         Ok(study)
     }
@@ -699,16 +670,7 @@ impl SqliteStore {
     }
 
     pub async fn insert_run(&self, run: &Run) -> Result<(), StoreError> {
-        sqlx::query(
-            "INSERT INTO runs (id, project_id, pipeline_version_id, status, body) VALUES (?, ?, ?, ?, ?)",
-        )
-            .bind(run.id.as_str())
-            .bind(run.project_id.as_str())
-            .bind(run.pipeline_version_id.as_str())
-            .bind(run.status.to_string())
-            .bind(to_json(run)?)
-            .execute(&self.pool)
-            .await?;
+        insert_run(&self.pool, run).await?;
         Ok(())
     }
 
@@ -1133,6 +1095,36 @@ async fn write_attempt(tx: &mut Tx<'_>, attempt: &Attempt) -> Result<(), StoreEr
         .bind(attempt.id.as_str())
         .execute(&mut **tx)
         .await?;
+    Ok(())
+}
+
+async fn insert_version<'e>(
+    db: impl sqlx::SqliteExecutor<'e>,
+    pipeline: &PipelineVersion,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO pipeline_versions (id, project_id, compares_proposal_id, body) VALUES (?, ?, ?, ?)",
+    )
+    .bind(pipeline.id.as_str())
+    .bind(pipeline.project_id.as_str())
+    .bind(pipeline.compares.as_ref().map(|p| p.as_str()))
+    .bind(to_json(pipeline)?)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+async fn insert_run<'e>(db: impl sqlx::SqliteExecutor<'e>, run: &Run) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO runs (id, project_id, pipeline_version_id, status, body) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(run.id.as_str())
+    .bind(run.project_id.as_str())
+    .bind(run.pipeline_version_id.as_str())
+    .bind(run.status.to_string())
+    .bind(to_json(run)?)
+    .execute(db)
+    .await?;
     Ok(())
 }
 

@@ -1646,11 +1646,17 @@ class Study(StrictModel):
         int, Field(description="Most trials the study may hold; checked when it is built.", ge=0)
     ]
     max_wall_seconds: Annotated[
-        int, Field(description="Longest the study's run may take, counted from its start.", ge=0)
+        int,
+        Field(
+            description="Longest the study's run may take, counted from its start. Recorded now; enforced from ADR-0051 step 3.",
+            ge=0,
+        ),
     ]
     guardrails: Annotated[
         list[Guardrail],
-        Field(description="Declared when the study is created, before its scores exist (EXP-02)."),
+        Field(
+            description="Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0051)."
+        ),
     ]
     status: StudyStatus
     deadline: Annotated[

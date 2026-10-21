@@ -3312,14 +3312,14 @@
         "max_wall_seconds": {
           "type": "integer",
           "minimum": 0,
-          "description": "Longest the study's run may take, counted from its start."
+          "description": "Longest the study's run may take, counted from its start. Recorded now; enforced from ADR-0051 step 3."
         },
         "guardrails": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/Guardrail"
           },
-          "description": "Declared when the study is created, before its scores exist (EXP-02)."
+          "description": "Declared when the study is created, before this study's scores exist (EXP-02). Earlier comparisons of the same step may have been seen; the decision lists them (ADR-0051)."
         },
         "status": {
           "$ref": "#/$defs/StudyStatus"

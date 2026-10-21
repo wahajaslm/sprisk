@@ -31,8 +31,8 @@ use sprisk_contracts::{
     MethodologyRuleSource, ModelSelection, NotebookExecute, NotebookExecution,
     NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion, NotebookVersionId,
     Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
-    QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId, StudyStatus, TaskType,
-    Trial, parse,
+    QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId, StudyStatus, Trial,
+    parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -1536,6 +1536,7 @@ async fn create_study(
         return Ok((StatusCode::OK, Json(study_detail(&state, saved).await?)));
     }
     check_budget(&request)?;
+    check_not_yet_built(&request)?;
     let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
     let shortlisted = pipeline
         .nodes
@@ -1554,11 +1555,6 @@ async fn create_study(
         });
     }
     let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
-    let question = state
-        .store
-        .get_question_version(&proposal.question_version_id)
-        .await?;
-    check_guardrails(&request, question.task.value)?;
     let comparison = comparison_version(&state, &proposal).await?;
     let trials = sprisk_methodology::trial_steps(&comparison)
         .map_err(|e| ApiError::Internal(e.to_string()))?
@@ -1619,24 +1615,20 @@ fn check_budget(request: &sprisk_contracts::CreateStudy) -> Result<(), ApiError>
     Ok(())
 }
 
-fn check_guardrails(
-    request: &sprisk_contracts::CreateStudy,
-    task: TaskType,
-) -> Result<(), ApiError> {
-    for guardrail in &request.guardrails {
-        let at_least = guardrail.at_least;
-        if !(0.0..=1.0).contains(&at_least) {
-            return Err(ApiError::BadRequest {
-                code: "invalid_guardrail",
-                message: format!("a minimum recall is between 0 and 1, not {at_least}"),
-            });
-        }
-        if task != TaskType::Classification {
-            return Err(ApiError::BadRequest {
-                code: "invalid_guardrail",
-                message: format!("recall of a class needs a classification question, not {task}"),
-            });
-        }
+/// What step 3 of ADR-0051 builds is refused until then, so a study never records a search
+/// or a guardrail it did not apply.
+fn check_not_yet_built(request: &sprisk_contracts::CreateStudy) -> Result<(), ApiError> {
+    if request.strategy != sprisk_contracts::StudyStrategy::Grid {
+        return Err(ApiError::BadRequest {
+            code: "strategy_not_available",
+            message: format!("{} search is not available yet; use grid", request.strategy),
+        });
+    }
+    if !request.guardrails.is_empty() {
+        return Err(ApiError::BadRequest {
+            code: "guardrails_not_enforced",
+            message: "guardrails are not enforced by selection yet; send none".into(),
+        });
     }
     Ok(())
 }
@@ -1660,8 +1652,37 @@ async fn list_studies(
     ))
 }
 
+/// How a study ends when its run has: decided, or failed. Nothing cancels a study's run until
+/// its wall-time budget is enforced (ADR-0051 step 3), so a cancelled run counts as failed.
+fn ended_as(run: RunStatus) -> Option<StudyStatus> {
+    match run {
+        RunStatus::Queued | RunStatus::Running => None,
+        RunStatus::Succeeded => Some(StudyStatus::Completed),
+        RunStatus::Failed | RunStatus::Cancelled => Some(StudyStatus::Failed),
+    }
+}
+
+/// Records how `id` ended if its run has, once: a later caller finds it finished. A study
+/// whose recording was lost, or whose process stopped, is recorded when next read.
+async fn record_end(state: &AppState, id: &StudyId) -> Result<Study, ApiError> {
+    let study = state.store.get_study(id).await?;
+    if study.status != StudyStatus::Running {
+        return Ok(study);
+    }
+    let run = state.store.get_run(&study.run_id).await?;
+    let Some(ended) = ended_as(run.status) else {
+        return Ok(study);
+    };
+    match state.store.finish_study(id, ended, &now()).await {
+        Ok(study) => Ok(study),
+        Err(StoreError::StudyFinished { .. }) => Ok(state.store.get_study(id).await?),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// The study with its trials, read from its comparison and its run's attempts (ADR-0051).
 async fn study_detail(state: &AppState, study: Study) -> Result<StudyDetail, ApiError> {
+    let study = record_end(state, &study.id).await?;
     let comparison = state
         .store
         .get_pipeline_version(&study.comparison_id)
@@ -1725,8 +1746,8 @@ fn trial_state(
     );
     match last.state {
         A::Cancelled if ended => T::Cancelled,
-        A::Failed | A::TimedOut | A::Skipped | A::Cancelled if ended => T::Failed,
-        // The run goes on, so a retry is due.
+        _ if ended => T::Failed,
+        // The run goes on: the attempt is in flight, or a retry is due.
         _ => T::Running,
     }
 }
@@ -1908,12 +1929,9 @@ fn spawn_study(state: &AppState, study: &Study, comparison: PipelineVersion, pla
     let state = state.clone();
     let (study_id, run_id) = (study.id.clone(), study.run_id.clone());
     tokio::spawn(async move {
-        let ended = match drive_run(&state, &run_id, &comparison, &plan, None).await {
-            Ok(RunStatus::Succeeded) => StudyStatus::Completed,
-            // Nothing cancels a study's run yet; its wall-time budget will (ADR-0051).
-            Ok(_) | Err(_) => StudyStatus::Failed,
-        };
-        if let Err(e) = state.store.set_study_status(&study_id, ended, &now()).await {
+        // drive_run logs a run that stops; the run is then failed, which the study records.
+        let _ = drive_run(&state, &run_id, &comparison, &plan, None).await;
+        if let Err(e) = record_end(&state, &study_id).await {
             tracing::error!(study = study_id.as_str(), error = %e, "could not record how the study ended");
         }
     });
@@ -1927,8 +1945,6 @@ fn spawn_run(
     plan: Plan,
     reuse: Option<RunId>,
 ) {
-    // Local mode runs in this process; the database stays the truth, so a restart
-    // can resume the run (backlog: separate runner process).
     let run_id = run.id.clone();
     let state = state.clone();
     tokio::spawn(async move {
@@ -2252,6 +2268,8 @@ mod tests {
             T::Failed
         );
         assert_eq!(state(&["cancelled"], RunStatus::Cancelled), T::Cancelled);
+        // A scheduler error ends the run with the attempt still in flight.
+        assert_eq!(state(&["running"], RunStatus::Failed), T::Failed);
         assert_eq!(
             state(&["failed", "succeeded"], RunStatus::Failed),
             T::Succeeded
