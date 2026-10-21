@@ -53,7 +53,7 @@ Columns follow §21.1. Owner is the area responsible: **Rust** (control plane), 
 | `methodology/supervised/src/sprisk_supervised` | Gate B checks | `MethodologyCheck` | Extend | Four checks: `split_leakage`, `code_leakage`, `split_design` (plan), `split_rows` (runtime). Only `split_design` cites a decision. No check for fit scope or target leakage. Leakage is judged only from what an evaluator scores | Methodology | `test_pack.py::test_returns_every_rule_result`; `test_split_leakage.py::test_two_models_on_one_test_table_fail_and_cite_them` |
 | `methodology/{supervised,unsupervised}/rules` | Rule packs | `RuleObservation` to `RuleDecision` via `decide()` | Extend | 6 of 30 rules are active: data split, scaling, missingness, outliers, model shortlist, clustering. Drafts include `categorical_encoding`, `target_leakage`, `fit_scope_integrity`, `class_imbalance`, `time_series_leakage`, `probability_calibration` | Methodology | `test_rule_examples.py::test_the_active_rules_are_the_ones_with_code` |
 | `plugins/profile` | Profiling (polars, duckdb) | `DatasetProfile`, `FigureSet` | Reuse | No PII detection (`presidio` absent) | Python | `test_dataset.py::test_counts_rows_columns_missing_and_distinct` |
-| `plugins/ml` | Models, `cross_validate@2`, `select_model@3`, `evaluate` (scikit-learn, scipy) | `Operator.model`, `SelectionDecision` | Reuse | One-hot encoding lives inside each model's `ColumnTransformer`; there is no standalone encoding step. No calibration operator | Python | `test_compare.py::test_a_model_no_better_than_the_dummy_on_the_same_folds_does_not_win`; `test_linear_model.py::test_category_seen_only_in_test_does_not_break_prediction` |
+| `plugins/ml` | Models, `cross_validate@3`, `select_model@4`, `evaluate` (scikit-learn, scipy) | `Operator.model`, `SelectionDecision` | Reuse | One-hot encoding lives inside each model's `ColumnTransformer`; there is no standalone encoding step. No calibration operator | Python | `test_compare.py::test_a_model_no_better_than_the_dummy_on_the_same_folds_does_not_win`; `test_linear_model.py::test_category_seen_only_in_test_does_not_break_prediction` |
 | `plugins/{clean,validation,io}` | Cleaning, splits, file source | `Operator` (`fits_on_train`) | Reuse | Fit scope is proven by tests, not by runtime evidence | Python | `test_fits_on_train.py::test_each_test_row_depends_only_on_itself_and_the_train_rows`; `test_temporal_split.py::test_temporal_split_puts_all_train_strictly_before_test` |
 | `python/sprisk-contracts` | Generated pydantic models | All | Reuse | None | Python | `test_roundtrip.py::test_valid_fixture_round_trips` |
 
@@ -79,6 +79,7 @@ Columns follow §21.1. Owner is the area responsible: **Rust** (control plane), 
 | Split: question fact → rule → alternative → effect → version → run → check | `api.rs::split_methodology_is_resolved_previewed_and_applied_once`; `test_split_design.py` |
 | §21.2: data with gaps → train-row profile → median → preview → Apply → fold-local fit → check → result | `api.rs::the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_applied_decision` |
 | Model and preparation choice by cross-validation | `api.rs::sprisk_selects_a_model_by_itself_once_per_version`, `::sprisk_compares_a_preparation_step_by_itself_once_per_version` |
+| Study on German credit: random search, nested CV, a recall guardrail on "bad" judged per model, tuned settings applied | `api.rs::german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_for_every_model` |
 
 ## Coverage of the data science workflow
 
@@ -89,14 +90,17 @@ Checked against the course in `knowledge/` (git-ignored), mainly `Sprint_5_-_Mac
 | 1. Understand the problem | Question ledger with task, target, time and entity facts | No UI test |
 | 2. Process and explore | Profiles, charts, notebooks; missingness, outlier and split rules | Data-quality contracts (DATA-01); PII detection |
 | 3. Feature engineering and encoding | Scaling rule; code steps for derived features | No encoding step or active encoding rule (SCI-05); custom transformers only as code |
-| 4. Modelling and interpretation | Shortlist, repeated CV, corrected t-test, one-SE rule; permutation importance | Tuning (grid/random search), studies and budgets (M4); interpretability rule is a draft |
-| 5. Present results as a decision | Metrics, out-of-fold figures, comparison reasons | Business guardrails and thresholds in selection (EXP-02); calibration |
+| 4. Modelling and interpretation | Shortlist, repeated CV, corrected t-test, one-SE rule; permutation importance; studies with grid or random search, nested CV and budgets (ADR-0052) | Adaptive search and continuous ranges; interpretability rule is a draft |
+| 5. Present results as a decision | Metrics, out-of-fold figures, comparison reasons; a minimum recall of one class as a guardrail in a study (EXP-02) | Decision thresholds and costs; calibration |
 
 ## Open gaps
 
 Most important first.
 
-1. **M4 experiments:** no study or trial records, no budgets, no grid or random search (EXP-01, EXP-02).
+1. **M4 experiments:** studies, trials, budgets, grid and random search and recall guardrails exist (ADR-0052), proven end to end on German credit. Open:
+   - Gate B's `split_leakage` says `not_assessed` on a study's graph, because it has no evaluator. So no check confirms that a study keeps off the test rows; only the graph's shape does.
+   - The only guardrail is a minimum recall. There is no cost or decision threshold, though UCI gives German credit a cost matrix.
+   - Search is over finite lists only: no adaptive search or continuous ranges.
 2. **Checks cite decisions for the split only.** Other Gate B checks do not link to the decision that set a step.
 3. **Encoding:** no standalone one-hot step, and the `categorical_encoding` rule is a draft (SCI-03, SCI-05).
 4. **Data contracts:** no column-type contract finding or point-in-time check (DATA-01, DATA-02).
@@ -106,7 +110,7 @@ Most important first.
 8. **Certification:** fit scope is proven by tests only; no runtime scope evidence (SCI-02, SCI-08).
 9. **In-app help:** operators and rules carry one-line descriptions only. Help pages for each step and rule can draw on the course in `knowledge/`, written in our own words.
 10. **Draft rules:** 24 of 30 rules are drafts. Each is checked against the matching course notebooks in `knowledge/` before it becomes active; its manifest still cites the primary sources.
-11. **Scenario library:** end-to-end tests cover iris, penguins and diabetes only. The course's worked cases in `knowledge/` (for example Titanic, German credit, air passengers, card fraud, wine quality) can become example flows and end-to-end tests, each aimed at an open gap. The notebooks hold no data: each dataset comes from its public source, licence checked.
+11. **Scenario library:** end-to-end tests cover iris, penguins, diabetes and German credit. German credit is aimed at gap 1: a study tunes the forest, and a minimum recall on "bad" decides which model may win. The course's other worked cases in `knowledge/` (for example Titanic, air passengers, card fraud, wine quality) can become example flows and end-to-end tests, each aimed at an open gap. The notebooks hold no data: each dataset comes from its public source, licence checked.
 
 ## Explicitly deferred
 
