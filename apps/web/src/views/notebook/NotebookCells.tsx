@@ -29,12 +29,14 @@ type Props = {
   onRemove: (index: number) => void;
   /** A cell that is a ready-made step shows this in place of code (ADR-0055). */
   stepOf?: (cell: NotebookCell) => ReactNode | undefined;
+  /** The kind of step a cell is and what it is about, shown above it (ADR-0055). */
+  labelOf?: (cell: NotebookCell) => { title: string; subject: string } | undefined;
   /** What a cell shows under it when its result is not a kernel's: a step's in a run. */
   outputOf?: (cell: NotebookCell) => ReactNode | undefined;
 };
 
 /** The cells of a notebook laid out as VS Code's notebook editor (ADR-0035). */
-export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove, stepOf, outputOf }: Props) {
+export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove, stepOf, labelOf, outputOf }: Props) {
   const folds = useCollapsed((s) => s.byNotebook[foldKey]) ?? NOTHING_FOLDED;
   const toggleFold = useCollapsed((s) => s.toggle);
   const { cells, active, editing, generation, cellNodes, select } = edit;
@@ -52,6 +54,7 @@ export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove
         const fold = (part: CellPart) => ({ part, n, collapsed: folded[part] === true, onToggle: () => toggleFold(foldKey, cell.id, part) });
         const live = state === "running" && runs.live?.cellId === cell.id ? runs.live : undefined;
         const stepOutput = outputOf?.(cell);
+        const label = labelOf?.(cell);
         return (
           <div key={`${generation}/${cell.id}`}>
             <div
@@ -83,6 +86,11 @@ export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove
                     <TrashIcon />
                   </button>
                 </div>
+                {label && (
+                  <p className="nb-cell-label">
+                    <span className="nb-cell-kind">{label.title}</span> {label.subject}
+                  </p>
+                )}
                 <div className="nb-part">
                   <Fold look="bar" {...fold("input")} />
                   {folded.input ? (

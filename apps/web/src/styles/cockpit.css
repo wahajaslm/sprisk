@@ -994,8 +994,8 @@ p { margin: 0; }
 .nb-status { display: flex; align-items: center; gap: var(--space-2); height: 22px; padding: 0 var(--space-1); font-size: var(--text-xs); color: var(--faint); }
 /* A ready-made step's cell in a stage notebook (ADR-0055): its form in place of code. */
 .nb-step { padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: 4px; background: var(--raised); }
-.flow-step-head { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; }
-.flow-step-title { font-weight: 600; }
+.nb-cell-label { margin: 0 0 var(--space-1); font-size: var(--text-xs); color: var(--faint); }
+.nb-cell-kind { font-weight: 600; color: var(--soft, inherit); }
 .nb-step .settings-grid { max-width: 640px; }
 /* A step's result is a preview in the notebook; the Data tab has the whole table. */
 .nb-step-output { max-height: 320px; overflow: auto; }

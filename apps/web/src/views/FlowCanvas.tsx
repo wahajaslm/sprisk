@@ -44,7 +44,7 @@ import {
   STAGE_HEAD_HEIGHT,
   STAGE_PAD_X,
 } from "../flow/layout.ts";
-import { figurePortOf, kindOf, type NodeKind, roleOf, shortName } from "../flow/stages.ts";
+import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, stepLabel } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -60,6 +60,9 @@ import { stepOf } from "../flow/ports.ts";
 
 type StepData = {
   id: string;
+  /** The kind of step, and what it is about (ADR-0055). */
+  title: string;
+  subject: string;
   operator: string;
   operatorRef: string;
   capability: string;
@@ -225,6 +228,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
       type="button"
       className={`flow-card${data.selected ? " selected" : ""}${status.tone === "bad" ? " bad" : ""}`}
       style={{ width, height }}
+      aria-label={`${data.id}, ${data.title}, ${status.text}`}
       title={data.operatorRef}
       onClick={() => select(data.id)}
       onKeyDown={(e) => {
@@ -241,9 +245,9 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
         <span className="icon-tile small">
           <KindIcon kind={data.kind} size={13} />
         </span>
-        <span className="card-title">{data.id}</span>
+        <span className="card-title">{data.title}</span>
         <span className="card-op">
-          {data.operator}
+          {data.subject}
           {data.edited && " · edited"}
         </span>
         <span className={`node-hover-actions${isLive ? " has-live" : ""}`}>
@@ -392,7 +396,7 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
     <button
       type="button"
       className={`flow-round${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
-      aria-label={`${data.id}, ${data.role}, ${status.text}`}
+      aria-label={`${data.id}, ${data.title}, ${status.text}`}
       title={data.operatorRef}
       onClick={() => select(data.id)}
       onKeyDown={(e) => {
@@ -410,9 +414,9 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         <span className={`state-dot tone-${status.tone}`} role="img" aria-label={status.text} />
       </span>
       <span className="round-text">
-        <span className="node-title">{data.id}</span>
+        <span className="node-title">{data.title}</span>
         <span className="round-sub">
-          {data.role}
+          {data.subject}
           {data.edited && " · edited"}
         </span>
         {/* Only what needs attention gets words; a finished step is just its dot. */}
@@ -550,6 +554,7 @@ export function flowGraph(
       data: {
         id,
         operator: shortName(node.operator),
+        ...stepLabel(node),
         operatorRef: node.operator,
         capability: op?.capability_class ?? "",
         params: node.params,

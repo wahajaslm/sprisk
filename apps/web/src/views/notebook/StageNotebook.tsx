@@ -6,7 +6,7 @@ import { plainCodeQuery, useCodeDisplay } from "../../api/code.ts";
 import { useOperators, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
 import { readersOf, removeStep } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
-import { type Stage, stepTitle } from "../../flow/stages.ts";
+import { type Stage, stepLabel } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useCollapsed } from "../../notebook/collapsed.ts";
 import type { Ran } from "../../notebook/outputs.ts";
@@ -142,6 +142,10 @@ function StageEditor({ pipeline, stage, byRef, code }: { pipeline: PipelineVersi
           onRun={runCell}
           onRunAbove={() => runAll()}
           onRemove={remove}
+          labelOf={(cell) => {
+            const node = pipeline.nodes.find((n) => n.id === cell.id);
+            return node && stepLabel(node);
+          }}
           stepOf={(cell) =>
             isReadyMade(pipeline, cell.id) && !code.has(cell.id) ? (
               <ViewInstance pin={cellPin(cell.id)} setPin={undefined}>
@@ -192,10 +196,6 @@ function StepForm({ names }: { names: { reads: string[]; gives: string[] } }) {
   if (!step.operator) return <p role="alert" className="error">{step.node.operator} is not installed, so this step cannot show its settings or run.</p>;
   return (
     <div className="flow-step">
-      <p className="flow-step-head">
-        <span className="flow-step-title">{stepTitle(step.node.operator)}</span>
-        <span className="muted">{step.node.id}</span>
-      </p>
       <p className="flow-step-names muted">{namesLine(names)}</p>
       <TabBody tab="parameters" step={step} />
       <button type="button" className="page-btn" aria-expanded={showCode} onClick={() => setShowCode(!showCode)}>

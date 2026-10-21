@@ -172,7 +172,8 @@ describe("flow canvas", () => {
     useCanvasDetail.setState({ level: "compact" });
     renderWithApi(<FlowCanvas />);
     const split = await screen.findByRole("button", { name: /^split/ });
-    await waitFor(() => expect(split).toHaveTextContent(/^split\s*Transform$/));
+    // The kind of step on top, what it is about below (ADR-0055).
+    await waitFor(() => expect(split).toHaveTextContent(/^Random split\s*split$/));
     expect(split.querySelector(".state-dot")).toHaveAccessibleName("succeeded");
     expect(document.querySelector(".stage-frame")).toBeNull();
     expect(screen.queryByRole("button", { name: /gate_b/ })).toBeNull();
@@ -1438,7 +1439,7 @@ describe("node detail switch", () => {
     await userEvent.click(await screen.findByRole("radio", { name: "Compact" }));
     expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Compact", "Detail"]);
     const score = await screen.findByRole("button", { name: /^score/ });
-    expect(score).toHaveTextContent(/^score\s*Evaluation$/);
+    expect(score).toHaveTextContent(/^Evaluate\s*score$/);
     expect(score.querySelector(".state-dot.tone-done")).not.toBeNull();
     expect(score.querySelector(".round-icon")).not.toBeNull();
 
