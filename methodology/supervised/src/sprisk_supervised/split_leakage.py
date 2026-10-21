@@ -26,6 +26,7 @@ FITTING_TRANSFORMS = frozenset(
     {
         "sprisk.clean.impute",
         "sprisk.clean.scale",
+        "sprisk.clean.encode",
         "sprisk.clean.clip_outliers",
         "sprisk.clean.spectral_gating",
     }

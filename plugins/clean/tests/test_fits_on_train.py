@@ -12,11 +12,13 @@ import yaml
 from polars.testing import assert_frame_equal
 
 PLUGINS = Path(__file__).parents[2]
-# Settings that make each step do real work on column x.
+# Settings that make each step do real work (on column x, or y for encoding).
 SETTINGS: dict[str, dict[str, Any]] = {
     "sprisk.clean.impute@1.0.0": {"columns": ["x"], "method": "median"},
     "sprisk.clean.scale@1.0.0": {"columns": ["x"], "method": "z_score"},
     "sprisk.clean.clip_outliers@1.0.0": {"columns": ["x"], "k": 1.5},
+    # y has no gaps, as encoding needs; its categories are learned from train.
+    "sprisk.clean.encode@1.0.0": {"columns": ["y"]},
 }
 
 

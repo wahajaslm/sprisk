@@ -6,7 +6,7 @@ import yaml
 
 from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
 from sprisk_contracts.generated.models import Verdict
-from sprisk_supervised.split_leakage import CheckInputError, split_leakage
+from sprisk_supervised.split_leakage import FITTING_TRANSFORMS, CheckInputError, split_leakage
 
 PLUGINS = Path(__file__).parents[3] / "plugins"
 CHECK_ID = "mck_01JABCDEFGHJKMNPQRSTVWXYZ0"
@@ -385,3 +385,15 @@ def test_a_comparison_fed_the_test_rows_fails() -> None:
     result = check(cross_validated("split.test"))
     assert result.verdict == Verdict.fail
     assert result.rationale.startswith("cv_a learns from the test set (split.test)")
+
+
+def test_every_core_step_that_fits_on_train_is_a_fitting_transform() -> None:
+    # A new preparation step (ADR-0050, ADR-0056) must not slip past the leakage checks.
+    plugins = Path(__file__).parents[3] / "plugins"
+    fitting = {
+        manifest["id"].split("@")[0]
+        for path in plugins.glob("*/operators/*/manifest.yaml")
+        if (manifest := yaml.safe_load(path.read_text())).get("fits_on_train")
+    }
+    assert fitting, "no core step fits on train"
+    assert fitting <= FITTING_TRANSFORMS, sorted(fitting - FITTING_TRANSFORMS)
