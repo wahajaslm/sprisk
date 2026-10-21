@@ -7,14 +7,20 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+import plotly.graph_objects as go
 import polars as pl
-from sklearn import model_selection
+from sklearn import metrics, model_selection
 from sklearn.base import BaseEstimator
+
+from .evaluate import confusion_figure, predicted_figure
+from .importance import importance_figure, permutation
 
 METRIC_OF_TASK = {"classification": "balanced_accuracy", "regression": "rmse"}
 SCORING = {"balanced_accuracy": "balanced_accuracy", "rmse": "neg_root_mean_squared_error"}
 GREATER_IS_BETTER = {"balanced_accuracy": True, "rmse": False}
 LABEL = {"balanced_accuracy": "balanced accuracy", "rmse": "RMSE"}
+# Shuffles per feature and fold; with five folds, 25 per feature in all.
+IMPORTANCE_REPEATS = 5
 SCREENING = (
     "A model beats the baseline when its mean gain is larger than one corrected standard "
     "error. That is a screening rule, not a significance test, and it is not adjusted for "
@@ -31,10 +37,12 @@ def cross_validate(
     folds: int,
     seed: int,
     metric: str,
-) -> pl.DataFrame:
-    """One row per fold: the candidate's score on that fold's validation rows. Its whole
-    pipeline, preparation included, is refit on the other rows of each fold. The same rows,
-    folds and seed give every candidate the same folds."""
+) -> dict[str, Any]:
+    """The candidate's score on each fold's validation rows, its whole pipeline, preparation
+    included, refit on the fold's other rows. The same rows, folds and seed give every
+    candidate the same folds. Also what it predicted for each train row while that row was
+    held out, how much each feature mattered on held-out folds, and figures of both: all from
+    the train rows, so looking at them never touches the test rows (ADR-0047)."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
     # Rust picks the metric from the question's task; this checks a step built by hand.
     if task not in METRIC_OF_TASK:
@@ -49,14 +57,41 @@ def cross_validate(
     if y.null_count():
         raise ValueError(f"{target} has {y.null_count()} missing values in train")
     x = train.select(features)
+    truth = y.to_numpy()
     settings = {k: v for k, v in candidate_params.items() if k not in ("target", "features")}
     model = candidate(schema=x.schema, **settings)
-    splits = list(_splitter(task, y, folds, seed).split(np.zeros(len(y)), y.to_numpy()))
+    splits = list(_splitter(task, y, folds, seed).split(np.zeros(len(y)), truth))
     result = model_selection.cross_validate(
-        model, x, y.to_numpy(), cv=splits, scoring=SCORING[metric], error_score="raise"
+        model,
+        x,
+        truth,
+        cv=splits,
+        scoring=SCORING[metric],
+        error_score="raise",
+        return_estimator=True,
     )
     sign = 1.0 if GREATER_IS_BETTER[metric] else -1.0
-    return pl.DataFrame(
+    scorer = metrics.get_scorer(SCORING[metric])
+    held_out, fold_of, predicted, importances = [], [], [], []
+    for fold, ((_, held), fitted) in enumerate(zip(splits, result["estimator"], strict=True), 1):
+        rows = x[held]
+        held_out += held.tolist()
+        fold_of += [fold] * len(held)
+        predicted += fitted.predict(rows).tolist()
+        means, _ = permutation(fitted, rows, truth[held], seed, IMPORTANCE_REPEATS, scorer)
+        importances.append(means)
+    by_fold = np.array(importances)
+    importance = pl.DataFrame(
+        {
+            "feature": features,
+            "importance": by_fold.mean(axis=0),
+            "spread": by_fold.std(axis=0, ddof=1),
+        }
+    ).sort("importance", descending=True)
+    predictions = pl.DataFrame(
+        {"row": held_out, "fold": fold_of, "actual": truth[held_out], "predicted": predicted}
+    )
+    scores = pl.DataFrame(
         {
             "metric": [metric] * folds,
             "folds": [folds] * folds,
@@ -67,6 +102,34 @@ def cross_validate(
             "validate_rows": [len(held) for _, held in splits],
             "rows_digest": [_digest(held) for _, held in splits],
         }
+    )
+    return {
+        "scores": scores,
+        "predictions": predictions,
+        "importance": importance,
+        "figures": [_fit_figure(task, predictions), _importance_figure(importance)],
+    }
+
+
+def _fit_figure(task: str, predictions: pl.DataFrame) -> go.Figure:
+    actual, predicted = predictions["actual"].to_list(), predictions["predicted"].to_list()
+    if task == "classification":
+        labels = sorted({*actual, *predicted})
+        matrix = metrics.confusion_matrix(actual, predicted, labels=labels).tolist()
+        figure = confusion_figure([str(v) for v in labels], matrix)
+        title = "Out-of-fold confusion matrix (train rows)"
+    else:
+        figure = predicted_figure(actual, predicted, "target")
+        title = "Out-of-fold predicted against actual (train rows)"
+    return figure.update_layout(title={"text": title})
+
+
+def _importance_figure(importance: pl.DataFrame) -> go.Figure:
+    return importance_figure(
+        importance["feature"].to_list(),
+        importance["importance"].to_list(),
+        importance["spread"].to_list(),
+        "Permutation importance on held-out folds (predictive, not causal)",
     )
 
 

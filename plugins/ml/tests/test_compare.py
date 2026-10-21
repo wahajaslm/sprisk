@@ -43,7 +43,10 @@ REGRESS = {"target": "amount", "features": ["x", "c"], "task": "regression"}
 def scores(
     train: pl.DataFrame, build: Any, params: dict[str, Any], metric: str = "balanced_accuracy"
 ) -> pl.DataFrame:
-    return cross_validate(train, build, params, folds=5, seed=0, metric=metric)
+    scored: pl.DataFrame = cross_validate(train, build, params, folds=5, seed=0, metric=metric)[
+        "scores"
+    ]
+    return scored
 
 
 class FitRecorder(ClassifierMixin, BaseEstimator):  # type: ignore[misc]
@@ -95,7 +98,45 @@ def test_another_seed_gives_other_folds() -> None:
     train = rows(100, seed=1)
     first = scores(train, dummy_baseline_estimator, CLASSIFY)
     other = cross_validate(train, dummy_baseline_estimator, CLASSIFY, 5, 1, "balanced_accuracy")
-    assert first["rows_digest"].to_list() != other["rows_digest"].to_list()
+    assert first["rows_digest"].to_list() != other["scores"]["rows_digest"].to_list()
+
+
+def test_every_train_row_is_predicted_once_by_a_model_that_did_not_see_it() -> None:
+    train = rows(100, seed=1)
+    result = cross_validate(train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy")
+    predictions = result["predictions"]
+    assert sorted(predictions["row"].to_list()) == list(range(100))
+    assert predictions["actual"].to_list() == train["y"].gather(predictions["row"]).to_list()
+    held = predictions.group_by("fold").len().sort("fold")["len"].to_list()
+    assert held == result["scores"]["validate_rows"].to_list()
+
+
+def test_the_feature_that_drives_the_target_matters_most_on_held_out_folds() -> None:
+    result = cross_validate(
+        rows(200, seed=3), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy"
+    )
+    importance = result["importance"]
+    assert importance["feature"].to_list() == ["x", "c"]
+    assert importance["importance"][0] > 0.2 > abs(importance["importance"][1])
+    assert (importance["spread"] >= 0).all()
+
+
+def test_the_diagnostics_are_drawn_from_the_train_rows_only() -> None:
+    classified = cross_validate(
+        rows(100, seed=1), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy"
+    )
+    regressed = cross_validate(rows(100, seed=1), linear_model_estimator, REGRESS, 5, 0, "rmse")
+    titles = [[f.layout.title.text for f in r["figures"]] for r in (classified, regressed)]
+    assert titles == [
+        [
+            "Out-of-fold confusion matrix (train rows)",
+            "Permutation importance on held-out folds (predictive, not causal)",
+        ],
+        [
+            "Out-of-fold predicted against actual (train rows)",
+            "Permutation importance on held-out folds (predictive, not causal)",
+        ],
+    ]
 
 
 def test_regression_is_scored_by_rmse_where_lower_is_better() -> None:
@@ -372,15 +413,17 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
         out = tmp_path / name
         out.mkdir()
         params = {"candidate": ref, "candidate_params": CLASSIFY, "folds": 5, "seed": 0}
-        [written] = operators["sprisk.ml.cross_validate@1.0.0"].run(
+        written = operators["sprisk.ml.cross_validate@1.0.0"].run(
             params | {"metric": "balanced_accuracy"}, {"train": train}, out
         )
-        cross_validated[name] = written.path
+        by_port = {o.port: o.path for o in written}
+        assert set(by_port) == {"scores", "predictions", "importance", "figures"}
+        cross_validated[name] = by_port["scores"]
     out = tmp_path / "select"
     out.mkdir()
     params = {"trials": [BASE, "ml_lm"], "baseline": BASE, "metric": "balanced_accuracy"}
     params |= {"complexity": {BASE: 0, "ml_lm": 1}}
-    [written] = operators["sprisk.ml.select_model@1.0.0"].run(
+    [decision] = operators["sprisk.ml.select_model@1.0.0"].run(
         params | {"not_compared": []}, cross_validated, out
     )
-    assert SelectionDecision.model_validate_json(written.path.read_text()).winner == "ml_lm"
+    assert SelectionDecision.model_validate_json(decision.path.read_text()).winner == "ml_lm"
