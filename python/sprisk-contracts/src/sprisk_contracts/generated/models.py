@@ -799,6 +799,51 @@ class BaselineComparison(StrictModel):
     ]
 
 
+class StudyId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^std_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
+class StudyStrategy(StrEnum):
+    grid = "grid"
+    random = "random"
+
+
+class StudyStatus(StrEnum):
+    running = "running"
+    completed = "completed"
+    budget_reached = "budget_reached"
+    failed = "failed"
+
+
+class Guardrail(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    metric: Literal["recall"]
+    label: Annotated[str, Field(description="The target value, as text.", min_length=1)]
+    at_least: Annotated[float, Field(description="Between 0 and 1.")]
+
+
+class CreateStudy(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    idempotency_key: Annotated[str, Field(max_length=128, min_length=8)]
+    strategy: StudyStrategy
+    seed: Annotated[int, Field(ge=0)]
+    max_trials: Annotated[int, Field(ge=0)]
+    max_wall_seconds: Annotated[int, Field(ge=0)]
+    guardrails: list[Guardrail]
+
+
+class TrialState(StrEnum):
+    not_started = "not_started"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
 class Handshake(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1573,6 +1618,86 @@ class CandidateResult(StrictModel):
     versus_baseline: Annotated[
         BaselineComparison | None, Field(description="Absent for the baseline itself.")
     ] = None
+
+
+class Study(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.study/v1"]
+    id: StudyId
+    project_id: ProjectId
+    pipeline_version_id: Annotated[
+        PipelineVersionId, Field(description="The flow version whose model step is studied.")
+    ]
+    node_id: Annotated[NodeId, Field(description="The model step.")]
+    proposal_id: Annotated[
+        MethodologyProposalId,
+        Field(description="The study's own shortlist proposal; its comparison is the study's."),
+    ]
+    comparison_id: Annotated[
+        PipelineVersionId,
+        Field(description="The comparison version holding the trials and the select step."),
+    ]
+    run_id: Annotated[RunId, Field(description="The comparison's run.")]
+    strategy: StudyStrategy
+    seed: Annotated[int, Field(description="Shuffles the grid for random search.", ge=0)]
+    max_trials: Annotated[
+        int, Field(description="Most trials the study may hold; checked when it is built.", ge=0)
+    ]
+    max_wall_seconds: Annotated[
+        int, Field(description="Longest the study's run may take, counted from its start.", ge=0)
+    ]
+    guardrails: Annotated[
+        list[Guardrail],
+        Field(description="Declared when the study is created, before its scores exist (EXP-02)."),
+    ]
+    status: StudyStatus
+    deadline: Annotated[
+        Timestamp | None,
+        Field(description="When the budget runs out. Absent until the run starts."),
+    ] = None
+    created_at: Timestamp
+    finished_at: Annotated[
+        Timestamp | None, Field(description="Set once the study reaches a terminal status.")
+    ] = None
+
+
+class Trial(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.trial/v1"]
+    study_id: StudyId
+    node_id: Annotated[NodeId, Field(description="The cross-validate step in the comparison.")]
+    candidate: Annotated[
+        str,
+        Field(
+            description="The shortlist alternative this trial scores.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ]
+    operator: Annotated[OperatorRef, Field(description="The model operator.")]
+    settings: Annotated[
+        Params,
+        Field(
+            description="The searched settings this trial uses; empty for a model with nothing to search."
+        ),
+    ]
+    state: TrialState
+    attempts: Annotated[list[AttemptId], Field(description="Its attempts, oldest first.")]
+    scores: Annotated[
+        ArtifactId | None, Field(description="Its per-fold scores table. Absent until it succeeds.")
+    ] = None
+
+
+class StudyDetail(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    study: Study
+    trials: list[Trial]
+    run: Run
 
 
 class LeaseAttempt(StrictModel):

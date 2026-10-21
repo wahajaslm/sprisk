@@ -8,12 +8,12 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile,
+    CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, CreateStudy, DatasetProfile,
     DecisionProposal, FigureSet, LoadedTable, MethodologyCheck, MethodologyDecision,
     MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookExecute, NotebookExecution,
     NotebookExecutionEvent, NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator,
     OperatorSource, PipelineVersion, Problem, QuestionVersion, RuleDecision, RuleObservation, Run,
-    SelectionDecision, TablePage, WorkerMessage, parse,
+    SelectionDecision, Study, StudyDetail, TablePage, Trial, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -66,6 +66,7 @@ const ENTITIES: &[&str] = &[
     "code_split",
     "code_split_request",
     "create_run",
+    "create_study",
     "dataset_profile",
     "decision_proposal",
     "figure_set",
@@ -90,7 +91,10 @@ const ENTITIES: &[&str] = &[
     "rule_observation",
     "run",
     "selection_decision",
+    "study",
+    "study_detail",
     "table_page",
+    "trial",
     "worker_message",
 ];
 
@@ -288,4 +292,24 @@ fn selection_decision() {
 #[test]
 fn model_selection() {
     check::<ModelSelection>("model_selection");
+}
+
+#[test]
+fn study() {
+    check::<Study>("study");
+}
+
+#[test]
+fn create_study() {
+    check::<CreateStudy>("create_study");
+}
+
+#[test]
+fn trial() {
+    check::<Trial>("trial");
+}
+
+#[test]
+fn study_detail() {
+    check::<StudyDetail>("study_detail");
 }

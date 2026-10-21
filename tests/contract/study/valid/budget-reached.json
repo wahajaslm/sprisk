@@ -1,0 +1,25 @@
+{
+  "schema_version": "sprisk.study/v1",
+  "id": "std_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "node_id": "model",
+  "proposal_id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "comparison_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "strategy": "random",
+  "seed": 7,
+  "max_trials": 12,
+  "max_wall_seconds": 600,
+  "guardrails": [
+    {
+      "metric": "recall",
+      "label": "bad",
+      "at_least": 0.6
+    }
+  ],
+  "status": "budget_reached",
+  "created_at": "2026-10-21T10:00:00Z",
+  "deadline": "2026-10-21T10:10:00Z",
+  "finished_at": "2026-10-21T10:10:05Z"
+}

@@ -300,6 +300,32 @@ export type SelectionMetric = "balanced_accuracy" | "rmse";
  */
 export type BaselineRole = "floor" | "reference";
 /**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "StudyId".
+ */
+export type StudyId = string;
+/**
+ * grid: every combination of the manifest's values. random: a seeded sample of them, without replacement (ADR-0051).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "StudyStrategy".
+ */
+export type StudyStrategy = "grid" | "random";
+/**
+ * running: its run has not ended. completed: the select step decided. budget_reached: the wall-time budget ran out; finished trials are kept and nothing is decided. failed: a step failed after its retries.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "StudyStatus".
+ */
+export type StudyStatus = "running" | "completed" | "budget_reached" | "failed";
+/**
+ * Read from its attempts. not_started: none yet. running: one is in flight, or a retry is due. succeeded: one succeeded or reused a cached result. failed or cancelled: the run ended without a success.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TrialState".
+ */
+export type TrialState = "not_started" | "running" | "succeeded" | "failed" | "cancelled";
+/**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1836,6 +1862,144 @@ export interface BaselineComparison1 {
    * With p_value: whether the test rejects at α = 0.05 after a Holm adjustment over the other alternatives. Without: whether mean_difference is larger than one corrected_se, a screening rule.
    */
   beats_baseline: boolean;
+}
+/**
+ * A comparison of a flow's model step with search trials and a budget (arch doc §11, ADR-0051). Its trials are the cross-validate steps of its comparison version; status is the transactionally maintained current state, like a run's.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Study".
+ */
+export interface Study {
+  schema_version: "sprisk.study/v1";
+  id: StudyId;
+  project_id: ProjectId;
+  /**
+   * The flow version whose model step is studied.
+   */
+  pipeline_version_id: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  node_id: string;
+  /**
+   * The study's own shortlist proposal; its comparison is the study's.
+   */
+  proposal_id: string;
+  /**
+   * The comparison version holding the trials and the select step.
+   */
+  comparison_id: string;
+  /**
+   * The comparison's run.
+   */
+  run_id: string;
+  strategy: StudyStrategy;
+  /**
+   * Shuffles the grid for random search.
+   */
+  seed: number;
+  /**
+   * Most trials the study may hold; checked when it is built.
+   */
+  max_trials: number;
+  /**
+   * Longest the study's run may take, counted from its start.
+   */
+  max_wall_seconds: number;
+  /**
+   * Declared when the study is created, before its scores exist (EXP-02).
+   */
+  guardrails: Guardrail[];
+  status: StudyStatus;
+  /**
+   * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
+   */
+  deadline?: string;
+  created_at: Timestamp;
+  /**
+   * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
+   */
+  finished_at?: string;
+}
+/**
+ * A constraint a candidate must meet to win (EXP-02). recall: the mean over outer folds of the recall of `label` must be at least `at_least`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Guardrail".
+ */
+export interface Guardrail {
+  metric: "recall";
+  /**
+   * The target value, as text.
+   */
+  label: string;
+  /**
+   * Between 0 and 1.
+   */
+  at_least: number;
+}
+/**
+ * Request to study a model step (ADR-0051). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CreateStudy".
+ */
+export interface CreateStudy {
+  idempotency_key: string;
+  strategy: StudyStrategy;
+  seed: number;
+  max_trials: number;
+  max_wall_seconds: number;
+  guardrails: Guardrail[];
+}
+/**
+ * One cross-validate step of a study: one candidate at one set of settings (TrialSpec, arch doc §11). Built from the comparison version and its run, never stored: its attempts are the run's attempts of that step (TrialAttempt), and its scores table is the TrialResult.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Trial".
+ */
+export interface Trial {
+  schema_version: "sprisk.trial/v1";
+  study_id: StudyId;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  node_id: string;
+  /**
+   * The shortlist alternative this trial scores.
+   */
+  candidate: string;
+  /**
+   * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
+   */
+  operator: string;
+  settings: Params2;
+  state: TrialState;
+  /**
+   * Its attempts, oldest first.
+   */
+  attempts: AttemptId[];
+  /**
+   * Its per-fold scores table. Absent until it succeeds.
+   */
+  scores?: string;
+}
+/**
+ * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
+ */
+export interface Params2 {
+  [k: string]: unknown;
+}
+/**
+ * A study with its trials, in study order, and its run.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "StudyDetail".
+ */
+export interface StudyDetail {
+  study: Study;
+  trials: Trial[];
+  run: Run;
 }
 /**
  * Worker → control plane, first message. Declares protocol version and operators the worker can run.

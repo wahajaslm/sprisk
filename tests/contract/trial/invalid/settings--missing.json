@@ -1,0 +1,9 @@
+{
+  "schema_version": "sprisk.trial/v1",
+  "study_id": "std_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "node_id": "cv_ml_random_forest",
+  "candidate": "ml_random_forest",
+  "operator": "sprisk.ml.random_forest@1.0.0",
+  "state": "not_started",
+  "attempts": []
+}

@@ -43,6 +43,10 @@ export interface Entities {
   NotebookKernelRequest: C.NotebookKernelRequest;
   SelectionDecision: C.SelectionDecision;
   ModelSelection: C.ModelSelection;
+  CreateStudy: C.CreateStudy;
+  Study: C.Study;
+  StudyDetail: C.StudyDetail;
+  Trial: C.Trial;
 }
 
 export class ContractError extends Error {}

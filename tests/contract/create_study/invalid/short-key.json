@@ -1,0 +1,8 @@
+{
+  "idempotency_key": "k",
+  "strategy": "grid",
+  "seed": 0,
+  "max_trials": 12,
+  "max_wall_seconds": 600,
+  "guardrails": []
+}

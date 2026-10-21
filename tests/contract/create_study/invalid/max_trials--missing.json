@@ -1,0 +1,7 @@
+{
+  "idempotency_key": "study-forest-1",
+  "strategy": "grid",
+  "seed": 0,
+  "max_wall_seconds": 600,
+  "guardrails": []
+}

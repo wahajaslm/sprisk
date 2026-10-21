@@ -11,6 +11,7 @@ from sprisk_contracts.generated.models import (
     CodeSplit,
     CodeSplitRequest,
     CreateRun,
+    CreateStudy,
     DatasetProfile,
     DecisionProposal,
     FigureSet,
@@ -35,7 +36,10 @@ from sprisk_contracts.generated.models import (
     RuleObservation,
     Run,
     SelectionDecision,
+    Study,
+    StudyDetail,
     TablePage,
+    Trial,
     WorkerMessage,
 )
 
@@ -50,6 +54,7 @@ __all__ = [
     "CodeSplit",
     "CodeSplitRequest",
     "CreateRun",
+    "CreateStudy",
     "DatasetProfile",
     "DecisionProposal",
     "FigureSet",
@@ -74,6 +79,9 @@ __all__ = [
     "QuestionVersion",
     "Run",
     "SelectionDecision",
+    "Study",
+    "StudyDetail",
     "TablePage",
+    "Trial",
     "WorkerMessage",
 ]

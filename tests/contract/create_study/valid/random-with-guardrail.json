@@ -1,0 +1,14 @@
+{
+  "idempotency_key": "study-forest-1",
+  "strategy": "random",
+  "seed": 0,
+  "max_trials": 12,
+  "max_wall_seconds": 600,
+  "guardrails": [
+    {
+      "metric": "recall",
+      "label": "1",
+      "at_least": 0.5
+    }
+  ]
+}

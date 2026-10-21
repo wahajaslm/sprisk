@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "StudyId": {
+      "type": "string",
+      "pattern": "^std_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "Study": {
+      "title": "Study",
+      "description": "A comparison of a flow's model step with search trials and a budget (arch doc §11, ADR-0051). Its trials are the cross-validate steps of its comparison version; status is the transactionally maintained current state, like a run's.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "id", "project_id", "pipeline_version_id", "node_id", "proposal_id", "comparison_id", "run_id", "strategy", "seed", "max_trials", "max_wall_seconds", "guardrails", "status", "created_at"],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.study/v1"] },
+        "id": { "$ref": "#/$defs/StudyId" },
+        "project_id": { "$ref": "#/$defs/ProjectId" },
+        "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId", "description": "The flow version whose model step is studied." },
+        "node_id": { "$ref": "#/$defs/NodeId", "description": "The model step." },
+        "proposal_id": { "$ref": "#/$defs/MethodologyProposalId", "description": "The study's own shortlist proposal; its comparison is the study's." },
+        "comparison_id": { "$ref": "#/$defs/PipelineVersionId", "description": "The comparison version holding the trials and the select step." },
+        "run_id": { "$ref": "#/$defs/RunId", "description": "The comparison's run." },
+        "strategy": { "$ref": "#/$defs/StudyStrategy" },
+        "seed": { "type": "integer", "minimum": 0, "description": "Shuffles the grid for random search." },
+        "max_trials": { "type": "integer", "minimum": 0, "description": "Most trials the study may hold; checked when it is built." },
+        "max_wall_seconds": { "type": "integer", "minimum": 0, "description": "Longest the study's run may take, counted from its start." },
+        "guardrails": { "type": "array", "items": { "$ref": "#/$defs/Guardrail" }, "description": "Declared when the study is created, before its scores exist (EXP-02)." },
+        "status": { "$ref": "#/$defs/StudyStatus" },
+        "deadline": { "$ref": "#/$defs/Timestamp", "description": "When the budget runs out. Absent until the run starts." },
+        "created_at": { "$ref": "#/$defs/Timestamp" },
+        "finished_at": { "$ref": "#/$defs/Timestamp", "description": "Set once the study reaches a terminal status." }
+      }
+    },
+    "StudyStrategy": {
+      "type": "string",
+      "description": "grid: every combination of the manifest's values. random: a seeded sample of them, without replacement (ADR-0051).",
+      "enum": ["grid", "random"]
+    },
+    "StudyStatus": {
+      "type": "string",
+      "description": "running: its run has not ended. completed: the select step decided. budget_reached: the wall-time budget ran out; finished trials are kept and nothing is decided. failed: a step failed after its retries.",
+      "enum": ["running", "completed", "budget_reached", "failed"]
+    },
+    "Guardrail": {
+      "type": "object",
+      "description": "A constraint a candidate must meet to win (EXP-02). recall: the mean over outer folds of the recall of `label` must be at least `at_least`.",
+      "additionalProperties": false,
+      "required": ["metric", "label", "at_least"],
+      "properties": {
+        "metric": { "type": "string", "enum": ["recall"] },
+        "label": { "type": "string", "minLength": 1, "description": "The target value, as text." },
+        "at_least": { "type": "number", "description": "Between 0 and 1." }
+      }
+    },
+    "CreateStudy": {
+      "title": "CreateStudy",
+      "description": "Request to study a model step (ADR-0051). Settings and their values come from model manifests, never from here. Replaying the key with the same body returns the same study; with another body, 409.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["idempotency_key", "strategy", "seed", "max_trials", "max_wall_seconds", "guardrails"],
+      "properties": {
+        "idempotency_key": { "type": "string", "minLength": 8, "maxLength": 128 },
+        "strategy": { "$ref": "#/$defs/StudyStrategy" },
+        "seed": { "type": "integer", "minimum": 0 },
+        "max_trials": { "type": "integer", "minimum": 0 },
+        "max_wall_seconds": { "type": "integer", "minimum": 0 },
+        "guardrails": { "type": "array", "items": { "$ref": "#/$defs/Guardrail" } }
+      }
+    },
+    "Trial": {
+      "title": "Trial",
+      "description": "One cross-validate step of a study: one candidate at one set of settings (TrialSpec, arch doc §11). Built from the comparison version and its run, never stored: its attempts are the run's attempts of that step (TrialAttempt), and its scores table is the TrialResult.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "study_id", "node_id", "candidate", "operator", "settings", "state", "attempts"],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.trial/v1"] },
+        "study_id": { "$ref": "#/$defs/StudyId" },
+        "node_id": { "$ref": "#/$defs/NodeId", "description": "The cross-validate step in the comparison." },
+        "candidate": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$", "description": "The shortlist alternative this trial scores." },
+        "operator": { "$ref": "#/$defs/OperatorRef", "description": "The model operator." },
+        "settings": { "$ref": "#/$defs/Params", "description": "The searched settings this trial uses; empty for a model with nothing to search." },
+        "state": { "$ref": "#/$defs/TrialState" },
+        "attempts": { "type": "array", "items": { "$ref": "#/$defs/AttemptId" }, "description": "Its attempts, oldest first." },
+        "scores": { "$ref": "#/$defs/ArtifactId", "description": "Its per-fold scores table. Absent until it succeeds." }
+      }
+    },
+    "TrialState": {
+      "type": "string",
+      "description": "Read from its attempts. not_started: none yet. running: one is in flight, or a retry is due. succeeded: one succeeded or reused a cached result. failed or cancelled: the run ended without a success.",
+      "enum": ["not_started", "running", "succeeded", "failed", "cancelled"]
+    },
+    "StudyDetail": {
+      "title": "StudyDetail",
+      "description": "A study with its trials, in study order, and its run.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["study", "trials", "run"],
+      "properties": {
+        "study": { "$ref": "#/$defs/Study" },
+        "trials": { "type": "array", "items": { "$ref": "#/$defs/Trial" } },
+        "run": { "$ref": "#/$defs/Run" }
+      }
+    }
+  }
+}
