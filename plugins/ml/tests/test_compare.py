@@ -579,8 +579,8 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     rows(200, seed=3).write_parquet(train)
     cross_validated = {}
     for name, ref in [
-        (BASE, "sprisk.ml.dummy_baseline@1.0.0"),
-        ("ml_lm", "sprisk.ml.linear_model@1.0.0"),
+        (BASE, "sprisk.ml.dummy_baseline@1.1.0"),
+        ("ml_lm", "sprisk.ml.linear_model@1.1.0"),
     ]:
         out = tmp_path / name
         out.mkdir()

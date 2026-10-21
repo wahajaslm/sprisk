@@ -71,7 +71,7 @@ Arch doc sections: §3 (Question), §11 (selection), §22 (EXP-02). Changes ADR-
 - Good: the draft rules for model steps (`class_imbalance`, `model_interpretability`) can become active later the same way.
 - Good: "refuse everyone" becomes a real floor.
 - Bad: tuning adds 3 fits per model fit, per fold and per study trial.
-- Bad: the model operators, `cross_validate`, `select_model` and `evaluate` change versions. Stored flows that pin the old ones no longer compare until their model step is chosen again.
+- Bad: the model operators, `cross_validate` and `select_model` change versions. Stored flows that pin the old ones no longer compare until their model step is chosen again. `evaluate` keeps its version: its settings do not change, and it only reports the cut-off as well.
 - Bad: two-class targets and random splits only, for now.
 - Bad: the tuned cut-off is noisy on small data. German credit's innermost folds hold about 180 rows.
 

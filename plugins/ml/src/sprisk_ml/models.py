@@ -15,33 +15,57 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-
-def dummy_baseline(train: pl.DataFrame, target: str, features: list[str], task: str) -> Pipeline:
-    """Always predicts the most frequent class, or the mean. Any real model should beat it."""
-    model = dummy_baseline_estimator(train.select(features).schema, task)
-    return fit(model, train, target, features)
+from .costs import costed, fixed, resolved
 
 
-def dummy_baseline_estimator(schema: pl.Schema, task: str) -> Pipeline:
+def dummy_baseline(
+    train: pl.DataFrame,
+    target: str,
+    features: list[str],
+    task: str,
+    costs: dict[str, Any] | None = None,
+) -> Any:
+    """Always predicts the most frequent class, or the mean. Any real model should beat it.
+    With `costs`, the class whose prediction for every row costs least."""
+    costs = costs and resolved(costs, train[target].to_numpy(), target)
+    model = dummy_baseline_estimator(train.select(features).schema, task, costs)
+    return fit(model, train, target, features, costs)
+
+
+def dummy_baseline_estimator(
+    schema: pl.Schema, task: str, costs: dict[str, Any] | None = None
+) -> Any:
     estimator = (
         DummyClassifier(strategy="most_frequent")
         if task == "classification"
         else DummyRegressor(strategy="mean")
     )
-    return Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
+    model = Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
+    return costed(model, costs, seed=0) if costs else model
 
 
-def linear_model(train: pl.DataFrame, target: str, features: list[str], task: str) -> Pipeline:
-    """Logistic regression for classes, linear regression for numbers."""
-    model = linear_model_estimator(train.select(features).schema, task)
-    return fit(model, train, target, features)
+def linear_model(
+    train: pl.DataFrame,
+    target: str,
+    features: list[str],
+    task: str,
+    costs: dict[str, Any] | None = None,
+) -> Any:
+    """Logistic regression for classes, linear regression for numbers. With `costs`, it
+    predicts a class by the cut-off that costs least on its training rows."""
+    costs = costs and resolved(costs, train[target].to_numpy(), target)
+    model = linear_model_estimator(train.select(features).schema, task, costs)
+    return fit(model, train, target, features, costs)
 
 
-def linear_model_estimator(schema: pl.Schema, task: str) -> Pipeline:
+def linear_model_estimator(
+    schema: pl.Schema, task: str, costs: dict[str, Any] | None = None
+) -> Any:
     estimator = (
         LogisticRegression(max_iter=1000) if task == "classification" else LinearRegression()
     )
-    return Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
+    model = Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
+    return costed(model, costs, seed=0) if costs else model
 
 
 def random_forest(
@@ -53,12 +77,21 @@ def random_forest(
     seed: int = 0,
     min_samples_leaf: int = 1,
     max_features: float | None = None,
-) -> Pipeline:
-    """A forest of decision trees; captures interactions a linear model misses."""
+    costs: dict[str, Any] | None = None,
+) -> Any:
+    """A forest of decision trees; captures interactions a linear model misses. With `costs`,
+    it predicts a class by the cut-off that costs least on its training rows."""
+    costs = costs and resolved(costs, train[target].to_numpy(), target)
     model = random_forest_estimator(
-        train.select(features).schema, task, n_estimators, seed, min_samples_leaf, max_features
+        train.select(features).schema,
+        task,
+        n_estimators,
+        seed,
+        min_samples_leaf,
+        max_features,
+        costs,
     )
-    return fit(model, train, target, features)
+    return fit(model, train, target, features, costs)
 
 
 def random_forest_estimator(
@@ -68,7 +101,8 @@ def random_forest_estimator(
     seed: int = 0,
     min_samples_leaf: int = 1,
     max_features: float | None = None,
-) -> Pipeline:
+    costs: dict[str, Any] | None = None,
+) -> Any:
     """`max_features` is the share of features each split may look at; unset, each task keeps
     scikit-learn's default."""
     forest = RandomForestClassifier if task == "classification" else RandomForestRegressor
@@ -76,20 +110,29 @@ def random_forest_estimator(
     if max_features is not None:
         settings["max_features"] = max_features
     # Trees split on rank order, so scaling would change nothing.
-    return Pipeline(
+    model = Pipeline(
         [
             ("preprocess", preprocessor(schema, scale=False)),
             ("estimator", forest(n_estimators=n_estimators, random_state=seed, **settings)),
         ]
     )
+    return costed(model, costs, seed) if costs else model
 
 
-def fit(model: Pipeline, train: pl.DataFrame, target: str, features: list[str]) -> Pipeline:
+def fit(
+    model: Any,
+    train: pl.DataFrame,
+    target: str,
+    features: list[str],
+    costs: dict[str, Any] | None = None,
+) -> Any:
     if target in features:
         raise ValueError(f"target {target!r} is listed as a feature")
     if train[target].null_count():
         raise ValueError(f"{target} has {train[target].null_count()} missing values in train")
-    return model.fit(train.select(features), train[target].to_numpy())
+    x, y = train.select(features), train[target].to_numpy()
+    fitted = model.fit(x, y)
+    return fixed(fitted, x, y, costs["positive"]) if costs else fitted
 
 
 class AsObject(TransformerMixin, BaseEstimator):  # type: ignore[misc]

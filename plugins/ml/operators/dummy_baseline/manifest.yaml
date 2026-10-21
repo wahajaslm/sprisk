@@ -1,5 +1,5 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.dummy_baseline@1.0.0
+id: sprisk.ml.dummy_baseline@1.1.0
 capability_class: estimator
 model: { tasks: [classification, regression], prepares: [fill_gaps, standardize], estimator: "sprisk_ml.models:dummy_baseline_estimator", complexity: 0 }
 description: Majority class or mean predictor. The floor every model must beat.
@@ -14,6 +14,15 @@ params_schema:
     target: { type: string, minLength: 1, description: "Column to predict." }
     features: { type: array, items: { type: string, minLength: 1 }, uniqueItems: true, description: "Columns used as inputs (the baseline ignores them; kept for comparison)." }
     task: { type: string, enum: [classification, regression], description: "Predict a class or a number." }
+    costs:
+      type: object
+      additionalProperties: false
+      required: [positive, false_negative, false_positive]
+      description: "Misclassification costs of a two-class model (ADR-0053). With them, the model predicts by the cut-off that costs least on its own training rows."
+      properties:
+        positive: { type: string, minLength: 1, description: "The class whose miss costs, as text." }
+        false_negative: { type: number, exclusiveMinimum: 0, description: "Cost of missing a `positive` row." }
+        false_positive: { type: number, exclusiveMinimum: 0, description: "Cost of predicting `positive` for another row." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

@@ -14,8 +14,8 @@ NOW = "2026-10-16T10:00:00Z"
 
 SOURCE = "sprisk.io.file_source@1.0.0"
 SPLIT = "sprisk.validation.random_split@1.0.0"
-DUMMY = "sprisk.ml.dummy_baseline@1.0.0"
-LINEAR = "sprisk.ml.linear_model@1.0.0"
+DUMMY = "sprisk.ml.dummy_baseline@1.1.0"
+LINEAR = "sprisk.ml.linear_model@1.1.0"
 EVAL = "sprisk.ml.evaluate@1.0.0"
 
 

@@ -1,5 +1,5 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.linear_model@1.0.0
+id: sprisk.ml.linear_model@1.1.0
 capability_class: estimator
 model: { family: linear, tasks: [classification, regression], prepares: [fill_gaps, standardize], estimator: "sprisk_ml.models:linear_model_estimator", complexity: 1 }
 description: Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.
@@ -14,6 +14,15 @@ params_schema:
     target: { type: string, minLength: 1, description: "Column to predict." }
     features: { type: array, items: { type: string, minLength: 1 }, uniqueItems: true, description: "Columns used as inputs." }
     task: { type: string, enum: [classification, regression], description: "classification fits logistic regression; regression fits linear regression." }
+    costs:
+      type: object
+      additionalProperties: false
+      required: [positive, false_negative, false_positive]
+      description: "Misclassification costs of a two-class model (ADR-0053). With them, the model predicts by the cut-off that costs least on its own training rows."
+      properties:
+        positive: { type: string, minLength: 1, description: "The class whose miss costs, as text." }
+        false_negative: { type: number, exclusiveMinimum: 0, description: "Cost of missing a `positive` row." }
+        false_positive: { type: number, exclusiveMinimum: 0, description: "Cost of predicting `positive` for another row." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

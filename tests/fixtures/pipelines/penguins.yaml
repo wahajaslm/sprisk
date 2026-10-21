@@ -12,8 +12,8 @@ nodes:
   - { id: mass_by_species, operator: sprisk.profile.chart@1.0.0, params: { kind: box, x: Species, y: "Body Mass (g)" } }
   - { id: flipper_vs_mass, operator: sprisk.profile.chart@1.0.0, params: { kind: scatter, x: "Flipper Length (mm)", y: "Body Mass (g)" } }
   - { id: split, operator: sprisk.validation.random_split@1.0.0, params: { test_fraction: 0.25, seed: 42, stratify: Species } }
-  - { id: baseline, operator: sprisk.ml.dummy_baseline@1.0.0, params: { target: Species, features: [Island, Sex, "Culmen Length (mm)", "Culmen Depth (mm)", "Flipper Length (mm)", "Body Mass (g)"], task: classification } }
-  - { id: forest, operator: sprisk.ml.random_forest@1.1.0, params: { target: Species, features: [Island, Sex, "Culmen Length (mm)", "Culmen Depth (mm)", "Flipper Length (mm)", "Body Mass (g)"], task: classification, seed: 42 } }
+  - { id: baseline, operator: sprisk.ml.dummy_baseline@1.1.0, params: { target: Species, features: [Island, Sex, "Culmen Length (mm)", "Culmen Depth (mm)", "Flipper Length (mm)", "Body Mass (g)"], task: classification } }
+  - { id: forest, operator: sprisk.ml.random_forest@1.2.0, params: { target: Species, features: [Island, Sex, "Culmen Length (mm)", "Culmen Depth (mm)", "Flipper Length (mm)", "Body Mass (g)"], task: classification, seed: 42 } }
   - { id: score_baseline, operator: sprisk.ml.evaluate@1.0.0, params: { target: Species, task: classification } }
   - { id: score_forest, operator: sprisk.ml.evaluate@1.0.0, params: { target: Species, task: classification } }
   - { id: importance, operator: sprisk.ml.feature_importance@1.0.0, params: { target: Species, seed: 42 } }

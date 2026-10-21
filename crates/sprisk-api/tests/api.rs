@@ -1734,7 +1734,7 @@ async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
 async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
     let api = api().await;
     let forest = json!({
-        "id":"rf", "operator":"sprisk.ml.random_forest@1.1.0",
+        "id":"rf", "operator":"sprisk.ml.random_forest@1.2.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","seed":0}
     });
     scaling_flow_into(
@@ -1792,7 +1792,7 @@ async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play(
     let nodes = [
         json!({"id":"fill", "operator":"sprisk.clean.impute@1.0.0",
                "params":{"columns":["age"],"method":"zero"}}),
-        json!({"id":"lin", "operator":"sprisk.ml.linear_model@1.0.0",
+        json!({"id":"lin", "operator":"sprisk.ml.linear_model@1.1.0",
                "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}}),
     ];
     let edges = [
@@ -1823,7 +1823,7 @@ async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play(
 /// The scaling flow with a linear model after the scale step, run to the end.
 async fn model_flow(api: &Api) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -1871,7 +1871,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
         .unwrap();
     assert_eq!(
         forest["effect"]["operator"],
-        "sprisk.ml.random_forest@1.1.0"
+        "sprisk.ml.random_forest@1.2.0"
     );
     assert_eq!(forest["effect"]["params"]["features"], json!(["age"]));
 }
@@ -1902,7 +1902,7 @@ async fn choosing_a_shortlisted_model_without_comparing_needs_a_reason() {
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.1.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.2.0");
 }
 
 #[tokio::test]
@@ -2170,9 +2170,10 @@ async fn a_shortlist_is_cross_validated_on_train_rows_and_the_winner_applied() {
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(
-        model["operator"],
-        format!("sprisk.{}@1.0.0", chosen.replacen('_', ".", 1))
+    let operator = model["operator"].as_str().unwrap();
+    assert!(
+        operator.starts_with(&format!("sprisk.{}@", chosen.replacen('_', ".", 1))),
+        "{operator}"
     );
 }
 
@@ -2303,7 +2304,7 @@ async fn gate_b_stops_a_hand_built_comparison_that_reads_the_test_rows() {
 /// The model flow on rows whose target is age 40 or more, so a linear model can learn it.
 async fn learnable_model_flow(api: &Api) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -2394,7 +2395,7 @@ async fn sprisk_selects_a_model_by_itself_once_per_version() {
 async fn only_a_model_step_that_has_run_has_a_model_selection() {
     let api = api().await;
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -2867,7 +2868,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     edited["parent_id"] = json!(version);
     let nodes = edited["nodes"].as_array_mut().unwrap();
     nodes.push(
-        json!({ "id": "model", "operator": "sprisk.ml.linear_model@1.0.0",
+        json!({ "id": "model", "operator": "sprisk.ml.linear_model@1.1.0",
                        "params": { "target": "y", "features": ["x"], "task": "classification" } }),
     );
     nodes.push(
@@ -3193,7 +3194,7 @@ async fn a_study_needs_a_budget_a_guardrail_in_range_and_a_model_step() {
 async fn a_study_whose_trials_cannot_be_scored_ends_failed_with_its_trials() {
     let api = api().await;
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@1.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -3230,7 +3231,7 @@ async fn a_study_whose_trials_cannot_be_scored_ends_failed_with_its_trials() {
 /// The flow's forest grows 10 trees, so studies of it stay quick.
 async fn banded_forest_flow(api: &Api) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.random_forest@1.1.0",
+        "id":"model", "operator":"sprisk.ml.random_forest@1.2.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","n_estimators":10}
     });
     scaling_flow_into(
@@ -3536,7 +3537,7 @@ async fn german_credit_flow(api: &Api) {
         "params":{"test_fraction":0.25,"seed":42,"stratify":"credit_risk"}
     }));
     nodes.push(json!({
-        "id":"model", "operator":"sprisk.ml.random_forest@1.1.0",
+        "id":"model", "operator":"sprisk.ml.random_forest@1.2.0",
         "params":{"target":"credit_risk","features":features,"task":"classification","n_estimators":50}
     }));
     flow["edges"] = json!([
@@ -3693,7 +3694,7 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.1.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@1.2.0");
     for (setting, value) in tuned["search"]["settings"].as_object().unwrap() {
         assert_eq!(&model["params"][setting], value, "{model}");
     }

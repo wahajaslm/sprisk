@@ -48,11 +48,11 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.code.python@2.0.0",
         "sprisk.io.file_source@1.0.0",
         "sprisk.ml.cross_validate@3.0.0",
-        "sprisk.ml.dummy_baseline@1.0.0",
+        "sprisk.ml.dummy_baseline@1.1.0",
         "sprisk.ml.evaluate@1.0.0",
         "sprisk.ml.feature_importance@1.0.0",
-        "sprisk.ml.linear_model@1.0.0",
-        "sprisk.ml.random_forest@1.1.0",
+        "sprisk.ml.linear_model@1.1.0",
+        "sprisk.ml.random_forest@1.2.0",
         "sprisk.ml.select_model@4.0.0",
         "sprisk.profile.chart@1.0.0",
         "sprisk.profile.distributions@1.0.0",
@@ -100,7 +100,7 @@ def test_same_operator_in_two_roots_is_an_error(tmp_path: Path) -> None:
 
 MODEL = """
 schema_version: sprisk.operator/v1
-id: sprisk.ml.linear_model@1.0.0
+id: sprisk.ml.linear_model@1.1.0
 capability_class: estimator
 model: {{ family: linear, tasks: [classification], prepares: [], estimator: "{estimator}" }}
 entrypoint: sprisk_ml.models:linear_model
@@ -112,6 +112,7 @@ params_schema:
     target: {{ type: string }}
     features: {{ type: array }}
     task: {{ type: string }}
+    costs: {{ type: object }}
 effects: pure
 network: none
 resources: {{ cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }}
@@ -129,7 +130,7 @@ def test_a_models_estimator_must_take_schema_and_its_settings_but_target_and_fea
 ) -> None:
     # random_forest_estimator also takes n_estimators and seed, which this manifest lacks.
     write_model(tmp_path, "sprisk_ml.models:random_forest_estimator")
-    with pytest.raises(ManifestError, match=r"must take \['schema', 'task'\]"):
+    with pytest.raises(ManifestError, match=r"must take \['costs', 'schema', 'task'\]"):
         load_operators(tmp_path)
 
 
@@ -141,7 +142,7 @@ def test_an_estimator_outside_core_packs_is_refused(tmp_path: Path) -> None:
 
 def test_a_models_estimator_loads_beside_its_entrypoint(tmp_path: Path) -> None:
     write_model(tmp_path, "sprisk_ml.models:linear_model_estimator")
-    assert list(load_operators(tmp_path)) == ["sprisk.ml.linear_model@1.0.0"]
+    assert list(load_operators(tmp_path)) == ["sprisk.ml.linear_model@1.1.0"]
 
 
 # The code step runs the user's code; its own module is the worker's runner for it (ADR-0022).

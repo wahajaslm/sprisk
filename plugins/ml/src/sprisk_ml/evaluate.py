@@ -5,24 +5,30 @@ import polars as pl
 import sklearn
 from sklearn import metrics
 from sklearn.base import is_classifier
+from sklearn.frozen import FrozenEstimator
+from sklearn.model_selection import FixedThresholdClassifier
 from sklearn.pipeline import Pipeline
 
 
-def evaluate(model: Pipeline, test: pl.DataFrame, target: str, task: str) -> dict[str, Any]:
-    """Score a fitted model on the test table, and draw how it went. It never sees training rows."""
+def evaluate(model: Any, test: pl.DataFrame, target: str, task: str) -> dict[str, Any]:
+    """Score a fitted model on the test table, and draw how it went. It never sees training rows.
+    A model that decides by costs (ADR-0053) also reports its cut-off."""
     if is_classifier(model) != (task == "classification"):
         raise ValueError(f"model is not a {task} model")
     if test[target].null_count():
         raise ValueError(f"{target} has {test[target].null_count()} missing values in test")
+    pipeline = _pipeline(model)
     # The model selects exactly the columns it was fit on.
-    features = list(model.feature_names_in_)
+    features = list(pipeline.feature_names_in_)
     y_true = test[target].to_numpy()
     y_pred = model.predict(test.select(features))
     result: dict[str, Any] = {
         "n_rows": test.height,
-        "estimator": type(model[-1]).__name__,
+        "estimator": type(pipeline[-1]).__name__,
         "sklearn_version": sklearn.__version__,
     }
+    if isinstance(model, FixedThresholdClassifier):
+        result["cut_off"] = {"positive": str(model.pos_label), "at": float(model.threshold)}
     if task == "classification":
         result["accuracy"] = float(metrics.accuracy_score(y_true, y_pred))
         result["balanced_accuracy"] = float(metrics.balanced_accuracy_score(y_true, y_pred))
@@ -38,6 +44,14 @@ def evaluate(model: Pipeline, test: pl.DataFrame, target: str, task: str) -> dic
         result["r2"] = float(metrics.r2_score(y_true, y_pred))
         figure = predicted_figure(y_true.tolist(), y_pred.tolist(), target)
     return {"metrics": result, "figures": [figure]}
+
+
+def _pipeline(model: Any) -> Pipeline:
+    """The preparation-and-estimator pipeline inside a model that decides by costs."""
+    if not isinstance(model, FixedThresholdClassifier):
+        return model
+    inner = model.estimator_
+    return inner.estimator if isinstance(inner, FrozenEstimator) else inner
 
 
 def confusion_figure(labels: list[str], matrix: list[list[int]]) -> go.Figure:

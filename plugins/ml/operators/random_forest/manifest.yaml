@@ -1,5 +1,5 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.random_forest@1.1.0
+id: sprisk.ml.random_forest@1.2.0
 capability_class: estimator
 model: { family: tree_ensemble, tasks: [classification, regression], prepares: [fill_gaps], estimator: "sprisk_ml.models:random_forest_estimator", complexity: 2,
   search: [{ name: min_samples_leaf, values: [1, 5, 20] }, { name: max_features, values: [0.3, 0.6, 1.0] }] }
@@ -19,6 +19,15 @@ params_schema:
     seed: { type: integer, minimum: 0, default: 0, description: "Fixes the trees so runs repeat." }
     min_samples_leaf: { type: integer, minimum: 1, maximum: 1000, default: 1, description: "Fewest train rows a leaf may hold; larger smooths the trees." }
     max_features: { type: number, exclusiveMinimum: 0, maximum: 1, description: "Share of the features each split may look at. Unset: all of them for regression, their square root for classification." }
+    costs:
+      type: object
+      additionalProperties: false
+      required: [positive, false_negative, false_positive]
+      description: "Misclassification costs of a two-class model (ADR-0053). With them, the model predicts by the cut-off that costs least on its own training rows."
+      properties:
+        positive: { type: string, minLength: 1, description: "The class whose miss costs, as text." }
+        false_negative: { type: number, exclusiveMinimum: 0, description: "Cost of missing a `positive` row." }
+        false_positive: { type: number, exclusiveMinimum: 0, description: "Cost of predicting `positive` for another row." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

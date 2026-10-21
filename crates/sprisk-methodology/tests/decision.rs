@@ -228,8 +228,8 @@ fn a_scale_step_upstream_of_a_random_forest_reads_trees_that_fill_their_own_gaps
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@1.1.0"),
-            ("base", "ml.dummy_baseline"),
+            ("rf", "ml.random_forest@1.2.0"),
+            ("base", "ml.dummy_baseline@1.1.0"),
             ("eval", "ml.evaluate"),
         ],
         &[
@@ -251,8 +251,8 @@ fn models_of_several_families_are_all_listed() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@1.1.0"),
-            ("lin", "ml.linear_model"),
+            ("rf", "ml.random_forest@1.2.0"),
+            ("lin", "ml.linear_model@1.1.0"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "lin.train")],
     );
@@ -269,7 +269,7 @@ fn a_clustering_step_beside_a_forest_means_only_some_models_fill_their_own_gaps(
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@1.1.0"),
+            ("rf", "ml.random_forest@1.2.0"),
             ("km", "clustering.kmeans"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "km.data")],
@@ -283,7 +283,7 @@ fn a_clustering_step_beside_a_forest_means_only_some_models_fill_their_own_gaps(
 fn a_model_reached_through_other_steps_counts_but_one_upstream_does_not() {
     let pipeline = flow(
         &[
-            ("lin", "ml.linear_model"),
+            ("lin", "ml.linear_model@1.1.0"),
             ("impute", "clean.impute"),
             ("scale", "clean.scale"),
             ("km", "clustering.kmeans"),
@@ -302,7 +302,10 @@ fn a_model_reached_through_other_steps_counts_but_one_upstream_does_not() {
 #[test]
 fn models_that_ignore_their_features_read_featureless() {
     let pipeline = flow(
-        &[("scale", "clean.scale"), ("base", "ml.dummy_baseline")],
+        &[
+            ("scale", "clean.scale"),
+            ("base", "ml.dummy_baseline@1.1.0"),
+        ],
         &[("scale.train", "base.train")],
     );
     let facts = facts_of(&pipeline, "scale");
@@ -328,7 +331,7 @@ fn a_model_behind_a_step_that_is_not_preparation_is_hidden() {
         &[
             ("scale", "clean.scale"),
             ("code", "code.python@1.1.0"),
-            ("lin", "ml.linear_model"),
+            ("lin", "ml.linear_model@1.1.0"),
         ],
         &[("scale.train", "code.data"), ("code.data", "lin.train")],
     );
@@ -344,9 +347,9 @@ fn a_hidden_model_beside_a_seen_one_means_only_some_prepare_themselves() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@1.1.0"),
+            ("rf", "ml.random_forest@1.2.0"),
             ("code", "code.python@1.1.0"),
-            ("lin", "ml.linear_model"),
+            ("lin", "ml.linear_model@1.1.0"),
         ],
         &[
             ("scale.train", "rf.train"),
@@ -366,7 +369,7 @@ fn a_step_with_no_model_after_it_hides_nothing() {
         &[
             ("scale", "clean.scale"),
             ("summary", "profile.summarize"),
-            ("rf", "ml.random_forest@1.1.0"),
+            ("rf", "ml.random_forest@1.2.0"),
         ],
         &[("scale.train", "summary.data"), ("scale.train", "rf.train")],
     );
@@ -418,7 +421,7 @@ fn a_model_after_a_clustering_step_is_hidden_since_clustering_passes_its_columns
         &[
             ("clip", "clean.clip_outliers"),
             ("db", "clustering.dbscan"),
-            ("lin", "ml.linear_model"),
+            ("lin", "ml.linear_model@1.1.0"),
         ],
         &[("clip.train", "db.data"), ("db.data", "lin.train")],
     );
@@ -434,7 +437,7 @@ fn a_model_reached_both_directly_and_through_a_code_step_counts_once_as_hidden()
         &[
             ("scale", "clean.scale"),
             ("code", "code.python@1.1.0"),
-            ("lin", "ml.linear_model"),
+            ("lin", "ml.linear_model@1.1.0"),
         ],
         &[
             ("scale.train", "lin.train"),
@@ -460,7 +463,7 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
         .rule("methodology.supervised.outlier_treatment@2.0.0")
         .unwrap();
     let pipeline = flow(
-        &[("scale", "clean.scale"), ("rf", "ml.random_forest@1.1.0")],
+        &[("scale", "clean.scale"), ("rf", "ml.random_forest@1.2.0")],
         &[("scale.train", "rf.train")],
     );
     let observed = observation(
@@ -499,7 +502,7 @@ fn before_forest() -> PipelineVersion {
         &[
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@1.1.0"),
+            ("rf", "ml.random_forest@1.2.0"),
             ("eval", "ml.evaluate"),
         ],
         &[
@@ -563,7 +566,7 @@ fn a_step_whose_output_has_no_input_of_the_same_name_cannot_be_removed() {
     let pipeline = flow(
         &[
             ("split", "validation.random_split"),
-            ("rf", "ml.random_forest@1.1.0"),
+            ("rf", "ml.random_forest@1.2.0"),
             ("eval", "ml.evaluate"),
         ],
         &[("split.train", "rf.train"), ("rf.model", "eval.model")],
@@ -639,7 +642,7 @@ fn every_flow_fact_in_the_catalog_is_one_rust_sends() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@1.1.0"),
+            ("rf", "ml.random_forest@1.2.0"),
             ("summary", "profile.summarize"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "summary.data")],
@@ -724,7 +727,7 @@ fn model_flow() -> PipelineVersion {
     let mut pipeline = serde_json::to_value(flow(
         &[
             ("split", "validation.random_split"),
-            ("model", "ml.linear_model"),
+            ("model", "ml.linear_model@1.1.0"),
         ],
         &[("split.train", "model.train")],
     ))
@@ -782,10 +785,10 @@ fn a_shortlist_proposal_replaces_the_model_step_with_each_candidate() {
     );
     assert!(built.get("recommended_alternative_id").is_none());
     let forest = &built["alternatives"][2];
-    assert_eq!(forest["label"], "sprisk.ml.random_forest@1.1.0");
+    assert_eq!(forest["label"], "sprisk.ml.random_forest@1.2.0");
     assert_eq!(
         forest["effect"]["operator"],
-        "sprisk.ml.random_forest@1.1.0"
+        "sprisk.ml.random_forest@1.2.0"
     );
     assert_eq!(
         forest["effect"]["params"],
@@ -869,7 +872,7 @@ fn a_recommend_decision_must_pick_one_it_offers_and_give_no_shortlist() {
 #[test]
 fn two_models_with_one_candidate_id_are_refused() {
     let registry = registry();
-    let linear = registry.get("sprisk.ml.linear_model@1.0.0").unwrap();
+    let linear = registry.get("sprisk.ml.linear_model@1.1.0").unwrap();
     let mut newer = linear.clone();
     newer.id = parse("\"sprisk.ml.linear_model@2.0.0\"").unwrap();
     let err = candidates(TaskType::Classification, [linear, &newer].into_iter()).unwrap_err();
@@ -890,7 +893,7 @@ fn a_steps_train_rows_come_back_through_preparation_to_the_split() {
         &[
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("model", "ml.linear_model"),
+            ("model", "ml.linear_model@1.1.0"),
         ],
         &[
             ("split.train", "scale.train"),
@@ -910,7 +913,7 @@ fn a_step_that_may_mix_rows_on_the_way_is_refused() {
         &[
             ("split", "validation.random_split"),
             ("code", "code.python@2.0.0"),
-            ("model", "ml.linear_model"),
+            ("model", "ml.linear_model@1.1.0"),
         ],
         &[
             ("split.train", "code.train"),
@@ -928,7 +931,7 @@ fn a_hop_through_a_test_port_is_refused() {
         &[
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("model", "ml.linear_model"),
+            ("model", "ml.linear_model@1.1.0"),
         ],
         &[("split.test", "scale.train"), ("scale.test", "model.train")],
     );
@@ -942,7 +945,7 @@ fn evaluated_flow() -> PipelineVersion {
             ("load", "io.file_source"),
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("model", "ml.linear_model"),
+            ("model", "ml.linear_model@1.1.0"),
             ("eval", "ml.evaluate"),
         ],
         &[
@@ -1037,7 +1040,7 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
         json!({
             "id": "cv_ml_linear_model", "operator": "sprisk.ml.cross_validate@3.0.0",
             "params": {
-                "candidate": "sprisk.ml.linear_model@1.0.0",
+                "candidate": "sprisk.ml.linear_model@1.1.0",
                 "candidate_params": { "target": "churned", "features": ["age", "plan"], "task": "classification" },
                 "folds": 5, "repeats": 10, "seed": 0, "metric": "balanced_accuracy",
                 "prepare": [{ "operator": "sprisk.clean.scale@1.0.0", "params": {} }]
@@ -1327,7 +1330,7 @@ fn a_preparation_comparison_scores_each_way_of_doing_the_step_with_the_flows_mod
     };
     // The model is the flow's, unchanged; only the step's place in `prepare` differs.
     for id in ["cv_no_scaling", "cv_robust_scaling", "cv_standard_scaling"] {
-        assert_eq!(cv(id)["candidate"], "sprisk.ml.linear_model@1.0.0", "{id}");
+        assert_eq!(cv(id)["candidate"], "sprisk.ml.linear_model@1.1.0", "{id}");
         assert_eq!(
             cv(id)["candidate_params"],
             json!({ "target": "churned", "features": ["age", "plan"], "task": "classification" })
@@ -1570,7 +1573,7 @@ fn a_preparation_comparison_needs_a_recommendation() {
 fn a_step_that_prepares_two_models_is_compared_for_neither() {
     let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
     pipeline["nodes"].as_array_mut().unwrap().push(json!({
-        "id": "forest", "operator": "sprisk.ml.random_forest@1.1.0",
+        "id": "forest", "operator": "sprisk.ml.random_forest@1.2.0",
         "params": { "target": "churned", "features": ["age"], "task": "classification" }
     }));
     pipeline["edges"]
