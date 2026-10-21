@@ -850,3 +850,186 @@ async fn an_apply_key_gives_its_decision_to_the_same_choice_and_refuses_another(
         "{err}"
     );
 }
+
+/// A study of the decision's base version, its comparison and its run, none stored yet.
+fn study_parts(
+    decision: &sprisk_contracts::MethodologyDecision,
+) -> (
+    sprisk_contracts::Study,
+    sprisk_contracts::CreateStudy,
+    sprisk_contracts::PipelineVersion,
+    Run,
+) {
+    let comparison: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "comparison.json",
+        serde_json::json!({ "compares": decision.proposal_id, "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0" }),
+    );
+    let mut run: Run = fixture("run", "running.json");
+    run.pipeline_version_id = comparison.id.clone();
+    let study: sprisk_contracts::Study = fixture_with(
+        "study",
+        "running.json",
+        serde_json::json!({
+            "pipeline_version_id": decision.base_pipeline_version_id,
+            "proposal_id": decision.proposal_id,
+            "comparison_id": comparison.id,
+            "run_id": run.id,
+        }),
+    );
+    let request: sprisk_contracts::CreateStudy = fixture("create_study", "grid.json");
+    (study, request, comparison, run)
+}
+
+/// The same study built again by a second request: new ids, same request.
+fn rebuilt(
+    study: &sprisk_contracts::Study,
+    comparison: &sprisk_contracts::PipelineVersion,
+    run: &Run,
+) -> (
+    sprisk_contracts::Study,
+    sprisk_contracts::PipelineVersion,
+    Run,
+) {
+    let mut comparison = comparison.clone();
+    comparison.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ6".parse().unwrap();
+    // Each request proposes anew, so its comparison never compares the first one's proposal.
+    comparison.compares = None;
+    let mut run = run.clone();
+    run.id = "run_01JABCDEFGHJKMNPQRSTVWXYZ6".parse().unwrap();
+    run.pipeline_version_id = comparison.id.clone();
+    let mut study = study.clone();
+    study.id = "std_01JABCDEFGHJKMNPQRSTVWXYZ6".parse().unwrap();
+    study.comparison_id = comparison.id.clone();
+    study.run_id = run.id.clone();
+    (study, comparison, run)
+}
+
+#[tokio::test]
+async fn a_study_key_gives_its_study_to_the_same_request_and_refuses_another() {
+    let (store, decision) = store_with_decision().await;
+    let (study, request, comparison, run) = study_parts(&decision);
+    let (kept, created) = store
+        .insert_study(&study, &request, &comparison, &run)
+        .await
+        .unwrap();
+    assert!(created);
+    assert_eq!(kept, study);
+    assert_eq!(store.get_study(&study.id).await.unwrap(), study);
+    assert_eq!(
+        store.get_pipeline_version(&comparison.id).await.unwrap(),
+        comparison
+    );
+    assert_eq!(store.get_run(&run.id).await.unwrap(), run);
+
+    let (again, again_comparison, again_run) = rebuilt(&study, &comparison, &run);
+    let (kept, created) = store
+        .insert_study(&again, &request, &again_comparison, &again_run)
+        .await
+        .unwrap();
+    assert!(!created);
+    assert_eq!(kept, study);
+    assert!(matches!(
+        store.get_pipeline_version(&again_comparison.id).await,
+        Err(StoreError::NotFound { .. })
+    ));
+    assert!(matches!(
+        store.get_run(&again_run.id).await,
+        Err(StoreError::NotFound { .. })
+    ));
+
+    let mut bigger = request.clone();
+    bigger.max_trials += 1;
+    let err = store
+        .insert_study(&again, &bigger, &again_comparison, &again_run)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    assert!(
+        err.to_string()
+            .contains("idempotency key study-forest-1 was used for another request"),
+        "{err}"
+    );
+
+    let mut other_step = again.clone();
+    other_step.node_id = "other_model".parse().unwrap();
+    let err = store
+        .insert_study(&other_step, &request, &again_comparison, &again_run)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_studies_stored_at_once_with_one_key_keep_one() {
+    // A file database has a pool of connections, so the two transactions really race.
+    let dir = tempfile::tempdir().unwrap();
+    let store = SqliteStore::open(&dir.path().join("sprisk.db"))
+        .await
+        .unwrap();
+    let question: sprisk_contracts::QuestionVersion = fixture_with(
+        "question_version",
+        "classification-all-fields.json",
+        serde_json::json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    store.insert_question_version(&question).await.unwrap();
+    let base: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    store.insert_pipeline_version(&base).await.unwrap();
+    let proposal: sprisk_contracts::DecisionProposal = fixture("decision_proposal", "split.json");
+    store.insert_methodology_proposal(&proposal).await.unwrap();
+    let decision: sprisk_contracts::MethodologyDecision =
+        fixture("methodology_decision", "applied.json");
+    let (study, request, comparison, run) = study_parts(&decision);
+    let (again, again_comparison, again_run) = rebuilt(&study, &comparison, &run);
+
+    let (first, second) = tokio::join!(
+        store.insert_study(&study, &request, &comparison, &run),
+        store.insert_study(&again, &request, &again_comparison, &again_run),
+    );
+    let ((one, made_one), (two, made_two)) = (first.unwrap(), second.unwrap());
+    assert_eq!(one, two);
+    assert!(made_one != made_two, "exactly one request stores its study");
+    assert_eq!(
+        store.studies_of(&base.id, 10).await.unwrap(),
+        vec![one.clone()]
+    );
+}
+
+#[tokio::test]
+async fn a_finished_study_keeps_its_status_and_when_it_ended() {
+    let (store, decision) = store_with_decision().await;
+    let (study, request, comparison, run) = study_parts(&decision);
+    store
+        .insert_study(&study, &request, &comparison, &run)
+        .await
+        .unwrap();
+    let ended = store
+        .set_study_status(&study.id, sprisk_contracts::StudyStatus::BudgetReached, NOW)
+        .await
+        .unwrap();
+    assert_eq!(ended.status, sprisk_contracts::StudyStatus::BudgetReached);
+    assert_eq!(ended.finished_at.as_ref().unwrap().as_str(), NOW);
+    assert_eq!(store.get_study(&study.id).await.unwrap(), ended);
+    let err = store
+        .set_study_status(&study.id, sprisk_contracts::StudyStatus::Completed, NOW)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::StudyFinished { .. }), "{err}");
+}
+
+#[tokio::test]
+async fn an_unknown_study_is_not_found() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let id = "std_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap();
+    assert!(matches!(
+        store.get_study(&id).await,
+        Err(StoreError::NotFound {
+            entity: "study",
+            ..
+        })
+    ));
+}

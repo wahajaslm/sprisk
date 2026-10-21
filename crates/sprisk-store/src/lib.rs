@@ -5,10 +5,11 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, DecisionProposal, InvestigationId,
-    MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, NodeId, NotebookId,
-    NotebookVersion, NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion,
-    QuestionVersionId, Run, RunId, RunStatus, Timestamp, WorkerId,
+    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, CreateStudy, DecisionProposal,
+    InvestigationId, MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, NodeId,
+    NotebookId, NotebookVersion, NotebookVersionId, PipelineVersion, PipelineVersionId,
+    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyId, StudyStatus,
+    Timestamp, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -25,6 +26,8 @@ pub enum StoreError {
     NotLive { id: String, state: AttemptState },
     #[error("run {id} already finished as {status}")]
     RunFinished { id: String, status: RunStatus },
+    #[error("study {id} already finished as {status}")]
+    StudyFinished { id: String, status: StudyStatus },
     #[error("corrupt stored JSON: {0}")]
     Corrupt(#[from] serde_json::Error),
     #[error("cache entry has an invalid attempt id {0:?}")]
@@ -219,6 +222,163 @@ impl SqliteStore {
         }
         tx.commit().await?;
         Ok(run.clone())
+    }
+
+    /// Stores `study` with its comparison and queued run in one transaction, unless a study
+    /// already holds `request`'s idempotency key: then that study is given back if it was asked
+    /// for the same way (same version, step and request), and nothing of this one is stored.
+    /// Gives the kept study and whether it is this one. The same key asking for anything else
+    /// is a conflict, never answered with the first.
+    pub async fn insert_study(
+        &self,
+        study: &Study,
+        request: &CreateStudy,
+        comparison: &PipelineVersion,
+        run: &Run,
+    ) -> Result<(Study, bool), StoreError> {
+        let key = request.idempotency_key.as_str();
+        let asked = to_json(request)?;
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "INSERT INTO pipeline_versions (id, project_id, compares_proposal_id, body) VALUES (?, ?, ?, ?)",
+        )
+        .bind(comparison.id.as_str())
+        .bind(comparison.project_id.as_str())
+        .bind(comparison.compares.as_ref().map(|p| p.as_str()))
+        .bind(to_json(comparison)?)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO runs (id, project_id, pipeline_version_id, status, body) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(run.id.as_str())
+        .bind(run.project_id.as_str())
+        .bind(run.pipeline_version_id.as_str())
+        .bind(run.status.to_string())
+        .bind(to_json(run)?)
+        .execute(&mut *tx)
+        .await?;
+        let claimed = sqlx::query(
+            "INSERT INTO studies (id, project_id, pipeline_version_id, node_id, comparison_id, run_id, \
+             idempotency_key, request, status, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT (idempotency_key) DO NOTHING",
+        )
+        .bind(study.id.as_str())
+        .bind(study.project_id.as_str())
+        .bind(study.pipeline_version_id.as_str())
+        .bind(study.node_id.as_str())
+        .bind(study.comparison_id.as_str())
+        .bind(study.run_id.as_str())
+        .bind(key)
+        .bind(&asked)
+        .bind(study.status.to_string())
+        .bind(to_json(study)?)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            == 1;
+        if claimed {
+            tx.commit().await?;
+            return Ok((study.clone(), true));
+        }
+        tx.rollback().await?;
+        let saved = self.study_replay(study, request).await?.ok_or_else(|| {
+            StoreError::Conflict(format!("study with idempotency key {key} lost"))
+        })?;
+        Ok((saved, false))
+    }
+
+    /// The study already stored under `request`'s key, if it was asked for the same way (same
+    /// version, step and request). The same key asking for anything else is a conflict.
+    async fn study_replay(
+        &self,
+        study: &Study,
+        request: &CreateStudy,
+    ) -> Result<Option<Study>, StoreError> {
+        let key = request.idempotency_key.as_str();
+        let row: Option<(String, String, String, String)> = sqlx::query_as(
+            "SELECT pipeline_version_id, node_id, request, body FROM studies WHERE idempotency_key = ?",
+        )
+        .bind(key)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((version, step, saved_request, body)) = row else {
+            return Ok(None);
+        };
+        let saved: Study = serde_json::from_str(&body)?;
+        let same = version == study.pipeline_version_id.as_str()
+            && step == study.node_id.as_str()
+            && serde_json::from_str::<CreateStudy>(&saved_request)? == *request;
+        if !same {
+            return Err(StoreError::Conflict(format!(
+                "idempotency key {key} was used for another request: study {} of step {step} of {version}",
+                saved.id.as_str()
+            )));
+        }
+        Ok(Some(saved))
+    }
+
+    pub async fn get_study(&self, id: &StudyId) -> Result<Study, StoreError> {
+        let body: Option<String> = sqlx::query_scalar("SELECT body FROM studies WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&self.pool)
+            .await?;
+        from_json(body, "study", id.as_str())
+    }
+
+    /// Newest first, at most `limit`.
+    pub async fn studies_of(
+        &self,
+        version: &PipelineVersionId,
+        limit: u32,
+    ) -> Result<Vec<Study>, StoreError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM studies WHERE pipeline_version_id = ? ORDER BY id DESC LIMIT ?",
+        )
+        .bind(version.as_str())
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        parse_all(rows, "study")
+    }
+
+    /// Moves a study to `to`; a terminal status records `at` as when it ended. A finished
+    /// study never changes again.
+    pub async fn set_study_status(
+        &self,
+        id: &StudyId,
+        to: StudyStatus,
+        at: &str,
+    ) -> Result<Study, StoreError> {
+        let mut tx = self.pool.begin().await?;
+        let body: Option<String> = sqlx::query_scalar("SELECT body FROM studies WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&mut *tx)
+            .await?;
+        let mut study: Study = from_json(body, "study", id.as_str())?;
+        let from = study.status;
+        if from != StudyStatus::Running {
+            return Err(StoreError::StudyFinished {
+                id: id.to_string(),
+                status: from,
+            });
+        }
+        study.status = to;
+        if to != StudyStatus::Running {
+            study.finished_at = Some(
+                at.parse()
+                    .map_err(|_| StoreError::BadTimestamp(at.to_owned()))?,
+            );
+        }
+        sqlx::query("UPDATE studies SET status = ?, body = ? WHERE id = ?")
+            .bind(to.to_string())
+            .bind(to_json(&study)?)
+            .bind(id.as_str())
+            .execute(&mut *tx)
+            .await?;
+        audit(&mut tx, at, id.as_str(), &format!("study.{from}->{to}")).await?;
+        tx.commit().await?;
+        Ok(study)
     }
 
     /// The version comparing `proposal`'s shortlist (ADR-0046), if one was built.

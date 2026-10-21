@@ -103,7 +103,7 @@ Arch doc sections: §3 (Experiment), §5, §11, §21 (M4), §22 (EXP-01, EXP-02,
 
 **API and storage.**
 - `POST /pipeline_versions/{id}/studies/{node_id}` builds the study and starts its run. Body: `idempotency_key`, `strategy`, `seed`, `max_trials`, `max_wall_seconds`, `guardrails`.
-- It follows the `model_selections` claim pattern. A `studies` table holds `idempotency_key UNIQUE` and a digest of the request body:
+- It follows the `model_selections` claim pattern. A `studies` table holds `idempotency_key UNIQUE` and the request as sent:
   - the same key and body return the saved study;
   - the same key with another body returns `409`, as `replays` does for decisions.
 - `GET /studies/{id}` returns the study, its trials and its run. `GET /pipeline_versions/{id}/studies` lists a version's studies.
