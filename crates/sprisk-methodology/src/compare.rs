@@ -79,6 +79,21 @@ pub fn comparison<'a>(
         )));
     }
 
+    // Every step between the split and the model fits on train (the walk above refuses any
+    // other), so each fold refits them, in flow order, before the candidate (ADR-0047).
+    let prepare = between
+        .iter()
+        .rev()
+        .map(|id| {
+            let step = base
+                .nodes
+                .iter()
+                .find(|n| n.id.as_str() == *id)
+                .ok_or_else(|| ResolveError::UnknownNode((*id).to_owned()))?;
+            Ok(json!({ "operator": step.operator, "params": step.params }))
+        })
+        .collect::<Result<Vec<_>, ResolveError>>()?;
+
     let kept = upstream(base, split);
     let mut nodes: Vec<Node> = base
         .nodes
@@ -119,7 +134,8 @@ pub fn comparison<'a>(
                 "id": step, "operator": CROSS_VALIDATE,
                 "params": {
                     "candidate": operator, "candidate_params": params,
-                    "folds": FOLDS, "repeats": REPEATS, "seed": SEED, "metric": metric
+                    "folds": FOLDS, "repeats": REPEATS, "seed": SEED, "metric": metric,
+                    "prepare": prepare
                 }
             })
             .to_string(),
@@ -144,8 +160,7 @@ pub fn comparison<'a>(
             "id": SELECT_NODE, "operator": SELECT,
             "params": {
                 "trials": trials.iter().map(|(id, _)| id).collect::<Vec<_>>(),
-                "baseline": baseline, "metric": metric, "not_compared": between,
-                "complexity": complexity
+                "baseline": baseline, "metric": metric, "complexity": complexity
             }
         })
         .to_string(),

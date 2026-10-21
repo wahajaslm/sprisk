@@ -10,7 +10,7 @@ import numpy as np
 import polars as pl
 import pytest
 from scipy import stats
-from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 
 from sprisk_contracts import SelectionDecision
 from sprisk_ml.compare import cross_validate, select_model
@@ -45,7 +45,7 @@ def scores(
     train: pl.DataFrame, build: Any, params: dict[str, Any], metric: str = "balanced_accuracy"
 ) -> pl.DataFrame:
     scored: pl.DataFrame = cross_validate(
-        train, build, params, folds=5, seed=0, metric=metric, repeats=1
+        train, build, params, folds=5, seed=0, metric=metric, repeats=1, prepare=[]
     )["scores"]
     return scored
 
@@ -75,6 +75,30 @@ def test_each_fold_scores_the_model_refit_on_the_other_rows() -> None:
     assert (result["train_rows"] + result["validate_rows"]).to_list() == [100] * 5
 
 
+class RecordingStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
+    """Records how many rows each fit saw, and passes rows through."""
+
+    fits: list[int] = []
+
+    def fit(self, x: Any, y: Any = None) -> "RecordingStep":
+        RecordingStep.fits.append(len(x))
+        return self
+
+    def transform(self, x: Any) -> Any:
+        return x
+
+
+def test_preparation_between_the_split_and_the_model_is_refit_on_each_fold() -> None:
+    RecordingStep.fits = []
+    train = rows(100, seed=1)
+    result = cross_validate(
+        train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1, [RecordingStep()]
+    )
+    # One fit per fold on the fold's own rows, then permutation importance refits nothing.
+    assert RecordingStep.fits == result["scores"]["train_rows"].to_list()
+    assert result["importance"]["feature"].to_list() == ["x", "c"]
+
+
 def test_folds_are_stratified_so_a_rare_class_is_in_every_fold() -> None:
     # Five rare rows in 100: only stratified folds give each fold exactly one.
     train = rows(100, seed=1).with_columns(
@@ -98,13 +122,17 @@ def test_every_candidate_gets_the_same_folds() -> None:
 def test_another_seed_gives_other_folds() -> None:
     train = rows(100, seed=1)
     first = scores(train, dummy_baseline_estimator, CLASSIFY)
-    other = cross_validate(train, dummy_baseline_estimator, CLASSIFY, 5, 1, "balanced_accuracy", 1)
+    other = cross_validate(
+        train, dummy_baseline_estimator, CLASSIFY, 5, 1, "balanced_accuracy", 1, []
+    )
     assert first["rows_digest"].to_list() != other["scores"]["rows_digest"].to_list()
 
 
 def test_every_train_row_is_predicted_once_by_a_model_that_did_not_see_it() -> None:
     train = rows(100, seed=1)
-    result = cross_validate(train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1)
+    result = cross_validate(
+        train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1, []
+    )
     predictions = result["predictions"]
     assert sorted(predictions["row"].to_list()) == list(range(100))
     assert predictions["actual"].to_list() == train["y"].gather(predictions["row"]).to_list()
@@ -114,7 +142,7 @@ def test_every_train_row_is_predicted_once_by_a_model_that_did_not_see_it() -> N
 
 def test_the_feature_that_drives_the_target_matters_most_on_held_out_folds() -> None:
     result = cross_validate(
-        rows(200, seed=3), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1
+        rows(200, seed=3), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1, []
     )
     importance = result["importance"]
     assert importance["feature"].to_list() == ["x", "c"]
@@ -124,9 +152,11 @@ def test_the_feature_that_drives_the_target_matters_most_on_held_out_folds() -> 
 
 def test_the_diagnostics_are_drawn_from_the_train_rows_only() -> None:
     classified = cross_validate(
-        rows(100, seed=1), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1
+        rows(100, seed=1), linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 1, []
     )
-    regressed = cross_validate(rows(100, seed=1), linear_model_estimator, REGRESS, 5, 0, "rmse", 1)
+    regressed = cross_validate(
+        rows(100, seed=1), linear_model_estimator, REGRESS, 5, 0, "rmse", 1, []
+    )
     titles = [[f.layout.title.text for f in r["figures"]] for r in (classified, regressed)]
     assert titles == [
         [
@@ -227,7 +257,6 @@ def select(trials: dict[str, pl.DataFrame], **settings: Any) -> SelectionDecisio
         trials,
         baseline=settings.get("baseline", BASE),
         metric=settings.get("metric", "balanced_accuracy"),
-        not_compared=settings.get("not_compared", []),
         complexity=settings.get("complexity", COMPLEXITY),
     )
     # Through JSON, as the worker writes it.
@@ -289,7 +318,9 @@ def test_every_trial_needs_a_complexity() -> None:
 
 def test_folds_are_repeated_with_new_shuffles_and_each_row_is_predicted_once() -> None:
     train = rows(100, seed=1)
-    result = cross_validate(train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 3)
+    result = cross_validate(
+        train, linear_model_estimator, CLASSIFY, 5, 0, "balanced_accuracy", 3, []
+    )
     scores = result["scores"]
     assert scores["repeat"].to_list() == [1] * 5 + [2] * 5 + [3] * 5
     assert scores["fold"].to_list() == [1, 2, 3, 4, 5] * 3
@@ -353,18 +384,6 @@ def test_for_rmse_lower_is_better() -> None:
     assert decision.winner == "ml_linear_model"
     [compared] = [c.versus_baseline for c in decision.candidates if c.versus_baseline]
     assert compared.mean_difference == pytest.approx(1.99)
-
-
-def test_steps_left_out_of_the_comparison_are_named_as_a_limitation() -> None:
-    decision = select(
-        {BASE: trial([0.5] * 5), "ml_linear_model": trial([0.8] * 5)},
-        not_compared=["scale", "impute"],
-    )
-    assert [limit.root for limit in decision.limitations] == [
-        "Steps scale, impute between the split and the model were not part of the comparison: "
-        "every candidate was scored on the split's train rows without them.",
-        SCREENING,
-    ]
 
 
 SCREENING = (
@@ -455,6 +474,13 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
             "folds": 5,
             "seed": 0,
             "repeats": 2,
+            # Run in each fold by the worker, from the scale step's own code.
+            "prepare": [
+                {
+                    "operator": "sprisk.clean.scale@1.0.0",
+                    "params": {"columns": ["x"], "method": "z_score"},
+                }
+            ],
         }
         written = operators["sprisk.ml.cross_validate@1.0.0"].run(
             params | {"metric": "balanced_accuracy"}, {"train": train}, out
@@ -466,7 +492,5 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     out.mkdir()
     params = {"trials": [BASE, "ml_lm"], "baseline": BASE, "metric": "balanced_accuracy"}
     params |= {"complexity": {BASE: 0, "ml_lm": 1}}
-    [decision] = operators["sprisk.ml.select_model@1.0.0"].run(
-        params | {"not_compared": []}, cross_validated, out
-    )
+    [decision] = operators["sprisk.ml.select_model@1.0.0"].run(params, cross_validated, out)
     assert SelectionDecision.model_validate_json(decision.path.read_text()).winner == "ml_lm"

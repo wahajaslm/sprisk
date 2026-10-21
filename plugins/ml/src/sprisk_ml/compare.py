@@ -12,6 +12,7 @@ import polars as pl
 from scipy import stats
 from sklearn import metrics, model_selection
 from sklearn.base import BaseEstimator
+from sklearn.pipeline import Pipeline
 
 from .evaluate import confusion_figure, predicted_figure
 from .importance import importance_figure, permutation
@@ -49,13 +50,15 @@ def cross_validate(
     seed: int,
     metric: str,
     repeats: int,
+    prepare: list[Any],
 ) -> dict[str, Any]:
     """The candidate's score on each fold's validation rows, its whole pipeline, preparation
     included, refit on the fold's other rows; the rows are shuffled into folds `repeats` times.
     The same rows, folds, repeats and seed give every candidate the same folds. Also what it
     predicted for each train row while the first repeat held it out, how much each feature
     mattered on those held-out folds, and figures of both: all from the train rows, so looking
-    at them never touches the test rows (ADR-0047)."""
+    at them never touches the test rows (ADR-0047). `prepare` are the preparation steps between
+    the split and the model, as transformers; each fold refits them before the model."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
     # Rust picks the metric from the question's task; this checks a step built by hand.
     if task not in METRIC_OF_TASK:
@@ -69,10 +72,16 @@ def cross_validate(
     y = train[target]
     if y.null_count():
         raise ValueError(f"{target} has {y.null_count()} missing values in train")
-    x = train.select(features)
     truth = y.to_numpy()
     settings = {k: v for k, v in candidate_params.items() if k not in ("target", "features")}
-    model = candidate(schema=x.schema, **settings)
+    # The model sees the feature columns' types before preparation; filling and rescaling
+    # keep numbers numbers and text text.
+    model = candidate(schema=train.select(features).schema, **settings)
+    # Preparation may read columns the model does not, so it gets every column but the target.
+    x = train.drop(target) if prepare else train.select(features)
+    if prepare:
+        steps = [(f"prepare_{i}", step) for i, step in enumerate(prepare)]
+        model = Pipeline([*steps, ("model", model)])
     splits = list(_splitter(task, y, folds, repeats, seed).split(np.zeros(len(y)), truth))
     result = model_selection.cross_validate(
         model,
@@ -93,7 +102,9 @@ def cross_validate(
         fold_of += [fold] * len(held)
         predicted += fitted.predict(rows).tolist()
         means, _ = permutation(fitted, rows, truth[held], seed, IMPORTANCE_REPEATS, scorer)
-        importances.append(means)
+        importances.append(
+            [m for column, m in zip(x.columns, means, strict=True) if column in features]
+        )
     by_fold = np.array(importances)
     importance = pl.DataFrame(
         {
@@ -174,7 +185,6 @@ def select_model(
     trials: dict[str, pl.DataFrame],
     baseline: str,
     metric: str,
-    not_compared: list[str],
     complexity: dict[str, int],
 ) -> dict[str, Any]:
     """A SelectionDecision (ADR-0047). Of the candidates that beat the baseline on the same
@@ -222,14 +232,6 @@ def select_model(
     _holm([c["versus_baseline"] for c in candidates if "versus_baseline" in c])
 
     beating = [c for c in candidates if c.get("versus_baseline", {}).get("beats_baseline")]
-    left_out = (
-        [
-            f"Steps {', '.join(not_compared)} between the split and the model were not part "
-            "of the comparison: every candidate was scored on the split's train rows without them."
-        ]
-        if not_compared
-        else []
-    )
     decision: dict[str, Any] = {
         "schema_version": "sprisk.selection_decision/v1",
         "metric": metric,
@@ -238,7 +240,7 @@ def select_model(
         "seed": int(protocol["seed"][0]),
         "baseline": baseline,
         "candidates": candidates,
-        "limitations": [*left_out, TESTED],
+        "limitations": [TESTED],
     }
     if not beating:
         decision["reason"] = (

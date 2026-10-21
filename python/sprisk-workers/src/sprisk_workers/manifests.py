@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError
-from sprisk_workers.plain import Estimator, adapt
+from sprisk_workers.plain import CheckedFunction, adapt
 from sprisk_workers.serve import LoadedOperator
 
 # Only first-party packs run until plugin isolation exists (arch doc §12).
@@ -40,7 +40,18 @@ def load_operators(*roots: Path) -> dict[str, LoadedOperator]:
         for ref, (path, operator) in manifests.items()
         if operator.model is not None and operator.model.estimator is not None
     }
-    return {ref: _loaded(path, operator, models) for ref, (path, operator) in manifests.items()}
+    # ...and refits the preparation steps between the split and the model per fold (ADR-0047).
+    preparations = {
+        ref: CheckedFunction(
+            _function(path, "entrypoint", operator.entrypoint.root), operator.params_schema
+        )
+        for ref, (path, operator) in manifests.items()
+        if operator.fits_on_train
+    }
+    return {
+        ref: _loaded(path, operator, models, preparations)
+        for ref, (path, operator) in manifests.items()
+    }
 
 
 def _read(path: Path) -> Operator:
@@ -64,7 +75,7 @@ def _function(path: Path, what: str, entrypoint: str) -> Callable[..., Any]:
     return function  # type: ignore[no-any-return]
 
 
-def _estimator(path: Path, entrypoint: str, operator: Operator) -> Estimator:
+def _estimator(path: Path, entrypoint: str, operator: Operator) -> CheckedFunction:
     """The model's unfitted-estimator function. It takes the feature columns' `schema` and
     every setting of the model except the columns it reads (ADR-0046)."""
     build = _function(path, "estimator", entrypoint)
@@ -73,14 +84,19 @@ def _estimator(path: Path, entrypoint: str, operator: Operator) -> Estimator:
     takes = sorted(inspect.signature(build).parameters)
     if takes != expected:
         raise ManifestError(f"{path}: estimator takes {takes}; it must take {expected}")
-    return Estimator(build, operator.params_schema)
+    return CheckedFunction(build, operator.params_schema)
 
 
-def _loaded(path: Path, operator: Operator, models: Mapping[str, Estimator]) -> LoadedOperator:
+def _loaded(
+    path: Path,
+    operator: Operator,
+    models: Mapping[str, CheckedFunction],
+    preparations: Mapping[str, CheckedFunction],
+) -> LoadedOperator:
     function = _function(path, "entrypoint", operator.entrypoint.root)
     ports = frozenset(port.name.root for port in operator.outputs)
     return LoadedOperator(
-        run=adapt(function, operator, models=models),
+        run=adapt(function, operator, models=models, preparations=preparations),
         output_ports=ports,
         params_schema=operator.params_schema,
         operator=operator,

@@ -1,0 +1,47 @@
+{
+  "schema_version": "sprisk.operator/v1",
+  "id": "sprisk.clean.impute@1.0.0",
+  "capability_class": "transform",
+  "description": "Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.",
+  "entrypoint": "sprisk_clean.impute:impute",
+  "inputs": [
+    {
+      "name": "train",
+      "kind": "table"
+    },
+    {
+      "name": "test",
+      "kind": "table"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "train",
+      "kind": "table"
+    },
+    {
+      "name": "test",
+      "kind": "table"
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "columns": {
+        "type": "array"
+      },
+      "method": {
+        "type": "string"
+      }
+    }
+  },
+  "effects": "pure",
+  "network": "none",
+  "resources": {
+    "cpu_cores": 1,
+    "memory_mb": 2048,
+    "gpu": "none",
+    "timeout_seconds": 600
+  },
+  "fits_on_train": true
+}

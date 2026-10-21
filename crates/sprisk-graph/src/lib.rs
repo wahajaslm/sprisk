@@ -61,6 +61,10 @@ pub enum CompileError {
         setting: String,
         operator: String,
     },
+    #[error(
+        "node {node}: {operator} is not a registered step that fits on train, so it cannot be refit per fold"
+    )]
+    NotAPreparation { node: String, operator: String },
     #[error("node {node}: {operator} cannot carry its own code: {reason}")]
     CodeNotAllowed {
         node: String,
@@ -96,6 +100,7 @@ impl CompileError {
             CompileError::CodeNotAllowed { .. } => "code_not_allowed",
             CompileError::InvalidPortName { .. } => "invalid_port_name",
             CompileError::NotAModel { .. } => "not_a_model",
+            CompileError::NotAPreparation { .. } => "not_a_preparation",
         }
     }
 }
@@ -152,11 +157,17 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
         match registry.resolve(&node.operator) {
             Some((op, digest)) => {
                 errors.extend(check_params(id, op, &node.params));
-                match named_models(id, op, &node.params, registry) {
-                    Ok(models) => {
-                        digests.insert(id, with_models(digest, &models));
+                let models = named_models(id, op, &node.params, registry);
+                let preparations = named_preparations(id, op, &node.params, registry);
+                match (models, preparations) {
+                    (Ok(models), Ok(preparations)) => {
+                        let named: Vec<&str> = models.into_iter().chain(preparations).collect();
+                        digests.insert(id, with_models(digest, &named));
                     }
-                    Err(e) => errors.extend(e),
+                    (models, preparations) => {
+                        errors.extend(models.err().into_iter().flatten());
+                        errors.extend(preparations.err().into_iter().flatten());
+                    }
                 }
                 if node.code.is_some() {
                     errors.extend(check_own_code(id, op));
@@ -422,7 +433,68 @@ fn named_models<'r>(
     }
 }
 
-/// The step's own digest, joined with those of the models it names.
+/// A setting marked `x-sprisk-preparation` lists `{operator, params}` steps that the step refits
+/// per fold (ADR-0047). Each must be a registered operator that fits on train, with params its
+/// schema accepts. Gives their digests, so the step's cache key follows their code.
+fn named_preparations<'r>(
+    node: &str,
+    op: &Operator,
+    params: &serde_json::Map<String, serde_json::Value>,
+    registry: &'r Registry,
+) -> Result<Vec<&'r str>, Vec<CompileError>> {
+    let mut digests = Vec::new();
+    let mut errors = Vec::new();
+    let marked = properties(op).filter(|(_, v)| v.get("x-sprisk-preparation").is_some());
+    for (setting, _) in marked {
+        // A missing or mistyped list is already an invalid param.
+        let steps = params
+            .get(setting)
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten();
+        for (i, step) in steps.enumerate() {
+            let Some(operator) = step.get("operator").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some((found, digest)) = registry
+                .resolve(operator)
+                .filter(|(o, _)| o.fits_on_train == Some(true))
+            else {
+                errors.push(CompileError::NotAPreparation {
+                    node: node.to_owned(),
+                    operator: operator.to_owned(),
+                });
+                continue;
+            };
+            let step_params = step.get("params").cloned().unwrap_or_default();
+            match validate_against(found, &step_params) {
+                Ok(reasons) => {
+                    errors.extend(
+                        reasons
+                            .into_iter()
+                            .map(|reason| CompileError::InvalidParams {
+                                node: node.to_owned(),
+                                reason: format!("{setting}[{i}] {operator}: {reason}"),
+                            }),
+                    )
+                }
+                Err(reason) => errors.push(CompileError::InvalidParamsSchema {
+                    node: node.to_owned(),
+                    operator: found.id.to_string(),
+                    reason,
+                }),
+            }
+            digests.push(digest);
+        }
+    }
+    if errors.is_empty() {
+        Ok(digests)
+    } else {
+        Err(errors)
+    }
+}
+
+/// The step's own digest, joined with those of the models and steps it names.
 fn with_models(own: &str, models: &[&str]) -> String {
     if models.is_empty() {
         return own.to_owned();
@@ -454,8 +526,8 @@ fn check_own_code(node: &str, op: &Operator) -> Option<CompileError> {
         .any(|(_, v)| v.get("x-sprisk-local-path") == Some(&serde_json::Value::Bool(true)));
     let reason = if reads_files {
         "it reads files, and its code must stay the checked one"
-    } else if marked("x-sprisk-model-operator") {
-        "it names a model, and its code must stay the checked one"
+    } else if marked("x-sprisk-model-operator") || marked("x-sprisk-preparation") {
+        "it names other steps to run, and its code must stay the checked one"
     } else if op.effects != sprisk_contracts::Effects::Pure {
         "it is not a pure step"
     } else {

@@ -2113,8 +2113,26 @@ async fn a_shortlist_is_cross_validated_on_train_rows_and_the_winner_applied() {
     parse::<sprisk_contracts::SelectionDecision>(&decision.to_string()).unwrap();
     assert_eq!(decision["metric"], "balanced_accuracy");
     assert_eq!(decision["baseline"], "ml_dummy_baseline");
-    // The scale step it left out, and what "beats the baseline" means.
-    assert_eq!(decision["limitations"].as_array().unwrap().len(), 2);
+    // The scale step between the split and the model is refit in every fold, so nothing is
+    // left out; only how "beats the baseline" was tested is a limitation.
+    let limitations = decision["limitations"].as_array().unwrap();
+    assert_eq!(limitations.len(), 1, "{limitations:?}");
+    assert!(
+        limitations[0]
+            .as_str()
+            .unwrap()
+            .starts_with("Beating the baseline means a corrected")
+    );
+    let cv = comparison["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "cv_ml_linear_model")
+        .unwrap();
+    assert_eq!(
+        cv["params"]["prepare"][0]["operator"],
+        "sprisk.clean.scale@1.0.0"
+    );
 
     // The comparison is a side version: the proposal still applies to the flow.
     let chosen = decision["winner"].as_str().unwrap_or("ml_linear_model");

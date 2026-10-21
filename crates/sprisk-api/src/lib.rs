@@ -869,20 +869,19 @@ fn is_split(rules: &sprisk_methodology::RuleCatalog, node: &sprisk_contracts::No
         .is_some_and(|r| r.decides.as_str() == SPLIT_DECISION)
 }
 
-/// Preparation steps that read train and test on separate ports and write each from its own,
-/// so a train output never holds a test row.
-fn keeps_train_rows(node: &sprisk_contracts::Node) -> bool {
-    matches!(
-        node.operator.as_str().split('@').next(),
-        Some("sprisk.clean.scale" | "sprisk.clean.clip_outliers" | "sprisk.clean.impute")
-    )
+/// Steps whose manifest says they fit on train and write train and test each from its own
+/// rows (`fits_on_train`), so a train output never holds a test row.
+fn keeps_train_rows(registry: &Registry, node: &sprisk_contracts::Node) -> bool {
+    registry
+        .get(node.operator.as_str())
+        .is_some_and(|o| o.fits_on_train == Some(true))
 }
 
 /// Whether a step between a rule's step and a model keeps what the flow facts say about
 /// the model: it only drops rows, or rescales affinely and fills from train statistics, so
 /// the model's own standardising and filling still apply. A zero fill is not affine: zero
 /// is another value once the column is scaled.
-fn keeps_flow_facts(node: &sprisk_contracts::Node) -> bool {
+fn keeps_flow_facts(registry: &Registry, node: &sprisk_contracts::Node) -> bool {
     let zero_fill = node.operator.as_str().starts_with("sprisk.clean.impute@")
         && node.params.get("method").and_then(|m| m.as_str()) == Some("zero");
     let rows_only = matches!(
@@ -894,7 +893,7 @@ fn keeps_flow_facts(node: &sprisk_contracts::Node) -> bool {
                 | "sprisk.validation.group_split"
         )
     );
-    rows_only || (keeps_train_rows(node) && !zero_fill)
+    rows_only || (keeps_train_rows(registry, node) && !zero_fill)
 }
 
 fn not_applicable(message: String) -> ApiError {
@@ -969,7 +968,7 @@ async fn propose(
         &pipeline,
         node_id,
         |operator| state.registry.get(operator),
-        keeps_flow_facts,
+        |n| keeps_flow_facts(&state.registry, n),
     )
     .map_err(resolve)?;
     // A shortlist rule's alternatives are the registered models that fit the task (ADR-0044).
@@ -1036,7 +1035,8 @@ async fn train_profile_facts(
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
     let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n);
-    let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps_train_rows)
+    let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
+    let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps)
         .map_err(|e| evidence_unavailable(e.to_string()))?;
     let columns: Vec<String> = ["columns", "features"]
         .iter()
@@ -1315,7 +1315,7 @@ async fn build_comparison(
         proposal,
         question.task.value,
         |n| is_split(&state.rules, n),
-        keeps_train_rows,
+        |n| keeps_train_rows(&state.registry, n),
         |operator| state.registry.get(operator),
     )
     .map_err(|e| not_applicable(e.to_string()))?;

@@ -7,12 +7,13 @@ import polars as pl
 import pytest
 import skops.io
 import yaml
+from sklearn.base import clone
 from sklearn.linear_model import LogisticRegression
 
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.output import JSON, PARQUET, SKOPS
-from sprisk_workers.plain import Estimator, adapt
+from sprisk_workers.plain import CheckedFunction, adapt
 
 
 def operator(inputs: str, outputs: str, params: str = "{}") -> Operator:
@@ -444,7 +445,7 @@ def test_a_setting_naming_a_model_arrives_as_its_estimator_function(tmp_path: Pa
         seen.append(candidate(schema=train.schema, depth=candidate_params["depth"]))
         return train
 
-    models = {"acme.m.model@1.0.0": Estimator(build, MODEL_PARAMS)}
+    models = {"acme.m.model@1.0.0": CheckedFunction(build, MODEL_PARAMS)}
     params = {"candidate": "acme.m.model@1.0.0", "candidate_params": {"target": "y", "depth": 7}}
     adapt(op, COMPARE, models=models)(
         params, {"train": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
@@ -475,7 +476,7 @@ def test_an_unknown_model_or_params_it_refuses_fail_before_the_step_runs(
     ) -> pl.DataFrame:
         raise AssertionError("the step must not run")
 
-    models = {"acme.m.model@1.0.0": Estimator(lambda schema: None, MODEL_PARAMS)}
+    models = {"acme.m.model@1.0.0": CheckedFunction(lambda schema: None, MODEL_PARAMS)}
     with pytest.raises(OperatorError) as e:
         adapt(op, COMPARE, models=models)(
             params, {"train": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
@@ -495,3 +496,71 @@ def test_a_model_setting_must_name_a_params_setting_that_exists() -> None:
 
     with pytest.raises(ManifestError, match="candidate names settings"):
         adapt(op, broken)
+
+
+FOLDED = operator(
+    "[{ name: train, kind: table }]",
+    "[{ name: scores, kind: table }]",
+    "{ prepare: { type: array, x-sprisk-preparation: true } }",
+)
+SHIFT_PARAMS = {"type": "object", "required": ["by"], "properties": {"by": {"type": "number"}}}
+
+
+def shift(train: pl.DataFrame, test: pl.DataFrame, by: float) -> dict[str, pl.DataFrame]:
+    """Fits the train mean and moves both tables by it, plus `by`."""
+    mean = train["x"].mean()
+    move = pl.col("x") - mean + by
+    return {"train": train.with_columns(move), "test": test.with_columns(move)}
+
+
+def test_preparation_steps_arrive_as_transformers_refit_on_the_rows_they_are_fit_on(
+    tmp_path: Path,
+) -> None:
+    seen: list[Any] = []
+
+    def op(train: pl.DataFrame, prepare: list[Any]) -> pl.DataFrame:
+        [step] = prepare
+        fitted = clone(step).fit(train.head(2))
+        seen.append(fitted.transform(pl.DataFrame({"x": [10.0]}))["x"].to_list())
+        return train
+
+    preparations = {"acme.c.shift@1.0.0": CheckedFunction(shift, SHIFT_PARAMS)}
+    params = {"prepare": [{"operator": "acme.c.shift@1.0.0", "params": {"by": 1.0}}]}
+    adapt(op, FOLDED, preparations=preparations)(
+        params,
+        {"train": parquet(tmp_path, pl.DataFrame({"x": [1.0, 3.0, 100.0]}))},
+        staging(tmp_path),
+    )
+    # Fit on the first two rows: mean 2, so 10 becomes 10 - 2 + 1.
+    assert seen == [[9.0]]
+
+
+@pytest.mark.parametrize(
+    ("step", "code", "message"),
+    [
+        (
+            {"operator": "acme.c.other@1.0.0", "params": {}},
+            "unknown_preparation",
+            "acme.c.other@1.0.0 is not a step this worker can refit per fold",
+        ),
+        (
+            {"operator": "acme.c.shift@1.0.0", "params": {}},
+            "invalid_params",
+            "acme.c.shift@1.0.0: 'by' is a required property",
+        ),
+    ],
+)
+def test_an_unknown_preparation_or_params_it_refuses_fail_before_the_step_runs(
+    tmp_path: Path, step: dict[str, Any], code: str, message: str
+) -> None:
+    def op(train: pl.DataFrame, prepare: list[Any]) -> pl.DataFrame:
+        raise AssertionError("the step must not run")
+
+    preparations = {"acme.c.shift@1.0.0": CheckedFunction(shift, SHIFT_PARAMS)}
+    with pytest.raises(OperatorError) as e:
+        adapt(op, FOLDED, preparations=preparations)(
+            {"prepare": [step]},
+            {"train": parquet(tmp_path, pl.DataFrame({"x": [1.0]}))},
+            staging(tmp_path),
+        )
+    assert (e.value.code, e.value.message) == (code, message)

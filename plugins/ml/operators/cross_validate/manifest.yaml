@@ -8,7 +8,7 @@ outputs: [{ name: scores, kind: table }, { name: predictions, kind: table }, { n
 params_schema:
   type: object
   additionalProperties: false
-  required: [candidate, candidate_params, folds, repeats, seed, metric]
+  required: [candidate, candidate_params, folds, repeats, seed, metric, prepare]
   properties:
     candidate:
       type: string
@@ -16,6 +16,17 @@ params_schema:
       description: "The model operator to score."
       x-sprisk-model-operator: candidate_params
     candidate_params: { type: object, description: "The model's params, as its own step would take them." }
+    prepare:
+      type: array
+      description: "The preparation steps between the split and the model, in flow order; each fold refits them on its training rows before the model (ADR-0047)."
+      items:
+        type: object
+        additionalProperties: false
+        required: [operator, params]
+        properties:
+          operator: { type: string, pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" }
+          params: { type: object }
+      x-sprisk-preparation: true
     folds: { type: integer, minimum: 2, maximum: 20, description: "Number of folds. Every candidate in a comparison uses the same." }
     repeats: { type: integer, minimum: 1, maximum: 20, description: "How many times the rows are shuffled into folds; every candidate in a comparison uses the same (ADR-0047)." }
     seed: { type: integer, minimum: 0, description: "Shuffles the rows into folds, so every candidate gets the same folds." }

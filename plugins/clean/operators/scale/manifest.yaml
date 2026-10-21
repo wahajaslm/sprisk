@@ -3,6 +3,7 @@ id: sprisk.clean.scale@1.0.0
 capability_class: transform
 description: Min-max or z-score scaling with the train range or moments. Fit on train only.
 entrypoint: sprisk_clean.scale:scale
+fits_on_train: true
 inputs: [{ name: train, kind: table }, { name: test, kind: table }]
 outputs: [{ name: train, kind: table }, { name: test, kind: table }]
 params_schema:

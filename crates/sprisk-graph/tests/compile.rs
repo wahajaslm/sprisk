@@ -46,8 +46,17 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
     );
     model["description"] = json!(about);
     model["model"] = json!({ "tasks": ["classification"], "prepares": [], "estimator": "ops:build", "complexity": 1 });
+    let mut shift = operator(
+        "sprisk.clean.shift@1.0.0",
+        &[("train", "table"), ("test", "table")],
+        &[("train", "table"), ("test", "table")],
+        json!({ "type": "object", "required": ["by"], "properties": { "by": { "type": "number" } } }),
+    );
+    shift["description"] = json!(about);
+    shift["fits_on_train"] = json!(true);
     let ops = [
         model,
+        shift,
         operator(
             "sprisk.ml.compare@1.0.0",
             &[("train", "table")],
@@ -56,7 +65,8 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
                 "type": "object",
                 "properties": {
                     "candidate": { "type": "string", "x-sprisk-model-operator": "candidate_params" },
-                    "candidate_params": { "type": "object" }
+                    "candidate_params": { "type": "object" },
+                    "prepare": { "type": "array", "x-sprisk-preparation": true }
                 }
             }),
         ),
@@ -588,9 +598,63 @@ fn a_step_naming_a_model_cannot_carry_its_own_code() {
     nodes[1]["code"] = json!({ "source": "def run(train, candidate, candidate_params):\n    ...\n", "function": "run" });
     let found = errors(nodes, comparing_edges());
     assert!(
-        found
-            .iter()
-            .any(|e| e.code() == "code_not_allowed" && e.to_string().contains("names a model")),
+        found.iter().any(|e| e.code() == "code_not_allowed"
+            && e.to_string().contains("names other steps to run")),
         "{found:?}"
     );
+}
+
+fn preparing(prepare: Value) -> Value {
+    let mut nodes = comparing("sprisk.ml.model@1.0.0", json!({ "target": "y" }));
+    nodes[1]["params"]["prepare"] = prepare;
+    nodes
+}
+
+#[test]
+fn a_preparation_step_must_be_registered_and_fit_on_train() {
+    for operator in [
+        "sprisk.clean.missing@1.0.0",
+        "sprisk.validation.split@1.0.0",
+    ] {
+        let found = errors(
+            preparing(json!([{ "operator": operator, "params": {} }])),
+            comparing_edges(),
+        );
+        assert_eq!(
+            found,
+            [CompileError::NotAPreparation {
+                node: "cv".into(),
+                operator: operator.into()
+            }],
+            "{operator}"
+        );
+        assert_eq!(found[0].code(), "not_a_preparation");
+    }
+}
+
+#[test]
+fn a_preparation_step_s_params_must_pass_its_schema() {
+    let found = errors(
+        preparing(json!([{ "operator": "sprisk.clean.shift@1.0.0", "params": {} }])),
+        comparing_edges(),
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0]
+            .to_string()
+            .starts_with("node cv: invalid params: prepare[0] sprisk.clean.shift@1.0.0: "),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_comparison_is_cached_by_its_preparation_steps_code_too() {
+    let (_dir, registry) = registry();
+    let digest = |prepare: Value| {
+        let plan = compile(&pipeline(preparing(prepare), comparing_edges()), &registry).unwrap();
+        let cv = plan.steps.iter().find(|s| s.node_id == "cv").unwrap();
+        cv.implementation_digest.clone()
+    };
+    let shift = json!([{ "operator": "sprisk.clean.shift@1.0.0", "params": { "by": 1.0 } }]);
+    assert_ne!(digest(json!([])), digest(shift));
 }

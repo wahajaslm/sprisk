@@ -1039,7 +1039,8 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
             "params": {
                 "candidate": "sprisk.ml.linear_model@1.0.0",
                 "candidate_params": { "target": "churned", "features": ["age", "plan"], "task": "classification" },
-                "folds": 5, "repeats": 10, "seed": 0, "metric": "balanced_accuracy"
+                "folds": 5, "repeats": 10, "seed": 0, "metric": "balanced_accuracy",
+                "prepare": [{ "operator": "sprisk.clean.scale@1.0.0", "params": {} }]
             }
         })
     );
@@ -1048,7 +1049,7 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
         select["params"],
         json!({
             "trials": ["ml_dummy_baseline", "ml_linear_model"], "baseline": "ml_dummy_baseline",
-            "metric": "balanced_accuracy", "not_compared": ["scale"],
+            "metric": "balanced_accuracy",
             "complexity": { "ml_dummy_baseline": 0, "ml_linear_model": 1 }
         })
     );

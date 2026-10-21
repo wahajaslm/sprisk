@@ -3,6 +3,7 @@ id: sprisk.clean.impute@1.0.0
 capability_class: transform
 description: Fill missing values with the train median or mean, or with 0. Fit on train only.
 entrypoint: sprisk_clean.impute:impute
+fits_on_train: true
 inputs: [{ name: train, kind: table }, { name: test, kind: table }]
 outputs: [{ name: train, kind: table }, { name: test, kind: table }]
 params_schema:

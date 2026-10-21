@@ -1825,6 +1825,12 @@ class Operator(StrictModel):
     entrypoint: Annotated[
         Entrypoint, Field(description="Python `module:function` the worker calls.")
     ]
+    fits_on_train: Annotated[
+        bool | None,
+        Field(
+            description="True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0047). Absent: it may mix rows."
+        ),
+    ] = None
     inputs: list[Port]
     outputs: list[Port]
     params_schema: Annotated[

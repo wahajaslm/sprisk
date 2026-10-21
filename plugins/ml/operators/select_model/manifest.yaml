@@ -8,7 +8,7 @@ outputs: [{ name: decision, kind: report }]
 params_schema:
   type: object
   additionalProperties: false
-  required: [trials, baseline, metric, not_compared, complexity]
+  required: [trials, baseline, metric, complexity]
   properties:
     trials:
       type: array
@@ -22,10 +22,6 @@ params_schema:
       type: object
       description: "Each trial's model complexity, from its manifest; of the models within one standard error of the best, the simplest wins (ADR-0047)."
       additionalProperties: { type: integer, minimum: 0 }
-    not_compared:
-      type: array
-      description: "Steps between the split and the model in the flow, which the comparison leaves out."
-      items: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$" }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }

@@ -3,6 +3,7 @@ id: sprisk.clean.clip_outliers@1.0.0
 capability_class: transform
 description: Clip values to the train IQR fence. Rows are never dropped. Fit on train only.
 entrypoint: sprisk_clean.clip_outliers:clip_outliers
+fits_on_train: true
 inputs: [{ name: train, kind: table }, { name: test, kind: table }]
 outputs: [{ name: train, kind: table }, { name: test, kind: table }]
 params_schema:

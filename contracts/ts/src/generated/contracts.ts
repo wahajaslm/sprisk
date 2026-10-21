@@ -1518,6 +1518,10 @@ export interface Operator {
    * Python `module:function` the worker calls.
    */
   entrypoint: string;
+  /**
+   * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0047). Absent: it may mix rows.
+   */
+  fits_on_train?: boolean;
   inputs: Port[];
   outputs: Port[];
   /**

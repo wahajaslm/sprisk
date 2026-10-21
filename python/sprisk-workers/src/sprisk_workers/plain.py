@@ -18,7 +18,7 @@ from typing import Any
 import polars as pl
 import skops.io
 from jsonschema import Draft202012Validator
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, TransformerMixin
 from skops.io.exceptions import UntrustedTypesFoundException
 
 from sprisk_contracts import Operator
@@ -38,21 +38,43 @@ TRUSTED_MODEL_TYPES = ["numpy.dtype", "sklearn.tree._tree.Tree", "sprisk_ml.mode
 
 
 @dataclass(frozen=True)
-class Estimator:
-    """A model operator's unfitted-estimator function and the params it accepts (ADR-0046)."""
+class CheckedFunction:
+    """A function another step may be handed, and the params it accepts: a model operator's
+    unfitted-estimator function (ADR-0046), or a preparation step's own function (ADR-0047)."""
 
     build: Callable[..., Any]
     params_schema: Mapping[str, Any]
 
 
-NO_MODELS: Mapping[str, Estimator] = MappingProxyType({})
+NONE: Mapping[str, CheckedFunction] = MappingProxyType({})
+
+
+class FoldStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
+    """A preparation step that fits on train (`fits_on_train`) as a scikit-learn transformer,
+    so cross-validation refits it per fold with the step's own code (ADR-0047). Fitting keeps
+    the rows it is fit on; transforming runs the step with those rows as train."""
+
+    def __init__(self, step: Callable[..., Any], settings: Mapping[str, Any]) -> None:
+        self.step = step
+        self.settings = settings
+
+    def fit(self, x: Any, y: Any = None) -> "FoldStep":
+        self.train_ = x
+        return self
+
+    def transform(self, x: Any) -> Any:
+        return self.step(self.train_, x, **self.settings)["test"]
 
 
 def adapt(
-    fn: Callable[..., Any], operator: Operator, models: Mapping[str, Estimator] = NO_MODELS
+    fn: Callable[..., Any],
+    operator: Operator,
+    models: Mapping[str, CheckedFunction] = NONE,
+    preparations: Mapping[str, CheckedFunction] = NONE,
 ) -> OperatorFn:
     """Check `fn`'s arguments against the manifest now, and return the worker's runner.
-    `models` are the estimators a setting marked `x-sprisk-model-operator` may name."""
+    `models` are the estimators a setting marked `x-sprisk-model-operator` may name;
+    `preparations` the steps a setting marked `x-sprisk-preparation` may list."""
     inputs = {p.name.root: p.kind.value for p in operator.inputs}
     outputs = {p.name.root: p.kind.value for p in operator.outputs}
     properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
@@ -82,6 +104,8 @@ def adapt(
             arguments = {k: Path(v) if k in files else v for k, v in params.items()}
             for setting, params_setting in named_models.items():
                 arguments[setting] = _build(params[setting], params[params_setting], models)
+            for setting in preparation_settings(operator):
+                arguments[setting] = [_fold_step(s, preparations) for s in params[setting]]
             if named_in is not None:
                 arguments[named_in] = {
                     n: _read_as_written(paths[n])
@@ -122,18 +146,45 @@ def model_settings(operator: Operator) -> dict[str, str]:
     }
 
 
-def _build(ref: str, params: Mapping[str, Any], models: Mapping[str, Estimator]) -> Any:
+def _build(ref: str, params: Mapping[str, Any], models: Mapping[str, CheckedFunction]) -> Any:
     """The estimator function of model `ref`, once `params` are ones it accepts. The step
     calls it, so a model setting can only name an estimator a manifest declares."""
     model = models.get(ref)
     if model is None:
         raise OperatorError("unknown_model", f"{ref} is not a model this worker can build")
+    _check(ref, params, model)
+    return model.build
+
+
+def preparation_settings(operator: Operator) -> list[str]:
+    """The settings that list preparation steps to refit per fold (ADR-0047)."""
+    properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
+    return [
+        key
+        for key, schema in properties.items()
+        if isinstance(schema, Mapping) and schema.get("x-sprisk-preparation") is True
+    ]
+
+
+def _fold_step(step: Mapping[str, Any], preparations: Mapping[str, CheckedFunction]) -> FoldStep:
+    """Preparation step `{operator, params}` as a fold transformer, once its params are ones
+    it accepts. Only an operator whose manifest says it fits on train can be one."""
+    ref = step["operator"]
+    found = preparations.get(ref)
+    if found is None:
+        raise OperatorError(
+            "unknown_preparation", f"{ref} is not a step this worker can refit per fold"
+        )
+    _check(ref, step["params"], found)
+    return FoldStep(found.build, dict(step["params"]))
+
+
+def _check(ref: str, params: Mapping[str, Any], function: CheckedFunction) -> None:
     errors = sorted(
-        e.message for e in Draft202012Validator(model.params_schema).iter_errors(params)
+        e.message for e in Draft202012Validator(function.params_schema).iter_errors(params)
     )
     if errors:
         raise OperatorError("invalid_params", f"{ref}: {'; '.join(errors)}")
-    return model.build
 
 
 def named_ports(operator: Operator, side: str) -> str | None:
