@@ -48,6 +48,9 @@
 | [0044](0044-model-shortlist-and-cross-validated-selection.md) | Models are shortlisted by a rule and chosen by cross-validation | Accepted |
 | [0045](0045-rule-manifests-hold-only-what-the-system-uses.md) | A rule manifest holds only what the system uses | Accepted |
 | [0046](0046-comparing-a-shortlist.md) | How a shortlist is compared | Accepted |
+| [0047](0047-embedded-and-resource-constrained-targets.md) | Embedded and resource-constrained targets in methodology and deployment | Proposed |
+| [0048](0048-copilot-via-subscription-bridges-and-local-models.md) | Copilot chat via subscription CLI bridges and local models | Proposed |
+| [0049](0049-remote-jupyter-and-colab-kernel-execution.md) | Remote Jupyter and Google Colab kernel execution for deep learning | Proposed |
 
 ## Open questions (arch doc §17)
 
