@@ -182,6 +182,12 @@ fn fold_by(
     };
     let mut by = serde_json::Map::new();
     if operator.starts_with("sprisk.validation.temporal_split@") {
+        if split.params.contains_key("group_column") {
+            return Err(ResolveError::Selection(format!(
+                "split step {} keeps entities apart over time, which time-ordered folds would mix; such a flow cannot be compared yet",
+                split.id.as_str()
+            )));
+        }
         by.insert("time_column".into(), column("time_column")?);
         Ok((by, 1))
     } else if operator.starts_with("sprisk.validation.group_split@") {

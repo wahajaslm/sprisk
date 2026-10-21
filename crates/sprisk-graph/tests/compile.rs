@@ -54,9 +54,20 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
     );
     shift["description"] = json!(about);
     shift["fits_on_train"] = json!(true);
+    let mut noisy = shift.clone();
+    noisy["id"] = json!("sprisk.clean.noisy@1.0.0");
+    noisy["effects"] = json!("nondeterministic");
+    let mut reader = shift.clone();
+    reader["id"] = json!("sprisk.clean.reader@1.0.0");
+    reader["params_schema"] = json!({
+        "type": "object",
+        "properties": { "lookup": { "type": "string", "x-sprisk-local-path": true } }
+    });
     let ops = [
         model,
         shift,
+        noisy,
+        reader,
         operator(
             "sprisk.ml.compare@1.0.0",
             &[("train", "table")],

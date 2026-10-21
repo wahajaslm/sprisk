@@ -112,23 +112,113 @@ impl SqliteStore {
         Ok(())
     }
 
-    /// The newest comparison of a proposal for `step` of `pipeline` (ADR-0047), if one was built.
-    pub async fn comparison_for(
+    /// The model selection of `step` of `pipeline` (ADR-0047): its comparison, and its run
+    /// once one was claimed.
+    pub async fn selection_for(
         &self,
         pipeline: &PipelineVersionId,
         step: &NodeId,
-    ) -> Result<Option<PipelineVersion>, StoreError> {
-        let body: Option<String> = sqlx::query_scalar(
-            "SELECT v.body FROM pipeline_versions v \
-             JOIN methodology_proposals p ON p.id = v.compares_proposal_id \
-             WHERE p.pipeline_version_id = ? AND p.subject_node_id = ? \
-             ORDER BY v.id DESC LIMIT 1",
+    ) -> Result<Option<(PipelineVersion, Option<Run>)>, StoreError> {
+        let row: Option<(String, Option<String>)> = sqlx::query_as(
+            "SELECT v.body, r.body FROM model_selections s \
+             JOIN pipeline_versions v ON v.id = s.comparison_id \
+             LEFT JOIN runs r ON r.id = s.run_id \
+             WHERE s.pipeline_version_id = ? AND s.node_id = ?",
         )
         .bind(pipeline.as_str())
         .bind(step.as_str())
         .fetch_optional(&self.pool)
         .await?;
-        Ok(body.map(|b| serde_json::from_str(&b)).transpose()?)
+        let Some((comparison, run)) = row else {
+            return Ok(None);
+        };
+        let run = run.map(|r| serde_json::from_str(&r)).transpose()?;
+        Ok(Some((serde_json::from_str(&comparison)?, run)))
+    }
+
+    /// Stores `comparison` as the model selection of `step` of `pipeline`, unless another
+    /// request stored one first: then that one is kept and this one is never stored. Gives the
+    /// kept comparison and whether it is this one.
+    pub async fn insert_selection(
+        &self,
+        pipeline: &PipelineVersionId,
+        step: &NodeId,
+        comparison: &PipelineVersion,
+    ) -> Result<(PipelineVersion, bool), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "INSERT INTO pipeline_versions (id, project_id, compares_proposal_id, body) VALUES (?, ?, ?, ?)",
+        )
+        .bind(comparison.id.as_str())
+        .bind(comparison.project_id.as_str())
+        .bind(comparison.compares.as_ref().map(|p| p.as_str()))
+        .bind(to_json(comparison)?)
+        .execute(&mut *tx)
+        .await?;
+        let claimed = sqlx::query(
+            "INSERT INTO model_selections (pipeline_version_id, node_id, comparison_id) VALUES (?, ?, ?) \
+             ON CONFLICT (pipeline_version_id, node_id) DO NOTHING",
+        )
+        .bind(pipeline.as_str())
+        .bind(step.as_str())
+        .bind(comparison.id.as_str())
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            == 1;
+        if !claimed {
+            tx.rollback().await?;
+            let (kept, _) = self.selection_for(pipeline, step).await?.ok_or_else(|| {
+                StoreError::Conflict(format!("selection of {} lost", step.as_str()))
+            })?;
+            return Ok((kept, false));
+        }
+        tx.commit().await?;
+        Ok((comparison.clone(), true))
+    }
+
+    /// Stores `run` as the selection's run, unless one was claimed first: then that one is
+    /// given back and `run` is never stored. The caller starts the run only if it gets `run`.
+    pub async fn claim_selection_run(
+        &self,
+        pipeline: &PipelineVersionId,
+        step: &NodeId,
+        run: &Run,
+    ) -> Result<Run, StoreError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "INSERT INTO runs (id, project_id, pipeline_version_id, status, body) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(run.id.as_str())
+        .bind(run.project_id.as_str())
+        .bind(run.pipeline_version_id.as_str())
+        .bind(run.status.to_string())
+        .bind(to_json(run)?)
+        .execute(&mut *tx)
+        .await?;
+        let claimed = sqlx::query(
+            "UPDATE model_selections SET run_id = ? \
+             WHERE pipeline_version_id = ? AND node_id = ? AND run_id IS NULL",
+        )
+        .bind(run.id.as_str())
+        .bind(pipeline.as_str())
+        .bind(step.as_str())
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            == 1;
+        if !claimed {
+            tx.rollback().await?;
+            return match self.selection_for(pipeline, step).await? {
+                Some((_, Some(kept))) => Ok(kept),
+                _ => Err(StoreError::Conflict(format!(
+                    "no selection of {} to run",
+                    step.as_str()
+                ))),
+            };
+        }
+        tx.commit().await?;
+        Ok(run.clone())
     }
 
     /// The version comparing `proposal`'s shortlist (ADR-0046), if one was built.
@@ -179,6 +269,17 @@ impl SqliteStore {
         )
         .bind(pattern)
         .bind(proposal.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(found.is_some())
+    }
+
+    /// Whether a run of `version` succeeded.
+    pub async fn has_succeeded_run(&self, version: &PipelineVersionId) -> Result<bool, StoreError> {
+        let found: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM runs WHERE pipeline_version_id = ? AND status = 'succeeded' LIMIT 1",
+        )
+        .bind(version.as_str())
         .fetch_optional(&self.pool)
         .await?;
         Ok(found.is_some())

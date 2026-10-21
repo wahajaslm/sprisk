@@ -456,9 +456,13 @@ fn named_preparations<'r>(
             let Some(operator) = step.get("operator").and_then(|v| v.as_str()) else {
                 continue;
             };
-            let Some((found, digest)) = registry
-                .resolve(operator)
-                .filter(|(o, _)| o.fits_on_train == Some(true))
+            // Each fold runs it again, with no approval and no data-root check of its own.
+            let foldable = |o: &Operator| {
+                o.fits_on_train == Some(true)
+                    && o.effects == sprisk_contracts::Effects::Pure
+                    && !properties(o).any(|(_, v)| v.get("x-sprisk-local-path").is_some())
+            };
+            let Some((found, digest)) = registry.resolve(operator).filter(|(o, _)| foldable(o))
             else {
                 errors.push(CompileError::NotAPreparation {
                     node: node.to_owned(),

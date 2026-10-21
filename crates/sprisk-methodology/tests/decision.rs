@@ -1160,3 +1160,35 @@ fn a_comparison_after_a_temporal_or_group_split_folds_the_same_way() {
         assert_eq!(cv["params"]["repeats"], repeats, "{split}");
     }
 }
+
+#[test]
+fn a_comparison_refuses_folds_it_cannot_make_faithfully() {
+    for (operator, params, why) in [
+        (
+            // Time folds would put one entity on both sides; the split keeps them apart.
+            "sprisk.validation.temporal_split@1.0.0",
+            json!({ "time_column": "signup", "group_column": "customer", "test_fraction": 0.2 }),
+            "keeps entities apart over time, which time-ordered folds would mix",
+        ),
+        (
+            "sprisk.validation.group_split@1.0.0",
+            json!({ "test_fraction": 0.2 }),
+            "split step split names no group_column",
+        ),
+        (
+            "sprisk.validation.stratified_split@1.0.0",
+            json!({}),
+            "has no fold rule; compare knows random, temporal and group splits",
+        ),
+    ] {
+        let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+        pipeline["nodes"][1]["operator"] = json!(operator);
+        pipeline["nodes"][1]["params"] = params;
+        let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+        let proposal = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
+
+        let err = compare(&pipeline, &proposal).unwrap_err();
+        assert!(matches!(err, ResolveError::Selection(_)), "{err}");
+        assert!(err.to_string().contains(why), "{operator}: {err}");
+    }
+}

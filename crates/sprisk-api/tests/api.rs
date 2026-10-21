@@ -2414,8 +2414,11 @@ async fn another_model_can_be_tried_as_a_branch_and_test_row_reuse_is_recorded()
         json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-branch-linear" });
     let (status, linear) = call(&api.app, "POST", &uri, Some(first)).await;
     assert_eq!(status, StatusCode::CREATED, "{linear}");
-    assert!(
-        linear["decision"].get("test_rows_seen_by").is_none(),
+    // The compared flow ran first, so its model had already scored the test rows.
+    let base = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";
+    assert_eq!(
+        linear["decision"]["test_rows_seen_by"],
+        json!([base]),
         "{linear}"
     );
     let linear_version = linear["pipeline"]["id"].as_str().unwrap();
@@ -2432,6 +2435,37 @@ async fn another_model_can_be_tried_as_a_branch_and_test_row_reuse_is_recorded()
     );
     assert_eq!(
         dummy["decision"]["test_rows_seen_by"],
-        json!([linear_version])
+        json!([base, linear_version])
     );
+}
+
+#[tokio::test]
+async fn two_requests_at_once_share_one_model_selection_and_one_run() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+
+    let ((one, first), (two, second)) =
+        tokio::join!(select_model(&api, "model"), select_model(&api, "model"));
+
+    assert!(one.is_success() && two.is_success(), "{first} {second}");
+    for part in ["proposal", "comparison", "run"] {
+        assert_eq!(first[part]["id"], second[part]["id"], "{part}");
+    }
+    let comparison = first["comparison"]["id"].as_str().unwrap();
+    let (_, runs) = call(
+        &api.app,
+        "GET",
+        &format!("/runs?pipeline_version_id={comparison}"),
+        None,
+    )
+    .await;
+    assert_eq!(runs.as_array().unwrap().len(), 1, "{runs}");
+    let (_, versions) = call(&api.app, "GET", "/pipeline_versions", None).await;
+    let comparisons = versions
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|v| v.get("compares").is_some())
+        .count();
+    assert_eq!(comparisons, 1, "{versions}");
 }

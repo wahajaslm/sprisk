@@ -1177,7 +1177,7 @@ async fn apply_methodology(
     if let Some((_, artifact)) = &selection {
         decision_json["selection_id"] = json!(artifact);
     }
-    let seen = test_rows_seen_by(&state, &proposal.id).await?;
+    let seen = test_rows_seen_by(&state, &proposal).await?;
     if !seen.is_empty() {
         decision_json["test_rows_seen_by"] = json!(seen);
     }
@@ -1218,21 +1218,20 @@ async fn check_current(state: &AppState, proposal: &DecisionProposal) -> Result<
     Ok(())
 }
 
-/// The versions applied from `proposal` that have run, so have scored its test rows: a
-/// later choice was made after seeing them (arch doc §11).
+/// The versions whose runs had scored `proposal`'s test rows before this choice: the flow it
+/// was made on, and each branch already applied from it, once a run of theirs succeeded
+/// (arch doc §11).
 async fn test_rows_seen_by(
     state: &AppState,
-    proposal: &MethodologyProposalId,
+    proposal: &DecisionProposal,
 ) -> Result<Vec<PipelineVersionId>, ApiError> {
+    let mut versions = vec![proposal.pipeline_version_id.clone()];
+    for earlier in state.store.decisions_of(&proposal.id).await? {
+        versions.push(earlier.pipeline_version_id);
+    }
     let mut seen = Vec::new();
-    for earlier in state.store.decisions_of(proposal).await? {
-        let version = earlier.pipeline_version_id;
-        if !state
-            .store
-            .list_runs(Some(&version), None, 1)
-            .await?
-            .is_empty()
-        {
+    for version in versions {
+        if state.store.has_succeeded_run(&version).await? {
             seen.push(version);
         }
     }
@@ -1301,11 +1300,28 @@ async fn build_comparison(
     if let Some(saved) = state.store.comparison_of(&proposal.id).await? {
         return Ok((saved, false));
     }
+    let pipeline = comparison_version(state, proposal).await?;
+    match state.store.insert_pipeline_version(&pipeline).await {
+        Ok(()) => Ok((pipeline, true)),
+        // A concurrent request stored this proposal's comparison first.
+        Err(StoreError::Conflict(why)) => match state.store.comparison_of(&proposal.id).await? {
+            Some(saved) => Ok((saved, false)),
+            None => Err(ApiError::Store(StoreError::Conflict(why))),
+        },
+        Err(other) => Err(other.into()),
+    }
+}
+
+/// `proposal`'s comparison, built and checked but not stored.
+async fn comparison_version(
+    state: &AppState,
+    proposal: &DecisionProposal,
+) -> Result<PipelineVersion, ApiError> {
+    check_current(state, proposal).await?;
     let base = state
         .store
         .get_pipeline_version(&proposal.pipeline_version_id)
         .await?;
-    check_current(state, proposal).await?;
     let question = state
         .store
         .get_question_version(&proposal.question_version_id)
@@ -1335,15 +1351,7 @@ async fn build_comparison(
     .map_err(|error| ApiError::Internal(error.to_string()))?;
     let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     check_local_paths(&plan, &state.data_roots)?;
-    match state.store.insert_pipeline_version(&pipeline).await {
-        Ok(()) => Ok((pipeline, true)),
-        // A concurrent request stored this proposal's comparison first.
-        Err(StoreError::Conflict(why)) => match state.store.comparison_of(&proposal.id).await? {
-            Some(saved) => Ok((saved, false)),
-            None => Err(ApiError::Store(StoreError::Conflict(why))),
-        },
-        Err(other) => Err(other.into()),
-    }
+    Ok(pipeline)
 }
 
 /// How Sprisk is choosing the model of `node_id` (ADR-0047): its shortlist, the comparison
@@ -1355,44 +1363,52 @@ async fn select_model(
 ) -> Result<(StatusCode, Json<ModelSelection>), ApiError> {
     let pipeline_id: PipelineVersionId = id(&raw)?;
     let step: sprisk_contracts::NodeId = id(&node_id)?;
-    let (proposal, comparison, built) =
-        match state.store.comparison_for(&pipeline_id, &step).await? {
-            Some(comparison) => {
-                let proposal_id = comparison.compares.clone().ok_or_else(|| {
-                    ApiError::Internal(format!("{} compares no proposal", comparison.id.as_str()))
-                })?;
-                let proposal = state.store.get_methodology_proposal(&proposal_id).await?;
-                (proposal, comparison, false)
+    // Each part is claimed once in the store, so concurrent requests share one proposal's
+    // comparison and one run of it.
+    let (comparison, run, built) = match state.store.selection_for(&pipeline_id, &step).await? {
+        Some((comparison, run)) => (comparison, run, false),
+        None => {
+            let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
+            let shortlisted = pipeline
+                .nodes
+                .iter()
+                .find(|n| n.id == step)
+                .and_then(|n| state.rules.rule_for_operator(n.operator.as_str()))
+                .is_some_and(|r| r.selection == Some(MethodologyRuleSelection::Shortlist));
+            if !shortlisted {
+                return Err(ApiError::BadRequest {
+                    code: "not_a_model_step",
+                    message: format!("no shortlist rule decides step {node_id}"),
+                });
             }
-            None => {
-                let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
-                let shortlisted = pipeline
-                    .nodes
-                    .iter()
-                    .find(|n| n.id == step)
-                    .and_then(|n| state.rules.rule_for_operator(n.operator.as_str()))
-                    .is_some_and(|r| r.selection == Some(MethodologyRuleSelection::Shortlist));
-                if !shortlisted {
-                    return Err(ApiError::BadRequest {
-                        code: "not_a_model_step",
-                        message: format!("no shortlist rule decides step {node_id}"),
-                    });
-                }
-                let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
-                let (comparison, _) = build_comparison(&state, &proposal).await?;
-                (proposal, comparison, true)
-            }
-        };
-    let latest = state
-        .store
-        .list_runs(Some(&comparison.id), None, 1)
-        .await?
-        .into_iter()
-        .next();
-    let (run, started) = match latest {
-        Some(run) => (run, false),
-        None => (start_run(&state, comparison.clone(), None).await?, true),
+            let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
+            let made = comparison_version(&state, &proposal).await?;
+            let (comparison, built) = state
+                .store
+                .insert_selection(&pipeline_id, &step, &made)
+                .await?;
+            (comparison, None, built)
+        }
     };
+    let (run, started) = match run {
+        Some(run) => (run, false),
+        None => {
+            let (queued, plan) = queued_run(&state, &comparison).await?;
+            let run = state
+                .store
+                .claim_selection_run(&pipeline_id, &step, &queued)
+                .await?;
+            let started = run.id == queued.id;
+            if started {
+                spawn_run(&state, &run, comparison.clone(), plan, None);
+            }
+            (run, started)
+        }
+    };
+    let proposal_id = comparison.compares.clone().ok_or_else(|| {
+        ApiError::Internal(format!("{} compares no proposal", comparison.id.as_str()))
+    })?;
+    let proposal = state.store.get_methodology_proposal(&proposal_id).await?;
     let status = if built || started {
         StatusCode::CREATED
     } else {
@@ -1560,7 +1576,34 @@ async fn start_run(
     }
     let run: Run = parse(&doc.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?;
     state.store.insert_run(&run).await?;
+    spawn_run(state, &run, pipeline, plan, reuse);
+    Ok(run)
+}
 
+/// A queued run of `pipeline`, checked and compiled but not yet stored.
+async fn queued_run(state: &AppState, pipeline: &PipelineVersion) -> Result<(Run, Plan), ApiError> {
+    let plan = compile(pipeline, &state.registry).map_err(ApiError::Compile)?;
+    check_local_paths(&plan, &state.data_roots)?;
+    let doc = json!({
+        "schema_version": "sprisk.run/v1",
+        "id": format!("run_{}", ulid::Ulid::new()),
+        "project_id": pipeline.project_id,
+        "pipeline_version_id": pipeline.id,
+        "status": "queued",
+        "created_at": sprisk_core::time::now(),
+    });
+    let run = parse(&doc.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    Ok((run, plan))
+}
+
+/// Runs a stored run in the background, reusing `reuse` up to the first changed step.
+fn spawn_run(
+    state: &AppState,
+    run: &Run,
+    pipeline: PipelineVersion,
+    plan: Plan,
+    reuse: Option<RunId>,
+) {
     // Local mode runs in this process; the database stays the truth, so a restart
     // can resume the run (backlog: separate runner process).
     let run_id = run.id.clone();
@@ -1589,7 +1632,6 @@ async fn start_run(
             tracing::error!(run = run_id.as_str(), error = %e, "run stopped");
         }
     });
-    Ok(run)
 }
 
 async fn get_run(
