@@ -2,13 +2,13 @@
 # Sprisk Methodology Rule: Numerical Feature Scaling
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.feature_scaling@2.0.0
+id: methodology.supervised.feature_scaling@3.0.0
 name: "Feature Scaling Strategy"
 stage: features
 decides: features.scaling_strategy
 status: active
 applies_to: [sprisk.clean.scale]
-reads: [flow.model_families, flow.models_hidden, flow.models_standardize, flow.other_readers, column.*.data_type, column.*.kurtosis, column.*.outlier_share, column.*.iqr]
+reads: [flow.model_families, flow.models_hidden, flow.other_readers, column.*.data_type, column.*.kurtosis, column.*.outlier_share, column.*.iqr]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -34,8 +34,8 @@ alternatives:
   - id: no_scaling
     label: No Scaling Step (Models Downstream Do Not Need It)
     description: Leave the features as they are; scaling here would not change the models downstream.
-    rationale: A model that standardises its inputs on the train rows undoes any earlier affine scaling,
-      and trees split on rank order, which scaling keeps. Scaling here adds work with no effect.
+    rationale: Trees split on rank order, which scaling keeps, and a model that ignores its features
+      is unchanged by it. Scaling here adds work with no effect.
     action:
       type: remove_node
   - id: robust_scaling
@@ -75,5 +75,7 @@ examples:
     picks: robust_scaling
   - given: { column.age.data_type: Float64, column.age.kurtosis: 0.2, column.age.outlier_share: 0.0, column.age.iqr: 10.0 }
     picks: standard_scaling
-  - given: { flow.model_families: linear, flow.models_hidden: none, flow.models_standardize: all, column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
+  - given: { flow.model_families: tree_ensemble, flow.models_hidden: none, column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
     picks: no_scaling
+  - given: { flow.model_families: linear, flow.models_hidden: none, column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
+    picks: robust_scaling

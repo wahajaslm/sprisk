@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.linear_model@2.0.0
 capability_class: estimator
-model: { family: linear, tasks: [classification, regression], prepares: [], estimator: "sprisk_ml.models:linear_model_estimator", complexity: 1 }
+model: { family: linear, tasks: [classification, regression], estimator: "sprisk_ml.models:linear_model_estimator", complexity: 1 }
 description: Logistic (classification) or linear (regression) regression. It fits only the model; Clean steps before it encode text, fill gaps and scale.
 entrypoint: sprisk_ml.models:linear_model
 notebook_code: sprisk_ml.models:linear_model_as_code

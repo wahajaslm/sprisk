@@ -972,9 +972,9 @@ fn keeps_train_rows(registry: &Registry, node: &sprisk_contracts::Node) -> bool 
 }
 
 /// Whether a step between a rule's step and a model keeps what the flow facts say about
-/// the model: it only drops rows, or rescales affinely and fills from train statistics, so
-/// the model's own standardising and filling still apply. A zero fill is not affine: zero
-/// is another value once the column is scaled.
+/// the model: it only drops rows, or is a Clean step fit on train rows (rescale, fill from
+/// train statistics, encode), so the model still sees the rule's columns up to an affine
+/// change. A zero fill is not: zero is another value once the column is scaled.
 fn keeps_flow_facts(registry: &Registry, node: &sprisk_contracts::Node) -> bool {
     let zero_fill = node.operator.as_str().starts_with("sprisk.clean.impute@")
         && node.params.get("method").and_then(|m| m.as_str()) == Some("zero");

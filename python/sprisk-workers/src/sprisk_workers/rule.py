@@ -129,8 +129,6 @@ def profile_evidence(label: str, value: str) -> dict[str, Any]:
 FLOW_LABELS = {
     "flow.model_families": "Model families downstream",
     "flow.models_hidden": "Models downstream behind a step the rules cannot see",
-    "flow.models_fill_gaps": "Models downstream that fill their own gaps",
-    "flow.models_standardize": "Models downstream that standardise their own inputs",
     "flow.other_readers": "Other steps reading this step's output",
     "step.method": "This step's method",
 }

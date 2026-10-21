@@ -240,13 +240,6 @@ export type CapabilityClass =
  */
 export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
 /**
- * fill_gaps: fills missing values, numbers and text. standardize: centres and scales numbers, so any earlier affine scaling has no effect.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "ModelPreparation".
- */
-export type ModelPreparation = "fill_gaps" | "standardize";
-/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "PortKind".
  */
@@ -1724,7 +1717,7 @@ export interface Operator {
   resources: Resources;
 }
 /**
- * Set on every operator that fits a model on rows, for preparation rules: how its fit reacts to its inputs and what it prepares itself.
+ * Set on every operator that fits a model on rows, for preparation rules: how its fit reacts to its inputs. A model fits only the model; Clean steps prepare its inputs (ADR-0056).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "OperatorModel".
@@ -1739,15 +1732,11 @@ export interface OperatorModel {
    */
   tasks?: TaskType[];
   /**
-   * Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.
-   */
-  prepares: ModelPreparation[];
-  /**
    * How flexible the model is, for the one-SE rule (ADR-0050): of the models within one standard error of the best, the one with the lowest complexity is recommended. 0 ignores its features; linear models are 1; tree ensembles 2. Set on every supervised model.
    */
   complexity?: number;
   /**
-   * Python `module:function` returning the model unfitted, given `schema` (the feature columns' types) and its params except target and features, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model.
+   * Python `module:function` returning the model unfitted, given its params except target, features and costs, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model.
    */
   estimator?: string;
   /**

@@ -15,10 +15,8 @@ pub const FACTS: &[&str] = &[
     "question.costs.false_positive",
     // Families of the models seen downstream, joined by ", "; featureless when none declares one.
     "flow.model_families",
-    // all, some or none: of the models downstream that are hidden, fill gaps, standardise.
+    // all, some or none: of the models downstream, those hidden behind another step.
     "flow.models_hidden",
-    "flow.models_fill_gaps",
-    "flow.models_standardize",
     // The analysis or code steps downstream, which read the step's output.
     "flow.other_readers",
     // A text setting of the step itself, e.g. step.method.

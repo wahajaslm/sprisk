@@ -620,11 +620,6 @@ class Entrypoint(RootModel[str]):
     root: Annotated[str, Field(pattern="^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*:[a-z_][a-z0-9_]*$")]
 
 
-class ModelPreparation(StrEnum):
-    fill_gaps = "fill_gaps"
-    standardize = "standardize"
-
-
 class ModelFamily(StrEnum):
     tree_ensemble = "tree_ensemble"
     linear = "linear"
@@ -1660,12 +1655,6 @@ class OperatorModel(StrictModel):
             description="The supervised tasks the model fits, so a shortlist rule can offer it (ADR-0044)."
         ),
     ] = None
-    prepares: Annotated[
-        list[ModelPreparation],
-        Field(
-            description="Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are."
-        ),
-    ]
     complexity: Annotated[
         int | None,
         Field(
@@ -1676,7 +1665,7 @@ class OperatorModel(StrictModel):
     estimator: Annotated[
         Entrypoint | None,
         Field(
-            description="Python `module:function` returning the model unfitted, given `schema` (the feature columns' types) and its params except target and features, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model."
+            description="Python `module:function` returning the model unfitted, given its params except target, features and costs, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model."
         ),
     ] = None
     search: Annotated[

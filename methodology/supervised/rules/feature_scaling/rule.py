@@ -1,8 +1,8 @@
 """Which scaling a step uses, from the models downstream and the train rows' tails (ADR-0042).
 
-Scaling here has no effect when every model downstream standardises its own inputs, or when
-only trees are downstream. Otherwise heavy tails or outliers distort the mean and SD, so
-they get median and IQR scaling.
+A model fits only the model (ADR-0056), so it takes its inputs as they are. Scaling here has
+no effect when only trees, or only models that ignore their features, are downstream.
+Otherwise heavy tails or outliers distort the mean and SD, so they get median and IQR scaling.
 """
 
 from typing import Any
@@ -24,7 +24,6 @@ from sprisk_workers.rule import (
 
 FAMILIES = "flow.model_families"
 HIDDEN = "flow.models_hidden"
-STANDARDIZE = "flow.models_standardize"
 READERS = "flow.other_readers"
 
 
@@ -32,7 +31,6 @@ def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
     families = model_families(observation)
     hidden = flow_fact(observation, HIDDEN)
-    standardize = flow_fact(observation, STANDARDIZE)
     columns = step_columns(observation)
     kurtosis = {c: v for c in columns if (v := measured(observation, c, "kurtosis")) is not None}
     outliers = {
@@ -51,7 +49,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
         if kurtosis.get(c, 0.0) > s["outlier_kurtosis_threshold"]
         or outliers.get(c, 0.0) >= s["outlier_share_threshold"]
     ]
-    no_effect = _no_effect(families, hidden, standardize)
+    no_effect = _no_effect(families, hidden)
 
     if text or flat:
         why = (
@@ -80,10 +78,10 @@ def decide(observation: RuleObservation) -> RuleDecision:
             else "Available, but outliers inflate the SD and squash the other values.",
             {"columns": columns, "method": "z_score"},
         )
-    none = ask_readers(observation, _no_scaling(families, hidden, standardize, no_effect))
+    none = ask_readers(observation, _no_scaling(families, hidden, no_effect))
     maxabs = not_applicable("maxabs_scaling_sparse", "The scale step has no max-abs method.")
 
-    evidence = flow_evidence(observation, [FAMILIES, HIDDEN, STANDARDIZE, READERS])
+    evidence = flow_evidence(observation, [FAMILIES, HIDDEN, READERS])
     evidence += [profile_evidence(f"{c} excess kurtosis", f"{v:.2f}") for c, v in kurtosis.items()]
     evidence += [profile_evidence(f"{c} outlier share", f"{v:.1%}") for c, v in outliers.items()]
     evidence += [profile_evidence(f"{c} IQR", "0") for c in flat_iqr]
@@ -107,14 +105,8 @@ def _robust(spread: list[str], flat_iqr: list[str], reason: str) -> dict[str, An
     return applicable("robust_scaling", reason, {"columns": spread, "method": "robust"})
 
 
-def _no_effect(families: set[str], hidden: str | None, standardize: str | None) -> str | None:
+def _no_effect(families: set[str], hidden: str | None) -> str | None:
     """Why scaling here cannot change the models downstream, or None when it can."""
-    if standardize == "all":
-        # Standardising a*x + b gives the same values as standardising x, for any a > 0.
-        return (
-            "Every model downstream standardises its inputs on the train rows, which undoes "
-            "any scaling done here."
-        )
     if hidden != "none":
         return None
     if families == {"tree_ensemble"}:
@@ -124,17 +116,19 @@ def _no_effect(families: set[str], hidden: str | None, standardize: str | None) 
     return None
 
 
-def _no_scaling(
-    families: set[str], hidden: str | None, standardize: str | None, no_effect: str | None
-) -> dict[str, Any]:
+def _no_scaling(families: set[str], hidden: str | None, no_effect: str | None) -> dict[str, Any]:
     if no_effect:
         # Removing the step needs no params (ADR-0043).
         return {"id": "no_scaling", "applicability": "applicable", "reason": no_effect}
-    if standardize is None:
+    if hidden is None:
         why = "Scaling may matter: no model is downstream of this step yet."
-    elif hidden == "none" and standardize == "none" and len(families) == 1:
-        (family,) = families
-        why = f"The {family} model downstream takes its inputs as they are, so scaling matters."
+    elif hidden != "none":
+        why = "A model downstream sits behind a step the rules cannot see, so scaling may matter."
     else:
-        why = "Not every model downstream is known to standardise its inputs, so scaling matters."
+        scaled = sorted(families - {"tree_ensemble", "featureless"})
+        one = len(scaled) == 1
+        why = (
+            f"The {' and '.join(scaled)} {'model' if one else 'models'} downstream "
+            f"{'takes its' if one else 'take their'} inputs as they are, so scaling matters."
+        )
     return not_applicable("no_scaling", why)

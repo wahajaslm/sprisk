@@ -113,7 +113,7 @@ MODEL = """
 schema_version: sprisk.operator/v1
 id: sprisk.ml.linear_model@2.0.0
 capability_class: estimator
-model: {{ family: linear, tasks: [classification], prepares: [], estimator: "{estimator}" }}
+model: {{ family: linear, tasks: [classification], estimator: "{estimator}" }}
 entrypoint: sprisk_ml.models:linear_model
 inputs: [{{ name: train, kind: table }}]
 outputs: [{{ name: model, kind: model }}]

@@ -107,8 +107,8 @@ fn yaml_null_is_rejected() {
 #[test]
 fn a_supervised_model_without_an_estimator_or_complexity_names_the_file() {
     for model in [
-        "model: { tasks: [classification], prepares: [], complexity: 1 }\n",
-        "model: { tasks: [classification], prepares: [], estimator: \"m:build\" }\n",
+        "model: { tasks: [classification], complexity: 1 }\n",
+        "model: { tasks: [classification], estimator: \"m:build\" }\n",
     ] {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "bad/manifest.yaml", &format!("{SPLIT}{model}"));
@@ -308,7 +308,7 @@ resources: { cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }
 
 fn forest_searching(search: &str) -> String {
     format!(
-        "{FOREST}model: {{ family: tree_ensemble, tasks: [classification], prepares: [], estimator: \"m:build\", complexity: 2, search: {search} }}\n"
+        "{FOREST}model: {{ family: tree_ensemble, tasks: [classification], estimator: \"m:build\", complexity: 2, search: {search} }}\n"
     )
 }
 

@@ -9,9 +9,9 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
     CapabilityClass, DatasetProfile, DecisionProposal, Edge, MethodologyRule,
-    MethodologyRuleSelection, ModelPreparation, Node, Operator, OperatorModel, PipelineVersion,
-    PortRef, QuestionVersion, RuleActionType, RuleDecision,
-    RuleDecisionAlternativesItemApplicability, RuleObservation, TaskType, parse,
+    MethodologyRuleSelection, Node, Operator, OperatorModel, PipelineVersion, PortRef,
+    QuestionVersion, RuleActionType, RuleDecision, RuleDecisionAlternativesItemApplicability,
+    RuleObservation, TaskType, parse,
 };
 
 use crate::{ResolveError, facts};
@@ -74,8 +74,6 @@ fn question_fact(question: &Value, path: &str) -> Option<Value> {
 /// - `flow.model_families`: the families of the models it can see, sorted and joined by
 ///   `, `, or `featureless` when none of them declares one;
 /// - `flow.models_hidden`: whether `all`, `some` or `none` of the models are hidden;
-/// - `flow.models_fill_gaps`, `flow.models_standardize`: whether `all`, `some` or `none` of
-///   them do that preparation themselves. A hidden model counts as doing none;
 /// - `flow.other_readers`: the analysis or code steps downstream, which read the columns,
 ///   sorted and joined by `, `. Removing the step would change what they see;
 /// - `step.<name>`: each text setting of the step itself, as set, so a rule knows what it
@@ -137,16 +135,6 @@ pub fn flow_facts<'a>(
         facts.insert("flow.model_families".into(), measured(&families));
     }
     facts.insert("flow.models_hidden".into(), measured(share(hidden)));
-    for (preparation, name) in [
-        (ModelPreparation::FillGaps, "flow.models_fill_gaps"),
-        (ModelPreparation::Standardize, "flow.models_standardize"),
-    ] {
-        let doing = seen
-            .iter()
-            .filter(|m| m.prepares.contains(&preparation))
-            .count();
-        facts.insert(name.into(), measured(share(doing)));
-    }
     Ok(facts)
 }
 

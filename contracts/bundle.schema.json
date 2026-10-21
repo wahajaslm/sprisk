@@ -2623,11 +2623,8 @@
     },
     "OperatorModel": {
       "type": "object",
-      "description": "Set on every operator that fits a model on rows, for preparation rules: how its fit reacts to its inputs and what it prepares itself.",
+      "description": "Set on every operator that fits a model on rows, for preparation rules: how its fit reacts to its inputs. A model fits only the model; Clean steps prepare its inputs (ADR-0056).",
       "additionalProperties": false,
-      "required": [
-        "prepares"
-      ],
       "properties": {
         "family": {
           "$ref": "#/$defs/ModelFamily",
@@ -2640,13 +2637,6 @@
             "$ref": "#/$defs/TaskType"
           }
         },
-        "prepares": {
-          "type": "array",
-          "description": "Preparation the model fits on its own train rows, inside the model; empty when it takes its inputs as they are.",
-          "items": {
-            "$ref": "#/$defs/ModelPreparation"
-          }
-        },
         "complexity": {
           "type": "integer",
           "minimum": 0,
@@ -2654,7 +2644,7 @@
         },
         "estimator": {
           "$ref": "#/$defs/Entrypoint",
-          "description": "Python `module:function` returning the model unfitted, given `schema` (the feature columns' types) and its params except target and features, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model."
+          "description": "Python `module:function` returning the model unfitted, given its params except target, features and costs, so cross-validation can refit it per fold (ADR-0044, ADR-0046). Set on every supervised model."
         },
         "search": {
           "type": "array",
@@ -2687,14 +2677,6 @@
     "Entrypoint": {
       "type": "string",
       "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*:[a-z_][a-z0-9_]*$"
-    },
-    "ModelPreparation": {
-      "type": "string",
-      "description": "fill_gaps: fills missing values, numbers and text. standardize: centres and scales numbers, so any earlier affine scaling has no effect.",
-      "enum": [
-        "fill_gaps",
-        "standardize"
-      ]
     },
     "ModelFamily": {
       "type": "string",

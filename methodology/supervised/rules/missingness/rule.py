@@ -1,8 +1,8 @@
 """How a step fills or drops gaps, from the train rows' measured missing shares (ADR-0042).
 
 Fills are fit on train rows only (the impute step's train/test ports). A target is never
-filled, and text cannot be imputed yet, so either means dropping rows. When every model
-downstream fills gaps itself, fit on its train rows, gaps can pass, text included.
+filled, and text cannot be imputed yet, so either means dropping rows. A model fits only the
+model and refuses gaps (ADR-0056), so every gap is filled or dropped here.
 """
 
 from typing import Any
@@ -10,7 +10,6 @@ from typing import Any
 from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_workers.rule import (
     applicable,
-    ask_readers,
     authoritative,
     decision,
     flow_evidence,
@@ -25,12 +24,9 @@ from sprisk_workers.rule import (
     step_columns,
 )
 
-FILL_GAPS = "flow.models_fill_gaps"
-
 
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
-    fills = flow_fact(observation, FILL_GAPS)
     columns = step_columns(observation)
     target_fact = observation.facts.get("question.target")
     target = authoritative(target_fact)
@@ -87,7 +83,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
         target_gaps
         if has_target
         else text_gaps
-        if text and fills != "all"
+        if text
         else "Drops each row with a gap. Simple, but it shrinks and may bias the data.",
         {"columns": columns},
     )
@@ -101,32 +97,22 @@ def decide(observation: RuleObservation) -> RuleDecision:
         if mostly_empty
         else "No column is mostly empty.",
     )
-    if has_target:
-        pass_through = not_applicable("pass_through", target_gaps)
-    elif ask:
-        pass_through = needs_fact("pass_through", ask)
-    else:
-        pass_through = ask_readers(observation, _pass_through(fills, method_now))
 
-    if has_target or may_be_target:
-        recommended = "drop_rows"
-    elif pass_through["applicability"] != "not_applicable":
-        recommended = "pass_through"
-    elif text:
+    if has_target or may_be_target or text:
         recommended = "drop_rows"
     elif skewed:
         recommended = "impute_median"
     else:
         recommended = "impute_mean"
 
-    evidence = flow_evidence(observation, [FILL_GAPS, "flow.other_readers", "step.method"])
+    evidence = flow_evidence(observation, ["step.method"])
     if target_fact and target_fact.value in columns:
         evidence += question_evidence(observation, {"question.target": "Target"})
     evidence += [profile_evidence(f"{c} missing share", f"{share[c]:.1%}") for c in columns]
     return decision(
         observation,
         recommended,
-        [drop_rows, median, mean, mode, drop_column, pass_through],
+        [drop_rows, median, mean, mode, drop_column],
         evidence,
     )
 
@@ -139,32 +125,3 @@ def _impute(
     if ask:
         return needs_fact(id, ask)
     return applicable(id, reason, {"columns": columns, "method": method})
-
-
-def _pass_through(fills: str | None, method: str | None) -> dict[str, Any]:
-    if fills == "all":
-        if method == "zero":
-            return needs_fact(
-                "pass_through",
-                "This step fills gaps with zero, which may mean 'none' here. Confirm that the "
-                "models' own fill may replace it.",
-            )
-        then = (
-            f"its own fill replaces this step's {method} fill."
-            if method
-            else "rows with gaps are kept for it to fill."
-        )
-        # Removing the step needs no params (ADR-0043).
-        return {
-            "id": "pass_through",
-            "applicability": "applicable",
-            "reason": "Every model downstream fills gaps itself, fit on its train rows only; "
-            + then,
-        }
-    if fills is None:
-        why = "Nothing would fill the gaps: no model is downstream of this step yet."
-    elif fills == "none":
-        why = "No model downstream is known to fill gaps itself; fill them here."
-    else:
-        why = "Not every model downstream is known to fill gaps itself; fill them here."
-    return not_applicable("pass_through", why)

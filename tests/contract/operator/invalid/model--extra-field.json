@@ -4,7 +4,6 @@
   "capability_class": "estimator",
   "model": {
     "family": "linear",
-    "prepares": [],
     "fits_on": "train"
   },
   "description": "Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.",

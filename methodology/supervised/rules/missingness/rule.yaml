@@ -2,13 +2,13 @@
 # Sprisk Methodology Rule: Missingness & Imputation Strategy
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.missingness@1.1.0
+id: methodology.supervised.missingness@2.0.0
 name: "Missing Data Treatment Strategy"
 stage: cleaning
 decides: cleaning.missingness_strategy
 status: active
 applies_to: [sprisk.clean.impute, sprisk.clean.drop_missing]
-reads: [flow.models_fill_gaps, flow.other_readers, step.method, question.target, column.*.data_type, column.*.missing_share, column.*.skewness]
+reads: [step.method, question.target, column.*.data_type, column.*.missing_share, column.*.skewness]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -71,13 +71,6 @@ alternatives:
       type: insert_step
       operator: sprisk.clean.select_columns@1.0.0
       placement: before_split
-  - id: pass_through
-    label: No Imputation Here (Models Fill Their Own Gaps)
-    description: Leave the gaps for the models downstream, which fill numbers and text themselves.
-    rationale: Each model downstream fits its fill on its train rows only, so filling here first adds
-      nothing. A target with gaps still means dropping rows, since a label is never filled.
-    action:
-      type: remove_node
 
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------
@@ -94,5 +87,3 @@ examples:
     picks: impute_mean
   - given: { question.target: churned, column.churned.data_type: Int64, column.churned.missing_share: 0.1 }
     picks: drop_rows
-  - given: { question.target: churned, flow.models_fill_gaps: all, column.age.data_type: Float64, column.age.missing_share: 0.1, column.age.skewness: 0.2 }
-    picks: pass_through

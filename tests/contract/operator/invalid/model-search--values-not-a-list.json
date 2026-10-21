@@ -8,9 +8,6 @@
       "classification",
       "regression"
     ],
-    "prepares": [
-      "fill_gaps"
-    ],
     "estimator": "sprisk_ml.models:random_forest_estimator",
     "complexity": 2,
     "search": [

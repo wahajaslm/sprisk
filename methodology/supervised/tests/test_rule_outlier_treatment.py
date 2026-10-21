@@ -59,7 +59,7 @@ def test_clustering_downstream_clips_many_outliers_and_says_why() -> None:
 
 
 def test_mixed_families_clip_many_outliers_for_the_models_they_pull() -> None:
-    d = run(MANY, flow("linear, tree_ensemble", "all", "all"))
+    d = run(MANY, flow("linear, tree_ensemble"))
     assert d["recommended_alternative_id"] == "clip_iqr_fence"
     assert "linear" in alternative(d, "none_tree_or_clean")["reason"]
 
@@ -71,27 +71,27 @@ def test_no_model_downstream_clips_many_outliers_as_before_and_says_so() -> None
 
 
 def test_dbscan_downstream_keeps_outliers_it_marks_as_noise() -> None:
-    d = run(MANY, flow("density_based", "none", "none"))
+    d = run(MANY, flow("density_based"))
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
     assert "noise" in alternative(d, "none_tree_or_clean")["reason"]
 
 
 def test_a_model_behind_dbscan_clips_many_outliers_and_warns_of_a_false_cluster() -> None:
-    d = run(MANY, flow("density_based", "none", "none", hidden="some"))
+    d = run(MANY, flow("density_based", hidden="some"))
     assert d["recommended_alternative_id"] == "clip_iqr_fence"
     assert "behind another step" in alternative(d, "none_tree_or_clean")["reason"]
     assert "false cluster" in alternative(d, "clip_iqr_fence")["reason"]
 
 
 def test_trees_and_dbscan_together_both_keep_outliers() -> None:
-    d = run(MANY, flow("density_based, tree_ensemble", "some", "some"))
+    d = run(MANY, flow("density_based, tree_ensemble"))
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
     keep = alternative(d, "none_tree_or_clean")["reason"]
     assert "rank order" in keep and "noise" in keep
 
 
 def test_models_that_ignore_their_features_keep_the_values() -> None:
-    d = run(MANY, flow("featureless", "all", "all"))
+    d = run(MANY, flow("featureless"))
     assert d["recommended_alternative_id"] == "none_tree_or_clean"
     assert "ignore their features" in alternative(d, "none_tree_or_clean")["reason"]
 
@@ -177,7 +177,7 @@ def test_the_task_is_evidence_only_when_it_was_weighed() -> None:
 
 def test_a_family_with_no_written_reason_fails_loudly() -> None:
     with pytest.raises(KeyError):
-        run(MANY, flow("neural", "all", "all"))
+        run(MANY, flow("neural"))
 
 
 def test_keeping_values_asks_first_while_another_step_reads_the_output() -> None:

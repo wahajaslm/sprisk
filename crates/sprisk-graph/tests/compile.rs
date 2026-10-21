@@ -45,7 +45,8 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
         }),
     );
     model["description"] = json!(about);
-    model["model"] = json!({ "tasks": ["classification"], "prepares": [], "estimator": "ops:build", "complexity": 1 });
+    model["model"] =
+        json!({ "tasks": ["classification"], "estimator": "ops:build", "complexity": 1 });
     let mut shift = operator(
         "sprisk.clean.shift@1.0.0",
         &[("train", "table"), ("test", "table")],

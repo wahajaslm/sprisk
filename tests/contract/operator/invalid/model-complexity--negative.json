@@ -8,10 +8,6 @@
       "classification",
       "regression"
     ],
-    "prepares": [
-      "fill_gaps",
-      "standardize"
-    ],
     "estimator": "sprisk_ml.models:linear_model_estimator",
     "complexity": -1
   },
