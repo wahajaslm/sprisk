@@ -15,24 +15,31 @@ const STAGE_OF_NODE: Record<NonNullable<Node["stage"]>, Stage> = {
   evaluate: "Evaluate",
 };
 
-/** A step's stage: its own when it keeps one (ADR-0055), else the one its operator implies. */
-export function stageOfNode(node: Node, operators: Operators): Stage {
-  if (node.stage) return STAGE_OF_NODE[node.stage];
-  const operator = operators.get(node.operator);
-  return operator ? stageOf(operator) : "Explore";
-}
-
-/** The flow as one notebook per stage, in stage order, each step after the steps it reads. */
+/** The flow as one notebook per stage, in stage order, each step after the steps it reads.
+ * A step is in its own stage when it keeps one (ADR-0055). Otherwise it is in the stage its
+ * operator implies, but never before a stage it reads from: a chart of cleaned rows is Clean. */
 export function stageNotebooks(pipeline: PipelineVersion, operators: Operators): { stage: Stage; nodes: Node[] }[] {
   const order = notebookOrder(pipeline);
-  return STAGES.map((stage) => ({ stage, nodes: order.filter((n) => stageOfNode(n, operators) === stage) })).filter((s) => s.nodes.length > 0);
+  const placed = new Map<string, Stage>();
+  for (const node of order) {
+    if (node.stage) {
+      placed.set(node.id, STAGE_OF_NODE[node.stage]);
+      continue;
+    }
+    const operator = operators.get(node.operator);
+    const read = pipeline.edges.filter((e) => stepOf(e.to) === node.id).map((e) => placed.get(stepOf(e.from)) ?? "Explore");
+    placed.set(node.id, latest([operator ? stageOf(operator) : "Explore", ...read]));
+  }
+  return STAGES.map((stage) => ({ stage, nodes: order.filter((n) => placed.get(n.id) === stage) })).filter((s) => s.nodes.length > 0);
 }
+
+const latest = (stages: Stage[]): Stage => stages.reduce((a, b) => (STAGES.indexOf(b) > STAGES.indexOf(a) ? b : a));
 
 /** Output ports a cell gives on; diagnostics (a code step's display and interface) are not names. */
 function outputPorts(node: Node, operators: Operators): string[] {
   const operator = operators.get(node.operator);
-  if (isCodeOperator(node.operator)) return namedPorts(operator, node.params, "output");
-  return (operator?.outputs ?? []).filter((o) => o.kind !== "diagnostics").map((o) => String(o.name));
+  const declared = (operator?.outputs ?? []).filter((o) => o.kind !== "diagnostics").map((o) => String(o.name));
+  return [...declared, ...namedPorts(operator, node.params, "output")];
 }
 
 /** The variable an output goes by: a code step's own name, the step's kept name, the port name

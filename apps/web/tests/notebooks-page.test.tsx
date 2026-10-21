@@ -231,6 +231,15 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     expect(within(split).getByText("reads data → gives split_train, split_test")).toBeInTheDocument();
   });
 
+  it("says so when a step's operator is not installed", async () => {
+    noNotebooks();
+    const gone = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "load" ? { ...n, operator: "sprisk.io.gone@9.0.0" } : n)) };
+    server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([gone])));
+    renderWithApi(<NotebooksPage />);
+    const load = await screen.findByRole("article", { name: "Step load" });
+    expect(await within(load).findByRole("alert")).toHaveTextContent("sprisk.io.gone@9.0.0 is not installed");
+  });
+
   it("opens the stage the canvas asked for", async () => {
     noNotebooks();
     useSelection.setState({ stageTarget: "Model" });

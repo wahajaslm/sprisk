@@ -74,6 +74,8 @@ function StepCell({ n, names }: { n: number; names: { reads: string[]; gives: st
         <div className="nb-part">
           {isCode ? (
             <TabBody tab="code" step={step} />
+          ) : !step.operator && step.operatorsById.size > 0 ? (
+            <p role="alert" className="error">{node.operator} is not installed, so this step cannot show its settings or run.</p>
           ) : (
             <>
               <TabBody tab="parameters" step={step} />

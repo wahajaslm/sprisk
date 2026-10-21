@@ -23,6 +23,16 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
     expect(ids(flow)[2]).toEqual(["Clean", ["profile", "impute"]]);
   });
 
+  it("never puts a step in an earlier stage than a step it reads", () => {
+    const flow = { ...pipeline, edges: [...pipeline.edges.filter((e) => e.to !== "profile.data"), { from: "impute.train", to: "profile.data" }] };
+    expect(ids(flow)[2]).toEqual(["Clean", ["impute", "profile"]]);
+  });
+
+  it("puts a step whose operator is not installed after the steps it reads", () => {
+    const flow = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "model" ? { ...n, operator: "sprisk.ml.gone@9.0.0" } : n)) };
+    expect(ids(flow).find((entry) => (entry[1] as string[]).includes("model"))?.[0]).toBe("Clean");
+  });
+
   it("leaves out a stage with no steps", () => {
     const flow = { ...pipeline, nodes: pipeline.nodes.filter((n) => n.id !== "impute"), edges: [] };
     expect(ids(flow).map(([stage]) => stage)).toEqual(["Explore", "Split", "Model", "Evaluate"]);
