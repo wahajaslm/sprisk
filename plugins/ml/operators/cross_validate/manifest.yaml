@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.cross_validate@1.0.0
+id: sprisk.ml.cross_validate@2.0.0
 capability_class: estimator
-description: Score one candidate model by k-fold cross-validation of the split's train rows, refitting its whole pipeline in every fold (ADR-0044). One row per fold, plus out-of-fold predictions, permutation importance on held-out folds and their figures, all from train rows (ADR-0047). Stratified folds for classification.
+description: Score one candidate model by k-fold cross-validation of the split's train rows, refitting its whole pipeline in every fold (ADR-0044). One row per fold, plus out-of-fold predictions, permutation importance on held-out folds and their figures, all from train rows (ADR-0047). After a random split, stratified folds for classification; after a time or group split, folds that keep time order or whole groups.
 entrypoint: sprisk_ml.compare:cross_validate
 inputs: [{ name: train, kind: table }]
 outputs: [{ name: scores, kind: table }, { name: predictions, kind: table }, { name: importance, kind: diagnostics }, { name: figures, kind: figure }]

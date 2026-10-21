@@ -1035,7 +1035,7 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
     assert_eq!(
         linear,
         json!({
-            "id": "cv_ml_linear_model", "operator": "sprisk.ml.cross_validate@1.0.0",
+            "id": "cv_ml_linear_model", "operator": "sprisk.ml.cross_validate@2.0.0",
             "params": {
                 "candidate": "sprisk.ml.linear_model@1.0.0",
                 "candidate_params": { "target": "churned", "features": ["age", "plan"], "task": "classification" },

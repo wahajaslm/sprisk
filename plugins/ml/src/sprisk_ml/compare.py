@@ -67,8 +67,9 @@ def cross_validate(
     at them never touches the test rows (ADR-0047). `prepare` are the preparation steps between
     the split and the model, as transformers; each fold refits them before the model.
 
-    After a time split, folds follow `time_column`: each validates on rows later than all it
-    fits on, and the earliest rows are only fit on. After a group split, no `group_column`
+    After a time split, folds follow `time_column`: each validates on rows no earlier than
+    any it fits on (rows sharing a time may fall on both sides), and the earliest rows are
+    only fit on. After a group split, no `group_column`
     value is on both sides of a fold. Otherwise rows are shuffled (ADR-0047)."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
     # Rust picks the metric from the question's task; this checks a step built by hand.
@@ -106,28 +107,26 @@ def cross_validate(
     else:
         splitter = _splitter(task, y, folds, repeats, seed)
         splits, folds_by = list(splitter.split(np.zeros(len(y)), truth)), "shuffle"
-    result = model_selection.cross_validate(
-        model,
-        x,
-        truth,
-        cv=splits,
-        scoring=SCORING[metric],
-        error_score="raise",
-        return_estimator=True,
+    run = {"scoring": SCORING[metric], "error_score": "raise"}
+    # Only the first repeat's fitted pipelines feed the diagnostics; the rest are not kept.
+    shown = model_selection.cross_validate(
+        model, x, truth, cv=splits[:folds], return_estimator=True, **run
     )
+    later = splits[folds:]
+    rest = model_selection.cross_validate(model, x, truth, cv=later, **run) if later else None
+    test_score = np.concatenate([shown["test_score"], rest["test_score"] if rest else np.array([])])
     sign = 1.0 if GREATER_IS_BETTER[metric] else -1.0
     scorer = metrics.get_scorer(SCORING[metric])
     held_out, fold_of, predicted, importances = [], [], [], []
-    first = zip(splits[:folds], result["estimator"][:folds], strict=True)
+    first = zip(splits[:folds], shown["estimator"], strict=True)
     for fold, ((_, held), fitted) in enumerate(first, 1):
         rows = x[held]
         held_out += held.tolist()
         fold_of += [fold] * len(held)
         predicted += fitted.predict(rows).tolist()
         means, _ = permutation(fitted, rows, truth[held], seed, IMPORTANCE_REPEATS, scorer)
-        importances.append(
-            [m for column, m in zip(x.columns, means, strict=True) if column in features]
-        )
+        by_name = dict(zip(x.columns, means, strict=True))
+        importances.append([by_name[f] for f in features])
     by_fold = np.array(importances)
     importance = pl.DataFrame(
         {
@@ -147,7 +146,7 @@ def cross_validate(
             "seed": [seed] * n,
             "repeat": [1 + i // folds for i in range(n)],
             "fold": [1 + i % folds for i in range(n)],
-            "score": (sign * result["test_score"]).tolist(),
+            "score": (sign * test_score).tolist(),
             "train_rows": [len(fit_rows) for fit_rows, _ in splits],
             "validate_rows": [len(held) for _, held in splits],
             "rows_digest": [_digest(held) for _, held in splits],
@@ -310,18 +309,24 @@ def select_model(
     winner = min(near, key=lambda c: (complexity[c["id"]], -sign * c["mean"], c["id"]))
     decision["winner"] = winner["id"]
     if len(near) > 1:
+        equally_simple = len({complexity[c["id"]] for c in near}) == 1
+        then = (
+            f"They are equally simple, so {winner['id']}, with the best mean, is recommended."
+            if equally_simple
+            else f"{winner['id']} is the simplest of them, so the more flexible ones add no "
+            "measurable gain on these rows."
+        )
         decision["reason"] = (
             f"{' and '.join(c['id'] for c in near)} are within one standard error "
             f"({best_se:.3f}) of the best mean {LABEL[metric]} ({best['mean']:.3f}) and beat the "
-            f"baseline. {winner['id']} is the simplest of them, so the more flexible models add "
-            "no measurable gain on these rows."
+            f"baseline. {then}"
         )
         return decision
     versus = winner["versus_baseline"]
     decision["reason"] = (
         f"{winner['id']} has the best mean {LABEL[metric]} ({winner['mean']:.3f} ± "
-        f"{winner['spread']:.3f}) of the models that beat the baseline, and no simpler model is "
-        f"within one standard error of it. Over the same {k} folds it improves on {baseline} by "
+        f"{winner['spread']:.3f}) of the models that beat the baseline, and no simpler model that "
+        f"beats the baseline is within one standard error of it. Over the same {k} folds it improves on {baseline} by "
         f"{versus['mean_difference']:.3f} (corrected standard error {versus['corrected_se']:.3f}, "
         f"one-sided p = {versus['p_value']:.2g})."
     )

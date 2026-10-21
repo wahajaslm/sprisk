@@ -19,8 +19,8 @@ use crate::decision::train_rows_chain;
 pub const FOLDS: u64 = 5;
 pub const REPEATS: u64 = 10;
 pub const SEED: u64 = 0;
-const CROSS_VALIDATE: &str = "sprisk.ml.cross_validate@1.0.0";
-const SELECT: &str = "sprisk.ml.select_model@1.0.0";
+const CROSS_VALIDATE: &str = "sprisk.ml.cross_validate@2.0.0";
+const SELECT: &str = "sprisk.ml.select_model@2.0.0";
 /// The select step of every comparison; its `decision` output is the SelectionDecision.
 pub const SELECT_NODE: &str = "select_model";
 

@@ -2411,7 +2411,7 @@ requires-dist = [
     { name = "plotly", specifier = ">=5.24" },
     { name = "polars", specifier = ">=1.10" },
     { name = "pyarrow", specifier = ">=17" },
-    { name = "scikit-learn", specifier = ">=1.5" },
+    { name = "scikit-learn", specifier = ">=1.6" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "skops", specifier = ">=0.16" },
     { name = "sprisk-workers", editable = "python/sprisk-workers" },

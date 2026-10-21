@@ -327,8 +327,8 @@ def test_unconnected_fitting_transform_train_is_an_input_error() -> None:
         split_leakage(p, operators(), CHECK_ID, NOW)
 
 
-CROSS_VALIDATE = "sprisk.ml.cross_validate@1.0.0"
-SELECT = "sprisk.ml.select_model@1.0.0"
+CROSS_VALIDATE = "sprisk.ml.cross_validate@2.0.0"
+SELECT = "sprisk.ml.select_model@2.0.0"
 
 
 def cross_validated(rows_from: str) -> PipelineVersion:

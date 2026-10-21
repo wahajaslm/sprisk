@@ -99,7 +99,7 @@ describe("model comparison", () => {
     ...pipeline,
     id: CPV,
     compares: MPR,
-    nodes: [...pipeline.nodes.filter((n) => n.id === "load" || n.id === "split"), { id: "select_model", operator: "sprisk.ml.select_model@1.0.0", params: {} }],
+    nodes: [...pipeline.nodes.filter((n) => n.id === "load" || n.id === "split"), { id: "select_model", operator: "sprisk.ml.select_model@2.0.0", params: {} }],
   };
   const comparisonRun = { ...run, id: CRUN, pipeline_version_id: CPV };
   const selectAttempt = { ...scoreAttempt, id: "att_01JABCDEFGHJKMNPQRSTVWXY80", run_id: CRUN, node_id: "select_model" };

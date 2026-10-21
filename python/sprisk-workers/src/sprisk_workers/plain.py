@@ -63,7 +63,7 @@ class FoldStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         return self
 
     def transform(self, x: Any) -> Any:
-        return self.step(self.train_, x, **self.settings)["test"]
+        return self.step(train=self.train_, test=x, **self.settings)["test"]
 
 
 def adapt(

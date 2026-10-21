@@ -99,6 +99,23 @@ def test_preparation_between_the_split_and_the_model_is_refit_on_each_fold() -> 
     assert result["importance"]["feature"].to_list() == ["x", "c"]
 
 
+def test_importance_keeps_each_features_name_when_preparation_reads_all_columns() -> None:
+    # The frame holds x before c; the features list c first.
+    result = cross_validate(
+        rows(200, seed=3),
+        linear_model_estimator,
+        {**CLASSIFY, "features": ["c", "x"]},
+        5,
+        0,
+        "balanced_accuracy",
+        1,
+        [RecordingStep()],
+    )
+    importance = result["importance"]
+    assert importance["feature"][0] == "x"
+    assert importance["importance"][0] > 0.2 > abs(importance["importance"][1])
+
+
 def test_folds_are_stratified_so_a_rare_class_is_in_every_fold() -> None:
     # Five rare rows in 100: only stratified folds give each fold exactly one.
     train = rows(100, seed=1).with_columns(
@@ -355,7 +372,8 @@ def test_the_best_model_that_beats_the_baseline_wins() -> None:
     assert decision.winner == "ml_random_forest"
     assert decision.reason.startswith(
         "ml_random_forest has the best mean balanced accuracy (0.844 ± 0.011) of the models "
-        "that beat the baseline, and no simpler model is within one standard error of it"
+        "that beat the baseline, and no simpler model that beats the baseline is within one "
+        "standard error of it"
     )
     by_id = {c.id: c for c in decision.candidates}
     assert by_id[BASE].versus_baseline is None
@@ -374,7 +392,21 @@ def test_a_simpler_model_within_one_standard_error_of_the_best_is_recommended() 
     assert decision.reason == (
         "ml_linear_model and ml_random_forest are within one standard error (0.013) of the best "
         "mean balanced accuracy (0.966) and beat the baseline. ml_linear_model is the simplest of "
-        "them, so the more flexible models add no measurable gain on these rows."
+        "them, so the more flexible ones add no measurable gain on these rows."
+    )
+
+
+def test_equally_simple_models_near_the_best_go_to_the_better_mean() -> None:
+    decision = select(
+        {
+            BASE: trial([0.5] * 5),
+            "ml_linear_model": trial([0.9, 0.85, 0.95, 0.88, 0.92]),
+            "ml_lm": trial([0.89, 0.84, 0.94, 0.87, 0.91]),
+        }
+    )
+    assert decision.winner == "ml_linear_model"
+    assert decision.reason.endswith(
+        "They are equally simple, so ml_linear_model, with the best mean, is recommended."
     )
 
 
@@ -563,7 +595,7 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
                 }
             ],
         }
-        written = operators["sprisk.ml.cross_validate@1.0.0"].run(
+        written = operators["sprisk.ml.cross_validate@2.0.0"].run(
             params | {"metric": "balanced_accuracy"}, {"train": train}, out
         )
         by_port = {o.port: o.path for o in written}
@@ -573,7 +605,7 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     out.mkdir()
     params = {"trials": [BASE, "ml_lm"], "baseline": BASE, "metric": "balanced_accuracy"}
     params |= {"complexity": {BASE: 0, "ml_lm": 1}}
-    [decision] = operators["sprisk.ml.select_model@1.0.0"].run(params, cross_validated, out)
+    [decision] = operators["sprisk.ml.select_model@2.0.0"].run(params, cross_validated, out)
     assert SelectionDecision.model_validate_json(decision.path.read_text()).winner == "ml_lm"
 
 

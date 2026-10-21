@@ -21,7 +21,7 @@
     },
     {
       "id": "cv_ml_dummy_baseline",
-      "operator": "sprisk.ml.cross_validate@1.0.0",
+      "operator": "sprisk.ml.cross_validate@2.0.0",
       "params": {
         "candidate": "sprisk.ml.dummy_baseline@1.0.0",
         "candidate_params": {
