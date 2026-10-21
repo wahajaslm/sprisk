@@ -50,6 +50,7 @@
     },
     "NotCompared": {
       "type": "object",
+      "description": "An alternative the comparison could not score on the folds, and why (ADR-0047).",
       "additionalProperties": false,
       "required": ["id", "reason"],
       "properties": {

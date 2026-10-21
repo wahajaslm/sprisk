@@ -1407,6 +1407,14 @@ fn impute_alternatives() -> Value {
             "No column is mostly empty."
         ),
         unavailable("pass_through", "needs_fact", "Confirm the target first."),
+        unavailable("impute_knn", "applicable", "r"),
+        // An effect does not make an alternative the rule rejects measurable.
+        json!({
+            "id": "impute_zero", "label": "Zero", "description": "d", "applicability": "not_applicable",
+            "reason": "Zero may mean none here.",
+            "effect": { "kind": "replace_node", "node_id": "impute", "operator": "sprisk.clean.impute@1.0.0",
+                        "params": { "columns": ["age"], "method": "zero" } }
+        }),
     ])
 }
 
@@ -1451,6 +1459,11 @@ fn alternatives_that_cannot_be_refit_within_each_fold_are_not_compared_and_say_w
         (
             "pass_through",
             "Needs a fact first: Confirm the target first.",
+        ),
+        ("impute_knn", "The rule builds no step for it yet."),
+        (
+            "impute_zero",
+            "Not applicable here: Zero may mean none here.",
         ),
     ];
     let expected: Vec<(String, String)> = expected
@@ -1549,6 +1562,34 @@ fn a_preparation_comparison_needs_a_recommendation() {
     assert!(
         err.to_string()
             .contains("recommends nothing to compare against"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_step_that_prepares_two_models_is_compared_for_neither() {
+    let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+    pipeline["nodes"].as_array_mut().unwrap().push(json!({
+        "id": "forest", "operator": "sprisk.ml.random_forest@1.0.0",
+        "params": { "target": "churned", "features": ["age"], "task": "classification" }
+    }));
+    pipeline["edges"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "from": "scale.train", "to": "forest.train" }));
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let proposal = recommending(
+        &pipeline,
+        SCALING,
+        "scale",
+        "standard_scaling",
+        scale_alternatives(),
+    );
+    let err = compare_preparation(&pipeline, SCALING, &proposal).unwrap_err();
+    assert!(matches!(err, ResolveError::NothingToCompare(_)), "{err}");
+    assert!(
+        err.to_string()
+            .contains("step scale prepares the train rows of 2 models"),
         "{err}"
     );
 }

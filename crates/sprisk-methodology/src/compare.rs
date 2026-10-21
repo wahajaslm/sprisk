@@ -9,7 +9,7 @@ use petgraph::graph::DiGraph;
 use petgraph::visit::Dfs;
 use serde_json::json;
 use sprisk_contracts::{
-    DecisionProposal, Edge, GraphEffect, MethodologyAlternative,
+    BaselineRole, DecisionProposal, Edge, GraphEffect, MethodologyAlternative,
     MethodologyAlternativeApplicability, MethodologyRule, Node, Operator, PipelineVersion,
     TaskType, parse,
 };
@@ -113,7 +113,7 @@ pub fn comparison<'a>(
         &trials,
         Baseline {
             id: baseline,
-            role: "floor",
+            role: BaselineRole::Floor,
         },
         not_compared,
     )
@@ -201,7 +201,7 @@ pub fn preparation_comparison<'a>(
         &trials,
         Baseline {
             id: reference,
-            role: "reference",
+            role: BaselineRole::Reference,
         },
         not_compared,
     )
@@ -219,7 +219,7 @@ struct Trial<'p> {
 /// The trial every other must beat, and whether it may win (`reference`) or not (`floor`).
 struct Baseline<'p> {
     id: &'p str,
-    role: &'static str,
+    role: BaselineRole,
 }
 
 /// The split and every step before it, one cross-validate step per trial fed by the split's
@@ -350,19 +350,19 @@ fn measured_step<'a>(
     if before_split {
         return Err("It acts before the split, on train and test rows together, so it cannot be refit within each fold.".into());
     }
+    // A rule's verdict stands whatever effect a proposal carries: what it rejects is not scored.
     let reason = alternative.reason.as_str();
+    match alternative.applicability {
+        MethodologyAlternativeApplicability::NotApplicable => {
+            return Err(format!("Not applicable here: {reason}"));
+        }
+        MethodologyAlternativeApplicability::NeedsFact => {
+            return Err(format!("Needs a fact first: {reason}"));
+        }
+        MethodologyAlternativeApplicability::Applicable => {}
+    }
     match &alternative.effect {
-        None => Err(match alternative.applicability {
-            MethodologyAlternativeApplicability::NotApplicable => {
-                format!("Not applicable here: {reason}")
-            }
-            MethodologyAlternativeApplicability::NeedsFact => {
-                format!("Needs a fact first: {reason}")
-            }
-            MethodologyAlternativeApplicability::Applicable => {
-                "The rule builds no step for it yet.".into()
-            }
-        }),
+        None => Err("The rule builds no step for it yet.".into()),
         Some(GraphEffect::RemoveNode { .. }) => Ok(None),
         Some(GraphEffect::ReplaceNode {
             operator, params, ..

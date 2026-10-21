@@ -68,9 +68,8 @@ function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVe
     fired.current = true;
     mutate({ pipelineId: head.id, nodeId });
   }, [due, head.id, nodeId, mutate]);
-  if (select.error instanceof ApiError && select.error.codes.includes("nothing_to_compare")) {
-    return <p className="muted pad">{nodeId}: {select.error.message.replace(/^nothing_to_compare: /, "")}</p>;
-  }
+  const nothing = select.error instanceof ApiError ? select.error.errors.find((e) => e.code === "nothing_to_compare") : undefined;
+  if (nothing) return <p className="muted pad">{nodeId}: {nothing.message}</p>;
   if (select.isError) return <p role="alert" className="error pad">Sprisk could not compare the choices for {nodeId}: {select.error.message}</p>;
   if (!hasRun && !runs.isPending && !chosenHere) {
     return <p className="muted pad">Run the flow, and Sprisk will compare {models ? "models" : "its choices"} for {nodeId}.</p>;
@@ -273,8 +272,8 @@ function verdict(c: Candidate, decision: SelectionDecision): string {
   if (c.id === decision.winner) return "recommended";
   const versus = c.versus_baseline;
   if (!versus) return "—";
-  const floor = reference ? "the recommendation" : "the baseline";
-  if (versus.p_value !== undefined) return versus.beats_baseline ? `beats ${floor} (tested)` : `not shown to beat ${floor}`;
+  const against = reference ? "the recommendation" : "the baseline";
+  if (versus.p_value !== undefined) return versus.beats_baseline ? `beats ${against} (tested)` : `not shown to beat ${against}`;
   if (versus.beats_baseline) return "clears the 1-SE bar";
   if (versus.mean_difference < -versus.corrected_se) return "worse than baseline";
   return "within 1 SE of baseline";

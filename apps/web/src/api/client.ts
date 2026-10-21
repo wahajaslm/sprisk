@@ -7,8 +7,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    /** The Problem's error codes; none when the answer was not a Problem. */
-    readonly codes: string[],
+    /** The Problem's errors; none when the answer was not a Problem. */
+    readonly errors: Entities["Problem"]["errors"],
   ) {
     super(message);
   }
@@ -30,7 +30,7 @@ export function problemError(status: number, body: unknown, fallback: string): A
   const problem = asProblem(body);
   if (!problem) return new ApiError(status, fallback, []);
   const text = problem.errors.map((e) => `${e.code}: ${e.message}`).join("\n");
-  return new ApiError(status, text, problem.errors.map((e) => e.code));
+  return new ApiError(status, text, problem.errors);
 }
 
 /** A POST answered as JSON lines when the server can stream (ADR-0041), else as JSON. */

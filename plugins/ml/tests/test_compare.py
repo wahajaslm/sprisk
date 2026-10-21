@@ -394,7 +394,8 @@ def test_a_simpler_model_within_one_standard_error_of_the_best_is_recommended() 
     assert decision.reason == (
         "ml_linear_model and ml_random_forest are within one standard error (0.013) of the best "
         "mean balanced accuracy (0.966) and beat the baseline. ml_linear_model is the simplest of "
-        "them, so the more flexible ones add no measurable gain on these rows."
+        "them; the extra gain of the more flexible ones is within one standard error, so it is "
+        "not counted."
     )
 
 
@@ -670,7 +671,8 @@ def test_removing_the_step_wins_when_it_is_as_good_as_the_best_that_beats_the_re
     )
     assert decision.winner == "no_scaling"
     assert decision.reason.endswith(
-        "no_scaling is the simplest of them, so the others add no measurable gain on these rows."
+        "no_scaling is the simplest of them; the extra gain of the others is within one standard "
+        "error, so it is not counted."
     )
 
 
@@ -701,11 +703,4 @@ def test_an_alternative_both_compared_and_not_is_refused() -> None:
         prepared(
             {REFERENCE: trial([0.8] * 5), "no_scaling": trial([0.8] * 5)},
             not_compared=[{"id": "no_scaling", "reason": "r"}],
-        )
-
-
-def test_an_unknown_baseline_role_is_refused() -> None:
-    with pytest.raises(ValueError, match="baseline role ceiling is not floor or reference"):
-        select(
-            {BASE: trial([0.5] * 5), "ml_linear_model": trial([0.8] * 5)}, baseline_role="ceiling"
         )

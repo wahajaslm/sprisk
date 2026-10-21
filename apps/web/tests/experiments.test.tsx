@@ -403,6 +403,17 @@ describe("model comparison", () => {
       await waitFor(() => expect(posted).toEqual([`${PV}/impute`]));
     });
 
+    it("asks for a run before Sprisk can compare the step's choices", async () => {
+      prepared();
+      server.use(
+        http.get("/api/methodology_rules", () => HttpResponse.json([missingness])),
+        http.get("/api/runs", ({ request }) =>
+          HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : []),
+        ),
+      );
+      expect(await screen.findByText("Run the flow, and Sprisk will compare its choices for impute.")).toBeInTheDocument();
+    });
+
     it("says so, without alarm, when a step has nothing to compare", async () => {
       prepared();
       server.use(

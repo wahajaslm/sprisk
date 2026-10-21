@@ -1800,6 +1800,8 @@ export interface BaselineComparison {
   beats_baseline: boolean;
 }
 /**
+ * An alternative the comparison could not score on the folds, and why (ADR-0047).
+ *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "NotCompared".
  */

@@ -4,7 +4,7 @@ test rows are never an input: they stay for the chosen model's final evaluation.
 import hashlib
 import math
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import plotly.graph_objects as go
@@ -248,7 +248,7 @@ def select_model(
     baseline: str,
     metric: str,
     complexity: dict[str, int],
-    baseline_role: str,
+    baseline_role: Literal["floor", "reference"],
     not_compared: list[dict[str, str]],
 ) -> dict[str, Any]:
     """A SelectionDecision (ADR-0047). Of the candidates that beat the baseline on the same
@@ -262,8 +262,6 @@ def select_model(
     mean of n fold values is (1/n + n_validate/n_train) times their variance, not 1/n. That
     is the correction of Nadeau & Bengio (2003), applied to repeated k-fold as Bouckaert &
     Frank do."""
-    if baseline_role not in ("floor", "reference"):
-        raise ValueError(f"baseline role {baseline_role} is not floor or reference")
     if both := sorted(set(trials) & {n["id"] for n in not_compared}):
         raise ValueError(f"{', '.join(both)} is both a trial and not compared")
     if baseline not in trials:
@@ -331,7 +329,7 @@ def select_model(
             f"{LABEL[metric]} at α = {ALPHA} after a Holm adjustment, over the same {k} folds."
         )
         return decision
-    kind, floor_name = (
+    kind, against = (
         ("alternative", "the recommendation") if reference else ("model", "the baseline")
     )
     others = "others" if reference else "more flexible ones"
@@ -347,20 +345,20 @@ def select_model(
         then = (
             f"They are equally simple, so {winner['id']}, with the best mean, is recommended."
             if equally_simple
-            else f"{winner['id']} is the simplest of them, so the {others} add no measurable "
-            "gain on these rows."
+            else f"{winner['id']} is the simplest of them; the extra gain of the {others} is "
+            "within one standard error, so it is not counted."
         )
         decision["reason"] = (
             f"{' and '.join(c['id'] for c in near)} are within one standard error "
             f"({best_se:.3f}) of the best mean {LABEL[metric]} ({best['mean']:.3f}) and beat "
-            f"{floor_name}. {then}"
+            f"{against}. {then}"
         )
         return decision
     versus = winner["versus_baseline"]
     decision["reason"] = (
         f"{winner['id']} has the best mean {LABEL[metric]} ({winner['mean']:.3f} ± "
-        f"{winner['spread']:.3f}) of the {kind}s that beat {floor_name}, and no simpler {kind} "
-        f"that beats {floor_name} is within one standard error of it. Over the same {k} folds it "
+        f"{winner['spread']:.3f}) of the {kind}s that beat {against}, and no simpler {kind} "
+        f"that beats {against} is within one standard error of it. Over the same {k} folds it "
         f"improves on {baseline} by "
         f"{versus['mean_difference']:.3f} (corrected standard error {versus['corrected_se']:.3f}, "
         f"one-sided p = {versus['p_value']:.2g})."
