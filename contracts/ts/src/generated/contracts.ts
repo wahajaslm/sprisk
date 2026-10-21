@@ -909,7 +909,7 @@ export interface SplitNote {
   message: string;
 }
 /**
- * Every code cell of a flow, in notebook order: stages in order, cells in order within each (ADR-0055). Body of POST /code/steps. Read, never executed.
+ * Every cell of a flow as code, in notebook order: stages in order, cells in order within each (ADR-0055). A ready-made step is sent as a line that reads its inputs and sets its outputs. Body of POST /code/steps. Read, never executed.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "CellStepsRequest".
@@ -937,38 +937,13 @@ export interface CellStep {
    */
   inputs: VariableName[];
   /**
-   * Values the cell sets that cells below read; for a call, every output.
+   * Values the cell sets that cells below read.
    */
   outputs: VariableName[];
   /**
-   * The imports, constants and functions from cells above that the cell uses, in order. Empty for a call.
+   * The imports, constants and functions from cells above that the cell uses, in order.
    */
   setup: string;
-  call?: CellCall;
-}
-/**
- * Present when the cell is one call of a function from `sprisk`: a ready-made step.
- */
-export interface CellCall {
-  function: VariableName;
-  /**
-   * The positional arguments, in order.
-   */
-  inputs: VariableName[];
-  /**
-   * The names the result is unpacked into, in order.
-   */
-  outputs: VariableName[];
-  /**
-   * The keyword arguments, as plain values. A keyword set to None is left out.
-   */
-  settings: {
-    [k: string]: unknown;
-  };
-  /**
-   * The cell's own copy of the function, with its imports (ADR-0028). Omitted: the built-in code runs.
-   */
-  code?: string;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -983,31 +958,6 @@ export interface CellProblem {
    * What is wrong and what to write instead.
    */
   message: string;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "CellCall".
- */
-export interface CellCall1 {
-  function: VariableName;
-  /**
-   * The positional arguments, in order.
-   */
-  inputs: VariableName[];
-  /**
-   * The names the result is unpacked into, in order.
-   */
-  outputs: VariableName[];
-  /**
-   * The keyword arguments, as plain values. A keyword set to None is left out.
-   */
-  settings: {
-    [k: string]: unknown;
-  };
-  /**
-   * The cell's own copy of the function, with its imports (ADR-0028). Omitted: the built-in code runs.
-   */
-  code?: string;
 }
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.

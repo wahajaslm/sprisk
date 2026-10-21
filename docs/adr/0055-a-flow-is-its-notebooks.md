@@ -25,14 +25,13 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 - Editing a cell saves a new flow version when the person runs the cell or leaves it, and only if its code changed. No Save button, no "Sync from flow".
 - Every canvas edit (add a step, change a setting, delete a step) is a new flow version, and the notebook shows it at once.
 
-**A ready-made step is one plain call.**
-- `from sprisk import random_split` then `train, test = random_split(data, test_fraction=0.2, seed=0)`.
-- `sprisk` is the public Python package. A name in it is an operator's entrypoint function, which must be unique across installed operators. It calls the same code, with the same checks, as the worker (rule 4). Internal module paths never show.
-- Inputs are positional, in the card's order. Outputs are unpacked in the card's order. Settings are keywords with plain values (numbers, text, lists, true/false).
-- `Node.names` keeps the variable each output goes by (`{"train": "train", "test": "test"}`), so other cells can read it.
-- Python reads the call back exactly with `ast` (rule 2). A cell that uses a `sprisk` function in any other shape is refused with a message saying how to write it. A setting that is not a plain value is refused. Nothing is guessed.
-- Changing a value in the form rewrites the call. Changing it in the call changes the step's settings.
-- A ready-made step whose code was edited (ADR-0028) is the function's code and then the call, in one cell.
+**A ready-made step is a form cell, as in Hex and Deepnote.**
+- In the notebook it shows its title, its inputs, its settings as the same form the canvas inspector shows, and the names of its outputs: `Split rows · data: loans · test fraction 0.2 · seed 0 → train, test`.
+- Changing the form saves a new flow version. The canvas and the notebook show the one form, so they cannot disagree.
+- "+ Step" in a notebook adds a ready-made step there, as the step library does on the canvas. "+ Code" adds a code cell.
+- "Show code" shows the function behind the step, read only. "Convert to code" makes it an editable code cell holding that function and its call (ADR-0028).
+- `Node.names` keeps the variable each output goes by (`{"train": "train", "test": "test"}`), so code cells can read it. Absent: the port name, or `<step>_<port>` when another step's output has that name.
+- No code is written or read for a ready-made step, so a person never sees an import of sprisk's own code.
 
 **Every other cell is a code step, read by Python.**
 - One cell is one step. Cells are never merged.
@@ -52,29 +51,30 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 ## Alternatives considered
 - **Keep two copies and sync them better.** Rejected: matching by text is the cause of the drift, and better matching is still matching.
 - **The notebook is the record; the flow is drawn from it.** Rejected: the scheduler, caching, Gate B and AI proposals work on typed steps (§9, rule 3). A notebook run top to bottom has none of that.
+- **A ready-made step as one Python call (`from sprisk import random_split`), read back with `ast`.** Rejected by the user: people writing in a notebook would have to learn sprisk's functions and a strict call shape.
 - **Raw scikit-learn calls as ready-made steps.** Rejected: a step like `impute` is safe by design (it learns only from train). Raw calls lose that, and a card cannot describe a fit-then-transform pattern.
 - **Run cells on a live kernel and run the flow separately.** Rejected by the user: a cell and its step must be one thing. A kernel also keeps hidden state, so its results can differ from the flow's.
 - **Merge cells that share a non-table value (ADR-0031).** Rejected: a person can no longer tell which cell is which step.
 
 ## Consequences (good and bad)
 - Good: the notebook, the canvas and the form can never disagree.
-- Good: a notebook reads as plain Python. The only sprisk thing in it is `from sprisk import ...`.
+- Good: code cells are plain Python, and ready-made steps are forms, as in Hex and Deepnote. Nobody needs to know a sprisk import.
 - Good: removes the sync code, the cell markers and the per-notebook copies of steps.
 - Bad: stricter than Jupyter. One cell per name, and no in-place change to another cell's value.
 - Bad: each cell run starts a worker, about 1 to 2 seconds before the code starts. A warm worker per flow would remove it; that is its own ADR.
 - Bad: a code step that reads a file directly is reused until its cell runs again or Run flow, as in Jupyter.
-- Bad: `sprisk` names are the functions' own names (`impute`, `random_split`). Friendlier names would need a field on the card.
+- Bad: an exported .ipynb shows a ready-made step as a commented call; it runs outside sprisk only with the plugin packages installed.
 - Bad: old notebooks need a one-time conversion into their flow.
 
 ## Delivery
-1. Contracts: `Node.stage`, `Node.notes`, `Node.names`. The `sprisk` package. Python reads cells into steps and calls.
+1. Contracts: `Node.stage`, `Node.notes`, `Node.names`. Python reads code cells into steps.
 2. `sprisk.code.python@3.0.0`: ports of any kind, and `setup`.
 3. A run that targets one step, reusing the steps above it.
-4. Web: notebooks drawn from the flow, automatic saving, run cell runs the step, form and call kept as one. Retire the sync code.
+4. Web: notebooks drawn from the flow, form cells, automatic saving, run cell runs the step. Retire the sync code.
 5. Convert old notebooks.
 
 ## Validation
-- Python: a call is read exactly; every refused shape names the cell and says what to write; a name set twice, or changed in place, is refused; imports used are copied into `setup`.
-- Web: a flow becomes one notebook per stage and back with no change; a form edit rewrites the call; deleting a step removes its cell; editing a call changes the setting.
+- Python: a name set twice, or changed in place, is refused naming both cells; a name no cell above sets is refused; imports used are copied into `setup`.
+- Web: a flow becomes one notebook per stage; a form edit in a cell is a new version the canvas shows; deleting a step removes its cell.
 - Scheduler: a targeted run reuses unchanged steps above, runs changed or never-run ones, and leaves steps below untouched.
 - Browser: build the German credit flow in notebooks, run it cell by cell, see the same results on the canvas, change a setting there and see the cell change.

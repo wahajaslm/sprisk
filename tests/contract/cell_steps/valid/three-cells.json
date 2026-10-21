@@ -15,21 +15,7 @@
         "train",
         "test"
       ],
-      "setup": "",
-      "call": {
-        "function": "random_split",
-        "inputs": [
-          "loans"
-        ],
-        "outputs": [
-          "train",
-          "test"
-        ],
-        "settings": {
-          "test_fraction": 0.2,
-          "seed": 0
-        }
-      }
+      "setup": ""
     },
     {
       "inputs": [

@@ -1301,27 +1301,22 @@ class SplitLink(StrictModel):
     name: PortName
 
 
-class CellCall(StrictModel):
+class CellStep(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    function: VariableName
-    inputs: Annotated[list[VariableName], Field(description="The positional arguments, in order.")]
+    inputs: Annotated[
+        list[VariableName], Field(description="Values the cell reads that cells above set.")
+    ]
     outputs: Annotated[
-        list[VariableName], Field(description="The names the result is unpacked into, in order.")
+        list[VariableName], Field(description="Values the cell sets that cells below read.")
     ]
-    settings: Annotated[
-        dict[str, Any],
+    setup: Annotated[
+        str,
         Field(
-            description="The keyword arguments, as plain values. A keyword set to None is left out."
+            description="The imports, constants and functions from cells above that the cell uses, in order."
         ),
     ]
-    code: Annotated[
-        str | None,
-        Field(
-            description="The cell's own copy of the function, with its imports (ADR-0028). Omitted: the built-in code runs."
-        ),
-    ] = None
 
 
 class Artifact(StrictModel):
@@ -2001,29 +1996,12 @@ class CodeSplit(StrictModel):
     notes: list[SplitNote]
 
 
-class CellStep(StrictModel):
+class CellSteps(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    inputs: Annotated[
-        list[VariableName], Field(description="Values the cell reads that cells above set.")
-    ]
-    outputs: Annotated[
-        list[VariableName],
-        Field(description="Values the cell sets that cells below read; for a call, every output."),
-    ]
-    setup: Annotated[
-        str,
-        Field(
-            description="The imports, constants and functions from cells above that the cell uses, in order. Empty for a call."
-        ),
-    ]
-    call: Annotated[
-        CellCall | None,
-        Field(
-            description="Present when the cell is one call of a function from `sprisk`: a ready-made step."
-        ),
-    ] = None
+    steps: list[CellStep]
+    problems: list[CellProblem]
 
 
 class RuleDecision(StrictModel):
@@ -2340,14 +2318,6 @@ class DatasetProfile(StrictModel):
     ]
     columns: list[ColumnProfile]
     correlation: Correlation
-
-
-class CellSteps(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    steps: list[CellStep]
-    problems: list[CellProblem]
 
 
 class AppliedMethodologyDecision(StrictModel):

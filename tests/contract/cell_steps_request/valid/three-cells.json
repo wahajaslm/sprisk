@@ -1,7 +1,7 @@
 {
   "cells": [
     "import pandas as pd\nloans = pd.read_csv(\"loans.csv\")",
-    "from sprisk import random_split\ntrain, test = random_split(loans, test_fraction=0.2, seed=0)",
+    "train, test = object(loans), object(loans)",
     "bad_rate = train[\"bad\"].mean()\nbad_rate"
   ]
 }
