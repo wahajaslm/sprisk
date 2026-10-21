@@ -7,8 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { NotebooksPage } from "../src/views/notebook/NotebooksPage.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
-import { flowNotebooks } from "../src/notebook/fromFlow.ts";
-import { operators, pipeline } from "./fixtures.ts";
+import { pipeline } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -130,7 +129,7 @@ describe("deleting a notebook (ADR-0041)", () => {
     expect(saved).toMatchObject({ parent_id: flow.id, nodes: pipeline.nodes, edges: pipeline.edges });
     expect(posts[1]!.body).toMatchObject({ notebook_id: NB, parent_id: sales.id, removed: true });
     await waitFor(() => expect(within(screen.getByRole("list", { name: "This flow's notebooks" })).queryByRole("button", { name: "Sales analysis" })).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Scratch" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Scratch" })).toBeInTheDocument();
   });
 
   it("Cancel saves nothing", async () => {
@@ -202,47 +201,40 @@ describe("deleting a notebook (ADR-0041)", () => {
   });
 });
 
-const sourceOf = (operator: string) => ({ operator, path: "m.py", language: "python" as const, text: "def f():\n    pass\n", digest: `sha256:${"0".repeat(64)}` });
-
-describe("a flow's own notebook (ADR-0054)", () => {
-  function noNotebooks(listed: NotebookVersion[] = []) {
+describe("a flow's notebooks, one per stage (ADR-0055)", () => {
+  function noNotebooks() {
     const posts = withApi(pipeline);
-    server.use(
-      http.get("/api/notebooks", () => HttpResponse.json(listed)),
-      http.get("/api/operators/:id/source", ({ params }) => HttpResponse.json(sourceOf(String(params.id)))),
-    );
-    useSelection.setState({ pipelineVersionId: pipeline.id, notebookId: undefined, stageTarget: undefined });
+    server.use(http.get("/api/notebooks", () => HttpResponse.json([])));
+    useSelection.setState({ pipelineVersionId: pipeline.id, runId: undefined, notebookId: undefined, stageTarget: undefined });
     return posts;
   }
+  const stages = () => screen.findByRole("list", { name: "This flow's stages" });
 
-  it("is made once for a flow with none, with each step's code, and opened", async () => {
+  it("lists the flow's stages and opens the first, saving nothing", async () => {
     const posts = noNotebooks();
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
-    // One notebook per stage of the flow; a second run of the effect would save them twice.
-    const expected = flowNotebooks(pipeline, new Map(operators.map((o) => [o.id, o])), new Map(operators.map((o) => [o.id, sourceOf(o.id)])));
-    const stages = expected.length;
-    await waitFor(() => expect(posts).toHaveLength(stages));
-    const first = posts.find((p) => (p.body as NotebookVersion).title === expected[0]!.title)!.body as NotebookVersion;
-    await waitFor(() => expect(useSelection.getState().notebookId).toBe(first.notebook_id));
-    const titles = posts.map((p) => (p.body as NotebookVersion).title);
-    expect(new Set(titles).size).toBe(stages);
-    const cells = posts.flatMap((p) => (p.body as NotebookVersion).cells);
-    expect(cells.some((c) => c.source.startsWith("Code of `sprisk.ml.linear_model@1.0.0`"))).toBe(true);
-    expect(posts.every((p) => (p.body as NotebookVersion).pipeline_version_id === pipeline.id)).toBe(true);
-  });
-
-  it("is not made, and says why, when a step's code cannot be read", async () => {
-    const posts = noNotebooks();
-    server.use(http.get("/api/operators/:id/source", () => HttpResponse.json({ errors: [{ code: "not_found", message: "no source" }] }, { status: 404 })));
-    renderWithApi(<NotebooksPage />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("The flow's notebook was not made:");
+    const items = within(await stages()).getAllByRole("button").map((b) => b.textContent);
+    expect(items).toEqual(["Explore2 steps", "Split1 step", "Clean1 step", "Model1 step", "Evaluate1 step"]);
+    const explore = await screen.findByRole("region", { name: "Explore notebook" });
+    expect(within(explore).getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual(["Step load", "Step profile"]);
     expect(posts).toEqual([]);
   });
 
-  it("is not made when the flow has a notebook", async () => {
-    const posts = noNotebooks([sales]);
+  it("shows a ready-made step as its settings form and the names it reads and gives", async () => {
+    noNotebooks();
     renderWithApi(<NotebooksPage />);
-    await list();
-    expect(posts).toEqual([]);
+    const load = await screen.findByRole("article", { name: "Step load" });
+    expect(within(load).getByText("reads nothing → gives data")).toBeInTheDocument();
+    expect(await within(load).findByRole("combobox", { name: "format" })).toHaveValue("csv");
+    await userEvent.click(within(await stages()).getByRole("button", { name: /Split/ }));
+    const split = await screen.findByRole("article", { name: "Step split" });
+    expect(within(split).getByText("reads data → gives split_train, split_test")).toBeInTheDocument();
+  });
+
+  it("opens the stage the canvas asked for", async () => {
+    noNotebooks();
+    useSelection.setState({ stageTarget: "Model" });
+    renderWithApi(<NotebooksPage />);
+    expect(await screen.findByRole("region", { name: "Model notebook" })).toBeInTheDocument();
   });
 });

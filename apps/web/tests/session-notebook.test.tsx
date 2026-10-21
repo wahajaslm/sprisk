@@ -33,6 +33,8 @@ type Sent = { executed: { cell_id: string; code: string }[]; saved: NotebookVers
 
 function withApi(answer: (code: string, n: number) => NotebookExecution = (_, n) => ({ status: "ok", execution_count: n, outputs: [{ kind: "text", text: `out ${n}` }] })) {
   const sent: Sent = { executed: [], saved: [], versions: [], split: [], posts: [] };
+  // A saved notebook opens when picked; a flow's stages open otherwise (ADR-0055).
+  useSelection.setState({ notebookId: NB });
   server.use(
     http.get("/api/notebooks", () => HttpResponse.json([sales])),
     http.get("/api/operators", () => HttpResponse.json([...operators, notebookOperator])),

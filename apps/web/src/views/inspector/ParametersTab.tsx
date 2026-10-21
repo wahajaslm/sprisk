@@ -1,5 +1,5 @@
 import type { CodeInterface, CodeParameter, MethodologyRule, Operator, PipelineVersion } from "@sprisk/contracts";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type { Read } from "../../api/code.ts";
 import { useMethodologyRules } from "../../api/methodology.ts";
@@ -231,6 +231,8 @@ function Settings({ pipeline, nodeId, params, schema }: {
   const initial: Draft = Object.fromEntries(fields.map((f) => [f.name, toDraft(params[f.name])]));
   const [draft, setDraft] = useState<Draft>(initial);
   const edit = useRunEdit(pipeline, nodeId);
+  // Several steps' forms share a page in a stage notebook (ADR-0055).
+  const uid = useId();
   const changed = fields.some((f) => draft[f.name] !== initial[f.name]);
   const note = elsewhere.length > 0 && <p className="muted">{listed(elsewhere)} {elsewhere.length === 1 ? "is" : "are"} set in Visualizations, next to the figure.</p>;
   if (fields.length === 0) return note || <p className="muted">This step has no settings.</p>;
@@ -253,11 +255,11 @@ function Settings({ pipeline, nodeId, params, schema }: {
       <div className="settings-grid">
         {fields.map((f) => (
           <div key={f.name} className="setting">
-            <label className="setting-name" htmlFor={`setting-${f.name}`}>
+            <label className="setting-name" htmlFor={`${uid}-${f.name}`}>
               {f.name.replaceAll("_", " ")}
             </label>
-            <SettingInput field={f} value={draft[f.name] ?? ""} onChange={(v) => set(f.name, v)} />
-            <p id={`setting-${f.name}-help`} className="setting-help">
+            <SettingInput id={`${uid}-${f.name}`} field={f} value={draft[f.name] ?? ""} onChange={(v) => set(f.name, v)} />
+            <p id={`${uid}-${f.name}-help`} className="setting-help">
               {fieldHelp(f)}
             </p>
           </div>
@@ -284,9 +286,9 @@ function listed(names: string[]): string {
   return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
 }
 
-function SettingInput({ field, value, onChange }: { field: Field; value: string | boolean; onChange: (v: string | boolean) => void }) {
+function SettingInput({ id, field, value, onChange }: { id: string; field: Field; value: string | boolean; onChange: (v: string | boolean) => void }) {
   const label = field.name;
-  const a11y = { id: `setting-${field.name}`, "aria-label": label, "aria-describedby": `setting-${field.name}-help` };
+  const a11y = { id, "aria-label": label, "aria-describedby": `${id}-help` };
   if (field.type === "boolean") {
     return <input {...a11y} type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />;
   }

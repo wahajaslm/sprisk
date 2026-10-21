@@ -3,8 +3,8 @@ import { createContext, type ReactNode, useContext } from "react";
 import type { InspectorTab } from "./inspectorTabs.ts";
 import { useSelection } from "./selection.ts";
 
-/** A panel either follows the shared selection or is pinned to one run and step (arch §2A). */
-export type Pin = { runId: string; nodeId: string | undefined };
+/** A panel either follows the shared selection or is pinned to one step and the run it shows (arch §2A); a stage notebook pins each cell to its step, with no run before the flow ran (ADR-0055). */
+export type Pin = { runId: string | undefined; nodeId: string | undefined };
 
 /** `tab` is set only on a panel that shows one Inspector tab. */
 type Instance = { pin: Pin | undefined; setPin: ((pin: Pin | undefined) => void) | undefined; tab?: InspectorTab | undefined };

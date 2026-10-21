@@ -5,7 +5,6 @@ import { nextVersion, readersOf, timestamp } from "../flow/edit.ts";
 import { NOTEBOOK_OPERATOR } from "../flow/notebook.ts";
 import { portOf, stepOf } from "../flow/ports.ts";
 import { newCellId } from "./document.ts";
-import { flowStepLine } from "./fromFlow.ts";
 import { bindInputs } from "./node.ts";
 
 const CELL_MARKER = /^# %%.*$/m;
@@ -13,6 +12,9 @@ const CELL_MARKER = /^# %%.*$/m;
 type Synced = { version: PipelineVersion } | { unchanged: true } | { refused: string };
 
 const ownedBy = (notebookId: string) => (n: Node) => n.from_notebook?.notebook_id === notebookId;
+
+/** First line of a cell an ADR-0054 notebook made for a step of the flow. */
+const flowStepLine = (id: string) => `# Flow step: ${id}`;
 
 const STEP_HEADER = /^### (?:Stage Step|Code Node): `(.+)`\s*$/;
 const escaped = (id: string) => id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

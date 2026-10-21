@@ -588,7 +588,7 @@ function Status({ state, result }: { state: "running" | "queued" | undefined; re
 
 /** A notebook may come from anyone: its images load only from the notebook itself (data:),
  * never from the network, where an image is a beacon that reports who opened it. */
-function markdownUrl(url: string, key: string) {
+export function markdownUrl(url: string, key: string) {
   if (key === "src") return url.startsWith("data:image/") ? url : "";
   return defaultUrlTransform(url);
 }
