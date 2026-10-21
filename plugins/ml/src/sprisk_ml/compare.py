@@ -15,13 +15,14 @@ from sklearn import metrics, model_selection
 from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
 
+from .costs import costed, resolved, scorer
 from .evaluate import confusion_figure, predicted_figure
 from .importance import importance_figure, permutation
 
 METRIC_OF_TASK = {"classification": "balanced_accuracy", "regression": "rmse"}
 SCORING = {"balanced_accuracy": "balanced_accuracy", "rmse": "neg_root_mean_squared_error"}
-GREATER_IS_BETTER = {"balanced_accuracy": True, "rmse": False}
-LABEL = {"balanced_accuracy": "balanced accuracy", "rmse": "RMSE"}
+GREATER_IS_BETTER = {"balanced_accuracy": True, "expected_cost": False, "rmse": False}
+LABEL = {"balanced_accuracy": "balanced accuracy", "expected_cost": "expected cost", "rmse": "RMSE"}
 # Shuffles per feature and fold; with five folds, 25 per feature in all.
 IMPORTANCE_REPEATS = 5
 ALPHA = 0.05
@@ -55,6 +56,10 @@ TUNED = (
     "Each tuned model's fold score comes from the setting its inner folds chose on that fold's "
     "training rows, so it describes the tuning, not one fixed setting. Settings were tuned on "
     "{metric} only, not on any guardrail."
+)
+AT_SHARE = (
+    "Expected cost and each model's cut-off hold where {share:.0%} of the train rows are "
+    "{positive}, as here; at another share of {positive} rows both shift."
 )
 TIME_ORDERED = (
     "Folds follow time, so they are not exchangeable: the corrected t-test is a rough guide "
@@ -94,12 +99,22 @@ def cross_validate(
     train rows are scored the same way once (`train_inner_score`), so the select step can tune
     without an outer validation row. Inner folds keep what the outer ones keep: classes, time
     order or whole groups. `recall_of` adds, per outer fold, the recall of each named class
-    (`recall_0`, ...), for guardrails."""
+    (`recall_0`, ...), for guardrails.
+
+    A candidate whose params state `costs` (ADR-0053) is scored by expected cost. Its whole
+    pipeline, preparation included, tunes its cut-off on inner folds of each fold's training
+    rows, as the model step does on all train rows."""
     target, features, task = (candidate_params[k] for k in ("target", "features", "task"))
-    # Rust picks the metric from the question's task; this checks a step built by hand.
+    costs = candidate_params.get("costs")
+    # Rust picks the metric from the question's task and the step's costs; this checks a
+    # step built by hand.
     if task not in METRIC_OF_TASK:
         raise ValueError(f"a {task} task has no comparison metric")
-    if METRIC_OF_TASK[task] != metric:
+    if costs is not None and metric != "expected_cost":
+        raise ValueError(f"costs are scored by expected_cost, not {metric}")
+    if costs is None and metric == "expected_cost":
+        raise ValueError("expected_cost needs the model step's costs")
+    if costs is None and METRIC_OF_TASK[task] != metric:
         raise ValueError(
             f"metric {metric} does not fit a {task} task; it is {METRIC_OF_TASK[task]}"
         )
@@ -109,7 +124,9 @@ def cross_validate(
     if y.null_count():
         raise ValueError(f"{target} has {y.null_count()} missing values in train")
     truth = y.to_numpy()
-    settings = {k: v for k, v in candidate_params.items() if k not in ("target", "features")}
+    settings = {
+        k: v for k, v in candidate_params.items() if k not in ("target", "features", "costs")
+    }
     # The model sees the feature columns' types before preparation; filling and rescaling
     # keep numbers numbers and text text.
     model = candidate(schema=train.select(features).schema, **settings)
@@ -120,6 +137,15 @@ def cross_validate(
         model = Pipeline([*steps, ("model", model)])
     if time_column is not None and group_column is not None:
         raise ValueError("folds follow time or groups, not both")
+    if costs is not None:
+        if time_column is not None or group_column is not None:
+            raise ValueError(
+                "costs need folds that are shuffled rows: after a time or group split, the "
+                "cut-off's inner folds would not keep time order or whole groups"
+            )
+        positive = costs["positive"]
+        costs = resolved(costs, truth, target)
+        model = costed(model, costs, settings.get("seed", 0))
     groups = None
     if time_column is not None:
         splits, folds_by = _time_splits(train, time_column, folds, repeats), "time"
@@ -135,7 +161,8 @@ def cross_validate(
     else:
         splitter = _splitter(task, y, folds, repeats, seed)
         splits, folds_by = list(splitter.split(np.zeros(len(y)), truth)), "shuffle"
-    scoring: dict[str, Any] = {"score": SCORING[metric]}
+    score = scorer(costs) if costs is not None else SCORING[metric]
+    scoring: dict[str, Any] = {"score": score}
     recalls = _recall_scorers(task, target, truth, recall_of or [])
     scoring.update(recalls)
     run = {"scoring": scoring, "error_score": "raise"}
@@ -147,7 +174,7 @@ def cross_validate(
     rest = model_selection.cross_validate(model, x, truth, cv=later, **run) if later else None
     test_score = np.concatenate([shown["test_score"], rest["test_score"] if rest else np.array([])])
     sign = 1.0 if GREATER_IS_BETTER[metric] else -1.0
-    scorer = metrics.get_scorer(SCORING[metric])
+    by_metric = metrics.get_scorer(score)
     held_out, fold_of, predicted, importances = [], [], [], []
     first = zip(splits[:folds], shown["estimator"], strict=True)
     for fold, ((_, held), fitted) in enumerate(first, 1):
@@ -155,7 +182,7 @@ def cross_validate(
         held_out += held.tolist()
         fold_of += [fold] * len(held)
         predicted += fitted.predict(rows).tolist()
-        means, _ = permutation(fitted, rows, truth[held], seed, IMPORTANCE_REPEATS, scorer)
+        means, _ = permutation(fitted, rows, truth[held], seed, IMPORTANCE_REPEATS, by_metric)
         by_name = dict(zip(x.columns, means, strict=True))
         importances.append([by_name[f] for f in features])
     by_fold = np.array(importances)
@@ -184,6 +211,11 @@ def cross_validate(
             "folds_by": [folds_by] * n,
         }
     )
+    if costs is not None:
+        scores = scores.with_columns(
+            positive=pl.lit(positive),
+            positive_share=pl.lit(float((truth == costs["positive"]).mean())),
+        )
     for name in recalls:
         scores = scores.with_columns(
             pl.Series(
@@ -204,7 +236,7 @@ def cross_validate(
             splitter = _splitter(task, y[rows], inner_folds, 1, at)
             return list(splitter.split(np.zeros(len(rows)), truth[rows]))
 
-        score_inner = partial(_inner_score, model, x, truth, sign, SCORING[metric])
+        score_inner = partial(_inner_score, model, x, truth, sign, score)
         every = np.arange(len(truth))
         scores = scores.with_columns(
             inner_folds=pl.lit(inner_folds),
@@ -241,7 +273,7 @@ def _inner_score(
     x: pl.DataFrame,
     truth: np.ndarray,
     sign: float,
-    scoring: str,
+    scoring: Any,
     rows: np.ndarray,
     folds: list[tuple[np.ndarray, np.ndarray]],
 ) -> float:
@@ -425,6 +457,11 @@ def select_model(
         "not_compared": not_compared,
         "limitations": [*tested, *([TIME_ORDERED] if protocol["folds_by"][0] == "time" else [])],
     }
+    if metric == "expected_cost":
+        share = float(trials[baseline]["positive_share"][0])
+        decision["positive_share"] = share
+        positive = trials[baseline]["positive"][0]
+        decision["limitations"].append(AT_SHARE.format(share=share, positive=positive))
     if declared:
         decision["guardrails"] = declared
     if earlier_looks:

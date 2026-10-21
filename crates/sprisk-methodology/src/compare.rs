@@ -25,8 +25,8 @@ pub const REPEATS: u64 = 10;
 pub const SEED: u64 = 0;
 /// Inner folds of a study's trial: they only rank settings, so 3 bounds the cost (ADR-0052).
 pub const INNER_FOLDS: u64 = 3;
-const CROSS_VALIDATE: &str = "sprisk.ml.cross_validate@3.0.0";
-const SELECT: &str = "sprisk.ml.select_model@4.0.0";
+const CROSS_VALIDATE: &str = "sprisk.ml.cross_validate@4.0.0";
+const SELECT: &str = "sprisk.ml.select_model@5.0.0";
 /// The select step of every comparison; its `decision` output is the SelectionDecision.
 pub const SELECT_NODE: &str = "select_model";
 
@@ -163,7 +163,7 @@ fn shortlist<'p, 'a>(
             proposal.id.as_str()
         )));
     }
-    let metric = metric_of(task)?;
+    let metric = metric_of(task, step_of(base, proposal.subject_node_id.as_str())?)?;
     let chain = train_rows_chain(
         base,
         proposal.subject_node_id.as_str(),
@@ -257,9 +257,9 @@ pub fn preparation_comparison<'a>(
                 proposal.id.as_str()
             ))
         })?;
-    let metric = metric_of(task)?;
     let subject = proposal.subject_node_id.as_str();
     let (model, chain) = model_after(base, subject, &is_split, &keeps_train, &operator_of)?;
+    let metric = metric_of(task, model)?;
     refits_as_flow_runs(model)?;
     let (split, between) = chain
         .split_last()
@@ -494,9 +494,15 @@ pub fn trial_steps(comparison: &PipelineVersion) -> Result<Vec<TrialStep<'_>>, R
         .collect()
 }
 
-/// Fixed before any score is seen (ADR-0044).
-fn metric_of(task: TaskType) -> Result<&'static str, ResolveError> {
+/// Fixed before any score is seen (ADR-0044): expected cost when the `model` step states
+/// misclassification costs (ADR-0053), else the task's.
+fn metric_of(task: TaskType, model: &Node) -> Result<&'static str, ResolveError> {
+    let costed = model.params.contains_key("costs");
     match task {
+        TaskType::Classification if costed => Ok("expected_cost"),
+        _ if costed => Err(ResolveError::Selection(format!(
+            "costs apply to a classification question, not a {task} one"
+        ))),
         TaskType::Classification => Ok("balanced_accuracy"),
         TaskType::Regression => Ok("rmse"),
         other => Err(ResolveError::Selection(format!(

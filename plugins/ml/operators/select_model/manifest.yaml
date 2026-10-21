@@ -1,5 +1,5 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.select_model@4.0.0
+id: sprisk.ml.select_model@5.0.0
 capability_class: decision_evaluator
 description: Choose among cross-validated candidates (ADR-0044). Of the candidates that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0050). If none beats it, a floor baseline means no winner and a reference baseline stands. A study's tuned candidate takes each outer fold's score from the trial its inner folds chose, and a candidate that misses a guardrail cannot win (ADR-0052). Writes a SelectionDecision.
 entrypoint: sprisk_ml.compare:select_model
@@ -18,7 +18,7 @@ params_schema:
       x-sprisk-ports: input
     baseline: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$", description: "The trial every other must beat." }
     baseline_role: { type: string, enum: [floor, reference], description: "floor: a model that ignores its features, which never wins. reference: the rule's recommended preparation, which stands unless another beats it (ADR-0050)." }
-    metric: { type: string, enum: [balanced_accuracy, rmse], description: "The metric every trial was scored by." }
+    metric: { type: string, enum: [balanced_accuracy, expected_cost, rmse], description: "The metric every trial was scored by. Lower is better for expected_cost and rmse." }
     complexity:
       type: object
       description: "Each trial's complexity: a model's from its manifest; for preparation, 0 when the step is removed, else 1. Of the trials within one standard error of the best, the simplest wins (ADR-0050)."

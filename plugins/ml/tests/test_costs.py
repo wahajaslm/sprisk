@@ -4,6 +4,7 @@ import numpy as np
 import polars as pl
 import pytest
 import skops.io
+from sklearn.model_selection import RepeatedStratifiedKFold
 
 from sprisk_ml.costs import expected_cost
 from sprisk_ml.evaluate import evaluate
@@ -77,3 +78,92 @@ def test_costs_need_two_classes_and_name_one_of_them() -> None:
     )
     with pytest.raises(ValueError, match="costs need two classes; y has 3"):
         linear_model(three, **params(costs=COSTS))
+
+
+def cv(train: pl.DataFrame, build: Any, candidate_params: dict[str, Any], **more: Any) -> Any:
+    from sprisk_ml.compare import cross_validate
+
+    settings = {"folds": 5, "seed": 0, "metric": "expected_cost", "repeats": 1, "prepare": []}
+    return cross_validate(train, build, candidate_params, **{**settings, **more})["scores"]
+
+
+def test_with_costs_each_fold_scores_expected_cost_and_the_floor_refuses_everyone() -> None:
+    from sprisk_ml.models import dummy_baseline_estimator, linear_model_estimator
+
+    train = risky()
+    floor = cv(train, dummy_baseline_estimator, params(costs=COSTS))
+    linear = cv(train, linear_model_estimator, params(costs=COSTS))
+    assert floor["metric"].to_list() == ["expected_cost"] * 5
+    # Refusing everyone costs 1 for each good row of the fold's validation rows.
+    truth = train["y"].to_numpy()
+    splitter = RepeatedStratifiedKFold(n_splits=5, n_repeats=1, random_state=0)
+    folds = list(splitter.split(np.zeros(len(truth)), truth))
+    good_share = [float((truth[held] == "good").mean()) for _, held in folds]
+    assert floor["score"].to_list() == pytest.approx(good_share)
+    assert linear["score"].mean() < floor["score"].mean()
+    assert floor["positive"].to_list() == ["bad"] * 5
+    assert floor["positive_share"].to_list() == pytest.approx([float((truth == "bad").mean())] * 5)
+
+
+def test_costs_and_expected_cost_go_together() -> None:
+    from sprisk_ml.models import linear_model_estimator
+
+    with pytest.raises(
+        ValueError, match="costs are scored by expected_cost, not balanced_accuracy"
+    ):
+        cv(risky(), linear_model_estimator, params(costs=COSTS), metric="balanced_accuracy")
+    with pytest.raises(ValueError, match="expected_cost needs the model step's costs"):
+        cv(risky(), linear_model_estimator, params())
+
+
+def test_costs_after_a_time_or_group_split_are_refused() -> None:
+    from sprisk_ml.models import linear_model_estimator
+
+    grouped = risky().with_columns(g=pl.int_range(pl.len()) % 40)
+    with pytest.raises(ValueError, match="costs need folds that are shuffled rows"):
+        cv(grouped, linear_model_estimator, params(costs=COSTS), group_column="g")
+
+
+def test_a_cost_comparison_lower_is_better_and_records_the_class_share() -> None:
+    import json
+
+    from sprisk_contracts import SelectionDecision
+    from sprisk_ml.compare import select_model
+
+    def trial(fold_scores: list[float]) -> pl.DataFrame:
+        k = len(fold_scores)
+        return pl.DataFrame(
+            {
+                "metric": ["expected_cost"] * k,
+                "folds": [k] * k,
+                "seed": [0] * k,
+                "repeat": [1] * k,
+                "fold": list(range(1, k + 1)),
+                "score": fold_scores,
+                "train_rows": [80] * k,
+                "validate_rows": [20] * k,
+                "rows_digest": [f"sha256:{f}" for f in range(k)],
+                "folds_by": ["shuffle"] * k,
+                "positive": ["bad"] * k,
+                "positive_share": [0.3] * k,
+            }
+        )
+
+    chosen = select_model(
+        {
+            "ml_dummy_baseline": trial([0.70, 0.71, 0.69, 0.70, 0.70]),
+            "ml_linear_model": trial([0.52, 0.55, 0.50, 0.53, 0.51]),
+        },
+        baseline="ml_dummy_baseline",
+        metric="expected_cost",
+        complexity={"ml_dummy_baseline": 0, "ml_linear_model": 1},
+        baseline_role="floor",
+        not_compared=[],
+    )
+    decision = SelectionDecision.model_validate_json(json.dumps(chosen))
+    assert decision.winner == "ml_linear_model"
+    assert decision.positive_share == pytest.approx(0.3)
+    assert "mean expected cost (0.522" in decision.reason
+    assert any(
+        "30% of the train rows are bad" in limitation.root for limitation in decision.limitations
+    )

@@ -54,8 +54,12 @@ def costed(model: Pipeline, costs: dict[str, Any], seed: int) -> Any:
     constant: it predicts `positive` when its share of the training rows is at least
     c_FP / (c_FP + c_FN), which is the cheaper of approving and refusing everyone."""
     positive = costs["positive"]
-    if isinstance(model[-1], DummyClassifier):
-        model.set_params(**{f"{model.steps[-1][0]}__strategy": "prior"})
+    final = model
+    # Preparation steps may wrap the model's own pipeline.
+    while isinstance(final, Pipeline):
+        final = final[-1]
+    if isinstance(final, DummyClassifier):
+        final.set_params(strategy="prior")
         at = costs["false_positive"] / (costs["false_positive"] + costs["false_negative"])
         return FixedThresholdClassifier(model, threshold=at, pos_label=positive)
     folds = model_selection.StratifiedKFold(INNER_FOLDS, shuffle=True, random_state=seed)

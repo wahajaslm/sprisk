@@ -2392,6 +2392,43 @@ async fn sprisk_selects_a_model_by_itself_once_per_version() {
 }
 
 #[tokio::test]
+async fn a_model_step_with_costs_is_compared_by_expected_cost_and_each_candidate_has_them() {
+    let api = api().await;
+    let costs = json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 });
+    let model = json!({
+        "id":"model", "operator":"sprisk.ml.linear_model@1.1.0",
+        "params":{"target":"returned_within_30d","features":["age"],"task":"classification","costs":costs}
+    });
+    scaling_flow_into(
+        &api,
+        &[model],
+        &[json!({"from":"scale.train","to":"model.train"})],
+    )
+    .await;
+    let mut csv = String::from("age,returned_within_30d\n");
+    for age in 20..80 {
+        csv.push_str(&format!("{age},{}\n", u8::from(age >= 50)));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let (status, selection) = select_model(&api, "model").await;
+    assert_eq!(status, StatusCode::CREATED, "{selection}");
+    for node in selection["comparison"]["nodes"].as_array().unwrap() {
+        if node["operator"] == "sprisk.ml.cross_validate@4.0.0" {
+            assert_eq!(node["params"]["metric"], "expected_cost", "{node}");
+            assert_eq!(node["params"]["candidate_params"]["costs"], costs, "{node}");
+        }
+    }
+    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let decision = output(&api, &attempts, "select_model", "decision").await;
+    assert_eq!(decision["metric"], "expected_cost", "{decision}");
+    assert!(decision["positive_share"].is_number(), "{decision}");
+}
+
+#[tokio::test]
 async fn only_a_model_step_that_has_run_has_a_model_selection() {
     let api = api().await;
     let model = json!({
