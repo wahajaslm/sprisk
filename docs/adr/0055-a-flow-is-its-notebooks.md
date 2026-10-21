@@ -15,7 +15,7 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 
 ## Decision
 **One record.** The flow (`PipelineVersion`) holds every cell. Notebooks and the canvas are two views of it. Nothing is copied, so nothing drifts.
-- A stage (Explore, Split, Clean, Model, Evaluate) is one notebook. A code cell is one step. A cell's id is its step's id.
+- A stage is one notebook. Stages run in working order: Load (read the data, look at all rows), Split, Explore (look at the training rows only), Clean, Model, Evaluate. A look at the data is in Load while it reads only loaded rows, and in Explore once it reads the split's training rows. A code cell is one step. A cell's id is its step's id.
 - **A step does one thing** (a rule, from the user). One load, one split, one model, one chart per step. Never pack several charts or tasks into one cell: the canvas and the notebook must show the analysis step by step.
 - `Node.stage` places a step in a stage. Absent: the stage its operator implies, as today.
 - `Node.notes` holds the Markdown cells shown before the step (`before`) and, for the last step of a stage, after it (`after`).
@@ -26,13 +26,14 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 - Editing a cell saves a new flow version when the person runs the cell or leaves it, and only if its code changed. No Save button, no "Sync from flow".
 - Every canvas edit (add a step, change a setting, delete a step) is a new flow version, and the notebook shows it at once.
 
-**A ready-made step is a form cell, as in Hex and Deepnote.**
-- In the notebook it shows its title, its inputs, its settings as the same form the canvas inspector shows, and the names of its outputs: `Split rows · data: loans · test fraction 0.2 · seed 0 → train, test`.
-- Changing the form saves a new flow version. The canvas and the notebook show the one form, so they cannot disagree.
-- "+ Step" in a notebook adds a ready-made step there, as the step library does on the canvas. "+ Code" adds a code cell.
-- "Show code" shows the function behind the step, read only. "Convert to code" makes it an editable code cell holding that function and its call (ADR-0028).
-- `Node.names` keeps the variable each output goes by (`{"train": "train", "test": "test"}`), so code cells can read it. Absent: the port name, or `<step>_<port>` when another step's output has that name.
-- No code is written or read for a ready-made step, so a person never sees an import of sprisk's own code.
+**A ready-made step is plain Python.**
+- Its cell shows normal Python (pandas, polars, scikit-learn) with its settings and variable names filled in. The step's manifest names the function that writes it (`notebook_code`); `POST /operators/{id}/notebook_code` runs it in a bounded Python process (rule 2).
+- A test runs each step's plain code against the step on fixtures: same tables, same predictions. Dataset text is quoted with `repr`, never pasted (rule 7); a property test feeds hostile labels.
+- Changing a setting on the canvas rewrites the cell. The node's Code tab shows the same code.
+- A step whose checks depend on it (source, split, model, evaluate) is not edited as code: a person changes its settings, or adds a code step after it. Other ready-made steps become code steps when their code is edited.
+- A step with no plain code yet shows its settings form.
+- `Node.names` keeps the variable each output goes by (`df`, `train`, `test`, `model`). Absent: `<step>_<port>`.
+- `Node.title` names the kind of step (Box plot, Train/test split); the step's id says what it is about. Canvas cards and cells show both.
 
 **Every other cell is a code step, read by Python.**
 - One cell is one step. Cells are never merged.
@@ -53,13 +54,14 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 - **Keep two copies and sync them better.** Rejected: matching by text is the cause of the drift, and better matching is still matching.
 - **The notebook is the record; the flow is drawn from it.** Rejected: the scheduler, caching, Gate B and AI proposals work on typed steps (§9, rule 3). A notebook run top to bottom has none of that.
 - **A ready-made step as one Python call (`from sprisk import random_split`), read back with `ast`.** Rejected by the user: people writing in a notebook would have to learn sprisk's functions and a strict call shape.
+- **A ready-made step as a settings form in the cell (Hex, Deepnote).** Built, then rejected by the user: a notebook cell must be code.
 - **Raw scikit-learn calls as ready-made steps.** Rejected: a step like `impute` is safe by design (it learns only from train). Raw calls lose that, and a card cannot describe a fit-then-transform pattern.
 - **Run cells on a live kernel and run the flow separately.** Rejected by the user: a cell and its step must be one thing. A kernel also keeps hidden state, so its results can differ from the flow's.
 - **Merge cells that share a non-table value (ADR-0031).** Rejected: a person can no longer tell which cell is which step.
 
 ## Consequences (good and bad)
 - Good: the notebook, the canvas and the form can never disagree.
-- Good: code cells are plain Python, and ready-made steps are forms, as in Hex and Deepnote. Nobody needs to know a sprisk import.
+- Good: every cell is plain Python a person could write in Jupyter; nobody needs to know a sprisk import.
 - Good: removes the sync code, the cell markers and the per-notebook copies of steps.
 - Bad: stricter than Jupyter. One cell per name, and no in-place change to another cell's value.
 - Bad: each cell run starts a worker, about 1 to 2 seconds before the code starts. A warm worker per flow would remove it; that is its own ADR.
