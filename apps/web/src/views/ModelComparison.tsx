@@ -340,8 +340,7 @@ function UseModel({ id, recommended, winner, artifactId, proposal, onCancel }: {
   );
 }
 
-/** One caution per step of the head whose choice was made after the test rows had been
- * scored: its test score is then no longer an unbiased estimate (arch doc §11). */
+/** One caution per step of the head set by a methodology decision. */
 function ChoiceCautions({ head }: { head: PipelineVersion }) {
   const decided = head.nodes.flatMap((n) => (n.methodology_decision_id ? [n.methodology_decision_id] : []));
   return decided.map((id) => <ChoiceCaution key={id} decisionId={id} />);
