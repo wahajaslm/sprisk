@@ -27,21 +27,17 @@ def dummy_baseline(
 ) -> Any:
     """Always predicts the most frequent class, or the mean. Any real model should beat it.
     With `costs`, the class whose prediction for every row costs least."""
-    costs = costs and resolved(costs, train[target].to_numpy(), target)
-    model = dummy_baseline_estimator(train.select(features).schema, task, costs)
+    model = dummy_baseline_estimator(train.select(features).schema, task)
     return fit(model, train, target, features, costs)
 
 
-def dummy_baseline_estimator(
-    schema: pl.Schema, task: str, costs: dict[str, Any] | None = None
-) -> Any:
+def dummy_baseline_estimator(schema: pl.Schema, task: str) -> Pipeline:
     estimator = (
         DummyClassifier(strategy="most_frequent")
         if task == "classification"
         else DummyRegressor(strategy="mean")
     )
-    model = Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
-    return costed(model, costs, seed=0) if costs else model
+    return Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
 
 
 def linear_model(
@@ -52,20 +48,16 @@ def linear_model(
     costs: dict[str, Any] | None = None,
 ) -> Any:
     """Logistic regression for classes, linear regression for numbers. With `costs`, it
-    predicts a class by the cut-off that costs least on its training rows."""
-    costs = costs and resolved(costs, train[target].to_numpy(), target)
-    model = linear_model_estimator(train.select(features).schema, task, costs)
+    predicts a class by the threshold that costs least on its training rows."""
+    model = linear_model_estimator(train.select(features).schema, task)
     return fit(model, train, target, features, costs)
 
 
-def linear_model_estimator(
-    schema: pl.Schema, task: str, costs: dict[str, Any] | None = None
-) -> Any:
+def linear_model_estimator(schema: pl.Schema, task: str) -> Pipeline:
     estimator = (
         LogisticRegression(max_iter=1000) if task == "classification" else LinearRegression()
     )
-    model = Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
-    return costed(model, costs, seed=0) if costs else model
+    return Pipeline([("preprocess", preprocessor(schema, scale=True)), ("estimator", estimator)])
 
 
 def random_forest(
@@ -80,18 +72,11 @@ def random_forest(
     costs: dict[str, Any] | None = None,
 ) -> Any:
     """A forest of decision trees; captures interactions a linear model misses. With `costs`,
-    it predicts a class by the cut-off that costs least on its training rows."""
-    costs = costs and resolved(costs, train[target].to_numpy(), target)
+    it predicts a class by the threshold that costs least on its training rows."""
     model = random_forest_estimator(
-        train.select(features).schema,
-        task,
-        n_estimators,
-        seed,
-        min_samples_leaf,
-        max_features,
-        costs,
+        train.select(features).schema, task, n_estimators, seed, min_samples_leaf, max_features
     )
-    return fit(model, train, target, features, costs)
+    return fit(model, train, target, features, costs, seed)
 
 
 def random_forest_estimator(
@@ -101,8 +86,7 @@ def random_forest_estimator(
     seed: int = 0,
     min_samples_leaf: int = 1,
     max_features: float | None = None,
-    costs: dict[str, Any] | None = None,
-) -> Any:
+) -> Pipeline:
     """`max_features` is the share of features each split may look at; unset, each task keeps
     scikit-learn's default."""
     forest = RandomForestClassifier if task == "classification" else RandomForestRegressor
@@ -110,29 +94,33 @@ def random_forest_estimator(
     if max_features is not None:
         settings["max_features"] = max_features
     # Trees split on rank order, so scaling would change nothing.
-    model = Pipeline(
+    return Pipeline(
         [
             ("preprocess", preprocessor(schema, scale=False)),
             ("estimator", forest(n_estimators=n_estimators, random_state=seed, **settings)),
         ]
     )
-    return costed(model, costs, seed) if costs else model
 
 
 def fit(
-    model: Any,
+    model: Pipeline,
     train: pl.DataFrame,
     target: str,
     features: list[str],
     costs: dict[str, Any] | None = None,
+    seed: int = 0,
 ) -> Any:
+    """`model` fit on the train rows. With `costs` (ADR-0053), it first tunes its threshold
+    for least cost on its own training rows."""
     if target in features:
         raise ValueError(f"target {target!r} is listed as a feature")
     if train[target].null_count():
         raise ValueError(f"{target} has {train[target].null_count()} missing values in train")
     x, y = train.select(features), train[target].to_numpy()
-    fitted = model.fit(x, y)
-    return fixed(fitted, x, y, costs["positive"]) if costs else fitted
+    if not costs:
+        return model.fit(x, y)
+    costs = resolved(costs, y, target)
+    return fixed(costed(model, costs, seed).fit(x, y), x, y, costs["positive"])
 
 
 class AsObject(TransformerMixin, BaseEstimator):  # type: ignore[misc]

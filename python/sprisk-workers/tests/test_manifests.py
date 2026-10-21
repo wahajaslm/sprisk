@@ -130,7 +130,7 @@ def test_a_models_estimator_must_take_schema_and_its_settings_but_target_and_fea
 ) -> None:
     # random_forest_estimator also takes n_estimators and seed, which this manifest lacks.
     write_model(tmp_path, "sprisk_ml.models:random_forest_estimator")
-    with pytest.raises(ManifestError, match=r"must take \['costs', 'schema', 'task'\]"):
+    with pytest.raises(ManifestError, match=r"must take \['schema', 'task'\]"):
         load_operators(tmp_path)
 
 

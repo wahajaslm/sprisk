@@ -77,10 +77,11 @@ def _function(path: Path, what: str, entrypoint: str) -> Callable[..., Any]:
 
 def _estimator(path: Path, entrypoint: str, operator: Operator) -> CheckedFunction:
     """The model's unfitted-estimator function. It takes the feature columns' `schema` and
-    every setting of the model except the columns it reads (ADR-0046)."""
+    every setting of the model except the columns it reads (ADR-0046) and its costs, which
+    whoever fits it applies (ADR-0053)."""
     build = _function(path, "estimator", entrypoint)
     properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
-    expected = sorted({"schema", *properties} - {"target", "features"})
+    expected = sorted({"schema", *properties} - {"target", "features", "costs"})
     takes = sorted(inspect.signature(build).parameters)
     if takes != expected:
         raise ManifestError(f"{path}: estimator takes {takes}; it must take {expected}")
