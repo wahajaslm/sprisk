@@ -79,7 +79,7 @@ Columns follow §21.1. Owner is the area responsible: **Rust** (control plane), 
 | Split: question fact → rule → alternative → effect → version → run → check | `api.rs::split_methodology_is_resolved_previewed_and_applied_once`; `test_split_design.py` |
 | §21.2: data with gaps → train-row profile → median → preview → Apply → fold-local fit → check → result | `api.rs::the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_applied_decision` |
 | Model and preparation choice by cross-validation | `api.rs::sprisk_selects_a_model_by_itself_once_per_version`, `::sprisk_compares_a_preparation_step_by_itself_once_per_version` |
-| Study on German credit: random search, nested CV, a recall guardrail on "bad" judged per model, tuned settings applied | `api.rs::german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_for_every_model` |
+| German credit: UCI's costs in the question, the decision threshold rule, a study compared by expected cost, tuned settings applied | `api.rs::german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule_sets` |
 
 ## Coverage of the data science workflow
 
@@ -98,7 +98,7 @@ Checked against the course in `knowledge/` (git-ignored), mainly `Sprint_5_-_Mac
 Most important first.
 
 1. **M4 experiments:** studies, trials, budgets, grid and random search and recall guardrails exist (ADR-0052), proven end to end on German credit. Open:
-   - The only guardrail is a minimum recall. Costs and decision thresholds are proposed in ADR-0053: at the 0.5 cut-off, German credit's models cost more per applicant than refusing everyone.
+   - Costs and decision thresholds work after a random split only (ADR-0053); time and group splits need inner threshold folds that keep time order or whole groups.
    - Search is over finite lists only: no adaptive search or continuous ranges.
 2. **Checks cite decisions for the split only.** Other Gate B checks do not link to the decision that set a step.
 3. **Encoding:** no standalone one-hot step, and the `categorical_encoding` rule is a draft (SCI-03, SCI-05).
@@ -111,7 +111,7 @@ Most important first.
 8. **Certification:** fit scope is proven by tests only; no runtime scope evidence (SCI-02, SCI-08).
 9. **In-app help:** operators and rules carry one-line descriptions only. Help pages for each step and rule can draw on the course in `knowledge/`, written in our own words.
 10. **Draft rules:** 23 of 30 rules are drafts. Each is checked against the matching course notebooks in `knowledge/` before it becomes active; its manifest still cites the primary sources.
-11. **Scenario library:** end-to-end tests cover iris, penguins, diabetes and German credit. German credit is aimed at gap 1: a study tunes the forest, and a minimum recall on "bad" decides which model may win. The course's other worked cases in `knowledge/` (for example Titanic, air passengers, card fraud, wine quality) can become example flows and end-to-end tests, each aimed at an open gap. The notebooks hold no data: each dataset comes from its public source, licence checked.
+11. **Scenario library:** end-to-end tests cover iris, penguins, diabetes and German credit. German credit is aimed at gap 1: UCI's published costs drive the decision threshold rule, and a study tunes the forest and compares every model by expected cost. The course's other worked cases in `knowledge/` (for example Titanic, air passengers, card fraud, wine quality) can become example flows and end-to-end tests, each aimed at an open gap. The notebooks hold no data: each dataset comes from its public source, licence checked.
 
 ## Explicitly deferred
 

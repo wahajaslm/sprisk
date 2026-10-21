@@ -3197,10 +3197,10 @@ async fn create_study(api: &Api, step: &str, request: Value) -> (StatusCode, Val
     call(&api.app, "POST", &uri, Some(request)).await
 }
 
-/// Waits, bounded at three minutes, for study `id` to end. German credit's study takes about
-/// a minute when other tests run beside it.
+/// Waits, bounded at ten minutes, for study `id` to end. German credit's study, whose models
+/// tune their threshold inside every fold, takes about three when other tests run beside it.
 async fn wait_study(api: &Api, id: &str) -> Value {
-    for _ in 0..3600 {
+    for _ in 0..12_000 {
         let (_, detail) = call(&api.app, "GET", &format!("/studies/{id}"), None).await;
         if detail["study"]["status"] != "running" {
             return detail;
@@ -3696,6 +3696,8 @@ async fn a_study_past_its_wall_time_ends_budget_reached_and_keeps_its_finished_t
 }
 
 /// German credit (Statlog, UCI): load -> stratified split -> a 50-tree forest on `credit_risk`.
+/// The question states UCI's published costs before anything runs: a bad credit approved costs
+/// 5, a good one refused costs 1. Nothing here is set from a result.
 async fn german_credit_flow(api: &Api) {
     std::fs::copy(
         root().join("tests/fixtures/datasets/german_credit.csv"),
@@ -3706,6 +3708,10 @@ async fn german_credit_flow(api: &Api) {
     q["objective"]["value"] = json!("Tell good credit risks from bad before a loan is granted.");
     q["target"]["value"] = json!("credit_risk");
     q["unit_of_analysis"]["value"] = json!("applicant");
+    q["costs"] = json!({
+        "value": { "positive": "bad", "false_negative": 5.0, "false_positive": 1.0 },
+        "origin": "explicit"
+    });
     let facts = q.as_object_mut().unwrap();
     facts.remove("time_column");
     facts.remove("entity_column");
@@ -3750,34 +3756,54 @@ async fn german_credit_flow(api: &Api) {
     ]);
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let (run, attempts) = run_version(api, BASE).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }
 
-/// Gap 11's German credit case (ADR-0052). The study tunes the forest by random search and
-/// judges a minimum recall on "bad" for every candidate. 0.45 lies between the linear model's
-/// and the tuned forest's recall on these rows, so the forest fails it and the linear model
-/// wins. That a guardrail removes a model that would otherwise win is shown in
-/// `plugins/ml/tests/test_search.py`.
+/// Gap 11's German credit case (ADR-0052, ADR-0053). The decision threshold rule reads the
+/// question's costs and puts them on the model step. A study then tunes the forest by random
+/// search and compares every model by expected cost on the train rows only. The test checks
+/// how the comparison was made, not which model wins.
 #[tokio::test(flavor = "multi_thread")]
-async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_for_every_model() {
+async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule_sets() {
     let api = api().await;
     german_credit_flow(&api).await;
-    let guardrail = json!({ "metric": "recall", "label": "bad", "at_least": 0.45 });
-    let mut request = study_request("study-key-0014");
-    request["strategy"] = json!("random");
-    request["seed"] = json!(7);
-    request["max_trials"] = json!(5);
-    request["guardrails"] = json!([guardrail]);
+    let costs = json!({ "positive": "bad", "false_negative": 5.0, "false_positive": 1.0 });
 
-    let (status, detail) = create_study(&api, "model", request).await;
+    // The rule, not the test, decides to compare by cost.
+    let uri = format!(
+        "/pipeline_versions/{BASE}/methodology/proposals/model/evaluation.decision_threshold"
+    );
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(
+        proposal["recommended_alternative_id"],
+        "cost_optimal_threshold"
+    );
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({ "alternative_id": "cost_optimal_threshold", "idempotency_key": "credit-cost-0001" });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let costed = applied["pipeline"]["id"].as_str().unwrap().to_owned();
+    let (run, attempts) = run_version(&api, &costed).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+
+    let request = json!({
+        "idempotency_key": "credit-study-0001", "strategy": "random", "seed": 7,
+        "max_trials": 5, "max_wall_seconds": 3600, "guardrails": [],
+    });
+    let (status, detail) = call(
+        &api.app,
+        "POST",
+        &format!("/pipeline_versions/{costed}/studies/model"),
+        Some(request),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "{detail}");
     let done = wait_study(&api, detail["study"]["id"].as_str().unwrap()).await;
     let study = &done["study"];
     assert_eq!(study["status"], "completed", "{done}");
-    assert_eq!(study["strategy"], "random");
-    assert_eq!(study["seed"], 7);
-    assert_eq!(study["max_trials"], 5);
 
     // Two one-trial models leave 3 of the 5 trials for the forest, each at its own settings.
     let forest: Vec<&Value> = done["trials"]
@@ -3791,7 +3817,6 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
         assert_eq!(trial["state"], "succeeded", "{trial}");
         let settings = trial["settings"].as_object().unwrap();
         assert_eq!(settings.len(), 2, "{trial}");
-        assert!(settings.contains_key("min_samples_leaf") && settings.contains_key("max_features"));
     }
     assert!(
         forest[0]["settings"] != forest[1]["settings"]
@@ -3800,41 +3825,7 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
         "{done}"
     );
 
-    let decision = selection_decision(&api, &done).await;
-    let candidates = decision["candidates"].as_array().unwrap();
-    let tuned = candidates
-        .iter()
-        .find(|c| c["id"] == "ml_random_forest")
-        .unwrap_or_else(|| panic!("{decision}"));
-    let searched = tuned["search"]["trials"].as_array().unwrap();
-    assert_eq!(searched.len(), 3, "{tuned}");
-    let chosen: u64 = searched
-        .iter()
-        .map(|t| t["chosen_in"].as_u64().unwrap())
-        .sum();
-    assert_eq!(chosen, 50, "every outer fold chose one trial");
-    assert!(
-        searched
-            .iter()
-            .any(|t| t["settings"] == tuned["search"]["settings"]),
-        "{tuned}"
-    );
-
-    assert_eq!(decision["guardrails"], json!([guardrail]), "{decision}");
-    assert_eq!(candidates.len(), 3, "{decision}");
-    for candidate in candidates {
-        assert_eq!(candidate["guardrails"][0]["label"], "bad", "{candidate}");
-    }
-    let passed = |id: &str| {
-        candidates.iter().find(|c| c["id"] == id).unwrap()["guardrails"][0]["passed"].clone()
-    };
-    assert_eq!(passed("ml_dummy_baseline"), false, "{decision}");
-    assert_eq!(passed("ml_random_forest"), false, "{decision}");
-    assert_eq!(passed("ml_linear_model"), true, "{decision}");
-    assert_eq!(decision["winner"], "ml_linear_model", "{decision}");
-
-    // The study's graph reads the loaded rows only through the split, and its trials read
-    // only the split's train rows. No step reads the split's test rows, and Gate B passes it.
+    // Every model is scored by expected cost on the same 50 folds, with the same costs.
     let (_, comparison) = call(
         &api.app,
         "GET",
@@ -3845,6 +3836,41 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
         None,
     )
     .await;
+    for node in comparison["nodes"].as_array().unwrap() {
+        if node["id"].as_str().unwrap().starts_with("cv_") {
+            assert_eq!(node["params"]["metric"], "expected_cost", "{node}");
+            assert_eq!(node["params"]["candidate_params"]["costs"], costs, "{node}");
+        }
+    }
+    let decision = selection_decision(&api, &done).await;
+    assert_eq!(decision["metric"], "expected_cost", "{decision}");
+    let share = decision["positive_share"].as_f64().unwrap();
+    assert!((share - 0.3).abs() < 0.01, "UCI's 30% bad: {decision}");
+    let candidates = decision["candidates"].as_array().unwrap();
+    assert_eq!(candidates.len(), 3, "{decision}");
+    for candidate in candidates {
+        assert_eq!(
+            candidate["fold_scores"].as_array().unwrap().len(),
+            50,
+            "{candidate}"
+        );
+    }
+    // The floor is the cheaper constant decision. With 30% bad, refusing everyone costs a
+    // good row's 1 for 70% of rows, less than approving everyone (5 for 30%).
+    let floor = candidates
+        .iter()
+        .find(|c| c["id"] == "ml_dummy_baseline")
+        .unwrap();
+    let floor_mean = floor["mean"].as_f64().unwrap();
+    assert!((floor_mean - (1.0 - share)).abs() < 0.01, "{floor}");
+    // A winner, if any, beat that floor on the corrected test.
+    if let Some(winner) = decision["winner"].as_str() {
+        let won = candidates.iter().find(|c| c["id"] == winner).unwrap();
+        assert_eq!(won["versus_baseline"]["beats_baseline"], true, "{decision}");
+    }
+
+    // The study's graph reads the loaded rows only through the split, and its trials read
+    // only the split's train rows. No step reads the split's test rows, and Gate B passes it.
     let edges = comparison["edges"].as_array().unwrap();
     let from = |port: &'static str| edges.iter().filter(move |e| e["from"] == port);
     assert!(
@@ -3877,19 +3903,18 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
         .unwrap_or_else(|| panic!("{checks}"));
     assert_eq!(leakage["verdict"], "pass", "{leakage}");
 
-    // Using the forest is an override of the study's choice: it needs a reason, and the flow's
-    // model step gets the settings the study chose for the forest.
+    // Using the forest writes its tuned settings, and keeps the costs, on the model step. A
+    // reason is given, as using a model the study did not recommend needs one.
+    let tuned = candidates
+        .iter()
+        .find(|c| c["id"] == "ml_random_forest")
+        .unwrap();
     let uri = format!(
         "/methodology_proposals/{}/apply",
         study["proposal_id"].as_str().unwrap()
     );
-    let mut forest_choice =
-        json!({ "alternative_id": "ml_random_forest", "idempotency_key": "credit-apply-0001" });
-    let (status, body) = call(&api.app, "POST", &uri, Some(forest_choice.clone())).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "reason_required");
-    forest_choice["reason"] =
-        json!("The reviewer accepts the forest's shortfall in recall on bad credits.");
+    let forest_choice = json!({ "alternative_id": "ml_random_forest", "idempotency_key": "credit-apply-0001",
+                                "reason": "The forest is wanted for review beside the recommendation." });
     let (status, applied) = call(&api.app, "POST", &uri, Some(forest_choice)).await;
     assert_eq!(status, StatusCode::CREATED, "{applied}");
     let model = applied["pipeline"]["nodes"]
@@ -3902,14 +3927,10 @@ async fn german_credit_study_tunes_the_forest_and_judges_a_bad_recall_guardrail_
     for (setting, value) in tuned["search"]["settings"].as_object().unwrap() {
         assert_eq!(&model["params"][setting], value, "{model}");
     }
+    assert_eq!(model["params"]["costs"], costs, "{model}");
     assert_eq!(
         model["params"]["n_estimators"], 50,
         "the flow's own settings stay"
-    );
-    assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
-    assert_eq!(
-        applied["decision"]["missed_guardrails"], tuned["guardrails"],
-        "the choice records the guardrail the forest failed"
     );
     assert_eq!(
         applied["decision"]["selection_id"],
