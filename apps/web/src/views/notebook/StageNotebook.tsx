@@ -1,18 +1,16 @@
-import type { Attempt, NotebookCell, NotebookCodeRequest, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { Attempt, NotebookCell, Operator, PipelineVersion } from "@sprisk/contracts";
 import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { plainCodeQuery, useCodeDisplay, useSplitCells } from "../../api/code.ts";
-import { useOperators, useRunAgain, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
+import { plainCodeQuery, useCodeDisplay } from "../../api/code.ts";
+import { useOperators, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
 import { readersOf, removeStep } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
-import { nodeOf, outputName, splitRequest, versionFromSplit } from "../../flow/notebook.ts";
-import { portOf, stepOf } from "../../flow/ports.ts";
 import { type Stage, stepTitle } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useCollapsed } from "../../notebook/collapsed.ts";
 import type { Ran } from "../../notebook/outputs.ts";
-import { isReadyMade, newStepsIn, stageCells, stageEdits, stageNodes } from "../../notebook/stageCells.ts";
+import { codeRequest, isReadyMade, stageCells, stageNodes } from "../../notebook/stageCells.ts";
 import { stepNames } from "../../notebook/stageNotebooks.ts";
 import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
@@ -21,6 +19,7 @@ import { TabBody, useStep } from "../inspector/step.tsx";
 import { OutputItems } from "./CellOutputs.tsx";
 import { codeCellIds, NotebookCells, notebookKeys } from "./NotebookCells.tsx";
 import { useCellEditing } from "./useCellEditing.ts";
+import { useStageSave } from "./useStageSave.ts";
 
 const LIVE = new Set<Attempt["state"]>(["created", "validated", "queued", "leased", "running", "uploading"]);
 
@@ -42,16 +41,6 @@ export function StageNotebook({ pipeline, stage }: { pipeline: PipelineVersion; 
   return <StageEditor pipeline={pipeline} stage={stage} byRef={byRef} code={code} />;
 }
 
-/** What a ready-made step's plain Python is written from: its settings and the variables its
- * ports go by, as cells read and set them. */
-function codeRequest(pipeline: PipelineVersion, byRef: Map<string, Operator>, nodeId: string): NotebookCodeRequest {
-  const node = nodeOf(pipeline, nodeId);
-  const inputs = Object.fromEntries(pipeline.edges.filter((e) => stepOf(e.to) === nodeId).map((e) => [portOf(e.to), outputName(pipeline, e.from)]));
-  const ports = byRef.get(node.operator)?.outputs.map((o) => String(o.name)) ?? [];
-  const outputs = Object.fromEntries(ports.map((p) => [p, outputName(pipeline, `${nodeId}.${p}`)]));
-  return { settings: node.params, inputs, outputs };
-}
-
 /** The editor, made once the operators and the steps' code are known: its cells are read from
  * the flow once. */
 function StageEditor({ pipeline, stage, byRef, code }: { pipeline: PipelineVersion; stage: Stage; byRef: Map<string, Operator>; code: Map<string, string> }) {
@@ -63,38 +52,15 @@ function StageEditor({ pipeline, stage, byRef, code }: { pipeline: PipelineVersi
   const foldKey = `stage:${stage}`;
   const toggleFold = useCollapsed((s) => s.toggle);
   const foldOutputs = useCollapsed((s) => s.setOutputsCollapsed);
-  const split = useSplitCells();
   const saveAndRun = useSaveAndRun(runId);
-  const runAgain = useRunAgain(runId);
-  const [problem, setProblem] = useState<string>();
-  const [notes, setNotes] = useState<string[]>([]);
+  const stageSave = useStageSave(pipeline, byRef, stage, code);
+  const { busy, setProblem, notes } = stageSave;
+  const problem = stageSave.problem;
   const [starting, setStarting] = useState<string>();
-  const busy = split.isPending || saveAndRun.isPending || runAgain.isPending;
-
-  /** Saves the cells as the next flow version when they changed, then runs it. */
   const save = async (now: NotebookCell[], show: string | undefined) => {
-    setProblem(undefined);
     setStarting(show);
-    try {
-      // Cells as the flow has them: run it again, no new version.
-      if (sameCells(now, stageCells(pipeline, byRef, stage, code))) {
-        const run = await runAgain.mutateAsync(pipeline.id);
-        return showRun(pipeline.id, run.id, show);
-      }
-      const edits = stageEdits(pipeline, byRef, stage, now, code);
-      if ("refused" in edits) return setProblem(edits.refused);
-      const request = splitRequest(edits.base, byRef, edits.steps);
-      const found = await split.mutateAsync(request.cells);
-      const made = versionFromSplit(edits.base, byRef, request, found);
-      setNotes(made.notes);
-      const version = newStepsIn(made.version, pipeline, stage);
-      const run = await saveAndRun.mutateAsync(version);
-      showRun(version.id, run.id, show);
-    } catch (e) {
-      setProblem(e instanceof Error ? e.message : String(e));
-    } finally {
-      setStarting(undefined);
-    }
+    await stageSave.save(now, show);
+    setStarting(undefined);
   };
 
   const runCell = (index: number, code: string, advance: boolean) => {
@@ -217,12 +183,6 @@ function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline:
   const running = starting ?? live[0];
   return { results, running, queued: live.filter((id) => id !== running), live: undefined };
 }
-
-/** Equal but for empty cells the person added and never wrote in. */
-const sameCells = (now: NotebookCell[], flow: NotebookCell[]) => {
-  const written = now.filter((c) => c.source.trim() !== "" || flow.some((f) => f.id === c.id));
-  return JSON.stringify(written.map((c) => [c.id, c.kind, c.source])) === JSON.stringify(flow.map((c) => [c.id, c.kind, c.source]));
-};
 
 /** A ready-made step's cell: what it reads and gives, its settings, and its code on request. */
 function StepForm({ names }: { names: { reads: string[]; gives: string[] } }) {

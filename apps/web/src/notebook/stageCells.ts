@@ -1,8 +1,8 @@
-import type { Node, NotebookCell, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { Node, NotebookCell, NotebookCodeRequest, Operator, PipelineVersion } from "@sprisk/contracts";
 
 import { isCodeOperator } from "../flow/edit.ts";
-import { isNotebookStep, NOTEBOOK_OPERATOR, type NotebookStep, notebookSteps, outputName, withSource } from "../flow/notebook.ts";
-import { stepOf } from "../flow/ports.ts";
+import { isNotebookStep, nodeOf, NOTEBOOK_OPERATOR, type NotebookStep, notebookSteps, outputName, withSource } from "../flow/notebook.ts";
+import { portOf, stepOf } from "../flow/ports.ts";
 import type { Stage } from "../flow/stages.ts";
 import { stageNotebooks } from "./stageNotebooks.ts";
 
@@ -124,3 +124,14 @@ export function newStepsIn(made: PipelineVersion, before: PipelineVersion, stage
   const key = STAGE_KEY[stage];
   return { ...made, nodes: made.nodes.map((n) => (old.has(n.id) || !key ? n : { ...n, stage: key })) };
 }
+
+/** What a ready-made step's plain Python is written from: its settings and the variables its
+ * ports go by, as cells read and set them. */
+export function codeRequest(pipeline: PipelineVersion, byRef: Operators, nodeId: string): NotebookCodeRequest {
+  const node = nodeOf(pipeline, nodeId);
+  const inputs = Object.fromEntries(pipeline.edges.filter((e) => stepOf(e.to) === nodeId).map((e) => [portOf(e.to), outputName(pipeline, e.from)]));
+  const ports = byRef.get(node.operator)?.outputs.map((o) => String(o.name)) ?? [];
+  const outputs = Object.fromEntries(ports.map((p) => [p, outputName(pipeline, `${nodeId}.${p}`)]));
+  return { settings: node.params, inputs, outputs };
+}
+

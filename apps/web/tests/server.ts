@@ -26,6 +26,8 @@ export const handlers = [
   http.get("/api/pipeline_versions", () => HttpResponse.json([pipeline])),
   http.get("/api/pipeline_versions/:id/studies", () => HttpResponse.json([])),
   http.get("/api/operators", () => HttpResponse.json(operators)),
+  // Steps have no plain code unless a test says so (ADR-0055).
+  http.post("/api/operators/:id/notebook_code", () => HttpResponse.json({ errors: [{ code: "no_plain_code", message: "none yet" }] }, { status: 404 })),
   http.get("/api/runs", () => HttpResponse.json([run])),
   http.get(`/api/runs/${run.id}/attempts`, () => HttpResponse.json(attempts)),
   http.get("/api/attempts/:id/outputs", ({ params }) =>

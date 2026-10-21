@@ -1,7 +1,13 @@
 import type { Operator, PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
 
-import { useOperatorSource, useSaveAndRun } from "../../api/hooks.ts";
+import { useQuery } from "@tanstack/react-query";
+
+import { plainCodeQuery } from "../../api/code.ts";
+import { useOperators, useOperatorSource, useSaveAndRun } from "../../api/hooks.ts";
+import { codeRequest, stageCells } from "../../notebook/stageCells.ts";
+import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
+import { useStageSave } from "../notebook/useStageSave.ts";
 import { setNodeCode } from "../../flow/edit.ts";
 import { useViewSelection } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
@@ -23,9 +29,55 @@ export function notEditable(operator: Operator): string | undefined {
 
 type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator };
 
-/** A step's real code. Edit turns it into this step's own code in a new version; Revert goes
- * back to the built-in (ADR-0028). */
+/** A step's code. A ready-made step with plain Python shows that, as its notebook cell does,
+ * and editing it makes the step that code (ADR-0055). Otherwise its module, which Edit turns
+ * into this step's own code in a new version; Revert goes back to the built-in (ADR-0028). */
 export function OperatorCode({ pipeline, nodeId, operator }: Props) {
+  const operators = useOperators();
+  const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
+  const plain = useQuery({ ...plainCodeQuery(operator.id, codeRequest(pipeline, byRef, nodeId)), enabled: operators.data !== undefined });
+  if (operators.isError) return <p role="alert" className="error">{operators.error.message}</p>;
+  if (plain.isError) return <p role="alert" className="error">{plain.error.message}</p>;
+  if (plain.isPending) return <Loading text="Loading code…" />;
+  if (plain.data !== null) return <PlainCode key={plain.data} pipeline={pipeline} nodeId={nodeId} byRef={byRef} code={plain.data} />;
+  return <ModuleCode pipeline={pipeline} nodeId={nodeId} operator={operator} />;
+}
+
+/** A ready-made step's plain Python. Running an edit saves it the way its notebook cell does. */
+function PlainCode({ pipeline, nodeId, byRef, code }: { pipeline: PipelineVersion; nodeId: string; byRef: Map<string, Operator>; code: string }) {
+  const [draft, setDraft] = useState<string | undefined>(undefined);
+  const stage = stageNotebooks(pipeline, byRef).find((s) => s.nodes.some((n) => n.id === nodeId))?.stage ?? "Explore";
+  const plain = new Map([[nodeId, code]]);
+  const stageSave = useStageSave(pipeline, byRef, stage, plain);
+  const run = (source: string) => {
+    if (source.trim() === "" || stageSave.busy) return;
+    const cells = stageCells(pipeline, byRef, stage, plain).map((c) => (c.id === nodeId ? { ...c, source } : c));
+    void stageSave.save(cells, nodeId);
+  };
+  const editing = draft !== undefined;
+  return (
+    <div className="code-editor">
+      <div className="code-actions">
+        <span className="muted">Python · the step's notebook cell · editing it makes the step this code</span>
+        <span className="spacer" />
+        {stageSave.problem && <span role="alert" className="error">{stageSave.problem}</span>}
+        {editing ? (
+          <button type="button" className="run-code" disabled={stageSave.busy} onClick={() => run(draft)}>
+            <PlayIcon />
+            {stageSave.busy ? "Starting…" : "Run code"}
+          </button>
+        ) : (
+          <button type="button" className="page-btn" onClick={() => setDraft(code)}>
+            Edit
+          </button>
+        )}
+      </div>
+      <CodeInput value={editing ? draft : code} label={`Code of ${nodeId}`} onChange={editing ? setDraft : ignore} onRun={editing ? run : ignore} readOnly={!editing} />
+    </div>
+  );
+}
+
+function ModuleCode({ pipeline, nodeId, operator }: Props) {
   const builtin = useOperatorSource(operator.id);
   const node = pipeline.nodes.find((n) => n.id === nodeId);
   const own = node?.code;
