@@ -24,7 +24,8 @@
       "names": {
         "train": "X_train",
         "test": "X_test"
-      }
+      },
+      "title": "Train/test split"
     }
   ]
 }

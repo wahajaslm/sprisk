@@ -1720,6 +1720,14 @@ class Node(StrictModel):
             description="The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook."
         ),
     ] = None
+    title: Annotated[
+        str | None,
+        Field(
+            description="The kind of step, as people read it: Box plot, Train/test split (ADR-0055). The step's id says what it is about. Omitted: its operator's name.",
+            max_length=80,
+            min_length=1,
+        ),
+    ] = None
     stage: Annotated[
         Stage | None,
         Field(

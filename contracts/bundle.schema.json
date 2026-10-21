@@ -2883,6 +2883,12 @@
           "$ref": "#/$defs/NodeSource",
           "description": "The notebook cells this node was created from (ADR-0036). Omitted: not made from a notebook."
         },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "The kind of step, as people read it: Box plot, Train/test split (ADR-0055). The step's id says what it is about. Omitted: its operator's name."
+        },
         "stage": {
           "$ref": "#/$defs/Stage",
           "description": "The stage notebook this step's cell is in (ADR-0055). Omitted: the stage its operator implies."

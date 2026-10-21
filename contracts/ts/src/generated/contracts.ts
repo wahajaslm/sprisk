@@ -1393,6 +1393,10 @@ export interface Node {
   code?: NodeCode;
   from_notebook?: NodeSource;
   /**
+   * The kind of step, as people read it: Box plot, Train/test split (ADR-0055). The step's id says what it is about. Omitted: its operator's name.
+   */
+  title?: string;
+  /**
    * The stage notebook this step's cell is in (ADR-0055). Omitted: the stage its operator implies.
    */
   stage?: "explore" | "split" | "clean" | "model" | "evaluate";
