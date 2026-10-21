@@ -1,10 +1,13 @@
 """A model step's plain Python (ADR-0055) fits the model the step fits: same predictions."""
 
+import ast
 from typing import Any
 
 import numpy as np
 import polars as pl
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from sprisk_ml.models import (
     dummy_baseline,
@@ -81,3 +84,27 @@ def test_regression_forest_code_predicts_as_the_step_does(clf_frame: pl.DataFram
     code = fitted_by_code(settings, rows)
     test = rows.select("x", "c")
     assert np.allclose(code.predict(test), step.predict(test))
+
+
+def _shape(code: str) -> str:
+    """The code's syntax tree with every string emptied: only what runs, not what is quoted."""
+    tree = ast.parse(code)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            node.value = ""
+    return ast.dump(tree)
+
+
+@pytest.mark.parametrize(
+    "write", [random_forest_as_code, linear_model_as_code, dummy_baseline_as_code]
+)
+@settings(max_examples=60, deadline=None)
+@given(label=st.text(min_size=1), column=st.text(min_size=1))
+def test_dataset_text_never_becomes_code(write: Any, label: str, column: str) -> None:
+    # Labels and column names come from the data (rule 7): quoted, never run.
+    def code(positive: str, name: str) -> str:
+        costs = {"positive": positive, "false_negative": 5.0, "false_positive": 1.0}
+        settings_ = {"target": name, "features": [name], "task": "classification", "costs": costs}
+        return write(settings_, {"train": "rows"}, {"model": "model"})
+
+    assert _shape(code(label, column)) == _shape(code("bad", "y"))

@@ -289,7 +289,8 @@ def _fixed_code(model: str, fit: str, costs: dict[str, Any]) -> str:
         "\n"
         "from sklearn.model_selection import FixedThresholdClassifier\n"
         "\n"
-        f"# Predict {costs['positive']} when its share is at least {fp} / ({fp} + {fn}).\n"
+        # Labels are dataset text (rule 7): quoted with repr, never pasted into code.
+        f"# Predict {costs['positive']!r} when its share is at least {fp!r} / ({fp!r} + {fn!r}).\n"
         f"{model} = FixedThresholdClassifier(\n"
         f"    {model}, threshold={fp / (fp + fn)!r}, pos_label={costs['positive']!r}\n"
         f").fit({fit})\n"
@@ -309,7 +310,7 @@ def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
         "\n"
         "\n"
         f"def {model}_cost(y_true, y_pred, pos_label):\n"
-        f'    """Mean cost per row: a missed {positive} costs {fn}, a false alarm {fp}."""\n'
+        f"    # Mean cost per row: a missed {positive!r} costs {fn!r}, a false alarm {fp!r}.\n"
         "    truth, said = np.asarray(y_true) == pos_label, np.asarray(y_pred) == pos_label\n"
         f"    missed, alarms = (truth & ~said).sum(), (~truth & said).sum()\n"
         f"    return float(({fn!r} * missed + {fp!r} * alarms) / len(truth))\n"
