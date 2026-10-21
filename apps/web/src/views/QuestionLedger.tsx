@@ -19,11 +19,26 @@ const EXAMPLE = {
   assumptions: "Return labels are complete after 30 days.",
   unknowns: "Are exchanges counted as returns?",
   criteria: "Average precision beats the dummy baseline on temporal validation.",
+  positive: "",
+  falseNegative: "",
+  falsePositive: "",
 };
 
 type Draft = typeof EXAMPLE;
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
 const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
+
+/** The draft's misclassification costs (ADR-0053): the positive class and both costs as
+ * positive numbers, or none of them. Only a classification question has costs. */
+function costsOf(draft: Draft): QuestionVersion["costs"] | "incomplete" | undefined {
+  const positive = draft.positive.trim();
+  const given = [positive, draft.falseNegative.trim(), draft.falsePositive.trim()];
+  if (draft.task !== "classification" || given.every((part) => !part)) return undefined;
+  const [falseNegative, falsePositive] = [Number(given[1]), Number(given[2])];
+  const valid = (cost: number) => Number.isFinite(cost) && cost > 0;
+  if (!positive || !given[1] || !given[2] || !valid(falseNegative) || !valid(falsePositive)) return "incomplete";
+  return { value: { positive, false_negative: falseNegative, false_positive: falsePositive }, origin: "explicit" };
+}
 
 /** The investigation's immutable question revisions. This is the context methodology reads. */
 export function QuestionLedger() {
@@ -99,6 +114,10 @@ function QuestionCard({ question, pipeline, current = false, onRevise }: {
       <dt>Entity key</dt><dd>{question.entity_column?.value ?? "not defined"}</dd>
       <dt>Time</dt><dd>{question.time_column?.value ?? "not defined"}</dd>
       <dt>Horizon</dt><dd>{question.prediction_horizon?.value ?? "not defined"}</dd>
+      {question.costs && <>
+        <dt>Misclassification costs</dt>
+        <dd>{question.costs.value.positive} · false negative {question.costs.value.false_negative} · false positive {question.costs.value.false_positive}</dd>
+      </>}
     </dl>
     {question.unknowns.length > 0 && <p className="ledger-unknown">Open: {question.unknowns.map((item) => item.question).join(" · ")}</p>}
     <p className="tech">{question.id}{question.parent_id ? ` · revises ${question.parent_id}` : " · first revision"}</p>
@@ -118,12 +137,17 @@ function QuestionEditor({ base, pipeline, onClose }: { base: QuestionVersion | u
     assumptions: base.assumptions.map((item) => item.value).join("\n"),
     unknowns: base.unknowns.map((item) => item.question).join("\n"),
     criteria: base.acceptance_criteria.map((item) => item.value).join("\n"),
+    positive: base.costs?.value.positive ?? "",
+    falseNegative: base.costs ? String(base.costs.value.false_negative) : "",
+    falsePositive: base.costs ? String(base.costs.value.false_positive) : "",
   } : EXAMPLE);
   const save = useSaveQuestionVersion();
   const savePipeline = useSavePipelineVersion();
   const selectPipeline = useSelection((state) => state.selectPipelineVersion);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft({ ...draft, [key]: value });
+  const costs = costsOf(draft);
   const submit = () => {
+    if (costs === "incomplete") return;
     const question: QuestionVersion = {
       schema_version: "sprisk.question_version/v1",
       id: `qv_${ulid()}`,
@@ -139,6 +163,7 @@ function QuestionEditor({ base, pipeline, onClose }: { base: QuestionVersion | u
       assumptions: lines(draft.assumptions).map(fact),
       unknowns: lines(draft.unknowns).map((question) => ({ question, blocks: "release" as const })),
       acceptance_criteria: lines(draft.criteria).map(fact),
+      ...(costs ? { costs } : {}),
       created_at: timestamp(),
     };
     save.mutate(question, {
@@ -162,11 +187,18 @@ function QuestionEditor({ base, pipeline, onClose }: { base: QuestionVersion | u
         <label>Time column<input value={draft.time} onChange={(event) => set("time", event.target.value)} /></label>
         <label>Prediction horizon<input value={draft.horizon} onChange={(event) => set("horizon", event.target.value)} placeholder="P30D" /></label>
       </div>
+      {draft.task === "classification" && <fieldset className="ledger-fields">
+        <legend>Misclassification costs</legend>
+        <label>Positive class<input value={draft.positive} onChange={(event) => set("positive", event.target.value)} placeholder="bad" /></label>
+        <label>False-negative cost<input inputMode="decimal" value={draft.falseNegative} onChange={(event) => set("falseNegative", event.target.value)} placeholder="5" /></label>
+        <label>False-positive cost<input inputMode="decimal" value={draft.falsePositive} onChange={(event) => set("falsePositive", event.target.value)} placeholder="1" /></label>
+        {costs === "incomplete" && <p role="alert" className="error">Enter the positive class and both costs, as positive numbers, or none of them.</p>}
+      </fieldset>}
       <label>Assumptions <span className="muted">one per line</span><textarea value={draft.assumptions} onChange={(event) => set("assumptions", event.target.value)} /></label>
       <label>Unknowns <span className="muted">one per line</span><textarea value={draft.unknowns} onChange={(event) => set("unknowns", event.target.value)} /></label>
       <label>Acceptance criteria <span className="muted">one per line</span><textarea value={draft.criteria} onChange={(event) => set("criteria", event.target.value)} /></label>
       {(save.isError || savePipeline.isError) && <p role="alert" className="error">{save.error?.message ?? savePipeline.error?.message}</p>}
-      <footer><span className="muted">Saving creates a new revision{pipeline ? " and links a new flow version to it" : ""}.</span><button type="button" className="run-code" disabled={!draft.objective.trim() || pending} onClick={submit}>{pending ? "Saving…" : "Save revision"}</button></footer>
+      <footer><span className="muted">Saving creates a new revision{pipeline ? " and links a new flow version to it" : ""}.</span><button type="button" className="run-code" disabled={!draft.objective.trim() || costs === "incomplete" || pending} onClick={submit}>{pending ? "Saving…" : "Save revision"}</button></footer>
     </section>
   </div>;
 }
