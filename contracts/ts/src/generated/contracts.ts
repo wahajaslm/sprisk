@@ -59,6 +59,13 @@ export type NodeId = string;
  */
 export type Origin = "explicit" | "inferred" | "measured" | "confirmed";
 /**
+ * A Python name a cell sets or reads.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "VariableName".
+ */
+export type VariableName = string;
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "SchemaId".
  */
@@ -167,13 +174,6 @@ export type CheckRef = string;
  * via the `definition` "NotebookCellId".
  */
 export type NotebookCellId = string;
-/**
- * A Python name a cell sets or reads.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "VariableName".
- */
-export type VariableName = string;
 /**
  * `<node_id>.<port_name>`.
  *
@@ -907,6 +907,107 @@ export interface SplitNote {
    */
   cell: number;
   message: string;
+}
+/**
+ * Every code cell of a flow, in notebook order: stages in order, cells in order within each (ADR-0055). Body of POST /code/steps. Read, never executed.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CellStepsRequest".
+ */
+export interface CellStepsRequest {
+  cells: string[];
+}
+/**
+ * Each cell read as one step (ADR-0055), in the order sent, and what keeps the cells from being saved. Any problem refuses the save.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CellSteps".
+ */
+export interface CellSteps {
+  steps: CellStep[];
+  problems: CellProblem[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CellStep".
+ */
+export interface CellStep {
+  /**
+   * Values the cell reads that cells above set.
+   */
+  inputs: VariableName[];
+  /**
+   * Values the cell sets that cells below read; for a call, every output.
+   */
+  outputs: VariableName[];
+  /**
+   * The imports, constants and functions from cells above that the cell uses, in order. Empty for a call.
+   */
+  setup: string;
+  call?: CellCall;
+}
+/**
+ * Present when the cell is one call of a function from `sprisk`: a ready-made step.
+ */
+export interface CellCall {
+  function: VariableName;
+  /**
+   * The positional arguments, in order.
+   */
+  inputs: VariableName[];
+  /**
+   * The names the result is unpacked into, in order.
+   */
+  outputs: VariableName[];
+  /**
+   * The keyword arguments, as plain values. A keyword set to None is left out.
+   */
+  settings: {
+    [k: string]: unknown;
+  };
+  /**
+   * The cell's own copy of the function, with its imports (ADR-0028). Omitted: the built-in code runs.
+   */
+  code?: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CellProblem".
+ */
+export interface CellProblem {
+  /**
+   * The cell, from 0, in the order sent.
+   */
+  cell: number;
+  /**
+   * What is wrong and what to write instead.
+   */
+  message: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CellCall".
+ */
+export interface CellCall1 {
+  function: VariableName;
+  /**
+   * The positional arguments, in order.
+   */
+  inputs: VariableName[];
+  /**
+   * The names the result is unpacked into, in order.
+   */
+  outputs: VariableName[];
+  /**
+   * The keyword arguments, as plain values. A keyword set to None is left out.
+   */
+  settings: {
+    [k: string]: unknown;
+  };
+  /**
+   * The cell's own copy of the function, with its imports (ADR-0028). Omitted: the built-in code runs.
+   */
+  code?: string;
 }
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.

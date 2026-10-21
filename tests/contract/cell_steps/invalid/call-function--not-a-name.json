@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "inputs": [],
+      "outputs": [],
+      "setup": "",
+      "call": {
+        "function": "sprisk.random_split",
+        "inputs": [],
+        "outputs": [],
+        "settings": {}
+      }
+    }
+  ],
+  "problems": []
+}

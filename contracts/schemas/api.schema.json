@@ -844,6 +844,138 @@
           "minimum": 0
         }
       }
+    },
+    "CellStepsRequest": {
+      "title": "CellStepsRequest",
+      "description": "Every code cell of a flow, in notebook order: stages in order, cells in order within each (ADR-0055). Body of POST /code/steps. Read, never executed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cells"
+      ],
+      "properties": {
+        "cells": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        }
+      }
+    },
+    "CellSteps": {
+      "title": "CellSteps",
+      "description": "Each cell read as one step (ADR-0055), in the order sent, and what keeps the cells from being saved. Any problem refuses the save.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps",
+        "problems"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CellStep"
+          }
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CellProblem"
+          }
+        }
+      }
+    },
+    "CellStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputs",
+        "outputs",
+        "setup"
+      ],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VariableName"
+          },
+          "description": "Values the cell reads that cells above set."
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VariableName"
+          },
+          "description": "Values the cell sets that cells below read; for a call, every output."
+        },
+        "setup": {
+          "type": "string",
+          "description": "The imports, constants and functions from cells above that the cell uses, in order. Empty for a call."
+        },
+        "call": {
+          "$ref": "#/$defs/CellCall",
+          "description": "Present when the cell is one call of a function from `sprisk`: a ready-made step."
+        }
+      }
+    },
+    "CellCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "function",
+        "inputs",
+        "outputs",
+        "settings"
+      ],
+      "properties": {
+        "function": {
+          "$ref": "#/$defs/VariableName"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VariableName"
+          },
+          "description": "The positional arguments, in order."
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VariableName"
+          },
+          "description": "The names the result is unpacked into, in order."
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "The keyword arguments, as plain values. A keyword set to None is left out."
+        },
+        "code": {
+          "type": "string",
+          "description": "The cell's own copy of the function, with its imports (ADR-0028). Omitted: the built-in code runs."
+        }
+      }
+    },
+    "CellProblem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell",
+        "message"
+      ],
+      "properties": {
+        "cell": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The cell, from 0, in the order sent."
+        },
+        "message": {
+          "type": "string",
+          "description": "What is wrong and what to write instead."
+        }
+      }
     }
   }
 }

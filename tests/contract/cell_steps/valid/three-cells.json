@@ -1,0 +1,43 @@
+{
+  "steps": [
+    {
+      "inputs": [],
+      "outputs": [
+        "loans"
+      ],
+      "setup": ""
+    },
+    {
+      "inputs": [
+        "loans"
+      ],
+      "outputs": [
+        "train",
+        "test"
+      ],
+      "setup": "",
+      "call": {
+        "function": "random_split",
+        "inputs": [
+          "loans"
+        ],
+        "outputs": [
+          "train",
+          "test"
+        ],
+        "settings": {
+          "test_fraction": 0.2,
+          "seed": 0
+        }
+      }
+    },
+    {
+      "inputs": [
+        "train"
+      ],
+      "outputs": [],
+      "setup": ""
+    }
+  ],
+  "problems": []
+}

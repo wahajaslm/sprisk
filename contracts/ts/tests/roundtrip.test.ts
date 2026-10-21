@@ -34,6 +34,8 @@ const entities: [keyof Entities, string][] = [
   ["DatasetProfile", "dataset_profile"],
   ["CodeInterface", "code_interface"],
   ["CodeSplitRequest", "code_split_request"],
+  ["CellStepsRequest", "cell_steps_request"],
+  ["CellSteps", "cell_steps"],
   ["CodeSplit", "code_split"],
   ["NotebookVersion", "notebook_version"],
   ["NotebookExecute", "notebook_execute"],

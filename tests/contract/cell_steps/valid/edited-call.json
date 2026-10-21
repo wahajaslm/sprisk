@@ -1,0 +1,27 @@
+{
+  "steps": [
+    {
+      "inputs": [
+        "loans"
+      ],
+      "outputs": [
+        "train",
+        "test"
+      ],
+      "setup": "",
+      "call": {
+        "function": "random_split",
+        "inputs": [
+          "loans"
+        ],
+        "outputs": [
+          "train",
+          "test"
+        ],
+        "settings": {},
+        "code": "def random_split(data, test_fraction, seed):\n    return {\"train\": data, \"test\": data}"
+      }
+    }
+  ],
+  "problems": []
+}

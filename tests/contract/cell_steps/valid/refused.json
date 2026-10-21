@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "inputs": [],
+      "outputs": [],
+      "setup": ""
+    }
+  ],
+  "problems": [
+    {
+      "cell": 0,
+      "message": "df is set by cells 1 and 3; give the second one a new name, such as df2"
+    }
+  ]
+}

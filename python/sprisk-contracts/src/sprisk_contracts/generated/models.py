@@ -154,6 +154,25 @@ class CodeField(StrictModel):
     null_count: Annotated[int, Field(ge=0)]
 
 
+class Cell2(RootModel[str]):
+    root: Annotated[str, Field(max_length=100000)]
+
+
+class CellStepsRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cells: list[Cell2]
+
+
+class CellProblem(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cell: Annotated[int, Field(description="The cell, from 0, in the order sent.", ge=0)]
+    message: Annotated[str, Field(description="What is wrong and what to write instead.")]
+
+
 class ArtifactId(RootModel[str]):
     root: Annotated[str, Field(pattern="^art_[0-9A-HJKMNP-TV-Z]{26}$")]
 
@@ -1282,6 +1301,29 @@ class SplitLink(StrictModel):
     name: PortName
 
 
+class CellCall(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    function: VariableName
+    inputs: Annotated[list[VariableName], Field(description="The positional arguments, in order.")]
+    outputs: Annotated[
+        list[VariableName], Field(description="The names the result is unpacked into, in order.")
+    ]
+    settings: Annotated[
+        dict[str, Any],
+        Field(
+            description="The keyword arguments, as plain values. A keyword set to None is left out."
+        ),
+    ]
+    code: Annotated[
+        str | None,
+        Field(
+            description="The cell's own copy of the function, with its imports (ADR-0028). Omitted: the built-in code runs."
+        ),
+    ] = None
+
+
 class Artifact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1959,6 +2001,31 @@ class CodeSplit(StrictModel):
     notes: list[SplitNote]
 
 
+class CellStep(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    inputs: Annotated[
+        list[VariableName], Field(description="Values the cell reads that cells above set.")
+    ]
+    outputs: Annotated[
+        list[VariableName],
+        Field(description="Values the cell sets that cells below read; for a call, every output."),
+    ]
+    setup: Annotated[
+        str,
+        Field(
+            description="The imports, constants and functions from cells above that the cell uses, in order. Empty for a call."
+        ),
+    ]
+    call: Annotated[
+        CellCall | None,
+        Field(
+            description="Present when the cell is one call of a function from `sprisk`: a ready-made step."
+        ),
+    ] = None
+
+
 class RuleDecision(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2273,6 +2340,14 @@ class DatasetProfile(StrictModel):
     ]
     columns: list[ColumnProfile]
     correlation: Correlation
+
+
+class CellSteps(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    steps: list[CellStep]
+    problems: list[CellProblem]
 
 
 class AppliedMethodologyDecision(StrictModel):
