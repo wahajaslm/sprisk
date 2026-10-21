@@ -4021,3 +4021,77 @@ async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule
         output_artifact(&api, &attempts, "select_model", "decision").await
     );
 }
+
+/// German credit as stage notebooks (ADR-0055): steps keep a kind as their title, generic
+/// variable names and their own stage; one chart per step reads the training rows; the
+/// ready-made steps write themselves as plain Python with those names. A regression guard for
+/// the whole notebook shape, through the API the app uses.
+#[tokio::test(flavor = "multi_thread")]
+async fn german_credit_runs_as_stage_notebooks_with_one_chart_per_step() {
+    let api = api().await;
+    german_credit_flow(&api).await;
+    let (_, base) = call(&api.app, "GET", &format!("/pipeline_versions/{BASE}"), None).await;
+    let mut flow = base.clone();
+    flow["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
+    flow["parent_id"] = json!(BASE);
+    let nodes = flow["nodes"].as_array_mut().unwrap();
+    for node in nodes.iter_mut() {
+        match node["id"].as_str().unwrap() {
+            "load" => {
+                node["title"] = json!("Load CSV");
+                node["names"] = json!({"data": "df"});
+            }
+            "split" => {
+                node["title"] = json!("Train/test split");
+                node["names"] = json!({"train": "train", "test": "test"});
+            }
+            "model" => {
+                node["title"] = json!("Random forest");
+                node["names"] = json!({"model": "model"});
+            }
+            _ => {}
+        }
+    }
+    nodes.push(json!({
+        "id": "credit_amount_by_risk", "title": "Box plot", "stage": "explore",
+        "operator": "sprisk.code.python@2.0.0",
+        "params": {
+            "source": "import plotly.express as px\n\npx.box(train, x=\"credit_risk\", y=\"credit_amount\")\n",
+            "inputs": ["train"], "outputs": []
+        }
+    }));
+    flow["edges"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"from": "split.train", "to": "credit_amount_by_risk.train"}));
+    let (status, saved) = call(&api.app, "POST", "/pipeline_versions", Some(flow.clone())).await;
+    assert_eq!(status, StatusCode::CREATED, "{saved}");
+    assert_eq!(saved, flow, "titles, names and stages are kept as sent");
+
+    let (run, attempts) = run_version(&api, "plv_01JABCDEFGHJKMNPQRSTVWXYZ5").await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let chart = output(&api, &attempts, "credit_amount_by_risk", "display").await;
+    assert_eq!(
+        chart["items"].as_array().unwrap().len(),
+        1,
+        "one chart: {chart}"
+    );
+    assert_eq!(chart["items"][0]["kind"], "figure", "{chart}");
+
+    let split = &flow["nodes"][1];
+    let request = json!({
+        "settings": split["params"], "inputs": {"data": "df"},
+        "outputs": {"train": "train", "test": "test"}
+    });
+    let uri = format!(
+        "/operators/{}/notebook_code",
+        split["operator"].as_str().unwrap()
+    );
+    let (status, code) = call(&api.app, "POST", &uri, Some(request)).await;
+    assert_eq!(status, StatusCode::OK, "{code}");
+    let code = code["code"].as_str().unwrap();
+    assert!(
+        code.ends_with("train, test = df[sorted(train_rows)], df[sorted(test_rows)]\n"),
+        "{code}"
+    );
+}
