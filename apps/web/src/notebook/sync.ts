@@ -2,7 +2,7 @@ import type { CodeSplit, Edge, Node, NotebookCell, NotebookVersion, PipelineVers
 import { ulid } from "ulid";
 
 import { nextVersion, readersOf, timestamp } from "../flow/edit.ts";
-import { NOTEBOOK_OPERATOR } from "../flow/notebook.ts";
+import { isNotebookStep, NOTEBOOK_OPERATOR } from "../flow/notebook.ts";
 import { portOf, stepOf } from "../flow/ports.ts";
 import { newCellId } from "./document.ts";
 import { bindInputs } from "./node.ts";
@@ -54,9 +54,32 @@ export function stepsIntoFlow({ base, projectId, notebook, split, previous }: { 
   // Other steps reading this notebook's outputs: they must still find them.
   const outward = (base?.edges ?? []).filter((e) => ownedIds.has(stepOf(e.from)) && !ownedIds.has(stepOf(e.to)));
 
+  // A call cell written from the flow (ADR-0054) is its built-in step, not a new code step.
+  // What a code cell reads from it, by the name the call wrote, is that step's output.
+  const builtIn = (i: number) => {
+    const cell = code[i];
+    return cell && kept.find((n) => !n.from_notebook && !isNotebookStep(n.operator) && hasCall([cell], n.id));
+  };
+  const calls = split.steps.map((step) => (step.cells.length > 0 && step.cells.every((i) => builtIn(i)) ? builtIn(step.cells[0]!) : undefined));
+  const steps = split.steps.filter((_, k) => !calls[k]);
+  const at = split.steps.map((_, k) => steps.indexOf(split.steps[k]!));
+  const fromCalls: { from: string; toStep: number; name: string }[] = [];
+  const links: CodeSplit["links"] = [];
+  for (const l of split.links) {
+    const from = calls[l.from_step];
+    if (calls[l.to_step]) continue;
+    if (!from) {
+      links.push({ ...l, from_step: at[l.from_step]!, to_step: at[l.to_step]! });
+      continue;
+    }
+    const prefix = `${from.id}_`;
+    if (!l.name.startsWith(prefix)) return { refused: `${l.name} is not an output of step ${from.id}; read it as ${prefix}<port>.` };
+    fromCalls.push({ from: `${from.id}.${l.name.slice(prefix.length)}`, toStep: at[l.to_step]!, name: l.name });
+  }
+
   const taken = new Set(kept.map((n) => n.id));
   const used = new Set<string>();
-  const ids = split.steps.map((step) => {
+  const ids = steps.map((step) => {
     const cells = step.cells.map((i) => code[i]?.id);
     const before = owned.find((n) => !used.has(n.id) && n.from_notebook?.cells.some((c) => cells.includes(c)));
     const id = before?.id ?? freshId(slug(notebook.title), taken);
@@ -65,7 +88,7 @@ export function stepsIntoFlow({ base, projectId, notebook, split, previous }: { 
     return { id, before };
   });
 
-  const nodes: Node[] = split.steps.map((step, k) => {
+  const nodes: Node[] = steps.map((step, k) => {
     const { id, before } = ids[k]!;
     const passedOn = outward.filter((e) => stepOf(e.from) === before?.id).map((e) => portOf(e.from));
     const settings = before?.params["parameters"];
@@ -83,10 +106,12 @@ export function stepsIntoFlow({ base, projectId, notebook, split, previous }: { 
     };
   });
 
-  const edges: Edge[] = split.links.map((l) => ({ from: `${ids[l.from_step]!.id}.${l.name}`, to: `${ids[l.to_step]!.id}.${l.name}` }));
+  const edges: Edge[] = links.map((l) => ({ from: `${ids[l.from_step]!.id}.${l.name}`, to: `${ids[l.to_step]!.id}.${l.name}` }));
+  edges.push(...fromCalls.map((l) => ({ from: l.from, to: `${ids[l.toStep]!.id}.${l.name}` })));
   const others = base ? { ...base, nodes: kept } : undefined;
-  for (const [k, step] of split.steps.entries()) {
-    const linked = new Set(split.links.filter((l) => l.to_step === k).map((l) => l.name));
+  for (const [k, step] of steps.entries()) {
+    const original = split.steps.indexOf(step);
+    const linked = new Set(split.links.filter((l) => l.to_step === original).map((l) => l.name));
     const bound = bindInputs(others, step.inputs.filter((name) => !linked.has(name)));
     if ("refused" in bound) return bound;
     edges.push(...bound.links.map((l) => ({ from: l.from, to: `${ids[k]!.id}.${l.name}` })));

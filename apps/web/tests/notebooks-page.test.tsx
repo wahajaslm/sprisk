@@ -2,9 +2,11 @@ import type { NotebookVersion, PipelineVersion } from "@sprisk/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { StrictMode } from "react";
 import { describe, expect, it } from "vitest";
 
 import { NotebooksPage } from "../src/views/notebook/NotebooksPage.tsx";
+import { useSelection } from "../src/workbench/selection.ts";
 import { pipeline } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
@@ -196,5 +198,39 @@ describe("deleting a notebook (ADR-0041)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(posts.map((p) => p.path)).toEqual(["pipeline_versions", "notebook_versions"]));
     expect(posts[1]!.body).toMatchObject({ notebook_id: NB, removed: true });
+  });
+});
+
+describe("a flow's own notebook (ADR-0054)", () => {
+  function noNotebooks(listed: NotebookVersion[] = []) {
+    const posts = withApi(pipeline);
+    server.use(
+      http.get("/api/notebooks", () => HttpResponse.json(listed)),
+      http.get("/api/operators/:id/source", ({ params }) =>
+        HttpResponse.json({ operator: String(params.id), path: "m.py", language: "python", text: "def f():\n    pass\n", digest: `sha256:${"0".repeat(64)}` }),
+      ),
+    );
+    useSelection.setState({ pipelineVersionId: pipeline.id, notebookId: undefined, stageTarget: undefined });
+    return posts;
+  }
+
+  it("is made once for a flow with none, with each step's code", async () => {
+    const posts = noNotebooks();
+    renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
+    await waitFor(() => expect(posts.length).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const titles = posts.map((p) => (p.body as NotebookVersion).title);
+    expect(new Set(titles).size).toBe(titles.length);
+    const cells = posts.flatMap((p) => (p.body as NotebookVersion).cells);
+    expect(cells.some((c) => c.source.startsWith("Code of `sprisk.ml.linear_model@1.0.0`"))).toBe(true);
+    expect(posts.every((p) => (p.body as NotebookVersion).pipeline_version_id === pipeline.id)).toBe(true);
+  });
+
+  it("is not made when the flow has a notebook", async () => {
+    const posts = noNotebooks([sales]);
+    renderWithApi(<NotebooksPage />);
+    await list();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(posts).toEqual([]);
   });
 });
