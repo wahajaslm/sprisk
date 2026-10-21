@@ -1,7 +1,7 @@
 # ADR-0055: A flow is its notebooks: one notebook per stage, one cell per step
 Status: Accepted
 Date: 2026-10-21
-Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supersedes ADR-0037 and ADR-0054. Changes ADR-0031 (one cell is one step), ADR-0033 and ADR-0036 (one kernel per flow).
+Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supersedes ADR-0037 and ADR-0054. Changes ADR-0031 (one cell is one step), ADR-0026 (a run can target one step; code steps can be reused) and ADR-0036 (flow notebooks have no session kernel).
 
 ## Context
 - People come from Jupyter. They expect to work in a notebook, and the flow to show the same work.
@@ -41,16 +41,19 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 - A value passed between cells may be a table, a model, or plain data (numbers, text, lists, dicts). A new code operator, `sprisk.code.python@3.0.0`, has ports of any of these kinds. The worker stores each by what it is. Anything else (an open file, a generator) fails the step, naming the value.
 - Imports, constants and functions are not passed. Each step gets a copy of the ones it uses from the cells above, in its own `setup` setting. Its source stays exactly as the cell shows it.
 
-**Running.**
-- Running a cell is a quick try on the flow's kernel, as in Jupyter. Its output is scratch (ADR-0036).
-- One kernel per flow, shared by its stage notebooks, so names from the Split notebook are there in the Model notebook.
-- Run flow is the record: every step runs in order through the scheduler, with checks and history. Unchanged ready-made steps reuse results (ADR-0026).
+**Running a cell runs its step.** A cell's code is text until it runs; when the cell runs, so does the step.
+- Run cell saves the flow version if the code changed, then runs that step through the scheduler (rule 4). `CreateRun.target` names the step.
+- Steps above it that already ran with the same code, settings and inputs are reused (ADR-0026), code steps included. Steps above it that never ran, or changed, run first.
+- Steps below it keep their last results, shown as out of date until they run again.
+- The cell's output is the step's output: printed text, tables and figures, as the inspector shows them. The flow shows the same result.
+- Run all in a notebook runs its stage. Run flow runs every step from the start and re-reads files (ADR-0026).
+- Flow notebooks have no session kernel (ADR-0036 stays for notebooks outside a flow). No hidden state: what a cell sees is what its step was given.
 
 ## Alternatives considered
 - **Keep two copies and sync them better.** Rejected: matching by text is the cause of the drift, and better matching is still matching.
 - **The notebook is the record; the flow is drawn from it.** Rejected: the scheduler, caching, Gate B and AI proposals work on typed steps (§9, rule 3). A notebook run top to bottom has none of that.
 - **Raw scikit-learn calls as ready-made steps.** Rejected: a step like `impute` is safe by design (it learns only from train). Raw calls lose that, and a card cannot describe a fit-then-transform pattern.
-- **Running a cell runs the step through the scheduler.** Rejected for now: there is no single-step run (ADR-0026), and code steps never reuse results, so each cell run would rerun every code step.
+- **Run cells on a live kernel and run the flow separately.** Rejected by the user: a cell and its step must be one thing. A kernel also keeps hidden state, so its results can differ from the flow's.
 - **Merge cells that share a non-table value (ADR-0031).** Rejected: a person can no longer tell which cell is which step.
 
 ## Consequences (good and bad)
@@ -58,18 +61,20 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 - Good: a notebook reads as plain Python. The only sprisk thing in it is `from sprisk import ...`.
 - Good: removes the sync code, the cell markers and the per-notebook copies of steps.
 - Bad: stricter than Jupyter. One cell per name, and no in-place change to another cell's value.
-- Bad: a cell run is scratch. The flow's results come from Run flow.
+- Bad: each cell run starts a worker, about 1 to 2 seconds before the code starts. A warm worker per flow would remove it; that is its own ADR.
+- Bad: a code step that reads a file directly is reused until its cell runs again or Run flow, as in Jupyter.
 - Bad: `sprisk` names are the functions' own names (`impute`, `random_split`). Friendlier names would need a field on the card.
 - Bad: old notebooks need a one-time conversion into their flow.
 
 ## Delivery
 1. Contracts: `Node.stage`, `Node.notes`, `Node.names`. The `sprisk` package. Python reads cells into steps and calls.
 2. `sprisk.code.python@3.0.0`: ports of any kind, and `setup`.
-3. Web: notebooks drawn from the flow, automatic saving, form and call kept as one. Retire the sync code.
-4. One kernel per flow.
+3. A run that targets one step, reusing the steps above it.
+4. Web: notebooks drawn from the flow, automatic saving, run cell runs the step, form and call kept as one. Retire the sync code.
 5. Convert old notebooks.
 
 ## Validation
 - Python: a call is read exactly; every refused shape names the cell and says what to write; a name set twice, or changed in place, is refused; imports used are copied into `setup`.
 - Web: a flow becomes one notebook per stage and back with no change; a form edit rewrites the call; deleting a step removes its cell; editing a call changes the setting.
-- Browser: build the German credit flow in notebooks, run it, see the same flow on the canvas, change a setting there and see the cell change.
+- Scheduler: a targeted run reuses unchanged steps above, runs changed or never-run ones, and leaves steps below untouched.
+- Browser: build the German credit flow in notebooks, run it cell by cell, see the same results on the canvas, change a setting there and see the cell change.
