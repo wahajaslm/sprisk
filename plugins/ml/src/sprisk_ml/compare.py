@@ -29,6 +29,15 @@ TESTED = (
     "rejects 'no better than the baseline' at α = 0.05 after a Holm adjustment over the "
     "candidates. Folds share rows, so the test is approximate."
 )
+TESTED_REFERENCE = (
+    "Beating the recommendation means a corrected repeated k-fold t-test (Bouckaert & Frank "
+    "2004) rejects 'no better than the recommendation' at α = 0.05 after a Holm adjustment "
+    "over the alternatives. Folds share rows, so the test is approximate."
+)
+ONE_STEP = (
+    "Only this step changed: the model and the other steps were as the flow has them, so the "
+    "choice holds for this model, not for every model."
+)
 # What every candidate's folds must share for their paired differences to mean anything.
 PROTOCOL = [
     "metric",
@@ -239,15 +248,24 @@ def select_model(
     baseline: str,
     metric: str,
     complexity: dict[str, int],
+    baseline_role: str,
+    not_compared: list[dict[str, str]],
 ) -> dict[str, Any]:
     """A SelectionDecision (ADR-0047). Of the candidates that beat the baseline on the same
     folds, the simplest whose mean is within one standard error of the best mean wins: the
-    one-SE rule (Breiman et al. 1984; ESL §7.10). Beating the baseline means the corrected
-    repeated k-fold t-test (Bouckaert & Frank 2004) rejects "no better than the baseline",
-    one-sided at α = 0.05, after a Holm adjustment over the candidates. Both standard errors
-    are corrected for folds that share train rows: the variance of a mean of n fold values
-    is (1/n + n_validate/n_train) times their variance, not 1/n. That is the correction of
-    Nadeau & Bengio (2003), applied to repeated k-fold as Bouckaert & Frank do."""
+    one-SE rule (Breiman et al. 1984; ESL §7.10). A `floor` baseline, a model that ignores its
+    features, never wins; a `reference` baseline, the rule's recommended preparation, wins
+    when no alternative beats it. `not_compared` is recorded as given. Beating the baseline
+    means the corrected repeated k-fold t-test (Bouckaert & Frank 2004) rejects "no better
+    than the baseline", one-sided at α = 0.05, after a Holm adjustment over the candidates.
+    Both standard errors are corrected for folds that share train rows: the variance of a
+    mean of n fold values is (1/n + n_validate/n_train) times their variance, not 1/n. That
+    is the correction of Nadeau & Bengio (2003), applied to repeated k-fold as Bouckaert &
+    Frank do."""
+    if baseline_role not in ("floor", "reference"):
+        raise ValueError(f"baseline role {baseline_role} is not floor or reference")
+    if both := sorted(set(trials) & {n["id"] for n in not_compared}):
+        raise ValueError(f"{', '.join(both)} is both a trial and not compared")
     if baseline not in trials:
         raise ValueError(f"baseline {baseline} is not one of the trials {sorted(trials)}")
     if missing := sorted(set(trials) - set(complexity)):
@@ -285,6 +303,8 @@ def select_model(
     _holm([c["versus_baseline"] for c in candidates if "versus_baseline" in c])
 
     beating = [c for c in candidates if c.get("versus_baseline", {}).get("beats_baseline")]
+    reference = baseline_role == "reference"
+    tested = [TESTED_REFERENCE, ONE_STEP] if reference else [TESTED]
     decision: dict[str, Any] = {
         "schema_version": "sprisk.selection_decision/v1",
         "metric": metric,
@@ -292,15 +312,29 @@ def select_model(
         "repeats": repeats,
         "seed": int(protocol["seed"][0]),
         "baseline": baseline,
+        "baseline_role": baseline_role,
         "candidates": candidates,
-        "limitations": [TESTED, *([TIME_ORDERED] if protocol["folds_by"][0] == "time" else [])],
+        "not_compared": not_compared,
+        "limitations": [*tested, *([TIME_ORDERED] if protocol["folds_by"][0] == "time" else [])],
     }
+    if not beating and reference:
+        decision["winner"] = baseline
+        decision["reason"] = (
+            f"No alternative beats the recommendation {baseline}: none passes the corrected "
+            f"t-test against its {LABEL[metric]} at α = {ALPHA} after a Holm adjustment, over "
+            f"the same {k} folds. {baseline} stands."
+        )
+        return decision
     if not beating:
         decision["reason"] = (
             f"No model beats the baseline: none passes the corrected t-test against {baseline}'s "
             f"{LABEL[metric]} at α = {ALPHA} after a Holm adjustment, over the same {k} folds."
         )
         return decision
+    kind, floor_name = (
+        ("alternative", "the recommendation") if reference else ("model", "the baseline")
+    )
+    others = "others" if reference else "more flexible ones"
     best = max(beating, key=lambda c: sign * c["mean"])
     best_se = _corrected_se(trials[best["id"]]["score"].to_numpy(), k, ratio)
     near = [c for c in beating if sign * (best["mean"] - c["mean"]) <= best_se]
@@ -313,20 +347,21 @@ def select_model(
         then = (
             f"They are equally simple, so {winner['id']}, with the best mean, is recommended."
             if equally_simple
-            else f"{winner['id']} is the simplest of them, so the more flexible ones add no "
-            "measurable gain on these rows."
+            else f"{winner['id']} is the simplest of them, so the {others} add no measurable "
+            "gain on these rows."
         )
         decision["reason"] = (
             f"{' and '.join(c['id'] for c in near)} are within one standard error "
-            f"({best_se:.3f}) of the best mean {LABEL[metric]} ({best['mean']:.3f}) and beat the "
-            f"baseline. {then}"
+            f"({best_se:.3f}) of the best mean {LABEL[metric]} ({best['mean']:.3f}) and beat "
+            f"{floor_name}. {then}"
         )
         return decision
     versus = winner["versus_baseline"]
     decision["reason"] = (
         f"{winner['id']} has the best mean {LABEL[metric]} ({winner['mean']:.3f} ± "
-        f"{winner['spread']:.3f}) of the models that beat the baseline, and no simpler model that "
-        f"beats the baseline is within one standard error of it. Over the same {k} folds it improves on {baseline} by "
+        f"{winner['spread']:.3f}) of the {kind}s that beat {floor_name}, and no simpler {kind} "
+        f"that beats {floor_name} is within one standard error of it. Over the same {k} folds it "
+        f"improves on {baseline} by "
         f"{versus['mean_difference']:.3f} (corrected standard error {versus['corrected_se']:.3f}, "
         f"one-sided p = {versus['p_value']:.2g})."
     )

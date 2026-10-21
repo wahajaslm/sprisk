@@ -9,7 +9,7 @@ use sprisk_contracts::{
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
     Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, flow_facts,
-    observation, profile_facts, proposal, train_rows_source, without_node,
+    observation, preparation_comparison, profile_facts, proposal, train_rows_source, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -1049,8 +1049,9 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
         select["params"],
         json!({
             "trials": ["ml_dummy_baseline", "ml_linear_model"], "baseline": "ml_dummy_baseline",
-            "metric": "balanced_accuracy",
-            "complexity": { "ml_dummy_baseline": 0, "ml_linear_model": 1 }
+            "baseline_role": "floor", "metric": "balanced_accuracy",
+            "complexity": { "ml_dummy_baseline": 0, "ml_linear_model": 1 },
+            "not_compared": [{ "id": "ml_random_forest", "reason": "Not on the shortlist: Too few rows to trust." }]
         })
     );
 }
@@ -1191,4 +1192,363 @@ fn a_comparison_refuses_folds_it_cannot_make_faithfully() {
         assert!(matches!(err, ResolveError::Selection(_)), "{err}");
         assert!(err.to_string().contains(why), "{operator}: {err}");
     }
+}
+
+const MISSINGNESS: &str = "methodology.supervised.missingness@1.1.0";
+
+/// A recommend proposal for `step` of `pipeline`, built by hand: `alternatives` as the API
+/// stores them, effects included.
+fn recommending(
+    pipeline: &PipelineVersion,
+    rule: &str,
+    step: &str,
+    recommended: &str,
+    alternatives: Value,
+) -> DecisionProposal {
+    parse(
+        &json!({
+            "schema_version": "sprisk.decision_proposal/v1",
+            "id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ7",
+            "rule": rule,
+            "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+            "pipeline_version_id": pipeline.id,
+            "subject_node_id": step,
+            "evidence": [],
+            "alternatives": alternatives,
+            "recommended_alternative_id": recommended,
+            "fingerprint": format!("sha256:{}", "0".repeat(64)),
+            "created_at": "2026-10-15T10:00:00Z"
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+fn replace(id: &str, step: &str, operator: &str, params: Value) -> Value {
+    json!({
+        "id": id, "label": id, "description": "d", "applicability": "applicable", "reason": "r",
+        "effect": { "kind": "replace_node", "node_id": step, "operator": operator, "params": params }
+    })
+}
+
+fn removing(id: &str, step: &str) -> Value {
+    json!({
+        "id": id, "label": id, "description": "d", "applicability": "applicable", "reason": "r",
+        "effect": { "kind": "remove_node", "node_id": step }
+    })
+}
+
+fn unavailable(id: &str, applicability: &str, reason: &str) -> Value {
+    json!({ "id": id, "label": id, "description": "d", "applicability": applicability, "reason": reason })
+}
+
+fn scale_alternatives() -> Value {
+    json!([
+        removing("no_scaling", "scale"),
+        replace(
+            "robust_scaling",
+            "scale",
+            "sprisk.clean.scale@1.0.0",
+            json!({ "columns": ["age"], "method": "robust" })
+        ),
+        replace(
+            "standard_scaling",
+            "scale",
+            "sprisk.clean.scale@1.0.0",
+            json!({ "columns": ["age"], "method": "z_score" })
+        ),
+        unavailable(
+            "maxabs_scaling_sparse",
+            "not_applicable",
+            "The scale step has no max-abs method."
+        ),
+    ])
+}
+
+fn compare_preparation(
+    pipeline: &PipelineVersion,
+    rule: &str,
+    proposal: &DecisionProposal,
+) -> Result<Comparison, ResolveError> {
+    let registry = registry();
+    let catalog = catalog();
+    let fits = |n: &Node| {
+        registry
+            .get(n.operator.as_str())
+            .is_some_and(|o| o.fits_on_train == Some(true))
+    };
+    preparation_comparison(
+        pipeline,
+        proposal,
+        catalog.rule(rule).unwrap(),
+        TaskType::Classification,
+        is_split,
+        fits,
+        |operator| registry.get(operator),
+    )
+}
+
+fn select_params(built: &Comparison) -> Value {
+    let select = built
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "select_model")
+        .unwrap();
+    serde_json::to_value(select).unwrap()["params"].clone()
+}
+
+#[test]
+fn a_preparation_comparison_scores_each_way_of_doing_the_step_with_the_flows_model() {
+    let pipeline = evaluated_flow();
+    let proposal = recommending(
+        &pipeline,
+        SCALING,
+        "scale",
+        "standard_scaling",
+        scale_alternatives(),
+    );
+    let built = compare_preparation(&pipeline, SCALING, &proposal).unwrap();
+
+    let ids: Vec<&str> = built.nodes.iter().map(|n| n.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "load",
+            "split",
+            "cv_no_scaling",
+            "cv_robust_scaling",
+            "cv_standard_scaling",
+            "select_model"
+        ]
+    );
+    let cv = |id: &str| {
+        let node = built.nodes.iter().find(|n| n.id.as_str() == id).unwrap();
+        serde_json::to_value(node).unwrap()["params"].clone()
+    };
+    // The model is the flow's, unchanged; only the step's place in `prepare` differs.
+    for id in ["cv_no_scaling", "cv_robust_scaling", "cv_standard_scaling"] {
+        assert_eq!(cv(id)["candidate"], "sprisk.ml.linear_model@1.0.0", "{id}");
+        assert_eq!(
+            cv(id)["candidate_params"],
+            json!({ "target": "churned", "features": ["age", "plan"], "task": "classification" })
+        );
+        assert_eq!(cv(id)["repeats"], 10);
+    }
+    assert_eq!(cv("cv_no_scaling")["prepare"], json!([]));
+    assert_eq!(
+        cv("cv_robust_scaling")["prepare"],
+        json!([{ "operator": "sprisk.clean.scale@1.0.0", "params": { "columns": ["age"], "method": "robust" } }])
+    );
+    assert_eq!(
+        select_params(&built),
+        json!({
+            "trials": ["no_scaling", "robust_scaling", "standard_scaling"],
+            "baseline": "standard_scaling", "baseline_role": "reference",
+            "metric": "balanced_accuracy",
+            "complexity": { "no_scaling": 0, "robust_scaling": 1, "standard_scaling": 1 },
+            "not_compared": [{ "id": "maxabs_scaling_sparse", "reason": "Not applicable here: The scale step has no max-abs method." }]
+        })
+    );
+    for edge in &built.edges {
+        let (step, port) = edge.from.step_and_port();
+        assert!(
+            step != "split" || port == "train",
+            "{} reads split.{port}",
+            edge.to.as_str()
+        );
+    }
+}
+
+/// load -> split -> impute -> model -> evaluate.
+fn imputed_flow() -> PipelineVersion {
+    let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+    pipeline["nodes"][2]["id"] = json!("impute");
+    pipeline["nodes"][2]["operator"] = json!("sprisk.clean.impute@1.0.0");
+    pipeline["nodes"][2]["params"] = json!({ "columns": ["age"], "method": "zero" });
+    pipeline["edges"] = json!([
+        { "from": "load.data", "to": "split.data" },
+        { "from": "split.train", "to": "impute.train" },
+        { "from": "split.test", "to": "impute.test" },
+        { "from": "impute.train", "to": "model.train" },
+        { "from": "model.model", "to": "eval.model" },
+        { "from": "impute.test", "to": "eval.test" }
+    ]);
+    parse(&pipeline.to_string()).unwrap()
+}
+
+fn impute_alternatives() -> Value {
+    json!([
+        replace(
+            "drop_rows",
+            "impute",
+            "sprisk.clean.drop_missing@1.0.0",
+            json!({ "columns": ["age"] })
+        ),
+        replace(
+            "impute_median",
+            "impute",
+            "sprisk.clean.impute@1.0.0",
+            json!({ "columns": ["age"], "method": "median" })
+        ),
+        replace(
+            "impute_mean",
+            "impute",
+            "sprisk.clean.impute@1.0.0",
+            json!({ "columns": ["age"], "method": "mean" })
+        ),
+        unavailable(
+            "impute_mode",
+            "not_applicable",
+            "The impute step fills numbers only (ADR-0042)."
+        ),
+        unavailable(
+            "drop_column",
+            "not_applicable",
+            "No column is mostly empty."
+        ),
+        unavailable("pass_through", "needs_fact", "Confirm the target first."),
+    ])
+}
+
+#[test]
+fn alternatives_that_cannot_be_refit_within_each_fold_are_not_compared_and_say_why() {
+    let pipeline = imputed_flow();
+    let proposal = recommending(
+        &pipeline,
+        MISSINGNESS,
+        "impute",
+        "impute_mean",
+        impute_alternatives(),
+    );
+    let built = compare_preparation(&pipeline, MISSINGNESS, &proposal).unwrap();
+
+    let params = select_params(&built);
+    assert_eq!(params["trials"], json!(["impute_median", "impute_mean"]));
+    let why: Vec<(String, String)> = params["not_compared"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| {
+            (
+                n["id"].as_str().unwrap().to_owned(),
+                n["reason"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    let expected = [
+        (
+            "drop_rows",
+            "sprisk.clean.drop_missing@1.0.0 does not fit on the train rows and keep train and test apart, so it cannot be refit within each fold.",
+        ),
+        (
+            "impute_mode",
+            "Not applicable here: The impute step fills numbers only (ADR-0042).",
+        ),
+        (
+            "drop_column",
+            "It acts before the split, on train and test rows together, so it cannot be refit within each fold.",
+        ),
+        (
+            "pass_through",
+            "Needs a fact first: Confirm the target first.",
+        ),
+    ];
+    let expected: Vec<(String, String)> = expected
+        .iter()
+        .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
+        .collect();
+    assert_eq!(why, expected);
+}
+
+#[test]
+fn a_recommendation_that_cannot_be_measured_leaves_nothing_to_compare() {
+    let pipeline = imputed_flow();
+    let proposal = recommending(
+        &pipeline,
+        MISSINGNESS,
+        "impute",
+        "drop_rows",
+        impute_alternatives(),
+    );
+    let err = compare_preparation(&pipeline, MISSINGNESS, &proposal).unwrap_err();
+    assert!(matches!(err, ResolveError::NothingToCompare(_)), "{err}");
+    assert!(
+        err.to_string().contains("the recommendation drop_rows cannot be measured here: sprisk.clean.drop_missing@1.0.0 does not fit"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_recommendation_with_no_measurable_alternative_leaves_nothing_to_compare() {
+    let pipeline = evaluated_flow();
+    let alternatives = json!([
+        replace(
+            "standard_scaling",
+            "scale",
+            "sprisk.clean.scale@1.0.0",
+            json!({ "columns": ["age"], "method": "z_score" })
+        ),
+        unavailable("no_scaling", "not_applicable", "Scaling matters."),
+    ]);
+    let proposal = recommending(
+        &pipeline,
+        SCALING,
+        "scale",
+        "standard_scaling",
+        alternatives,
+    );
+    let err = compare_preparation(&pipeline, SCALING, &proposal).unwrap_err();
+    assert!(matches!(err, ResolveError::NothingToCompare(_)), "{err}");
+    assert!(
+        err.to_string()
+            .contains("only the recommendation standard_scaling can be measured here"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_step_that_feeds_no_model_through_train_rows_cannot_be_compared() {
+    // The scale step's test rows reach the model's train input: no train-rows path from it.
+    let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+    pipeline["edges"][3] = json!({ "from": "split.train", "to": "model.train" });
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let proposal = recommending(
+        &pipeline,
+        SCALING,
+        "scale",
+        "standard_scaling",
+        scale_alternatives(),
+    );
+    let err = compare_preparation(&pipeline, SCALING, &proposal).unwrap_err();
+    assert!(matches!(err, ResolveError::NothingToCompare(_)), "{err}");
+    assert!(
+        err.to_string()
+            .contains("step scale is not between a split and a model"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_preparation_comparison_needs_a_recommendation() {
+    let pipeline = evaluated_flow();
+    let mut proposal = serde_json::to_value(recommending(
+        &pipeline,
+        SCALING,
+        "scale",
+        "standard_scaling",
+        scale_alternatives(),
+    ))
+    .unwrap();
+    proposal
+        .as_object_mut()
+        .unwrap()
+        .remove("recommended_alternative_id");
+    let proposal: DecisionProposal = parse(&proposal.to_string()).unwrap();
+    let err = compare_preparation(&pipeline, SCALING, &proposal).unwrap_err();
+    assert!(matches!(err, ResolveError::Selection(_)), "{err}");
+    assert!(
+        err.to_string()
+            .contains("recommends nothing to compare against"),
+        "{err}"
+    );
 }

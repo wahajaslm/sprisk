@@ -6,7 +6,9 @@ mod compare;
 mod decision;
 pub mod facts;
 pub use catalog::{CatalogError, RuleCatalog};
-pub use compare::{Comparison, FOLDS, REPEATS, SEED, SELECT_NODE, comparison};
+pub use compare::{
+    Comparison, FOLDS, REPEATS, SEED, SELECT_NODE, comparison, preparation_comparison,
+};
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts, proposal,
     train_rows_source, without_node,
@@ -26,6 +28,8 @@ pub enum ResolveError {
     },
     #[error("the train rows cannot be traced to a split: {0}")]
     NotTrainRows(String),
+    #[error("nothing to compare: {0}")]
+    NothingToCompare(String),
     #[error("the rule's decision does not fit its selection: {0}")]
     Selection(String),
     #[error("cannot remove the step: output {0} has no input of the same name to take its place")]

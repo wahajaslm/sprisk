@@ -356,6 +356,8 @@ def select(trials: dict[str, pl.DataFrame], **settings: Any) -> SelectionDecisio
         baseline=settings.get("baseline", BASE),
         metric=settings.get("metric", "balanced_accuracy"),
         complexity=settings.get("complexity", COMPLEXITY),
+        baseline_role=settings.get("baseline_role", "floor"),
+        not_compared=settings.get("not_compared", []),
     )
     # Through JSON, as the worker writes it.
     return SelectionDecision.model_validate_json(json.dumps(chosen))
@@ -604,8 +606,8 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     out = tmp_path / "select"
     out.mkdir()
     params = {"trials": [BASE, "ml_lm"], "baseline": BASE, "metric": "balanced_accuracy"}
-    params |= {"complexity": {BASE: 0, "ml_lm": 1}}
-    [decision] = operators["sprisk.ml.select_model@2.0.0"].run(params, cross_validated, out)
+    params |= {"complexity": {BASE: 0, "ml_lm": 1}, "baseline_role": "floor", "not_compared": []}
+    [decision] = operators["sprisk.ml.select_model@3.0.0"].run(params, cross_validated, out)
     assert SelectionDecision.model_validate_json(decision.path.read_text()).winner == "ml_lm"
 
 
@@ -615,3 +617,95 @@ def test_a_time_ordered_comparison_says_its_test_is_a_rough_guide() -> None:
 
     decision = select({BASE: timed_trial([0.5] * 5), "ml_linear_model": timed_trial([0.8] * 5)})
     assert [limit.root for limit in decision.limitations][1].startswith("Folds follow time")
+
+
+REFERENCE = "standard_scaling"
+PREPARATION = {REFERENCE: 1, "robust_scaling": 1, "no_scaling": 0}
+
+
+def prepared(trials: dict[str, pl.DataFrame], **settings: Any) -> SelectionDecision:
+    """A preparation comparison: the rule's recommendation is the reference (ADR-0047)."""
+    return select(
+        trials, baseline=REFERENCE, baseline_role="reference", complexity=PREPARATION, **settings
+    )
+
+
+def test_a_floor_baseline_is_recorded_as_one() -> None:
+    decision = select({BASE: trial([0.5] * 5), "ml_linear_model": trial([0.8] * 5)})
+    assert decision.baseline_role == "floor"
+
+
+def test_the_recommendation_stands_when_no_alternative_beats_it() -> None:
+    decision = prepared(
+        {REFERENCE: trial([0.8] * 5), "robust_scaling": trial([0.82, 0.78, 0.83, 0.79, 0.8])}
+    )
+    assert decision.baseline_role == "reference"
+    assert decision.winner == REFERENCE
+    assert decision.reason == (
+        "No alternative beats the recommendation standard_scaling: none passes the corrected "
+        "t-test against its balanced accuracy at α = 0.05 after a Holm adjustment, over the "
+        "same 5 folds. standard_scaling stands."
+    )
+
+
+def test_an_alternative_that_beats_the_recommendation_replaces_it() -> None:
+    decision = prepared(
+        {REFERENCE: trial([0.7] * 5), "robust_scaling": trial([0.85, 0.86, 0.84, 0.85, 0.86])}
+    )
+    assert decision.winner == "robust_scaling"
+    assert decision.reason.startswith(
+        "robust_scaling has the best mean balanced accuracy (0.852 ± 0.008) of the alternatives "
+        "that beat the recommendation, and no simpler alternative that beats the recommendation "
+        "is within one standard error of it. Over the same 5 folds it improves on "
+        "standard_scaling by 0.152"
+    )
+
+
+def test_removing_the_step_wins_when_it_is_as_good_as_the_best_that_beats_the_recommendation() -> (
+    None
+):
+    better = [0.85, 0.86, 0.84, 0.85, 0.86]
+    decision = prepared(
+        {REFERENCE: trial([0.7] * 5), "robust_scaling": trial(better), "no_scaling": trial(better)}
+    )
+    assert decision.winner == "no_scaling"
+    assert decision.reason.endswith(
+        "no_scaling is the simplest of them, so the others add no measurable gain on these rows."
+    )
+
+
+def test_a_reference_comparison_says_how_beating_the_recommendation_was_tested() -> None:
+    decision = prepared({REFERENCE: trial([0.8] * 5), "no_scaling": trial([0.8] * 5)})
+    assert [limit.root for limit in decision.limitations] == [
+        "Beating the recommendation means a corrected repeated k-fold t-test (Bouckaert & "
+        "Frank 2004) rejects 'no better than the recommendation' at α = 0.05 after a Holm "
+        "adjustment over the alternatives. Folds share rows, so the test is approximate.",
+        "Only this step changed: the model and the other steps were as the flow has them, so "
+        "the choice holds for this model, not for every model.",
+    ]
+
+
+def test_what_was_not_compared_is_recorded_with_why() -> None:
+    skipped = [{"id": "maxabs_scaling_sparse", "reason": "The scale step has no max-abs method."}]
+    decision = prepared(
+        {REFERENCE: trial([0.8] * 5), "no_scaling": trial([0.8] * 5)}, not_compared=skipped
+    )
+    assert decision.not_compared is not None
+    assert [(n.id, n.reason) for n in decision.not_compared] == [
+        ("maxabs_scaling_sparse", "The scale step has no max-abs method.")
+    ]
+
+
+def test_an_alternative_both_compared_and_not_is_refused() -> None:
+    with pytest.raises(ValueError, match=r"no_scaling is both a trial and not compared"):
+        prepared(
+            {REFERENCE: trial([0.8] * 5), "no_scaling": trial([0.8] * 5)},
+            not_compared=[{"id": "no_scaling", "reason": "r"}],
+        )
+
+
+def test_an_unknown_baseline_role_is_refused() -> None:
+    with pytest.raises(ValueError, match="baseline role ceiling is not floor or reference"):
+        select(
+            {BASE: trial([0.5] * 5), "ml_linear_model": trial([0.8] * 5)}, baseline_role="ceiling"
+        )

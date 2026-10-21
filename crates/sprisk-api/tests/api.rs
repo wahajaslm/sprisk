@@ -2393,9 +2393,9 @@ async fn only_a_model_step_that_has_run_has_a_model_selection() {
         "methodology_evidence_unavailable"
     );
 
-    let (status, body) = select_model(&api, "scale").await;
+    let (status, body) = select_model(&api, "split").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "not_a_model_step");
+    assert_eq!(body["errors"][0]["code"], "not_compared");
 }
 
 #[tokio::test]
@@ -2468,4 +2468,133 @@ async fn two_requests_at_once_share_one_model_selection_and_one_run() {
         .filter(|v| v.get("compares").is_some())
         .count();
     assert_eq!(comparisons, 1, "{versions}");
+}
+
+#[tokio::test]
+async fn sprisk_compares_a_preparation_step_by_itself_once_per_version() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+
+    let (status, selection) = select_model(&api, "scale").await;
+    assert_eq!(status, StatusCode::CREATED, "{selection}");
+    // The linear model standardises its own inputs, so the rule recommends no scaling.
+    assert_eq!(
+        selection["proposal"]["recommended_alternative_id"],
+        "no_scaling"
+    );
+    let select = selection["comparison"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "select_model")
+        .unwrap();
+    assert_eq!(select["params"]["baseline"], "no_scaling", "{select}");
+    assert_eq!(select["params"]["baseline_role"], "reference");
+
+    let (status, again) = select_model(&api, "scale").await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    for part in ["proposal", "comparison", "run"] {
+        assert_eq!(again[part]["id"], selection[part]["id"], "{part}");
+    }
+
+    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let decision = output(&api, &attempts, "select_model", "decision").await;
+    // Rescaling before a model that standardises changes nothing, so none beats it.
+    assert_eq!(decision["winner"], "no_scaling", "{decision}");
+    assert_eq!(decision["baseline_role"], "reference");
+    assert!(
+        decision["reason"]
+            .as_str()
+            .unwrap()
+            .ends_with("no_scaling stands."),
+        "{decision}"
+    );
+}
+
+#[tokio::test]
+async fn a_preparation_choice_other_than_the_comparisons_needs_a_reason_and_each_is_a_branch() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+    let (_, selection) = select_model(&api, "scale").await;
+    let (run, _) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        selection["proposal"]["id"].as_str().unwrap()
+    );
+
+    let other =
+        json!({ "alternative_id": "robust_scaling", "idempotency_key": "test-prep-robust" });
+    let (status, body) = call(&api.app, "POST", &uri, Some(other)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "reason_required");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("it is not the comparison's recommendation, no_scaling"),
+        "{body}"
+    );
+
+    let winner = json!({ "alternative_id": "no_scaling", "idempotency_key": "test-prep-none" });
+    let (status, removed) = call(&api.app, "POST", &uri, Some(winner)).await;
+    assert_eq!(status, StatusCode::CREATED, "{removed}");
+    assert!(
+        removed["decision"].get("selection_id").is_some(),
+        "{removed}"
+    );
+    let steps: Vec<&str> = removed["pipeline"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["id"].as_str().unwrap())
+        .collect();
+    assert!(!steps.contains(&"scale"), "{steps:?}");
+
+    // A second choice from the same comparison is another branch, not a stale proposal.
+    let other = json!({ "alternative_id": "robust_scaling", "idempotency_key": "test-prep-robust-2",
+                        "reason": "To keep the scaled values for a later step." });
+    let (status, robust) = call(&api.app, "POST", &uri, Some(other)).await;
+    assert_eq!(status, StatusCode::CREATED, "{robust}");
+    assert_eq!(
+        robust["pipeline"]["parent_id"],
+        removed["pipeline"]["parent_id"]
+    );
+}
+
+#[tokio::test]
+async fn two_requests_at_once_share_one_preparation_comparison_and_one_run() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+
+    let ((one, first), (two, second)) =
+        tokio::join!(select_model(&api, "scale"), select_model(&api, "scale"));
+
+    assert!(one.is_success() && two.is_success(), "{first} {second}");
+    for part in ["proposal", "comparison", "run"] {
+        assert_eq!(first[part]["id"], second[part]["id"], "{part}");
+    }
+    let comparison = first["comparison"]["id"].as_str().unwrap();
+    let (_, runs) = call(
+        &api.app,
+        "GET",
+        &format!("/runs?pipeline_version_id={comparison}"),
+        None,
+    )
+    .await;
+    assert_eq!(runs.as_array().unwrap().len(), 1, "{runs}");
+}
+
+#[tokio::test]
+async fn a_preparation_step_with_nothing_to_compare_says_so() {
+    let api = api().await;
+    // No model after the scale step: there is nothing to measure its choices with.
+    scaling_flow_into(&api, &[], &[]).await;
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let (status, body) = select_model(&api, "scale").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "nothing_to_compare", "{body}");
 }

@@ -1110,22 +1110,16 @@ async fn apply_methodology(
             ),
         })?;
     // Choosing other than the recommendation, or from a shortlist without comparing, is an
-    // override: it needs a reason on every path, not only in the UI (ADR-0042). A shortlist's
-    // recommendation is its comparison's winner (ADR-0047).
-    let selection = if proposal.shortlist.is_empty() {
-        None
-    } else {
-        selection_of(&state, &proposal.id).await?
+    // override: it needs a reason on every path, not only in the UI (ADR-0042). Once a
+    // comparison has decided, its winner is the recommendation (ADR-0047).
+    let selection = selection_of(&state, &proposal.id).await?;
+    let recommended = match &selection {
+        Some((decided, _)) => decided.winner.as_ref().map(|w| w.as_str()),
+        None => proposal
+            .recommended_alternative_id
+            .as_ref()
+            .map(|r| r.as_str()),
     };
-    let recommended = proposal
-        .recommended_alternative_id
-        .as_ref()
-        .map(|r| r.as_str())
-        .or_else(|| {
-            selection
-                .as_ref()
-                .and_then(|(s, _)| s.winner.as_ref().map(|w| w.as_str()))
-        });
     let has_reason = request
         .reason
         .as_ref()
@@ -1200,14 +1194,16 @@ async fn apply_methodology(
     ))
 }
 
-/// Refuses a proposal whose flow changed after it. A shortlist's own branches are no change:
-/// each choice from it is a branch of the flow it compared (ADR-0047).
+/// Refuses a proposal whose flow changed after it. A compared proposal's own branches are no
+/// change: each choice from it is a branch of the flow it compared (ADR-0047).
 async fn check_current(state: &AppState, proposal: &DecisionProposal) -> Result<(), ApiError> {
     let base = &proposal.pipeline_version_id;
-    let changed = if proposal.shortlist.is_empty() {
-        state.store.has_pipeline_child(base).await?
-    } else {
+    let compared =
+        !proposal.shortlist.is_empty() || state.store.comparison_of(&proposal.id).await?.is_some();
+    let changed = if compared {
         state.store.has_other_child(base, &proposal.id).await?
+    } else {
+        state.store.has_pipeline_child(base).await?
     };
     if changed {
         return Err(ApiError::BadRequest {
@@ -1283,6 +1279,12 @@ async fn compare_methodology(
         .store
         .get_methodology_proposal(&id::<MethodologyProposalId>(&raw)?)
         .await?;
+    if proposal.shortlist.is_empty() {
+        return Err(not_applicable(format!(
+            "proposal {} has no shortlist to compare",
+            proposal.id.as_str()
+        )));
+    }
     let (comparison, created) = build_comparison(&state, &proposal).await?;
     let status = if created {
         StatusCode::CREATED
@@ -1312,7 +1314,8 @@ async fn build_comparison(
     }
 }
 
-/// `proposal`'s comparison, built and checked but not stored.
+/// `proposal`'s comparison, built and checked but not stored: of its shortlist's models, or,
+/// for a recommend rule's proposal, of the ways of doing its preparation step (ADR-0047).
 async fn comparison_version(
     state: &AppState,
     proposal: &DecisionProposal,
@@ -1326,15 +1329,31 @@ async fn comparison_version(
         .store
         .get_question_version(&proposal.question_version_id)
         .await?;
-    let built = sprisk_methodology::comparison(
-        &base,
-        proposal,
-        question.task.value,
-        |n| is_split(&state.rules, n),
-        |n| keeps_train_rows(&state.registry, n),
-        |operator| state.registry.get(operator),
-    )
-    .map_err(|e| not_applicable(e.to_string()))?;
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n);
+    let keeps_train = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
+    let operator_of = |operator: &str| state.registry.get(operator);
+    let task = question.task.value;
+    let built = if proposal.shortlist.is_empty() {
+        let rule = state.rules.rule(proposal.rule.as_str())?;
+        sprisk_methodology::preparation_comparison(
+            &base,
+            proposal,
+            rule,
+            task,
+            is_split,
+            keeps_train,
+            operator_of,
+        )
+    } else {
+        sprisk_methodology::comparison(&base, proposal, task, is_split, keeps_train, operator_of)
+    }
+    .map_err(|e| match e {
+        sprisk_methodology::ResolveError::NothingToCompare(_) => ApiError::BadRequest {
+            code: "nothing_to_compare",
+            message: e.to_string(),
+        },
+        other => not_applicable(other.to_string()),
+    })?;
     let pipeline: PipelineVersion = parse(
         &json!({
             "schema_version": "sprisk.pipeline_version/v1",
@@ -1354,9 +1373,10 @@ async fn comparison_version(
     Ok(pipeline)
 }
 
-/// How Sprisk is choosing the model of `node_id` (ADR-0047): its shortlist, the comparison
-/// and the comparison's latest run, each made once if missing. It changes nothing in the flow,
-/// so the UI may ask whenever it shows a version that has run.
+/// How Sprisk is choosing step `node_id` of the model pipeline (ADR-0047): a model step's
+/// shortlist, or a preparation step's proposal, the comparison and the comparison's latest
+/// run, each made once if missing. It changes nothing in the flow, so the UI may ask whenever
+/// it shows a version that has run.
 async fn select_model(
     State(state): State<AppState>,
     Path((raw, node_id)): Path<(String, String)>,
@@ -1369,16 +1389,23 @@ async fn select_model(
         Some((comparison, run)) => (comparison, run, false),
         None => {
             let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
-            let shortlisted = pipeline
+            let compared = pipeline
                 .nodes
                 .iter()
                 .find(|n| n.id == step)
-                .and_then(|n| state.rules.rule_for_operator(n.operator.as_str()))
-                .is_some_and(|r| r.selection == Some(MethodologyRuleSelection::Shortlist));
-            if !shortlisted {
+                .is_some_and(|n| {
+                    let Some(rule) = state.rules.rule_for_operator(n.operator.as_str()) else {
+                        return false;
+                    };
+                    rule.selection == Some(MethodologyRuleSelection::Shortlist)
+                        || keeps_train_rows(&state.registry, n)
+                });
+            if !compared {
                 return Err(ApiError::BadRequest {
-                    code: "not_a_model_step",
-                    message: format!("no shortlist rule decides step {node_id}"),
+                    code: "not_compared",
+                    message: format!(
+                        "no rule compares step {node_id}: only a model step a shortlist rule decides, or a step a rule decides that fits on train rows, is compared"
+                    ),
                 });
             }
             let (_, Json(proposal)) = propose(&state, &raw, &node_id, None).await?;
