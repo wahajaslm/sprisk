@@ -89,7 +89,11 @@ def test_whole_numbers_with_few_values_may_be_categories_so_the_rule_asks() -> N
     assert codes["applicability"] == "needs_fact"
     assert "installment_rate (4 values)" in codes["reason"]
     assert "dependents" not in codes["reason"] and "age" not in codes["reason"]
+    # Until the question is answered, reading them as amounts is not a safe default either.
     assert d["recommended_alternative_id"] == "no_encoding"
+    none = alternative(d, "no_encoding")
+    assert none["applicability"] == "needs_fact"
+    assert "installment_rate" in none["reason"]
 
 
 def test_one_hot_before_least_squares_says_its_coefficients_must_not_be_read() -> None:

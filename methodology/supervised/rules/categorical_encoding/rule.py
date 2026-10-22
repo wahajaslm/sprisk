@@ -66,14 +66,20 @@ def decide(observation: RuleObservation) -> RuleDecision:
             "one_hot_encoding", too_many if many else "No category reaches the model."
         )
     leave_out = _leave_out(observation, many, too_many)
-    no_encoding = (
-        not_applicable(
+    if categories:
+        no_encoding = not_applicable(
             "no_encoding",
             f"{', '.join(categories)} would reach the model as categories, which it refuses.",
         )
-        if categories
-        else applicable("no_encoding", "Every column the model reads is a number.", {})
-    )
+    elif codes:
+        no_encoding = needs_fact(
+            "no_encoding",
+            f"Every column the model reads is a number, but {', '.join(codes)} may be category "
+            "codes; read as amounts, their codes get an order and equal steps. Confirm they "
+            "are amounts.",
+        )
+    else:
+        no_encoding = applicable("no_encoding", "Every column the model reads is a number.", {})
     integer_codes = (
         needs_fact(
             "one_hot_integer_codes",
