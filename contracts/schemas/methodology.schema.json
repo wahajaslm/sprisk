@@ -495,7 +495,8 @@
             "node_id": { "$ref": "#/$defs/NodeId" },
             "operator": { "$ref": "#/$defs/OperatorRef" },
             "params": { "$ref": "#/$defs/Params" },
-            "before": { "$ref": "#/$defs/NodeId" }
+            "before": { "$ref": "#/$defs/NodeId" },
+            "other": { "$ref": "#/$defs/PortRef", "description": "A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input." }
           }
         }
       ]

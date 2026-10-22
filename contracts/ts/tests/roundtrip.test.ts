@@ -33,6 +33,7 @@ const entities: [keyof Entities, string][] = [
   ["FigureSet", "figure_set"],
   ["LoadedTable", "loaded_table"],
   ["DatasetProfile", "dataset_profile"],
+  ["KeyMatches", "key_matches"],
   ["CodeInterface", "code_interface"],
   ["CodeSplitRequest", "code_split_request"],
   ["CellStepsRequest", "cell_steps_request"],

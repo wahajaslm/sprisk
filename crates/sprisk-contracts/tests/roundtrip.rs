@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     CellSteps, CellStepsRequest, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    CreateRun, CreateStudy, DatasetProfile, DecisionProposal, FigureSet, LoadedTable,
+    CreateRun, CreateStudy, DatasetProfile, DecisionProposal, FigureSet, KeyMatches, LoadedTable,
     MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
@@ -74,6 +74,7 @@ const ENTITIES: &[&str] = &[
     "dataset_profile",
     "decision_proposal",
     "figure_set",
+    "key_matches",
     "loaded_table",
     "methodology_check",
     "methodology_decision",
@@ -216,6 +217,11 @@ fn code_display() {
 #[test]
 fn loaded_table() {
     check::<LoadedTable>("loaded_table");
+}
+
+#[test]
+fn key_matches() {
+    check::<KeyMatches>("key_matches");
 }
 
 #[test]

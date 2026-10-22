@@ -1,0 +1,38 @@
+{
+  "schema_version": "sprisk.decision_proposal/v1",
+  "id": "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "rule": "methodology.common.join_sources@1.0.0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "subject_node_id": "split",
+  "evidence": [
+    {
+      "kind": "profile_fact",
+      "label": "purpose categories",
+      "value": "10",
+      "origin": "measured"
+    }
+  ],
+  "alternatives": [
+    {
+      "id": "join_on_key",
+      "label": "Join on the shared key",
+      "description": "Join before the split.",
+      "applicability": "applicable",
+      "reason": "Every row's unnamed_0 finds one row of codes.",
+      "effect": {
+        "kind": "insert_node",
+        "node_id": "join",
+        "operator": "sprisk.io.join@1.0.0",
+        "params": {
+          "key": "unnamed_0"
+        },
+        "before": "split",
+        "other": "codes.data"
+      }
+    }
+  ],
+  "recommended_alternative_id": "join_on_key",
+  "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "created_at": "2026-10-22T10:00:00Z"
+}

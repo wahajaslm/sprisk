@@ -1,0 +1,8 @@
+{
+  "schema_version": "sprisk.key_matches/v1",
+  "rows": 3,
+  "other_rows": 5,
+  "keys": [
+    { "column": "", "matched_rows": 3, "most_rows_per_key": 1 }
+  ]
+}

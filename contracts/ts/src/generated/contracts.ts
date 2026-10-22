@@ -186,6 +186,10 @@ export type GraphEffect =
       operator: OperatorRef;
       params: Params;
       before: NodeId;
+      /**
+       * A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input.
+       */
+      other?: string;
     };
 /**
  * Pinned rule: <pack>.<rule>@<semver>.
@@ -536,6 +540,45 @@ export interface LoadedTableUse {
    */
   run_id: string;
   node_id: NodeId;
+}
+/**
+ * How the rows a step reads match another table, per column both share (ADR-0059), computed by Python on all rows: structure, nothing fitted. Methodology rules read it to decide a join.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "KeyMatches".
+ */
+export interface KeyMatches {
+  schema_version: "sprisk.key_matches/v1";
+  /**
+   * Rows of the table the step reads.
+   */
+  rows: number;
+  /**
+   * Rows of the other table.
+   */
+  other_rows: number;
+  /**
+   * Each column both tables share, in the step's column order; at most 200.
+   */
+  keys: KeyMatch[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "KeyMatch".
+ */
+export interface KeyMatch {
+  /**
+   * Dataset text: a column name both tables have.
+   */
+  column: string;
+  /**
+   * Rows of the step's table whose value finds a row of the other table. Missing values never match.
+   */
+  matched_rows: number;
+  /**
+   * The most rows of the other table that share one value: above 1, a join would copy rows.
+   */
+  most_rows_per_key: number;
 }
 /**
  * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bars, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).

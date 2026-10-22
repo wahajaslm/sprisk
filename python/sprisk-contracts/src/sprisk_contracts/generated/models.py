@@ -35,6 +35,34 @@ class TableRow(StrictModel):
     ]
 
 
+class KeyMatch(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    column: Annotated[
+        str,
+        Field(
+            description="Dataset text: a column name both tables have.",
+            max_length=256,
+            min_length=1,
+        ),
+    ]
+    matched_rows: Annotated[
+        int,
+        Field(
+            description="Rows of the step's table whose value finds a row of the other table. Missing values never match.",
+            ge=0,
+        ),
+    ]
+    most_rows_per_key: Annotated[
+        int,
+        Field(
+            description="The most rows of the other table that share one value: above 1, a join would copy rows.",
+            ge=0,
+        ),
+    ]
+
+
 class UnconvertedItem(RootModel[str]):
     root: Annotated[str, Field(max_length=60)]
 
@@ -502,38 +530,6 @@ class GraphEffect2(StrictModel):
     )
     kind: Literal["remove_node"]
     node_id: NodeId
-
-
-class GraphEffect3(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    kind: Literal["insert_node"]
-    node_id: NodeId
-    operator: OperatorRef
-    params: Params
-    before: NodeId
-
-
-class GraphEffect(RootModel[GraphEffect1 | GraphEffect2 | GraphEffect3]):
-    root: Annotated[
-        GraphEffect1 | GraphEffect2 | GraphEffect3,
-        Field(
-            description="Typed mutation previewed and compiled before it can create a pipeline version."
-        ),
-    ]
-
-
-class MethodologyAlternative(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
-    label: Annotated[str, Field(min_length=1)]
-    description: Annotated[str, Field(min_length=1)]
-    applicability: Applicability
-    reason: Annotated[str, Field(min_length=1)]
-    effect: GraphEffect | None = None
 
 
 class NextItem(RootModel[int]):
@@ -1226,6 +1222,21 @@ class LoadedTableUse(StrictModel):
     node_id: NodeId
 
 
+class KeyMatches(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.key_matches/v1"]
+    rows: Annotated[int, Field(description="Rows of the table the step reads.", ge=0)]
+    other_rows: Annotated[int, Field(description="Rows of the other table.", ge=0)]
+    keys: Annotated[
+        list[KeyMatch],
+        Field(
+            description="Each column both tables share, in the step's column order; at most 200."
+        ),
+    ]
+
+
 class Histogram(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1584,6 +1595,44 @@ class RuleExample(StrictModel):
     shortlist: Annotated[
         list[ShortlistItem] | None, Field(description="What a shortlist rule puts forward.")
     ] = None
+
+
+class GraphEffect3(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["insert_node"]
+    node_id: NodeId
+    operator: OperatorRef
+    params: Params
+    before: NodeId
+    other: Annotated[
+        PortRef | None,
+        Field(
+            description="A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input."
+        ),
+    ] = None
+
+
+class GraphEffect(RootModel[GraphEffect1 | GraphEffect2 | GraphEffect3]):
+    root: Annotated[
+        GraphEffect1 | GraphEffect2 | GraphEffect3,
+        Field(
+            description="Typed mutation previewed and compiled before it can create a pipeline version."
+        ),
+    ]
+
+
+class MethodologyAlternative(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    label: Annotated[str, Field(min_length=1)]
+    description: Annotated[str, Field(min_length=1)]
+    applicability: Applicability
+    reason: Annotated[str, Field(min_length=1)]
+    effect: GraphEffect | None = None
 
 
 class DecisionProposal(StrictModel):
