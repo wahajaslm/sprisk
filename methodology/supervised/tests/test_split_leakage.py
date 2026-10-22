@@ -397,3 +397,15 @@ def test_every_core_step_that_fits_on_train_is_a_fitting_transform() -> None:
     }
     assert fitting, "no core step fits on train"
     assert fitting <= FITTING_TRANSFORMS, sorted(fitting - FITTING_TRANSFORMS)
+
+
+def test_a_scored_model_without_any_split_is_not_assessed_not_passed() -> None:
+    # No split step this check knows, such as a split written as code: it cannot find the
+    # test rows, so it must not say they are safe.
+    p = pipeline(
+        {"load": SOURCE, "model": LINEAR, "eval": EVAL},
+        [("load.data", "model.train"), ("model.model", "eval.model"), ("load.data", "eval.test")],
+    )
+    result = check(p)
+    assert result.verdict == Verdict.not_assessed
+    assert result.rationale.startswith("No split step")

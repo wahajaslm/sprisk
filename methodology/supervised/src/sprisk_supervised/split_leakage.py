@@ -53,6 +53,7 @@ def split_leakage(
       split's train port was fit on rows that include the holdout.
     - Per holdout, evaluators may score at most one non-baseline model, where a
       model is the nearest estimator upstream of the evaluator's model input.
+    - With no split step it knows, it cannot find the test rows: NOT_ASSESSED, never PASS.
     """
     op_of = _operators_by_node(pipeline, operators)
     graph = _port_graph(pipeline, op_of)
@@ -119,6 +120,12 @@ def split_leakage(
         return _result(pipeline, check_id, now, Verdict.pass_, rationale, cited)
     if not evaluators:
         return _result(pipeline, check_id, now, Verdict.not_assessed, "No evaluator nodes.", [])
+    if not splits and estimators:
+        rationale = (
+            "No split step, so this check cannot find the test rows the models are scored on. "
+            "A split written as code is not checked."
+        )
+        return _result(pipeline, check_id, now, Verdict.not_assessed, rationale, evaluators)
 
     candidates: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for evaluator in evaluators:
