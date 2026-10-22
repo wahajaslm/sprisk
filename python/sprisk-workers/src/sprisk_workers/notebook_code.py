@@ -41,6 +41,9 @@ def read_code(entrypoint: str, request: NotebookSettingsRequest) -> NotebookSett
 Write = Callable[[dict[str, Any], dict[str, str], dict[str, str]], str]
 # Stands in for one setting while the step's code is written, to find where its value goes.
 MARK = "__sprisk_setting__"
+# What the parser and literal_eval raise on edited code they cannot read: deep nesting, huge
+# input, or a literal they refuse, like the set {[1]}. Edited code is untrusted text (rule 7).
+UNREADABLE = (SyntaxError, ValueError, TypeError, MemoryError, RecursionError)
 
 
 def read_settings(
@@ -59,7 +62,7 @@ def read_settings(
     only if they write the edited code again, comments and layout aside."""
     try:
         edited = ast.parse(code)
-    except SyntaxError:
+    except UNREADABLE:
         return None
     read = dict(settings)
     for key in settings:
@@ -96,7 +99,7 @@ def _values_of(
         return []
     try:
         return [ast.literal_eval(place) for place in places]
-    except ValueError:
+    except UNREADABLE:
         return None
 
 
