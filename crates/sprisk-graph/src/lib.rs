@@ -482,14 +482,15 @@ fn named_preparations<'r>(
                 continue;
             };
             // Each fold runs it again, with no approval and no data-root check of its own.
-            // A fold passes on only the test table, so a step writing words is refused until
-            // folds carry them (ADR-0058).
             let foldable = |o: &Operator| {
                 o.fits_on_train == Some(true)
                     && o.effects == sprisk_contracts::Effects::Pure
                     && o.network == sprisk_contracts::NetworkAccess::None
                     && !properties(o).any(|(_, v)| v.get("x-sprisk-local-path").is_some())
-                    && o.outputs.iter().all(|p| p.kind == PortKind::Table)
+                    // A fold passes on tables, and words beside them (ADR-0058).
+                    && o.outputs
+                        .iter()
+                        .all(|p| matches!(p.kind, PortKind::Table | PortKind::Matrix))
             };
             let Some((found, digest)) = registry.resolve(operator).filter(|(o, _)| foldable(o))
             else {

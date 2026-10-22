@@ -275,9 +275,9 @@ fn pipeline() -> PipelineVersion {
                  "params": {"path": "/data/d.csv", "format": "csv"}},
                 {"id": "split", "operator": "sprisk.validation.random_split@1.0.0",
                  "params": {"test_fraction": 0.2, "seed": 1}},
-                {"id": "model", "operator": "sprisk.ml.linear_model@2.0.0",
+                {"id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
                  "params": {"target": "y", "features": ["x"], "task": "regression"}},
-                {"id": "score", "operator": "sprisk.ml.evaluate@1.0.0",
+                {"id": "score", "operator": "sprisk.ml.evaluate@2.0.0",
                  "params": {"target": "y", "task": "regression"}}
             ],
             "edges": [

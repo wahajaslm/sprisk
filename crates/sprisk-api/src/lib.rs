@@ -923,6 +923,7 @@ async fn read_notebook_settings(
 }
 
 /// Refuses port names other than the step's own, so the code is written for the step it is.
+/// An optional input left unconnected (ADR-0058) may be left out.
 fn check_ports<'a>(
     operator: &Operator,
     inputs: impl Iterator<Item = &'a String>,
@@ -930,8 +931,16 @@ fn check_ports<'a>(
 ) -> Result<(), ApiError> {
     use std::collections::BTreeSet;
     let want_in: BTreeSet<&str> = operator.inputs.iter().map(|p| p.name.as_str()).collect();
+    let required: BTreeSet<&str> = operator
+        .inputs
+        .iter()
+        .filter(|p| p.optional != Some(true))
+        .map(|p| p.name.as_str())
+        .collect();
     let want_out: BTreeSet<&str> = operator.outputs.iter().map(|p| p.name.as_str()).collect();
-    if inputs.map(String::as_str).collect::<BTreeSet<_>>() == want_in
+    let given: BTreeSet<&str> = inputs.map(String::as_str).collect();
+    if given.is_subset(&want_in)
+        && required.is_subset(&given)
         && outputs.map(String::as_str).collect::<BTreeSet<_>>() == want_out
     {
         return Ok(());

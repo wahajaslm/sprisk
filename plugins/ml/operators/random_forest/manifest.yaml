@@ -1,12 +1,12 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.random_forest@2.0.0
+id: sprisk.ml.random_forest@3.0.0
 capability_class: estimator
 model: { family: tree_ensemble, tasks: [classification, regression], estimator: "sprisk_ml.models:random_forest_estimator", complexity: 2,
   search: [{ name: min_samples_leaf, values: [1, 5, 20] }, { name: max_features, values: [0.3, 0.6, 1.0] }] }
 description: Random forest (classification or regression). It fits only the model; Clean steps before it encode text and fill gaps.
 entrypoint: sprisk_ml.models:random_forest
 notebook_code: sprisk_ml.models:random_forest_as_code
-inputs: [{ name: train, kind: table }]
+inputs: [{ name: train, kind: table }, { name: words, kind: matrix, optional: true, description: "Word features of the train rows (Vectorize text), fit beside the table's numbers (ADR-0058)." }]
 outputs: [{ name: model, kind: model }]
 params_schema:
   type: object

@@ -73,7 +73,7 @@ pub fn start(question: &QuestionVersion, sources: &[String]) -> Result<Start, Re
         "params": { "test_fraction": TEST_FRACTION, "seed": SEED },
     }));
     nodes.push(json!({
-        "id": "model", "operator": "sprisk.ml.dummy_baseline@2.0.0",
+        "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
         "params": { "target": target.value.as_str(), "task": task },
     }));
     let edges = vec![

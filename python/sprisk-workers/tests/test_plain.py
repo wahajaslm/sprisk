@@ -16,7 +16,7 @@ from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.matrix import Matrix
 from sprisk_workers.output import JSON, MATRIX, PARQUET, SKOPS
-from sprisk_workers.plain import CheckedFunction, adapt
+from sprisk_workers.plain import CheckedFunction, FoldStep, adapt
 
 
 def operator(inputs: str, outputs: str, params: str = "{}") -> Operator:
@@ -699,3 +699,34 @@ def test_a_matrix_pair_the_matrix_refuses_is_a_bad_output(tmp_path: Path) -> Non
         adapt(make, words)(
             {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
         )
+
+
+def _words_step(train: pl.DataFrame, test: pl.DataFrame, column: str) -> dict[str, Any]:
+    names = ["red"]
+    made = {
+        port: (sparse.csr_array(rows.select(column).to_numpy().astype(float)), names)
+        for port, rows in (("train_words", train), ("test_words", test))
+    }
+    return {"train": train.drop(column), "test": test.drop(column), **made}
+
+
+def _double(train: pl.DataFrame, test: pl.DataFrame) -> dict[str, pl.DataFrame]:
+    return {"train": train * 2, "test": test * 2}
+
+
+def test_a_fold_step_that_makes_words_passes_them_on_beside_the_table() -> None:
+    rows = pl.DataFrame({"n": [1, 2], "x": [3, 4]})
+    words_step, double = FoldStep(_words_step, {"column": "n"}), FoldStep(_double, {})
+
+    table, words = double.fit(words_step.fit_transform(rows)).transform(words_step.transform(rows))
+
+    assert table.to_dict(as_series=False) == {"x": [6, 8]}
+    assert words[0].toarray().tolist() == [[1.0], [2.0]]
+    assert list(words[1]) == ["red"]
+
+
+def test_a_second_fold_step_that_makes_words_is_refused() -> None:
+    rows = pl.DataFrame({"n": [1, 2], "x": [3, 4]})
+    first = FoldStep(_words_step, {"column": "n"}).fit_transform(rows)
+    with pytest.raises(ValueError, match="only one step may make words"):
+        FoldStep(_words_step, {"column": "x"}).fit(first).transform(first)

@@ -61,7 +61,14 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
     let mut online = shift.clone();
     online["id"] = json!("sprisk.clean.online@1.0.0");
     online["network"] = json!("egress_allowlisted");
-    // Writes words beside its tables: a fold cannot pass them on yet (ADR-0058).
+    // Writes a model beside its tables: a fold passes on only tables and words.
+    let mut modeller = shift.clone();
+    modeller["id"] = json!("sprisk.clean.modeller@1.0.0");
+    modeller["outputs"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "name": "fitted", "kind": "model" }));
+    // Writes words beside its tables, as Vectorize text does (ADR-0058).
     let mut wordy = shift.clone();
     wordy["id"] = json!("sprisk.clean.wordy@1.0.0");
     wordy["outputs"]
@@ -93,6 +100,7 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
         shift,
         noisy,
         online,
+        modeller,
         wordy,
         reader,
         operator(
@@ -693,7 +701,7 @@ fn preparing(prepare: Value) -> Value {
 }
 
 #[test]
-fn a_preparation_step_must_be_registered_fit_on_train_pure_offline_read_no_files_and_write_only_tables()
+fn a_preparation_step_must_be_registered_fit_on_train_pure_offline_read_no_files_and_write_only_tables_or_words()
  {
     for operator in [
         "sprisk.clean.missing@1.0.0",
@@ -701,7 +709,7 @@ fn a_preparation_step_must_be_registered_fit_on_train_pure_offline_read_no_files
         "sprisk.clean.noisy@1.0.0",
         "sprisk.clean.online@1.0.0",
         "sprisk.clean.reader@1.0.0",
-        "sprisk.clean.wordy@1.0.0",
+        "sprisk.clean.modeller@1.0.0",
     ] {
         let found = errors(
             preparing(json!([{ "operator": operator, "params": {} }])),
@@ -717,6 +725,13 @@ fn a_preparation_step_must_be_registered_fit_on_train_pure_offline_read_no_files
         );
         assert_eq!(found[0].code(), "not_a_preparation");
     }
+}
+
+#[test]
+fn a_preparation_step_may_make_words() {
+    let (_dir, registry) = registry();
+    let steps = json!([{ "operator": "sprisk.clean.wordy@1.0.0", "params": { "by": 1 } }]);
+    assert!(compile(&pipeline(preparing(steps), comparing_edges()), &registry).is_ok());
 }
 
 #[test]
@@ -759,12 +774,12 @@ fn key_columns_are_left_out_of_every_model_that_reads_every_column() {
         json!([
             { "id": "load", "operator": "sprisk.io.file_source@1.0.0", "params": { "path": "/d.csv", "format": "csv" } },
             { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": { "test_fraction": 0.2, "seed": 1 } },
-            { "id": "all", "operator": "sprisk.ml.linear_model@2.0.0",
+            { "id": "all", "operator": "sprisk.ml.linear_model@3.0.0",
               "params": { "target": "y", "task": "classification", "exclude": ["note"] } },
-            { "id": "listed", "operator": "sprisk.ml.random_forest@2.0.0",
+            { "id": "listed", "operator": "sprisk.ml.random_forest@3.0.0",
               "params": { "target": "y", "task": "classification", "features": ["age"] } },
             { "id": "cv", "operator": "sprisk.ml.cross_validate@4.0.0",
-              "params": { "candidate": "sprisk.ml.linear_model@2.0.0",
+              "params": { "candidate": "sprisk.ml.linear_model@3.0.0",
                           "candidate_params": { "target": "y", "task": "classification" },
                           "folds": 5, "repeats": 1, "seed": 0, "metric": "balanced_accuracy", "prepare": [] } }
         ]),
@@ -803,7 +818,7 @@ fn an_exclude_that_is_not_a_list_of_names_is_an_error_not_an_empty_list() {
         json!([
             { "id": "load", "operator": "sprisk.io.file_source@1.0.0", "params": { "path": "/d.csv", "format": "csv" } },
             { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": { "test_fraction": 0.2, "seed": 1 } },
-            { "id": "all", "operator": "sprisk.ml.linear_model@2.0.0",
+            { "id": "all", "operator": "sprisk.ml.linear_model@3.0.0",
               "params": { "target": "y", "task": "classification" } }
         ]),
         json!([

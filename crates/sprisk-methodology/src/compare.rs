@@ -11,7 +11,7 @@ use serde_json::json;
 use sprisk_contracts::{
     BaselineRole, DecisionProposal, Edge, GraphEffect, Guardrail, MethodologyAlternative,
     MethodologyAlternativeApplicability, MethodologyRule, Node, Operator, PipelineVersion,
-    PipelineVersionId, SelectionMetric, StudyStrategy, TaskType, parse,
+    PipelineVersionId, PortKind, SelectionMetric, StudyStrategy, TaskType, parse,
 };
 
 use crate::ResolveError;
@@ -173,6 +173,12 @@ fn shortlist<'p, 'a>(
     let (split, between) = chain
         .split_last()
         .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
+    words_as_the_flow_reads(
+        base,
+        proposal.subject_node_id.as_str(),
+        between,
+        operator_of,
+    )?;
     // Every step between the split and the model fits on train (the walk above refuses any
     // other), so each fold refits them, in flow order, before the candidate (ADR-0050).
     let prepare = between
@@ -264,6 +270,7 @@ pub fn preparation_comparison<'a>(
     let (split, between) = chain
         .split_last()
         .ok_or_else(|| ResolveError::NotTrainRows("no split feeds the model".into()))?;
+    words_as_the_flow_reads(base, model.id.as_str(), between, &operator_of)?;
 
     let mut trials = Vec::new();
     let mut not_compared = Vec::new();
@@ -613,6 +620,49 @@ fn measured_step<'a>(
             }
             Ok(Some(json!({ "operator": operator, "params": params })))
         }
+    }
+}
+
+/// Each fold refits every step between the split and the model, and the model's input joins
+/// the words such a step makes (ADR-0058). So the flow's model must read exactly those words,
+/// the `train_words` of a step on its train rows; otherwise the comparison would score a
+/// model the flow never fits.
+fn words_as_the_flow_reads<'a>(
+    base: &PipelineVersion,
+    model: &str,
+    between: &[&str],
+    operator_of: &impl Fn(&str) -> Option<&'a Operator>,
+) -> Result<(), ResolveError> {
+    let makes_words = |id: &str| -> Result<bool, ResolveError> {
+        let operator = step_of(base, id)?.operator.as_str();
+        let found =
+            operator_of(operator).ok_or_else(|| ResolveError::UnknownOperator(operator.into()))?;
+        Ok(found.outputs.iter().any(|p| p.kind == PortKind::Matrix))
+    };
+    let mut makers = Vec::new();
+    for id in between {
+        if makes_words(id)? {
+            makers.push(*id);
+        }
+    }
+    let reads = base
+        .edges
+        .iter()
+        .find(|e| e.to.as_str() == format!("{model}.words"))
+        .map(|e| e.from.step_and_port());
+    match (makers.as_slice(), reads) {
+        ([], None) => Ok(()),
+        ([maker], Some((from, "train_words"))) if *maker == from => Ok(()),
+        ([maker], _) => Err(ResolveError::Selection(format!(
+            "{model} must read the train_words of {maker}, which each fold makes for it"
+        ))),
+        ([], Some((from, port))) => Err(ResolveError::Selection(format!(
+            "{model} reads {from}.{port}, but no step on its train rows makes words to refit in each fold"
+        ))),
+        (_, _) => Err(ResolveError::Selection(format!(
+            "only one step may make words for {model}; {} do",
+            makers.join(", ")
+        ))),
     }
 }
 

@@ -343,7 +343,7 @@ fn the_first_flow_is_a_load_per_source_a_split_and_a_baseline_on_the_target() {
                    "params":{"path":"/data/y_train.parquet","format":"parquet"}}),
             json!({"id":"split","operator":"sprisk.validation.random_split@1.0.0",
                    "params":{"test_fraction":0.2,"seed":0}}),
-            json!({"id":"model","operator":"sprisk.ml.dummy_baseline@2.0.0",
+            json!({"id":"model","operator":"sprisk.ml.dummy_baseline@3.0.0",
                    "params":{"target":"prdtypecode","task":"classification"}}),
         ]
     );

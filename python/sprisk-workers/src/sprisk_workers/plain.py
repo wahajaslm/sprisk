@@ -52,7 +52,10 @@ NONE: Mapping[str, CheckedFunction] = MappingProxyType({})
 class FoldStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """A preparation step that fits on train (`fits_on_train`) as a scikit-learn transformer,
     so cross-validation refits it per fold with the step's own code (ADR-0050). Fitting keeps
-    the rows it is fit on; transforming runs the step with those rows as train."""
+    the rows it is fit on; transforming runs the step with those rows as train.
+
+    A step that makes words (ADR-0058) passes on `(table, words)`, its test table and test
+    words; steps after it transform the table and carry the words along unchanged."""
 
     def __init__(self, step: Callable[..., Any], settings: Mapping[str, Any]) -> None:
         self.step = step
@@ -63,7 +66,18 @@ class FoldStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         return self
 
     def transform(self, x: Any) -> Any:
-        return self.step(train=self.train_, test=x, **self.settings)["test"]
+        train, _ = _table_and_words(self.train_)
+        test, words = _table_and_words(x)
+        out = self.step(train=train, test=test, **self.settings)
+        if "test_words" in out:
+            if words is not None:
+                raise ValueError("only one step may make words for a model")
+            return out["test"], out["test_words"]
+        return out["test"] if words is None else (out["test"], words)
+
+
+def _table_and_words(x: Any) -> tuple[Any, Any]:
+    return x if isinstance(x, tuple) else (x, None)
 
 
 def adapt(
