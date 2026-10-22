@@ -5,6 +5,7 @@ import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource } f
 import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
+import { type Chapter, chapters, chapterState, ends } from "./flowGraph.ts";
 import { FlowMap } from "./FlowMap.tsx";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
 import { activation, givenText, isOpen, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
@@ -23,6 +24,7 @@ export function MethodologyPage() {
   const [picked, setPicked] = useState<string>();
   const [view, setView] = useState<"tree" | "flow">("tree");
   const [drafts, setDrafts] = useState(false);
+  const [chapterKey, setChapterKey] = useState<string>();
   if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
   if (rules.isPending) return <Loading text="Loading methodology rules…" pad />;
   if (rules.data.length === 0) return <p className="muted pad">No methodology rules are loaded.</p>;
@@ -32,6 +34,12 @@ export function MethodologyPage() {
   const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query) && (view === "tree" || drafts || r.status === "active"));
   const [pickedRule, pickedRoute] = (picked ?? "").split("#");
   const current = shown.find((r) => r.id === pickedRule) ?? shown[0];
+  const all = chapters(shown);
+  // The chosen stage, else the one holding the picked rule, else the first.
+  const byKey = all.findIndex((c) => c.key === chapterKey);
+  const byRule = all.findIndex((c) => current !== undefined && c.rules.includes(current));
+  const at = byKey >= 0 ? byKey : Math.max(0, byRule);
+  const chapter = all[at];
 
   return (
     <main className="mth-page">
@@ -57,12 +65,40 @@ export function MethodologyPage() {
         </div>
         {view === "tree" ? (
           <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+        ) : chapter ? (
+          <>
+            <Stepper all={all} at={at} reviews={reviews} onChoose={setChapterKey} />
+            <FlowMap chapter={chapter} reviews={reviews} path={path && versionId !== undefined} {...ends(all, at)} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+          </>
         ) : (
-          <FlowMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+          <p className="muted pad">No rule matches.</p>
         )}
       </div>
       <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} route={pickedRoute} />}</aside>
     </main>
+  );
+}
+
+/** The stages in decision order, one chosen: each says how many decisions it holds, and for
+ * the selected flow, whether the flow reaches it and how many of its decisions are open. */
+function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; reviews: Map<string, MethodologyReviewItem>; onChoose: (key: string) => void }) {
+  return (
+    <nav className="mth-stepper" aria-label="Stages">
+      {all.map((c, i) => {
+        const { open, reached } = chapterState(c, reviews);
+        const laneStart = c.lane !== undefined && all[i - 1]?.lane !== c.lane;
+        return (
+          <span key={c.key} className="mth-step-wrap">
+            {laneStart && <span className="mth-step-lane">{c.lane![0]!.toUpperCase() + c.lane!.slice(1)}</span>}
+            <button type="button" className={`mth-step${reached ? " reached" : ""}`} aria-current={i === at ? "step" : undefined} onClick={() => onChoose(c.key)}>
+              <span className="mth-node-code">{c.code}</span> {stageName(c.stage)}
+              <span className="mth-step-count">{c.rules.length}</span>
+              {open > 0 && <span className="mth-step-open" title={`${open} open on this flow`} />}
+            </button>
+          </span>
+        );
+      })}
+    </nav>
   );
 }
 

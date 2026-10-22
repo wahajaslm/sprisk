@@ -2472,41 +2472,53 @@ p { margin: 0; }
 .mth-code { display: grid; grid-template-rows: auto max(480px, calc(100vh - 290px)); gap: var(--space-2); }
 .mth-code .page-btn[aria-pressed="true"] { color: var(--ink); background: var(--wash-strong); border-color: var(--line-strong); }
 
-/* Methodology flow: circles are steps, diamonds the decisions on the connections. */
+/* Methodology flow: one stage at a time, top to bottom. Circles are steps, diamonds decisions. */
 .mth-views { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; }
 .mth-views button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: var(--text-sm); padding: 4px 12px; cursor: pointer; }
 .mth-views button + button { border-left: 1px solid var(--line-strong); }
 .mth-views button[aria-checked="true"] { background: var(--soft); color: var(--ground); }
-.mth-flow-node { position: relative; width: 100%; height: 100%; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; transition: opacity 0.15s; }
-.mth-flow-node.terminal, .mth-flow-node.fork { cursor: default; }
-.mth-flow-node.dimmed, .mth-flow-band.dimmed { opacity: 0.32; }
-.mth-flow-circle { width: 100%; height: 100%; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.45); background: var(--ground); transition: all 0.15s; }
+.mth-stepper { position: absolute; top: calc(var(--space-3) + 40px); left: var(--space-3); right: var(--space-3); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mth-step-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.mth-step-lane { margin-left: 10px; font: var(--text-xs) var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--quiet); }
+.mth-step { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--ground); color: var(--muted); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.mth-step:hover { color: var(--white); border-color: rgba(255, 255, 255, 0.3); }
+.mth-step.reached { color: var(--soft); border-color: rgba(255, 255, 255, 0.3); }
+.mth-step[aria-current="step"] { background: var(--soft); border-color: var(--soft); color: var(--ground); }
+.mth-step[aria-current="step"] .mth-node-code, .mth-step[aria-current="step"] .mth-step-count { color: var(--ground); }
+.mth-step-count { font: var(--text-xs) var(--mono); color: var(--quiet); }
+.mth-step-open { width: 6px; height: 6px; border-radius: 50%; background: var(--white); box-shadow: 0 0 4px var(--white); }
+.mth-map.mth-flow { top: 112px; }
+.mth-flow-node { position: relative; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: center; cursor: pointer; transition: opacity 0.15s; }
+.mth-flow-node.terminal { cursor: default; }
+.mth-flow-node.dimmed { opacity: 0.3; }
+.mth-flow-circle { display: block; width: 100%; height: 100%; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.45); background: var(--ground); transition: all 0.15s; }
 .mth-flow-node.terminal .mth-flow-circle { border-color: var(--soft); box-shadow: 0 0 0 4px var(--ground), 0 0 0 5px rgba(255, 255, 255, 0.3); }
-.mth-flow-node.step.picked .mth-flow-circle { background: var(--white); border-color: var(--white); box-shadow: 0 0 6px rgba(255, 255, 255, 0.6); }
-.mth-flow-node.step:hover .mth-flow-circle, .mth-flow-node.step[aria-pressed="true"] .mth-flow-circle { border-color: var(--white); }
-.mth-flow-node.step[aria-pressed="true"] .mth-flow-circle { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2); }
-/* A square of side s/√2 turned 45° spans exactly the node's box, corner to corner. */
-.mth-flow-diamond { width: 70.7%; height: 70.7%; transform: rotate(45deg); border: 1.5px solid rgba(255, 255, 255, 0.55); border-radius: 3px; background: var(--panel); transition: all 0.15s; }
+/* A square of side s/√2 turned 45° spans the node's box, corner to corner. */
+.mth-flow-diamond { position: absolute; inset: 14.6%; transform: rotate(45deg); border: 1.5px solid rgba(255, 255, 255, 0.55); border-radius: 3px; background: var(--panel); transition: all 0.15s; }
 .mth-flow-node.decision.draft .mth-flow-diamond { border-style: dashed; }
 .mth-flow-node.decision.settled .mth-flow-diamond { background: var(--soft); border-color: var(--soft); }
 .mth-flow-node.decision.proposal .mth-flow-diamond, .mth-flow-node.decision.needs_fact .mth-flow-diamond, .mth-flow-node.decision.reopen .mth-flow-diamond { border-color: var(--white); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15); }
 .mth-flow-node.decision:hover .mth-flow-diamond, .mth-flow-node.decision[aria-pressed="true"] .mth-flow-diamond { border-color: var(--white); }
 .mth-flow-node.decision[aria-pressed="true"] .mth-flow-diamond { background: var(--white); box-shadow: 0 0 6px rgba(255, 255, 255, 0.6); }
-.mth-flow-node.fork .mth-flow-diamond { border-color: var(--soft); }
-.mth-flow-label { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: 150px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-align: center; font-size: var(--text-xs); line-height: 14px; color: var(--soft); pointer-events: none; }
-.mth-flow-node.step .mth-flow-label { width: 130px; color: var(--muted); }
-.mth-flow-node.step.picked .mth-flow-label, .mth-flow-node[aria-pressed="true"] .mth-flow-label { color: var(--white); }
-.mth-flow-node.terminal .mth-flow-label, .mth-flow-node.fork .mth-flow-label { top: calc(100% + 10px); color: var(--muted); }
-.mth-flow-status { display: block; font: var(--text-xs) var(--mono); color: var(--quiet); }
+/* A decision's and an end's words sit to the right, clear of the lines above and below. */
+.mth-flow-side { position: absolute; left: calc(100% + 14px); top: 50%; transform: translateY(-50%); width: 340px; display: grid; gap: 2px; text-align: left; pointer-events: none; }
+.mth-flow-node.terminal .mth-flow-side { font-size: var(--text-sm); color: var(--muted); }
+.mth-flow-name { font-size: var(--text-sm); color: var(--soft); line-height: 17px; }
+.mth-flow-node.decision .mth-flow-name { font-weight: 600; }
+.mth-flow-meta { font: var(--text-xs) var(--mono); color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mth-flow-status.proposal, .mth-flow-status.needs_fact, .mth-flow-status.reopen { color: var(--white); }
-.mth-flow-band { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; pointer-events: none; }
-.mth-flow-band h2 { margin: 0; font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--soft); }
-.mth-flow-edge { fill: none; stroke: rgba(255, 255, 255, 0.2); stroke-width: 1.2; stroke-linecap: round; transition: stroke 0.15s, stroke-width 0.15s; }
-.mth-flow-edge.skip { stroke-dasharray: 4 5; }
-.mth-flow-edge.path, .mth-flow-edge.selected { stroke: var(--white); stroke-width: 2; }
-.mth-flow-reason { position: absolute; pointer-events: all; max-width: 170px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding: 2px 8px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; background: var(--ground); color: var(--muted); font: inherit; font-size: 10.5px; line-height: 13px; text-align: left; cursor: pointer; }
-.mth-flow-reason:disabled { cursor: default; }
-.mth-flow-reason-kind { font: 10px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--quiet); }
-.mth-flow-reason.because, .mth-flow-reason.path { color: var(--white); border-color: rgba(255, 255, 255, 0.4); }
+.mth-flow-node[aria-pressed="true"] .mth-flow-name { color: var(--white); }
+/* A route: its circle on top, centred, then its name and why it is taken. */
+.mth-flow-node.step { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.mth-flow-node.step .mth-flow-circle { flex: none; }
+.mth-flow-node.step .mth-flow-name { font-size: var(--text-xs); line-height: 15px; color: var(--soft); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mth-flow-node.step.picked .mth-flow-circle { background: var(--white); border-color: var(--white); box-shadow: 0 0 6px rgba(255, 255, 255, 0.6); }
+.mth-flow-node.step:hover .mth-flow-circle, .mth-flow-node.step[aria-pressed="true"] .mth-flow-circle { border-color: var(--white); }
+.mth-flow-node.step[aria-pressed="true"] .mth-flow-circle { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2); }
+.mth-flow-reason { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 10.5px; line-height: 13px; color: var(--muted); }
+.mth-flow-reason-kind { font: 9.5px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--quiet); }
+.mth-flow-reason.because { color: var(--white); }
 .mth-flow-reason.why { color: var(--quiet); }
-.mth-flow-reason:hover, .mth-flow-reason[aria-pressed="true"] { border-color: var(--white); color: var(--white); }
+.react-flow__edge.mth-flow-edge .react-flow__edge-path { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1.2; }
+.react-flow__edge.mth-flow-edge.skip .react-flow__edge-path { stroke-dasharray: 4 5; }
+.react-flow__edge.mth-flow-edge.path .react-flow__edge-path { stroke: var(--white); stroke-width: 2; }

@@ -131,6 +131,22 @@ describe("methodology page", () => {
     expect(within(screen.getByRole("region", { name: "Methodology flow" })).getByRole("button", { name: features.name })).toBeInTheDocument();
   });
 
+  it("shows one stage at a time in the flow, chosen from the stages in decision order", async () => {
+    const splitting: MethodologyRule = { ...split, status: "active" };
+    const featuring: MethodologyRule = { ...features, status: "active" };
+    serve([featuring, splitting]);
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Flow" }));
+
+    const stages = screen.getByRole("navigation", { name: "Stages" });
+    expect(within(stages).getAllByRole("button").map((b) => b.textContent)).toEqual(["3 Split1", "4 Features1"]);
+    await userEvent.click(within(stages).getByRole("button", { name: /Features/ }));
+    expect(within(stages).getByRole("button", { name: /Features/ })).toHaveAttribute("aria-current", "step");
+    const flow = screen.getByRole("region", { name: "Methodology flow" });
+    expect(within(flow).getByRole("button", { name: featuring.name })).toBeInTheDocument();
+    expect(within(flow).queryByRole("button", { name: splitting.name })).not.toBeInTheDocument();
+  });
+
   it("knows every stage the contract has, so no rule drops off the page", () => {
     expect(STAGES).toEqual(bundle.$defs.MethodologyStage.enum);
   });

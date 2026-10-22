@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { flowGraph, SIZE } from "../src/views/methodology/flowGraph.ts";
+import { chapters, chapterState, ends, SIZE, stageFlow } from "../src/views/methodology/flowGraph.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r, rationale: `why ${r}` })) }) as never;
@@ -10,84 +10,93 @@ const C = (name: string) => `m.common.${name}`;
 
 const RULES = [
   rule(C("target"), "question", ["column"]),
+  rule(C("dupes"), "data", ["drop", "keep"]),
   rule(S("split"), "split", ["random", "time"]),
   rule(S("fill"), "cleaning", ["median", "mean", "drop"]),
+  rule(S("clip"), "cleaning", ["clip", "keep"]),
   rule(S("pick"), "models", []),
   rule(U("algo"), "models", ["kmeans", "dbscan"]),
 ];
-const graph = (rules = RULES, reviews = new Map(), path = false) => flowGraph(rules, reviews, { path });
-const node = (g: ReturnType<typeof flowGraph>, id: string) => g.nodes.find((n) => n.id === id)!;
-/** A node's centre: every node is placed by its centre. */
-const centre = (g: ReturnType<typeof flowGraph>, id: string) => {
-  const n = node(g, id);
-  return { x: n.position.x + n.width! / 2, y: n.position.y + n.height! / 2 };
+const chapter = (key: string) => chapters(RULES).find((c) => c.key === key)!;
+const flow = (key: string, reviews = new Map(), path = false) => stageFlow(chapter(key), reviews, { path, from: "from", to: "to" });
+type Flow = ReturnType<typeof stageFlow>;
+const node = (f: Flow, id: string) => f.nodes.find((n) => n.id === id)!;
+/** Where a node's lines meet it: a step's circle sits at the top of its box. */
+const centre = (f: Flow, id: string) => {
+  const n = node(f, id);
+  const high = n.type === "step" ? SIZE.step.circle : n.height!;
+  return { x: n.position.x + n.width! / 2, y: n.position.y + high / 2 };
 };
-const links = (g: ReturnType<typeof flowGraph>) => g.edges.map((e) => `${e.source}>${e.target}`);
+const links = (f: Flow) => f.edges.map((e) => `${e.source}>${e.target}`);
 const settled = (rule: string, route: string) => ({ rule, status: "settled", subject_node_id: "step", reason: `the flow's reason for ${route}`, recommended_alternative_id: route }) as never;
 
-describe("methodology flow diagram", () => {
-  it("draws each decision as a diamond and each route as a circle, from a start circle to an end circle per lane", () => {
-    const g = graph();
-    expect(node(g, S("split")).type).toBe("decision");
-    expect(node(g, `${S("split")}#time`).type).toBe("step");
-    expect(node(g, "start").type).toBe("terminal");
-    expect(g.nodes.filter((n) => n.type === "terminal").map((n) => n.id)).toEqual(["start", "end:supervised", "end:unsupervised"]);
-    expect(SIZE.step).toBeLessThan(SIZE.decision);
-  });
-
-  it("labels every branch out of a decision with why it is taken", () => {
-    const g = graph(RULES, new Map([[S("split"), settled(S("split"), "time")]]));
-    const reason = (route: string) => g.edges.find((e) => e.target === `${S("split")}#${route}`)!.data!.reason;
-    expect(reason("time")).toEqual({ kind: "because", text: "the flow's reason for time" });
-    expect(reason("random")).toEqual({ kind: "why", text: "why random" });
-  });
-
-  it("asks whether the question has a target on the connection that forks into the lanes", () => {
-    const g = graph();
-    expect(node(g, "fork").type).toBe("fork");
-    const fork = g.edges.filter((e) => e.source === "fork");
-    expect(fork.map((e) => [e.target, e.data!.reason!.text])).toEqual([
-      [S("split"), "the question has a target"],
-      [U("algo"), "the question has no target"],
+describe("methodology flow, one stage at a time", () => {
+  it("splits the rules into the shared stages, then each lane's stages, numbered in decision order", () => {
+    expect(chapters(RULES).map((c) => [c.key, c.code, c.rules.length])).toEqual([
+      ["question", "1", 1],
+      ["data", "2", 1],
+      ["supervised:split", "3", 1],
+      ["supervised:cleaning", "4", 2],
+      ["supervised:models", "5", 1],
+      ["unsupervised:models", "3", 1],
     ]);
   });
 
-  it("joins every route of a decision into the next decision, and a decision with no routes straight on", () => {
-    const g = graph();
-    expect(links(g)).toEqual(
-      expect.arrayContaining([
-        `${S("split")}#random>${S("fill")}`,
-        `${S("split")}#time>${S("fill")}`,
-        `${S("fill")}#drop>${S("pick")}`,
-        `${S("pick")}>end:supervised`,
-      ]),
-    );
+  it("says where a stage is entered from and leads to, and that the shared stages fork on the target", () => {
+    const all = chapters(RULES);
+    expect(ends(all, 3)).toEqual({ from: "from Split", to: "to Models" });
+    expect(ends(all, 1).to).toBe("Supervised when the question has a target; Unsupervised when the question has no target");
+    expect(ends(all, 5)).toEqual({ from: "from Data", to: "Score the test rows once" });
   });
 
-  it("keeps each lane's decisions on one line, its circles evenly above and below, and moves only rightwards", () => {
-    const g = graph();
-    const lane = [S("split"), S("fill"), S("pick")].map((id) => centre(g, id));
-    expect(new Set(lane.map((c) => c.y)).size).toBe(1);
-    expect(lane.map((c) => c.x)).toEqual([...lane.map((c) => c.x)].sort((a, b) => a - b));
-    const steps = ["median", "mean", "drop"].map((r) => centre(g, `${S("fill")}#${r}`).y);
-    expect(steps[1]).toBe(lane[0]!.y);
-    expect(steps[0]! - steps[1]!).toBe(steps[1]! - steps[2]!);
-    expect(centre(g, U("algo")).y).not.toBe(lane[0]!.y);
+  it("draws a circle in and out, a diamond per decision and a circle per route, each route saying why", () => {
+    const f = flow("supervised:cleaning", new Map([[S("fill"), settled(S("fill"), "mean")]]));
+    expect(f.nodes.map((n) => n.type)).toEqual(["terminal", "decision", "step", "step", "step", "decision", "step", "step", "terminal"]);
+    expect(node(f, `${S("fill")}#mean`).data).toMatchObject({ reason: { kind: "because", text: "the flow's reason for mean" }, code: "4.1b" });
+    expect(node(f, `${S("fill")}#drop`).data).toMatchObject({ reason: { kind: "why", text: "why drop" } });
   });
 
-  it("names each stage once, above its first decision, numbered in decision order", () => {
-    const g = graph();
-    const band = node(g, "band:supervised:cleaning");
-    expect(band.data).toMatchObject({ title: "Cleaning", code: "4" });
-    expect(band.position.y).toBeLessThan(centre(g, S("fill")).y - SIZE.decision);
+  it("joins every route into the next decision, and a decision with no routes straight on", () => {
+    expect(links(flow("supervised:cleaning"))).toEqual([
+      `from>${S("fill")}`,
+      `${S("fill")}>${S("fill")}#median`,
+      `${S("fill")}>${S("fill")}#mean`,
+      `${S("fill")}>${S("fill")}#drop`,
+      `${S("fill")}#median>${S("clip")}`,
+      `${S("fill")}#mean>${S("clip")}`,
+      `${S("fill")}#drop>${S("clip")}`,
+      `${S("clip")}>${S("clip")}#clip`,
+      `${S("clip")}>${S("clip")}#keep`,
+      `${S("clip")}#clip>to`,
+      `${S("clip")}#keep>to`,
+    ]);
+    expect(links(flow("supervised:models"))).toEqual([`from>${S("pick")}`, `${S("pick")}>to`]);
   });
 
-  it("with the pipeline path on, lights the routes the flow takes and dims the rest", () => {
-    const g = graph(RULES, new Map([[S("split"), settled(S("split"), "time")]]), true);
-    const lit = g.edges.filter((e) => e.data?.onPath).map((e) => `${e.source}>${e.target}`);
-    expect(lit).toContain(`${S("split")}>${S("split")}#time`);
-    expect(lit).not.toContain(`${S("split")}>${S("split")}#random`);
-    expect(node(g, `${S("split")}#random`).data).toMatchObject({ dimmed: true });
-    expect(node(g, U("algo")).data).toMatchObject({ dimmed: true });
+  it("reads top to bottom: decisions on one centre line, each route row evenly either side, below its decision", () => {
+    const f = flow("supervised:cleaning");
+    const spine = ["from", S("fill"), S("clip"), "to"].map((id) => centre(f, id));
+    expect(new Set(spine.map((c) => c.x))).toEqual(new Set([0]));
+    expect(spine.map((c) => c.y)).toEqual([...spine.map((c) => c.y)].sort((a, b) => a - b));
+    const row = ["median", "mean", "drop"].map((r) => centre(f, `${S("fill")}#${r}`));
+    expect(new Set(row.map((c) => c.y)).size).toBe(1);
+    expect(row.map((c) => c.x)).toEqual([-200, 0, 200]);
+    expect(row[0]!.y).toBeGreaterThan(spine[1]!.y);
+    // The next decision starts below the routes' text, so no line crosses it.
+    const box = node(f, `${S("fill")}#mean`);
+    expect(centre(f, S("clip")).y - SIZE.decision / 2).toBeGreaterThan(box.position.y + box.height!);
+  });
+
+  it("with the pipeline path on, lights the route the flow takes and dims the others", () => {
+    const f = stageFlow(chapter("supervised:split"), new Map([[S("split"), settled(S("split"), "time")]]), { path: true, from: "a", to: "b" });
+    const lit = f.edges.filter((e) => e.data?.onPath).map((e) => `${e.source}>${e.target}`);
+    expect(lit).toEqual([`from>${S("split")}`, `${S("split")}>${S("split")}#time`, `${S("split")}#time>to`]);
+    expect(node(f, `${S("split")}#random`).data).toMatchObject({ dimmed: true });
+  });
+
+  it("tells the stepper how many of a stage's decisions are open on the flow, and whether it reaches the stage", () => {
+    const open = { rule: S("fill"), status: "proposal", subject_node_id: "fill", reason: "r" } as never;
+    expect(chapterState(chapter("supervised:cleaning"), new Map([[S("fill"), open]]))).toEqual({ open: 1, reached: true });
+    expect(chapterState(chapter("supervised:split"), new Map())).toEqual({ open: 0, reached: false });
   });
 });

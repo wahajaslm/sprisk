@@ -1,120 +1,137 @@
 import type { MethodologyReviewItem, MethodologyRule, MethodologyStage } from "@sprisk/contracts";
 import type { Edge, Node } from "@xyflow/react";
 
-import { LANE_NOTE, packOf, type RouteReason, routeReason, STAGES } from "./ruleTree.ts";
+import { isOpen, LANE_NOTE, packOf, type RouteReason, routeReason, STAGES } from "./ruleTree.ts";
 
-/** Centre-to-centre distances. Every decision of a lane sits on the lane's one line, and its
- * steps fan out evenly above and below it, so the eye can follow each lane straight across. */
-const TO_STEPS = 230;
-const TO_NEXT = 210;
-const STEP_DY = 76;
-const LANE_PAD = 110;
-const BAND_ABOVE = 46;
-export const SIZE = { terminal: 30, decision: 34, step: 22 } as const;
+/** Sizes and distances, centre to centre where it says so. A stage reads top to bottom: each
+ * decision on the middle line, its routes in one row under it, evenly either side, each route's
+ * name and reason under its circle, so no line ever crosses text. */
+export const SIZE = { terminal: 30, decision: 34, step: { width: 180, height: 86, circle: 22 } } as const;
+const TO_STEPS = 110;
+const STEP_DX = 200;
+const TO_NEXT = 92;
+
 /** Stages every methodology goes through before the lanes fork. */
 const SHARED: MethodologyStage[] = ["question", "data"];
 const LANE_ORDER = ["supervised", "unsupervised"];
 
-export type FlowEdgeData = { reason: RouteReason | undefined; onPath: boolean; kind: "trunk" | "branch" | "skip"; pick: string | undefined };
+/** One stage of one lane, as the stepper shows it. Shared stages have no lane. */
+export type Chapter = { key: string; lane: string | undefined; stage: MethodologyStage; code: string; rules: MethodologyRule[] };
+
+export type FlowEdgeData = { onPath: boolean; kind: "trunk" | "branch" | "skip" };
 
 export type FlowNode =
   | Node<{ label: string; dimmed: boolean }, "terminal">
-  | Node<{ question: string; dimmed: boolean }, "fork">
-  | Node<{ title: string; code: string; dimmed: boolean }, "band">
   | Node<{ rule: MethodologyRule; review: MethodologyReviewItem | undefined; code: string; dimmed: boolean }, "decision">
-  | Node<{ route: MethodologyRule["alternatives"][number]; code: string; picked: boolean; dimmed: boolean }, "step">;
+  | Node<{ route: MethodologyRule["alternatives"][number]; reason: RouteReason; code: string; picked: boolean; dimmed: boolean }, "step">;
 
 type Tail = { id: string; lit: boolean; kind: FlowEdgeData["kind"] };
 
-/** The methodology as a flow diagram (ADR-0059): circles are steps, a diamond on each
- * connection is the decision a rule makes there, and each curved branch out of a diamond says
- * why it is taken (the selected flow's own reason, else the route's condition, else its
- * rationale). Shared question and data decisions run on the middle line; a diamond then asks
- * whether the question has a target and forks into one lane per pack. Ids match the tree's, so
- * one selection serves both views. With `path`, the flow's path is lit and the rest dimmed. */
-export function flowGraph(rules: MethodologyRule[], reviews: Map<string, MethodologyReviewItem>, { path }: { path: boolean }): { nodes: FlowNode[]; edges: Edge<FlowEdgeData>[] } {
-  const nodes: FlowNode[] = [];
-  const edges: Edge<FlowEdgeData>[] = [];
-  const at = (cx: number, cy: number, size: number) => ({ x: cx - size / 2, y: cy - size / 2 });
-  const onPath = (rule: MethodologyRule) => reviews.get(rule.id)?.subject_node_id !== undefined;
-  const link = (tails: Tail[], target: string, reach: boolean, reason?: RouteReason) => {
-    for (const tail of tails) edges.push({ id: `${tail.id}>${target}`, source: tail.id, target, type: "reason", data: { reason, onPath: tail.lit && reach, kind: tail.kind, pick: undefined } });
-  };
-  const stagesOf = (mine: MethodologyRule[]) => STAGES.filter((s) => mine.some((r) => r.stage === s));
-  const half = (mine: MethodologyRule[]) => Math.max(0, ...mine.map((r) => ((r.alternatives.length - 1) * STEP_DY) / 2));
-  const anyOnPath = rules.some(onPath);
+const stageTitle = (stage: MethodologyStage) => stage[0]!.toUpperCase() + stage.slice(1);
+const laneTitle = (lane: string) => lane[0]!.toUpperCase() + lane.slice(1);
 
-  /** Lays one line of decisions from `x` on `y`. `reachedStage` is the last stage of `stages`
-   * the flow reaches. Returns the tails the next node joins and the x after the line. */
-  const line = (mine: MethodologyRule[], firstCode: number, x: number, y: number, tails: Tail[], reachedStage: number) => {
-    const top = y - half(mine) - BAND_ABOVE;
-    stagesOf(mine).forEach((stage, s) => {
-      const reach = path && s <= reachedStage;
-      const code = `${firstCode + s}`;
-      const inStage = mine.filter((r) => r.stage === stage);
-      nodes.push({ id: `band:${packOf(inStage[0]!)}:${stage}`, type: "band", position: { x: x - SIZE.decision / 2, y: top }, data: { title: stage[0]!.toUpperCase() + stage.slice(1), code, dimmed: path && !reach }, selectable: false });
-      inStage.forEach((rule, k) => {
-        const review = reviews.get(rule.id);
-        const ruleOnPath = onPath(rule);
-        const ruleCode = `${code}.${k + 1}`;
-        link(tails, rule.id, reach);
-        nodes.push({ id: rule.id, type: "decision", position: at(x, y, SIZE.decision), width: SIZE.decision, height: SIZE.decision, data: { rule, review, code: ruleCode, dimmed: path && !ruleOnPath } });
-        const routes = rule.alternatives;
-        if (routes.length === 0) {
-          tails = [{ id: rule.id, lit: reach && ruleOnPath, kind: "trunk" }];
-          x += TO_NEXT;
-          return;
-        }
-        tails = routes.map((route, i) => {
-          const id = `${rule.id}#${route.id}`;
-          const picked = review?.recommended_alternative_id === route.id;
-          const taken = reach && ruleOnPath && picked;
-          const cy = y + (i - (routes.length - 1) / 2) * STEP_DY;
-          nodes.push({ id, type: "step", position: at(x + TO_STEPS, cy, SIZE.step), width: SIZE.step, height: SIZE.step, data: { route, code: `${ruleCode}${String.fromCharCode(97 + i)}`, picked, dimmed: path && !(ruleOnPath && picked) } });
-          edges.push({ id: `${rule.id}>${id}`, source: rule.id, target: id, type: "reason", data: { reason: routeReason(rule, route, review), onPath: taken, kind: "branch", pick: id } });
-          return { id, lit: taken, kind: "trunk" as const };
-        });
-        // The path goes straight on past a decision it takes no route of.
-        if (reach && !tails.some((t) => t.lit)) tails.push({ id: rule.id, lit: true, kind: "skip" });
-        x += TO_STEPS + TO_NEXT;
-      });
-    });
-    return { tails, x };
-  };
-
-  const shared = rules.filter((r) => SHARED.includes(r.stage));
+/** The stages in decision order: the shared question and data stages, then each lane's own,
+ * numbered on from the shared ones. Every rule is in exactly one. */
+export function chapters(rules: MethodologyRule[]): Chapter[] {
+  // Numbered as the tree numbers them, whichever stages hold rules.
+  const shared = SHARED.filter((s) => rules.some((r) => r.stage === s)).map((stage) => ({ key: stage, lane: undefined, stage, code: `${SHARED.indexOf(stage) + 1}`, rules: rules.filter((r) => r.stage === stage) }));
   const lanes = [...new Set(rules.filter((r) => !SHARED.includes(r.stage)).map(packOf))].sort(
     (p, q) => (LANE_ORDER.indexOf(p) + 1 || 99) - (LANE_ORDER.indexOf(q) + 1 || 99) || p.localeCompare(q),
   );
-  const laneRules = (lane: string) => rules.filter((r) => !SHARED.includes(r.stage) && packOf(r) === lane);
-  const reachedIn = (mine: MethodologyRule[]) => stagesOf(mine).reduce((last, s, i) => (mine.some((r) => r.stage === s && onPath(r)) ? i : last), -1);
+  const own = lanes.flatMap((lane) =>
+    STAGES.filter((s) => !SHARED.includes(s) && rules.some((r) => r.stage === s && packOf(r) === lane)).map((stage, i) => ({
+      key: `${lane}:${stage}`,
+      lane,
+      stage,
+      code: `${SHARED.length + i + 1}`,
+      rules: rules.filter((r) => r.stage === stage && packOf(r) === lane),
+    })),
+  );
+  return [...shared, ...own];
+}
 
-  nodes.push({ id: "start", type: "terminal", position: at(0, 0, SIZE.terminal), width: SIZE.terminal, height: SIZE.terminal, data: { label: "Question and data", dimmed: false } });
-  const sharedLine = line(shared, 1, TO_NEXT, 0, [{ id: "start", lit: path && anyOnPath, kind: "trunk" }], path && anyOnPath ? stagesOf(shared).length - 1 : -1);
-  if (lanes.length === 0) return { nodes, edges };
+/** Where a stage is entered from and leads to, in words: the stage before and after it in its
+ * lane, or, after the shared stages, the fork on whether the question has a target. */
+export function ends(all: Chapter[], at: number): { from: string; to: string } {
+  const chapter = all[at]!;
+  const lane = (c: Chapter | undefined) => c?.lane;
+  const before = all.slice(0, at).reverse().find((c) => c.lane === undefined || c.lane === chapter.lane);
+  const after = all.slice(at + 1).find((c) => c.lane === chapter.lane);
+  const from = before ? `from ${stageTitle(before.stage)}` : "Question and data";
+  if (after) return { from, to: `to ${stageTitle(after.stage)}` };
+  if (chapter.lane === undefined) {
+    const forks = [...new Set(all.map(lane).filter((l): l is string => l !== undefined))];
+    return { from, to: forks.map((l) => `${laneTitle(l)} when ${LANE_NOTE[l] ?? `the ${l} pack`}`).join("; ") || "Score the test rows once" };
+  }
+  return { from, to: "Score the test rows once" };
+}
 
-  // The fork is a decision too: whether the question has a target.
-  const forkX = sharedLine.x;
-  nodes.push({ id: "fork", type: "fork", position: at(forkX, 0, SIZE.decision), width: SIZE.decision, height: SIZE.decision, data: { question: "Does the question have a target?", dimmed: path && !anyOnPath } });
-  link(sharedLine.tails, "fork", path && anyOnPath);
+/** One stage as a flow diagram, top to bottom: a circle it is entered from, a diamond for each
+ * decision, a circle for each route under it saying why it is taken (the selected flow's own
+ * reason, else the route's condition, else its rationale), and a circle it leads to. Every
+ * route joins the next decision. Ids match the tree's, so one selection serves both views.
+ * With `path`, the routes the flow takes are lit and the rest dimmed. */
+export function stageFlow(
+  chapter: Chapter,
+  reviews: Map<string, MethodologyReviewItem>,
+  { path, from, to }: { path: boolean; from: string; to: string },
+): { nodes: FlowNode[]; edges: Edge<FlowEdgeData>[] } {
+  const nodes: FlowNode[] = [];
+  const edges: Edge<FlowEdgeData>[] = [];
+  const centred = (cx: number, cy: number, w: number, h: number) => ({ x: cx - w / 2, y: cy - h / 2 });
+  const onPath = (rule: MethodologyRule) => reviews.get(rule.id)?.subject_node_id !== undefined;
+  const reach = path && chapter.rules.some(onPath);
+  const link = (tails: Tail[], target: string) => {
+    for (const t of tails) edges.push({ id: `${t.id}>${target}`, source: t.id, target, data: { onPath: t.lit, kind: t.kind }, className: `mth-flow-edge ${t.kind}${t.lit ? " path" : ""}` });
+  };
 
-  const spans = lanes.map((lane) => half(laneRules(lane)) * 2 + LANE_PAD * 2);
-  let top = -spans.reduce((a, b) => a + b, 0) / 2;
-  lanes.forEach((lane, i) => {
-    const y = top + spans[i]! / 2;
-    top += spans[i]!;
-    const mine = laneRules(lane);
-    const reached = path ? reachedIn(mine) : -1;
-    const into: Tail[] = [{ id: "fork", lit: path && reached >= 0, kind: "branch" }];
-    const first = mine[0];
-    if (!first) return;
-    const lit = (target: string) => edges.push({ id: `fork>${target}`, source: "fork", target, type: "reason", data: { reason: { kind: "when", text: LANE_NOTE[lane] ?? `the ${lane} pack` }, onPath: into[0]!.lit, kind: "branch", pick: undefined } });
-    lit(first.id);
-    // The lane's line starts at its first decision, joined from the fork above.
-    const laneLine = line(mine, SHARED.length + 1, forkX + TO_STEPS, y, [], reached);
-    const endId = `end:${lane}`;
-    nodes.push({ id: endId, type: "terminal", position: at(laneLine.x, y, SIZE.terminal), width: SIZE.terminal, height: SIZE.terminal, data: { label: "Score the test rows once", dimmed: path && reached < 0 } });
-    link(laneLine.tails, endId, path && reached >= 0);
+  nodes.push({ id: "from", type: "terminal", position: centred(0, 0, SIZE.terminal, SIZE.terminal), width: SIZE.terminal, height: SIZE.terminal, data: { label: from, dimmed: path && !reach } });
+  let tails: Tail[] = [{ id: "from", lit: reach, kind: "trunk" }];
+  let y = SIZE.terminal / 2 + TO_NEXT;
+
+  chapter.rules.forEach((rule, k) => {
+    const review = reviews.get(rule.id);
+    const ruleOnPath = onPath(rule);
+    const ruleCode = `${chapter.code}.${k + 1}`;
+    link(tails, rule.id);
+    nodes.push({ id: rule.id, type: "decision", position: centred(0, y, SIZE.decision, SIZE.decision), width: SIZE.decision, height: SIZE.decision, data: { rule, review, code: ruleCode, dimmed: path && !ruleOnPath } });
+    const routes = rule.alternatives;
+    if (routes.length === 0) {
+      tails = [{ id: rule.id, lit: reach && ruleOnPath, kind: "trunk" }];
+      y += SIZE.decision + TO_NEXT;
+      return;
+    }
+    const row = y + TO_STEPS;
+    tails = routes.map((route, i) => {
+      const id = `${rule.id}#${route.id}`;
+      const picked = review?.recommended_alternative_id === route.id;
+      const taken = reach && ruleOnPath && picked;
+      const cx = (i - (routes.length - 1) / 2) * STEP_DX;
+      nodes.push({
+        id,
+        type: "step",
+        // The circle's centre is on the row; the name and reason hang below it.
+        position: { x: cx - SIZE.step.width / 2, y: row - SIZE.step.circle / 2 },
+        width: SIZE.step.width,
+        height: SIZE.step.height,
+        data: { route, reason: routeReason(rule, route, review), code: `${ruleCode}${String.fromCharCode(97 + i)}`, picked, dimmed: path && !(ruleOnPath && picked) },
+      });
+      edges.push({ id: `${rule.id}>${id}`, source: rule.id, target: id, data: { onPath: taken, kind: "branch" }, className: `mth-flow-edge branch${taken ? " path" : ""}` });
+      return { id, lit: taken, kind: "trunk" as const };
+    });
+    // The path goes straight on past a decision it takes no route of.
+    if (reach && !tails.some((t) => t.lit)) tails.push({ id: rule.id, lit: true, kind: "skip" });
+    y = row - SIZE.step.circle / 2 + SIZE.step.height + TO_NEXT;
   });
+
+  nodes.push({ id: "to", type: "terminal", position: centred(0, y, SIZE.terminal, SIZE.terminal), width: SIZE.terminal, height: SIZE.terminal, data: { label: to, dimmed: path && !reach } });
+  link(tails, "to");
   return { nodes, edges };
+}
+
+/** How a stage stands for the selected flow: how many of its decisions are open, and whether
+ * the flow has a step any of them decides. */
+export function chapterState(chapter: Chapter, reviews: Map<string, MethodologyReviewItem>) {
+  const items = chapter.rules.map((r) => reviews.get(r.id)).filter((i): i is MethodologyReviewItem => i !== undefined);
+  return { open: items.filter((i) => isOpen(i.status)).length, reached: items.some((i) => i.subject_node_id !== undefined) };
 }
