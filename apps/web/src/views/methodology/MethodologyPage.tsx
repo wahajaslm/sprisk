@@ -5,6 +5,7 @@ import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource } f
 import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
+import { FlowMap } from "./FlowMap.tsx";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
 import { activation, givenText, isOpen, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
 
@@ -20,12 +21,15 @@ export function MethodologyPage() {
   const [filter, setFilter] = useState("");
   const [path, setPath] = useState(false);
   const [picked, setPicked] = useState<string>();
+  const [view, setView] = useState<"tree" | "flow">("tree");
+  const [drafts, setDrafts] = useState(false);
   if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
   if (rules.isPending) return <Loading text="Loading methodology rules…" pad />;
   if (rules.data.length === 0) return <p className="muted pad">No methodology rules are loaded.</p>;
 
   const query = filter.trim().toLowerCase();
-  const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query));
+  // The flow shows what runs: the active rules, and the drafts only when asked.
+  const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query) && (view === "tree" || drafts || r.status === "active"));
   const [pickedRule, pickedRoute] = (picked ?? "").split("#");
   const current = shown.find((r) => r.id === pickedRule) ?? shown[0];
 
@@ -33,13 +37,29 @@ export function MethodologyPage() {
     <main className="mth-page">
       <div className="mth-canvas">
         <div className="mth-toolbar">
+          <div className="mth-views" role="radiogroup" aria-label="View">
+            {(["tree", "flow"] as const).map((v) => (
+              <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}>
+                {v === "tree" ? "Tree" : "Flow"}
+              </button>
+            ))}
+          </div>
           <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          {view === "flow" && (
+            <label className="mth-toggle">
+              <input type="checkbox" role="switch" checked={drafts} onChange={(e) => setDrafts(e.target.checked)} /> Show drafts
+            </label>
+          )}
           <label className="mth-toggle" title={versionId ? "Light the selected flow's path through the tree" : "Select a flow first"}>
             <input type="checkbox" role="switch" checked={path && versionId !== undefined} disabled={!versionId} onChange={(e) => setPath(e.target.checked)} /> Pipeline path
           </label>
           <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
         </div>
-        <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+        {view === "tree" ? (
+          <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+        ) : (
+          <FlowMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+        )}
       </div>
       <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} route={pickedRoute} />}</aside>
     </main>

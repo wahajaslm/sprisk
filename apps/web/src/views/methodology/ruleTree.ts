@@ -39,11 +39,11 @@ export type TreeNode =
   | Node<{ route: MethodologyRule["alternatives"][number]; reason: RouteReason; code: string; picked: boolean; dimmed: boolean }, "route">;
 
 /** The pack a rule comes from (`methodology/<pack>/`), named in its id. */
-const packOf = (rule: MethodologyRule) => rule.id.split(".")[1] ?? "";
+export const packOf = (rule: MethodologyRule) => rule.id.split(".")[1] ?? "";
 
 const routeHeight = (reason: RouteReason) => 24 + Math.min(WHEN_LINES, Math.ceil((reason.text.length + 9) / WHEN_CHARS)) * WHEN_LINE + 6;
 
-function routeReason(rule: MethodologyRule, route: MethodologyRule["alternatives"][number], review: MethodologyReviewItem | undefined): RouteReason {
+export function routeReason(rule: MethodologyRule, route: MethodologyRule["alternatives"][number], review: MethodologyReviewItem | undefined): RouteReason {
   if (review?.recommended_alternative_id === route.id) return { kind: "because", text: review.reason };
   const when = routeWhen(rule, route.id);
   return when ? { kind: "when", text: when } : { kind: "why", text: route.rationale };

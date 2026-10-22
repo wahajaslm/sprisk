@@ -118,6 +118,19 @@ describe("methodology page", () => {
     expect(new Set(into("unsupervised"))).toEqual(new Set(["the question has no target"]));
   });
 
+  it("shows the flow diagram of the active rules, and the drafts only when asked", async () => {
+    const active: MethodologyRule = { ...split, status: "active" };
+    serve([features, active]);
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Flow" }));
+
+    const flow = screen.getByRole("region", { name: "Methodology flow" });
+    expect(within(flow).getByRole("button", { name: active.name })).toBeInTheDocument();
+    expect(within(flow).queryByRole("button", { name: features.name })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("switch", { name: "Show drafts" }));
+    expect(within(screen.getByRole("region", { name: "Methodology flow" })).getByRole("button", { name: features.name })).toBeInTheDocument();
+  });
+
   it("knows every stage the contract has, so no rule drops off the page", () => {
     expect(STAGES).toEqual(bundle.$defs.MethodologyStage.enum);
   });
