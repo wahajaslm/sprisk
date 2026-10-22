@@ -37,12 +37,15 @@ def fitted_by_code(
 
 
 @pytest.mark.parametrize(("step", "write"), WRITERS)
-@pytest.mark.parametrize("extra", [{}, {"features": ["c", "x"]}, {"costs": COSTS}])
+@pytest.mark.parametrize(
+    "extra", [{}, {"features": ["c", "x"]}, {"costs": COSTS}, {"exclude": ["c"]}], ids=str
+)
 def test_the_code_predicts_as_the_step_does(
     clf_numbers: pl.DataFrame, step: Any, write: Any, extra: dict[str, Any]
 ) -> None:
     settings = {"target": "y", "task": "classification", **extra}
-    train, test = clf_numbers[::2], clf_numbers[1::2].select(extra.get("features", ["x", "c"]))
+    used = [c for c in extra.get("features", ["x", "c"]) if c not in extra.get("exclude", [])]
+    train, test = clf_numbers[::2], clf_numbers[1::2].select(used)
     fitted = step(train, **settings)
     code = fitted_by_code(settings, train, write)
     assert np.array_equal(code.predict(test), fitted.predict(test))

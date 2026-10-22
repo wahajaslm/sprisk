@@ -98,8 +98,9 @@ def test_preparation_between_the_split_and_the_model_is_refit_on_each_fold() -> 
     assert RecordingStep.fits == result["scores"]["train_rows"].to_list()
 
 
-def test_importance_covers_every_column_the_preparation_reads() -> None:
-    # The frame holds x before c; the features list c first; amount reaches no model.
+def test_importance_covers_only_the_columns_the_model_reads() -> None:
+    # The frame holds x before c; the features list c first; amount feeds only the
+    # preparation and reaches no model, so it is not listed.
     result = cross_validate(
         rows(200, seed=3),
         linear_model_estimator,
@@ -112,7 +113,7 @@ def test_importance_covers_every_column_the_preparation_reads() -> None:
     )
     importance = result["importance"]
     assert importance["feature"].to_list()[0] == "x"
-    assert set(importance["feature"]) == {"x", "c", "amount"}
+    assert set(importance["feature"]) == {"x", "c"}
     assert importance["importance"][0] > 0.2 > importance["importance"].abs()[1:].max()
 
 
@@ -704,3 +705,11 @@ def test_an_alternative_both_compared_and_not_is_refused() -> None:
             {REFERENCE: trial([0.8] * 5), "no_scaling": trial([0.8] * 5)},
             not_compared=[{"id": "no_scaling", "reason": "r"}],
         )
+
+
+def test_excluded_key_columns_never_reach_the_model_or_its_importance() -> None:
+    params = {"target": "y", "task": "classification", "exclude": ["c", "amount"]}
+    result = cross_validate(
+        rows(200, seed=3), linear_model_estimator, params, 5, 0, "balanced_accuracy", 1, []
+    )
+    assert result["importance"]["feature"].to_list() == ["x"]

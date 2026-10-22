@@ -20,10 +20,11 @@ def dummy_baseline(
     task: str,
     features: list[str] | None = None,
     costs: dict[str, Any] | None = None,
+    exclude: list[str] | None = None,
 ) -> Any:
     """Always predicts the most frequent class, or the mean. Any real model should beat it.
     With `costs`, the class whose prediction for every row costs least."""
-    return fit(dummy_baseline_estimator(task), train, target, features, costs)
+    return fit(dummy_baseline_estimator(task), train, target, features, costs, exclude=exclude)
 
 
 def dummy_baseline_estimator(task: str) -> BaseEstimator:
@@ -38,10 +39,11 @@ def linear_model(
     task: str,
     features: list[str] | None = None,
     costs: dict[str, Any] | None = None,
+    exclude: list[str] | None = None,
 ) -> Any:
     """Logistic regression for classes, linear regression for numbers. With `costs`, it
     predicts a class by the threshold that costs least on its training rows."""
-    return fit(linear_model_estimator(task), train, target, features, costs)
+    return fit(linear_model_estimator(task), train, target, features, costs, exclude=exclude)
 
 
 def linear_model_estimator(task: str) -> BaseEstimator:
@@ -60,11 +62,12 @@ def random_forest(
     min_samples_leaf: int = 1,
     max_features: float | None = None,
     costs: dict[str, Any] | None = None,
+    exclude: list[str] | None = None,
 ) -> Any:
     """A forest of decision trees; captures interactions a linear model misses. With `costs`,
     it predicts a class by the threshold that costs least on its training rows."""
     model = random_forest_estimator(task, n_estimators, seed, min_samples_leaf, max_features)
-    return fit(model, train, target, features, costs, seed)
+    return fit(model, train, target, features, costs, seed, exclude)
 
 
 def random_forest_estimator(
@@ -90,6 +93,7 @@ def fit(
     features: list[str] | None,
     costs: dict[str, Any] | None = None,
     seed: int = 0,
+    exclude: list[str] | None = None,
 ) -> Any:
     """`model` fit on the train rows. With `costs` (ADR-0053), it first tunes its threshold
     for least cost on its own training rows."""
@@ -97,7 +101,7 @@ def fit(
         raise ValueError(f"target {target!r} is listed as a feature")
     if train[target].null_count():
         raise ValueError(f"{target} has {train[target].null_count()} missing values in train")
-    x, y = model_input(train.drop(target), features), train[target].to_numpy()
+    x, y = model_input(train.drop(target), features, exclude), train[target].to_numpy()
     if not costs:
         return model.fit(x, y)
     by_class = resolved(costs, y, target)
@@ -107,10 +111,16 @@ def fit(
     return fitted
 
 
-def model_input(rows: pl.DataFrame, features: list[str] | None) -> pl.DataFrame:
-    """The columns a model fits on: `features`, or every column of `rows`. They must be
-    numbers with no gaps (ADR-0056); anything else is refused, naming the step to add."""
-    x = rows if features is None else rows.select(features)
+def model_input(
+    rows: pl.DataFrame, features: list[str] | None, exclude: list[str] | None = None
+) -> pl.DataFrame:
+    """The columns a model fits on: `features`, or every column of `rows` but the `exclude`d
+    ones, the columns that identify rows, groups or time. They must be numbers with no gaps
+    (ADR-0056); anything else is refused, naming the step to add."""
+    left_out = exclude or []
+    if features is not None and (both := [c for c in features if c in left_out]):
+        raise ValueError(f"{', '.join(both)} is excluded, so it cannot be a feature")
+    x = rows.drop(left_out, strict=False) if features is None else rows.select(features)
     categories = [c for c, kind in x.schema.items() if kind in CATEGORIES]
     if categories:
         raise ValueError(f"{_not_numbers(categories)}: add an Encode step before the model")
@@ -201,12 +211,13 @@ def _model_code(
     tuned: bool,
 ) -> str:
     """A model step as plain Python: `estimator` (its import and its expression) fit on the
-    train rows' features, or every column but the target. With costs, the cut-off is tuned
-    (`tuned`) or fixed by the costs alone. Helper names start with the model's own name, so
-    they never replace a person's names."""
+    train rows' features, or every column but the target and the excluded ones. With costs,
+    the cut-off is tuned (`tuned`) or fixed by the costs alone. Helper names start with the
+    model's own name, so they never replace a person's names."""
     train, model, target = inputs["train"], outputs["model"], settings["target"]
     features = settings.get("features")
-    rows = f"{train}.drop({target!r})" if features is None else f"{train}.select({features!r})"
+    left_out = [target, *settings.get("exclude", [])]
+    rows = f"{train}.drop({left_out!r})" if features is None else f"{train}.select({features!r})"
     fit = f"{rows}, {train}[{target!r}]"
     code = f"{estimator[0]}\n\n{model} = {estimator[1]}\n"
     costs = settings.get("costs") if settings["task"] == "classification" else None

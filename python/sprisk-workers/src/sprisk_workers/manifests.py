@@ -80,7 +80,7 @@ def _estimator(path: Path, entrypoint: str, operator: Operator) -> CheckedFuncti
     the columns it reads (ADR-0046) and its costs, which whoever fits it applies (ADR-0053)."""
     build = load_function(path, "estimator", entrypoint)
     properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
-    expected = sorted(set(properties) - {"target", "features", "costs"})
+    expected = sorted(set(properties) - {"target", "features", "exclude", "costs"})
     takes = sorted(inspect.signature(build).parameters)
     if takes != expected:
         raise ManifestError(f"{path}: estimator takes {takes}; it must take {expected}")

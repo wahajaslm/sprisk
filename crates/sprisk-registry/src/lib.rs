@@ -242,7 +242,7 @@ fn read_manifest(path: &Path) -> Result<Operator, RegistryError> {
 pub const MAX_SEARCH_POINTS: usize = 200;
 
 /// Params the flow sets, so a study never tunes them (ADR-0052).
-const FIXED_PARAMS: [&str; 4] = ["target", "features", "task", "seed"];
+const FIXED_PARAMS: [&str; 5] = ["target", "features", "exclude", "task", "seed"];
 
 /// Every searched setting is a params property the flow does not fix, searched once, with
 /// at least two distinct values its property's schema accepts.
