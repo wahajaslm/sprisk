@@ -377,9 +377,11 @@ function standing(id: string, decision: SelectionDecision): string {
   return baseline ? "baseline (the floor)" : "";
 }
 
+const LOWER_IS_BETTER: SelectionDecision["metric"][] = ["expected_cost", "rmse"];
+
 /** The recommendation and the best other model that is not the baseline. */
-function defaultPair(decision: SelectionDecision): string[] {
-  const sign = decision.metric === "rmse" ? -1 : 1;
+export function defaultPair(decision: SelectionDecision): string[] {
+  const sign = LOWER_IS_BETTER.includes(decision.metric) ? -1 : 1;
   const others = decision.candidates
     .filter((c) => c.id !== decision.winner && c.id !== decision.baseline)
     .sort((a, b) => sign * (b.mean - a.mean));
