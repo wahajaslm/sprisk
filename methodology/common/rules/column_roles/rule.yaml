@@ -3,91 +3,56 @@ id: methodology.common.column_roles@1.0.0
 name: "Column roles"
 stage: data
 decides: data.column_roles
-status: draft
+status: active
+applies_to: [sprisk.validation.random_split, sprisk.validation.group_split, sprisk.validation.temporal_split]
+reads: [input.rows, input.duplicate_rows, input.column.*.data_type, input.column.*.distinct, input.column.*.word_share, question.target, question.entity_column, question.time_column]
 
 provenance:
   standard: "Schema checks for ML data (Breck et al. 2019)"
-  citation: "Breck et al. (2019) Data Validation for Machine Learning, SysML"
-  pitfall: "A postal code read as a number gets scaled and averaged; an ID read as a feature lets the model memorise rows."
+  citation: "Breck et al. (2019) Data Validation for Machine Learning, SysML; Kaufman et al. (2012) Leakage in Data Mining, ACM TKDD 6(4)"
+  pitfall: "An ID read as a feature lets the model memorise rows; when rows are stored in class order, a row index predicts the label."
   corner_cases:
-    - "Codes stored as numbers (postal codes, product codes) are labels. The person confirms."
-    - "Roles come from structure only (distinct counts, parsing), so they may be measured on all rows. Nothing about the target is read."
+    - "The role that changes the flow here is the identifier: a whole-number or one-word text column with a different value in every row. It is left out before the split, by a step that fits nothing."
+    - "Roles come from structure only (distinct counts, types, words per value), so all rows are measured. Nothing about the target is read."
+    - "An all-unique decimal column (amounts, lab values) is a measurement, and an all-unique multi-word text column (titles) is free text; neither is an identifier. Free text is the text-representation rule's."
+    - "The target and the question's entity and time columns are never dropped: the group and temporal splits read them (a time column of epoch seconds is unique per row)."
+    - "On few rows a column can be unique by chance (ages of 60 people), so it stays; leaving it out is offered for a person to choose."
+    - "Codes stored as numbers (postal codes, product type codes) repeat, so they are not identifiers; a number-coded target is the task-type rule's to ask about."
+    - "A copied row repeats its identifier, so a column counts as one when its values are as many as the rows that differ; the exact-duplicates rule then removes the copies."
+    - "Known limits: a whole-number measurement unique in every row (amounts in cents) is taken for an identifier; a code holding a space (SKU 0001) is taken for free text."
     - "Untrusted text in column names is read as data only."
-    - "An all-unique decimal column (amounts, lab values, timestamps) is a measurement, not an identifier. Only whole-number or text columns can be identifiers."
-    - "Routes are tried in this order: date, identifier, then the rest, so an all-unique date column stays a date."
-
-observes:
-  - profile: column.distinct_ratio
-    description: "Distinct values over rows, per column"
-    required: true
-  - profile: column.date_parse_share
-    description: "Share of values that parse as dates"
-    required: true
-  - profile: column.mean_text_length
-    description: "Mean characters per text value"
-    required: true
 
 policy_thresholds:
-  # Distinct ratio at which a column is an identifier. From the map row: every value unique.
-  id_distinct_ratio: 1.0
-  # Share of values that must parse as dates. Project convention: allows a few bad entries,
-  # which the wrong-types rule then handles.
-  date_parse_share: 0.95
-  # Mean length past which text is free text, not a category. Project convention: longer than
-  # a typical label or short name.
-  free_text_min_length: 30
+  # Rows below which a column with a different value in every row may be so by chance.
+  # Project convention: with fewer, it stays and leaving it out is only offered.
+  min_rows: 100
+  # Share of values holding more than one word up to which text is a code, not free text.
+  # Project convention: tolerates a few stray spaces in codes.
+  max_word_share: 0.05
 
 alternatives:
-  - id: date
-    label: "Date"
-    description: "Values parse as dates."
-    condition: "column.date_parse_share >= date_parse_share"
-    rationale: "Dates feed the split and date parts."
+  - id: drop_identifiers
+    label: "Leave identifiers out"
+    description: "Keep every column but the identifiers, in a step added before the split."
+    rationale: "A unique code per row carries no pattern, only identity."
+    action:
+      type: insert_step
+      placement: before
+      operator: sprisk.clean.select_columns@1.0.0
+      node_id: identifiers
+  - id: keep_all
+    label: "No identifiers"
+    description: "No column is an identifier, so every column stays."
+    rationale: "Nothing to leave out."
     action:
       type: pass_through
-
-  - id: identifier
-    label: "Identifier"
-    description: "Every value is unique in a whole-number or text column. Kept for joins and grouping, never a feature."
-    condition: "not a date AND (whole-number or text column) AND column.distinct_ratio >= id_distinct_ratio"
-    rationale: "A unique code per row carries no pattern, only identity. A unique decimal is a measurement and stays a number."
-    action:
-      type: pass_through
-
-  - id: free_text
-    label: "Free text"
-    description: "Long, varied strings."
-    condition: "text column AND column.mean_text_length > free_text_min_length"
-    rationale: "Free text needs its own representation (features.text_representation)."
-    action:
-      type: pass_through
-
-  - id: category
-    label: "Category"
-    description: "Short text with repeated values."
-    condition: "text column AND column.mean_text_length <= free_text_min_length"
-    rationale: "Categories are encoded later (features.encoding_strategy)."
-    action:
-      type: pass_through
-
-  - id: number
-    label: "Number"
-    description: "Numeric values that are quantities."
-    condition: "numeric column AND not number-coded AND not an identifier (all-unique decimals land here)"
-    rationale: "Quantities may be scaled and transformed."
-    action:
-      type: pass_through
-
-  - id: ask_number_coded
-    label: "Ask: number or code?"
-    description: "Numbers that look like codes (fixed width, leading zeros, no order). Ask the person."
-    condition: "numeric column that looks like a code"
-    rationale: "Only a person knows whether 75001 is an amount or a place."
-    action:
-      type: emit_methodology_limitation
-      params:
-        reason: "number_coded_label_needs_confirmation"
 
 verification:
   check_id: none
-  invariant: "No Gate B check exists yet. Planned: an identifier column feeds no model."
+  invariant: "No Gate B check exists yet. Planned: no model reads a column whose every value is different."
+
+examples:
+  - given: { input.rows: 1000, input.column.productid.data_type: Int64, input.column.productid.distinct: 1000, input.column.code.data_type: Int64, input.column.code.distinct: 27, question.target: code }
+    picks: drop_identifiers
+  - given: { input.rows: 1000, input.column.title.data_type: String, input.column.title.distinct: 1000, input.column.title.word_share: 0.9, input.column.code.data_type: Int64, input.column.code.distinct: 27, question.target: code }
+    picks: keep_all

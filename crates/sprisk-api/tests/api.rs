@@ -4496,11 +4496,13 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("question.target_definition", "settled"),
         // Every loaded table is read, so there is nothing to join.
         ("data.join_sources", "settled"),
-        ("question.unit_of_prediction", "needs_run"),
-        ("data.exact_duplicates", "needs_run"),
-        ("data.missing_markers", "needs_run"),
-        ("data.text_spelling", "needs_run"),
-        ("data.type_repair", "needs_run"),
+        ("data.column_roles", "needs_run"),
+        // They wait: column roles may still change the table they measure.
+        ("question.unit_of_prediction", "waiting"),
+        ("data.exact_duplicates", "waiting"),
+        ("data.missing_markers", "waiting"),
+        ("data.text_spelling", "waiting"),
+        ("data.type_repair", "waiting"),
         ("split.method", "settled"),
         ("question.class_balance", "waiting"),
         ("question.error_costs", "waiting"),
@@ -4525,7 +4527,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([0, 4, 5, 6, 7, 8]),
+        json!([0, 4]),
         "the split already matches: state the constraint and run the flow next: {review}"
     );
 }
@@ -4850,7 +4852,7 @@ async fn a_question_needing_high_interpretability_replaces_the_forest_by_a_linea
 async fn products_and_codes_flow(api: &Api) {
     let mut items = String::from(",designation,description,productid,imageid\n");
     let mut codes = String::from(",prdtypecode\n");
-    for i in 0..40 {
+    for i in 0..120 {
         items.push_str(&format!("{i},title {i},,{},{}\n", 1000 + i, 2000 + i));
         codes.push_str(&format!("{i},{}\n", [10, 2280][i % 2]));
     }
@@ -4914,4 +4916,24 @@ async fn codes_loaded_from_another_file_are_joined_on_the_shared_key_before_the_
         .find(|(decides, _)| decides == "data.join_sources")
         .unwrap();
     assert_eq!(join.1, "settled", "{review}");
+
+    // On the joined table, the row index and the product and image ids name rows.
+    let proposal = propose_for(&api, &joined, "split", "data.column_roles").await;
+    assert_eq!(
+        proposal["recommended_alternative_id"], "drop_identifiers",
+        "{proposal}"
+    );
+    let effect = recommended_effect(&proposal);
+    assert_eq!(
+        effect["operator"], "sprisk.clean.select_columns@1.0.0",
+        "{proposal}"
+    );
+    assert_eq!(
+        effect["params"]["columns"],
+        json!(["description", "designation", "prdtypecode"]),
+        "{proposal}"
+    );
+    let named = apply_alternative(&api, &proposal, "drop_identifiers").await;
+    let (run, attempts) = run_version(&api, &named).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }

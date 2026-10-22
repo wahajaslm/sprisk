@@ -15,6 +15,11 @@ use crate::{
 /// What the split rule decides. A rule that measures train rows needs it decided first.
 pub const SPLIT_DECISION: &str = "split.method";
 
+/// Decisions that shape the columns of the table a split reads, in order: a join adds the
+/// other table's, then identifiers are left out. Rules measuring that table wait for them, so
+/// they see its final columns (ADR-0059): duplicate rows, say, differ by an identifier.
+pub const TABLE_SHAPE: [&str; 2] = ["data.join_sources", "data.column_roles"];
+
 /// One rule and the step it decides; `subject` is `None` when the flow has no such step.
 pub struct Planned<'a> {
     pub rule: &'a MethodologyRule,
@@ -92,12 +97,25 @@ pub fn plan<'a>(
 /// Whether `later` must wait for `earlier`: it measures train rows, and `earlier` decides
 /// the split or a step strictly upstream of `later`'s. A rule reading cross-validation
 /// results also waits for the rules of its own step that do not (ADR-0059): they may change
-/// what was compared. A rule measuring the table a step reads waits for a rule of that step
-/// joining another table to it, so it measures the joined table.
+/// what was compared. A rule measuring the table a step reads waits for the rules of that step
+/// that shape its columns (`TABLE_SHAPE`).
 pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planned) -> bool {
     let same_step = matches!((later.subject, earlier.subject), (Some(l), Some(e)) if l.id == e.id);
-    if same_step && facts::needs_input_rows(reads(later)) && facts::needs_join(reads(earlier)) {
-        return true;
+    let shape = |p: &Planned| {
+        TABLE_SHAPE
+            .iter()
+            .position(|d| *d == p.rule.decides.as_str())
+    };
+    if same_step
+        && facts::needs_input_rows(reads(later))
+        && let Some(earlier_at) = shape(earlier)
+    {
+        return match shape(later) {
+            // A rule measuring the table waits for every rule shaping it.
+            None => true,
+            // Shaping rules go in TABLE_SHAPE order.
+            Some(later_at) => later_at > earlier_at,
+        };
     }
     let results = facts::needs_results(reads(later));
     if !results && !facts::needs_train_rows(reads(later)) {
