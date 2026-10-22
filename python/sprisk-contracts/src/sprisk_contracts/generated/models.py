@@ -2088,6 +2088,20 @@ class ColumnProfile(StrictModel):
             ge=0.0,
         ),
     ] = None
+    case_variants: Annotated[
+        int | None,
+        Field(
+            description="Of a text column's distinct values, how many merge with another once spaces and case are ignored ('Paris', 'paris '). Absent for other columns.",
+            ge=0,
+        ),
+    ] = None
+    accent_variants: Annotated[
+        int | None,
+        Field(
+            description="How many more of a text column's distinct values merge once accents are also ignored ('café', 'cafe'). Absent for other columns.",
+            ge=0,
+        ),
+    ] = None
     rarest_share: Annotated[
         float | None,
         Field(

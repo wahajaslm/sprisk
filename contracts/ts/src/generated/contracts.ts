@@ -595,6 +595,14 @@ export interface ColumnProfile {
    */
   iqr?: number;
   /**
+   * Of a text column's distinct values, how many merge with another once spaces and case are ignored ('Paris', 'paris '). Absent for other columns.
+   */
+  case_variants?: number;
+  /**
+   * How many more of a text column's distinct values merge once accents are also ignored ('café', 'cafe'). Absent for other columns.
+   */
+  accent_variants?: number;
+  /**
    * For a column with at most 20 distinct values, the share of present values held by its least common value, such as the rarest class of a target. Absent for other columns.
    */
   rarest_share?: number;

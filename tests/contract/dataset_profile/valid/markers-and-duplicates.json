@@ -72,6 +72,8 @@
       "missing": 0,
       "distinct": 40,
       "rarest_share": 0.02,
+      "case_variants": 1,
+      "accent_variants": 0,
       "numeric_share": 0.98,
       "leading_zero_values": 0,
       "unconverted": [

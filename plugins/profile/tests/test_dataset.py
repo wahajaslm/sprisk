@@ -251,6 +251,14 @@ def test_a_column_with_few_values_gives_its_rarest_values_share() -> None:
     assert column(many, "x").rarest_share is None
 
 
+def test_a_text_column_counts_values_that_differ_only_in_spaces_case_or_accents() -> None:
+    p = profile(pl.DataFrame({"city": ["Paris", "paris ", "PARIS", "Café", "cafe", "Lyon", None]}))
+    assert column(p, "city").case_variants == 2
+    assert column(p, "city").accent_variants == 1
+    plain = profile(pl.DataFrame({"n": [1, 2], "t": ["a", "b"]}))
+    assert (column(plain, "n").case_variants, column(plain, "t").case_variants) == (None, 0)
+
+
 def test_a_text_column_says_what_share_reads_as_numbers_and_which_values_do_not() -> None:
     p = profile(pl.DataFrame({"age": ["31", "?", "n/a", "?", "4.5", "NaN", None]}))
     age = column(p, "age")

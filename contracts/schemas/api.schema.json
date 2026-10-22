@@ -292,6 +292,8 @@
         "kurtosis": { "type": "number", "description": "Excess (Fisher) kurtosis of a numeric column with variation; absent otherwise." },
         "outlier_share": { "type": "number", "minimum": 0, "maximum": 1, "description": "Share of present values outside the 1.5 x IQR fences, for a numeric column with variation." },
         "iqr": { "type": "number", "minimum": 0, "description": "Interquartile range of a numeric column with variation. Zero when most values are equal: IQR fences and robust scaling then have no spread to use." },
+        "case_variants": { "type": "integer", "minimum": 0, "description": "Of a text column's distinct values, how many merge with another once spaces and case are ignored ('Paris', 'paris '). Absent for other columns." },
+        "accent_variants": { "type": "integer", "minimum": 0, "description": "How many more of a text column's distinct values merge once accents are also ignored ('café', 'cafe'). Absent for other columns." },
         "rarest_share": { "type": "number", "minimum": 0, "maximum": 1, "description": "For a column with at most 20 distinct values, the share of present values held by its least common value, such as the rarest class of a target. Absent for other columns." },
         "numeric_share": { "type": "number", "minimum": 0, "maximum": 1, "description": "Of a text column's present values, the share that read as numbers. Absent for other columns." },
         "leading_zero_values": { "type": "integer", "minimum": 0, "description": "Of a text column's present values, how many read as numbers but start with a zero before a digit, like the code 01234. Absent for other columns." },

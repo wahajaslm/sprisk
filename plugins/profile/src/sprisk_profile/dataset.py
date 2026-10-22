@@ -100,6 +100,7 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
         column.update(_shape(s))
     if s.dtype == pl.String:
         column.update(_conversion(s))
+        column.update(_spelling(s))
     histogram = _bins(bins, s.name) if numeric else _top_values(s)
     if histogram is not None:
         column["histogram"] = histogram
@@ -164,6 +165,18 @@ def _conversion(s: pl.Series) -> dict[str, Any]:
         "numeric_share": share,
         "leading_zero_values": zeros,
         "unconverted": [v[:MAX_LABEL] for v in counts["value"]],
+    }
+
+
+def _spelling(s: pl.Series) -> dict[str, int]:
+    """For the text spelling rule: how many distinct values merge with another once spaces and
+    case are ignored, and how many more once accents are too (OpenRefine's key collision)."""
+    present = s.drop_nulls().unique()
+    folded = present.str.strip_chars().str.replace_all(r"\s+", " ").str.to_lowercase()
+    unaccented = folded.str.normalize("NFKD").str.replace_all(r"\p{M}", "")
+    return {
+        "case_variants": present.len() - folded.n_unique(),
+        "accent_variants": folded.n_unique() - unaccented.n_unique(),
     }
 
 
