@@ -218,24 +218,41 @@ fn a_recommended_limitation_stops_the_walk_before_any_change() {
 }
 
 #[test]
-fn a_shortlist_to_compare_is_uncovered_until_the_engine_runs_tries() {
-    let review = review(vec![item(
-        SHORTLIST,
-        "modeling.estimator_selection",
-        "proposal",
-        None,
-    )]);
-    let (reason, detail) = stop(
-        next_action(
-            &review,
-            &question(json!({})),
-            HeadRun::Succeeded,
-            &catalog(),
-        )
-        .unwrap(),
+fn a_rule_that_leaves_the_choice_open_is_compared_after_changes_and_runs() {
+    let shortlist = item(SHORTLIST, "modeling.estimator_selection", "proposal", None);
+    let split = item(SPLIT, "split.method", "proposal", Some("stratified_random"));
+    let rows = item(DUPLICATES, "data.exact_duplicates", "needs_run", None);
+    let asked = question(json!({}));
+    let catalog = catalog();
+
+    let only = review(vec![shortlist.clone()]);
+    let action = next_action(&only, &asked, HeadRun::Succeeded, &catalog).unwrap();
+    assert!(
+        matches!(action, Action::Compare { subject: "split", item } if item.decides.as_str() == "modeling.estimator_selection"),
+        "a shortlist is compared: {action:?}"
     );
-    assert_eq!(reason, WalkStopReason::Uncovered);
-    assert!(detail.contains("modeling.estimator_selection"), "{detail}");
+    let with_change = review(vec![shortlist.clone(), split]);
+    let action = next_action(&with_change, &asked, HeadRun::Succeeded, &catalog).unwrap();
+    assert!(
+        matches!(action, Action::Apply { alternative: "stratified_random", .. }),
+        "a rule's change comes before a comparison: {action:?}"
+    );
+    let with_rows = review(vec![shortlist, rows]);
+    let action = next_action(&with_rows, &asked, HeadRun::NotRun, &catalog).unwrap();
+    assert!(
+        matches!(action, Action::Run { .. }),
+        "the flow is run before a comparison: {action:?}"
+    );
+}
+
+#[test]
+fn a_shortlist_that_reads_a_guessed_task_is_asked_not_compared() {
+    let review = review(vec![item(SHORTLIST, "modeling.estimator_selection", "proposal", None)]);
+    let guessed = question(json!({ "task": { "value": "classification", "origin": "inferred" } }));
+    let (reason, detail) =
+        stop(next_action(&review, &guessed, HeadRun::Succeeded, &catalog()).unwrap());
+    assert_eq!(reason, WalkStopReason::NeedsPerson);
+    assert!(detail.contains("question.task, still a guess"), "{detail}");
 }
 
 /// A Rakuten-shaped question: which product type, from the listing's text.

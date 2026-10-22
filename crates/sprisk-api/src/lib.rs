@@ -1991,8 +1991,35 @@ async fn select_model(
     State(state): State<AppState>,
     Path((raw, node_id)): Path<(String, String)>,
 ) -> Result<(StatusCode, Json<ModelSelection>), ApiError> {
-    let pipeline_id: PipelineVersionId = id(&raw)?;
-    let step: sprisk_contracts::NodeId = id(&node_id)?;
+    let (selection, claimed, built) = claim_selection(&state, &raw, &node_id).await?;
+    let started = claimed.is_some();
+    if let Some(plan) = claimed {
+        spawn_run(
+            &state,
+            &selection.run,
+            selection.comparison.clone(),
+            plan,
+            None,
+        );
+    }
+    let status = if built || started {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(selection)))
+}
+
+/// The model selection of step `node_id`: its proposal, comparison and run, each made once
+/// if missing. Gives the plan of the run when this call queued it, for the caller to drive,
+/// and whether this call built the comparison.
+async fn claim_selection(
+    state: &AppState,
+    raw: &str,
+    node_id: &str,
+) -> Result<(ModelSelection, Option<Plan>, bool), ApiError> {
+    let pipeline_id: PipelineVersionId = id(raw)?;
+    let step: sprisk_contracts::NodeId = id(node_id)?;
     // Each part is claimed once in the store, so concurrent requests share one proposal's
     // comparison and one run of it.
     let (comparison, run, built) = match state.store.selection_for(&pipeline_id, &step).await? {
@@ -2003,15 +2030,15 @@ async fn select_model(
                 .nodes
                 .iter()
                 .find(|n| n.id == step)
-                .and_then(|n| compared_decision(&state, n))
+                .and_then(|n| compared_decision(state, n))
                 .ok_or_else(|| ApiError::BadRequest {
                     code: "not_compared",
                     message: format!(
                         "no rule compares step {node_id}: only a model step a shortlist rule decides, or a step a rule decides that fits on train rows, is compared"
                     ),
                 })?;
-            let (_, Json(proposal)) = propose(&state, &raw, &node_id, Some(&decides)).await?;
-            let made = comparison_version(&state, &proposal, None).await?;
+            let (_, Json(proposal)) = propose(state, raw, node_id, Some(&decides)).await?;
+            let made = comparison_version(state, &proposal, None).await?;
             let (comparison, built) = state
                 .store
                 .insert_selection(&pipeline_id, &step, &made)
@@ -2019,38 +2046,28 @@ async fn select_model(
             (comparison, None, built)
         }
     };
-    let (run, started) = match run {
-        Some(run) => (run, false),
+    let (run, claimed) = match run {
+        Some(run) => (run, None),
         None => {
-            let (queued, plan) = queued_run(&state, &comparison).await?;
+            let (queued, plan) = queued_run(state, &comparison).await?;
             let run = state
                 .store
                 .claim_selection_run(&pipeline_id, &step, &queued)
                 .await?;
-            let started = run.id == queued.id;
-            if started {
-                spawn_run(&state, &run, comparison.clone(), plan, None);
-            }
-            (run, started)
+            let claimed = (run.id == queued.id).then_some(plan);
+            (run, claimed)
         }
     };
     let proposal_id = comparison.compares.clone().ok_or_else(|| {
         ApiError::Internal(format!("{} compares no proposal", comparison.id.as_str()))
     })?;
     let proposal = state.store.get_methodology_proposal(&proposal_id).await?;
-    let status = if built || started {
-        StatusCode::CREATED
-    } else {
-        StatusCode::OK
+    let selection = ModelSelection {
+        proposal,
+        comparison,
+        run,
     };
-    Ok((
-        status,
-        Json(ModelSelection {
-            proposal,
-            comparison,
-            run,
-        }),
-    ))
+    Ok((selection, claimed, built))
 }
 
 /// Studies the model step `node_id` (ADR-0052): its own shortlist proposal, compared with

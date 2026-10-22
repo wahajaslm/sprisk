@@ -5463,3 +5463,112 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
     );
     assert_eq!(detail["walk"]["stop"]["reason"], "run_failed", "{detail}");
 }
+
+/// A small table a model can learn and a featureless baseline cannot: `dose` sets `outcome`,
+/// `batch` is noise. No gaps, no text, no identifiers, so the walk reaches the model choice.
+fn learnable_table() -> String {
+    let mut csv = String::from("dose,batch,outcome\n");
+    for i in 0..240u32 {
+        let dose = f64::from(i % 60) / 4.0 + 0.5;
+        let batch = f64::from((i * 7) % 11) + 0.25;
+        let outcome = if dose > 7.5 { "responds" } else { "none" };
+        csv.push_str(&format!("{dose},{batch},{outcome}\n"));
+    }
+    csv
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_winner() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["objective"]["value"] = json!("Tell which doses get a response.");
+    q["target"]["value"] = json!("outcome");
+    q["interpretability"] = json!({ "value": "low", "origin": "explicit" });
+    let facts = q.as_object_mut().unwrap();
+    for gone in ["time_column", "entity_column", "prediction_horizon"] {
+        facts.remove(gone);
+    }
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-learnable")).await;
+    assert_eq!(
+        trail(&detail),
+        [
+            "build",
+            "apply split.method stratified_random",
+            "run",
+            "compare modeling.estimator_selection ",
+            "apply modeling.estimator_selection ml_random_forest",
+            "run",
+            "stop"
+        ],
+        "{detail}"
+    );
+    let steps = detail["steps"].as_array().unwrap();
+    assert!(
+        steps[3]["run_id"].is_string(),
+        "the comparison's run: {detail}"
+    );
+    let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
+    let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
+    let model = flow["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@2.0.0", "{flow}");
+    // The costs of each error are the person's to state; nothing else is open.
+    assert_eq!(detail["walk"]["stop"]["reason"], "needs_person", "{detail}");
+    assert!(
+        detail["walk"]["stop"]["detail"]
+            .as_str()
+            .unwrap()
+            .starts_with("question.error_costs"),
+        "{detail}"
+    );
+}
+
+/// The same question on rows where `outcome` does not depend on anything a model sees.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_walk_where_no_model_beats_the_baseline_stops_and_says_so() {
+    let api = api().await;
+    // Three independent seeded streams: what a model sees tells nothing about the outcome.
+    let mut streams = [11u64, 23, 37];
+    let mut draw = |at: usize| {
+        streams[at] = streams[at]
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        streams[at] >> 33
+    };
+    let mut csv = String::from("dose,batch,outcome\n");
+    for _ in 0..240 {
+        let dose = (draw(0) % 1000) as f64 / 37.0 + 0.01;
+        let batch = (draw(1) % 1000) as f64 / 53.0 + 0.01;
+        let outcome = if draw(2) % 2 == 0 { "responds" } else { "none" };
+        csv.push_str(&format!("{dose},{batch},{outcome}\n"));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["target"]["value"] = json!("outcome");
+    q["interpretability"] = json!({ "value": "low", "origin": "explicit" });
+    let facts = q.as_object_mut().unwrap();
+    for gone in ["time_column", "entity_column", "prediction_horizon"] {
+        facts.remove(gone);
+    }
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-noise")).await;
+    let trail = trail(&detail);
+    assert_eq!(trail.last().map(String::as_str), Some("stop"), "{detail}");
+    assert!(
+        !trail
+            .iter()
+            .any(|t| t.starts_with("apply modeling.estimator_selection")),
+        "no model is chosen: {detail}"
+    );
+    assert_eq!(detail["walk"]["stop"]["reason"], "limitation", "{detail}");
+}

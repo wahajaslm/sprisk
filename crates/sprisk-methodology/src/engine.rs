@@ -121,6 +121,12 @@ pub enum Action<'r> {
         subject: &'r str,
         alternative: &'r str,
     },
+    /// Compare the routes of the item's rule on step `subject`, on fixed folds (a Try), then
+    /// apply the winner.
+    Compare {
+        item: &'r MethodologyReviewItem,
+        subject: &'r str,
+    },
     /// Run the head: `reason` is the first rule that measures rows it has not produced.
     Run { reason: String },
     Stop {
@@ -130,8 +136,8 @@ pub enum Action<'r> {
 }
 
 /// What to do with `review` of the head, whose run state is `head`. A recommended
-/// limitation stops the walk at once. Otherwise applies come first, then a run; a version is
-/// run once. When nothing is left to act on, the walk stops, naming what is still open.
+/// limitation stops the walk at once. Otherwise applies come first, then a run, then a
+/// comparison; a version is run once. When nothing is left to act on, the walk stops, naming what is still open.
 /// A rule that reads a guessed question fact is an Ask, never applied (`unconfirmed_reads`).
 pub fn next_action<'r>(
     review: &'r MethodologyReview,
@@ -148,7 +154,7 @@ pub fn next_action<'r>(
         }
     }
 
-    let mut run = None;
+    let (mut run, mut compare) = (None, None);
     let (mut asks, mut uncovered, mut unrun) = (Vec::new(), Vec::new(), Vec::new());
     for (at, item) in review
         .next
@@ -157,17 +163,21 @@ pub fn next_action<'r>(
     {
         match item.status {
             MethodologyReviewStatus::Proposal => {
-                match (&item.subject_node_id, &item.recommended_alternative_id) {
-                    (Some(subject), Some(alternative)) => {
-                        let guesses = unconfirmed_reads(rules.rule(item.rule.as_str())?, question);
-                        if !guesses.is_empty() {
-                            asks.push(format!(
-                                "{} It reads {}, still a guess: confirm it first.",
-                                describe(item),
-                                guesses.join(", ")
-                            ));
-                            continue;
-                        }
+                let Some(subject) = &item.subject_node_id else {
+                    uncovered.push(describe(item));
+                    continue;
+                };
+                let guesses = unconfirmed_reads(rules.rule(item.rule.as_str())?, question);
+                if !guesses.is_empty() {
+                    asks.push(format!(
+                        "{} It reads {}, still a guess: confirm it first.",
+                        describe(item),
+                        guesses.join(", ")
+                    ));
+                    continue;
+                }
+                match &item.recommended_alternative_id {
+                    Some(alternative) => {
                         return Ok(Action::Apply {
                             at,
                             item,
@@ -175,8 +185,13 @@ pub fn next_action<'r>(
                             alternative: alternative.as_str(),
                         });
                     }
-                    // A shortlist to compare, or a rule with no step: no engine action yet.
-                    _ => uncovered.push(describe(item)),
+                    // It depends: the rule leaves the choice to a comparison (a Try).
+                    None => {
+                        compare.get_or_insert(Action::Compare {
+                            item,
+                            subject: subject.as_str(),
+                        });
+                    }
                 }
             }
             MethodologyReviewStatus::NeedsRun if head == HeadRun::NotRun => {
@@ -184,12 +199,15 @@ pub fn next_action<'r>(
             }
             MethodologyReviewStatus::NeedsRun => unrun.push(describe(item)),
             MethodologyReviewStatus::NeedsFact => asks.push(describe(item)),
-            // A shortlist to compare, or a stage the results reopen: no engine action yet.
+            // A stage the results reopen: no engine action yet.
             _ => uncovered.push(describe(item)),
         }
     }
     if let Some(reason) = run {
         return Ok(Action::Run { reason });
+    }
+    if let Some(compare) = compare {
+        return Ok(compare);
     }
     // A failed run is named even when only Asks are left: its later steps were never judged.
     let (reason, open) = if head == HeadRun::Failed {

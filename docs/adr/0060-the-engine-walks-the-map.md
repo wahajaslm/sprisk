@@ -36,7 +36,9 @@ There is no separate "strategy" kind. A Try is a rule whose routes are compared;
 
 **The level belongs to the rule.** A rule recommends a route only when practice settles it from facts. When it depends, the rule recommends nothing and the engine compares the routes (Try). There is no separate level field: the rule's author and its reviewer own that line.
 
-**One action per round, in decision order.** Each round the engine reviews the head version and takes the first item in the review's `next` list that it can act on. An Ask holds back only the rules that wait on it; the review already says which. The engine then reviews again. It stops when nothing in `next` is actionable.
+**A Try is the model selection a person would run.** For a rule that recommends nothing on a step, the engine asks for that step's model selection (`POST /pipeline_versions/{id}/model_selection/{step}`, ADR-0050): the shortlist's models, or the rule's preparation routes, scored on the same repeated folds with a fixed seed against a baseline. It records a `compare` step, waits for the comparison's run, then applies the winner in the next round through the same Apply. With no winner (no candidate beats the baseline on the same folds) it stops as a `limitation`, as the map's loop-back row says. A comparison of another rule on the same step is `uncovered`.
+
+**One action per round, in decision order.** A rule's change comes first, then a run, then a comparison: the comparison then scores the flow as the rules left it. Each round the engine reviews the head version and takes the first item in the review's `next` list that it can act on. An Ask holds back only the rules that wait on it; the review already says which. The engine then reviews again. It stops when nothing in `next` is actionable.
 
 **Typed stop reasons.**
 - `complete`: nothing is open.
@@ -86,7 +88,7 @@ There is no separate "strategy" kind. A Try is a rule whose routes are compared;
 - A version applied on the head by someone else stops it `stale`.
 - A restart in the middle of a walk finishes it without a second apply or run for the same round.
 
-Delivered with slice 3, not slice 1: source hashes and `source_changed`, resuming walks after a restart, the hold-out scoring, and the two-source join (its rule is drafted in another branch).
+Known gap: the comparison's run is started by the model selection without the walk's deadline, so it may finish after the walk stops for time. Delivered with slice 3, not slices 1 and 2: source hashes and `source_changed`, resuming walks after a restart, the hold-out scoring, and the two-source join (its rule is drafted in another branch).
 
 ## Arch doc edits
 - §8.3: the engine applies the review's actions in a loop; a person is asked only for Asks.

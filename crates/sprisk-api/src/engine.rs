@@ -14,8 +14,8 @@ use sprisk_core::time::format;
 use sprisk_methodology::engine::{Action, HeadRun, Start, next_action, start};
 
 use crate::{
-    ApiError, AppState, apply_methodology, body, check_local_paths, compile, drive_run, id,
-    propose, queued_run, review_methodology,
+    ApiError, AppState, apply_methodology, body, check_local_paths, claim_selection, compile,
+    decision_of, drive_run, id, propose, queued_run, review_methodology,
 };
 
 const MAX_ACTIONS: u64 = 200;
@@ -195,8 +195,12 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
                 item,
                 proposal: &proposal,
                 alternative,
+                reason: item.reason.as_str(),
             };
             apply(state, walk, round, &head, applying).await
+        }
+        Action::Compare { item, subject } => {
+            compare(state, walk, round, &head, deadline, item, subject).await
         }
         Action::Run { reason } => run(state, walk, round, &head, deadline, &reason).await,
         Action::Stop {
@@ -216,6 +220,7 @@ struct Applying<'a> {
     item: &'a MethodologyReviewItem,
     proposal: &'a DecisionProposal,
     alternative: &'a str,
+    reason: &'a str,
 }
 
 /// When the walk's time runs out: its wall budget after it was created.
@@ -268,12 +273,17 @@ async fn failed_steps(
     steps: &[WalkStep],
     head: &PipelineVersionId,
 ) -> Result<String, ApiError> {
-    let Some(run_id) = head_run_id(steps, head) else {
-        return Ok(String::new());
-    };
+    match head_run_id(steps, head) {
+        Some(run_id) => failed_attempts(state, &run_id).await,
+        None => Ok(String::new()),
+    }
+}
+
+/// Which steps of `run_id` failed, and why.
+async fn failed_attempts(state: &AppState, run_id: &RunId) -> Result<String, ApiError> {
     let failed: Vec<String> = state
         .store
-        .list_attempts(&run_id)
+        .list_attempts(run_id)
         .await?
         .iter()
         .filter(|a| a.state == AttemptState::Failed)
@@ -289,6 +299,95 @@ async fn failed_steps(
     Ok(format!("Run {}: {}", run_id.as_str(), failed.join(" ")))
 }
 
+/// Compares the routes of `item`'s rule on step `subject` through the same model selection as
+/// a person (ADR-0050): on fixed folds with a fixed seed. The round that starts it drives its
+/// run to the end or the walk's deadline; the next applies its winner, or stops when none
+/// beats the baseline.
+async fn compare(
+    state: &AppState,
+    walk: Walk,
+    round: usize,
+    head: &PipelineVersionId,
+    deadline: jiff::Timestamp,
+    item: &MethodologyReviewItem,
+    subject: &str,
+) -> Result<WalkStatus, ApiError> {
+    let (selection, claimed, _) = match claim_selection(state, head.as_str(), subject).await {
+        Ok(claimed) => claimed,
+        Err(ApiError::BadRequest {
+            code: code @ ("not_compared" | "nothing_to_compare"),
+            message,
+        }) => {
+            let detail = format!("{} ({code}: {message})", item.decides.as_str());
+            return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
+        }
+        Err(other) => return Err(other),
+    };
+    if selection.proposal.rule.as_str() != item.rule.as_str() {
+        let detail = format!(
+            "{}: step {subject} is compared for {}, not for this rule.",
+            item.decides.as_str(),
+            selection.proposal.rule.as_str()
+        );
+        return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
+    }
+    let run_id = selection.run.id.clone();
+    if let Some(plan) = claimed {
+        let compared = json!({
+            "pipeline_version_id": head, "rule": item.rule, "decides": item.decides,
+            "subject_node_id": subject, "run_id": run_id,
+        });
+        let reason = item.reason.as_str();
+        let step = step(
+            state,
+            walk.id.as_str(),
+            round,
+            WalkAction::Compare,
+            reason,
+            compared,
+        )?;
+        state.store.record_walk_step(&walk, &step).await?;
+        let comparison = &selection.comparison;
+        drive_run(state, &run_id, comparison, &plan, None, Some(deadline))
+            .await
+            .map_err(|e| ApiError::Internal(format!("run {}: {e}", run_id.as_str())))?;
+        return Ok(WalkStatus::Walking);
+    }
+    let ended = state.store.get_run(&run_id).await?.status;
+    if matches!(ended, RunStatus::Queued | RunStatus::Running) {
+        return Err(ApiError::Internal(format!(
+            "the comparison's run {} is {ended}, driven by another request",
+            run_id.as_str()
+        )));
+    }
+    if ended != RunStatus::Succeeded {
+        let failed = failed_attempts(state, &run_id).await?;
+        let detail = format!(
+            "The comparison for {} ended {ended}. {failed}",
+            item.decides.as_str()
+        );
+        return record_stop(state, walk, round, WalkStopReason::RunFailed, &detail).await;
+    }
+    let (decision, _) = decision_of(state, &selection.comparison)
+        .await?
+        .ok_or_else(|| ApiError::Internal(format!("comparison of {subject} decided nothing")))?;
+    let Some(winner) = &decision.winner else {
+        let detail = format!(
+            "{} (step {subject}): no candidate beats the baseline on the same folds. {}",
+            item.decides.as_str(),
+            decision.reason.as_str()
+        );
+        return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+    };
+    let applying = Applying {
+        item,
+        proposal: &selection.proposal,
+        alternative: winner.as_str(),
+        reason: decision.reason.as_str(),
+    };
+    apply(state, walk, round, head, applying).await
+}
+
 /// Applies `alternative` to step `subject` through the same Apply as a person, keyed by the
 /// walk and round, so a repeated round gets the saved decision.
 async fn apply(
@@ -300,6 +399,7 @@ async fn apply(
         item,
         proposal,
         alternative,
+        reason,
     }: Applying<'_>,
 ) -> Result<WalkStatus, ApiError> {
     let choice = json!({
@@ -333,7 +433,7 @@ async fn apply(
         walk.id.as_str(),
         round,
         WalkAction::Apply,
-        item.reason.as_str(),
+        reason,
         made,
     )?;
     walk.head_pipeline_version_id = Some(pipeline.id);
