@@ -1,0 +1,68 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.calibration@1.0.0
+name: "Calibration"
+stage: evaluation
+decides: evaluation.calibration
+status: draft
+
+provenance:
+  standard: "scikit-learn 'Probability calibration'"
+  citation: "scikit-learn user guide, section 1.16 Probability calibration (CalibratedClassifierCV); Niculescu-Mizil & Caruana (2005) Predicting Good Probabilities with Supervised Learning, ICML"
+  pitfall: "Calibrating on the rows used to fit the model, or on test rows, gives probabilities that look right only on those rows."
+  corner_cases:
+    - "Matters only when the probability itself is used: costs, score bands, or reported risk."
+    - "Calibration is fitted on out-of-fold predictions only: CalibratedClassifierCV with cv=k, never cv='prefit' on the model's own training rows."
+    - "Isotonic needs many rows; with few it overfits."
+
+observes:
+  - fact: question.uses_probabilities
+    description: "Whether probabilities are used, not just the ranking or the class"
+    required: true
+  - profile: train.row_count
+    description: "Train rows"
+    required: true
+
+policy_thresholds:
+  # Rows each calibrator sees below which isotonic is not offered. scikit-learn's guide warns
+  # isotonic tends to overfit with far fewer than about 1000 calibration samples. With k
+  # folds each calibrator sees about train rows / k, so that is what is compared.
+  isotonic_min_rows: 1000
+
+alternatives:
+  - id: none
+    label: "No calibration"
+    description: "Only the ranking or the class is used, or calibration does not improve the Brier score."
+    condition: "probabilities are not used, or the try does not improve the cross-validated Brier score"
+    rationale: "Calibration is for using the probability itself. It can change the ranking a little (isotonic ties, averaging over folds), so it is not added when only the ranking is used."
+    action:
+      type: pass_through
+
+  - id: sigmoid
+    label: "Sigmoid (Platt) calibration"
+    description: "Fit a logistic curve to out-of-fold scores."
+    condition: "probabilities are used; tried on the same folds"
+    rationale: "Two parameters; safe with few rows. The step needs a new operator (sprisk.ml.calibrate, not built)."
+    action:
+      type: insert_step
+      placement: after_model_fit
+      fit_on: out_of_fold_predictions
+      operator: sprisk.ml.calibrate@1.0.0
+      params:
+        method: sigmoid
+
+  - id: isotonic
+    label: "Isotonic calibration"
+    description: "Fit a step function to out-of-fold scores."
+    condition: "probabilities are used AND train.row_count / folds >= isotonic_min_rows; tried on the same folds"
+    rationale: "Fixes any monotone distortion when rows are plenty."
+    action:
+      type: insert_step
+      placement: after_model_fit
+      fit_on: out_of_fold_predictions
+      operator: sprisk.ml.calibrate@1.0.0
+      params:
+        method: isotonic
+
+verification:
+  check_id: supervised.split_leakage@1.0.0
+  invariant: "Calibration reads no holdout rows. The split leakage check covers this once the calibrate operator exists."

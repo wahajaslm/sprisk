@@ -1,0 +1,67 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.loop_back@1.0.0
+name: "Loop back"
+stage: evaluation
+decides: evaluation.loop_back
+status: draft
+
+provenance:
+  standard: "Cawley & Talbot (2010) on selection bias from reused evaluation data"
+  citation: "Cawley & Talbot (2010) JMLR 11:2079-2107; Hastie et al. (2009) §7.10 (one-standard-error rule); course: knowledge/Sprint_5_-_Machine_learning_24/Methodology_in_Data_Science/methodologie_projet_etape_4_EN.ipynb"
+  pitfall: "Looping back on holdout scores turns the holdout into a validation set, and the final score is no longer honest."
+  corner_cases:
+    - "Only cross-validation results drive the loop. The holdout is scored once, at the end, and reported."
+    - "Each reopen judged on the same folds makes the cross-validated score a little more optimistic. Loops are counted and capped, and the count is reported."
+    - "Each loop is a new flow version; earlier runs stay as they were (sprisk rule 5)."
+
+observes:
+  - profile: cv.validation_score
+    description: "The selected model's cross-validated score"
+    required: true
+  - profile: cv.baseline_score
+    description: "The no-feature baseline's score"
+    required: true
+  - fact: question.success_bar
+    description: "The score that counts as good enough"
+    required: false
+
+policy_thresholds:
+  # Most reopen loops before the flow stops and reports. Project convention: a few honest
+  # fixes, not a search over the folds.
+  max_loops: 3
+  # Lift over the baseline counts only beyond this many standard errors of the fold-paired
+  # difference. One SE follows Hastie et al.'s one-standard-error rule.
+  baseline_margin_se: 1
+
+alternatives:
+  - id: proceed
+    label: "Meets the bar: score the holdout once"
+    description: "Move on to the single holdout score and the report."
+    condition: "validation score meets the success bar AND beats the baseline by more than baseline_margin_se"
+    rationale: "The flow is done; the holdout gives the honest final number."
+    action:
+      type: pass_through
+
+  - id: reopen
+    label: "Below the bar: reopen the owning decision"
+    description: "Reopen the decision the diagnosis points to (fit, error analysis), as a new flow version."
+    condition: "validation score misses the bar, beats the baseline by more than baseline_margin_se, and loops < max_loops"
+    rationale: "Fix where the weakness is, judged on cross-validation only."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "below_success_bar_reopen"
+
+  - id: stop
+    label: "No better than the baseline: stop and report"
+    description: "Report that these models found no lift over the baseline with these features, or that the loop cap was reached."
+    condition: "validation score does not beat the baseline by more than baseline_margin_se, or loops >= max_loops"
+    rationale: "Further looping would fit the folds. A null result is a result; it says no lift for these models, not that no signal exists."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "no_lift_over_baseline"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check covers this. split_leakage looks at one flow version only, and loops span versions. Planned: count how often the same holdout was scored across versions; more than once fails."

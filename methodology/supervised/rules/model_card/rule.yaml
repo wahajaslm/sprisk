@@ -1,0 +1,50 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.model_card@1.0.0
+name: "Model card"
+stage: reporting
+decides: reporting.model_card
+status: draft
+
+provenance:
+  standard: "Mitchell et al. (2019) Model Cards for Model Reporting"
+  citation: "Mitchell et al. (2019) Proceedings of FAT* 2019, 220-229"
+  pitfall: "A hand-written card drifts from what was run. Claims nobody recorded appear; limits that were recorded go missing."
+  corner_cases:
+    - "Built only from recorded decisions, checks and the single holdout score."
+    - "Open decisions are listed as open, not left out."
+    - "Intended use and limits come from the question; nothing is invented."
+    - "Required sections: seeds, package versions, the baseline score, the single holdout score, and a statement that the model is predictive, not causal."
+
+observes:
+  - fact: flow.decisions
+    description: "Every recorded methodology decision on the flow"
+    required: true
+
+policy_thresholds: {}
+
+alternatives:
+  - id: build
+    label: "Build the card from the record"
+    description: "Fill each card section from the decisions, checks and scores."
+    condition: "every decision the card needs is settled"
+    rationale: "One source of truth: the record. The step needs a new operator (sprisk.report.model_card, not built)."
+    action:
+      type: insert_step
+      placement: after_evaluation
+      operator: sprisk.report.model_card@1.0.0
+
+  - id: build_with_gaps
+    label: "Build the card and mark gaps"
+    description: "Some decisions are open. Build the card and show each open one as a gap."
+    condition: "some decision the card needs is open"
+    rationale: "A card with visible gaps is honest; one that hides them is not."
+    action:
+      type: insert_step
+      placement: after_evaluation
+      operator: sprisk.report.model_card@1.0.0
+      params:
+        allow_open: true
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: every claim on the card cites a recorded decision, check or run."

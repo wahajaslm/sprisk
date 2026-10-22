@@ -1,0 +1,54 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.interactions@1.0.0
+name: "Interactions"
+stage: features
+decides: features.interactions
+status: draft
+
+provenance:
+  standard: "Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning, 2nd ed."
+  citation: "Hastie et al. (2009) Springer, ch. 3 and 9; scikit-learn PolynomialFeatures(interaction_only=True); ref-v3 3.3"
+  pitfall: "Adding every pair blows up the columns and lets the model fit noise. Choosing pairs by their score on test rows makes the score optimistic."
+  corner_cases:
+    - "Trees find interactions on their own; this applies to linear models only."
+    - "Pairs come from the person, from domain knowledge. A search over many pairs on the folds that also score the comparison is optimistic (Cawley & Talbot 2010); a pair search would have to be nested."
+
+observes:
+  - fact: planned_model_family
+    description: "The model family"
+    required: true
+
+policy_thresholds:
+  # Most pairs tried at once. Project convention: keeps the columns few next to the rows.
+  max_pairs: 10
+
+alternatives:
+  - id: none
+    label: "No interactions"
+    description: "Keep features as they are."
+    condition: "model is not linear, or the try does not improve the cross-validated score"
+    rationale: "Simpler wins when the score does not improve."
+    action:
+      type: pass_through
+
+  - id: try_pairs
+    label: "Try a few interaction pairs"
+    description: "Add up to max_pairs products of columns the person names; keep them only if the cross-validated score improves."
+    condition: "planned_model_family is linear"
+    rationale: "A linear model cannot learn 'A matters only when B is high' without the product. The step needs a new operator (sprisk.clean.interactions, not built)."
+    action:
+      type: insert_step
+      placement: before_model_fit
+      fit_on: train_partition_only
+      apply_to: all_partitions
+      operator: sprisk.clean.interactions@1.0.0
+      params:
+        pairs: "{settings.pairs}"
+    settings_schema:
+      type: object
+      properties:
+        pairs: { type: array, maxItems: 10, items: { type: array, minItems: 2, maxItems: 2, items: { type: string } } }
+
+verification:
+  check_id: supervised.split_leakage@1.0.0
+  invariant: "The interactions step fits on train rows only, once it joins split_leakage's fitting list. The check cannot see how the pairs were chosen; pairs come from the person, not a search."

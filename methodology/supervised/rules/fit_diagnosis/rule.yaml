@@ -1,0 +1,64 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.fit_diagnosis@1.0.0
+name: "Over- or underfitting"
+stage: evaluation
+decides: evaluation.fit_diagnosis
+status: draft
+
+provenance:
+  standard: "Bias-variance and model assessment (Hastie et al. 2009, ch. 7)"
+  citation: "Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning, ch. 7; scikit-learn learning_curve; ref-v3 4.8"
+  pitfall: "Judging fit on the holdout, then changing the model, tunes it to the holdout."
+  corner_cases:
+    - "Both scores come from cross-validation on train rows: fit-fold score vs held-out-fold score."
+    - "A raw train-minus-validation gap misleads: forests and boosted trees score near perfect on their own rows by design, and loss metrics (RMSE, log-loss) point the other way. So the judgement uses the learning curve, read in the metric's own direction."
+    - "Below the baseline is handled by the loop back (evaluation.loop_back)."
+
+observes:
+  - profile: cv.train_score
+    description: "Mean score on the folds each model was fitted on"
+    required: true
+  - profile: cv.validation_score
+    description: "Mean score on the held-out folds"
+    required: true
+  - fact: question.success_bar
+    description: "The score that counts as good enough"
+    required: false
+
+policy_thresholds:
+  # Share of rows for the smallest learning-curve point. Project convention: small enough
+  # to show the trend, large enough that every fold still has both classes.
+  learning_curve_min_share: 0.1
+
+alternatives:
+  - id: fine
+    label: "Fit looks right"
+    description: "Small gap, and the validation score meets the bar."
+    condition: "the validation curve has flattened AND validation score meets the success bar"
+    rationale: "Nothing to reopen."
+    action:
+      type: pass_through
+
+  - id: overfitting
+    label: "Overfitting: reopen model settings"
+    description: "Validation score still rises with more rows, or simpler settings score as well. Reopen tuning toward simpler settings, or feature selection."
+    condition: "the validation curve still rises at full train size, or a simpler setting is within one standard error"
+    rationale: "The model learns the training rows more than the pattern. Learning curves need a new operator (sprisk.ml.learning_curve, not built)."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "overfitting_reopen_tuning"
+
+  - id: underfitting
+    label: "Underfitting: reopen features or models"
+    description: "The validation curve has flattened below the bar. More rows will not help; reopen features or the model shortlist."
+    condition: "the validation curve has flattened AND validation score misses the success bar"
+    rationale: "The model is too simple, or the features lack the signal."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "underfitting_reopen_features"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check covers this. split_leakage does not flag a non-evaluator step (a learning curve) that reads the test port. Planned: no diagnosis step reads a holdout port."

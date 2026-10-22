@@ -1,0 +1,51 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.error_analysis@1.0.0
+name: "Error analysis"
+stage: evaluation
+decides: evaluation.error_analysis
+status: draft
+
+provenance:
+  standard: "Error analysis by segment and class (ref-v3 4.8)"
+  citation: "ref-v3 4.8; scikit-learn confusion_matrix and cross_val_predict; Benjamini & Hochberg (1995) Controlling the False Discovery Rate, JRSS B 57(1):289-300 (statsmodels multipletests)"
+  pitfall: "Searching many segments for the worst one always finds a bad one by chance. Reading errors on the holdout and fixing them tunes the model to it."
+  corner_cases:
+    - "Errors are read from out-of-fold predictions on train rows, never from the holdout."
+    - "Tiny segments are skipped: their error rate is mostly noise."
+    - "A bad segment reopens features or data; it is not proof of a cause."
+
+observes:
+  - profile: cv.errors_by_segment
+    description: "Out-of-fold error rate and row count per segment and class"
+    required: true
+
+policy_thresholds:
+  # Fewest rows a segment needs to be judged. Project convention: below this, one or two
+  # errors swing the rate too far.
+  min_segment_rows: 30
+  # False discovery rate across all segments tested. 0.05 is the level Benjamini & Hochberg
+  # use; a segment is flagged only when its error rate is above the rest at this rate.
+  false_discovery_rate: 0.05
+
+alternatives:
+  - id: even
+    label: "Errors spread evenly"
+    description: "No segment with enough rows is far worse than the rest."
+    condition: "no segment with >= min_segment_rows has an error rate above the rest after Benjamini-Hochberg at false_discovery_rate"
+    rationale: "Nothing to reopen."
+    action:
+      type: pass_through
+
+  - id: reopen
+    label: "A segment is far worse: reopen features or data"
+    description: "Report the segment and reopen the feature or data decisions for it."
+    condition: "a segment with >= min_segment_rows has an error rate above the rest after Benjamini-Hochberg at false_discovery_rate"
+    rationale: "A clear weak spot usually means missing signal or bad data there. The chart step needs the existing chart operator fed out-of-fold predictions; that wiring is not built."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "segment_far_worse_reopen"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check covers this. split_leakage does not flag a chart or other non-evaluator step that reads the test port. Planned: no error-analysis step reads a holdout port."

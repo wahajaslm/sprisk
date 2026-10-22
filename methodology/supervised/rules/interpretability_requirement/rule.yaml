@@ -1,0 +1,47 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.interpretability_requirement@1.0.0
+name: "Need for interpretability"
+stage: models
+decides: modeling.interpretability_requirement
+status: draft
+
+provenance:
+  standard: "Rudin (2019) on interpretable models for high-stakes decisions"
+  citation: "Rudin (2019) Nature Machine Intelligence 1:206-215; ref-v3 4.4; course: knowledge/Sprint_5_-_Machine_learning_24/Methodology_in_Data_Science/methodologie_projet_etape_4_EN.ipynb"
+  pitfall: "Picking a black-box model, then explaining it after the fact, gives explanations that may not match how it decides."
+  corner_cases:
+    - "Reads the interpretability level from question.hard_constraints."
+    - "This limits the shortlist. How a chosen model is explained is a separate rule (governance.explainability_framework)."
+
+observes:
+  - fact: question.constraints
+    description: "Interpretability level: high, medium or low"
+    required: true
+
+policy_thresholds:
+  # Deepest tree still read as interpretable at "high". Project convention: a depth-4 tree
+  # has at most 16 leaves, which a person can read on one page.
+  max_tree_depth_high: 4
+
+alternatives:
+  - id: any_model
+    label: "Any model"
+    description: "Interpretability is low or medium. The shortlist is not limited."
+    condition: "interpretability is low or medium"
+    rationale: "Accuracy may lead when a person does not need to follow each decision."
+    action:
+      type: pass_through
+
+  - id: interpretable_only
+    label: "Linear models and shallow trees only"
+    description: "Interpretability is high. The shortlist keeps linear models and trees no deeper than max_tree_depth_high."
+    condition: "interpretability is high"
+    rationale: "A person must be able to follow each decision. Filtering the shortlist is not built yet."
+    action:
+      type: update_estimator_params
+      params:
+        families: [linear, shallow_tree]
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: with high interpretability, no other model family is selected."

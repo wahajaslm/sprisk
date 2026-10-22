@@ -1,0 +1,54 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.hyperparameter_tuning@1.0.0
+name: "Settings (tuning)"
+stage: models
+decides: modeling.tuning_strategy
+status: draft
+
+provenance:
+  standard: "Cawley & Talbot (2010) on selection bias in model evaluation"
+  citation: "Cawley & Talbot (2010) On Over-fitting in Model Selection and Subsequent Selection Bias in Performance Evaluation, JMLR 11:2079-2107; ref-v3 4.6; ADR-0052"
+  pitfall: "Tuning and scoring on the same folds reports the best of many tries, which is optimistic. Tuning on the holdout is worse."
+  corner_cases:
+    - "Studies (ADR-0052) already run tuning. This draft records the decision so the map shows it."
+    - "The budget is the person's maximum number of trials, fixed before tuning starts. Random search draws with a fixed seed."
+
+observes:
+  - fact: question.constraints
+    description: "Budget, as trials or time"
+    required: false
+
+policy_thresholds:
+  # Inner folds per outer fold, as studies fix it (ADR-0052).
+  inner_folds: 3
+
+alternatives:
+  - id: defaults
+    label: "Library defaults"
+    description: "No tuning; each model keeps its library settings."
+    condition: "the budget is zero"
+    rationale: "Defaults are a fair, cheap baseline."
+    action:
+      type: pass_through
+
+  - id: nested_cv
+    label: "Nested cross-validation within a budget"
+    description: "Inner folds pick the settings; outer folds score them. The holdout is not used."
+    condition: "the budget allows at least one trial"
+    rationale: "Keeps the score honest about the search. Studies already do this; the rule only records it."
+    action:
+      type: update_estimator_params
+      params:
+        search: nested_cv
+        strategy: "{settings.strategy}"
+        max_trials: "{settings.max_trials}"
+    settings_schema:
+      type: object
+      required: [max_trials]
+      properties:
+        strategy: { type: string, enum: [grid, random], default: random }
+        max_trials: { type: integer, minimum: 1 }
+
+verification:
+  check_id: supervised.split_leakage@1.0.0
+  invariant: "Tuning reads no holdout rows. The split leakage check covers this."

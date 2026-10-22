@@ -1,0 +1,63 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.action_rule@1.0.0
+name: "Action rule (who to act on)"
+stage: reporting
+decides: reporting.action_rule
+status: draft
+
+provenance:
+  standard: "Provost & Fawcett (2013) on profit curves and targeting under a budget"
+  citation: "Provost & Fawcett (2013) Data Science for Business, O'Reilly, ch. 8; ref-v3 5.2, 5.5; course: knowledge/Sprint_5_-_Machine_learning_24/Methodology_in_Data_Science/methodologie_projet_etape_5_EN.ipynb"
+  pitfall: "Setting the cut-off or the bands on holdout scores makes the reported gain optimistic."
+  corner_cases:
+    - "Bands and cut-offs are set on out-of-fold predictions on train rows."
+    - "The model ranks who is most likely; it does not say acting on them changes the outcome. That needs an experiment."
+
+observes:
+  - fact: question.capacity
+    description: "How many cases can be acted on, when limited"
+    required: false
+  - fact: question.costs
+    description: "Error costs, when stated"
+    required: false
+
+policy_thresholds:
+  # Default number of score bands. Project convention: deciles are the common reporting grain.
+  default_bands: 10
+
+alternatives:
+  - id: top_k
+    label: "Act on the top k by score"
+    description: "Capacity is fixed. Act on the k highest scores."
+    condition: "question.capacity is given"
+    rationale: "Under a fixed budget, act where predicted risk is highest. Whether acting helps most there is not measured; that needs an experiment."
+    action:
+      type: configure_evaluation_params
+      params:
+        top_k: "{settings.k}"
+    settings_schema:
+      type: object
+      properties:
+        k: { type: integer, minimum: 1 }
+
+  - id: cost_threshold
+    label: "Act above the cost threshold"
+    description: "Use the threshold set from the error costs (ADR-0053)."
+    condition: "question.costs is given and capacity is not"
+    rationale: "The threshold already minimises expected cost."
+    action:
+      type: pass_through
+
+  - id: bands
+    label: "Score bands for a person to choose"
+    description: "Split scores into bands, show rates per band, and ask the person where to act."
+    condition: "neither capacity nor costs is given"
+    rationale: "Without a budget or costs, the cut-off is a person's choice."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "action_cutoff_needs_person"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check covers this. split_leakage does not read evaluator params such as top_k, or flag a band step reading the test port. Planned: cut-offs and bands come from out-of-fold predictions only."

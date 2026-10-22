@@ -1,0 +1,67 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.lag_features@1.0.0
+name: "Lags and rolling statistics"
+stage: features
+decides: features.lag_features
+status: draft
+
+provenance:
+  standard: "Hyndman & Athanasopoulos (2021) Forecasting: Principles and Practice, 3rd ed."
+  citation: "Hyndman & Athanasopoulos (2021) OTexts; ref-v3 3.4"
+  pitfall: "A rolling mean that includes the current row, or a lag shorter than the horizon, uses a value not known at prediction time."
+  corner_cases:
+    - "Lags are computed per entity, in time order, from past rows only."
+    - "The shortest lag is at least the forecast horizon, and rolling windows are shifted by the horizon. The operator refuses settings that break this."
+    - "Only with a temporal split; a random split would let past rows of the test period into train."
+    - "The first rows of each entity have no lag; they are missing, not filled from the future."
+    - "The map plans a time-series pack. None exists, so this draft sits in the supervised lane until one does."
+
+observes:
+  - fact: question.time_column
+    description: "The time column"
+    required: true
+  - fact: question.horizon
+    description: "How far ahead the prediction is"
+    required: true
+
+policy_thresholds: {}
+
+alternatives:
+  - id: not_time_series
+    label: "Not a time-series question"
+    description: "No time column or horizon. No lags."
+    condition: "question.time_column or question.horizon is missing"
+    rationale: "Lags only make sense in time order."
+    action:
+      type: pass_through
+
+  - id: add_lags
+    label: "Add past-only lags and rolling statistics"
+    description: "Add lags and rolling means of the target and chosen columns, using only rows at least one horizon in the past."
+    condition: "question.time_column and question.horizon are given AND the split is temporal"
+    rationale: "Recent history is often the strongest signal in a series. The step needs a new operator (sprisk.clean.lag_features, not built)."
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      apply_to: all_partitions
+      operator: sprisk.clean.lag_features@1.0.0
+      params:
+        time_column: "{settings.time_column}"
+        entity_column: "{settings.entity_column}"
+        horizon: "{settings.horizon}"
+        lags: "{settings.lags}"
+        windows: "{settings.windows}"
+    settings_schema:
+      type: object
+      required: [time_column, horizon, lags]
+      properties:
+        time_column: { type: string }
+        entity_column: { type: string, description: "Lags are computed within each entity, when there is one." }
+        horizon: { type: integer, minimum: 1, description: "Rows ahead the prediction is; every lag and window ends at least this far back." }
+        lags: { type: array, minItems: 1, items: { type: integer, minimum: 1 }, description: "Each lag must be >= horizon; the operator refuses a shorter one." }
+        windows: { type: array, items: { type: integer, minimum: 2 }, description: "Rolling windows end horizon rows before the current row, so they never include it." }
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: no lag or window reads a row at or after the prediction time minus the horizon."

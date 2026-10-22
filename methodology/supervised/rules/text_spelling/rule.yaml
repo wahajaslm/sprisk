@@ -1,0 +1,67 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.text_spelling@1.0.0
+name: "Text spelling"
+stage: cleaning
+decides: cleaning.text_spelling
+status: draft
+
+provenance:
+  standard: "OpenRefine key-collision clustering (fingerprint method)"
+  citation: "OpenRefine documentation, 'Clustering methods in-depth': key collision with the fingerprint keyer"
+  pitfall: "'Paris', 'paris ' and 'PARIS' become three categories, splitting one signal three ways. Fuzzy merges beyond that can join values that really differ."
+    # OpenRefine's fingerprint also strips punctuation and sorts tokens; this rule auto-applies
+    # only the trim, case and accent part and asks about the rest.
+  corner_cases:
+    - "Trimming, lowercasing and removing accents are fixed functions; they fit nothing."
+    - "Which spelling stands for a merged group is taken from train rows (the most common there), then applied to all rows."
+    - "Case can carry meaning (codes like 'mL' vs 'ML'). Columns the person marks as codes are left alone."
+
+observes:
+  - profile: column.variant_groups
+    description: "On train rows: groups of values that share a fingerprint key"
+    required: true
+
+policy_thresholds: {}
+
+alternatives:
+  - id: none
+    label: "No spelling variants"
+    description: "No two values share a fingerprint."
+    condition: "column.variant_groups is empty"
+    rationale: "No change."
+    action:
+      type: pass_through
+
+  - id: normalise
+    label: "Trim, lowercase and fold accents"
+    description: "Apply the fingerprint clean-up to the column."
+    condition: "variants differ only in case, spaces or accents"
+    rationale: "These differences are typing, not meaning. clean_text already trims and lowercases; folding accents needs a new setting on it, not built."
+    action:
+      type: insert_step
+      placement: after_split
+      fit_on: train_partition_only
+      apply_to: all_partitions
+      operator: sprisk.clean.clean_text@1.0.0
+      params:
+        columns: "{settings.columns}"
+        lowercase: true
+    settings_schema:
+      type: object
+      required: [columns]
+      properties:
+        columns: { type: array, items: { type: string } }
+
+  - id: ask_merge
+    label: "Ask before wider merges"
+    description: "Variants differ by more than case, spaces or accents (typos, abbreviations). Show them and ask."
+    condition: "variants need a fuzzy match to group"
+    rationale: "A fuzzy match can merge values that are truly different."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "spelling_merge_needs_confirmation"
+
+verification:
+  check_id: supervised.split_leakage@1.0.0
+  invariant: "The merge map is built from train rows only. The split leakage check covers fitting transforms once clean_text joins its fitting list; today it does not, since clean_text fits nothing."

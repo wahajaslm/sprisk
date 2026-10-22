@@ -1,0 +1,61 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.business_impact@1.0.0
+name: "Business impact"
+stage: reporting
+decides: reporting.business_impact
+status: draft
+
+provenance:
+  standard: "Provost & Fawcett (2013) on expected value and comparison with the current practice"
+  citation: "Provost & Fawcett (2013) Data Science for Business, ch. 7; ref-v3 5.3, 5.4; course: knowledge/Sprint_5_-_Machine_learning_24/Methodology_in_Data_Science/methodologie_projet_etape_5_EN.ipynb"
+  pitfall: "Reading the gain as caused by the model. It is the predicted cost of errors under stated costs, not a measured effect of acting."
+  corner_cases:
+    - "Compared with the current rule the person describes, or with 'act on nobody' and 'act on everyone' when there is none."
+    - "The reported number uses the single holdout score; any choice it informs is made on cross-validation."
+    - "The report says this is predictive, not causal (sprisk rule 8)."
+    - "Selective labels: when the current rule decided who got an outcome (for example, who was granted credit), labels exist only for those it accepted. The comparison is then biased, and the report says so."
+
+observes:
+  - fact: question.costs
+    description: "Error costs in the person's units"
+    required: true
+  - fact: question.current_rule
+    description: "How the decision is made today"
+    required: false
+
+policy_thresholds: {}
+
+alternatives:
+  - id: vs_current_rule
+    label: "Compare with the current rule"
+    description: "Expected cost of the model's errors vs the current rule's, on the same rows."
+    condition: "question.costs and question.current_rule are given"
+    rationale: "The question a sponsor asks is 'better than what we do now?'"
+    action:
+      type: insert_step
+      placement: after_evaluation
+      operator: sprisk.report.business_impact@1.0.0
+
+  - id: vs_trivial
+    label: "Compare with act-on-all and act-on-none"
+    description: "No current rule. Compare with the two trivial policies."
+    condition: "question.costs is given, question.current_rule is not"
+    rationale: "Every useful model must beat both trivial policies."
+    action:
+      type: insert_step
+      placement: after_evaluation
+      operator: sprisk.report.business_impact@1.0.0
+
+  - id: ask_costs
+    label: "Ask for costs"
+    description: "No costs, so no impact in the person's units."
+    condition: "question.costs is missing"
+    rationale: "Impact is in money, risk or time; only the person has the numbers."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "impact_needs_costs"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: the impact report states it is predictive, not causal. The step needs a new operator (sprisk.report.business_impact, not built)."
