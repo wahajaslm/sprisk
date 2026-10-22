@@ -12,13 +12,15 @@ import yaml
 from polars.testing import assert_frame_equal
 
 PLUGINS = Path(__file__).parents[2]
-# Settings that make each step do real work (on column x, or y for encoding).
+# Settings that make each step do real work (on column x, y for encoding, t for grouping).
 SETTINGS: dict[str, dict[str, Any]] = {
     "sprisk.clean.impute@1.0.0": {"columns": ["x"], "method": "median"},
     "sprisk.clean.scale@1.0.0": {"columns": ["x"], "method": "z_score"},
     "sprisk.clean.clip_outliers@1.0.0": {"columns": ["x"], "k": 1.5},
     # y has no gaps, as encoding needs; its categories are learned from train.
     "sprisk.clean.encode@1.0.0": {"columns": ["y"]},
+    # b is rare on train; c is seen only in test.
+    "sprisk.clean.group_rare@1.0.0": {"columns": ["t"], "min_share": 0.2},
 }
 
 
@@ -36,8 +38,14 @@ def test_every_step_that_claims_it_is_checked() -> None:
     assert sorted(ref for ref, _ in claimed()) == sorted(SETTINGS)
 
 
-TRAIN = pl.DataFrame({"x": [1.0, 2.0, None, 4.0, 5.0, 6.0, 7.0, 40.0], "y": [0, 1] * 4})
-TEST = pl.DataFrame({"x": [3.0, None, 100.0, -9.0], "y": [1, 0, 1, 0]})
+TRAIN = pl.DataFrame(
+    {
+        "x": [1.0, 2.0, None, 4.0, 5.0, 6.0, 7.0, 40.0],
+        "y": [0, 1] * 4,
+        "t": ["a", "a", "a", "b", "a", "a", "a", "a"],
+    }
+)
+TEST = pl.DataFrame({"x": [3.0, None, 100.0, -9.0], "y": [1, 0, 1, 0], "t": ["a", "b", "c", None]})
 
 
 @pytest.mark.parametrize(("ref", "step"), claimed())
