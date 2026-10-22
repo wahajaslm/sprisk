@@ -38,12 +38,6 @@ function serve(rules: MethodologyRule[]) {
   );
 }
 
-/** The fixture rules are drafts, which the map shows only when asked. */
-async function renderWithDrafts() {
-  renderWithApi(<MethodologyPage />);
-  await userEvent.click(await screen.findByRole("checkbox", { name: "Show drafts" }));
-}
-
 describe("methodology page", () => {
   it("shows the selected flow's status on each decision, what is next, and why", async () => {
     serve([features, split]);
@@ -61,13 +55,17 @@ describe("methodology page", () => {
       ),
     );
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
-    await renderWithDrafts();
+    renderWithApi(<MethodologyPage />);
 
     expect(await screen.findByLabelText("Flow review")).toHaveTextContent("2 open on this flow. Next: split.method (proposal)");
     const map = screen.getByRole("region", { name: "Methodology map" });
     const card = within(map).getByRole("button", { name: split.name });
-    expect(within(card).getByText("Proposal")).toBeInTheDocument();
-    expect(within(within(map).getByRole("button", { name: features.name })).getByText("Waiting")).toBeInTheDocument();
+    expect(within(card).getByText(/Proposal/)).toBeInTheDocument();
+    expect(within(within(map).getByRole("button", { name: features.name })).getByText(/Waiting/)).toBeInTheDocument();
+
+    expect(card).not.toHaveClass("dimmed");
+    await userEvent.click(screen.getByRole("switch", { name: "Pipeline path" }));
+    expect(within(map).getByRole("button", { name: split.name })).not.toHaveClass("dimmed");
 
     await userEvent.click(card);
     const onFlow = screen.getByRole("region", { name: "On this flow" });
@@ -77,7 +75,7 @@ describe("methodology page", () => {
 
   it("draws each route as its own node, with the condition that leads to it", async () => {
     serve([features]);
-    await renderWithDrafts();
+    renderWithApi(<MethodologyPage />);
     const map = await screen.findByRole("region", { name: "Methodology map" });
     const route = features.alternatives.find((a) => a.condition)!;
     expect(await within(map).findByText(route.label)).toBeInTheDocument();
@@ -91,7 +89,7 @@ describe("methodology page", () => {
 
   it("maps the rules from the API under their stages, in stage order", async () => {
     serve([features, split]);
-    await renderWithDrafts();
+    renderWithApi(<MethodologyPage />);
 
     const map = await screen.findByRole("region", { name: "Methodology map" });
     const stages = (await within(map).findAllByRole("heading")).map((h) => h.textContent);
@@ -101,7 +99,7 @@ describe("methodology page", () => {
 
   it("shows what the picked rule decides, its source and its alternatives", async () => {
     serve([features, split]);
-    await renderWithDrafts();
+    renderWithApi(<MethodologyPage />);
 
     await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
     const detail = screen.getByRole("region", { name: features.name });
@@ -155,7 +153,7 @@ describe("methodology page", () => {
 
   it("marks a draft rule and shows its design notes", async () => {
     serve([features]);
-    await renderWithDrafts();
+    renderWithApi(<MethodologyPage />);
 
     await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
     const detail = screen.getByRole("region", { name: features.name });
@@ -189,5 +187,33 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});
+
+describe("pipeline path switch", () => {
+  it("is off without a flow, and with one dims the decisions the flow has no step for", async () => {
+    serve([features, split]);
+    server.use(
+      http.get("/api/pipeline_versions/:id/methodology/review", () =>
+        HttpResponse.json({
+          schema_version: "sprisk.methodology_review/v1",
+          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+          items: [{ rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "settled", reason: "r", recommended_alternative_id: split.alternatives[0]!.id }],
+          next: [],
+        }),
+      ),
+    );
+    renderWithApi(<MethodologyPage />);
+    expect(await screen.findByRole("switch", { name: "Pipeline path" })).toBeDisabled();
+
+    useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
+    const pathSwitch = await screen.findByRole("switch", { name: "Pipeline path" });
+    await screen.findByLabelText("Flow review");
+    const map = screen.getByRole("region", { name: "Methodology map" });
+    expect(within(map).getByRole("button", { name: features.name })).not.toHaveClass("dimmed");
+    await userEvent.click(pathSwitch);
+    expect(within(map).getByRole("button", { name: features.name })).toHaveClass("dimmed");
+    expect(within(map).getByRole("button", { name: split.name })).not.toHaveClass("dimmed");
+    useSelection.setState({ pipelineVersionId: undefined });
   });
 });
