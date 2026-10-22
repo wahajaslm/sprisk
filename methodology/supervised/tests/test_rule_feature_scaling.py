@@ -135,9 +135,9 @@ def test_no_scaling_asks_first_while_another_step_reads_the_output() -> None:
     assert d["recommended_alternative_id"] == "no_scaling"
 
 
-def model(task: str, scaled: str = "no") -> dict[str, tuple[str, str]]:
+def model(task: str, scaled: str = "none") -> dict[str, tuple[str, str]]:
     """The facts Rust sends about a linear model step."""
-    return {"step.task": (task, "explicit"), "flow.scaled_upstream": (scaled, "measured")}
+    return {"step.task": (task, "explicit"), "flow.scaled_columns": (scaled, "measured")}
 
 
 def test_a_logistic_regression_with_nothing_scaled_first_gets_a_scale_step_before_it() -> None:
@@ -163,7 +163,7 @@ def test_heavy_tails_before_a_logistic_regression_get_robust_scaling() -> None:
 
 def test_a_scaled_or_least_squares_model_keeps_its_inputs() -> None:
     age = column("age", kurtosis=0.2, outlier_share=0.0)
-    for facts in (model("classification", scaled="yes"), model("regression")):
+    for facts in (model("classification", scaled="age"), model("regression")):
         d = run(age, facts)
         assert d["recommended_alternative_id"] == "leave_inputs", facts
         assert alternative(d, "insert_standard_scaling")["applicability"] == "not_applicable"
@@ -174,3 +174,15 @@ def test_scaling_before_least_squares_only_has_no_effect() -> None:
     d = run(column("age", kurtosis=0.2, outlier_share=0.0), facts)
     assert d["recommended_alternative_id"] == "no_scaling"
     assert "least-squares" in alternative(d, "no_scaling")["reason"]
+
+
+def test_a_scale_step_that_covers_some_inputs_gets_one_for_the_others() -> None:
+    d = run(
+        {
+            **column("age", kurtosis=0.2, outlier_share=0.0),
+            **column("income", kurtosis=0.3, outlier_share=0.0),
+        },
+        model("classification", scaled="age"),
+    )
+    assert d["recommended_alternative_id"] == "insert_standard_scaling"
+    assert alternative(d, "insert_standard_scaling")["params"]["columns"] == ["income"]

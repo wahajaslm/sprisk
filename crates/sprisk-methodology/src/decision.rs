@@ -117,20 +117,23 @@ pub fn flow_facts<'a>(
             );
         }
     }
-    // A model step: whether its inputs are scaled, for the rule that adds a scale step.
+    // A model step: which of its inputs Scale steps before it cover, for the rule that adds a
+    // scale step for the others.
     if is_model {
-        let scaled = crate::compare::upstream(pipeline, node_id)
-            .into_iter()
-            .any(|id| {
-                id != node_id
-                    && pipeline
-                        .nodes
-                        .iter()
-                        .any(|n| n.id.as_str() == id && n.operator.as_str().starts_with(SCALE))
-            });
+        let upstream = crate::compare::upstream(pipeline, node_id);
+        let scaled: BTreeSet<&str> = pipeline
+            .nodes
+            .iter()
+            .filter(|n| n.id.as_str() != node_id && upstream.contains(n.id.as_str()))
+            .filter(|n| n.operator.as_str().starts_with(SCALE))
+            .filter_map(|n| n.params.get("columns")?.as_array())
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        let scaled = scaled.into_iter().collect::<Vec<_>>().join(", ");
         facts.insert(
-            "flow.scaled_upstream".into(),
-            measured(if scaled { "yes" } else { "no" }),
+            "flow.scaled_columns".into(),
+            measured(if scaled.is_empty() { "none" } else { &scaled }),
         );
     }
     if !readers.is_empty() {

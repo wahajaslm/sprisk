@@ -883,7 +883,7 @@ fn every_flow_fact_in_the_catalog_is_one_rust_sends() {
         ],
         &[("scale.train", "rf.train"), ("scale.train", "summary.data")],
     );
-    // flow.scaled_upstream is sent for a model step only.
+    // flow.scaled_columns is sent for a model step only.
     let sent: std::collections::BTreeSet<String> = ["scale", "rf"]
         .iter()
         .flat_map(|step| facts_of(&pipeline, step).into_iter().map(|(k, _)| k))
@@ -2040,23 +2040,32 @@ fn key_columns_are_the_questions_unit_and_time_and_every_steps_group_and_time() 
 }
 
 #[test]
-fn a_step_knows_whether_a_scale_step_comes_before_it() {
-    let scaled = flow(
+fn a_model_step_knows_which_columns_scale_steps_before_it_cover() {
+    let mut scaled = serde_json::to_value(flow(
         &[
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
+            ("scale_more", "clean.scale"),
             ("lin", "ml.linear_model@2.0.0"),
         ],
-        &[("split.train", "scale.train"), ("scale.train", "lin.train")],
-    );
+        &[
+            ("split.train", "scale.train"),
+            ("scale.train", "scale_more.train"),
+            ("scale_more.train", "lin.train"),
+        ],
+    ))
+    .unwrap();
+    scaled["nodes"][1]["params"] = json!({ "columns": ["income", "age"], "method": "z_score" });
+    scaled["nodes"][2]["params"] = json!({ "columns": ["age", "debt"], "method": "robust" });
+    let scaled: PipelineVersion = parse(&scaled.to_string()).unwrap();
     assert_eq!(
-        facts_of(&scaled, "lin")["flow.scaled_upstream"]["value"],
-        "yes"
+        facts_of(&scaled, "lin")["flow.scaled_columns"]["value"],
+        "age, debt, income"
     );
     // Only a model step gets the fact.
     assert!(
         facts_of(&scaled, "scale")
-            .get("flow.scaled_upstream")
+            .get("flow.scaled_columns")
             .is_none()
     );
     let plain = flow(
@@ -2067,7 +2076,7 @@ fn a_step_knows_whether_a_scale_step_comes_before_it() {
         &[("split.train", "lin.train")],
     );
     assert_eq!(
-        facts_of(&plain, "lin")["flow.scaled_upstream"]["value"],
-        "no"
+        facts_of(&plain, "lin")["flow.scaled_columns"]["value"],
+        "none"
     );
 }

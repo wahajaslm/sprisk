@@ -6,7 +6,7 @@ are downstream. Otherwise heavy tails or outliers distort the mean and SD, so th
 and IQR scaling.
 
 On a linear model step (ADR-0057): logistic regression is penalised, and the penalty depends
-on the scale of its inputs, so when no Scale step comes first one is added before it.
+on the scale of its inputs, so the inputs no Scale step before it covers get one.
 """
 
 from typing import Any
@@ -29,7 +29,7 @@ from sprisk_workers.rule import (
 FAMILIES = "flow.model_families"
 HIDDEN = "flow.models_hidden"
 READERS = "flow.other_readers"
-SCALED = "flow.scaled_upstream"
+SCALED = "flow.scaled_columns"
 SCALE_STEP = ("no_scaling", "robust_scaling", "standard_scaling", "maxabs_scaling_sparse")
 MODEL_STEP = ("leave_inputs", "insert_robust_scaling", "insert_standard_scaling")
 
@@ -44,12 +44,15 @@ def decide(observation: RuleObservation) -> RuleDecision:
 def _model_step(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
     task = flow_fact(observation, "step.task")
-    scaled = flow_fact(observation, SCALED) == "yes"
+    covered = flow_fact(observation, SCALED)
+    scaled = [] if covered in (None, "none") else covered.split(", ")
     columns = [c for c in step_columns(observation) if is_numeric(observation, c)]
     spread = [
         c
         for c in columns
-        if measured(observation, c, "kurtosis") is not None and measured(observation, c, "iqr") != 0
+        if c not in scaled
+        and measured(observation, c, "kurtosis") is not None
+        and measured(observation, c, "iqr") != 0
     ]
     heavy = [
         c
@@ -59,12 +62,12 @@ def _model_step(observation: RuleObservation) -> RuleDecision:
     ]
     evidence = flow_evidence(observation, ["step.task", SCALED])
     off = [not_applicable(i, "This is a model step, not a Scale step.") for i in SCALE_STEP]
-    if task != "classification" or scaled or not spread:
+    if task != "classification" or not spread:
         why = (
-            "A Scale step already comes before it."
-            if scaled
-            else "Plain least-squares regression predicts the same whatever the scale."
+            "Plain least-squares regression predicts the same whatever the scale."
             if task != "classification"
+            else "Scale steps before it already cover every input that varies."
+            if scaled
             else "No numeric input varies on the train rows, so there is nothing to scale."
         )
         leave = applicable("leave_inputs", why, {})
