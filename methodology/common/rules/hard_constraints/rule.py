@@ -6,12 +6,18 @@ it. Silence is not "no constraint", so a missing level asks.
 """
 
 from sprisk_contracts import RuleDecision, RuleObservation
-from sprisk_workers.rule import applicable, decision, needs_fact, question_evidence
+from sprisk_workers.rule import (
+    applicable,
+    authoritative,
+    decision,
+    needs_fact,
+    question_evidence,
+)
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
     evidence = question_evidence(observation, {"question.interpretability": "Interpretability"})
-    level = observation.facts.get("question.interpretability")
+    level = authoritative(observation.facts.get("question.interpretability"))
     if level is None:
         ask = needs_fact(
             "stated",
@@ -22,6 +28,6 @@ def decide(observation: RuleObservation) -> RuleDecision:
     return decision(
         observation,
         "stated",
-        [applicable("stated", f"Interpretability must be {level.value}.", {})],
+        [applicable("stated", f"Interpretability must be {level}.", {})],
         evidence,
     )

@@ -4691,7 +4691,7 @@ async fn values_that_differ_only_in_case_are_lowercased_before_the_split() {
     assert_eq!(effect["before"], "split", "{effect}");
     assert_eq!(
         effect["params"],
-        json!({"columns": ["city"], "lowercase": true})
+        json!({"columns": ["city"], "lowercase": true, "empty_to_null": false})
     );
 }
 

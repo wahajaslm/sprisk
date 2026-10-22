@@ -14,6 +14,7 @@ provenance:
   corner_cases:
     - "A forest cannot be read by a person; with high interpretability it is replaced by a linear model, keeping its target, task, features and costs."
     - "Shallow trees are interpretable too, but no single-tree model is registered yet."
+    - "A linear model over hundreds of encoded features is not readable either (Rudin means sparse, simple models); feature selection, not this rule, keeps the features few."
     - "No level stated: the forest stays; the hard-constraints rule asks for the level."
     - "How a chosen model is explained is a separate rule (governance.explainability_framework)."
 
@@ -29,7 +30,7 @@ alternatives:
   - id: interpretable_only
     label: "Use a linear model"
     description: "Interpretability is high: the forest is replaced by a linear model a person can read."
-    rationale: "A person must be able to follow each prediction; a linear model's coefficients show how it decides."
+    rationale: "A person must be able to follow each prediction. A linear model's coefficients show how it decides, while its features are few enough to read."
     action:
       type: replace_node
       operator: sprisk.ml.linear_model@2.0.0

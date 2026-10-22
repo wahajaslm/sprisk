@@ -1,14 +1,16 @@
 """Which text columns are trimmed and lowercased before the split (ADR-0059).
 
 Values that differ only in spaces or case ('Paris', 'paris ') are one category typed two ways.
-Trimming and lowercasing fit nothing, so a step before the split does it on all rows. Accents
-are not removed, since 'año' and 'ano' differ; such values are named and asked about. The
-target's labels are never changed here.
+Trimming and lowercasing fit nothing, so a step before the split does it on all rows; blank
+values stay as they are. Accents are not removed, since 'año' and 'ano' differ. The target,
+the unit and time columns, and columns that look like identifiers are never changed without
+asking: lowercasing an ID could merge two entities.
 """
 
 from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_workers.rule import (
     applicable,
+    authoritative,
     decision,
     input_columns,
     needs_fact,
@@ -19,8 +21,10 @@ from sprisk_workers.rule import (
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
-    target_fact = observation.facts.get("question.target")
-    target = target_fact.value if target_fact is not None else None
+    facts = observation.facts
+    target = authoritative(facts.get("question.target"))
+    keys = {authoritative(facts.get(f"question.{n}")) for n in ("entity_column", "time_column")}
+    rows = profile_number(observation, "input.rows")
     cased: dict[str, int] = {}
     accented: dict[str, int] = {}
     for column in input_columns(observation):
@@ -37,23 +41,36 @@ def decide(observation: RuleObservation) -> RuleDecision:
         profile_evidence(f"{c} values differing only in accents", str(n))
         for c, n in accented.items()
     ]
+
+    def identifies(column: str) -> bool:
+        distinct = profile_number(observation, f"input.column.{column}.distinct")
+        share = observation.settings["identifier_share"]
+        return column in keys or (
+            rows is not None and distinct is not None and distinct >= share * rows
+        )
+
+    columns = [c for c in cased if c != target and not identifies(c)]
     asks = []
     if target in cased:
         asks.append(
             f"The target {target} has labels that differ only in spaces or case; say whether "
             "they are one class."
         )
+    if held := [c for c in cased if c != target and identifies(c)]:
+        asks.append(
+            f"{', '.join(held)}: values differ only in spaces or case, but the column identifies "
+            "rows; say whether they are the same."
+        )
     if others := [c for c in accented if c != target]:
         asks.append(f"{', '.join(others)}: values differ only in accents; say if they are one.")
     question = " ".join(asks)
 
-    columns = [c for c in cased if c != target]
     if columns:
         normalise = applicable(
             "normalise",
             f"{', '.join(columns)}: values differ only in spaces or case, so one category is "
             "typed several ways.",
-            {"columns": columns, "lowercase": True},
+            {"columns": columns, "lowercase": True, "empty_to_null": False},
         )
         keep = (
             needs_fact("keep", question)

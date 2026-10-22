@@ -255,6 +255,8 @@ def test_a_text_column_counts_values_that_differ_only_in_spaces_case_or_accents(
     p = profile(pl.DataFrame({"city": ["Paris", "paris ", "PARIS", "Café", "cafe", "Lyon", None]}))
     assert column(p, "city").case_variants == 2
     assert column(p, "city").accent_variants == 1
+    symbols = profile(pl.DataFrame({"u": ["m²", "m2", " ", ""]}))
+    assert (column(symbols, "u").case_variants, column(symbols, "u").accent_variants) == (0, 0)
     plain = profile(pl.DataFrame({"n": [1, 2], "t": ["a", "b"]}))
     assert (column(plain, "n").case_variants, column(plain, "t").case_variants) == (None, 0)
 

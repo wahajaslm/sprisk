@@ -7,19 +7,25 @@ rule asks for the level.
 """
 
 from sprisk_contracts import RuleDecision, RuleObservation
-from sprisk_workers.rule import applicable, decision, not_applicable, question_evidence
+from sprisk_workers.rule import (
+    applicable,
+    authoritative,
+    decision,
+    not_applicable,
+    question_evidence,
+)
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
     evidence = question_evidence(observation, {"question.interpretability": "Interpretability"})
-    level = observation.facts.get("question.interpretability")
-    if level is not None and level.value == "high":
+    level = authoritative(observation.facts.get("question.interpretability"))
+    if level == "high":
         why = "Interpretability must be high, and a person cannot follow a forest's prediction."
         swap = applicable("interpretable_only", why, {})
         keep = not_applicable("keep_model", why)
         return decision(observation, "interpretable_only", [keep, swap], evidence)
     why = (
-        f"Interpretability is {level.value}, so a forest may stay."
+        f"Interpretability is {level}, so a forest may stay."
         if level is not None
         else "No interpretability level is stated yet; the hard-constraints rule asks for it."
     )

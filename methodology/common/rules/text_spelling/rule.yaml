@@ -5,7 +5,7 @@ stage: data
 decides: data.text_spelling
 status: active
 applies_to: [sprisk.validation.random_split, sprisk.validation.group_split, sprisk.validation.temporal_split]
-reads: [question.target, input.column.*.data_type, input.column.*.case_variants, input.column.*.accent_variants]
+reads: [question.target, question.entity_column, question.time_column, input.rows, input.column.*.data_type, input.column.*.distinct, input.column.*.case_variants, input.column.*.accent_variants]
 
 provenance:
   standard: "OpenRefine key-collision clustering (fingerprint method)"
@@ -17,8 +17,15 @@ provenance:
     - "The target's labels are never changed here: 'Yes' and 'yes' as two classes is a question for the person."
     - "OpenRefine's fingerprint also drops punctuation and sorts words; those merges are not made."
     - "Lowercasing loses case that carries meaning (codes such as 'mL' and 'ML'); the rule names the columns so a person can decline."
+    - "The unit and time columns, and columns that look like identifiers, are never lowercased without asking: merging two IDs would merge two entities."
+    - "Blank values stay as they are; this step changes spelling only, so the missing-value counts other rules read stay true."
+    - "Which columns are lowercased is decided on all rows, test rows too. The step fits nothing and reads no target, so only structure crosses (ADR-0059)."
 
-policy_thresholds: {}
+policy_thresholds:
+  # A column with at least this many distinct values per row is treated as an identifier, and
+  # lowercasing it could merge distinct entities, so it asks. The same convention as
+  # rare_categories' identifier_share: at half the rows most values occur once.
+  identifier_share: 0.5
 
 alternatives:
   - id: normalise
@@ -42,9 +49,9 @@ verification:
   invariant: "No Gate B check exists yet. Planned: the target column is never in a spelling step."
 
 examples:
-  - given: { question.target: churned, input.column.city.data_type: String, input.column.city.case_variants: 3, input.column.city.accent_variants: 0 }
+  - given: { question.target: churned, input.rows: 1000, input.column.city.data_type: String, input.column.city.distinct: 20, input.column.city.case_variants: 3, input.column.city.accent_variants: 0 }
     picks: normalise
-  - given: { question.target: churned, input.column.city.data_type: String, input.column.city.case_variants: 0, input.column.city.accent_variants: 0 }
+  - given: { question.target: churned, input.rows: 1000, input.column.city.data_type: String, input.column.city.distinct: 20, input.column.city.case_variants: 0, input.column.city.accent_variants: 0 }
     picks: keep
-  - given: { question.target: churned, input.column.churned.data_type: String, input.column.churned.case_variants: 1, input.column.churned.accent_variants: 0 }
+  - given: { question.target: churned, input.rows: 1000, input.column.churned.data_type: String, input.column.churned.distinct: 2, input.column.churned.case_variants: 1, input.column.churned.accent_variants: 0 }
     picks: keep

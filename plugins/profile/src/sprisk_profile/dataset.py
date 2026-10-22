@@ -170,10 +170,13 @@ def _conversion(s: pl.Series) -> dict[str, Any]:
 
 def _spelling(s: pl.Series) -> dict[str, int]:
     """For the text spelling rule: how many distinct values merge with another once spaces and
-    case are ignored, and how many more once accents are too (OpenRefine's key collision)."""
+    case are ignored, and how many more once accents are too (OpenRefine's key collision).
+    Blank values are left out: they are gaps, not spellings. NFD splits only accents off, so
+    'm²' and 'm2' stay apart."""
     present = s.drop_nulls().unique()
+    present = present.filter(present.str.strip_chars() != "")
     folded = present.str.strip_chars().str.replace_all(r"\s+", " ").str.to_lowercase()
-    unaccented = folded.str.normalize("NFKD").str.replace_all(r"\p{M}", "")
+    unaccented = folded.str.normalize("NFD").str.replace_all(r"\p{M}", "")
     return {
         "case_variants": present.len() - folded.n_unique(),
         "accent_variants": folded.n_unique() - unaccented.n_unique(),
