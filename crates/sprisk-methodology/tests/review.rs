@@ -3,9 +3,11 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
+use sprisk_contracts::TaskType;
 use sprisk_contracts::{DecisionProposal, MethodologyRule, PipelineVersion, parse};
 use sprisk_methodology::RuleCatalog;
-use sprisk_methodology::review::{Outcome, Planned, item, next, plan, waits_on};
+use sprisk_methodology::review::{Outcome, Planned, fits_task, item, next, plan, waits_on};
+use sprisk_registry::Registry;
 
 fn catalog() -> RuleCatalog {
     RuleCatalog::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology")).unwrap()
@@ -284,4 +286,27 @@ fn next_lists_the_open_items_that_wait_for_nothing() {
         item(&planned[3], Outcome::NeedsRun("run the flow first".into())).unwrap(),
     ];
     assert_eq!(next(&items), vec![0, 3]);
+}
+
+#[test]
+fn a_rule_fits_a_task_when_one_of_its_steps_is_not_a_model_or_is_a_model_for_that_task() {
+    let catalog = catalog();
+    let registry =
+        Registry::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins")).unwrap();
+    let fits = |decides: &str, task| {
+        let rule = catalog
+            .rules()
+            .find(|r| r.decides.as_str() == decides)
+            .unwrap();
+        fits_task(rule, task, registry.operators())
+    };
+    assert!(fits(
+        "cleaning.missingness_strategy",
+        TaskType::Classification
+    ));
+    assert!(fits("modeling.estimator_selection", TaskType::Regression));
+    assert!(!fits(
+        "clustering.algorithm_choice",
+        TaskType::Classification
+    ));
 }

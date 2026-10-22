@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 use sprisk_contracts::{
     DecisionProposal, MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule,
-    MethodologyRuleStatus, Node, PipelineVersion, parse,
+    MethodologyRuleStatus, Node, Operator, PipelineVersion, TaskType, parse,
 };
 
 use crate::{ResolveError, RuleCatalog, compare::upstream, facts};
@@ -233,4 +233,17 @@ pub fn next(items: &[MethodologyReviewItem]) -> Vec<usize> {
         .filter(|(_, item)| is_open(item) && item.status != MethodologyReviewStatus::Waiting)
         .map(|(at, _)| at)
         .collect()
+}
+
+/// Whether `rule` fits a `task` question: one of the steps it decides is registered and is
+/// not a model, or is a model for that task.
+pub fn fits_task<'a>(
+    rule: &MethodologyRule,
+    task: TaskType,
+    mut operators: impl Iterator<Item = &'a Operator>,
+) -> bool {
+    operators.any(|o| {
+        decides_step(rule, o.id.as_str())
+            && o.model.as_ref().is_none_or(|m| m.tasks.contains(&task))
+    })
 }
