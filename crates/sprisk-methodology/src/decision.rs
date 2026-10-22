@@ -292,6 +292,7 @@ pub fn profile_facts(profile: &DatasetProfile, columns: &[String]) -> Map<String
             ("kurtosis", column.kurtosis),
             ("outlier_share", column.outlier_share),
             ("iqr", column.iqr),
+            ("word_share", column.word_share),
         ] {
             if let Some(value) = value {
                 facts.insert(key(measure), json!(value));
@@ -448,10 +449,15 @@ pub fn with_node_before<'a>(
         names.into_iter().map(|n| n.as_str().to_owned()).collect()
     }
     let train_test = BTreeSet::from(["test".to_owned(), "train".to_owned()]);
+    // A step that also makes words (ADR-0058) feeds them to the step and its evaluations.
+    let with_words =
+        BTreeSet::from(["test", "test_words", "train", "train_words"].map(str::to_owned));
+    let makes_words = operator_of(operator)
+        .is_some_and(|o| ports(o.outputs.iter().map(|p| &p.name)) == with_words);
     let learns_from_train = operator_of(operator).is_some_and(|o| {
         o.fits_on_train == Some(true)
             && ports(o.inputs.iter().map(|p| &p.name)) == train_test
-            && ports(o.outputs.iter().map(|p| &p.name)) == train_test
+            && (makes_words || ports(o.outputs.iter().map(|p| &p.name)) == train_test)
     });
     let data = BTreeSet::from(["data".to_owned()]);
     let data_and_other = BTreeSet::from(["data".to_owned(), "other".to_owned()]);
@@ -506,6 +512,16 @@ pub fn with_node_before<'a>(
         edge(&format!("{source}.train"), &format!("{id}.train"))?,
         edge(&format!("{source}.test"), &format!("{id}.test"))?,
     ];
+    if makes_words {
+        edges.extend(words_edges(
+            pipeline,
+            &id,
+            before,
+            source,
+            &readers,
+            &operator_of,
+        )?);
+    }
     for e in &pipeline.edges {
         let (from, port) = e.from.step_and_port();
         let (to, input) = e.to.step_and_port();
@@ -520,6 +536,58 @@ pub fn with_node_before<'a>(
     let mut nodes = pipeline.nodes.clone();
     nodes.insert(at, step);
     Ok((nodes, edges))
+}
+
+/// The words step `id` makes, before `before` (ADR-0058): its train words to `before`, and
+/// its test words to each reader of `before` that also reads `source`'s test rows and takes
+/// words, so an evaluation scores the model with the words it was fit on. Refused when
+/// `before` takes no words, or it or such a reader already reads some.
+fn words_edges<'a>(
+    pipeline: &PipelineVersion,
+    id: &str,
+    before: &str,
+    source: &str,
+    readers: &HashSet<&str>,
+    operator_of: &impl Fn(&str) -> Option<&'a Operator>,
+) -> Result<Vec<Edge>, ResolveError> {
+    let refuse = |why: String| Err(ResolveError::NotInsertable(why));
+    let takes_words = |step: &str| {
+        pipeline
+            .nodes
+            .iter()
+            .find(|n| n.id.as_str() == step)
+            .and_then(|n| operator_of(n.operator.as_str()))
+            .is_some_and(|o| o.inputs.iter().any(|p| p.name.as_str() == "words"))
+    };
+    let reads_words = |step: &str| {
+        pipeline
+            .edges
+            .iter()
+            .any(|e| e.to.step_and_port() == (step, "words"))
+    };
+    if !takes_words(before) {
+        return refuse(format!("{before} takes no words"));
+    }
+    if reads_words(before) {
+        return refuse(format!("{before} already reads words"));
+    }
+    let mut edges = vec![edge(
+        &format!("{id}.train_words"),
+        &format!("{before}.words"),
+    )?];
+    let scorers = pipeline.edges.iter().filter_map(|e| {
+        let (to, input) = e.to.step_and_port();
+        let scores = e.from.step_and_port() == (source, "test") && input == "test";
+        (scores && readers.contains(to) && takes_words(to)).then_some(to)
+    });
+    for to in scorers {
+        // Its words would come from another step's vocabulary than the model's.
+        if reads_words(to) {
+            return refuse(format!("{to} already reads words"));
+        }
+        edges.push(edge(&format!("{id}.test_words"), &format!("{to}.words"))?);
+    }
+    Ok(edges)
 }
 
 /// The one edge into `step`'s `data` input, when that is all `step` reads: the table a

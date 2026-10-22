@@ -260,7 +260,8 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
                 { "name": "income", "data_type": "Float64", "missing": 50, "distinct": 140,
                   "missing_by_band": [], "skewness": 2.5, "kurtosis": 9.0, "outlier_share": 0.07,
                   "iqr": 12.5 },
-                { "name": "city", "data_type": "String", "missing": 0, "distinct": 12, "missing_by_band": [] },
+                { "name": "city", "data_type": "String", "missing": 0, "distinct": 12, "missing_by_band": [],
+                  "word_share": 0.75 },
                 { "name": "other", "data_type": "Int64", "missing": 0, "distinct": 3, "missing_by_band": [] }
             ],
             "correlation": { "columns": [], "pairs": [] }
@@ -275,6 +276,8 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
     assert_eq!(facts["column.income.kurtosis"], 9.0);
     assert_eq!(facts["column.income.iqr"], 12.5);
     assert_eq!(facts["column.city.data_type"], "String");
+    assert_eq!(facts["column.city.word_share"], 0.75);
+    assert!(facts.get("column.income.word_share").is_none());
     assert!(facts.get("column.city.skewness").is_none());
     assert!(facts.keys().all(|k| !k.starts_with("column.other.")));
 }
@@ -987,6 +990,96 @@ fn a_step_added_before_a_model_reads_the_split_and_feeds_the_model_and_its_evalu
             "split.train -> categories.train",
             "split.train -> chart.data",
         ]
+    );
+}
+
+#[test]
+fn a_step_that_makes_words_feeds_them_to_the_model_and_its_evaluation() {
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
+        ],
+        &[
+            ("split.train", "rf.train"),
+            ("rf.model", "eval.model"),
+            ("split.test", "eval.test"),
+        ],
+    );
+    let step = parse(
+        &json!({ "id": "text", "operator": "sprisk.clean.vectorize_text@1.0.0",
+                 "params": { "columns": ["title"] } })
+        .to_string(),
+    )
+    .unwrap();
+    let (nodes, edges) = inserted(&pipeline, step, "rf").unwrap();
+    assert_eq!(nodes, ["split", "text", "rf", "eval"]);
+    assert_eq!(
+        edges,
+        [
+            "rf.model -> eval.model",
+            "split.test -> text.test",
+            "split.train -> text.train",
+            "text.test -> eval.test",
+            "text.test_words -> eval.words",
+            "text.train -> rf.train",
+            "text.train_words -> rf.words",
+        ]
+    );
+}
+
+#[test]
+fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some() {
+    let words = |id: &str| -> Node {
+        parse(
+            &json!({ "id": id, "operator": "sprisk.clean.vectorize_text@1.0.0",
+                     "params": { "columns": ["title"] } })
+            .to_string(),
+        )
+        .unwrap()
+    };
+    let err = inserted(&before_forest(), words("text"), "scale").unwrap_err();
+    assert!(err.to_string().contains("scale takes no words"), "{err}");
+
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("old", "clean.vectorize_text"),
+            ("rf", "ml.random_forest@3.0.0"),
+        ],
+        &[
+            ("split.train", "old.train"),
+            ("split.test", "old.test"),
+            ("old.train", "rf.train"),
+            ("old.train_words", "rf.words"),
+        ],
+    );
+    let err = inserted(&pipeline, words("text"), "rf").unwrap_err();
+    assert!(err.to_string().contains("rf already reads words"), "{err}");
+
+    // An evaluation of the model already scoring with other words would score the new model
+    // with another step's vocabulary.
+    let scored = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("old", "clean.vectorize_text"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
+        ],
+        &[
+            ("split.train", "old.train"),
+            ("split.test", "old.test"),
+            ("split.train", "rf.train"),
+            ("rf.model", "eval.model"),
+            ("split.test", "eval.test"),
+            ("old.test_words", "eval.words"),
+        ],
+    );
+    let err = inserted(&scored, words("text"), "rf").unwrap_err();
+    assert!(
+        err.to_string().contains("eval already reads words"),
+        "{err}"
     );
 }
 

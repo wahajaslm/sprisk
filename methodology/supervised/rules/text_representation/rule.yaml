@@ -1,70 +1,89 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Text Representation
+# ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.text_representation@1.0.0
-name: "Text representation"
+id: methodology.supervised.text_representation@2.0.0
+name: "Text Representation"
 stage: features
 decides: features.text_representation
-status: draft
+status: active
+applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
+reads: [column.*.data_type, column.*.distinct, column.*.word_share]
 
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
 provenance:
   standard: "scikit-learn 'Text feature extraction' (TF-IDF)"
-  citation: "scikit-learn user guide, section 6.2.3 Text feature extraction; ref-v3 3.5; ADR-0058 (proposed)"
-  pitfall: "Fitting the vocabulary or IDF weights on all rows lets test words shape the features."
+  citation: "scikit-learn User Guide, 6.2.3 Text feature extraction; ref-v3 3.5; ADR-0058"
+  pitfall: "Free text has a different value in almost every row: one-hot makes a column per row, and grouping rare values leaves almost nothing. Fitting the vocabulary or IDF weights on all rows lets test words shape the features (rule 8)."
   corner_cases:
-    - "The vocabulary and weights are fitted on train rows, inside each fold."
-    - "Embeddings run with a local model only. Text never leaves the machine without consent (sprisk rule 6)."
+    - "The vocabulary and weights are learnt from the train rows, and again inside each fold."
+    - "Missing text is read as empty: a row of zeros."
     - "Dataset text is untrusted input (sprisk rule 7); it is turned into numbers, never read as instructions."
+    - "Embeddings would run with a local model only: text never leaves the machine without consent (sprisk rule 6)."
+    - "Known limit: a code holding spaces ('SKU 0001') reads as free text, so each row gets its own words: noise, no leak."
+    - "Known limit: numbers written with words or spaces ('12 kg', '1 200') read as free text and lose their size; type repair does not read them yet."
+    - "Known limit: text stored as Categorical or Enum is not measured for words, so it goes to rare categories."
+    - "Known limit: between one-word codes (column roles, 5% of values with several words) and free text (half of them), a column with many values is taken for a category."
 
-observes:
-  - profile: column.mean_token_count
-    description: "Mean words per value, on train rows"
-    required: true
-
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
 policy_thresholds:
-  # Mean words past which text counts as long, where embeddings are tried too. Project
-  # convention: about a paragraph. Local sentence-embedding models cut input at about 256-512
-  # tokens, so text much longer than that is split into chunks first.
-  long_text_tokens: 100
+  # Most categories one-hot encoding takes (categorical_encoding's limit). Text with at most
+  # this many values is a category, even when its values hold several words ("New York").
+  high_cardinality_threshold: 15
+  # Share of a column's train values holding more than one word, from which it is free text,
+  # not a code. Project convention: most values. column_roles takes one-word values that
+  # differ in every row for identifiers.
+  free_text_word_share: 0.5
 
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
 alternatives:
-  - id: tfidf_words
-    label: "TF-IDF on words"
-    description: "Word and word-pair counts, weighted by rarity (ngram_range 1-2)."
-    condition: "text column; tried against characters on the same folds"
-    rationale: "Strong, cheap baseline for topic-like text. The step needs a new operator (sprisk.clean.tfidf, not built)."
+  - id: vectorize_words
+    label: "TF-IDF on Words"
+    description: "Each free-text column becomes word features, weighted by how rare a word is, learnt from the train rows, in a step added before the model."
+    rationale: "Strong, cheap baseline for topic-like text such as product titles. Single words, the step's default: word pairs multiply the columns, and would be a choice tried on folds. The model reads the words beside the table (ADR-0058)."
     action:
       type: insert_step
-      placement: before_model_fit
-      fit_on: train_partition_only
-      apply_to: all_partitions
-      operator: sprisk.clean.tfidf@1.0.0
-      params:
-        analyzer: word
-        ngram_range: [1, 2]
-
+      placement: before
+      operator: sprisk.clean.vectorize_text@1.0.0
+      node_id: text_words
+  - id: no_free_text
+    label: "No Free Text"
+    description: "Leave the columns as they are."
+    rationale: "No text column reaching the model holds free text: categories go to rare categories and encoding."
+    action:
+      type: pass_through
   - id: tfidf_chars
-    label: "TF-IDF on character n-grams"
+    label: "TF-IDF on Character N-grams"
     description: "Counts of short character runs."
-    condition: "text column; tried against words on the same folds"
-    rationale: "Handles typos, short codes and word endings better than whole words."
+    rationale: "Handles typos, short codes and word endings better than whole words. Not available: Vectorize text takes words only, and words against characters would be tried on the same folds."
     action:
       type: insert_step
-      placement: before_model_fit
-      fit_on: train_partition_only
-      apply_to: all_partitions
-      operator: sprisk.clean.tfidf@1.0.0
-      params:
-        analyzer: char_wb
-
+      placement: before
+      operator: sprisk.clean.vectorize_chars@1.0.0
   - id: local_embeddings
-    label: "Local sentence embeddings"
-    description: "A local embedding model turns each value into a vector. Tried only for long or meaning-heavy text."
-    condition: "column.mean_token_count > long_text_tokens, or the person says meaning matters more than words"
-    rationale: "Counts ignore word order at any length; embeddings keep some meaning, which matters most for long or meaning-heavy text. Not built: ADR-0058 is proposed, and needs an embedding operator (sprisk.clean.embed_text)."
+    label: "Local Sentence Embeddings"
+    description: "A local embedding model turns each value into a vector."
+    rationale: "Keeps some meaning, which counts most for long text. Not available: no local embedding step yet."
     action:
       type: insert_step
-      placement: before_model_fit
+      placement: before
       operator: sprisk.clean.embed_text@1.0.0
 
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
 verification:
   check_id: supervised.split_leakage@1.0.0
-  invariant: "The vocabulary is fitted on train rows only. The split leakage check covers this once the TF-IDF operator joins its fitting list."
+  invariant: "The vocabulary and weights are learnt from the train rows only; the model's words are the train words, its evaluation's the test words of the same step."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: { column.designation.data_type: String, column.designation.distinct: 740, column.designation.word_share: 1.0 }
+    picks: vectorize_words
+  - given: { column.city.data_type: String, column.city.distinct: 120, column.city.word_share: 0.05 }
+    picks: no_free_text
+  - given: { column.region.data_type: String, column.region.distinct: 6, column.region.word_share: 1.0 }
+    picks: no_free_text

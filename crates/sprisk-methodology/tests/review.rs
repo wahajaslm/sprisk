@@ -101,10 +101,12 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("cleaning.outlier_strategy".to_owned(), None),
             ("features.date_parts".to_owned(), at("model")),
             ("features.scaling_strategy".to_owned(), at("model")),
-            // Rare categories are grouped first, so encoding sees the grouped columns.
+            ("features.skew_transform".to_owned(), at("model")),
+            // Free text becomes words first, then rare categories are grouped, so encoding
+            // sees the grouped columns and no free text.
+            ("features.text_representation".to_owned(), at("model")),
             ("features.rare_categories".to_owned(), at("model")),
             ("features.encoding_strategy".to_owned(), at("model")),
-            ("features.skew_transform".to_owned(), at("model")),
             ("modeling.interpretability_requirement".to_owned(), None),
             ("modeling.estimator_selection".to_owned(), at("model")),
             ("evaluation.decision_threshold".to_owned(), at("model")),

@@ -20,10 +20,15 @@ pub const SPLIT_DECISION: &str = "split.method";
 /// they see its final columns (ADR-0059): duplicate rows, say, differ by an identifier.
 pub const TABLE_SHAPE: [&str; 2] = ["data.join_sources", "data.column_roles"];
 
-/// Decisions on a model step that shape its input columns, in order: rare categories are
-/// grouped, then the text is encoded or left out. Encoding first would leave out columns that
-/// grouping makes small enough to encode.
-pub const INPUT_SHAPE: [&str; 2] = ["features.rare_categories", "features.encoding_strategy"];
+/// Decisions on a model step that shape its input columns, in order: free text becomes words,
+/// rare categories are grouped, then the text left is encoded or left out. Encoding first would
+/// leave out columns that grouping makes small enough to encode; words come first, so neither
+/// takes free text for categories (ADR-0058).
+pub const INPUT_SHAPE: [&str; 3] = [
+    "features.text_representation",
+    "features.rare_categories",
+    "features.encoding_strategy",
+];
 
 /// One rule and the step it decides; `subject` is `None` when the flow has no such step.
 pub struct Planned<'a> {

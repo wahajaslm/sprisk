@@ -4743,10 +4743,11 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         // The data rules may change the rows the model is fit on, so its rules wait for them.
         ("features.date_parts", "waiting"),
         ("features.scaling_strategy", "no_subject"),
-        // Rare categories are grouped before the text is encoded.
+        ("features.skew_transform", "no_subject"),
+        // Free text becomes words, then rare categories are grouped, then the text is encoded.
+        ("features.text_representation", "waiting"),
         ("features.rare_categories", "waiting"),
         ("features.encoding_strategy", "waiting"),
-        ("features.skew_transform", "no_subject"),
         ("modeling.interpretability_requirement", "settled"),
         ("modeling.estimator_selection", "waiting"),
         ("evaluation.decision_threshold", "settled"),
@@ -5320,28 +5321,43 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
-            "apply features.rare_categories group_rare",
-            "run",
-            "apply features.encoding_strategy one_hot_encoding",
+            "apply features.text_representation vectorize_words",
             "run",
             "stop"
         ],
         "{detail}"
     );
-    // No active rule fills the empty descriptions before they are encoded yet, so the last run
-    // fails there, and the walk says so rather than guessing a fill.
+    // The title and the description are free text, so they become words learnt from the
+    // train rows (ADR-0058); empty descriptions give rows of zeros. The run succeeds, and the
+    // walk stops for what only a person can say before models are compared.
     let stop = &detail["walk"]["stop"];
-    assert_eq!(stop["reason"], "run_failed", "{detail}");
+    assert_eq!(stop["reason"], "needs_person", "{detail}");
     let open = stop["detail"].as_str().unwrap();
-    assert!(
-        open.contains("step categories failed: description has missing values"),
-        "{open}"
-    );
     assert!(open.contains("question.hard_constraints"), "{open}");
+    assert!(open.contains("question.task_type"), "{open}");
     let steps = detail["steps"].as_array().unwrap();
+    let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
-        detail["walk"]["head_pipeline_version_id"], steps[7]["made_pipeline_version_id"],
+        *head, steps[5]["made_pipeline_version_id"],
         "the head is the version the last apply made"
+    );
+    let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
+    let (_, flow) = call(&api.app, "GET", &uri, None).await;
+    let edges: Vec<String> = flow["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            format!(
+                "{} -> {}",
+                e["from"].as_str().unwrap(),
+                e["to"].as_str().unwrap()
+            )
+        })
+        .collect();
+    assert!(
+        edges.contains(&"text_words.train_words -> model.words".to_owned()),
+        "{edges:?}"
     );
 
     // Same key: the same walk, nothing started.
@@ -5588,15 +5604,13 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
-            "apply features.rare_categories group_rare",
-            "run",
-            "apply features.encoding_strategy one_hot_encoding",
+            "apply features.text_representation vectorize_words",
             "run",
             "stop"
         ],
         "{detail}"
     );
-    assert_eq!(detail["walk"]["stop"]["reason"], "run_failed", "{detail}");
+    assert_eq!(detail["walk"]["stop"]["reason"], "needs_person", "{detail}");
 }
 
 /// A small table a model can learn and a featureless baseline cannot: `dose` sets `outcome`,
