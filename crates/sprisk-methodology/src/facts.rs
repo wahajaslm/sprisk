@@ -61,6 +61,13 @@ pub const FACTS: &[&str] = &[
     "input.column.*.leading_zero_values",
     // The most common values of a text column that do not read as numbers (dataset text).
     "input.column.*.unconverted",
+    // Another table to join to the rows the step reads (ADR-0059): how many loaded tables no
+    // step reads; with one, the step's row count, and per column both share, how many rows
+    // find a match and the most rows of the other table one value finds. Structure only.
+    "join.unread_tables",
+    "join.rows",
+    "join.key.*.matched_rows",
+    "join.key.*.most_rows_per_key",
     // Cross-validation results of the step's own model selection (ADR-0059), train rows only:
     // the metric, the step's model's mean fold score, the baseline's, whether the model beats
     // the baseline by the selection's test and whether the selection chose it (each yes or
@@ -104,4 +111,9 @@ pub fn needs_train_rows<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
 /// selection (ADR-0059).
 pub fn needs_results<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
     reads.any(|r| r.starts_with("cv."))
+}
+
+/// Whether a rule reading `reads` needs another table matched to the step's rows (ADR-0059).
+pub fn needs_join<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
+    reads.any(|r| r.starts_with("join."))
 }

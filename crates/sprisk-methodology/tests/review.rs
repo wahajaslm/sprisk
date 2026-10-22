@@ -85,6 +85,7 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("question.hard_constraints".to_owned(), at("model")),
             ("question.objective".to_owned(), at("source")),
             ("question.target_definition".to_owned(), at("source")),
+            ("data.join_sources".to_owned(), at("split")),
             ("question.unit_of_prediction".to_owned(), at("split")),
             ("data.exact_duplicates".to_owned(), at("split")),
             ("data.missing_markers".to_owned(), at("split")),
@@ -528,4 +529,22 @@ fn a_rule_reading_results_comes_after_the_rules_of_its_own_step_that_do_not() {
     assert!(comes_after(&pipeline, &reading, shortlist));
     assert!(!comes_after(&pipeline, &reading, &also_reading));
     assert!(!comes_after(&pipeline, threshold, shortlist));
+}
+
+#[test]
+fn rules_measuring_the_split_s_table_come_after_a_rule_that_joins_to_it() {
+    let catalog = catalog();
+    let pipeline = filled_linear();
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
+    let duplicates = &planned[index_of(&planned, "data.exact_duplicates")];
+    let mut joining = serde_json::to_value(duplicates.rule).unwrap();
+    joining["reads"] = json!(["join.unread_tables"]);
+    let joining: MethodologyRule = parse(&joining.to_string()).unwrap();
+    let join = Planned {
+        rule: &joining,
+        subject: duplicates.subject,
+    };
+
+    assert!(comes_after(&pipeline, duplicates, &join));
+    assert!(!comes_after(&pipeline, &join, duplicates));
 }

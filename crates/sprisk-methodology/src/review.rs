@@ -92,8 +92,13 @@ pub fn plan<'a>(
 /// Whether `later` must wait for `earlier`: it measures train rows, and `earlier` decides
 /// the split or a step strictly upstream of `later`'s. A rule reading cross-validation
 /// results also waits for the rules of its own step that do not (ADR-0059): they may change
-/// what was compared.
+/// what was compared. A rule measuring the table a step reads waits for a rule of that step
+/// joining another table to it, so it measures the joined table.
 pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planned) -> bool {
+    let same_step = matches!((later.subject, earlier.subject), (Some(l), Some(e)) if l.id == e.id);
+    if same_step && facts::needs_input_rows(reads(later)) && facts::needs_join(reads(earlier)) {
+        return true;
+    }
     let results = facts::needs_results(reads(later));
     if !results && !facts::needs_train_rows(reads(later)) {
         return false;

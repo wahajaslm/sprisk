@@ -30,7 +30,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 ## Data
 | Decision | Level | Decided by | Evidence chart | Rule | Source |
 | --- | --- | --- | --- | --- | --- |
-| Join sources | 1, else 3 | One shared key with matching values joins; an ambiguous key asks | Key match counts | none | — |
+| Join sources | 1, else 3 | One loaded table no step reads is joined to the rows the split reads, on the one column both share when every row finds exactly one match; several tables, several shared columns, a partial match, a repeated key or a question over time ask | Key match counts | active (`data.join_sources`; `sprisk.io.join`, before the split) | Polyzotis et al. 2018; Breck et al. 2019 |
 | Column roles (id, target, number, category, text, date) | 1, else 3 | Measured: distinct = rows → id; parses as date → date; long varied strings → text. Number-coded labels (postal codes) ask | Column type summary | none | Breck et al. 2019 |
 | Missing markers (`?`, `n/a`, `-1`) | 1, else 3 | Values that fail to convert in an otherwise numeric column. `NA` that may be a value (Namibia) asks | Top non-numeric values | active (`data.missing_markers`) | Breck et al. 2019 |
 | Wrong types | 1 | Share of values that convert; codes with leading zeros ask | — | active (`data.type_repair`) | Breck et al. 2019 |

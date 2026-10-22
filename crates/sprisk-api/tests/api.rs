@@ -9,7 +9,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sprisk_api::{AppState, KernelLimits, Kernels, Profiler, Splitter, router};
+use sprisk_api::{AppState, KernelLimits, Kernels, KeyMatcher, Profiler, Splitter, router};
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{OperatorSource, parse};
 use sprisk_registry::Registry;
@@ -149,6 +149,15 @@ async fn api_with_clock(
                 python.display().to_string(),
                 "-m".into(),
                 "sprisk_profile.dataset".into(),
+            ],
+            Duration::from_secs(30),
+            2,
+        ),
+        key_matcher: KeyMatcher::new(
+            vec![
+                python.display().to_string(),
+                "-m".into(),
+                "sprisk_profile.keys".into(),
             ],
             Duration::from_secs(30),
             2,
@@ -4485,6 +4494,8 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("question.hard_constraints", "needs_fact"),
         ("question.objective", "settled"),
         ("question.target_definition", "settled"),
+        // Every loaded table is read, so there is nothing to join.
+        ("data.join_sources", "settled"),
         ("question.unit_of_prediction", "needs_run"),
         ("data.exact_duplicates", "needs_run"),
         ("data.missing_markers", "needs_run"),
@@ -4514,7 +4525,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([0, 3, 4, 5, 6, 7]),
+        json!([0, 4, 5, 6, 7, 8]),
         "the split already matches: state the constraint and run the flow next: {review}"
     );
 }
@@ -4832,4 +4843,75 @@ async fn a_question_needing_high_interpretability_replaces_the_forest_by_a_linea
     let linear = apply_alternative(&api, &proposal, "interpretable_only").await;
     let (run, attempts) = run_version(&api, &linear).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+}
+
+/// Rakuten's shape (ADR-0059): products in one file and their type codes in another, both keyed
+/// by the nameless row index pandas writes. Synthetic rows: the real data never enters the repo.
+async fn products_and_codes_flow(api: &Api) {
+    let mut items = String::from(",designation,description,productid,imageid\n");
+    let mut codes = String::from(",prdtypecode\n");
+    for i in 0..40 {
+        items.push_str(&format!("{i},title {i},,{},{}\n", 1000 + i, 2000 + i));
+        codes.push_str(&format!("{i},{}\n", [10, 2280][i % 2]));
+    }
+    std::fs::write(&api.csv, items).unwrap();
+    let codes_csv = api.csv.with_file_name("codes.csv");
+    std::fs::write(&codes_csv, codes).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let facts = q.as_object_mut().unwrap();
+    facts.remove("time_column");
+    facts.remove("entity_column");
+    facts.insert(
+        "target".into(),
+        json!({ "value": "prdtypecode", "origin": "explicit" }),
+    );
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    let nodes = flow["nodes"].as_array_mut().unwrap();
+    nodes.push(
+        json!({ "id": "codes", "operator": "sprisk.io.file_source@1.0.0",
+                       "params": { "path": codes_csv, "format": "csv" } }),
+    );
+    nodes.push(json!({ "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
+                       "params": { "test_fraction": 0.25, "seed": 42, "stratify": "prdtypecode" } }));
+    flow["edges"] = json!([{ "from": "load.data", "to": "split.data" }]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
+async fn codes_loaded_from_another_file_are_joined_on_the_shared_key_before_the_split() {
+    let api = api().await;
+    products_and_codes_flow(&api).await;
+    // The codes are not joined yet, so the split finds no target; the loaded tables are kept.
+    let (run, _) = run_version(&api, BASE).await;
+    assert_eq!(run["status"], "failed", "{run}");
+
+    let proposal = propose_for(&api, BASE, "split", "data.join_sources").await;
+    assert_eq!(
+        proposal["recommended_alternative_id"], "join_on_key",
+        "{proposal}"
+    );
+    let effect = recommended_effect(&proposal);
+    assert_eq!(effect["operator"], "sprisk.io.join@1.0.0", "{proposal}");
+    assert_eq!(
+        effect["params"],
+        json!({ "key": "unnamed_0" }),
+        "{proposal}"
+    );
+    assert_eq!(effect["other"], "codes.data", "{proposal}");
+
+    let joined = apply_alternative(&api, &proposal, "join_on_key").await;
+    let (run, attempts) = run_version(&api, &joined).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let uri = format!("/pipeline_versions/{joined}/methodology/review");
+    let (status, review) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{review}");
+    let join = statuses(&review)
+        .into_iter()
+        .find(|(decides, _)| decides == "data.join_sources")
+        .unwrap();
+    assert_eq!(join.1, "settled", "{review}");
 }

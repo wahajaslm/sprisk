@@ -165,6 +165,15 @@ pub async fn serve_on(
             std::time::Duration::from_secs(60),
             2,
         ),
+        key_matcher: sprisk_api::KeyMatcher::new(
+            vec![
+                config.python.display().to_string(),
+                "-m".into(),
+                "sprisk_profile.keys".into(),
+            ],
+            std::time::Duration::from_secs(60),
+            2,
+        ),
         code_writer: sprisk_api::CodeWriter::new(
             vec![
                 config.python.display().to_string(),

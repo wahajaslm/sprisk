@@ -57,6 +57,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.code.python@1.2.0",
         "sprisk.code.python@2.0.0",
         "sprisk.io.file_source@1.0.0",
+        "sprisk.io.join@1.0.0",
         "sprisk.ml.cross_validate@4.0.0",
         "sprisk.ml.dummy_baseline@2.0.0",
         "sprisk.ml.evaluate@1.0.0",

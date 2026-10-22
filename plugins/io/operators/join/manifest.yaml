@@ -1,0 +1,16 @@
+schema_version: sprisk.operator/v1
+id: sprisk.io.join@1.0.0
+capability_class: transform
+description: Give each row the columns of the other table's row with the same key, keeping the rows and their order; a row whose key finds none keeps gaps. A key the other table repeats is refused, since it would copy rows. Fits nothing, so it runs before the split.
+entrypoint: sprisk_io.join:join
+inputs: [{ name: data, kind: table }, { name: other, kind: table }]
+outputs: [{ name: data, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [key]
+  properties:
+    key: { type: string, minLength: 1, description: "The column both tables share that says which rows belong together." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 4096, gpu: none, timeout_seconds: 600 }

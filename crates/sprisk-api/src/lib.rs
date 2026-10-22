@@ -13,7 +13,7 @@ mod split;
 pub use bounded::ProcessError;
 pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use notebook_code::CodeWriter;
-pub use profile::Profiler;
+pub use profile::{KeyMatcher, Profiler};
 pub use rules::RuleRunner;
 pub use split::{SplitError, Splitter};
 
@@ -68,6 +68,8 @@ pub struct AppState {
     pub splitter: Splitter,
     /// Profiles one table for the Datasets view (ADR-0038).
     pub profiler: Profiler,
+    /// Matches the rows a step reads to another table, to decide a join (ADR-0059).
+    pub key_matcher: KeyMatcher,
     /// Writes a ready-made step as plain Python for a notebook cell (ADR-0055).
     pub code_writer: CodeWriter,
     /// Runs a methodology rule's Python decide() (ADR-0042).
@@ -1306,6 +1308,9 @@ async fn decide(
     if sprisk_methodology::facts::needs_results(reads()) {
         profile.extend(result_profile_facts(state, pipeline, node).await?);
     }
+    if sprisk_methodology::facts::needs_join(reads()) {
+        profile.extend(join_profile_facts(state, pipeline, node).await?);
+    }
 
     let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
     let mut flow = sprisk_methodology::flow_facts(
@@ -1525,18 +1530,39 @@ async fn chosen_by(
     Ok(Some(read_selection(state, &artifact).await?))
 }
 
-/// The structure of the rows `node` reads, measured on all of them (ADR-0059): types,
-/// duplicates and values that do not read as numbers, never statistics, so a step before the
-/// split can be decided without test rows shaping a fitted value.
-async fn input_profile_facts(
+/// How the rows `node` reads match the one loaded table no step reads (ADR-0059), measured on
+/// all rows of both: key matching is structure, nothing fitted. With no such table, or
+/// several, only their count.
+async fn join_profile_facts(
     state: &AppState,
     pipeline: &PipelineVersion,
     node: &sprisk_contracts::Node,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
+    let unread = sprisk_methodology::unread_sources(pipeline, |o| state.registry.get(o))
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let [other] = unread.as_slice() else {
+        return Ok(sprisk_methodology::join_facts(unread.len(), None));
+    };
     let step = node.id.as_str();
     let edge = sprisk_methodology::one_table_into(pipeline, step).map_err(not_applicable)?;
-    let (source, port) = edge.from.step_and_port();
-    let artifact = state
+    let rows = latest_table(state, pipeline, edge.from.step_and_port(), step).await?;
+    let other_rows = latest_table(state, pipeline, other.step_and_port(), step).await?;
+    let matches = state
+        .key_matcher
+        .matches(&local_table(&rows)?, &local_table(&other_rows)?)
+        .await?;
+    Ok(sprisk_methodology::join_facts(1, Some(&matches)))
+}
+
+/// The table output `port` of step `source` held in this version's latest run, for a rule
+/// deciding step `step`.
+async fn latest_table(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    (source, port): (&str, &str),
+    step: &str,
+) -> Result<sprisk_contracts::Artifact, ApiError> {
+    state
         .store
         .latest_outputs(std::slice::from_ref(&pipeline.id))
         .await?
@@ -1547,7 +1573,20 @@ async fn input_profile_facts(
             evidence_unavailable(format!(
                 "run the flow first: this rule measures the rows {source} gives step {step}"
             ))
-        })?;
+        })
+}
+
+/// The structure of the rows `node` reads, measured on all of them (ADR-0059): types,
+/// duplicates and values that do not read as numbers, never statistics, so a step before the
+/// split can be decided without test rows shaping a fitted value.
+async fn input_profile_facts(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    node: &sprisk_contracts::Node,
+) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
+    let step = node.id.as_str();
+    let edge = sprisk_methodology::one_table_into(pipeline, step).map_err(not_applicable)?;
+    let artifact = latest_table(state, pipeline, edge.from.step_and_port(), step).await?;
     let profile = state.profiler.profile(&local_table(&artifact)?).await?;
     Ok(sprisk_methodology::input_facts(&profile))
 }
@@ -2364,19 +2403,23 @@ fn materialize_effect(
             operator,
             params,
             before,
+            other,
         } => {
             let step = json!({ "id": node_id, "operator": operator, "params": params,
                                "methodology_decision_id": decision_id });
             let step =
                 parse(&step.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
-            let (nodes, edges) =
-                sprisk_methodology::with_node_before(base, step, before.as_str(), |o| {
-                    registry.get(o)
-                })
-                .map_err(|e| ApiError::BadRequest {
-                    code: "cannot_add_step",
-                    message: e.to_string(),
-                })?;
+            let (nodes, edges) = sprisk_methodology::with_node_before(
+                base,
+                step,
+                before.as_str(),
+                other.as_ref().map(|o| o.as_str()),
+                |o| registry.get(o),
+            )
+            .map_err(|e| ApiError::BadRequest {
+                code: "cannot_add_step",
+                message: e.to_string(),
+            })?;
             value["nodes"] = json!(nodes);
             value["edges"] = json!(edges);
         }

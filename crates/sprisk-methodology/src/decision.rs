@@ -8,10 +8,10 @@ use petgraph::graph::DiGraph;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    BaselineRole, CapabilityClass, DatasetProfile, DecisionProposal, Edge, MethodologyRule,
-    MethodologyRuleSelection, Node, Operator, OperatorModel, PipelineVersion, PortRef,
-    QuestionVersion, RuleActionType, RuleDecision, RuleDecisionAlternativesItemApplicability,
-    RuleObservation, SelectionDecision, TaskType, parse,
+    BaselineRole, CapabilityClass, DatasetProfile, DecisionProposal, Edge, KeyMatches,
+    MethodologyRule, MethodologyRuleSelection, Node, Operator, OperatorModel, PipelineVersion,
+    PortRef, QuestionVersion, RuleActionType, RuleDecision,
+    RuleDecisionAlternativesItemApplicability, RuleObservation, SelectionDecision, TaskType, parse,
 };
 
 use crate::compare::edge;
@@ -364,6 +364,7 @@ pub fn with_node_before<'a>(
     pipeline: &PipelineVersion,
     step: Node,
     before: &str,
+    other: Option<&str>,
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
 ) -> Result<(Vec<Node>, Vec<Edge>), ResolveError> {
     let refuse = |why: String| Err(ResolveError::NotInsertable(why));
@@ -387,10 +388,29 @@ pub fn with_node_before<'a>(
             && ports(&o.outputs) == train_test
     });
     let data = BTreeSet::from(["data".to_owned()]);
-    let one_table = operator_of(operator).is_some_and(|o| {
-        o.fits_on_train != Some(true) && ports(&o.inputs) == data && ports(&o.outputs) == data
-    });
-    if one_table {
+    let data_and_other = BTreeSet::from(["data".to_owned(), "other".to_owned()]);
+    let fits_nothing_into_one = |inputs: &BTreeSet<String>| {
+        operator_of(operator).is_some_and(|o| {
+            o.fits_on_train != Some(true)
+                && ports(&o.inputs) == *inputs
+                && ports(&o.outputs) == data
+        })
+    };
+    // A join reads a second table besides the one `before` reads (ADR-0059).
+    if fits_nothing_into_one(&data_and_other) {
+        let Some(other) = other else {
+            return refuse(format!("{operator} joins, but no other table is named"));
+        };
+        let (nodes, mut edges) = on_the_one_table(pipeline, step, at, before)?;
+        edges.push(edge(other, &format!("{id}.other"))?);
+        return Ok((nodes, edges));
+    }
+    if other.is_some() {
+        return refuse(format!(
+            "{operator} does not join, so it takes no other table"
+        ));
+    }
+    if fits_nothing_into_one(&data) {
         return on_the_one_table(pipeline, step, at, before);
     }
     if !learns_from_train {
@@ -641,6 +661,9 @@ pub fn proposal(
                     let step = free_id(pipeline, wanted.as_str());
                     built["effect"] = json!({ "kind": "insert_node", "node_id": step, "operator": operator,
                                               "params": params, "before": node_id });
+                    if let Some(other) = other_table(pipeline, operator.as_str(), operators)? {
+                        built["effect"]["other"] = json!(other);
+                    }
                 }
             } else if let (Some(params), Some(operator)) =
                 (&decided.params, &declared.action.operator)
@@ -844,6 +867,66 @@ pub fn result_facts(
     );
     facts.insert("cv.looks".into(), json!(looks));
     Ok(facts)
+}
+
+/// The table a joining `operator` (one with an `other` input) reads besides the step's own:
+/// the one loaded table no step reads. None for an operator that does not join.
+fn other_table(
+    pipeline: &PipelineVersion,
+    operator: &str,
+    operators: &[&Operator],
+) -> Result<Option<PortRef>, ResolveError> {
+    let find = |id: &str| operators.iter().copied().find(|o| o.id.as_str() == id);
+    let joins = find(operator).is_some_and(|o| o.inputs.iter().any(|p| p.name.as_str() == "other"));
+    if !joins {
+        return Ok(None);
+    }
+    match unread_sources(pipeline, find)?.as_slice() {
+        [one] => Ok(Some(one.clone())),
+        many => Err(ResolveError::NotInsertable(format!(
+            "{operator} joins one other table, but {} loaded tables are read by no step",
+            many.len()
+        ))),
+    }
+}
+
+/// The tables loaded by a source step that no step reads, as `<step>.<port>`: what a join may
+/// add to the rows a flow predicts on (ADR-0059).
+pub fn unread_sources<'a>(
+    pipeline: &PipelineVersion,
+    operator_of: impl Fn(&str) -> Option<&'a Operator>,
+) -> Result<Vec<PortRef>, ResolveError> {
+    let read: HashSet<&str> = pipeline.edges.iter().map(|e| e.from.as_str()).collect();
+    pipeline
+        .nodes
+        .iter()
+        .filter_map(|n| Some((n, operator_of(n.operator.as_str())?)))
+        .filter(|(_, o)| o.capability_class == CapabilityClass::Source)
+        .flat_map(|(n, o)| {
+            o.outputs
+                .iter()
+                .filter(|p| p.kind == sprisk_contracts::PortKind::Table)
+                .map(move |p| format!("{}.{}", n.id.as_str(), p.name.as_str()))
+        })
+        .filter(|output| !read.contains(output.as_str()))
+        .map(|output| Ok(parse(&json!(output).to_string())?))
+        .collect()
+}
+
+/// The `join.*` facts (ADR-0059): how many loaded tables no step reads, and, given how the
+/// step's rows match the one such table, its row count and each shared column's matches.
+pub fn join_facts(unread: usize, matches: Option<&KeyMatches>) -> Map<String, Value> {
+    let mut facts = Map::new();
+    facts.insert("join.unread_tables".into(), json!(unread));
+    if let Some(matches) = matches {
+        facts.insert("join.rows".into(), json!(matches.rows));
+        for key in &matches.keys {
+            let name = |part: &str| format!("join.key.{}.{part}", key.column.as_str());
+            facts.insert(name("matched_rows"), json!(key.matched_rows));
+            facts.insert(name("most_rows_per_key"), json!(key.most_rows_per_key));
+        }
+    }
+    facts
 }
 
 /// `candidate.<id>.family` for each candidate, `featureless` for one with no family.

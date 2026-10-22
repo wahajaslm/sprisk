@@ -9,8 +9,8 @@ use sprisk_contracts::{
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
     Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, facts, flow_facts,
-    input_facts, observation, preparation_comparison, profile_facts, proposal, result_facts,
-    target_facts, train_rows_source, with_node_before, without_node,
+    input_facts, join_facts, observation, preparation_comparison, profile_facts, proposal,
+    result_facts, target_facts, train_rows_source, unread_sources, with_node_before, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -847,8 +847,17 @@ fn inserted(
     step: Node,
     before: &str,
 ) -> Result<(Vec<String>, Vec<String>), ResolveError> {
+    joined(pipeline, step, before, None)
+}
+
+fn joined(
+    pipeline: &PipelineVersion,
+    step: Node,
+    before: &str,
+    other: Option<&str>,
+) -> Result<(Vec<String>, Vec<String>), ResolveError> {
     let registry = registry();
-    let (nodes, edges) = with_node_before(pipeline, step, before, |o| registry.get(o))?;
+    let (nodes, edges) = with_node_before(pipeline, step, before, other, |o| registry.get(o))?;
     let mut edges: Vec<String> = edges
         .iter()
         .map(|e| format!("{} -> {}", e.from.as_str(), e.to.as_str()))
@@ -2239,4 +2248,99 @@ fn a_comparison_of_preparation_gives_no_model_results() {
 fn a_step_whose_model_was_not_compared_has_no_results() {
     let err = result_facts(&selection(), "sprisk.ml.kmeans@1.0.0", 1).unwrap_err();
     assert!(err.to_string().contains("ml_kmeans"), "{err}");
+}
+
+fn join_step() -> Node {
+    parse(&json!({ "id": "join", "operator": "sprisk.io.join@1.0.0", "params": { "key": "unnamed_0" } }).to_string())
+        .unwrap()
+}
+
+/// Items → split, with the items' codes loaded and read by no step.
+fn two_sources() -> PipelineVersion {
+    flow(
+        &[
+            ("items", "io.file_source"),
+            ("codes", "io.file_source"),
+            ("split", "validation.random_split"),
+        ],
+        &[("items.data", "split.data")],
+    )
+}
+
+#[test]
+fn a_join_added_before_a_split_reads_its_table_and_the_unread_source() {
+    let (nodes, edges) = joined(&two_sources(), join_step(), "split", Some("codes.data")).unwrap();
+    assert_eq!(nodes, ["items", "codes", "join", "split"]);
+    assert_eq!(
+        edges,
+        [
+            "codes.data -> join.other",
+            "items.data -> join.data",
+            "join.data -> split.data",
+        ]
+    );
+}
+
+#[test]
+fn a_join_needs_its_other_table_and_only_a_join_takes_one() {
+    let err = joined(&two_sources(), join_step(), "split", None).unwrap_err();
+    assert!(err.to_string().contains("other"), "{err}");
+    let err = joined(
+        &two_sources(),
+        markers_step("markers"),
+        "split",
+        Some("codes.data"),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("other"), "{err}");
+}
+
+#[test]
+fn the_unread_sources_are_the_loaded_tables_no_step_reads() {
+    let registry = registry();
+    let found = unread_sources(&two_sources(), |o| registry.get(o)).unwrap();
+    let found: Vec<&str> = found.iter().map(|p| p.as_str()).collect();
+    assert_eq!(found, ["codes.data"]);
+    let mut read = serde_json::to_value(two_sources()).unwrap();
+    read["edges"] = json!([{ "from": "items.data", "to": "split.data" }, { "from": "codes.data", "to": "split.data" }]);
+    let read: PipelineVersion = parse(&read.to_string()).unwrap();
+    assert!(
+        unread_sources(&read, |o| registry.get(o))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn join_facts_count_the_unread_tables_and_give_each_shared_key_s_matches() {
+    let matches: sprisk_contracts::KeyMatches = parse(
+        &std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/contract/key_matches/valid/one-shared-key.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        Value::Object(join_facts(1, Some(&matches))),
+        json!({
+            "join.unread_tables": 1,
+            "join.rows": 84916,
+            "join.key.unnamed_0.matched_rows": 84916,
+            "join.key.unnamed_0.most_rows_per_key": 1,
+        })
+    );
+    assert_eq!(
+        Value::Object(join_facts(2, None)),
+        json!({ "join.unread_tables": 2 })
+    );
+    for name in [
+        "join.unread_tables",
+        "join.rows",
+        "join.key.unnamed_0.matched_rows",
+        "join.key.unnamed_0.most_rows_per_key",
+    ] {
+        assert!(facts::is_known(name), "{name}");
+        assert!(facts::needs_join([name].into_iter()), "{name}");
+    }
 }

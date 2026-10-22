@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use sprisk_contracts::{DatasetProfile, parse};
+use sprisk_contracts::{DatasetProfile, KeyMatches, parse};
 
 use crate::bounded::{BoundedProcess, ProcessError};
 
@@ -26,6 +26,29 @@ impl Profiler {
     pub async fn profile(&self, path: &Path) -> Result<DatasetProfile, ProcessError> {
         let text = self.0.run(path.display().to_string().into_bytes()).await?;
         parse(&text).map_err(|e| ProcessError::Failed(format!("invalid profile: {e}")))
+    }
+}
+
+/// The command that matches the rows a step reads to another table, per shared column
+/// (`python -m sprisk_profile.keys`, ADR-0059), how long it may take, and how many at once.
+#[derive(Clone, Debug)]
+pub struct KeyMatcher(BoundedProcess);
+
+impl KeyMatcher {
+    pub fn new(command: Vec<String>, timeout: Duration, at_once: usize) -> Self {
+        Self(BoundedProcess::new(
+            "key matcher",
+            command,
+            timeout,
+            at_once,
+        ))
+    }
+
+    /// How the Parquet table at `rows` matches the one at `other`, checked against the contract.
+    pub async fn matches(&self, rows: &Path, other: &Path) -> Result<KeyMatches, ProcessError> {
+        let paths = format!("{}\n{}\n", rows.display(), other.display());
+        let text = self.0.run(paths.into_bytes()).await?;
+        parse(&text).map_err(|e| ProcessError::Failed(format!("invalid key matches: {e}")))
     }
 }
 
@@ -63,6 +86,15 @@ mod tests {
     async fn output_that_is_not_a_profile_is_refused() {
         let wrong = profiler(&["echo", "{}"], Duration::from_secs(5))
             .profile(Path::new("t.parquet"))
+            .await;
+        assert!(matches!(wrong, Err(ProcessError::Failed(_))), "{wrong:?}");
+    }
+
+    #[tokio::test]
+    async fn output_that_is_not_key_matches_is_refused() {
+        let command = vec!["echo".to_owned(), "{}".to_owned()];
+        let wrong = KeyMatcher::new(command, Duration::from_secs(5), 1)
+            .matches(Path::new("x.parquet"), Path::new("y.parquet"))
             .await;
         assert!(matches!(wrong, Err(ProcessError::Failed(_))), "{wrong:?}");
     }

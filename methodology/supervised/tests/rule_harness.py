@@ -99,7 +99,7 @@ def run_example(pack_rule: str, example: dict[str, Any]) -> dict[str, Any]:
     facts: dict[str, tuple[str, str]] = {}
     profile: dict[str, Any] = {}
     for name, value in example["given"].items():
-        if name == "rows" or name.startswith(("column.", "input.", "target.", "cv.")):
+        if name == "rows" or name.startswith(("column.", "input.", "target.", "cv.", "join.")):
             profile[name] = value
         elif isinstance(value, dict):
             facts[name] = (value["value"], value["origin"])
