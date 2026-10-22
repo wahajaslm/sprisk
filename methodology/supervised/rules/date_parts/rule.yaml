@@ -47,8 +47,8 @@ alternatives:
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------
 verification:
-  check_id: sprisk.checks.supervised.train_serve_parity@1.0.0
-  invariant: "Train and test rows get the same date parts, each from its own row, so the model scores test rows prepared as it was trained."
+  check_id: supervised.split_leakage@1.0.0
+  invariant: "The date parts step reads train rows on its train input and test rows on its test input; each row's parts come from that row alone."
 
 # Examples: run as tests and shown on the Methodology page (ADR-0045)
 # ------------------------------------------------------------------------------

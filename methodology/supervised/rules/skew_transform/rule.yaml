@@ -16,7 +16,7 @@ reads: [column.*.data_type, column.*.distinct, column.*.skewness]
 # ------------------------------------------------------------------------------
 provenance:
   standard: "Yeo-Johnson power transform (scikit-learn PowerTransformer)"
-  citation: "Yeo & Johnson (2000) A new family of power transformations to improve normality or symmetry (Biometrika 87(4)); scikit-learn User Guide, Preprocessing data: Mapping to a Gaussian distribution; Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning, 2nd ed."
+  citation: "Yeo & Johnson (2000) A new family of power transformations to improve normality or symmetry (Biometrika 87(4)); scikit-learn User Guide, Preprocessing data: Mapping to a Gaussian distribution; Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning, 2nd ed.; Bulmer (1979) Principles of Statistics (|skewness| over 1 is highly skewed)"
   pitfall: "A long tail lets a few large values pull a linear model's fit; transforming with lambdas fit on all rows lets test rows shape the train rows (rule 8)."
   corner_cases:
     - "A 0/1 column is skewed when one value is rare, but transforming it changes nothing a model can use."
@@ -26,7 +26,7 @@ provenance:
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
 policy_thresholds:
-  # |skewness| above this is a long tail; 1 is the common rule of thumb for "highly skewed".
+  # |skewness| above this is a long tail: Bulmer (1979) calls it highly skewed.
   skewness_threshold: 1.0
 
 # 4. Methodological Alternatives & Scoped Settings
@@ -51,7 +51,7 @@ alternatives:
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------
 verification:
-  check_id: sprisk.checks.supervised.scaler_leakage@1.0.0
+  check_id: supervised.split_leakage@1.0.0
   invariant: "The power transform's lambdas, mean and spread are fit on the train rows only."
 
 # Examples: run as tests and shown on the Methodology page (ADR-0045)

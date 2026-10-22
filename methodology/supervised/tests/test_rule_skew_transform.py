@@ -1,6 +1,9 @@
 from typing import Any
 
+import pytest
 from rule_harness import alternative, column, decide
+
+from sprisk_workers.errors import RuleError
 
 RULE = "supervised/skew_transform"
 SETTINGS = {"skewness_threshold": 1.0}
@@ -40,6 +43,12 @@ def test_a_0_1_column_is_not_transformed_however_skewed() -> None:
     assert d["recommended_alternative_id"] == "no_transform"
 
 
-def test_a_column_with_no_measured_skewness_and_text_are_left_alone() -> None:
-    d = run({**column("flat", "Float64", distinct=1), **column("purpose", "String", distinct=10)})
+def test_a_number_with_no_measured_skewness_and_text_are_left_alone() -> None:
+    d = run({**column("ratio", "Float64", distinct=50), **column("purpose", "String", distinct=10)})
     assert d["recommended_alternative_id"] == "no_transform"
+    assert d["evidence"] == []
+
+
+def test_an_unmeasured_value_count_is_an_error_not_zero() -> None:
+    with pytest.raises(RuleError, match="distinct"):
+        run(column("income", "Float64", skewness=3.2))
