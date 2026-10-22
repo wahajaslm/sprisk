@@ -6,32 +6,35 @@ decides: evaluation.bootstrap_interval
 status: draft
 
 provenance:
-  standard: "Bootstrap confidence intervals (Efron & Tibshirani 1993)"
-  citation: "Efron & Tibshirani (1993) An Introduction to the Bootstrap, Chapman & Hall; Bouthillier et al. (2021) Accounting for Variance in Machine Learning Benchmarks, MLSys 3"
+  standard: "Bootstrap confidence intervals (Efron & Tibshirani 1993); BCa intervals (Efron 1987)"
+  citation: "Efron & Tibshirani (1993) An Introduction to the Bootstrap, Chapman & Hall; Efron (1987) Better Bootstrap Confidence Intervals, JASA 82(397):171-185; Bouthillier et al. (2021) Accounting for Variance in Machine Learning Benchmarks, MLSys 3"
   pitfall: "A single hold-out score has no error bar. Two models 0.01 apart may be the same model; reading the gap as real picks noise."
   corner_cases:
     - "The interval is drawn from the hold-out predictions after the one final scoring; it is reported, never used to choose or tune."
-    - "Rows are resampled by the unit of prediction: with a group or time split, whole groups or time blocks are resampled, else the interval is too narrow."
+    - "Model and baseline are scored on the same hold-out rows, so they are compared by a paired bootstrap: the same rows are resampled for both, and the interval is of the difference."
+    - "With a group split, each group's rows are kept together: the score is built per group and the groups are resampled. A time split needs a block bootstrap, which no library in the stack offers; until one is chosen the rule reports that it cannot give an interval."
+    - "The interval covers the sampling of the hold-out rows for this one fitted model, not the variance of retraining; sensitivity_analysis covers that."
     - "A rare class with few hold-out rows gives a wide interval; the report says the hold-out is too small to tell, rather than hiding it."
-    - "Percentile intervals can be biased for skewed metrics; BCa intervals (Efron 1987) are the better default where available, as in scipy.stats.bootstrap."
+    - "BCa intervals correct the bias of skewed metrics; scipy.stats.bootstrap computes them."
 
 observes:
   - profile: holdout.predictions
-    description: "The final model's predictions on the hold-out, with the true values and the unit of each row"
+    description: "The final model's and the baseline's predictions on the hold-out, with the true values and the unit of each row"
     required: true
 
 policy_thresholds:
-  # Bootstrap resamples. Efron & Tibshirani suggest at least about 1000 for percentile intervals.
-  resamples: 1000
+  # Bootstrap resamples. scipy.stats.bootstrap's default, enough for BCa intervals, which need
+  # more resamples than percentile ones (Efron & Tibshirani 1993, ch. 14).
+  resamples: 9999
   # Interval coverage. A project convention matching the usual 95% intervals.
   confidence: 0.95
 
 alternatives:
   - id: interval
-    label: "Report a bootstrap interval"
-    description: "Report the hold-out score with a 95% interval from resampled hold-out rows (or groups)."
-    condition: "the hold-out has been scored once"
-    rationale: "Says how much the score could move on another sample of the same size. scipy.stats.bootstrap computes it; the step needs a new operator (sprisk.ml.bootstrap_interval, not built)."
+    label: "Report bootstrap intervals"
+    description: "Report the hold-out score with a 95% BCa interval, and a paired interval of the model minus the baseline."
+    condition: "the hold-out has been scored once AND the split is random or by group"
+    rationale: "Says how much the score, and the gap to the baseline, could move on another sample of the same size. The step needs a new operator (sprisk.ml.bootstrap_interval, not built)."
     action:
       type: insert_step
       placement: after_evaluation
@@ -39,14 +42,24 @@ alternatives:
 
   - id: too_small
     label: "Hold-out too small to tell"
-    description: "The interval is wider than the gap to the baseline or the success bar: report that the hold-out cannot tell them apart."
-    condition: "the interval contains the baseline score or the success bar"
+    description: "The paired interval of model minus baseline contains zero, or the score's interval contains the success bar: report that the hold-out cannot tell them apart."
+    condition: "paired interval contains 0 OR score interval contains the success bar"
     rationale: "Honest reporting: the evidence does not separate the model from the baseline or the bar."
     action:
       type: emit_methodology_limitation
       params:
         reason: "holdout_interval_too_wide"
 
+  - id: no_block_bootstrap
+    label: "No interval for a time split yet"
+    description: "A time split needs a block bootstrap, which is not built."
+    condition: "the split is temporal"
+    rationale: "Resampling single rows of a time series breaks its order and gives too narrow an interval."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "block_bootstrap_not_available"
+
 verification:
-  check_id: supervised.split_leakage@1.0.0
-  invariant: "Partial: split_leakage checks the hold-out is scored by one model only. Nothing yet checks the interval is not used to choose."
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: the interval is read by no step that chooses. split_leakage treats any extra reader of the hold-out as a reason it cannot assess the flow, so it must learn that this reporter only reads; that needs a test."

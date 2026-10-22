@@ -6,50 +6,64 @@ decides: evaluation.sensitivity
 status: draft
 
 provenance:
-  standard: "Global sensitivity analysis (Saltelli et al. 2008); variance in ML results (Bouthillier et al. 2021)"
-  citation: "Saltelli et al. (2008) Global Sensitivity Analysis: The Primer, Wiley; Bouthillier et al. (2021) Accounting for Variance in Machine Learning Benchmarks, MLSys 3"
-  pitfall: "A score that holds only for one seed or one setting is luck. Reporting it as the model's score overstates what it will do on new data."
+  standard: "Variance of ML results across seeds and data splits (Bouthillier et al. 2021); one-at-a-time local sensitivity, a project convention"
+  citation: "Bouthillier et al. (2021) Accounting for Variance in Machine Learning Benchmarks, MLSys 3. Not global sensitivity analysis: Saltelli et al. (2008) Global Sensitivity Analysis: The Primer, Wiley, warn that one-at-a-time designs miss interactions between settings."
+  pitfall: "A score that holds only for one seed, one split or one setting is luck. Reporting it as the model's score overstates what it will do on new data."
   corner_cases:
-    - "Measured inside cross-validation on train rows: the same folds, rerun with other seeds and with each tuned setting moved one step."
-    - "Varied: the random seed, each tuned setting, and small noise added to numeric inputs. The question is how much the score moves, not which variant wins."
-    - "A variant is never picked because it scored best here; that would be tuning on the same folds again."
+    - "Measured inside cross-validation on train rows. Varied: the model's seed, the cross-validation split seed (keeping its group or time structure, since the split is the largest source of variance, Bouthillier et al. 2021), and each tuned setting moved one step."
+    - "One step is the next value on the setting's search grid, or a factor of 2 up and down for a setting searched on a log scale."
+    - "Moving one setting at a time misses how settings interact; the report says so."
+    - "A variant is never picked because it scored best here; that would be tuning on the same folds again. A fragile result is reported, not fixed here."
+    - "With no lift over the baseline there is nothing to be fragile about; the loop-back rule handles that case."
     - "Partial dependence (how the prediction moves with one input) describes the model, not the world; it is not a causal effect."
 
 observes:
   - profile: cv.score_by_seed
-    description: "Cross-validated score for each of several seeds"
+    description: "Mean cross-validated score for each model seed and each split seed"
     required: true
   - profile: cv.score_by_setting_step
-    description: "Cross-validated score with each tuned setting moved one step"
+    description: "Mean cross-validated score with each tuned setting moved one step"
     required: false
+  - profile: cv.lift_over_baseline
+    description: "Mean cross-validated score minus the baseline's, on the same folds"
+    required: true
 
 policy_thresholds:
-  # Seeds rerun to measure the spread. Project convention: enough to see the spread, few
-  # enough to stay cheap; Bouthillier et al. show seeds alone move benchmark scores.
+  # Seeds rerun for each of the model and the split. Project convention: enough to estimate a
+  # standard deviation roughly, few enough to stay cheap.
   seeds: 5
-  # The score is fragile when the spread across seeds exceeds this share of the gap between
-  # the model and the baseline. Project convention: half the lift could vanish with a seed.
-  max_spread_share_of_lift: 0.5
+  # The score is fragile when the standard deviation of the mean CV score across seeds is more
+  # than this share of the lift over the baseline. Project convention: half the lift could
+  # vanish with another seed.
+  max_sd_share_of_lift: 0.5
 
 alternatives:
   - id: stable
     label: "The score is stable"
-    description: "Report the spread; it is small next to the lift over the baseline."
-    condition: "spread across seeds and setting steps <= max_spread_share_of_lift * lift"
+    description: "Report the spread across seeds and setting steps; it is small next to the lift over the baseline."
+    condition: "lift > 0 AND sd across seeds <= max_sd_share_of_lift * lift"
     rationale: "The score is a property of the model, not of one lucky run."
     action:
       type: pass_through
 
   - id: fragile
-    label: "The score is fragile: reopen tuning"
-    description: "Report the spread and reopen tuning toward settings whose score moves less."
-    condition: "spread > max_spread_share_of_lift * lift"
-    rationale: "Half the lift could disappear with another seed. Needs a new operator (sprisk.ml.sensitivity, not built) that reruns the folds."
+    label: "The score is fragile"
+    description: "Report the spread and that the lift may not hold. Robustness can be a criterion of the next tuning loop, judged by nested cross-validation, not on these folds."
+    condition: "lift > 0 AND sd across seeds > max_sd_share_of_lift * lift"
+    rationale: "Half the lift could disappear with another seed or split. Needs a new operator (sprisk.ml.sensitivity, not built) that reruns the folds."
     action:
       type: emit_methodology_limitation
       params:
-        reason: "score_sensitive_to_seed_or_settings"
+        reason: "score_sensitive_to_seed_split_or_settings"
+
+  - id: no_lift
+    label: "No lift to test"
+    description: "The model does not beat the baseline, so its stability is beside the point."
+    condition: "lift <= 0"
+    rationale: "The loop-back rule decides what to reopen."
+    action:
+      type: pass_through
 
 verification:
   check_id: none
-  invariant: "No Gate B check exists yet. Planned: sensitivity reruns read train-fold rows only and pick nothing."
+  invariant: "No Gate B check exists yet. Planned: sensitivity reruns read train-fold rows only and choose nothing."

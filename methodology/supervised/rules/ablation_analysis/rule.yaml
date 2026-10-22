@@ -6,14 +6,16 @@ decides: evaluation.ablation
 status: draft
 
 provenance:
-  standard: "Drop-column and permutation importance (Breiman 2001; Fisher, Rudin & Dominici 2019)"
-  citation: "Breiman (2001) Random Forests, Machine Learning 45(1):5-32; Fisher, Rudin & Dominici (2019) All Models are Wrong, but Many are Useful, JMLR 20(177):1-81; Meyes et al. (2019) Ablation Studies in Artificial Neural Networks, arXiv:1901.08644"
+  standard: "Leave-one-covariate-out (LOCO) importance by refitting without a feature (Lei et al. 2018)"
+  citation: "Lei, G'Sell, Rinaldo, Tibshirani & Wasserman (2018) Distribution-Free Predictive Inference for Regression, JASA 113(523):1094-1111; Fisher, Rudin & Dominici (2019) All Models are Wrong, but Many are Useful, JMLR 20(177):1-81 (reliance is not cause); Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning, §7.10; Nadeau & Bengio (2003) Inference for the Generalization Error, Machine Learning 52:239-281; Meyes et al. (2019) Ablation Studies in Artificial Neural Networks, arXiv:1901.08644"
   pitfall: "Removing a feature group and judging the drop on the hold-out turns the hold-out into a selection set. Reading a drop as the feature's effect on the outcome is a causal claim the model cannot support."
   corner_cases:
-    - "Each group is removed and the model refit inside the same cross-validation folds, with the same seed; the hold-out is not read."
-    - "The drop says how much this model relies on the group for prediction, not that the group causes the outcome."
+    - "The group is dropped before the whole flow, and every fitted step (filling, scaling, encoding, selection) is refit inside each of the same cross-validation folds, with the same seed. Model settings stay fixed. The hold-out is not read."
+    - "This is drop-and-refit (LOCO), not permutation importance: it asks what the model could do without the group, not how much this fitted model uses it."
+    - "The drop says how much the model relies on the group for prediction, not that the group causes the outcome (Fisher et al. 2019)."
     - "Correlated features stand in for each other: removing one may show no drop. Groups of related features are removed together."
-    - "Small drops within the fold-to-fold spread are noise; a drop counts only beyond one standard error of the paired fold differences."
+    - "Folds share training rows, so the plain standard error of fold differences is too small (Nadeau & Bengio 2003); their corrected variance is used."
+    - "A feature set chosen from these results is judged again by nested cross-validation, never on these folds or on the hold-out."
 
 observes:
   - fact: question.feature_groups
@@ -25,15 +27,17 @@ observes:
 
 policy_thresholds:
   # A group matters only when removing it lowers the score by more than this many standard
-  # errors of the fold-paired differences. One SE follows Hastie et al.'s one-standard-error rule.
+  # errors of the fold-paired differences, with Nadeau & Bengio's corrected variance. A project
+  # convention borrowed from the one-standard-error rule (Breiman et al. 1984; Hastie et al. §7.10),
+  # which was made for choosing model size, not for testing a drop.
   min_drop_se: 1
 
 alternatives:
   - id: report
     label: "Report what each group adds"
-    description: "Report the cross-validated drop for each removed group, with its spread."
+    description: "Report the cross-validated drop for each removed group, with its corrected spread."
     condition: "a model is selected and feature groups are known"
-    rationale: "Shows which inputs the model leans on, so a person can check it makes sense. Needs a new operator (sprisk.ml.ablation, not built) that refits per fold."
+    rationale: "Shows which inputs the model leans on, so a person can check it makes sense. Needs a new operator (sprisk.ml.ablation, not built) that refits the flow per fold."
     action:
       type: insert_step
       placement: after_model_fit
@@ -44,7 +48,7 @@ alternatives:
     label: "A group adds nothing: reopen feature selection"
     description: "A group whose removal costs nothing beyond noise is named for the feature-selection decision."
     condition: "some group's drop is within min_drop_se"
-    rationale: "Inputs that add nothing add cost and risk. The decision belongs to feature selection, judged inside cross-validation."
+    rationale: "Inputs that add nothing add cost and risk. The decision belongs to feature selection, judged by nested cross-validation."
     action:
       type: emit_methodology_limitation
       params:
