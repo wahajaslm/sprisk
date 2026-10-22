@@ -4,6 +4,7 @@ name: "Join sources"
 stage: data
 decides: data.join_sources
 status: active
+question: "Should a table no step reads be joined to the data?"
 applies_to: [sprisk.validation.random_split, sprisk.validation.group_split, sprisk.validation.temporal_split]
 reads: [join.unread_tables, join.rows, join.key.*.matched_rows, join.key.*.most_rows_per_key, question.time_column]
 
@@ -26,6 +27,7 @@ alternatives:
   - id: single_source
     label: "One source"
     description: "Every loaded table is read by a step. Nothing to join."
+    when: "every loaded table is read by a step"
     rationale: "No join, no risk."
     action:
       type: pass_through
@@ -33,6 +35,7 @@ alternatives:
   - id: join_on_key
     label: "Join on the shared key"
     description: "The one column both tables share finds exactly one row of the other table for every row. Join before the split."
+    when: "one shared column matches every row exactly once, not over time"
     rationale: "A clean many-to-one join keeps the row count and the unit."
     action:
       type: insert_step

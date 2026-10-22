@@ -7,6 +7,7 @@ name: "Clustering Algorithm Selection"
 stage: models
 decides: clustering.algorithm_choice
 status: active
+question: "Which clustering algorithm should group the rows?"
 applies_to: [sprisk.clustering.kmeans, sprisk.clustering.dbscan, sprisk.clustering.gmm]
 reads: []
 
@@ -42,6 +43,7 @@ alternatives:
   - id: kmeans_centroid_clustering
     label: "K-Means++ Centroid Clustering"
     description: "Partition observations into K convex Voronoi cells minimizing within-cluster sum of squares (inertia)."
+    when: always, as the baseline while cluster shape is not recorded
     rationale: "Suits compact, roughly spherical clusters with little background noise. Fast O(NK) convergence with K-Means++ seeding. The baseline: nothing about the cluster shape is measured or recorded yet."
     settings_schema:
       type: object
@@ -66,6 +68,7 @@ alternatives:
   - id: dbscan_density_clustering
     label: "DBSCAN Density-Based Spatial Clustering"
     description: "Discover arbitrary non-convex clusters based on local density reachability and isolate noise points into label -1."
+    when: always offered, for odd-shaped clusters and noise
     rationale: "Suits non-spherical clusters and noisy data. DBSCAN finds arbitrary shapes without a pre-set K and leaves outliers unassigned."
     settings_schema:
       type: object
@@ -89,6 +92,7 @@ alternatives:
   - id: hierarchical_agglomerative
     label: "Hierarchical Agglomerative Clustering (Ward Linkage)"
     description: "Bottom-up recursive pairwise cluster merging generating a dendrogram hierarchy."
+    when: never yet, since no step does this
     rationale: "Suits small-to-moderate samples with a nested taxonomy. Ward linkage minimises variance growth across merges without random initialisation."
     settings_schema:
       type: object
@@ -109,6 +113,7 @@ alternatives:
   - id: gaussian_mixture_models
     label: "Gaussian Mixture Models (EM Soft Probabilities)"
     description: "Fit a mixture of K multivariate Gaussian distributions outputting probabilistic cluster memberships."
+    when: always offered, for soft cluster membership
     rationale: "Suits soft membership: EM estimates full covariance matrices, capturing elliptical clusters with differing orientations and volumes."
     settings_schema:
       type: object

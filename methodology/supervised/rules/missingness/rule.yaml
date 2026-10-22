@@ -7,6 +7,7 @@ name: "Missing Data Treatment Strategy"
 stage: cleaning
 decides: cleaning.missingness_strategy
 status: active
+question: "How should missing values be filled?"
 applies_to: [sprisk.clean.impute, sprisk.clean.drop_missing]
 reads: [step.method, question.target, column.*.data_type, column.*.missing_share, column.*.skewness, column.*.distinct]
 
@@ -40,6 +41,7 @@ alternatives:
   - id: drop_rows
     label: Drop Rows With Missing Values
     description: Remove every row with a gap in these columns, in train and test alike.
+    when: the target (or a likely one) has gaps, or a column is neither number nor text
     rationale: A missing target must never be filled, and a column neither number nor text cannot be. Dropping rows
       shrinks the data and can bias it if gaps are not random.
     action:
@@ -48,6 +50,7 @@ alternatives:
   - id: impute_median
     label: Median Imputation (train rows)
     description: Fill each gap in numbers with the column's median over the train rows only, and each gap in text with its own value, a category such as "missing" or empty text in free text.
+    when: a number column is skewed (past {skewness_threshold})
     rationale: Skewed values pull the mean; the median is robust to them. The impute step cannot add a missing-indicator
       column yet, so an informative gap loses that signal.
     action:
@@ -56,6 +59,7 @@ alternatives:
   - id: impute_mean
     label: Mean Imputation
     description: Fill each gap in numbers with the column's mean over the train rows only, and each gap in text with its own value, a category such as "missing" or empty text in free text.
+    when: no number column is skewed past {skewness_threshold}
     rationale: For roughly symmetric values. It shrinks variance and weakens correlations, more so as the
       missing share grows.
     action:
@@ -65,12 +69,14 @@ alternatives:
     label: Mode / Frequent Category Imputation
     description: Fill missing categorical entries with the most frequent category or an explicit 'missing'
       sentinel category.
+    when: never, since a most-frequent fill invents a value
     rationale: 'Not offered: a most-frequent fill gives a gap a value it never had. Text gaps get their own value instead: a category such as "missing", or empty text in free text.'
     action:
       type: replace_node
   - id: drop_column
     label: Drop Column
     description: Exclude the column entirely from the feature matrix.
+    when: never yet, since this step cannot drop a column
     rationale: 'A column with most values missing carries little signal. Not wired yet: drop it with a select
       step before the split.'
     action:

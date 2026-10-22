@@ -1600,6 +1600,13 @@ class Alternative1(StrictModel):
             description="A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045)."
         ),
     ] = None
+    when: Annotated[
+        str | None,
+        Field(
+            description="In a few words, when the rule takes this route, e.g. the column is skewed. Shown beside the example that picks it; nothing that decides reads it. Required on an active rule's alternatives (ADR-0045 amendment).",
+            min_length=1,
+        ),
+    ] = None
     rationale: Annotated[str, Field(min_length=1)]
     settings_schema: Annotated[
         dict[str, Any] | None, Field(description="JSON Schema for this alternative's settings.")
@@ -2417,6 +2424,13 @@ class MethodologyRule(StrictModel):
         list[RuleExample] | None,
         Field(
             description="Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045)."
+        ),
+    ] = None
+    question: Annotated[
+        str | None,
+        Field(
+            description="The decision as a person asks it, e.g. How should missing values be filled? Shown on the Methodology page; nothing that decides reads it. Required on an active rule (ADR-0045 amendment).",
+            min_length=1,
         ),
     ] = None
     decides: Annotated[

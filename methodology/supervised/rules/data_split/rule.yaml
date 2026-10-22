@@ -7,6 +7,7 @@ name: "Data Splitting & Cross-Validation Strategy"
 stage: split
 decides: split.method
 status: active
+question: "How should the rows be split into train and test?"
 applies_to: [sprisk.validation.random_split, sprisk.validation.temporal_split, sprisk.validation.group_split]
 reads: [question.target, question.task, question.time_column, question.entity_column, question.prediction_horizon]
 
@@ -33,6 +34,7 @@ alternatives:
   - id: temporal
     label: "Temporal (Chronological) Split"
     description: "Split data along the time axis: train strictly on past events, evaluate on future events."
+    when: "a time column is confirmed"
     rationale: "Time column is authoritative. Evaluates out-of-time generalization and strictly prevents lookahead leakage."
     settings_schema:
       type: object
@@ -55,6 +57,7 @@ alternatives:
   - id: entity_group
     label: "Entity Group Split"
     description: "Ensure all records for any given entity (patient, customer) remain exclusively in either train or test."
+    when: "an entity column is confirmed, and no time column"
     rationale: "Entity identifier is confirmed. Prevents identical subjects from appearing in both train and validation partitions (identity leakage)."
     settings_schema:
       type: object
@@ -74,6 +77,7 @@ alternatives:
   - id: stratified_random
     label: "Stratified Random Split"
     description: "Randomly partition data while strictly preserving class proportions across partitions."
+    when: "the target is a confirmed class, with no time or entity column"
     rationale: "Classification target without time or entity dependencies. Stratification guarantees representative class balance across splits."
     settings_schema:
       type: object
@@ -93,6 +97,7 @@ alternatives:
   - id: simple_random
     label: "Simple Random Split"
     description: "Uniformly shuffle rows with a repeatable deterministic seed."
+    when: "no time or entity column, and no confirmed class target"
     rationale: "Continuous regression target with independent, identically distributed (i.i.d.) observations."
     settings_schema:
       type: object

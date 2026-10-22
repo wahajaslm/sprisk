@@ -4,6 +4,7 @@ name: "Need for interpretability"
 stage: models
 decides: modeling.interpretability_requirement
 status: active
+question: "Must a person be able to follow each prediction?"
 applies_to: [sprisk.ml.random_forest]
 reads: [question.interpretability]
 
@@ -24,12 +25,14 @@ alternatives:
   - id: keep_model
     label: "Keep the forest"
     description: "Interpretability is medium or low, so the forest may stay."
+    when: "interpretability is medium, low or not stated"
     rationale: "Accuracy may lead when a person does not need to follow each prediction."
     action:
       type: pass_through
   - id: interpretable_only
     label: "Use a linear model"
     description: "Interpretability is high: the forest is replaced by a linear model a person can read."
+    when: "interpretability must be high"
     rationale: "A person must be able to follow each prediction. A linear model's coefficients show how it decides, while its features are few enough to read."
     action:
       type: replace_node

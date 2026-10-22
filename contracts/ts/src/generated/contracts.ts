@@ -1269,6 +1269,10 @@ export interface MethodologyRule {
    */
   examples?: RuleExample[];
   /**
+   * The decision as a person asks it, e.g. How should missing values be filled? Shown on the Methodology page; nothing that decides reads it. Required on an active rule (ADR-0045 amendment).
+   */
+  question?: string;
+  /**
    * The one decision this rule owns; unique across loaded packs.
    */
   decides: string;
@@ -1310,6 +1314,10 @@ export interface MethodologyRule {
      * A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045).
      */
     condition?: string;
+    /**
+     * In a few words, when the rule takes this route, e.g. the column is skewed. Shown beside the example that picks it; nothing that decides reads it. Required on an active rule's alternatives (ADR-0045 amendment).
+     */
+    when?: string;
     rationale: string;
     /**
      * JSON Schema for this alternative's settings.

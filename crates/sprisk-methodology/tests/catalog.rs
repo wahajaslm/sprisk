@@ -42,11 +42,12 @@ name: Test rule
 stage: cleaning
 decides: {decides}
 status: active
+question: Keep it?
 applies_to: [{applies_to}]
 provenance: {{ standard: s, citation: c, pitfall: p, corner_cases: [] }}
 policy_thresholds: {{}}
 alternatives:
-  - {{ id: keep, label: Keep, description: d, rationale: r, action: {{ type: remove_node }} }}
+  - {{ id: keep, label: Keep, description: d, when: always, rationale: r, action: {{ type: remove_node }} }}
 verification: {{ check_id: sprisk.checks.x@1.0.0, invariant: i }}
 {extra}"
     )
@@ -171,6 +172,50 @@ fn an_active_rule_with_a_condition_is_refused() {
     )
     .replace("rationale: r,", "condition: always, rationale: r,");
     assert!(refused(&manifest).contains("condition"));
+}
+
+#[test]
+fn an_active_rule_asks_its_decision_as_a_question_for_people() {
+    let manifest = active_yaml(
+        "methodology.pack.a@1.0.0",
+        "cleaning.a",
+        "sprisk.clean.scale",
+        READS_AND_EXAMPLE,
+    )
+    .replace("question: Keep it?\n", "");
+    assert!(refused(&manifest).contains("question"));
+}
+
+#[test]
+fn an_active_rule_says_when_it_takes_each_route() {
+    let manifest = active_yaml(
+        "methodology.pack.a@1.0.0",
+        "cleaning.a",
+        "sprisk.clean.scale",
+        READS_AND_EXAMPLE,
+    )
+    .replace("when: always, ", "");
+    let err = refused(&manifest);
+    assert!(err.contains("keep") && err.contains("when"), "{err}");
+}
+
+#[test]
+fn a_when_may_name_the_rules_settings_and_nothing_else() {
+    let with = |when: &str| {
+        active_yaml(
+            "methodology.pack.a@1.0.0",
+            "cleaning.a",
+            "sprisk.clean.scale",
+            READS_AND_EXAMPLE,
+        )
+        .replace("policy_thresholds: {}", "policy_thresholds: { limit: 15 }")
+        .replace("when: always", &format!("when: \"{when}\""))
+    };
+    let dir = tempfile::tempdir().unwrap();
+    write_active(dir.path(), "a", &with("more than {limit} categories"));
+    RuleCatalog::load_dir(dir.path()).unwrap();
+    let err = refused(&with("more than {limt} categories"));
+    assert!(err.contains("limt"), "{err}");
 }
 
 #[test]
@@ -337,6 +382,7 @@ name: Test rule
 stage: models
 decides: modeling.a
 status: active
+question: Which model?
 selection: shortlist
 applies_to: [sprisk.ml.linear_model]
 reads: [candidate.*.family]
@@ -360,8 +406,7 @@ fn a_shortlist_rule_loads_with_candidates_from_the_registry() {
 #[test]
 fn a_shortlist_rule_has_no_alternatives_of_its_own() {
     let examples = "[{ given: {}, shortlist: [keep] }]";
-    let alternatives =
-        "[{ id: keep, label: Keep, description: d, rationale: r, action: { type: remove_node } }]";
+    let alternatives = "[{ id: keep, label: Keep, description: d, when: always, rationale: r, action: { type: remove_node } }]";
     assert!(refused(&shortlist_yaml(alternatives, examples)).contains("registry"));
 }
 
@@ -375,7 +420,7 @@ fn a_shortlist_example_gives_a_shortlist_not_a_pick() {
 fn a_recommend_rule_needs_a_menu_and_examples_that_pick_from_it() {
     let manifest = active_yaml("methodology.pack.a@1.0.0", "cleaning.a", "sprisk.clean.scale", READS_AND_EXAMPLE)
         .replace(
-            "alternatives:\n  - { id: keep, label: Keep, description: d, rationale: r, action: { type: remove_node } }\n",
+            "alternatives:\n  - { id: keep, label: Keep, description: d, when: always, rationale: r, action: { type: remove_node } }\n",
             "alternatives: []\n",
         );
     assert!(refused(&manifest).contains("alternatives"));

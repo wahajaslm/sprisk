@@ -7,6 +7,7 @@ name: "Decision Threshold"
 stage: evaluation
 decides: evaluation.decision_threshold
 status: active
+question: "At which threshold should a classifier predict the costly class?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [question.task, question.time_column, question.entity_column, question.costs.positive, question.costs.false_negative, question.costs.false_positive]
 
@@ -32,6 +33,7 @@ alternatives:
   - id: cost_optimal_threshold
     label: "Cost-Optimal Threshold"
     description: "Each model tunes its decision threshold for the least expected cost on inner folds of its own training rows, and models are compared by expected cost."
+    when: "a classification question states each mistake's cost, with no time or entity column"
     rationale: "Stated misclassification costs make one mistake dearer than the other. The threshold that costs least on the training rows reflects that."
     action:
       type: update_estimator_params
@@ -40,6 +42,7 @@ alternatives:
   - id: default_half
     label: "Standard 0.5 Threshold"
     description: "The model predicts the class it finds more likely, and models are compared by balanced accuracy."
+    when: "the costs are not stated, or a time or entity column is confirmed"
     rationale: "With no stated costs, both mistakes count the same."
     action:
       type: update_estimator_params

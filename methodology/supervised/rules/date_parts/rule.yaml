@@ -7,6 +7,7 @@ name: "Date Parts"
 stage: features
 decides: features.date_parts
 status: active
+question: "Should a date be split into parts before the model?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [column.*.data_type]
 
@@ -32,6 +33,7 @@ alternatives:
   - id: date_parts
     label: "Date Parts"
     description: "Year, month and weekday, with month and weekday also as sine and cosine, in place of each date, in a step added before the model."
+    when: "a date column reaches the model"
     rationale: "A date reaches the model, which reads only numbers (ADR-0056). Each row is worked out on its own, so nothing is learned from test rows."
     action:
       type: insert_step
@@ -41,6 +43,7 @@ alternatives:
   - id: no_dates
     label: "No Dates"
     description: "Leave the columns as they are."
+    when: "no date column reaches the model"
     rationale: "No date reaches the model."
     action:
       type: pass_through
