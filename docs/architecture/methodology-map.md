@@ -7,84 +7,103 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 - **2 Try:** practice says "it depends". Try the routes on the same cross-validation folds, fixed seed, pick by the stated criterion.
 - **3 Ask:** only a person can settle it. A guess is marked `inferred` and confirmed before use.
 
-**Rule:** `active`, `draft`, or `none` (no rule yet).
+**Evidence chart:** the one chart, drawn from train rows, that shows why the decision went the way it did. It is its own Explore step (one chart per step).
+
+**Rule:** `active`, `draft`, or `none` (no rule yet). Numbers such as "15 categories" are default settings, never hard-coded.
+
+**Sources:** published guidance first; `knowledge:` is the course (`knowledge/`); `ref-v3` is the user's reference workflow (Deterministic ML Project Workflow v3.0).
 
 ## Question
-| Decision | Level | Decided by | Rule | Source |
-| --- | --- | --- | --- | --- |
-| Target and task | 3 | Person states the target; task type measured from its values and confirmed | none | REFORMS (Kapoor et al. 2024), module 1 |
-| Target available, or derived | 3 | Person: which column, or how to build it from others | none | knowledge: Methodology_in_Data_Science, step 1 |
-| Unit of prediction | 3 | Person: one row per what? | none | TRIPOD+AI (Collins et al. 2024) |
-| Primary metric | 1, else 3 | Stated metric wins; else from task and class balance (unbalanced: macro or weighted F1, not accuracy) | draft | scikit-learn "Metrics and scoring" |
-| Cost of each error | 3 | Person | none | Elkan 2001, cost-sensitive learning |
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Objective and success bar | 3 | Person: the business goal in units (money, risk, time) and the score that counts as good enough | — | none | knowledge: Methodology_in_Data_Science, step 1; ref-v3 0.1 |
+| Hard constraints | 3 | Person: interpretability (high, medium, low), latency, budget, fairness limits | — | none | ref-v3 0.4 |
+| Personal data | 1, then 3 | Detected per column (names, emails, IDs); a person confirms what may be used | — | none | `presidio`; EU AI Act risk tiers |
+| Target available, or derived | 3 | Person: which column, or how to build it. A built label is checked against a sample a person labels (Cohen's κ ≥ 0.7) | Target distribution | none | knowledge: step 1; ref-v3 1.2 |
+| Task type | 1, then 3 | Measured from the target: two values → binary, few → multiclass, number → regression; confirmed. Subtypes: multi-label, ordinal, count, survival, quantile | Target distribution | none | REFORMS (Kapoor et al. 2024), module 1; ref-v3 1.3 |
+| Unit of prediction | 3 | Person: one row per what? Rows are aggregated to it before the split | — | none | TRIPOD+AI (Collins et al. 2024) |
+| Class imbalance | 1 | Rarest class under 10% of rows, or costs stated as unequal | Class balance bar | none | ref-v3 1.5; He & Garcia 2009 |
+| Primary metric | 1, else 3 | Stated metric wins. Else: binary balanced → ROC-AUC; binary unbalanced → PR-AUC or F1; multiclass → macro or weighted F1; costs stated → expected cost; regression → MAE or RMSE | — | draft | scikit-learn "Metrics and scoring"; ref-v3 1.4 |
+| Cost of each error | 3 | Person | — | none (costs read by ADR-0053) | Elkan 2001 |
 
 ## Data
-| Decision | Level | Decided by | Rule | Source |
-| --- | --- | --- | --- | --- |
-| Join sources | 1, else 3 | One shared key with matching values joins; an ambiguous key asks | none | — |
-| Column roles (id, target, number, category, text, date) | 1, else 3 | Measured: distinct = rows → id; parses as date → date; long varied strings → text. Number-coded labels (postal codes) ask | none | Breck et al. 2019, data validation |
-| Missing markers (`?`, `n/a`, `-1`) | 1, else 3 | Values that fail to convert in an otherwise numeric column. `NA` that may be a value (Namibia) asks | none (`file_source.missing_values` exists) | Breck et al. 2019 |
-| Wrong types | 1 | Share of values that convert | none | Breck et al. 2019 |
-| Exact duplicates | 1 | Row hash. Removed before the split, so no row is in train and test | none | Kapoor & Narayanan 2023 (duplicates leak) |
-| Duplicates by key | 3 | Person: which row to keep | none | — |
-| Columns not known at prediction time | 3, with a measured hint | Person confirms; a column that predicts the target almost perfectly is flagged | draft (`features.leakage_exclusion`) | Kapoor & Narayanan 2023 |
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Join sources | 1, else 3 | One shared key with matching values joins; an ambiguous key asks | Key match counts | none | — |
+| Column roles (id, target, number, category, text, date) | 1, else 3 | Measured: distinct = rows → id; parses as date → date; long varied strings → text. Number-coded labels (postal codes) ask | Column type summary | none | Breck et al. 2019 |
+| Missing markers (`?`, `n/a`, `-1`) | 1, else 3 | Values that fail to convert in an otherwise numeric column. `NA` that may be a value (Namibia) asks | Top non-numeric values | none (`file_source.missing_values` exists) | Breck et al. 2019 |
+| Wrong types | 1 | Share of values that convert | — | none | Breck et al. 2019 |
+| Exact duplicates | 1 | Row hash. Removed before the split, so no row is in train and test | — | none | Kapoor & Narayanan 2023 |
+| Duplicates by key | 3 | Person: which row to keep | — | none | — |
+| Same entity on both sides | 1 | An entity column with repeated values → group split | Rows per entity | active (part of split method) | Kapoor & Narayanan 2023; ref-v3 2.5 |
+| Columns not known at prediction time | 3, with a measured hint | Person confirms; a column that alone predicts the target almost perfectly on train rows is flagged | Single-feature score per column | draft (`features.leakage_exclusion`) | Kapoor & Narayanan 2023; ref-v3 2.5 |
 
 ## Split
-| Decision | Level | Decided by | Rule | Source |
-| --- | --- | --- | --- | --- |
-| Split method | 1 | Time column + horizon → temporal; entity column → group; unbalanced classes → stratified; else random | active | Roberts et al. 2017; scikit-learn "Cross-validation" |
-| Point in time | 1, else 3 | Features must be known before the prediction time | draft | Kapoor & Narayanan 2023 |
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Split method | 1 | Time column + horizon → temporal (with a gap when the horizon needs one); entity column → group; unbalanced classes → stratified; else random. The test rows are scored once, at the end | Class balance per side | active | Roberts et al. 2017; scikit-learn "Cross-validation"; ref-v3 1.6 |
+| Point in time | 1, else 3 | Features must be known before the prediction time | Target over time | draft | Kapoor & Narayanan 2023 |
 
 ## Cleaning (statistics from train rows)
-| Decision | Level | Decided by | Rule | Source |
-| --- | --- | --- | --- | --- |
-| Missing values | 1, then 2 | Missing target → drop rows. Mostly empty → drop column. Otherwise fill after the split: median for skewed columns, else mean; tried when unclear | active | scikit-learn "Imputation" |
-| Outliers | 1, else 3 | Impossible values (domain range, asked) → missing. Statistical outliers: clip for linear and distance models, nothing for trees | active | Tukey 1977; scikit-learn preprocessing guide |
-| Constant columns | 1 | One distinct value on train rows → drop | draft | scikit-learn `VarianceThreshold` |
-| Text spelling | 1, else 3 | Trim, lowercase, accents (key collision). Merges beyond that ask | none (`clean_text` exists) | OpenRefine clustering |
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Missing values | 1, then 2, else 3 | Missing target → drop rows. Mostly empty (default 60%) → drop column. Otherwise fill after the split: median for skewed, else mean. When gaps relate to the target, add a "was missing" column (tried). Model-based filling (iterative) is tried only when simple filling scores worse. Why values are missing is asked when it matters | Missing share per column; gaps by target | active | scikit-learn "Imputation" (`add_indicator`, `IterativeImputer`); Little & Rubin 2019; ref-v3 2.3 |
+| Outliers | 1, else 3 | Impossible values (domain range, asked) → missing. Real extremes: clip for linear and distance models, nothing for trees, robust scaling instead when many | Box plot per column | active | Tukey 1977; ref-v3 2.4 |
+| Constant columns | 1 | One distinct value on train rows → drop | — | draft | scikit-learn `VarianceThreshold` |
+| Text spelling | 1, else 3 | Trim, lowercase, accents (key collision). Merges beyond that ask | Top variants per value | none (`clean_text` exists) | OpenRefine clustering |
 
-## Features (Clean steps, ADR-0056; marked "model" when the answer depends on the model family)
-| Decision | Level | Decided by | Rule | Source |
-| --- | --- | --- | --- | --- |
-| Scaling (model) | 1, then 2 | Trees: none. Linear, distance: standard; heavy outliers: robust | active | Hastie et al. 2009; scikit-learn preprocessing |
-| Encoding | 1, then 2 | Few categories → one-hot before the model (ADR-0057). Many → target encoding with cross-fitting vs frequency, tried | active | scikit-learn `TargetEncoder`; Micci-Barreca 2001 |
-| Date field useful | 1, then 2 | Date parts kept when they help in cross-validation | none | knowledge: Methodology_in_Data_Science, step 3 |
-| Rare categories | 1 | Below a frequency → "other" | none | scikit-learn `OneHotEncoder(min_frequency)` |
-| Text representation | 2 | TF-IDF words vs characters, tried | none (ADR-0058 proposed) | scikit-learn "Text feature extraction" |
-| Date parts | 1 | Year, month, weekday from a date column | none | — |
-| Feature selection | 2 | Only inside cross-validation, never on all rows; a feature that does not help is dropped | draft | Ambroise & McLachlan 2002 |
-| Dimensionality reduction | 2 | Tried against no reduction | draft | Hastie et al. 2009 |
-| Multicollinearity (model) | 1 | Linear models only | draft | — |
+## Features (Clean steps, ADR-0056; "model" = the answer depends on the model family)
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Encoding (model) | 1, then 2 | Under 15 categories → one-hot before the model (ADR-0057). 15–100 → target encoding with cross-fitting vs frequency, tried. Over 100 → group rare values or hashing, tried | Categories per column | active | scikit-learn `TargetEncoder`; Micci-Barreca 2001; ref-v3 3.1 |
+| Rare categories | 1 | Below a frequency → "other" | Category frequency | none | scikit-learn `OneHotEncoder(min_frequency)` |
+| Skewed numbers (model) | 1, then 2 | Trees: none. Linear and distance models: Yeo-Johnson or quantile transform vs none, tried | Histogram per column | none | scikit-learn `PowerTransformer`; ref-v3 3.2 |
+| Scaling (model) | 1, then 2 | Trees: none. Linear, distance: standard; many outliers: robust | — | active | Hastie et al. 2009; scikit-learn preprocessing |
+| Date parts | 1, then 2 | Year, month, weekday from a date column; cyclic (sin/cos) for months and weekdays; kept when they help in cross-validation | Target by month | none | knowledge: step 3; ref-v3 2.6 |
+| Lags and rolling statistics | 1 | Time-series questions only, computed from past rows only | Target over time | draft (time-series pack) | ref-v3 3.4 |
+| Interactions | 2 | Linear models only, a few chosen pairs, tried | — | none | ref-v3 3.3 |
+| Text representation | 2 | TF-IDF words vs characters, tried; embeddings when the text is long or semantic | Text length per row | none (ADR-0058 proposed) | scikit-learn "Text feature extraction"; ref-v3 3.5 |
+| Feature selection | 2, else 3 | Only inside cross-validation; permutation importance, stable across folds; a person may veto a drop | Importance per fold | draft | Ambroise & McLachlan 2002; Meinshausen & Bühlmann 2010; ref-v3 3.6 |
+| Dimensionality reduction | 2 | Tried against no reduction | — | draft | Hastie et al. 2009 |
+| Multicollinearity (model) | 1 | Linear models only | Correlation heatmap | draft | — |
 
 ## Models
-| Decision | Level | Decided by | Rule | Source |
-| --- | --- | --- | --- | --- |
-| Model shortlist and selection | 2 | Baseline + candidates on repeated CV; simplest within one standard error | active | Hastie et al. 2009 §7.10; ADR-0050 |
-| Need for interpretability | 3 | Person: must the model be explained? If so the shortlist favours linear models | none | knowledge: Methodology_in_Data_Science, step 4 |
-| Settings (tuning) | 2 | Nested CV within a budget | — (studies, ADR-0052) | Cawley & Talbot 2010 |
-| Class imbalance | 2 | Class weights vs resampling inside folds vs threshold, tried | draft | He & Garcia 2009 |
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Baseline | 1 | Always: a model with no features (most frequent class, mean) | — | active (part of selection) | ADR-0044; ref-v3 4.1 |
+| Model shortlist and selection | 2 | Baseline + candidates on repeated CV; simplest within one standard error | Score per fold per model | active | Hastie et al. 2009 §7.10; ADR-0050; ref-v3 4.2 |
+| Need for interpretability | 3 | From the hard constraints: high → linear models and shallow trees only | — | none | knowledge: step 4; ref-v3 4.4 |
+| Settings (tuning) | 2 | Nested CV within a budget | Score per trial | — (studies, ADR-0052) | Cawley & Talbot 2010; ref-v3 4.6 |
+| Class imbalance | 2 | Class weights vs resampling inside folds vs threshold, tried | Recall per class | draft | He & Garcia 2009; ref-v3 4.5 |
 
 ## Evaluation
-| Decision | Level | Decided by | Rule | Source |
-| --- | --- | --- | --- | --- |
-| Decision threshold | 2, costs from 3 | Tuned on CV predictions, never on test rows | active (ADR-0053) | scikit-learn `TunedThresholdClassifierCV` |
-| Calibration | 2 | Tried when probabilities are used | draft | scikit-learn "Probability calibration" |
-| Loop back | 1 | A CV result below the stated minimum reopens the decision that owns it | — (guardrails, ADR-0052) | — |
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Decision threshold | 2, costs from 3 | Tuned on CV predictions, never on test rows | Cost vs threshold | active (ADR-0053) | scikit-learn `TunedThresholdClassifierCV` |
+| Calibration | 2 | Tried when probabilities are used | Reliability diagram | draft | scikit-learn "Probability calibration" |
+| Over- or underfitting | 1 | Train vs validation score gap, and the learning curve | Learning curve | none | ref-v3 4.8 |
+| Error analysis | 1 | Errors by segment and class; a segment far worse than the rest reopens features or data | Confusion matrix; residual plot | none | ref-v3 4.8 |
+| Fairness slices | 3, then 1 | Person names the groups; scores per group against stated limits | Score per group | draft | ref-v3 4.7 |
+| Loop back | 1 | A CV result below the success bar reopens the decision that owns it | — | — (guardrails, ADR-0052) | knowledge: step 4 |
 
 ## Reporting
-| Decision | Level | Decided by | Rule | Source |
-| --- | --- | --- | --- | --- |
-| Action rule (who to act on) | 3, then 2 | Person gives the budget or constraints; the probability bands are set on CV predictions | none | knowledge: Methodology_in_Data_Science, step 5 |
-| Business impact | 1 | The model compared with the current rule, in the person's cost units | none | knowledge: Methodology_in_Data_Science, step 5 |
-| Fairness, explainability, drift, serving parity | 3 | Person names groups and obligations | draft | TRIPOD+AI |
+| Decision | Level | Decided by | Evidence chart | Rule | Source |
+| --- | --- | --- | --- | --- | --- |
+| Action rule (who to act on) | 3, then 2 | Person gives the budget or capacity; score bands are set on CV predictions | Score bands | none | knowledge: step 5; ref-v3 5.2, 5.5 |
+| Business impact | 1 | The model compared with the current rule, in the person's cost units | Cost vs current rule | none | knowledge: step 5; ref-v3 5.3, 5.4 |
+| Model card | 1 | Built from the recorded decisions, never written by hand | — | none | Mitchell et al. 2019 |
+| Fairness, explainability, drift, serving parity | 3 | Person names groups and obligations | — | draft | TRIPOD+AI |
 
-Unsupervised (clustering, anomaly) rules follow the same levels; see `methodology/unsupervised/`.
+Deployment and monitoring (ref-v3 stage 6) wait for M5 and M6. Unsupervised rules (clustering, anomaly) follow the same levels; see `methodology/unsupervised/`.
 
-## Refusals: course routes the map does not take
-| Course route | Map route | Why |
+## Refusals: routes the map does not take
+| Reference route | Map route | Why |
 | --- | --- | --- |
-| Fill, encode or scale before the split | Fit on train rows only | Test rows would shape the model |
-| Select features or set a threshold on test results | Inside cross-validation | The score would be optimistic |
-| Tune with no hold-out | Nested CV | Same |
-| Judge performance on the test set, then iterate | Iterate on cross-validation results; the test set is scored once, at the end | Iterating on the test set tunes the model to it |
-| Drop mostly-empty columns measured on all rows | Measure train rows, drop from all | Statistics from train rows only |
+| Course: fill, encode or scale before the split | Fit on train rows only | Test rows would shape the model |
+| Course: select features or set a threshold on test results | Inside cross-validation | The score would be optimistic |
+| Course: tune with no hold-out | Nested CV | Same |
+| Course and ref-v3 gate 4: judge the hold-out score, then iterate | Iterate on cross-validation results; the hold-out is scored once and reported, never tuned on | Iterating on the test set tunes the model to it. ref-v3's own first rule forbids it |
+| Course: drop mostly-empty columns measured on all rows | Measure train rows, drop from all | Statistics from train rows only |
+| ref-v3: leakage check by feature-target correlation | Measured on train rows only | Same |
+| ref-v3: "deterministic gates only, no maybe" | Rule, try or ask | Some answers depend on the data. Trying routes on fixed folds makes them repeatable without pretending they are certain |
+| ref-v3: missingness mechanism decides the fill (MCAR, MAR, MNAR) | A "was missing" column and model-based filling are tried; the mechanism is asked only when it matters | The mechanism cannot be proven from the data alone |
