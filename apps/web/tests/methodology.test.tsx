@@ -147,6 +147,29 @@ describe("methodology page", () => {
     expect(within(flow).queryByRole("button", { name: splitting.name })).not.toBeInTheDocument();
   });
 
+  it("shows each decision as its question, and each route's when with its settings filled in", async () => {
+    const worded: MethodologyRule = {
+      ...split,
+      status: "active",
+      question: "How should the rows be split into train and test?",
+      policy_thresholds: { default_test_fraction: 0.2 },
+      alternatives: split.alternatives.map((a, i) => ({ ...a, when: i === 0 ? "hold out {default_test_fraction} of rows at random" : "never yet: no step does this" })),
+    };
+    serve([worded]);
+    renderWithApi(<MethodologyPage />);
+
+    const map = await screen.findByRole("region", { name: "Methodology map" });
+    expect(within(map).getByRole("button", { name: worded.name })).toHaveTextContent(worded.question!);
+    expect(within(map).getByText(/hold out 0.2 of rows at random/)).toBeInTheDocument();
+    const detail = screen.getByRole("region", { name: worded.name });
+    expect(within(detail).getByRole("heading", { level: 1 })).toHaveTextContent(worded.question!);
+
+    await userEvent.click(screen.getByRole("radio", { name: "Flow" }));
+    const flow = screen.getByRole("region", { name: "Methodology flow" });
+    expect(within(flow).getByRole("button", { name: worded.name })).toHaveTextContent(worded.question!);
+    expect(within(flow).getByText(/hold out 0.2 of rows at random/)).toBeInTheDocument();
+  });
+
   it("knows every stage the contract has, so no rule drops off the page", () => {
     expect(STAGES).toEqual(bundle.$defs.MethodologyStage.enum);
   });

@@ -218,8 +218,8 @@ describe("activation conditions", () => {
   });
 
   it("names what a rule looks at in plain words, from the facts it reads", () => {
-    const reads = { reads: ["question.target", "column.*.missing_share", "column.*.skewness", "flow.model_families", "rows"] } as never;
-    expect(lookedAt(reads)).toEqual(["the target", "each column's missing share", "each column's skewness", "model families", "the number of rows"]);
+    const reads = { reads: ["question.target", "question.costs.positive", "question.costs.false_negative", "column.*.missing_share", "column.*.skewness", "target.rarest_share", "flow.model_families", "rows"] } as never;
+    expect(lookedAt(reads)).toEqual(["the target", "the stated error costs", "each column's share of missing values", "each column's skewness", "the target's rarest class's share", "model families", "the number of rows"]);
   });
 });
 
