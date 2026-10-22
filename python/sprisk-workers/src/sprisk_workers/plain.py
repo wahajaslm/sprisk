@@ -288,9 +288,10 @@ def _read(path: Path, kind: str) -> Any:
         return pl.read_parquet(path)
     if kind == "matrix":
         try:
-            return read_matrix(path)
+            matrix = read_matrix(path)
         except ValueError as e:
             raise OperatorError("invalid_input", f"matrix {path.name}: {e}") from e
+        return matrix.values, matrix.columns
     if kind == "model":
         try:
             return skops.io.load(path, trusted=TRUSTED_MODEL_TYPES)
@@ -324,10 +325,8 @@ def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
         path.write_text(json.dumps({"items": [_figure(port, f) for f in figures]}))
         return Output(port, path, JSON)
     if kind == "matrix":
-        if not isinstance(value, Matrix):
-            raise _wrong(port, "a Matrix (a SciPy sparse matrix and its column names)", value)
         path = out_dir / f"{port}.npz"
-        write_matrix(value, path)
+        write_matrix(_matrix(port, value), path)
         return Output(port, path, MATRIX)
     if kind == "table" and _is_pandas_frame(value):
         path = out_dir / f"{port}.parquet"
@@ -351,6 +350,17 @@ def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
     except TypeError as e:
         raise _wrong(port, "JSON (dicts, lists, numbers, text)", value) from e
     return Output(port, path, JSON)
+
+
+def _matrix(port: str, value: Any) -> Matrix:
+    """A step returns a matrix as a plain pair, so it never imports sprisk (ADR-0022)."""
+    if not isinstance(value, tuple) or len(value) != 2:
+        raise _wrong(port, "(a SciPy sparse matrix, its column names)", value)
+    values, names = value
+    try:
+        return Matrix(values, tuple(names))
+    except (TypeError, ValueError) as e:
+        raise OperatorError("bad_output", f"output {port}: {e}") from e
 
 
 def _wrong(port: str, expected: str, value: Any) -> OperatorError:

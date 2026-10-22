@@ -23,6 +23,7 @@ EVAL = "sprisk.ml.evaluate@1.0.0"
 SCALE = "sprisk.test.scale@1.0.0"
 ENSEMBLE = "sprisk.test.ensemble@1.0.0"
 TWO_TABLE_EVAL = "sprisk.test.two_table_eval@1.0.0"
+WORDS_MODEL = "sprisk.test.words_model@1.0.0"
 
 
 def fake(
@@ -51,6 +52,12 @@ def operators() -> dict[str, Operator]:
         SCALE: fake(SCALE, "transform", [("data", "table")], [("data", "table")]),
         ENSEMBLE: fake(
             ENSEMBLE, "estimator", [("a", "model"), ("b", "model")], [("model", "model")]
+        ),
+        WORDS_MODEL: fake(
+            WORDS_MODEL,
+            "estimator",
+            [("train", "table"), ("words", "matrix")],
+            [("model", "model")],
         ),
         TWO_TABLE_EVAL: fake(
             TWO_TABLE_EVAL,
@@ -397,3 +404,32 @@ def test_every_core_step_that_fits_on_train_is_a_fitting_transform() -> None:
     }
     assert fitting, "no core step fits on train"
     assert fitting <= FITTING_TRANSFORMS, sorted(fitting - FITTING_TRANSFORMS)
+
+
+VECTORIZE = "sprisk.clean.vectorize_text@1.0.0"
+
+
+def worded(words_from: str) -> PipelineVersion:
+    """load → split → vectorize_text → a model on its train table and `words_from`."""
+    return pipeline(
+        {"load": SOURCE, "split": SPLIT, "words": VECTORIZE, "model": WORDS_MODEL, "eval": EVAL},
+        [
+            ("load.data", "split.data"),
+            ("split.train", "words.train"),
+            ("split.test", "words.test"),
+            ("words.train", "model.train"),
+            (words_from, "model.words"),
+            ("model.model", "eval.model"),
+            ("words.test", "eval.test"),
+        ],
+    )
+
+
+def test_a_model_on_the_train_rows_words_passes() -> None:
+    assert check(worded("words.train_words")).verdict == Verdict.pass_
+
+
+def test_a_model_on_the_test_rows_words_fails() -> None:
+    result = check(worded("words.test_words"))
+    assert result.verdict == Verdict.fail
+    assert "model" in [n.root for n in result.cited_nodes]

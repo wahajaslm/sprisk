@@ -63,7 +63,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Date parts | 1, then 2 | Year, month, weekday from a date column; cyclic (sin/cos) for months and weekdays; kept when they help in cross-validation (not built: the parts are always added) | Target by month | active (`features.date_parts`) | knowledge: step 3; ref-v3 2.6 |
 | Lags and rolling statistics | 1 | Time-series questions only, computed from past rows only | Target over time | draft (time-series pack) | ref-v3 3.4 |
 | Interactions | 2 | Linear models only, a few chosen pairs, tried | — | none | ref-v3 3.3 |
-| Text representation | 2 | TF-IDF words vs characters, tried; embeddings when the text is long or semantic | Text length per row | none (ADR-0058 accepted; operator not built yet) | scikit-learn "Text feature extraction"; ref-v3 3.5 |
+| Text representation | 2 | TF-IDF words vs characters, tried; embeddings when the text is long or semantic | Text length per row | none (ADR-0058 accepted; Vectorize text built, rule not active) | scikit-learn "Text feature extraction"; ref-v3 3.5 |
 | Feature selection | 2, else 3 | Only inside cross-validation; permutation importance, stable across folds; a person may veto a drop | Importance per fold | draft | Ambroise & McLachlan 2002; Meinshausen & Bühlmann 2010; ref-v3 3.6 |
 | Dimensionality reduction | 2 | Tried against no reduction | — | draft | Hastie et al. 2009 |
 | Multicollinearity (model) | 1 | Linear models only | Correlation heatmap | draft | — |

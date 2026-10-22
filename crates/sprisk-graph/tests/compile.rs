@@ -61,6 +61,13 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
     let mut online = shift.clone();
     online["id"] = json!("sprisk.clean.online@1.0.0");
     online["network"] = json!("egress_allowlisted");
+    // Writes words beside its tables: a fold cannot pass them on yet (ADR-0058).
+    let mut wordy = shift.clone();
+    wordy["id"] = json!("sprisk.clean.wordy@1.0.0");
+    wordy["outputs"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "name": "train_words", "kind": "matrix" }));
     let mut reader = shift.clone();
     reader["id"] = json!("sprisk.clean.reader@1.0.0");
     reader["params_schema"] = json!({
@@ -86,6 +93,7 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
         shift,
         noisy,
         online,
+        wordy,
         reader,
         operator(
             "sprisk.ml.compare@1.0.0",
@@ -685,13 +693,15 @@ fn preparing(prepare: Value) -> Value {
 }
 
 #[test]
-fn a_preparation_step_must_be_registered_fit_on_train_and_be_pure_offline_and_read_no_files() {
+fn a_preparation_step_must_be_registered_fit_on_train_pure_offline_read_no_files_and_write_only_tables()
+ {
     for operator in [
         "sprisk.clean.missing@1.0.0",
         "sprisk.validation.split@1.0.0",
         "sprisk.clean.noisy@1.0.0",
         "sprisk.clean.online@1.0.0",
         "sprisk.clean.reader@1.0.0",
+        "sprisk.clean.wordy@1.0.0",
     ] {
         let found = errors(
             preparing(json!([{ "operator": operator, "params": {} }])),

@@ -1,6 +1,9 @@
 """The `matrix` value kind (ADR-0058): rows by named number columns, stored sparse. Row i is
 row i of the table it was made from. Word features of free text are one: about 50,000
-columns, almost all zeros, that a table would store densely."""
+columns, almost all zeros, that a table would store densely.
+
+A step sees a matrix as a plain pair, a SciPy sparse matrix and its column names, so it never
+imports sprisk (ADR-0022). The worker checks the pair as a `Matrix` and stores it."""
 
 import zipfile
 from collections import Counter

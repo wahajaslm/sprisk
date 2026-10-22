@@ -2396,6 +2396,7 @@ source = { editable = "plugins/clean" }
 dependencies = [
     { name = "polars" },
     { name = "scikit-learn" },
+    { name = "scipy" },
     { name = "sprisk-workers" },
 ]
 
@@ -2403,6 +2404,7 @@ dependencies = [
 requires-dist = [
     { name = "polars", specifier = ">=1.10" },
     { name = "scikit-learn", specifier = ">=1.6" },
+    { name = "scipy", specifier = ">=1.11" },
     { name = "sprisk-workers", editable = "python/sprisk-workers" },
 ]
 

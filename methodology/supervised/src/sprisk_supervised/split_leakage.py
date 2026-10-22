@@ -22,6 +22,7 @@ HOLDOUT_PORTS = {
 }
 TRAIN_PORT = "train"
 # Transforms that learn from their `train` input and apply to `train` and `test` (ADR-0018).
+TRAIN_OUTPUTS = frozenset({"train", "train_words"})
 FITTING_TRANSFORMS = frozenset(
     {
         "sprisk.clean.impute",
@@ -32,6 +33,7 @@ FITTING_TRANSFORMS = frozenset(
         "sprisk.clean.power_transform",
         "sprisk.clean.clip_outliers",
         "sprisk.clean.spectral_gating",
+        "sprisk.clean.vectorize_text",
     }
 )
 
@@ -180,13 +182,15 @@ def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> Por
         consumer, in_port = edge.to.root.split(".")
         graph.add_edge(edge.from_.root, consumer)
         graph.edges[edge.from_.root, consumer].setdefault("ports", set()).add(in_port)
-    # A fitting transform's train output carries only its train input; its test output
-    # depends on both. Without this, every model after a transform looks fit on test rows.
+    # A fitting transform's train outputs (its train table, and its train words) carry only
+    # its train input; its test outputs depend on both. Without this, every model after a
+    # transform looks fit on test rows.
     for node, op in op_of.items():
         if unversioned(op.id.root) in FITTING_TRANSFORMS:
             source = _source_of(graph, node, TRAIN_PORT)
-            graph.remove_edge(node, f"{node}.{TRAIN_PORT}")
-            graph.add_edge(source, f"{node}.{TRAIN_PORT}")
+            for name in TRAIN_OUTPUTS & {p.name.root for p in op.outputs}:
+                graph.remove_edge(node, f"{node}.{name}")
+                graph.add_edge(source, f"{node}.{name}")
     return graph
 
 
