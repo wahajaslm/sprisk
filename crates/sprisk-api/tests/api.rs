@@ -5277,6 +5277,11 @@ async fn walk_to_end(api: &Api, request: Value) -> Value {
         status == StatusCode::ACCEPTED || status == StatusCode::OK,
         "{status} {walk}"
     );
+    stopped(api, &walk).await
+}
+
+/// The detail of `walk` once it stops, waiting at most five minutes.
+async fn stopped(api: &Api, walk: &Value) -> Value {
     let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
     for _ in 0..6000 {
         let (_, detail) = call(&api.app, "GET", &uri, None).await;
@@ -5520,21 +5525,43 @@ async fn a_walk_whose_head_someone_else_changes_stops_as_stale() {
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(edited)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
-    let mut detail = Value::Null;
-    for _ in 0..6000 {
-        (_, detail) = call(&api.app, "GET", &uri, None).await;
-        if detail["walk"]["status"] == "stopped" {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    let detail = stopped(&api, &walk).await;
     assert_eq!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
     assert_eq!(
         trail(&detail),
         ["build", "stop"],
         "nothing applied on a changed head: {detail}"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_walk_whose_source_changes_stops_as_source_changed() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (status, walk) = call(
+        &api.app,
+        "POST",
+        "/walks",
+        Some(walk_request(&[&api.csv], "walk-source-changed")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
+    let hashes = walk["source_hashes"].as_array().unwrap();
+    assert_eq!(hashes.len(), 1, "{walk}");
+    assert!(hashes[0].as_str().unwrap().starts_with("sha256:"), "{walk}");
+    // Someone saves new rows over the file while the walk is going.
+    let mut edited = rakuten_like_listings();
+    edited.push_str("9999,new listing,,1,1,10\n");
+    std::fs::write(&api.csv, edited).unwrap();
+
+    let detail = stopped(&api, &walk).await;
+    assert_eq!(
+        detail["walk"]["stop"]["reason"], "source_changed",
+        "{detail}"
+    );
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("d.csv"), "{why}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5553,15 +5580,7 @@ async fn a_walk_that_cannot_take_its_next_step_stops_with_the_error() {
     // The source goes before the walk runs the flow, so its run cannot start.
     std::fs::remove_file(&api.csv).unwrap();
 
-    let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
-    let mut detail = Value::Null;
-    for _ in 0..6000 {
-        (_, detail) = call(&api.app, "GET", &uri, None).await;
-        if detail["walk"]["status"] == "stopped" {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    let detail = stopped(&api, &walk).await;
     assert_eq!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
     assert!(why.contains("could not take its next step"), "{why}");

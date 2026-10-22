@@ -99,3 +99,6 @@ Known gap: the looks cap and the stop for a comparison run still going have no A
 ## Arch doc edits
 - §8.3: the engine applies the review's actions in a loop; a person is asked only for Asks.
 - §21: the engine is the M4 core; hand-built flows are an add-on.
+
+## Amendments
+- 2026-10-23: **Frozen inputs are checked (slice 3).** A walk records each source's SHA-256 when it begins (`Walk.source_hashes`, in the order of `sources`; optional, so walks saved before still load and are not checked). Every round hashes the sources again before its review and once more before it acts: a change stops the walk as `source_changed`, naming the file and both hashes. A run is never judged in the round that made it, so a source written during a run is caught by the next round's check. A source that cannot be read, such as one removed, stops the walk as `error`. Hashing reads each file in chunks, once per check: bounded memory, and a cost that grows with the walk's rounds only.

@@ -1071,6 +1071,7 @@ class WalkStopReason(StrEnum):
     needs_person = "needs_person"
     limitation = "limitation"
     uncovered = "uncovered"
+    source_changed = "source_changed"
     run_failed = "run_failed"
     stale = "stale"
     budget_exhausted = "budget_exhausted"
@@ -2618,6 +2619,12 @@ class Walk(StrictModel):
     project_id: ProjectId
     question_version_id: QuestionVersionId
     sources: WalkSources
+    source_hashes: Annotated[
+        list[ContentHash] | None,
+        Field(
+            description="Each source's SHA-256 when the walk began, in the order of `sources`. Every round checks them: a source that changed stops the walk. Absent on walks made before they were recorded, and on one that stopped before building anything."
+        ),
+    ] = None
     max_actions: Annotated[int, Field(ge=0)]
     max_wall_seconds: Annotated[int, Field(ge=0)]
     status: WalkStatus

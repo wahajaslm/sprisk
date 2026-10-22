@@ -393,13 +393,21 @@ export type WalkSources = string[];
  */
 export type WalkStatus = "walking" | "stopped";
 /**
- * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.
+ * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkStopReason".
  */
 export type WalkStopReason =
-  "complete" | "needs_person" | "limitation" | "uncovered" | "run_failed" | "stale" | "budget_exhausted" | "error";
+  | "complete"
+  | "needs_person"
+  | "limitation"
+  | "uncovered"
+  | "source_changed"
+  | "run_failed"
+  | "stale"
+  | "budget_exhausted"
+  | "error";
 /**
  * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. stop: ended the walk.
  *
@@ -2563,6 +2571,10 @@ export interface Walk {
   project_id: ProjectId;
   question_version_id: QuestionVersionId;
   sources: WalkSources;
+  /**
+   * Each source's SHA-256 when the walk began, in the order of `sources`. Every round checks them: a source that changed stops the walk. Absent on walks made before they were recorded, and on one that stopped before building anything.
+   */
+  source_hashes?: ContentHash[];
   max_actions: number;
   max_wall_seconds: number;
   status: WalkStatus;

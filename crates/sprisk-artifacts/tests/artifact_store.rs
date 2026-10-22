@@ -111,3 +111,17 @@ fn content_hash_is_the_sha256_commit_expects() {
         "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     );
 }
+
+#[tokio::test]
+async fn a_file_hashes_as_its_bytes_do_and_a_missing_file_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("x.csv");
+    std::fs::write(&path, b"a,b\n1,2\n").unwrap();
+
+    assert_eq!(
+        sprisk_artifacts::file_hash(&path).await.unwrap(),
+        sprisk_artifacts::content_hash(b"a,b\n1,2\n")
+    );
+    let missing = sprisk_artifacts::file_hash(&dir.path().join("gone.csv")).await;
+    assert!(missing.unwrap_err().to_string().contains("gone.csv"));
+}

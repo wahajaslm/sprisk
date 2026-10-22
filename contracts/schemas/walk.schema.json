@@ -88,6 +88,11 @@
         "sources": {
           "$ref": "#/$defs/WalkSources"
         },
+        "source_hashes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ContentHash" },
+          "description": "Each source's SHA-256 when the walk began, in the order of `sources`. Every round checks them: a source that changed stops the walk. Absent on walks made before they were recorded, and on one that stopped before building anything."
+        },
         "max_actions": {
           "type": "integer",
           "minimum": 0
@@ -144,12 +149,13 @@
     },
     "WalkStopReason": {
       "type": "string",
-      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.",
+      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.",
       "enum": [
         "complete",
         "needs_person",
         "limitation",
         "uncovered",
+        "source_changed",
         "run_failed",
         "stale",
         "budget_exhausted",

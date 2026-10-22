@@ -66,6 +66,7 @@ pub(crate) async fn create_walk(
             ))?;
             let plan = compile(&first, &state.registry).map_err(ApiError::Compile)?;
             check_local_paths(&plan, &state.data_roots)?;
+            walk["source_hashes"] = json!(hash_sources(&sources).await?);
             walk["head_pipeline_version_id"] = json!(first.id);
             let reason = "Load, Split and a baseline model: the steps every flow has.";
             let made = json!({ "made_pipeline_version_id": first.id });
@@ -181,6 +182,10 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         return record_stop(state, walk, round, WalkStopReason::Stale, &detail).await;
     }
 
+    if let Some(changed) = changed_source(&walk).await? {
+        return record_stop(state, walk, round, WalkStopReason::SourceChanged, &changed).await;
+    }
+
     let head_run = head_run(state, &steps, &head).await?;
     let Json(review) = review_methodology(State(state.clone()), Path(head.to_string())).await?;
     let question = state
@@ -191,6 +196,10 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         sprisk_methodology::ResolveError::Rules(rules) => ApiError::Rules(rules),
         other => ApiError::Internal(other.to_string()),
     })?;
+    // Again before acting on the review: a source written while it ran is caught now.
+    if let Some(changed) = changed_source(&walk).await? {
+        return record_stop(state, walk, round, WalkStopReason::SourceChanged, &changed).await;
+    }
     match action {
         Action::Apply {
             item,
@@ -222,6 +231,50 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         }
         Action::Stop { reason, detail } => record_stop(state, walk, round, reason, &detail).await,
     }
+}
+
+/// Each source's SHA-256, in order, as the walk begins.
+async fn hash_sources(sources: &[String]) -> Result<Vec<String>, ApiError> {
+    let mut hashes = Vec::with_capacity(sources.len());
+    for source in sources {
+        let hash = sprisk_artifacts::file_hash(std::path::Path::new(source))
+            .await
+            .map_err(|e| ApiError::BadRequest {
+                code: "invalid_walk",
+                message: format!("source {source} cannot be read: {e}"),
+            })?;
+        hashes.push(hash);
+    }
+    Ok(hashes)
+}
+
+/// Why a source no longer holds what it held when the walk began, if one does not: the rules
+/// judged those rows, and a run of new ones would be judged by nothing (ADR-0060). A source
+/// that cannot be read is an error. A walk made before hashes were recorded has none to check.
+async fn changed_source(walk: &Walk) -> Result<Option<String>, ApiError> {
+    let hashes = &walk.source_hashes;
+    if !hashes.is_empty() && hashes.len() != walk.sources.len() {
+        return Err(ApiError::Internal(format!(
+            "walk {} has {} sources but {} hashes",
+            walk.id.as_str(),
+            walk.sources.len(),
+            hashes.len()
+        )));
+    }
+    for (source, began) in walk.sources.iter().zip(hashes) {
+        let source = source.to_string();
+        let now = sprisk_artifacts::file_hash(std::path::Path::new(&source))
+            .await
+            .map_err(|e| ApiError::Internal(format!("source {source}: {e}")))?;
+        if now != began.as_str() {
+            return Ok(Some(format!(
+                "Source {source} changed since the walk began: it held {}, now {now}. Walk \
+                 again to judge the new rows.",
+                began.as_str()
+            )));
+        }
+    }
+    Ok(None)
 }
 
 /// A rule's recommended alternative the walk applies, and the proposal it comes from.
