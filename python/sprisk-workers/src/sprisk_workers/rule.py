@@ -134,6 +134,15 @@ def profile_number(observation: RuleObservation, name: str) -> float | None:
     return value
 
 
+def required_number(observation: RuleObservation, name: str) -> float:
+    """A numeric measure every observation of the rule has, such as join.rows; its absence is a
+    broken observation, not zero."""
+    value = profile_number(observation, name)
+    if value is None:
+        raise RuleError(f"the observation gives no {name}")
+    return value
+
+
 def input_values(observation: RuleObservation, column: str, name: str) -> list[str]:
     """A list of dataset text measured on the rows the step reads, such as the values of a
     column that do not read as numbers; empty where the profile left it out."""

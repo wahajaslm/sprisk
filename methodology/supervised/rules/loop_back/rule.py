@@ -19,8 +19,8 @@ from sprisk_workers.rule import (
     needs_fact,
     not_applicable,
     profile_evidence,
-    profile_number,
     question_evidence,
+    required_number,
 )
 
 LABEL = {"balanced_accuracy": "balanced accuracy", "expected_cost": "expected cost", "rmse": "RMSE"}
@@ -34,9 +34,9 @@ LABELS = {
 
 def decide(observation: RuleObservation) -> RuleDecision:
     metric = _text(observation, "cv.metric", tuple(LABEL))
-    score = _number(observation, "cv.score")
-    baseline = _number(observation, "cv.baseline_score")
-    looks = int(_number(observation, "cv.looks"))
+    score = required_number(observation, "cv.score")
+    baseline = required_number(observation, "cv.baseline_score")
+    looks = int(required_number(observation, "cv.looks"))
     beats = _text(observation, "cv.beats_baseline", ("yes", "no"))
     selected = _text(observation, "cv.selected", ("yes", "no"))
     max_looks = int(observation.settings["max_looks"])
@@ -100,13 +100,6 @@ def _pick(
         applicable(id, why, {}) if id == chosen else not_applicable(id, why) for id in ALTERNATIVES
     ]
     return decision(observation, chosen, alternatives, evidence)
-
-
-def _number(observation: RuleObservation, name: str) -> float:
-    value = profile_number(observation, name)
-    if value is None:
-        raise RuleError(f"the cross-validation results give no {name}")
-    return value
 
 
 def _text(observation: RuleObservation, name: str, allowed: tuple[str, ...]) -> str:

@@ -10,15 +10,14 @@ and whether the other table was known at prediction time, are facts about the bu
 from typing import Any
 
 from sprisk_contracts import RuleDecision, RuleObservation
-from sprisk_workers.errors import RuleError
 from sprisk_workers.rule import (
     applicable,
     decision,
     needs_fact,
     not_applicable,
     profile_evidence,
-    profile_number,
     question_evidence,
+    required_number,
 )
 
 PREFIX, MATCHED, MOST = "join.key.", ".matched_rows", ".most_rows_per_key"
@@ -26,7 +25,7 @@ UNREAD = "A loaded table is read by no step."
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
-    unread = _number(observation, "join.unread_tables")
+    unread = int(required_number(observation, "join.unread_tables"))
     evidence = question_evidence(observation, {"question.time_column": "Time column"})
     evidence.append(profile_evidence("Loaded tables no step reads", str(unread)))
     if unread == 0:
@@ -37,7 +36,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
         why = f"{unread} loaded tables are read by no step: say which to join, on which column."
         return _ask(observation, why, evidence)
 
-    rows = _number(observation, "join.rows")
+    rows = int(required_number(observation, "join.rows"))
     keys = _keys(observation)
     evidence += [
         profile_evidence(
@@ -86,18 +85,11 @@ def _keys(observation: RuleObservation) -> dict[str, tuple[int, int]]:
     )
     return {
         c: (
-            _number(observation, f"{PREFIX}{c}{MATCHED}"),
-            _number(observation, f"{PREFIX}{c}{MOST}"),
+            int(required_number(observation, f"{PREFIX}{c}{MATCHED}")),
+            int(required_number(observation, f"{PREFIX}{c}{MOST}")),
         )
         for c in columns
     }
-
-
-def _number(observation: RuleObservation, name: str) -> int:
-    value = profile_number(observation, name)
-    if value is None:
-        raise RuleError(f"the join facts give no {name}")
-    return int(value)
 
 
 def _ask(observation: RuleObservation, why: str, evidence: list[dict[str, Any]]) -> RuleDecision:
