@@ -20,3 +20,8 @@ known-first-party = ["sprisk_*"]
 [[tool.mypy.overrides]]
 module = ["sklearn.*", "skops.*", "plotly.*", "pyarrow.*", "pandas.*", "scipy.*"]
 ignore_missing_imports = true
+
+# Generated enums with a member named `split` (a stage) shadow str.split; the values are right.
+[[tool.mypy.overrides]]
+module = ["sprisk_contracts.generated.models"]
+disable_error_code = ["assignment"]
