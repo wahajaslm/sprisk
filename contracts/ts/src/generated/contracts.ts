@@ -2000,6 +2000,7 @@ export interface QuestionVersion {
   unknowns: Unknown[];
   acceptance_criteria: Fact[];
   costs?: CostsFact;
+  interpretability?: InterpretabilityFact;
   created_at: Timestamp;
 }
 /**
@@ -2069,6 +2070,27 @@ export interface Costs {
    * Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing.
    */
   false_positive: number;
+}
+/**
+ * How far a person must follow each prediction, a hard constraint (ref-v3 0.4). high: only models a person can read, such as linear ones. Only a person can state it. Absent: not stated.
+ */
+export interface InterpretabilityFact {
+  value: "high" | "medium" | "low";
+  /**
+   * A constraint is never inferred or measured.
+   */
+  origin: "explicit" | "confirmed";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "InterpretabilityFact".
+ */
+export interface InterpretabilityFact1 {
+  value: "high" | "medium" | "low";
+  /**
+   * A constraint is never inferred or measured.
+   */
+  origin: "explicit" | "confirmed";
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

@@ -45,7 +45,20 @@
           "$ref": "#/$defs/CostsFact",
           "description": "What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same."
         },
+        "interpretability": {
+          "$ref": "#/$defs/InterpretabilityFact",
+          "description": "How far a person must follow each prediction, a hard constraint (ref-v3 0.4). high: only models a person can read, such as linear ones. Only a person can state it. Absent: not stated."
+        },
         "created_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "InterpretabilityFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "origin"],
+      "properties": {
+        "value": { "type": "string", "enum": ["high", "medium", "low"] },
+        "origin": { "type": "string", "enum": ["explicit", "confirmed"], "description": "A constraint is never inferred or measured." }
       }
     },
     "Origin": {

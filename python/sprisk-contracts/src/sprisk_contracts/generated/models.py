@@ -826,6 +826,25 @@ class PortRef(RootModel[str]):
     ]
 
 
+class Value(StrEnum):
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class Origin1(StrEnum):
+    explicit = "explicit"
+    confirmed = "confirmed"
+
+
+class InterpretabilityFact(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Value
+    origin: Annotated[Origin1, Field(description="A constraint is never inferred or measured.")]
+
+
 class Origin(StrEnum):
     explicit = "explicit"
     inferred = "inferred"
@@ -841,7 +860,7 @@ class Fact(StrictModel):
     origin: Origin
 
 
-class Origin1(StrEnum):
+class Origin2(StrEnum):
     explicit = "explicit"
     confirmed = "confirmed"
 
@@ -1861,7 +1880,7 @@ class CostsFact(StrictModel):
         extra="forbid",
     )
     value: Costs
-    origin: Annotated[Origin1, Field(description="Costs are never inferred or measured.")]
+    origin: Annotated[Origin2, Field(description="Costs are never inferred or measured.")]
 
 
 class TaskFact(StrictModel):
@@ -2424,6 +2443,12 @@ class QuestionVersion(StrictModel):
         CostsFact | None,
         Field(
             description="What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same."
+        ),
+    ] = None
+    interpretability: Annotated[
+        InterpretabilityFact | None,
+        Field(
+            description="How far a person must follow each prediction, a hard constraint (ref-v3 0.4). high: only models a person can read, such as linear ones. Only a person can state it. Absent: not stated."
         ),
     ] = None
     created_at: Timestamp
