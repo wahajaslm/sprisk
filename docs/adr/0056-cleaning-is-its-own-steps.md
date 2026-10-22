@@ -46,3 +46,6 @@ Arch doc sections: §8 (methodology), §9 (runs). Builds on ADR-0050 (preparatio
 - Python: `encode` learns categories on train only, gives unseen test categories zeros, and its plain code gives the same tables; a model refuses text and gaps with the step to add; models fit on prepared numbers predict as before on German credit.
 - Methodology: the encoding rule recommends one-hot for German credit; a study with Clean steps refits them per fold.
 - API: German credit built by the rules runs with Clean steps and a short model cell.
+
+## Amendments
+- 2026-10-22: **Key columns never reach a model.** A model with its features unset reads every column but its target and its `exclude`d columns. A run adds the key columns to `exclude`: the question's unit and time columns, and every step's group and time column. It does this for model steps and comparison candidates that list no features, from the stored version and question, so a rerun is the same. Rules measure the same columns. A model that lists its features reads only those.

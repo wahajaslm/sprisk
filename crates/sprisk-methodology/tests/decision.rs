@@ -9,7 +9,7 @@ use sprisk_contracts::{
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
     Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, flow_facts,
-    observation, preparation_comparison, profile_facts, proposal, train_rows_source,
+    key_columns, observation, preparation_comparison, profile_facts, proposal, train_rows_source,
     with_node_before, without_node,
 };
 use sprisk_registry::Registry;
@@ -1920,4 +1920,34 @@ fn a_decision_setting_a_param_its_action_does_not_declare_is_refused() {
             .contains("cost_optimal_threshold sets n_estimators, which its action does not name"),
         "{err}"
     );
+}
+
+/// The same cases the Supervised pack's Gate B check runs, so both agree on the key columns.
+#[test]
+fn key_columns_are_the_questions_unit_and_time_and_every_steps_group_and_time() {
+    let cases: Vec<Value> =
+        serde_json::from_str(include_str!("fixtures/key_columns.json")).unwrap();
+    for case in cases {
+        let mut asked = serde_json::to_value(question()).unwrap();
+        let fields = asked.as_object_mut().unwrap();
+        fields.remove("time_column");
+        for (name, value) in case["question"].as_object().unwrap() {
+            fields.insert(
+                name.clone(),
+                json!({ "value": value, "origin": "confirmed" }),
+            );
+        }
+        let asked: QuestionVersion = parse(&asked.to_string()).unwrap();
+        let mut flow = serde_json::to_value(pipeline()).unwrap();
+        flow["nodes"] = case["params"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, params)| json!({ "id": format!("s{i}"), "operator": "sprisk.validation.random_split@1.0.0", "params": params }))
+            .collect();
+        let flow: PipelineVersion = parse(&flow.to_string()).unwrap();
+        let keys: Vec<String> = key_columns(&asked, &flow).into_iter().collect();
+        assert_eq!(json!(keys), case["keys"], "{}", case["case"]);
+    }
 }

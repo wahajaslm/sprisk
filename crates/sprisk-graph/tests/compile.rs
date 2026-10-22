@@ -677,3 +677,54 @@ fn a_comparison_is_cached_by_its_preparation_steps_code_too() {
     let shift = json!([{ "operator": "sprisk.clean.shift@1.0.0", "params": { "by": 1.0 } }]);
     assert_ne!(digest(json!([])), digest(shift));
 }
+
+fn plugins() -> Registry {
+    Registry::load_dir(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins"))
+        .unwrap()
+}
+
+/// A model step that leaves its features unset, or a comparison candidate that does, never
+/// reads the key columns; one that lists its features reads only those.
+#[test]
+fn key_columns_are_left_out_of_every_model_that_reads_every_column() {
+    let flow = pipeline(
+        json!([
+            { "id": "load", "operator": "sprisk.io.file_source@1.0.0", "params": { "path": "/d.csv", "format": "csv" } },
+            { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": { "test_fraction": 0.2, "seed": 1 } },
+            { "id": "all", "operator": "sprisk.ml.linear_model@2.0.0",
+              "params": { "target": "y", "task": "classification", "exclude": ["note"] } },
+            { "id": "listed", "operator": "sprisk.ml.random_forest@2.0.0",
+              "params": { "target": "y", "task": "classification", "features": ["age"] } },
+            { "id": "cv", "operator": "sprisk.ml.cross_validate@4.0.0",
+              "params": { "candidate": "sprisk.ml.linear_model@2.0.0",
+                          "candidate_params": { "target": "y", "task": "classification" },
+                          "folds": 5, "repeats": 1, "seed": 0, "metric": "balanced_accuracy", "prepare": [] } }
+        ]),
+        json!([
+            { "from": "load.data", "to": "split.data" },
+            { "from": "split.train", "to": "all.train" },
+            { "from": "split.train", "to": "listed.train" },
+            { "from": "split.train", "to": "cv.train" }
+        ]),
+    );
+    let mut plan = compile(&flow, &plugins()).unwrap();
+    let keys = ["customer".to_owned(), "day".to_owned()]
+        .into_iter()
+        .collect();
+    sprisk_graph::leave_out_keys(&mut plan, &keys);
+    let params = |id: &str| {
+        plan.steps
+            .iter()
+            .find(|s| s.node_id == id)
+            .unwrap()
+            .params
+            .clone()
+    };
+    assert_eq!(params("all")["exclude"], json!(["customer", "day", "note"]));
+    assert!(params("listed").get("exclude").is_none());
+    assert_eq!(
+        params("cv")["candidate_params"]["exclude"],
+        json!(["customer", "day"])
+    );
+    assert!(params("split").get("exclude").is_none());
+}

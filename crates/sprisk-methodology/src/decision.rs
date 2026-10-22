@@ -241,6 +241,22 @@ pub fn profile_facts(profile: &DatasetProfile, columns: &[String]) -> Map<String
     facts
 }
 
+/// The columns that identify rows, groups or time: the question's unit and time columns, and
+/// every step's group and time column. They are never model inputs, even when a model step
+/// leaves its features unset.
+pub fn key_columns(question: &QuestionVersion, pipeline: &PipelineVersion) -> BTreeSet<String> {
+    let asked = [&question.entity_column, &question.time_column]
+        .into_iter()
+        .flatten()
+        .map(|fact| fact.value.to_string());
+    let named = pipeline.nodes.iter().flat_map(|node| {
+        ["group_column", "time_column"]
+            .into_iter()
+            .filter_map(|name| node.params.get(name)?.as_str().map(str::to_owned))
+    });
+    asked.chain(named).collect()
+}
+
 /// The steps and edges of `pipeline` without `node_id` (ADR-0043): each edge out of
 /// `node_id.P` is fed from whatever fed `node_id.P`, and edges into it are dropped. Refused
 /// when an output with consumers has no input of the same name to take its place.

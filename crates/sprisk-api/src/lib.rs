@@ -1143,7 +1143,7 @@ async fn propose(
     let rule_ref = rule_ref.as_str();
     let profile =
         if sprisk_methodology::facts::needs_train_rows(rule.reads.iter().map(|r| r.as_str())) {
-            train_profile_facts(state, &pipeline, node).await?
+            train_profile_facts(state, &pipeline, &question, node).await?
         } else {
             Default::default()
         };
@@ -1266,6 +1266,7 @@ async fn propose(
 async fn train_profile_facts(
     state: &AppState,
     pipeline: &PipelineVersion,
+    question: &QuestionVersion,
     node: &sprisk_contracts::Node,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
@@ -1296,12 +1297,20 @@ async fn train_profile_facts(
             ))
         })?;
     let profile = state.profiler.profile(&local_table(&artifact)?).await?;
+    // Unset: every column but the target and the key columns, as the model reads them.
+    let keys = sprisk_methodology::key_columns(question, pipeline);
+    let excluded: Vec<String> = node
+        .params
+        .get("exclude")
+        .and_then(|c| serde_json::from_value(c.clone()).ok())
+        .unwrap_or_default();
     let columns = named.unwrap_or_else(|| {
         profile
             .columns
             .iter()
             .map(|c| c.name.clone())
             .filter(|name| Some(name.as_str()) != target)
+            .filter(|name| !keys.contains(name) && !excluded.contains(name))
             .collect()
     });
     Ok(sprisk_methodology::profile_facts(&profile, &columns))
@@ -2198,9 +2207,8 @@ async fn start_run(
     pipeline: PipelineVersion,
     reuse: Option<RunId>,
 ) -> Result<Run, ApiError> {
-    let plan = compile(&pipeline, &state.registry).map_err(ApiError::Compile)?;
     // Checked again: the files or the configured roots may have changed since submit.
-    check_local_paths(&plan, &state.data_roots)?;
+    let plan = run_plan(state, &pipeline).await?;
     // An edit reuses the run on screen up to the edited step (ADR-0026); it must exist and
     // belong to the same project, or its results are not ours to reuse.
     if let Some(reuse) = &reuse {
@@ -2230,10 +2238,23 @@ async fn start_run(
     Ok(run)
 }
 
+/// The plan a run of `pipeline` executes: compiled, its local files checked, and the key
+/// columns of its question and splits left out of every model that reads every column but its
+/// target (ADR-0056). Derived from the stored version and question, so a rerun is the same.
+async fn run_plan(state: &AppState, pipeline: &PipelineVersion) -> Result<Plan, ApiError> {
+    let mut plan = compile(pipeline, &state.registry).map_err(ApiError::Compile)?;
+    check_local_paths(&plan, &state.data_roots)?;
+    if let Some(id) = &pipeline.question_version_id {
+        let question = state.store.get_question_version(id).await?;
+        let keys = sprisk_methodology::key_columns(&question, pipeline);
+        sprisk_graph::leave_out_keys(&mut plan, &keys);
+    }
+    Ok(plan)
+}
+
 /// A queued run of `pipeline`, checked and compiled but not yet stored.
 async fn queued_run(state: &AppState, pipeline: &PipelineVersion) -> Result<(Run, Plan), ApiError> {
-    let plan = compile(pipeline, &state.registry).map_err(ApiError::Compile)?;
-    check_local_paths(&plan, &state.data_roots)?;
+    let plan = run_plan(state, pipeline).await?;
     let doc = json!({
         "schema_version": "sprisk.run/v1",
         "id": format!("run_{}", ulid::Ulid::new()),

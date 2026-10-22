@@ -3,7 +3,7 @@
 //! Gate A of arch doc §8 (structural). It reports every problem it finds, not just the first,
 //! so a human or the AI planner can fix a pipeline in one pass.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -614,4 +614,35 @@ fn resolve_port<'a>(
         Some(p) => Lookup::Found(p),
         None => Lookup::MissingPort,
     }
+}
+
+/// Leaves `keys`, the columns that identify rows, groups or time, out of every model that
+/// reads every column but its target (ADR-0056): a model step with no `features`, and a
+/// comparison candidate with none. They join the step's own `exclude`. A model that lists its
+/// features reads only those, so it is left as it is.
+pub fn leave_out_keys(plan: &mut Plan, keys: &BTreeSet<String>) {
+    if keys.is_empty() {
+        return;
+    }
+    for step in &mut plan.steps {
+        if step.operator.model.is_some() {
+            exclude_keys(&mut step.params, keys);
+        }
+        if let Some(serde_json::Value::Object(candidate)) = step.params.get_mut("candidate_params")
+        {
+            exclude_keys(candidate, keys);
+        }
+    }
+}
+
+fn exclude_keys(params: &mut serde_json::Map<String, serde_json::Value>, keys: &BTreeSet<String>) {
+    if params.contains_key("features") {
+        return;
+    }
+    let mut excluded: BTreeSet<String> = params
+        .get("exclude")
+        .and_then(|e| serde_json::from_value(e.clone()).ok())
+        .unwrap_or_default();
+    excluded.extend(keys.iter().cloned());
+    params.insert("exclude".into(), serde_json::json!(excluded));
 }

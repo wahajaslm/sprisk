@@ -4323,3 +4323,93 @@ async fn german_credit_runs_as_stage_notebooks_with_one_chart_per_step() {
         "{code}"
     );
 }
+
+/// A model step with its features unset reads every column but the target and the key
+/// columns, so a rule never proposes encoding the question's unit or time column.
+#[tokio::test(flavor = "multi_thread")]
+async fn rules_never_see_the_questions_key_columns_as_features() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
+                "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+                "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut csv = String::from("order_id,order_date,city,age,returned_within_30d\n");
+    for i in 0..60 {
+        let city = ["paris", "lyon", "nice"][i % 3];
+        // Days as numbers: the time split orders rows by them.
+        // Five units, each with twelve consecutive rows: few enough values for one-hot.
+        csv.push_str(&format!(
+            "o{},{i},{city},{},{}\n",
+            i / 12,
+            20 + i,
+            u8::from(i % 2 == 0)
+        ));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    run_version(&api, BASE).await;
+
+    let uri =
+        format!("/pipeline_versions/{BASE}/methodology/proposals/model/features.encoding_strategy");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let one_hot = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "one_hot_encoding")
+        .unwrap();
+    assert_eq!(
+        one_hot["effect"]["params"]["columns"],
+        json!(["city"]),
+        "{one_hot}"
+    );
+}
+
+/// The same flow runs: the forest reads every column but the target and the key columns, so
+/// the text unit column order_id and the time column never reach it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_model_reading_every_column_leaves_out_the_key_columns_when_it_runs() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
+                "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+                "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut csv = String::from("order_id,order_date,age,returned_within_30d\n");
+    for i in 0..60 {
+        csv.push_str(&format!(
+            "o{},{i},{},{}\n",
+            i / 12,
+            20 + i,
+            u8::from(i % 2 == 0)
+        ));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, attempts) = run_version(&api, BASE).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+}
