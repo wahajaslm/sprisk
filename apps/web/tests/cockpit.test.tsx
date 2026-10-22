@@ -248,6 +248,17 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
+  it("sizes a compact card for the title and subject it shows (ADR-0055)", async () => {
+    const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const width = (title: string) => {
+      const titled = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "split" ? { ...n, title } : n)) };
+      return flowGraph(titled, byRef, new Map(), undefined, "compact", new Map(), new Map()).nodes.find((n) => n.id === "split")!.width!;
+    };
+    // The id "split" is short; a long kind of step still fits on its card.
+    expect(width("Stratified train/test split by class")).toBeGreaterThan(width("Split") + 200);
+  });
+
   it("links steps of one stage top to bottom, and stages side to side", async () => {
     const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
     const byRef = new Map(operators.map((o) => [o.id, o]));
