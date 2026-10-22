@@ -47,3 +47,20 @@ def test_a_number_column_is_refused() -> None:
 def test_a_column_missing_from_either_table_is_a_column_error() -> None:
     with pytest.raises(pl.exceptions.ColumnNotFoundError):
         group_rare(TRAIN, TEST.drop("purpose"), columns=["purpose"], min_share=0.2)
+
+
+def test_at_most_max_categories_come_out_counting_other() -> None:
+    # car 3, tv 2, boat 1: with room for two, only car is kept beside "other".
+    out = group_rare(TRAIN, TEST, columns=["purpose"], min_share=0.0, max_categories=2)
+    assert out["train"]["purpose"].to_list() == ["car", "other", "car", "other", "car", "other"]
+
+
+def test_equal_counts_are_kept_in_name_order_so_the_result_never_changes() -> None:
+    train = pl.DataFrame({"purpose": ["tv", "car", "boat", "van"]})
+    out = group_rare(train, train, columns=["purpose"], min_share=0.0, max_categories=3)
+    assert out["train"]["purpose"].to_list() == ["other", "car", "boat", "other"]
+
+
+def test_categories_that_fit_under_max_categories_are_all_kept() -> None:
+    out = group_rare(TRAIN, TEST, columns=["purpose"], min_share=0.0, max_categories=3)
+    assert out["train"]["purpose"].to_list() == TRAIN["purpose"].to_list()
