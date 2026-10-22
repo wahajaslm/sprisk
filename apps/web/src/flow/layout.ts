@@ -1,4 +1,4 @@
-import type { PipelineVersion } from "@sprisk/contracts";
+import type { Node, PipelineVersion } from "@sprisk/contracts";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { stepOf } from "./ports.ts";
 
@@ -31,21 +31,21 @@ const LAYERED = {
  * only; never saved with the flow. */
 export async function flowPositions(
   pipeline: PipelineVersion,
-  sizeOf: (nodeId: string) => Size,
+  sizeOf: (node: Node) => Size,
   groupOf: (nodeId: string) => string | undefined,
 ): Promise<{ nodes: Map<string, Point>; groups: Group[] }> {
   const links = pipeline.edges.map((e) => ({ from: stepOf(e.from), to: stepOf(e.to) }));
 
-  const members = new Map<string, string[]>();
+  const members = new Map<string, Node[]>();
   for (const n of pipeline.nodes) {
     const name = groupOf(n.id);
-    if (name !== undefined) members.set(name, [...(members.get(name) ?? []), n.id]);
+    if (name !== undefined) members.set(name, [...(members.get(name) ?? []), n]);
   }
 
   // Each stage first: its steps in one column. It then takes part in the canvas layout as one
   // box of that size.
   const inner = new Map(
-    [...members].map(([name, ids]) => [name, column(ids, links, sizeOf)] as const),
+    [...members].map(([name, steps]) => [name, column(steps, links, sizeOf)] as const),
   );
 
   const box = (id: string) => {
@@ -57,7 +57,7 @@ export async function flowPositions(
     id: "flow",
     layoutOptions: LAYERED,
     children: [
-      ...pipeline.nodes.filter((n) => groupOf(n.id) === undefined).map((n) => ({ id: n.id, ...sizeOf(n.id) })),
+      ...pipeline.nodes.filter((n) => groupOf(n.id) === undefined).map((n) => ({ id: n.id, ...sizeOf(n) })),
       ...[...inner].map(([name, g]) => ({
         id: `group:${name}`,
         width: Math.round(Math.max(g.width + STAGE_PAD_X * 2, MIN_STAGE_CARD_WIDTH)),
@@ -131,22 +131,27 @@ const STAGE_GAP = 28;
 
 /** A stage's steps in one column: each below the steps it reads, otherwise in flow order.
  * Compact and predictable, whatever the steps' size. */
-function column(ids: string[], links: { from: string; to: string }[], sizeOf: (nodeId: string) => Size) {
+function column(steps: Node[], links: { from: string; to: string }[], sizeOf: (node: Node) => Size) {
+  const ids = steps.map((s) => s.id);
   const inside = new Set(ids);
   const before = new Map(ids.map((id) => [id, new Set(links.filter((l) => l.to === id && inside.has(l.from)).map((l) => l.from))]));
-  const order: string[] = [];
-  while (order.length < ids.length) {
+  const placed = new Set<string>();
+  const order: Node[] = [];
+  for (;;) {
     // The first step (in flow order) whose readers-from are all placed; a cycle cannot happen
     // in a compiled flow, but fall back to flow order rather than loop.
-    const next = ids.find((id) => !order.includes(id) && [...(before.get(id) ?? [])].every((b) => order.includes(b))) ?? ids.find((id) => !order.includes(id))!;
+    const waiting = steps.filter((s) => !placed.has(s.id));
+    const next = waiting.find((s) => [...(before.get(s.id) ?? [])].every((b) => placed.has(b))) ?? waiting[0];
+    if (!next) break;
+    placed.add(next.id);
     order.push(next);
   }
   const at = new Map<string, Point>();
   let y = 0;
   let width = 0;
-  for (const id of order) {
-    const size = sizeOf(id);
-    at.set(id, { x: 0, y });
+  for (const step of order) {
+    const size = sizeOf(step);
+    at.set(step.id, { x: 0, y });
     y += size.height + STAGE_GAP;
     width = Math.max(width, size.width);
   }

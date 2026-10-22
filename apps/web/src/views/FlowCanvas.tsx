@@ -610,11 +610,10 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
   useEffect(() => {
     if (!pipeline) return;
     let live = true;
-    const nodeById = new Map(pipeline.nodes.map((n) => [n.id, n]));
     const groups = stageGroups(pipeline, operators);
     flowPositions(
       pipeline,
-      (id) => sizeOf(level, nodeById.get(id)!),
+      (node) => sizeOf(level, node),
       (id) => groups.get(id),
     ).then(
       ({ nodes: at, groups }) => live && setResult({ key, pipeline, at, groups }),
