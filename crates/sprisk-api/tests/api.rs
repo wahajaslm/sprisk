@@ -4384,7 +4384,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([3, 5]),
+        json!([3, 4, 6, 8]),
         "the split already matches, so the flow must run next: {review}"
     );
 }
