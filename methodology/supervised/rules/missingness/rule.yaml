@@ -2,7 +2,7 @@
 # Sprisk Methodology Rule: Missingness & Imputation Strategy
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.missingness@2.0.0
+id: methodology.supervised.missingness@3.0.0
 name: "Missing Data Treatment Strategy"
 stage: cleaning
 decides: cleaning.missingness_strategy
@@ -34,14 +34,14 @@ alternatives:
   - id: drop_rows
     label: Drop Rows With Missing Values
     description: Remove every row with a gap in these columns, in train and test alike.
-    rationale: A missing target must never be filled. Text columns cannot be imputed yet. Dropping rows
+    rationale: A missing target must never be filled, and a column neither number nor text cannot be. Dropping rows
       shrinks the data and can bias it if gaps are not random.
     action:
       type: replace_node
       operator: sprisk.clean.drop_missing@1.0.0
   - id: impute_median
     label: Median Imputation (train rows)
-    description: Fill each gap with the column's median over the train rows only.
+    description: Fill each gap in numbers with the column's median over the train rows only, and each gap in text with the category "missing".
     rationale: Skewed values pull the mean; the median is robust to them. The impute step cannot add a missing-indicator
       column yet, so an informative gap loses that signal.
     action:
@@ -49,7 +49,7 @@ alternatives:
       operator: sprisk.clean.impute@1.0.0
   - id: impute_mean
     label: Mean Imputation
-    description: Fill each gap with the column's mean over the train rows only.
+    description: Fill each gap in numbers with the column's mean over the train rows only, and each gap in text with the category "missing".
     rationale: For roughly symmetric values. It shrinks variance and weakens correlations, more so as the
       missing share grows.
     action:
@@ -59,7 +59,7 @@ alternatives:
     label: Mode / Frequent Category Imputation
     description: Fill missing categorical entries with the most frequent category or an explicit 'missing'
       sentinel category.
-    rationale: 'Not available: the impute step fills numbers only (ADR-0042).'
+    rationale: 'Not offered: a most-frequent fill gives a gap a value it never had. Text gaps get the category "missing" instead.'
     action:
       type: replace_node
   - id: drop_column
@@ -87,3 +87,5 @@ examples:
     picks: impute_mean
   - given: { question.target: churned, column.churned.data_type: Int64, column.churned.missing_share: 0.1 }
     picks: drop_rows
+  - given: { question.target: churned, column.description.data_type: String, column.description.missing_share: 0.35 }
+    picks: impute_mean

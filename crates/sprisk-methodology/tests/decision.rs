@@ -1390,7 +1390,7 @@ fn a_comparison_refuses_folds_it_cannot_make_faithfully() {
     }
 }
 
-const MISSINGNESS: &str = "methodology.supervised.missingness@2.0.0";
+const MISSINGNESS: &str = "methodology.supervised.missingness@3.0.0";
 
 /// A recommend proposal for `step` of `pipeline`, built by hand: `alternatives` as the API
 /// stores them, effects included.

@@ -3200,7 +3200,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/impute";
     let (status, proposal) = call(&api.app, "POST", uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["rule"], "methodology.supervised.missingness@2.0.0");
+    assert_eq!(proposal["rule"], "methodology.supervised.missingness@3.0.0");
     assert_eq!(
         proposal["recommended_alternative_id"], "impute_median",
         "{proposal}"

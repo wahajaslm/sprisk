@@ -54,10 +54,28 @@ def test_a_target_with_gaps_is_never_filled() -> None:
     assert alternative(d, "drop_rows")["params"] == {"columns": ["churned"]}
 
 
-def test_text_columns_cannot_be_imputed_yet() -> None:
-    d = run(column("city", "String", missing_share=0.1))
+def test_text_gaps_get_a_category_of_their_own_beside_the_number_fill() -> None:
+    d = run(
+        {
+            **column("description", "String", missing_share=0.35),
+            **column("income", missing_share=0.1, skewness=2.4),
+        }
+    )
+    assert d["recommended_alternative_id"] == "impute_median"
+    median = alternative(d, "impute_median")
+    assert median["params"] == {
+        "columns": ["description", "income"],
+        "method": "median",
+        "text_fill": "missing",
+    }
+    assert "description" in median["reason"]
+
+
+def test_gaps_in_a_column_neither_number_nor_text_drop_rows() -> None:
+    d = run(column("opened", "Date", missing_share=0.1))
     assert d["recommended_alternative_id"] == "drop_rows"
-    assert "numbers only" in alternative(d, "impute_median")["reason"]
+    assert "opened" in alternative(d, "impute_median")["reason"]
+    assert alternative(d, "impute_median")["applicability"] == "not_applicable"
 
 
 def test_a_mostly_empty_column_is_named_in_the_drop_column_reason() -> None:
@@ -94,10 +112,10 @@ def test_a_target_with_gaps_is_dropped_whatever_models_are_downstream() -> None:
     assert d["recommended_alternative_id"] == "drop_rows"
 
 
-def test_text_gaps_are_dropped_whatever_models_are_downstream() -> None:
+def test_text_gaps_are_filled_whatever_models_are_downstream() -> None:
     d = run(column("city", "String", missing_share=0.1), LINEAR)
-    assert d["recommended_alternative_id"] == "drop_rows"
-    assert alternative(d, "impute_mean")["applicability"] == "not_applicable"
+    assert d["recommended_alternative_id"] == "impute_mean"
+    assert alternative(d, "impute_mean")["params"]["text_fill"] == "missing"
 
 
 def test_a_zero_fill_asks_before_any_other_fill_replaces_it() -> None:
