@@ -14,6 +14,7 @@ mod split;
 pub use bounded::ProcessError;
 pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use notebook_code::CodeWriter;
+use profile::Profiles;
 pub use profile::{KeyMatcher, Profiler};
 pub use rules::RuleRunner;
 pub use split::{SplitError, Splitter};
@@ -1163,6 +1164,7 @@ async fn review_methodology(
 
     let mut items = Vec::with_capacity(planned.len());
     let mut open = Vec::with_capacity(planned.len());
+    let mut profiles = Profiles::default();
     for (at, planned_rule) in planned.iter().enumerate() {
         let outcome = if let Some(on) = review::waits_on(&pipeline, &planned, at, &open) {
             Outcome::Waiting { on: on.to_owned() }
@@ -1172,7 +1174,16 @@ async fn review_methodology(
         {
             Outcome::NotApplicable(why)
         } else if let Some(node) = planned_rule.subject {
-            match decide(&state, &pipeline, &question, node, planned_rule.rule).await {
+            match decide(
+                &state,
+                &pipeline,
+                &question,
+                node,
+                planned_rule.rule,
+                &mut profiles,
+            )
+            .await
+            {
                 Ok(proposal) => Outcome::Proposed {
                     decided: decided(node, planned_rule.rule),
                     proposal: Box::new(proposal),
@@ -1348,7 +1359,15 @@ async fn propose(
                 node.operator.as_str()
             ))
         })?;
-    let proposal = decide(state, &pipeline, &question, node, rule).await?;
+    let proposal = decide(
+        state,
+        &pipeline,
+        &question,
+        node,
+        rule,
+        &mut Profiles::default(),
+    )
+    .await?;
     state.store.insert_methodology_proposal(&proposal).await?;
     Ok((StatusCode::CREATED, Json(proposal)))
 }
@@ -1361,18 +1380,19 @@ async fn decide(
     question: &QuestionVersion,
     node: &sprisk_contracts::Node,
     rule: &MethodologyRule,
+    profiles: &mut Profiles,
 ) -> Result<DecisionProposal, ApiError> {
     let node_id = node.id.as_str();
     let rule_ref = rule.id.to_string();
     let rule_ref = rule_ref.as_str();
     let reads = || rule.reads.iter().map(|r| r.as_str());
     let mut profile = if sprisk_methodology::facts::needs_train_rows(reads()) {
-        train_profile_facts(state, pipeline, question, node).await?
+        train_profile_facts(state, pipeline, question, node, profiles).await?
     } else {
         Default::default()
     };
     if sprisk_methodology::facts::needs_input_rows(reads()) {
-        profile.extend(input_profile_facts(state, pipeline, node).await?);
+        profile.extend(input_profile_facts(state, pipeline, node, profiles).await?);
     }
     if sprisk_methodology::facts::needs_results(reads()) {
         profile.extend(result_profile_facts(state, pipeline, node).await?);
@@ -1497,6 +1517,7 @@ async fn train_profile_facts(
     pipeline: &PipelineVersion,
     question: &QuestionVersion,
     node: &sprisk_contracts::Node,
+    profiles: &mut Profiles,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
     let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
@@ -1525,7 +1546,13 @@ async fn train_profile_facts(
                 "run the flow first: this rule measures the train rows {source} gives step {step}"
             ))
         })?;
-    let profile = state.profiler.profile(&local_table(&artifact)?).await?;
+    let profile = profiles
+        .of(
+            &state.profiler,
+            artifact.content_hash.as_str(),
+            &local_table(&artifact)?,
+        )
+        .await?;
     // Unset: every column but the target and the key columns, as the model reads them.
     let keys = sprisk_methodology::key_columns(question, pipeline);
     let excluded: Vec<String> = match node.params.get("exclude") {
@@ -1663,11 +1690,18 @@ async fn input_profile_facts(
     state: &AppState,
     pipeline: &PipelineVersion,
     node: &sprisk_contracts::Node,
+    profiles: &mut Profiles,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
     let edge = sprisk_methodology::one_table_into(pipeline, step).map_err(not_applicable)?;
     let artifact = latest_table(state, pipeline, edge.from.step_and_port(), step).await?;
-    let profile = state.profiler.profile(&local_table(&artifact)?).await?;
+    let profile = profiles
+        .of(
+            &state.profiler,
+            artifact.content_hash.as_str(),
+            &local_table(&artifact)?,
+        )
+        .await?;
     Ok(sprisk_methodology::input_facts(&profile))
 }
 

@@ -1,5 +1,6 @@
 //! `GET /artifacts/{id}/profile` (ADR-0038): Python profiles one table for the Datasets view.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
@@ -29,6 +30,29 @@ impl Profiler {
     }
 }
 
+/// The profiles made for one request, by the table's content hash: a review asks many rules
+/// about the same table, and each would profile it again. Kept only for the request, so the
+/// API holds no state between requests.
+#[derive(Default)]
+pub struct Profiles(HashMap<String, DatasetProfile>);
+
+impl Profiles {
+    /// The profile of the table at `path`, whose content hash is `content`, made once.
+    pub async fn of(
+        &mut self,
+        profiler: &Profiler,
+        content: &str,
+        path: &Path,
+    ) -> Result<DatasetProfile, ProcessError> {
+        if let Some(made) = self.0.get(content) {
+            return Ok(made.clone());
+        }
+        let profile = profiler.profile(path).await?;
+        self.0.insert(content.to_owned(), profile.clone());
+        Ok(profile)
+    }
+}
+
 /// The command that matches the rows a step reads to another table, per shared column
 /// (`python -m sprisk_profile.keys`, ADR-0059), how long it may take, and how many at once.
 #[derive(Clone, Debug)]
@@ -54,6 +78,8 @@ impl KeyMatcher {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
 
     fn profiler(command: &[&str], timeout: Duration) -> Profiler {
@@ -88,6 +114,25 @@ mod tests {
             .profile(Path::new("t.parquet"))
             .await;
         assert!(matches!(wrong, Err(ProcessError::Failed(_))), "{wrong:?}");
+    }
+
+    #[tokio::test]
+    async fn one_request_profiles_each_table_once() {
+        let runs = tempfile::NamedTempFile::new().unwrap();
+        let profile = r#"{"total_rows":1,"total_columns":0,"profiled_rows":1,"band_rows":1,"columns":[],"correlation":{"columns":[],"pairs":[]}}"#;
+        let script = format!("echo run >> {}; echo '{profile}'", runs.path().display());
+        let counting = profiler(&["sh", "-c", &script], Duration::from_secs(5));
+        let mut profiles = Profiles::default();
+
+        for content in ["sha256:a", "sha256:a", "sha256:b"] {
+            profiles
+                .of(&counting, content, Path::new("t.parquet"))
+                .await
+                .unwrap();
+        }
+
+        let made = std::fs::read_to_string(runs.path()).unwrap();
+        assert_eq!(made.lines().count(), 2, "{made}");
     }
 
     #[tokio::test]
