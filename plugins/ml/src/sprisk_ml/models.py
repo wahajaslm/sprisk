@@ -225,12 +225,16 @@ def _model_code(
         return code + f"{model}.fit({fit})\n"
     # Costs name a class by its text, so "1" names the number 1, as the step resolves it.
     positive = f"{model}_positive"
+    missing = f"{costs['positive']!r} is not one of the classes of {target}"
     code += (
         "\n"
         f"# The class the costs name, as {train}[{target!r}] holds it.\n"
         f"{positive} = next(\n"
-        f"    c for c in {train}[{target!r}].unique() if str(c) == {costs['positive']!r}\n"
+        f"    (c for c in {train}[{target!r}].unique() if str(c) == {costs['positive']!r}),\n"
+        "    None,\n"
         ")\n"
+        f"if {positive} is None:\n"
+        f"    raise ValueError({missing!r})\n"
     )
     if not tuned:
         return code + _fixed_code(model, fit, costs, positive)

@@ -122,3 +122,13 @@ def test_costs_name_a_number_class_by_its_text_in_the_code_too(
     train, test = rows[::2], rows[1::2].drop("y")
     code = fitted_by_code(settings, train, write)
     assert np.array_equal(code.predict(test), step(train, **settings).predict(test))
+
+
+@pytest.mark.parametrize("write", [w for _, w in WRITERS])
+def test_costs_naming_no_class_fail_with_a_clear_error_in_the_code(
+    clf_numbers: pl.DataFrame, write: Any
+) -> None:
+    costs = {"positive": "absent", "false_negative": 5.0, "false_positive": 1.0}
+    settings = {"target": "y", "task": "classification", "costs": costs}
+    with pytest.raises(ValueError, match="'absent' is not one of the classes of y"):
+        fitted_by_code(settings, clf_numbers, write)
