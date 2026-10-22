@@ -672,6 +672,66 @@ async fn an_edited_cell_reads_back_as_settings_when_only_values_changed() {
     );
 }
 
+/// An edited cell is read only for a request the step allows: its settings and its ports
+/// are checked before any code is read.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_edited_cell_is_read_only_for_settings_and_ports_the_step_allows() {
+    let api = api().await;
+    let uri = "/operators/sprisk.ml.random_forest@2.0.0/notebook_settings";
+    let request = json!({
+        "settings": {"target": "y", "task": "classification"},
+        "inputs": {"train": "train"}, "outputs": {"model": "model"},
+        "code": "print('anything')\n",
+    });
+    let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
+    assert_eq!(body, json!({"reads_as": "code"}), "{status}");
+
+    let mut bad = request.clone();
+    bad["settings"]["n_estimators"] = json!(3);
+    let (status, body) = call(&api.app, "POST", uri, Some(bad)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_settings", "{body}");
+
+    for (side, ports) in [("inputs", json!({"rows": "train"})), ("outputs", json!({}))] {
+        let mut bad = request.clone();
+        bad[side] = ports;
+        let (status, body) = call(&api.app, "POST", uri, Some(bad)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{side}: {body}");
+        assert_eq!(body["errors"][0]["code"], "invalid_ports", "{side}: {body}");
+    }
+}
+
+/// A split's cell may change its values, never become code: the leakage checks find the test
+/// rows by the split step (ADR-0055).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_split_cell_may_change_values_but_never_become_code() {
+    let api = api().await;
+    let mut request = json!({
+        "settings": {"test_fraction": 0.25, "seed": 42},
+        "inputs": {"data": "df"}, "outputs": {"train": "train", "test": "test"},
+    });
+    let split = "/operators/sprisk.validation.random_split@1.0.0";
+    let (_, written) = call(
+        &api.app,
+        "POST",
+        &format!("{split}/notebook_code"),
+        Some(request.clone()),
+    )
+    .await;
+    let code = written["code"].as_str().unwrap().to_owned();
+    let uri = format!("{split}/notebook_settings");
+
+    request["code"] = json!(code.replace("seed=42", "seed=7"));
+    let (status, body) = call(&api.app, "POST", &uri, Some(request.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["settings"]["seed"], 7, "{body}");
+
+    request["code"] = json!(format!("{code}test = train\n"));
+    let (status, body) = call(&api.app, "POST", &uri, Some(request)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "split_is_not_code", "{body}");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_can_reuse_an_earlier_run_which_must_exist() {
     let api = api().await;

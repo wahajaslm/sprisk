@@ -861,7 +861,8 @@ fn check_settings(
 /// What an edited ready-made cell is (ADR-0055): the step with the settings it states, when
 /// only values changed, or code. Defaults show in the cell, so a person may edit them too; one
 /// left as it was is not written into the settings. Settings the step does not allow are
-/// refused with the rule they break.
+/// refused with the rule they break. A split never becomes code: the leakage checks find the
+/// test rows by the split step.
 async fn read_notebook_settings(
     State(state): State<AppState>,
     Path(operator_ref): Path<String>,
@@ -876,6 +877,8 @@ async fn read_notebook_settings(
         .notebook_code
         .as_ref()
         .ok_or_else(|| ApiError::NoPlainCode(operator_ref.clone()))?;
+    check_settings(operator, &request.settings)?;
+    check_ports(operator, request.inputs.keys(), request.outputs.keys())?;
     let defaults: serde_json::Map<String, serde_json::Value> = operator
         .params_schema
         .get("properties")
@@ -891,22 +894,45 @@ async fn read_notebook_settings(
         .read(&writer.to_string(), &request)
         .await
         .map_err(ApiError::Code)?;
-    let mut read =
-        serde_json::to_value(read).map_err(|error| ApiError::Internal(error.to_string()))?;
-    let Some(settings) = read.get_mut("settings").and_then(|s| s.as_object_mut()) else {
-        return Ok(Json(
-            parse(&read.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?,
-        ));
-    };
-    for (name, default) in &defaults {
-        if settings.get(name) == Some(default) {
-            settings.remove(name);
+    match read {
+        NotebookSettings::Settings(mut settings) => {
+            settings.retain(|name, value| defaults.get(name) != Some(value));
+            check_settings(operator, &settings)?;
+            Ok(Json(NotebookSettings::Settings(settings)))
         }
+        NotebookSettings::Code if is_split(&state.rules, &operator_ref) => {
+            Err(ApiError::BadRequest {
+                code: "split_is_not_code",
+                message: format!(
+                    "{operator_ref} is a split: its cell may change values, not become code"
+                ),
+            })
+        }
+        code => Ok(Json(code)),
     }
-    check_settings(operator, settings)?;
-    Ok(Json(
-        parse(&read.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?,
-    ))
+}
+
+/// Refuses port names other than the step's own, so the code is written for the step it is.
+fn check_ports<'a>(
+    operator: &Operator,
+    inputs: impl Iterator<Item = &'a String>,
+    outputs: impl Iterator<Item = &'a String>,
+) -> Result<(), ApiError> {
+    use std::collections::BTreeSet;
+    let want_in: BTreeSet<&str> = operator.inputs.iter().map(|p| p.name.as_str()).collect();
+    let want_out: BTreeSet<&str> = operator.outputs.iter().map(|p| p.name.as_str()).collect();
+    if inputs.map(String::as_str).collect::<BTreeSet<_>>() == want_in
+        && outputs.map(String::as_str).collect::<BTreeSet<_>>() == want_out
+    {
+        return Ok(());
+    }
+    Err(ApiError::BadRequest {
+        code: "invalid_ports",
+        message: format!(
+            "{} takes inputs {want_in:?} and outputs {want_out:?}",
+            operator.id.as_str()
+        ),
+    })
 }
 
 async fn list_pipeline_versions(
@@ -1048,9 +1074,9 @@ fn compared_decision(state: &AppState, node: &sprisk_contracts::Node) -> Option<
 }
 
 /// A step the split rule decides, whatever its version.
-fn is_split(rules: &sprisk_methodology::RuleCatalog, node: &sprisk_contracts::Node) -> bool {
+fn is_split(rules: &sprisk_methodology::RuleCatalog, operator: &str) -> bool {
     rules
-        .rules_for_operator(node.operator.as_str())
+        .rules_for_operator(operator)
         .any(|r| r.decides.as_str() == SPLIT_DECISION)
 }
 
@@ -1270,7 +1296,7 @@ async fn train_profile_facts(
     node: &sprisk_contracts::Node,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n);
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
     let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps)
         .map_err(|e| evidence_unavailable(e.to_string()))?;
@@ -1615,7 +1641,7 @@ async fn comparison_version(
         .store
         .get_question_version(&proposal.question_version_id)
         .await?;
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n);
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
     let keeps_train = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let operator_of = |operator: &str| state.registry.get(operator);
     let task = question.task.value;
