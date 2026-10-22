@@ -2505,6 +2505,7 @@ p { margin: 0; }
 .mth-flow-node.terminal .mth-flow-side { font-size: var(--text-sm); color: var(--muted); }
 .mth-flow-name { font-size: var(--text-sm); color: var(--soft); line-height: 17px; }
 .mth-flow-node.decision .mth-flow-name { font-weight: 600; }
+.mth-flow-looks { font-size: var(--text-xs); color: var(--muted); line-height: 15px; }
 .mth-flow-meta { font: var(--text-xs) var(--mono); color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mth-flow-status.proposal, .mth-flow-status.needs_fact, .mth-flow-status.reopen { color: var(--white); }
 .mth-flow-node[aria-pressed="true"] .mth-flow-name { color: var(--white); }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activation, isOpen, reviewByRule, ROUTE_LINE, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
+import { activation, isOpen, lookedAt, reviewByRule, ROUTE_LINE, routeReason, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r, rationale: "r" })) }) as never;
@@ -204,4 +204,22 @@ describe("activation conditions", () => {
     expect(activation(split)).toBe("on random split or drop missing steps");
     expect(activation({ applies_to: [] } as never)).toBeUndefined();
   });
+
+  it("says when a route is taken in the rule's own words, with its settings' values filled in", () => {
+    const worded = {
+      id: S("enc"),
+      stage: "features",
+      status: "active",
+      policy_thresholds: { high_cardinality_threshold: 15 },
+      alternatives: [{ id: "leave_out", label: "Leave out", rationale: "r", when: "more than {high_cardinality_threshold} categories", condition: "old note" }],
+      examples: [{ given: { "column.title.distinct": 8000 }, picks: "leave_out" }],
+    } as never;
+    expect(routeReason(worded, (worded as { alternatives: never[] }).alternatives[0]!, undefined)).toEqual({ kind: "when", text: "more than 15 categories" });
+  });
+
+  it("names what a rule looks at in plain words, from the facts it reads", () => {
+    const reads = { reads: ["question.target", "column.*.missing_share", "column.*.skewness", "flow.model_families", "rows"] } as never;
+    expect(lookedAt(reads)).toEqual(["the target", "each column's missing share", "each column's skewness", "model families", "the number of rows"]);
+  });
 });
+

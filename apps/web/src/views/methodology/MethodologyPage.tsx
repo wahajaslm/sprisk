@@ -8,7 +8,7 @@ import { useSelection } from "../../workbench/selection.ts";
 import { type Chapter, chapters, chapterState, ends } from "./flowGraph.ts";
 import { FlowMap } from "./FlowMap.tsx";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
-import { activation, givenText, isOpen, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
+import { activation, givenText, isOpen, lookedAt, reviewByRule, routeWhen, stageName, withSettings } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
@@ -130,7 +130,7 @@ function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: Me
     <section className="dsx-detail" aria-label={rule.name}>
       <header className="dsx-title">
         <div>
-          <h1>{rule.name}</h1>
+          <h1>{rule.question ?? rule.name}</h1>
           <p className="muted">
             {stageName(rule.stage)} · decides <code>{rule.decides}</code>
             {activation(rule) && ` · ${activation(rule)}`} · <span className="tech">{rule.id}</span>
@@ -169,6 +169,12 @@ function Overview({ rule, route }: { rule: MethodologyRule; route: string | unde
   const { provenance } = rule;
   return (
     <div className="mth-overview">
+      {lookedAt(rule).length > 0 && (
+        <section>
+          <h2 className="dsx-h">Looks at</h2>
+          <p>{lookedAt(rule).join(", ")}</p>
+        </section>
+      )}
       <section>
         <h2 className="dsx-h">Pitfall it prevents</h2>
         <p>{provenance.pitfall}</p>
@@ -265,7 +271,8 @@ function Overview({ rule, route }: { rule: MethodologyRule; route: string | unde
                   <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
                 </div>
                 <p>{a.description}</p>
-                {routeWhen(rule, a.id) && <p className="muted">When: {routeWhen(rule, a.id)}</p>}
+                {a.when && <p>When {withSettings(a.when, rule.policy_thresholds)}</p>}
+                {routeWhen(rule, a.id) && <p className="muted">{a.when ? "Tested example" : "When"}: {routeWhen(rule, a.id)}</p>}
                 <p className="muted">Why: {a.rationale}</p>
               </PickedItem>
             ))}
