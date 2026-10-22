@@ -6,8 +6,10 @@ RULE = "supervised/categorical_encoding"
 SETTINGS = {"high_cardinality_threshold": 15}
 
 
-def run(profile: dict[str, object]) -> dict[str, Any]:
-    return decide(RULE, profile={"rows": 750, **profile}, settings=SETTINGS)
+def run(
+    profile: dict[str, object], facts: dict[str, tuple[str, str]] | None = None
+) -> dict[str, Any]:
+    return decide(RULE, facts=facts, profile={"rows": 750, **profile}, settings=SETTINGS)
 
 
 def test_text_with_few_categories_is_one_hot_encoded_before_the_model() -> None:
@@ -35,7 +37,7 @@ def test_true_false_and_category_columns_are_encoded_too() -> None:
     assert alternative(d, "one_hot_encoding")["params"] == {"columns": ["owns_home", "tier"]}
 
 
-def test_text_with_many_categories_is_named_and_left_out() -> None:
+def test_text_with_many_categories_is_named_in_the_one_hot_reason() -> None:
     d = run(
         {**column("purpose", "String", distinct=10), **column("title", "String", distinct=8000)}
     )
@@ -44,13 +46,62 @@ def test_text_with_many_categories_is_named_and_left_out() -> None:
     assert "title (8000 categories)" in one_hot["reason"]
 
 
-def test_only_text_with_many_categories_gets_no_one_hot_and_says_what_is_missing() -> None:
+def test_text_with_many_categories_alone_is_left_out_of_the_model() -> None:
     d = run(column("title", "String", distinct=8000))
-    assert alternative(d, "one_hot_encoding")["applicability"] == "not_applicable"
-    none = alternative(d, "no_encoding")
-    assert none["applicability"] == "not_applicable"
-    assert "title" in none["reason"]
+    assert d["recommended_alternative_id"] == "leave_out_columns"
+    leave_out = alternative(d, "leave_out_columns")
+    assert leave_out["applicability"] == "applicable"
+    assert leave_out["params"] == {"exclude": ["title"]}
+    assert "title (8000 categories)" in leave_out["reason"]
+    assert alternative(d, "no_encoding")["applicability"] == "not_applicable"
+
+
+def test_leaving_out_keeps_the_columns_the_model_already_leaves_out() -> None:
+    d = run(column("title", "String", distinct=8000), {"step.exclude": ("user, id", "explicit")})
+    assert alternative(d, "leave_out_columns")["params"] == {"exclude": ["id", "title", "user"]}
+
+
+def test_a_model_that_lists_its_features_is_told_to_drop_the_column_from_them() -> None:
+    facts = {"step.features": ("age, title", "explicit")}
+    d = run({**column("title", "String", distinct=8000)}, facts)
+    leave_out = alternative(d, "leave_out_columns")
+    assert leave_out["applicability"] == "not_applicable"
+    assert "remove title from them" in leave_out["reason"]
+
+
+def test_few_and_many_categories_one_hot_the_few_and_can_leave_out_the_many() -> None:
+    d = run(
+        {**column("purpose", "String", distinct=10), **column("title", "String", distinct=8000)}
+    )
+    assert d["recommended_alternative_id"] == "one_hot_encoding"
+    assert alternative(d, "leave_out_columns")["params"] == {"exclude": ["title"]}
+
+
+def test_whole_numbers_with_few_values_may_be_categories_so_the_rule_asks() -> None:
+    d = run(
+        {
+            **column("installment_rate", "Int64", distinct=4),
+            **column("dependents", "Int64", distinct=2),
+            **column("age", "Int64", distinct=53),
+        }
+    )
+    codes = alternative(d, "one_hot_integer_codes")
+    assert codes["applicability"] == "needs_fact"
+    assert "installment_rate (4 values)" in codes["reason"]
+    assert "dependents" not in codes["reason"] and "age" not in codes["reason"]
     assert d["recommended_alternative_id"] == "no_encoding"
+
+
+def test_one_hot_before_least_squares_says_its_coefficients_must_not_be_read() -> None:
+    least_squares = {
+        "flow.model_families": ("linear", "measured"),
+        "step.task": ("regression", "explicit"),
+    }
+    d = run(column("purpose", "String", distinct=10), least_squares)
+    assert "coefficients" in alternative(d, "one_hot_encoding")["reason"]
+    logistic = {**least_squares, "step.task": ("classification", "explicit")}
+    d = run(column("purpose", "String", distinct=10), logistic)
+    assert "coefficients" not in alternative(d, "one_hot_encoding")["reason"]
 
 
 def test_numbers_alone_need_no_encoding() -> None:

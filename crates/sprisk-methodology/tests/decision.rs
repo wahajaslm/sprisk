@@ -575,7 +575,7 @@ fn removing_an_unknown_step_is_refused() {
     assert!(without_node(&before_forest(), "nope").is_err());
 }
 
-const ENCODING: &str = "methodology.supervised.categorical_encoding@2.0.0";
+const ENCODING: &str = "methodology.supervised.categorical_encoding@3.0.0";
 
 /// The encoding rule picking one-hot for `purpose`.
 fn one_hot_decision() -> RuleDecision {
@@ -618,6 +618,44 @@ fn an_applicable_alternative_that_adds_a_step_gets_an_insert_node_effect_before_
         one_hot_for_forest(&before_forest())["effect"],
         json!({ "kind": "insert_node", "node_id": "categories", "operator": "sprisk.clean.encode@1.0.0",
                 "params": { "columns": ["purpose"] }, "before": "rf" })
+    );
+}
+
+#[test]
+fn leaving_text_out_sets_the_models_exclude_and_keeps_its_other_settings() {
+    let mut pipeline = serde_json::to_value(before_forest()).unwrap();
+    pipeline["nodes"][2]["params"] = json!({ "target": "churned", "exclude": ["id"] });
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let decided: RuleDecision = parse(
+        &json!({
+            "schema_version": "sprisk.rule_decision/v1",
+            "rule": ENCODING,
+            "recommended_alternative_id": "leave_out_columns",
+            "alternatives": [{ "id": "leave_out_columns", "applicability": "applicable", "reason": "r",
+                               "params": { "exclude": ["id", "title"] } }],
+            "evidence": []
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let catalog = catalog();
+    let built = proposal(
+        catalog.rule(ENCODING).unwrap(),
+        &decided,
+        &question(),
+        &pipeline,
+        "rf",
+        &Default::default(),
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-22T10:00:00Z",
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(built).unwrap()["alternatives"][0]["effect"],
+        json!({ "kind": "replace_node", "node_id": "rf", "operator": "sprisk.ml.random_forest@2.0.0",
+                "params": { "target": "churned", "exclude": ["id", "title"] } })
     );
 }
 
@@ -780,12 +818,16 @@ fn an_added_step_needs_an_id_no_step_has() {
 #[test]
 fn the_steps_own_text_settings_are_facts_so_a_rule_knows_what_it_does_now() {
     let mut pipeline = serde_json::to_value(before_forest()).unwrap();
-    pipeline["nodes"][1]["params"] = json!({ "columns": ["age"], "method": "zero" });
+    pipeline["nodes"][1]["params"] =
+        json!({ "columns": ["income", "age"], "method": "zero", "seed": 3, "drop": [] });
     let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
     let facts = facts_of(&pipeline, "scale");
     assert_eq!(facts["step.method"]["value"], "zero");
     assert_eq!(facts["step.method"]["origin"], "explicit");
-    assert!(facts.get("step.columns").is_none());
+    // A list of text is one fact, sorted and joined by ", ", like the flow's facts.
+    assert_eq!(facts["step.columns"]["value"], "age, income");
+    assert!(facts.get("step.seed").is_none());
+    assert!(facts.get("step.drop").is_none());
 }
 
 #[test]

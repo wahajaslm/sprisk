@@ -2786,7 +2786,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     assert_eq!(status, StatusCode::CREATED, "{first}");
     assert_eq!(
         first["rule"],
-        "methodology.supervised.categorical_encoding@2.0.0"
+        "methodology.supervised.categorical_encoding@3.0.0"
     );
 }
 

@@ -80,7 +80,7 @@ fn question_fact(question: &Value, path: &str) -> Option<Value> {
 /// - `flow.models_hidden`: whether `all`, `some` or `none` of the models are hidden;
 /// - `flow.other_readers`: the analysis or code steps downstream, which read the columns,
 ///   sorted and joined by `, `. Removing the step would change what they see;
-/// - `step.<name>`: each text setting of the step itself, as set, so a rule knows what it
+/// - `step.<name>`: each text or list-of-text setting of the step itself, as set, so a rule knows what it
 ///   does now.
 ///
 /// Read from the graph, so `measured`. Left out when no model is downstream, so a rule never
@@ -110,7 +110,7 @@ pub fn flow_facts<'a>(
         .find(|n| n.id.as_str() == node_id)
         .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
     for (name, value) in step.params.iter() {
-        if let Some(text) = value.as_str().filter(|t| !t.is_empty()) {
+        if let Some(text) = setting_text(value).filter(|t| !t.is_empty()) {
             facts.insert(
                 format!("step.{name}"),
                 json!({ "value": text, "origin": "explicit" }),
@@ -162,6 +162,21 @@ pub fn flow_facts<'a>(
     }
     facts.insert("flow.models_hidden".into(), measured(share(hidden)));
     Ok(facts)
+}
+
+/// A setting as a fact's text: text as it is, a list of text sorted and joined by `, `, like
+/// the flow's facts. None for anything else.
+fn setting_text(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_owned());
+    }
+    let mut items: Vec<&str> = value
+        .as_array()?
+        .iter()
+        .map(Value::as_str)
+        .collect::<Option<_>>()?;
+    items.sort_unstable();
+    Some(items.join(", "))
 }
 
 struct Downstream<'a> {

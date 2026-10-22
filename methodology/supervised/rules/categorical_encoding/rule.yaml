@@ -2,13 +2,13 @@
 # Sprisk Methodology Rule: Categorical Encoding Strategy
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.categorical_encoding@2.0.0
+id: methodology.supervised.categorical_encoding@3.0.0
 name: "Categorical Encoding Strategy"
 stage: features
 decides: features.encoding_strategy
 status: active
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
-reads: [column.*.data_type, column.*.distinct]
+reads: [step.exclude, step.features, step.task, flow.model_families, column.*.data_type, column.*.distinct]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -40,12 +40,28 @@ alternatives:
       placement: before
       operator: sprisk.clean.encode@1.0.0
       node_id: categories
+  - id: leave_out_columns
+    label: "Leave Out of the Model"
+    description: "The model leaves these text columns out, beside the columns it already leaves out."
+    rationale: "Too many categories for one 0/1 column each, and no step turns them into numbers yet. A model that lists its features must have them removed from that list instead."
+    action:
+      type: update_estimator_params
+      params: { exclude: "{decision}" }
   - id: no_encoding
     label: "No Encoding"
     description: "Leave the columns as they are."
     rationale: "Only when every column the model reads is already a number: a model fits only the model and refuses categories (ADR-0056)."
     action:
       type: pass_through
+  - id: one_hot_integer_codes
+    label: "One-Hot Encoding of Integer Codes"
+    description: "One 0/1 column per value of a whole-number column whose values name categories, not amounts."
+    rationale: "Whole numbers with a few values (a rate of 1 to 4) may be codes. The data cannot say which, so the rule asks."
+    action:
+      type: insert_step
+      placement: before
+      operator: sprisk.clean.encode@1.0.0
+      node_id: codes
   - id: target_encoding_oof
     label: "Out-of-Fold Target Encoding with Bayesian Smoothing"
     description: "Encode categories as regularized posterior target expectations using inner cross-validation."
@@ -76,3 +92,5 @@ examples:
     picks: one_hot_encoding
   - given: { column.age.data_type: Int64, column.age.distinct: 53 }
     picks: no_encoding
+  - given: { column.title.data_type: String, column.title.distinct: 8000 }
+    picks: leave_out_columns
