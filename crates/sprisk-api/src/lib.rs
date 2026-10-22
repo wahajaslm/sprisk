@@ -833,12 +833,29 @@ async fn write_notebook_code(
         .notebook_code
         .as_ref()
         .ok_or_else(|| ApiError::NoPlainCode(operator_ref.clone()))?;
+    check_settings(operator, &request.settings)?;
     let code = state
         .code_writer
         .write(&writer.to_string(), &request)
         .await
         .map_err(ApiError::Code)?;
     Ok(Json(code))
+}
+
+/// Refuses settings `operator` does not allow, naming the rules they break.
+fn check_settings(
+    operator: &Operator,
+    settings: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), ApiError> {
+    let errors =
+        sprisk_graph::validate_against(operator, &json!(settings)).map_err(ApiError::Internal)?;
+    if errors.is_empty() {
+        return Ok(());
+    }
+    Err(ApiError::BadRequest {
+        code: "invalid_settings",
+        message: errors.join("; "),
+    })
 }
 
 /// What an edited ready-made cell is (ADR-0055): the step with the settings it states, when
@@ -886,14 +903,7 @@ async fn read_notebook_settings(
             settings.remove(name);
         }
     }
-    let errors =
-        sprisk_graph::validate_against(operator, &json!(settings)).map_err(ApiError::Internal)?;
-    if !errors.is_empty() {
-        return Err(ApiError::BadRequest {
-            code: "invalid_settings",
-            message: errors.join("; "),
-        });
-    }
+    check_settings(operator, settings)?;
     Ok(Json(
         parse(&read.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?,
     ))

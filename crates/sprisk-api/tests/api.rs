@@ -590,6 +590,20 @@ async fn a_step_is_written_as_plain_python_with_its_settings_and_names() {
     assert!(code.contains("train_test_split("), "{code}");
     assert!(code.contains("stratify=load_data['credit_risk']"), "{code}");
 
+    // Settings the step does not allow are refused, naming the rule they break.
+    let mut bad = request.clone();
+    bad["settings"]["test_fraction"] = json!(2.0);
+    let (status, body) = call(&api.app, "POST", uri, Some(bad)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_settings", "{body}");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("2.0"),
+        "{body}"
+    );
+
     // A step with no plain code yet, and a step that does not exist.
     let uri = "/operators/sprisk.clean.impute@1.0.0/notebook_code";
     let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
