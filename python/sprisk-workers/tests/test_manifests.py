@@ -132,6 +132,7 @@ params_schema:
   properties:
     target: {{ type: string }}
     features: {{ type: array }}
+    exclude: {{ type: array }}
     task: {{ type: string }}
     costs: {{ type: object }}
 effects: pure

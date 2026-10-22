@@ -15,6 +15,7 @@ import networkx as nx
 from sprisk_contracts import MethodologyCheck, PipelineVersion
 from sprisk_contracts.generated.models import Node, Verdict
 from sprisk_supervised.split_leakage import (
+    CODE_OPERATOR,
     FITTING_TRANSFORMS,
     HOLDOUT_PORTS,
     TRAIN_PORT,
@@ -23,7 +24,6 @@ from sprisk_supervised.split_leakage import (
 )
 
 CHECK = "supervised.code_leakage@1.0.0"
-CODE_OPERATOR = "sprisk.code.python"
 
 # scikit-learn classes that learn statistics from the rows they are fit on.
 FITTING_TRANSFORMERS = frozenset(

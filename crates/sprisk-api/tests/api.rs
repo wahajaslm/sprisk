@@ -599,6 +599,20 @@ async fn a_step_is_written_as_plain_python_with_its_settings_and_names() {
     assert!(code.contains("train_test_split("), "{code}");
     assert!(code.contains("stratify=load_data['credit_risk']"), "{code}");
 
+    // Settings the step does not allow are refused, naming the rule they break.
+    let mut bad = request.clone();
+    bad["settings"]["test_fraction"] = json!(2.0);
+    let (status, body) = call(&api.app, "POST", uri, Some(bad)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_settings", "{body}");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("2.0"),
+        "{body}"
+    );
+
     // A step with no plain code yet, and a step that does not exist.
     let uri = "/operators/sprisk.clean.impute@1.0.0/notebook_code";
     let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
@@ -665,6 +679,66 @@ async fn an_edited_cell_reads_back_as_settings_when_only_values_changed() {
             .contains("10"),
         "{body}"
     );
+}
+
+/// An edited cell is read only for a request the step allows: its settings and its ports
+/// are checked before any code is read.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_edited_cell_is_read_only_for_settings_and_ports_the_step_allows() {
+    let api = api().await;
+    let uri = "/operators/sprisk.ml.random_forest@2.0.0/notebook_settings";
+    let request = json!({
+        "settings": {"target": "y", "task": "classification"},
+        "inputs": {"train": "train"}, "outputs": {"model": "model"},
+        "code": "print('anything')\n",
+    });
+    let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
+    assert_eq!(body, json!({"reads_as": "code"}), "{status}");
+
+    let mut bad = request.clone();
+    bad["settings"]["n_estimators"] = json!(3);
+    let (status, body) = call(&api.app, "POST", uri, Some(bad)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_settings", "{body}");
+
+    for (side, ports) in [("inputs", json!({"rows": "train"})), ("outputs", json!({}))] {
+        let mut bad = request.clone();
+        bad[side] = ports;
+        let (status, body) = call(&api.app, "POST", uri, Some(bad)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{side}: {body}");
+        assert_eq!(body["errors"][0]["code"], "invalid_ports", "{side}: {body}");
+    }
+}
+
+/// A split's cell may change its values, never become code: the leakage checks find the test
+/// rows by the split step (ADR-0055).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_split_cell_may_change_values_but_never_become_code() {
+    let api = api().await;
+    let mut request = json!({
+        "settings": {"test_fraction": 0.25, "seed": 42},
+        "inputs": {"data": "df"}, "outputs": {"train": "train", "test": "test"},
+    });
+    let split = "/operators/sprisk.validation.random_split@1.0.0";
+    let (_, written) = call(
+        &api.app,
+        "POST",
+        &format!("{split}/notebook_code"),
+        Some(request.clone()),
+    )
+    .await;
+    let code = written["code"].as_str().unwrap().to_owned();
+    let uri = format!("{split}/notebook_settings");
+
+    request["code"] = json!(code.replace("seed=42", "seed=7"));
+    let (status, body) = call(&api.app, "POST", &uri, Some(request.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["settings"]["seed"], 7, "{body}");
+
+    request["code"] = json!(format!("{code}test = train\n"));
+    let (status, body) = call(&api.app, "POST", &uri, Some(request)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "split_is_not_code", "{body}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2004,7 +2078,7 @@ async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     assert_eq!(
         proposal["rule"],
-        "methodology.supervised.feature_scaling@3.0.0"
+        "methodology.supervised.feature_scaling@4.0.0"
     );
     assert_eq!(proposal["recommended_alternative_id"], "robust_scaling");
     let robust = proposal["alternatives"]
@@ -3339,7 +3413,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/impute";
     let (status, proposal) = call(&api.app, "POST", uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["rule"], "methodology.supervised.missingness@2.0.0");
+    assert_eq!(proposal["rule"], "methodology.supervised.missingness@3.0.0");
     assert_eq!(
         proposal["recommended_alternative_id"], "impute_median",
         "{proposal}"
@@ -4607,10 +4681,11 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("cleaning.missingness_strategy", "no_subject"),
         ("cleaning.outlier_strategy", "no_subject"),
         // The data rules may change the rows the model is fit on, so its rules wait for them.
-        ("features.encoding_strategy", "waiting"),
         ("features.date_parts", "waiting"),
         ("features.scaling_strategy", "no_subject"),
+        // Rare categories are grouped before the text is encoded.
         ("features.rare_categories", "waiting"),
+        ("features.encoding_strategy", "waiting"),
         ("features.skew_transform", "no_subject"),
         ("modeling.interpretability_requirement", "settled"),
         ("modeling.estimator_selection", "waiting"),
@@ -5574,4 +5649,163 @@ async fn a_walk_where_no_model_beats_the_baseline_stops_and_says_so() {
         "no model is chosen: {detail}"
     );
     assert_eq!(detail["walk"]["stop"]["reason"], "limitation", "{detail}");
+}
+
+/// A model step with its features unset reads every column but the target and the key
+/// columns, so a rule never proposes encoding the question's unit or time column.
+#[tokio::test(flavor = "multi_thread")]
+async fn rules_never_see_the_questions_key_columns_as_features() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
+                "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+                "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut csv = String::from("order_id,order_date,city,age,returned_within_30d\n");
+    for i in 0..60 {
+        let city = ["paris", "lyon", "nice"][i % 3];
+        // Days as numbers: the time split orders rows by them.
+        // Five units, each with twelve consecutive rows: few enough values for one-hot.
+        csv.push_str(&format!(
+            "o{},{i},{city},{},{}\n",
+            i / 12,
+            20 + i,
+            u8::from(i % 2 == 0)
+        ));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    run_version(&api, BASE).await;
+
+    let uri =
+        format!("/pipeline_versions/{BASE}/methodology/proposals/model/features.encoding_strategy");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let one_hot = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "one_hot_encoding")
+        .unwrap();
+    assert_eq!(
+        one_hot["effect"]["params"]["columns"],
+        json!(["city"]),
+        "{one_hot}"
+    );
+}
+
+/// The same flow runs: the forest reads every column but the target and the key columns, so
+/// the text unit column order_id and the time column never reach it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_model_reading_every_column_leaves_out_the_key_columns_when_it_runs() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
+                "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+                "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut csv = String::from("order_id,order_date,age,returned_within_30d\n");
+    for i in 0..60 {
+        csv.push_str(&format!(
+            "o{},{i},{},{}\n",
+            i / 12,
+            20 + i,
+            u8::from(i % 2 == 0)
+        ));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, attempts) = run_version(&api, BASE).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+}
+
+/// Logistic regression is penalised, so the scaling rule adds a Scale step before a linear
+/// model for classes that has none, and the flow runs with it (ADR-0057).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_logistic_regression_gets_a_scale_step_before_it() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
+                "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
+        json!({ "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+                "params":{"target":"returned_within_30d","task":"classification"} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut csv = String::from("order_id,order_date,age,income,returned_within_30d\n");
+    for i in 0..60 {
+        csv.push_str(&format!(
+            "o{},{i},{},{},{}\n",
+            i / 12,
+            20 + i,
+            1000 * (i % 7),
+            u8::from(i % 2 == 0)
+        ));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    run_version(&api, BASE).await;
+
+    let uri =
+        format!("/pipeline_versions/{BASE}/methodology/proposals/model/features.scaling_strategy");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let id = proposal["recommended_alternative_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(id.starts_with("insert_"), "{proposal}");
+    let chosen = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == id.as_str())
+        .unwrap();
+    assert_eq!(chosen["effect"]["kind"], "insert_node", "{chosen}");
+    assert_eq!(chosen["effect"]["before"], "model", "{chosen}");
+    assert_eq!(
+        chosen["effect"]["params"]["columns"],
+        json!(["age", "income"])
+    );
+
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({ "alternative_id": id, "idempotency_key": "scale-before-logistic-1" });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let version = applied["pipeline"]["id"].as_str().unwrap().to_owned();
+    let (run, attempts) = run_version(&api, &version).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }

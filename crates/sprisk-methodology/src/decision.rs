@@ -15,6 +15,9 @@ use sprisk_contracts::{
 };
 
 use crate::compare::edge;
+
+/// The scale step's operator, without version.
+const SCALE: &str = "sprisk.clean.scale@";
 use crate::{ResolveError, facts};
 
 /// The rule's observation of this question, of the flow around the step (`flow_facts`)
@@ -94,7 +97,7 @@ fn criteria(criteria: &[Value]) -> Option<Value> {
 /// - `flow.models_hidden`: whether `all`, `some` or `none` of the models are hidden;
 /// - `flow.other_readers`: the analysis or code steps downstream, which read the columns,
 ///   sorted and joined by `, `. Removing the step would change what they see;
-/// - `step.<name>`: each text setting of the step itself, as set, so a rule knows what it
+/// - `step.<name>`: each text or list-of-text setting of the step itself, as set, so a rule knows what it
 ///   does now.
 ///
 /// Read from the graph, so `measured`. Left out when no model is downstream, so a rule never
@@ -105,6 +108,12 @@ pub fn flow_facts<'a>(
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
     keeps: impl Fn(&Node) -> bool,
 ) -> Result<Map<String, Value>, ResolveError> {
+    let is_model = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == node_id)
+        .and_then(|n| operator_of(n.operator.as_str()))
+        .is_some_and(|o| o.model.is_some());
     let Downstream {
         seen,
         hidden,
@@ -118,12 +127,31 @@ pub fn flow_facts<'a>(
         .find(|n| n.id.as_str() == node_id)
         .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
     for (name, value) in step.params.iter() {
-        if let Some(text) = value.as_str().filter(|t| !t.is_empty()) {
+        if let Some(text) = setting_text(value).filter(|t| !t.is_empty()) {
             facts.insert(
                 format!("step.{name}"),
                 json!({ "value": text, "origin": "explicit" }),
             );
         }
+    }
+    // A model step: which of its inputs Scale steps before it cover, for the rule that adds a
+    // scale step for the others.
+    if is_model {
+        let upstream = crate::compare::upstream(pipeline, node_id);
+        let scaled: BTreeSet<&str> = pipeline
+            .nodes
+            .iter()
+            .filter(|n| n.id.as_str() != node_id && upstream.contains(n.id.as_str()))
+            .filter(|n| n.operator.as_str().starts_with(SCALE))
+            .filter_map(|n| n.params.get("columns")?.as_array())
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        let scaled = scaled.into_iter().collect::<Vec<_>>().join(", ");
+        facts.insert(
+            "flow.scaled_columns".into(),
+            measured(if scaled.is_empty() { "none" } else { &scaled }),
+        );
     }
     if !readers.is_empty() {
         let readers: Vec<String> = readers.into_iter().collect();
@@ -154,6 +182,21 @@ pub fn flow_facts<'a>(
     }
     facts.insert("flow.models_hidden".into(), measured(share(hidden)));
     Ok(facts)
+}
+
+/// A setting as a fact's text: text as it is, a list of text sorted and joined by `, `, like
+/// the flow's facts. None for anything else.
+fn setting_text(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_owned());
+    }
+    let mut items: Vec<&str> = value
+        .as_array()?
+        .iter()
+        .map(Value::as_str)
+        .collect::<Option<_>>()?;
+    items.sort_unstable();
+    Some(items.join(", "))
 }
 
 struct Downstream<'a> {
@@ -308,6 +351,22 @@ pub fn target_facts(profile: &DatasetProfile, target: &str) -> Map<String, Value
         facts.insert("target.rarest_share".into(), json!(share));
     }
     facts
+}
+
+/// The columns that identify rows, groups or time: the question's unit and time columns, and
+/// every step's group and time column. They are never model inputs, even when a model step
+/// leaves its features unset.
+pub fn key_columns(question: &QuestionVersion, pipeline: &PipelineVersion) -> BTreeSet<String> {
+    let asked = [&question.entity_column, &question.time_column]
+        .into_iter()
+        .flatten()
+        .map(|fact| fact.value.to_string());
+    let named = pipeline.nodes.iter().flat_map(|node| {
+        ["group_column", "time_column"]
+            .into_iter()
+            .filter_map(|name| node.params.get(name)?.as_str().map(str::to_owned))
+    });
+    asked.chain(named).collect()
 }
 
 /// The steps and edges of `pipeline` without `node_id` (ADR-0043): each edge out of
@@ -653,18 +712,23 @@ pub fn proposal(
                     built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": node.operator, "params": params });
                 }
             } else if declared.action.type_ == RuleActionType::InsertStep {
-                // Only an insert before the rule's step is wired (ADR-0057).
-                let before = declared
-                    .action
-                    .placement
-                    .as_ref()
-                    .is_some_and(|p| p.as_str() == "before");
-                if let (true, Some(params), Some(operator), Some(wanted)) = (
-                    before,
-                    &decided.params,
-                    &declared.action.operator,
-                    &declared.action.node_id,
-                ) {
+                if applicable {
+                    // Only an insert before the rule's step is wired (ADR-0057).
+                    let before = declared
+                        .action
+                        .placement
+                        .as_ref()
+                        .is_some_and(|p| p.as_str() == "before");
+                    let (true, Some(params), Some(operator), Some(wanted)) = (
+                        before,
+                        &decided.params,
+                        &declared.action.operator,
+                        &declared.action.node_id,
+                    ) else {
+                        return Err(ResolveError::NotInsertable(format!(
+                            "{id} needs placement before, an operator, a node_id and params"
+                        )));
+                    };
                     let step = free_id(pipeline, wanted.as_str());
                     built["effect"] = json!({ "kind": "insert_node", "node_id": step, "operator": operator,
                                               "params": params, "before": node_id });

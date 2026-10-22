@@ -11,9 +11,9 @@ use sprisk_contracts::{
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
     Comparison, RuleCatalog, Scoring, Stamp, candidate_facts, candidates, comparison, facts,
-    flow_facts, input_facts, join_facts, observation, preparation_comparison, profile_facts,
-    proposal, result_facts, target_facts, train_rows_source, unread_sources, with_node_before,
-    without_node,
+    flow_facts, input_facts, join_facts, key_columns, observation, preparation_comparison,
+    profile_facts, proposal, result_facts, target_facts, train_rows_source, unread_sources,
+    with_node_before, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -627,7 +627,9 @@ fn a_model_reached_both_directly_and_through_a_code_step_counts_once_as_hidden()
 #[test]
 fn a_model_step_does_not_count_itself() {
     let pipeline = flow(&[("km", "clustering.kmeans")], &[]);
-    assert!(facts_of(&pipeline, "km").is_empty());
+    let facts = facts_of(&pipeline, "km");
+    assert!(facts.get("flow.model_families").is_none(), "{facts:?}");
+    assert!(facts.get("flow.models_hidden").is_none(), "{facts:?}");
 }
 
 fn with_criteria(criteria: Value) -> QuestionVersion {
@@ -689,7 +691,7 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
     assert_eq!(observed["facts"]["question.target"]["value"], "churned");
 }
 
-const SCALING: &str = "methodology.supervised.feature_scaling@3.0.0";
+const SCALING: &str = "methodology.supervised.feature_scaling@4.0.0";
 
 fn scaling_decision(applicability: &str) -> RuleDecision {
     parse(
@@ -788,11 +790,11 @@ fn removing_an_unknown_step_is_refused() {
     assert!(without_node(&before_forest(), "nope").is_err());
 }
 
-const ENCODING: &str = "methodology.supervised.categorical_encoding@2.0.0";
+const ENCODING: &str = "methodology.supervised.categorical_encoding@3.0.0";
 
-/// The encoding rule's one-hot pick for the forest of `pipeline`, as a proposal's alternative.
-fn one_hot_for_forest(pipeline: &PipelineVersion) -> Value {
-    let decided: RuleDecision = parse(
+/// The encoding rule picking one-hot for `purpose`.
+fn one_hot_decision() -> RuleDecision {
+    parse(
         &json!({
             "schema_version": "sprisk.rule_decision/v1",
             "rule": ENCODING,
@@ -803,11 +805,15 @@ fn one_hot_for_forest(pipeline: &PipelineVersion) -> Value {
         })
         .to_string(),
     )
-    .unwrap();
+    .unwrap()
+}
+
+/// The encoding rule's one-hot pick for the forest of `pipeline`, as a proposal's alternative.
+fn one_hot_for_forest(pipeline: &PipelineVersion) -> Value {
     let catalog = catalog();
     let built = proposal(
         catalog.rule(ENCODING).unwrap(),
-        &decided,
+        &one_hot_decision(),
         &question(),
         pipeline,
         "rf",
@@ -828,6 +834,84 @@ fn an_applicable_alternative_that_adds_a_step_gets_an_insert_node_effect_before_
         json!({ "kind": "insert_node", "node_id": "categories", "operator": "sprisk.clean.encode@1.0.0",
                 "params": { "columns": ["purpose"] }, "before": "rf" })
     );
+}
+
+#[test]
+fn leaving_text_out_sets_the_models_exclude_and_keeps_its_other_settings() {
+    let mut pipeline = serde_json::to_value(before_forest()).unwrap();
+    pipeline["nodes"][2]["params"] = json!({ "target": "churned", "exclude": ["id"] });
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let decided: RuleDecision = parse(
+        &json!({
+            "schema_version": "sprisk.rule_decision/v1",
+            "rule": ENCODING,
+            "recommended_alternative_id": "leave_out_columns",
+            "alternatives": [{ "id": "leave_out_columns", "applicability": "applicable", "reason": "r",
+                               "params": { "exclude": ["id", "title"] } }],
+            "evidence": []
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let catalog = catalog();
+    let built = proposal(
+        catalog.rule(ENCODING).unwrap(),
+        &decided,
+        &question(),
+        &pipeline,
+        "rf",
+        &[],
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-22T10:00:00Z",
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(built).unwrap()["alternatives"][0]["effect"],
+        json!({ "kind": "replace_node", "node_id": "rf", "operator": "sprisk.ml.random_forest@2.0.0",
+                "params": { "target": "churned", "exclude": ["id", "title"] } })
+    );
+}
+
+#[test]
+fn an_insert_step_with_no_place_or_id_for_the_step_is_refused_not_ignored() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology/supervised/rules");
+    for (drop, kept) in [
+        ("      node_id: categories\n", "node_id"),
+        ("      placement: before\n", "placement"),
+    ] {
+        let packs = tempfile::tempdir().unwrap();
+        let rule = packs.path().join("supervised/rules/categorical_encoding");
+        std::fs::create_dir_all(&rule).unwrap();
+        let manifest =
+            std::fs::read_to_string(root.join("categorical_encoding/rule.yaml")).unwrap();
+        assert!(manifest.contains(drop), "{drop}");
+        std::fs::write(rule.join("rule.yaml"), manifest.replacen(drop, "", 1)).unwrap();
+        std::fs::copy(
+            root.join("categorical_encoding/rule.py"),
+            rule.join("rule.py"),
+        )
+        .unwrap();
+        let catalog = RuleCatalog::load_dir(packs.path()).unwrap();
+        let err = proposal(
+            catalog.rule(ENCODING).unwrap(),
+            &one_hot_decision(),
+            &question(),
+            &before_forest(),
+            "rf",
+            &[],
+            Stamp {
+                id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+                created_at: "2026-10-22T10:00:00Z",
+            },
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("one_hot_encoding"),
+            "{kept}: {err}"
+        );
+    }
 }
 
 #[test]
@@ -1012,12 +1096,16 @@ fn an_added_step_needs_an_id_no_step_has() {
 #[test]
 fn the_steps_own_text_settings_are_facts_so_a_rule_knows_what_it_does_now() {
     let mut pipeline = serde_json::to_value(before_forest()).unwrap();
-    pipeline["nodes"][1]["params"] = json!({ "columns": ["age"], "method": "zero" });
+    pipeline["nodes"][1]["params"] =
+        json!({ "columns": ["income", "age"], "method": "zero", "seed": 3, "drop": [] });
     let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
     let facts = facts_of(&pipeline, "scale");
     assert_eq!(facts["step.method"]["value"], "zero");
     assert_eq!(facts["step.method"]["origin"], "explicit");
-    assert!(facts.get("step.columns").is_none());
+    // A list of text is one fact, sorted and joined by ", ", like the flow's facts.
+    assert_eq!(facts["step.columns"]["value"], "age, income");
+    assert!(facts.get("step.seed").is_none());
+    assert!(facts.get("step.drop").is_none());
 }
 
 #[test]
@@ -1073,20 +1161,19 @@ fn every_flow_fact_in_the_catalog_is_one_rust_sends() {
         ],
         &[("scale.train", "rf.train"), ("scale.train", "summary.data")],
     );
-    let sent: Vec<String> = facts_of(&pipeline, "scale")
-        .keys()
+    // flow.scaled_columns is sent for a model step only.
+    let sent: std::collections::BTreeSet<String> = ["scale", "rf"]
+        .iter()
+        .flat_map(|step| facts_of(&pipeline, step).into_iter().map(|(k, _)| k))
         .filter(|k| k.starts_with("flow."))
-        .cloned()
         .collect();
     let mut catalog: Vec<&str> = sprisk_methodology::facts::FACTS
         .iter()
         .copied()
         .filter(|f| f.starts_with("flow."))
         .collect();
-    let mut sent = sent;
-    sent.sort();
     catalog.sort();
-    assert_eq!(sent, catalog);
+    assert_eq!(sent.iter().collect::<Vec<_>>(), catalog);
 }
 
 /// The same cases run in the Python rule harness, so both match `reads` alike.
@@ -1659,7 +1746,7 @@ fn a_comparison_refuses_folds_it_cannot_make_faithfully() {
     }
 }
 
-const MISSINGNESS: &str = "methodology.supervised.missingness@2.0.0";
+const MISSINGNESS: &str = "methodology.supervised.missingness@3.0.0";
 
 /// A recommend proposal for `step` of `pipeline`, built by hand: `alternatives` as the API
 /// stores them, effects included.
@@ -2390,4 +2477,76 @@ fn join_facts_count_the_unread_tables_and_give_each_shared_key_s_matches() {
         assert!(facts::is_known(name), "{name}");
         assert!(facts::needs_join([name].into_iter()), "{name}");
     }
+}
+
+/// The same cases the Supervised pack's Gate B check runs, so both agree on the key columns.
+#[test]
+fn key_columns_are_the_questions_unit_and_time_and_every_steps_group_and_time() {
+    let cases: Vec<Value> =
+        serde_json::from_str(include_str!("fixtures/key_columns.json")).unwrap();
+    for case in cases {
+        let mut asked = serde_json::to_value(question()).unwrap();
+        let fields = asked.as_object_mut().unwrap();
+        fields.remove("time_column");
+        for (name, value) in case["question"].as_object().unwrap() {
+            fields.insert(
+                name.clone(),
+                json!({ "value": value, "origin": "confirmed" }),
+            );
+        }
+        let asked: QuestionVersion = parse(&asked.to_string()).unwrap();
+        let mut flow = serde_json::to_value(pipeline()).unwrap();
+        flow["nodes"] = case["params"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, params)| json!({ "id": format!("s{i}"), "operator": "sprisk.validation.random_split@1.0.0", "params": params }))
+            .collect();
+        let flow: PipelineVersion = parse(&flow.to_string()).unwrap();
+        let keys: Vec<String> = key_columns(&asked, &flow).into_iter().collect();
+        assert_eq!(json!(keys), case["keys"], "{}", case["case"]);
+    }
+}
+
+#[test]
+fn a_model_step_knows_which_columns_scale_steps_before_it_cover() {
+    let mut scaled = serde_json::to_value(flow(
+        &[
+            ("split", "validation.random_split"),
+            ("scale", "clean.scale"),
+            ("scale_more", "clean.scale"),
+            ("lin", "ml.linear_model@2.0.0"),
+        ],
+        &[
+            ("split.train", "scale.train"),
+            ("scale.train", "scale_more.train"),
+            ("scale_more.train", "lin.train"),
+        ],
+    ))
+    .unwrap();
+    scaled["nodes"][1]["params"] = json!({ "columns": ["income", "age"], "method": "z_score" });
+    scaled["nodes"][2]["params"] = json!({ "columns": ["age", "debt"], "method": "robust" });
+    let scaled: PipelineVersion = parse(&scaled.to_string()).unwrap();
+    assert_eq!(
+        facts_of(&scaled, "lin")["flow.scaled_columns"]["value"],
+        "age, debt, income"
+    );
+    // Only a model step gets the fact.
+    assert!(
+        facts_of(&scaled, "scale")
+            .get("flow.scaled_columns")
+            .is_none()
+    );
+    let plain = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("lin", "ml.linear_model@2.0.0"),
+        ],
+        &[("split.train", "lin.train")],
+    );
+    assert_eq!(
+        facts_of(&plain, "lin")["flow.scaled_columns"]["value"],
+        "none"
+    );
 }

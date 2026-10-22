@@ -480,10 +480,11 @@ const edgeTypes = { flow: FlowEdge };
 const LABEL_MAX = 300;
 
 /** A compact node is the circle plus its label, no wider; Detail cards have one size. The label
- * width is estimated from its length (12.5px name, 11px role) and wraps past LABEL_MAX. */
-function sizeOf(level: DetailLevel, id: string, role: string) {
+ * width is estimated from its length (12.5px title, 11px subject) and wraps past LABEL_MAX. */
+function sizeOf(level: DetailLevel, node: PipelineVersion["nodes"][number]) {
   if (level !== "compact") return NODE_SIZE[level];
-  const label = Math.min(LABEL_MAX, Math.ceil(Math.max(id.length * 10.5, role.length * 9.2)));
+  const { title, subject } = stepLabel(node);
+  const label = Math.min(LABEL_MAX, Math.ceil(Math.max(title.length * 10.5, subject.length * 9.2)));
   return { width: Math.round(44 + 14 + label + 8), height: Math.round(NODE_SIZE.compact.height) };
 }
 
@@ -541,7 +542,7 @@ export function flowGraph(
     const box = boxes.get(groupOf.get(id) ?? "");
     const point = at.get(id) ?? { x: 0, y: 0 };
     const op = operators.get(node.operator);
-    const { width, height } = sizeOf(level, id, op ? roleOf(op) : "Step");
+    const { width, height } = sizeOf(level, node);
     return {
       id,
       type: "step",
@@ -609,14 +610,10 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
   useEffect(() => {
     if (!pipeline) return;
     let live = true;
-    const roleById = new Map(pipeline.nodes.map((n) => [n.id, operators.get(n.operator)]));
     const groups = stageGroups(pipeline, operators);
     flowPositions(
       pipeline,
-      (id) => {
-        const op = roleById.get(id);
-        return sizeOf(level, id, op ? roleOf(op) : "Step");
-      },
+      (node) => sizeOf(level, node),
       (id) => groups.get(id),
     ).then(
       ({ nodes: at, groups }) => live && setResult({ key, pipeline, at, groups }),

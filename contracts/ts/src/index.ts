@@ -28,8 +28,6 @@ export interface Entities {
   CodeInterface: C.CodeInterface;
   CodeSplitRequest: C.CodeSplitRequest;
   CodeSplit: C.CodeSplit;
-  CellStepsRequest: C.CellStepsRequest;
-  CellSteps: C.CellSteps;
   NotebookCodeRequest: C.NotebookCodeRequest;
   NotebookSettings: C.NotebookSettings;
   NotebookSettingsRequest: C.NotebookSettingsRequest;

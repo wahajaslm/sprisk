@@ -397,3 +397,29 @@ def test_every_core_step_that_fits_on_train_is_a_fitting_transform() -> None:
     }
     assert fitting, "no core step fits on train"
     assert fitting <= FITTING_TRANSFORMS, sorted(fitting - FITTING_TRANSFORMS)
+
+
+def test_a_model_scored_on_the_rows_it_learnt_from_without_any_split_fails() -> None:
+    p = pipeline(
+        {"load": SOURCE, "model": LINEAR, "eval": EVAL},
+        [("load.data", "model.train"), ("model.model", "eval.model"), ("load.data", "eval.test")],
+    )
+    result = check(p)
+    assert result.verdict == Verdict.fail
+    assert result.rationale.startswith("model is scored on the rows it learns from (load)")
+    assert [n.root for n in result.cited_nodes] == ["eval", "load", "model"]
+
+
+def test_without_a_split_step_a_code_step_may_split_so_it_is_not_assessed() -> None:
+    p = pipeline(
+        {"load": SOURCE, "cut": "sprisk.code.python@1.2.0", "model": LINEAR, "eval": EVAL},
+        [
+            ("load.data", "cut.data"),
+            ("cut.data", "model.train"),
+            ("model.model", "eval.model"),
+            ("cut.data", "eval.test"),
+        ],
+    )
+    result = check(p)
+    assert result.verdict == Verdict.not_assessed
+    assert result.rationale.startswith("No split step")

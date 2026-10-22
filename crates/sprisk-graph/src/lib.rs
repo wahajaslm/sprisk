@@ -3,7 +3,7 @@
 //! Gate A of arch doc §8 (structural). It reports every problem it finds, not just the first,
 //! so a human or the AI planner can fix a pipeline in one pass.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
@@ -638,4 +638,45 @@ fn resolve_port<'a>(
         Some(kind) => Lookup::Found(kind),
         None => Lookup::MissingPort,
     }
+}
+
+/// Leaves `keys`, the columns that identify rows, groups or time, out of every model that
+/// reads every column but its target (ADR-0056): a model step with no `features`, and a
+/// comparison candidate with none. They join the step's own `exclude`. A model that lists its
+/// features reads only those, so it is left as it is.
+pub fn leave_out_keys(plan: &mut Plan, keys: &BTreeSet<String>) -> Result<(), CompileError> {
+    if keys.is_empty() {
+        return Ok(());
+    }
+    for step in &mut plan.steps {
+        let invalid = |reason: String| CompileError::InvalidParams {
+            node: step.node_id.clone(),
+            reason,
+        };
+        if step.operator.model.is_some() {
+            exclude_keys(&mut step.params, keys).map_err(invalid)?;
+        }
+        if let Some(serde_json::Value::Object(candidate)) = step.params.get_mut("candidate_params")
+        {
+            exclude_keys(candidate, keys).map_err(invalid)?;
+        }
+    }
+    Ok(())
+}
+
+fn exclude_keys(
+    params: &mut serde_json::Map<String, serde_json::Value>,
+    keys: &BTreeSet<String>,
+) -> Result<(), String> {
+    if params.contains_key("features") {
+        return Ok(());
+    }
+    let mut excluded: BTreeSet<String> = match params.get("exclude") {
+        None => BTreeSet::new(),
+        Some(given) => serde_json::from_value(given.clone())
+            .map_err(|error| format!("exclude is not a list of column names: {error}"))?,
+    };
+    excluded.extend(keys.iter().cloned());
+    params.insert("exclude".into(), serde_json::json!(excluded));
+    Ok(())
 }

@@ -1,0 +1,11 @@
+[
+  { "case": "the question's unit and time columns",
+    "question": { "entity_column": "customer_id", "time_column": "signup_date" },
+    "params": [], "keys": ["customer_id", "signup_date"] },
+  { "case": "a split's group and time columns",
+    "question": {},
+    "params": [{ "group_column": "store" }, { "time_column": "day", "test_fraction": 0.2 }],
+    "keys": ["day", "store"] },
+  { "case": "nothing names a key",
+    "question": {}, "params": [{ "stratify": "y" }], "keys": [] }
+]

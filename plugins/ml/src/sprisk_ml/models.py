@@ -20,10 +20,11 @@ def dummy_baseline(
     task: str,
     features: list[str] | None = None,
     costs: dict[str, Any] | None = None,
+    exclude: list[str] | None = None,
 ) -> Any:
     """Always predicts the most frequent class, or the mean. Any real model should beat it.
     With `costs`, the class whose prediction for every row costs least."""
-    return fit(dummy_baseline_estimator(task), train, target, features, costs)
+    return fit(dummy_baseline_estimator(task), train, target, features, costs, exclude=exclude)
 
 
 def dummy_baseline_estimator(task: str) -> BaseEstimator:
@@ -38,10 +39,11 @@ def linear_model(
     task: str,
     features: list[str] | None = None,
     costs: dict[str, Any] | None = None,
+    exclude: list[str] | None = None,
 ) -> Any:
     """Logistic regression for classes, linear regression for numbers. With `costs`, it
     predicts a class by the threshold that costs least on its training rows."""
-    return fit(linear_model_estimator(task), train, target, features, costs)
+    return fit(linear_model_estimator(task), train, target, features, costs, exclude=exclude)
 
 
 def linear_model_estimator(task: str) -> BaseEstimator:
@@ -60,11 +62,12 @@ def random_forest(
     min_samples_leaf: int = 1,
     max_features: float | None = None,
     costs: dict[str, Any] | None = None,
+    exclude: list[str] | None = None,
 ) -> Any:
     """A forest of decision trees; captures interactions a linear model misses. With `costs`,
     it predicts a class by the threshold that costs least on its training rows."""
     model = random_forest_estimator(task, n_estimators, seed, min_samples_leaf, max_features)
-    return fit(model, train, target, features, costs, seed)
+    return fit(model, train, target, features, costs, seed, exclude)
 
 
 def random_forest_estimator(
@@ -90,6 +93,7 @@ def fit(
     features: list[str] | None,
     costs: dict[str, Any] | None = None,
     seed: int = 0,
+    exclude: list[str] | None = None,
 ) -> Any:
     """`model` fit on the train rows. With `costs` (ADR-0053), it first tunes its threshold
     for least cost on its own training rows."""
@@ -97,7 +101,7 @@ def fit(
         raise ValueError(f"target {target!r} is listed as a feature")
     if train[target].null_count():
         raise ValueError(f"{target} has {train[target].null_count()} missing values in train")
-    x, y = model_input(train.drop(target), features), train[target].to_numpy()
+    x, y = model_input(train.drop(target), features, exclude), train[target].to_numpy()
     if not costs:
         return model.fit(x, y)
     by_class = resolved(costs, y, target)
@@ -107,10 +111,16 @@ def fit(
     return fitted
 
 
-def model_input(rows: pl.DataFrame, features: list[str] | None) -> pl.DataFrame:
-    """The columns a model fits on: `features`, or every column of `rows`. They must be
-    numbers with no gaps (ADR-0056); anything else is refused, naming the step to add."""
-    x = rows if features is None else rows.select(features)
+def model_input(
+    rows: pl.DataFrame, features: list[str] | None, exclude: list[str] | None = None
+) -> pl.DataFrame:
+    """The columns a model fits on: `features`, or every column of `rows` but the `exclude`d
+    ones, the columns that identify rows, groups or time. They must be numbers with no gaps
+    (ADR-0056); anything else is refused, naming the step to add."""
+    left_out = exclude or []
+    if features is not None and (both := [c for c in features if c in left_out]):
+        raise ValueError(f"{', '.join(both)} is excluded, so it cannot be a feature")
+    x = rows.drop(left_out, strict=False) if features is None else rows.select(features)
     categories = [c for c, kind in x.schema.items() if kind in CATEGORIES]
     if categories:
         raise ValueError(f"{_not_numbers(categories)}: add an Encode step before the model")
@@ -201,23 +211,37 @@ def _model_code(
     tuned: bool,
 ) -> str:
     """A model step as plain Python: `estimator` (its import and its expression) fit on the
-    train rows' features, or every column but the target. With costs, the cut-off is tuned
-    (`tuned`) or fixed by the costs alone. Helper names start with the model's own name, so
-    they never replace a person's names."""
+    train rows' features, or every column but the target and the excluded ones. With costs,
+    the cut-off is tuned (`tuned`) or fixed by the costs alone. Helper names start with the
+    model's own name, so they never replace a person's names."""
     train, model, target = inputs["train"], outputs["model"], settings["target"]
     features = settings.get("features")
-    rows = f"{train}.drop({target!r})" if features is None else f"{train}.select({features!r})"
+    left_out = [target, *settings.get("exclude", [])]
+    rows = f"{train}.drop({left_out!r})" if features is None else f"{train}.select({features!r})"
     fit = f"{rows}, {train}[{target!r}]"
     code = f"{estimator[0]}\n\n{model} = {estimator[1]}\n"
     costs = settings.get("costs") if settings["task"] == "classification" else None
     if not costs:
         return code + f"{model}.fit({fit})\n"
+    # Costs name a class by its text, so "1" names the number 1, as the step resolves it.
+    positive = f"{model}_positive"
+    missing = f"{costs['positive']!r} is not one of the classes of {target}"
+    code += (
+        "\n"
+        f"# The class the costs name, as {train}[{target!r}] holds it.\n"
+        f"{positive} = next(\n"
+        f"    (c for c in {train}[{target!r}].unique() if str(c) == {costs['positive']!r}),\n"
+        "    None,\n"
+        ")\n"
+        f"if {positive} is None:\n"
+        f"    raise ValueError({missing!r})\n"
+    )
     if not tuned:
-        return code + _fixed_code(model, fit, costs)
-    return code + _costed_code(model, fit, costs, settings.get("seed", 0))
+        return code + _fixed_code(model, fit, costs, positive)
+    return code + _costed_code(model, fit, costs, positive, settings.get("seed", 0))
 
 
-def _fixed_code(model: str, fit: str, costs: dict[str, Any]) -> str:
+def _fixed_code(model: str, fit: str, costs: dict[str, Any], positive: str) -> str:
     """A cut-off set by the costs alone, for a model whose scores cannot be tuned (ADR-0053)."""
     fn, fp = costs["false_negative"], costs["false_positive"]
     return (
@@ -227,14 +251,14 @@ def _fixed_code(model: str, fit: str, costs: dict[str, Any]) -> str:
         # Labels are dataset text (rule 7): quoted with repr, never pasted into code.
         f"# Predict {costs['positive']!r} when its share is at least {fp!r} / ({fp!r} + {fn!r}).\n"
         f"{model} = FixedThresholdClassifier(\n"
-        f"    {model}, threshold={fp / (fp + fn)!r}, pos_label={costs['positive']!r}\n"
+        f"    {model}, threshold={fp / (fp + fn)!r}, pos_label={positive}\n"
         f").fit({fit})\n"
     )
 
 
-def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
+def _costed_code(model: str, fit: str, costs: dict[str, Any], positive: str, seed: int) -> str:
     """The cut-off tuned for least cost on the model's own training rows (ADR-0053)."""
-    positive, fn, fp = costs["positive"], costs["false_negative"], costs["false_positive"]
+    fn, fp = costs["false_negative"], costs["false_positive"]
     return (
         "\n"
         "import numpy as np\n"
@@ -246,7 +270,8 @@ def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
         "\n"
         "\n"
         f"def {model}_cost(y_true, y_pred, pos_label):\n"
-        f"    # Mean cost per row: a missed {positive!r} costs {fn!r}, a false alarm {fp!r}.\n"
+        f"    # Mean cost per row: a missed {costs['positive']!r} costs {fn!r},\n"
+        f"    # a false alarm {fp!r}.\n"
         "    truth, said = np.asarray(y_true) == pos_label, np.asarray(y_pred) == pos_label\n"
         f"    missed, alarms = (truth & ~said).sum(), (~truth & said).sum()\n"
         f"    return float(({fn!r} * missed + {fp!r} * alarms) / len(truth))\n"
@@ -255,12 +280,12 @@ def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
         "# The cut-off is tuned on 3 folds of the training rows only.\n"
         f"{model}_tuned = TunedThresholdClassifierCV(\n"
         f"    {model},\n"
-        f"    scoring=make_scorer({model}_cost, greater_is_better=False, pos_label={positive!r}),\n"
+        f"    scoring=make_scorer({model}_cost, greater_is_better=False, pos_label={positive}),\n"
         f"    cv=StratifiedKFold(3, shuffle=True, random_state={seed!r}),\n"
         f").fit({fit})\n"
         f"{model} = FixedThresholdClassifier(\n"
         f"    FrozenEstimator({model}_tuned.estimator_),\n"
         f"    threshold=float({model}_tuned.best_threshold_),\n"
-        f"    pos_label={positive!r},\n"
+        f"    pos_label={positive},\n"
         f").fit({fit})\n"
     )

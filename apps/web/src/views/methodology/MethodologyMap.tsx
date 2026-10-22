@@ -110,7 +110,8 @@ function StageNode({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
 function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule" }>>) {
   const { rule, review } = data;
   return (
-    <button type="button" className={`mth-rule-node ${review?.status ?? ""}${rule.status === "draft" ? " draft" : ""}${data.dimmed ? " dimmed" : ""}`} aria-pressed={selected} aria-label={rule.name}>
+    // nopan: a click on a rule picks it; it never starts a pan of the map.
+    <button type="button" className={`mth-rule-node nopan ${review?.status ?? ""}${rule.status === "draft" ? " draft" : ""}${data.dimmed ? " dimmed" : ""}`} aria-pressed={selected} aria-label={rule.name}>
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <span className="mth-rule-dot" />
       <span className="mth-rule-text">
