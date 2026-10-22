@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.power_transform@1.0.0
+capability_class: transform
+description: Yeo-Johnson power transform of numeric columns, fit on train only, so a skewed column comes out close to symmetric with mean 0 and spread 1.
+entrypoint: sprisk_clean.power_transform:power_transform
+fits_on_train: true
+inputs: [{ name: train, kind: table }, { name: test, kind: table }]
+outputs: [{ name: train, kind: table }, { name: test, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [columns]
+  properties:
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Numeric columns to transform." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

@@ -2395,12 +2395,14 @@ version = "0.1.0"
 source = { editable = "plugins/clean" }
 dependencies = [
     { name = "polars" },
+    { name = "scikit-learn" },
     { name = "sprisk-workers" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "polars", specifier = ">=1.10" },
+    { name = "scikit-learn", specifier = ">=1.6" },
     { name = "sprisk-workers", editable = "python/sprisk-workers" },
 ]
 

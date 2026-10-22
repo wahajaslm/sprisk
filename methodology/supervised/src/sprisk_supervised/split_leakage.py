@@ -29,6 +29,7 @@ FITTING_TRANSFORMS = frozenset(
         "sprisk.clean.encode",
         "sprisk.clean.group_rare",
         "sprisk.clean.date_parts",
+        "sprisk.clean.power_transform",
         "sprisk.clean.clip_outliers",
         "sprisk.clean.spectral_gating",
     }

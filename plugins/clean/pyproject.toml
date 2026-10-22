@@ -2,7 +2,7 @@
 name = "sprisk-clean"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["sprisk-workers", "polars>=1.10"]
+dependencies = ["sprisk-workers", "polars>=1.10", "scikit-learn>=1.6"]
 
 [tool.uv.sources]
 sprisk-workers = { workspace = true }

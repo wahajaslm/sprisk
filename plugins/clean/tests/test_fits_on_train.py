@@ -24,6 +24,7 @@ SETTINGS: dict[str, dict[str, Any]] = {
     # b is rare on train; c is seen only in test.
     "sprisk.clean.group_rare@1.0.0": {"columns": ["t"], "min_share": 0.2},
     "sprisk.clean.date_parts@1.0.0": {"columns": ["d"]},
+    "sprisk.clean.power_transform@1.0.0": {"columns": ["x"]},
 }
 
 
