@@ -13,7 +13,8 @@ params_schema:
   required: [target, task]
   properties:
     target: { type: string, minLength: 1, description: "Column to predict." }
-    features: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns used as inputs, all numbers with no gaps (the baseline ignores their values; kept for comparison). Unset: every column but the target." }
+    features: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns used as inputs, all numbers with no gaps (the baseline ignores their values; kept for comparison). Unset: every column but the target and the excluded ones." }
+    exclude: { type: array, items: { type: string, minLength: 1 }, uniqueItems: true, description: "Columns that identify rows, groups or time: never inputs, even when features is unset." }
     task: { type: string, enum: [classification, regression], description: "Predict a class or a number." }
     costs:
       type: object

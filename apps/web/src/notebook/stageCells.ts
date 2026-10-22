@@ -41,7 +41,7 @@ export const isReadyMade = (pipeline: PipelineVersion, cellId: string) => {
 
 /** Ready-made steps whose plain Python (`code`) a person edited in `cells`. */
 export const editedReadyMade = (pipeline: PipelineVersion, cells: NotebookCell[], code: Map<string, string>) =>
-  cells.filter((c) => c.kind === "code" && isReadyMade(pipeline, c.id) && code.has(c.id) && c.source !== code.get(c.id)).map((c) => c.id);
+  cells.filter((c) => c.kind === "code" && isReadyMade(pipeline, c.id) && code.has(c.id) && c.source !== code.get(c.id));
 
 /** `pipeline` with step `id` running on `settings`; everything else about it stays. */
 export const withSettings = (pipeline: PipelineVersion, id: string, settings: Node["params"]): PipelineVersion => ({

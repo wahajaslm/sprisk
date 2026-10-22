@@ -14,9 +14,9 @@ pub use compare::{
     comparison, preparation_comparison, study_comparison, trial_steps,
 };
 pub use decision::{
-    Stamp, candidate_facts, candidates, flow_facts, input_facts, join_facts, observation,
-    one_table_into, profile_facts, proposal, result_facts, target_facts, train_rows_source,
-    unread_sources, with_node_before, without_node,
+    Stamp, candidate_facts, candidates, flow_facts, input_facts, join_facts, key_columns,
+    observation, one_table_into, profile_facts, proposal, result_facts, target_facts,
+    train_rows_source, unread_sources, with_node_before, without_node,
 };
 
 #[derive(Debug, thiserror::Error)]

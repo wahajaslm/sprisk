@@ -126,6 +126,7 @@ def cross_validate(
     was fit on all of them, so its cut-off's folds share that preparation."""
     target, task = candidate_params["target"], candidate_params["task"]
     features, costs = candidate_params.get("features"), candidate_params.get("costs")
+    exclude = candidate_params.get("exclude", [])
     # Rust picks the metric from the question's task and the step's costs; this checks a
     # step built by hand.
     if task not in METRICS_OF_TASK:
@@ -144,10 +145,19 @@ def cross_validate(
         raise ValueError(f"{target} has {y.null_count()} missing values in train")
     truth = y.to_numpy()
     settings = {
-        k: v for k, v in candidate_params.items() if k not in ("target", "features", "costs")
+        k: v
+        for k, v in candidate_params.items()
+        if k not in ("target", "features", "costs", "exclude")
     }
-    # Preparation may read columns the model does not, so it gets every column but the target.
-    x = train.drop(target) if prepare or features is None else train.select(features)
+    # Preparation may read columns the model does not, so it gets every column but the target
+    # and the key columns, which identify rows, groups or time and are never inputs. A key
+    # column an earlier step dropped is already left out, as in the model step.
+    left_out = [target, *exclude]
+    x = (
+        train.drop(left_out, strict=False)
+        if prepare or features is None
+        else train.select(features)
+    )
     model = Pipeline(
         [
             *[(f"prepare_{i}", step) for i, step in enumerate(prepare)],
@@ -212,6 +222,11 @@ def cross_validate(
             "spread": by_fold.std(axis=0, ddof=1),
         }
     ).sort("importance", descending=True)
+    # Listed features, when preparation passes them through by name: other columns only feed
+    # the preparation, so their importance says nothing about the model. A feature made by the
+    # preparation hides which columns it came from, so then every column stays.
+    if features is not None and set(features) <= set(x.columns):
+        importance = importance.filter(pl.col("feature").is_in(features))
     predictions = pl.DataFrame(
         {"row": held_out, "fold": fold_of, "actual": truth[held_out], "predicted": predicted}
     )

@@ -19,6 +19,9 @@ SETTINGS = {
     "drop_column_threshold": 0.6,
     "indicator_flag_threshold": 0.2,
     "skewness_threshold": 1.5,
+    "high_cardinality_threshold": 15,
+    "category_text_fill": "missing",
+    "free_text_fill": "",
 }
 TARGET = {"question.target": ("churned", "explicit")}
 
@@ -54,10 +57,40 @@ def test_a_target_with_gaps_is_never_filled() -> None:
     assert alternative(d, "drop_rows")["params"] == {"columns": ["churned"]}
 
 
-def test_text_columns_cannot_be_imputed_yet() -> None:
-    d = run(column("city", "String", missing_share=0.1))
+def test_category_gaps_get_a_named_category_and_free_text_gaps_no_words() -> None:
+    d = run(
+        {
+            **column("ward", "String", missing_share=0.1, distinct=6),
+            **column("description", "String", missing_share=0.35, distinct=50_000),
+            **column("income", missing_share=0.1, skewness=2.4),
+        }
+    )
+    assert d["recommended_alternative_id"] == "impute_median"
+    median = alternative(d, "impute_median")
+    assert median["params"] == {
+        "columns": ["description", "income", "ward"],
+        "method": "median",
+        "text_fill": {"ward": "missing", "description": ""},
+    }
+    assert "ward" in median["reason"] and "description" in median["reason"]
+
+
+def test_the_fills_are_settings() -> None:
+    settings = {**SETTINGS, "category_text_fill": "unknown"}
+    d = decide(
+        RULE,
+        facts=TARGET,
+        profile={"rows": 100, **column("ward", "String", missing_share=0.1, distinct=6)},
+        settings=settings,
+    )
+    assert alternative(d, "impute_mean")["params"]["text_fill"] == {"ward": "unknown"}
+
+
+def test_gaps_in_a_column_neither_number_nor_text_drop_rows() -> None:
+    d = run(column("opened", "Date", missing_share=0.1))
     assert d["recommended_alternative_id"] == "drop_rows"
-    assert "numbers only" in alternative(d, "impute_median")["reason"]
+    assert "opened" in alternative(d, "impute_median")["reason"]
+    assert alternative(d, "impute_median")["applicability"] == "not_applicable"
 
 
 def test_a_mostly_empty_column_is_named_in_the_drop_column_reason() -> None:
@@ -94,10 +127,10 @@ def test_a_target_with_gaps_is_dropped_whatever_models_are_downstream() -> None:
     assert d["recommended_alternative_id"] == "drop_rows"
 
 
-def test_text_gaps_are_dropped_whatever_models_are_downstream() -> None:
-    d = run(column("city", "String", missing_share=0.1), LINEAR)
-    assert d["recommended_alternative_id"] == "drop_rows"
-    assert alternative(d, "impute_mean")["applicability"] == "not_applicable"
+def test_text_gaps_are_filled_whatever_models_are_downstream() -> None:
+    d = run(column("notes", "String", missing_share=0.1, distinct=900), LINEAR)
+    assert d["recommended_alternative_id"] == "impute_mean"
+    assert alternative(d, "impute_mean")["params"]["text_fill"] == {"notes": ""}
 
 
 def test_a_zero_fill_asks_before_any_other_fill_replaces_it() -> None:

@@ -103,6 +103,16 @@ def test_code_that_does_not_parse_is_not_settings() -> None:
     assert read_split(split_code(SPLIT) + "def (\n") is None
 
 
+@pytest.mark.parametrize(
+    "value",
+    ["{[1]}", "-" * 100_000 + "1", "1" + "+1" * 100_000],
+    ids=["unhashable", "out-of-memory", "too-deep"],
+)
+def test_a_value_that_cannot_be_read_is_code(value: str) -> None:
+    # Edited code is untrusted text: anything literal_eval or the parser refuses is code.
+    assert read_split(split_code(SPLIT).replace("random_state=42", f"random_state={value}")) is None
+
+
 def test_an_edited_cell_reads_as_settings_or_as_code() -> None:
     edited = NotebookSettingsRequest.model_validate(
         {

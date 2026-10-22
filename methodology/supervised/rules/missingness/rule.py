@@ -1,8 +1,11 @@
 """How a step fills or drops gaps, from the train rows' measured missing shares (ADR-0042).
 
-Fills are fit on train rows only (the impute step's train/test ports). A target is never
-filled, and text cannot be imputed yet, so either means dropping rows. A model fits only the
-model and refuses gaps (ADR-0056), so every gap is filled or dropped here.
+Fills are fit on train rows only (the impute step's train/test ports). A gap in text with few
+values becomes a category of its own (a setting, "missing"); one in free text, with more
+values than the encoding limit, becomes empty text, no words (a setting, ""). A target is
+never filled, and a column neither number nor text (a date, true/false) cannot be, so either
+means dropping rows. A model fits only the model and refuses gaps (ADR-0056), so every gap is
+filled or dropped here.
 """
 
 from typing import Any
@@ -15,6 +18,7 @@ from sprisk_workers.rule import (
     flow_evidence,
     flow_fact,
     is_numeric,
+    measure,
     measured,
     needs_fact,
     not_applicable,
@@ -23,6 +27,8 @@ from sprisk_workers.rule import (
     required,
     step_columns,
 )
+
+TEXT_TYPES = ("String", "Utf8", "Categorical")
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
@@ -42,13 +48,17 @@ def decide(observation: RuleObservation) -> RuleDecision:
         f"Confirm the target first: if {maybe_target} is the target, a missing label must "
         "never be filled."
     )
-    text = [c for c in columns if not is_numeric(observation, c)]
+    text = [c for c in columns if str(measure(observation, c, "data_type")).startswith(TEXT_TYPES)]
+    other = [c for c in columns if not is_numeric(observation, c) and c not in text]
     mostly_empty = [c for c in columns if share[c] >= s["drop_column_threshold"]]
     skewed = any(v > s["skewness_threshold"] for v in skew.values())
 
     target_gaps = f"{target} is the target: a missing label must never be filled."
-    text_gaps = f"The impute step fills numbers only; {', '.join(text)} is text."
-    blocked = target_gaps if has_target else text_gaps if text else None
+    other_gaps = f"The impute step fills numbers and text only; {', '.join(other)} is neither."
+    blocked = target_gaps if has_target else other_gaps if other else None
+    text_fill = {c: _text_fill(observation, c) for c in text}
+    text_note = "".join(f" {c}: gaps become {fill!r}." for c, fill in text_fill.items())
+    text_params = {"text_fill": text_fill} if text else {}
     ask = confirm if may_be_target else None
     method_now = flow_fact(observation, "step.method")
 
@@ -64,17 +74,15 @@ def decide(observation: RuleObservation) -> RuleDecision:
 
     median = _impute(
         "impute_median",
-        "Some columns are skewed, which pulls the mean; the median is robust to that.",
-        "median",
-        columns,
+        "Some columns are skewed, which pulls the mean; the median is robust to that." + text_note,
+        {"columns": columns, "method": "median", **text_params},
         blocked,
         asks("median"),
     )
     mean = _impute(
         "impute_mean",
-        "Values are roughly symmetric. A mean fill shrinks variance as the gap grows.",
-        "mean",
-        columns,
+        "Values are roughly symmetric. A mean fill shrinks variance as the gap grows." + text_note,
+        {"columns": columns, "method": "mean", **text_params},
         blocked,
         asks("mean"),
     )
@@ -82,12 +90,15 @@ def decide(observation: RuleObservation) -> RuleDecision:
         "drop_rows",
         target_gaps
         if has_target
-        else text_gaps
-        if text
+        else other_gaps
+        if other
         else "Drops each row with a gap. Simple, but it shrinks and may bias the data.",
         {"columns": columns},
     )
-    mode = not_applicable("impute_mode", "The impute step fills numbers only (ADR-0042).")
+    mode = not_applicable(
+        "impute_mode",
+        "A most-frequent fill gives a gap a value it never had; text gaps get their own value.",
+    )
     drop_column = not_applicable(
         "drop_column",
         (
@@ -98,7 +109,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
         else "No column is mostly empty.",
     )
 
-    if has_target or may_be_target or text:
+    if has_target or may_be_target or other:
         recommended = "drop_rows"
     elif skewed:
         recommended = "impute_median"
@@ -117,11 +128,19 @@ def decide(observation: RuleObservation) -> RuleDecision:
     )
 
 
+def _text_fill(observation: RuleObservation, column: str) -> str:
+    """A category's gap is a category of its own; free text's is empty text, no words: a word
+    such as "missing" would be read as the word in other rows."""
+    s = observation.settings
+    few = required(observation, column, "distinct") <= s["high_cardinality_threshold"]
+    return str(s["category_text_fill"] if few else s["free_text_fill"])
+
+
 def _impute(
-    id: str, reason: str, method: str, columns: list[str], blocked: str | None, ask: str | None
+    id: str, reason: str, params: dict[str, Any], blocked: str | None, ask: str | None
 ) -> dict[str, Any]:
     if blocked:
         return not_applicable(id, blocked)
     if ask:
         return needs_fact(id, ask)
-    return applicable(id, reason, {"columns": columns, "method": method})
+    return applicable(id, reason, params)

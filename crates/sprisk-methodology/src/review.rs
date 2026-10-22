@@ -20,6 +20,11 @@ pub const SPLIT_DECISION: &str = "split.method";
 /// they see its final columns (ADR-0059): duplicate rows, say, differ by an identifier.
 pub const TABLE_SHAPE: [&str; 2] = ["data.join_sources", "data.column_roles"];
 
+/// Decisions on a model step that shape its input columns, in order: rare categories are
+/// grouped, then the text is encoded or left out. Encoding first would leave out columns that
+/// grouping makes small enough to encode.
+pub const INPUT_SHAPE: [&str; 2] = ["features.rare_categories", "features.encoding_strategy"];
+
 /// One rule and the step it decides; `subject` is `None` when the flow has no such step.
 pub struct Planned<'a> {
     pub rule: &'a MethodologyRule,
@@ -98,7 +103,8 @@ pub fn plan<'a>(
 /// the split or a step strictly upstream of `later`'s. A rule reading cross-validation
 /// results also waits for the rules of its own step that do not (ADR-0059): they may change
 /// what was compared. A rule measuring the table a step reads waits for the rules of that step
-/// that shape its columns (`TABLE_SHAPE`).
+/// that shape its columns (`TABLE_SHAPE`), and the rules shaping a model's inputs go in
+/// `INPUT_SHAPE` order.
 pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planned) -> bool {
     let same_step = matches!((later.subject, earlier.subject), (Some(l), Some(e)) if l.id == e.id);
     let shape = |p: &Planned| {
@@ -116,6 +122,14 @@ pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planne
             // Shaping rules go in TABLE_SHAPE order.
             Some(later_at) => later_at > earlier_at,
         };
+    }
+    let input_at = |p: &Planned| {
+        INPUT_SHAPE
+            .iter()
+            .position(|d| *d == p.rule.decides.as_str())
+    };
+    if same_step && let (Some(later_at), Some(earlier_at)) = (input_at(later), input_at(earlier)) {
+        return later_at > earlier_at;
     }
     let results = facts::needs_results(reads(later));
     if !results && !facts::needs_train_rows(reads(later)) {

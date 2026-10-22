@@ -181,6 +181,7 @@ FLOW_LABELS = {
     "flow.model_families": "Model families downstream",
     "flow.models_hidden": "Models downstream behind a step the rules cannot see",
     "flow.other_readers": "Other steps reading this step's output",
+    "flow.scaled_columns": "Inputs a Scale step before this model covers",
     "step.method": "This step's method",
     "step.task": "This step's task",
 }

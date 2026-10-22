@@ -43,7 +43,7 @@ def load_operators(*roots: Path) -> dict[str, LoadedOperator]:
     # ...and refits the preparation steps between the split and the model per fold (ADR-0050).
     preparations = {
         ref: CheckedFunction(
-            _function(path, "entrypoint", operator.entrypoint.root), operator.params_schema
+            load_function(path, "entrypoint", operator.entrypoint.root), operator.params_schema
         )
         for ref, (path, operator) in manifests.items()
         if operator.fits_on_train
@@ -61,7 +61,7 @@ def _read(path: Path) -> Operator:
         raise ManifestError(f"{path}: {e}") from e
 
 
-def _function(path: Path, what: str, entrypoint: str) -> Callable[..., Any]:
+def load_function(path: Path, what: str, entrypoint: str) -> Callable[..., Any]:
     module_name, function_name = entrypoint.split(":")
     if module_name.split(".")[0] not in TRUSTED_PACKAGES:
         raise ManifestError(f"{path}: {what} {entrypoint} is not in a trusted core pack")
@@ -78,9 +78,9 @@ def _function(path: Path, what: str, entrypoint: str) -> Callable[..., Any]:
 def _estimator(path: Path, entrypoint: str, operator: Operator) -> CheckedFunction:
     """The model's unfitted-estimator function. It takes every setting of the model except
     the columns it reads (ADR-0046) and its costs, which whoever fits it applies (ADR-0053)."""
-    build = _function(path, "estimator", entrypoint)
+    build = load_function(path, "estimator", entrypoint)
     properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
-    expected = sorted(set(properties) - {"target", "features", "costs"})
+    expected = sorted(set(properties) - {"target", "features", "exclude", "costs"})
     takes = sorted(inspect.signature(build).parameters)
     if takes != expected:
         raise ManifestError(f"{path}: estimator takes {takes}; it must take {expected}")
@@ -93,10 +93,10 @@ def _loaded(
     models: Mapping[str, CheckedFunction],
     preparations: Mapping[str, CheckedFunction],
 ) -> LoadedOperator:
-    function = _function(path, "entrypoint", operator.entrypoint.root)
+    function = load_function(path, "entrypoint", operator.entrypoint.root)
     # A step's plain code (ADR-0055) is written on request; a typo fails here, at load.
     if operator.notebook_code is not None:
-        _function(path, "notebook_code", operator.notebook_code.root)
+        load_function(path, "notebook_code", operator.notebook_code.root)
     ports = frozenset(port.name.root for port in operator.outputs)
     return LoadedOperator(
         run=adapt(function, operator, models=models, preparations=preparations),

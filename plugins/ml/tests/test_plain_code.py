@@ -37,12 +37,15 @@ def fitted_by_code(
 
 
 @pytest.mark.parametrize(("step", "write"), WRITERS)
-@pytest.mark.parametrize("extra", [{}, {"features": ["c", "x"]}, {"costs": COSTS}])
+@pytest.mark.parametrize(
+    "extra", [{}, {"features": ["c", "x"]}, {"costs": COSTS}, {"exclude": ["c"]}], ids=str
+)
 def test_the_code_predicts_as_the_step_does(
     clf_numbers: pl.DataFrame, step: Any, write: Any, extra: dict[str, Any]
 ) -> None:
     settings = {"target": "y", "task": "classification", **extra}
-    train, test = clf_numbers[::2], clf_numbers[1::2].select(extra.get("features", ["x", "c"]))
+    used = [c for c in extra.get("features", ["x", "c"]) if c not in extra.get("exclude", [])]
+    train, test = clf_numbers[::2], clf_numbers[1::2].select(used)
     fitted = step(train, **settings)
     code = fitted_by_code(settings, train, write)
     assert np.array_equal(code.predict(test), fitted.predict(test))
@@ -106,3 +109,26 @@ def test_dataset_text_never_becomes_code(write: Any, label: str, column: str) ->
         return written
 
     assert _shape(code(label, column)) == _shape(code("bad", "y"))
+
+
+@pytest.mark.parametrize(("step", "write"), WRITERS)
+def test_costs_name_a_number_class_by_its_text_in_the_code_too(
+    clf_numbers: pl.DataFrame, step: Any, write: Any
+) -> None:
+    # A 0/1 target: the costs name class 1 as "1", as they name any class (ADR-0053).
+    rows = clf_numbers.with_columns(y=(pl.col("y") == "hi").cast(pl.Int64))
+    costs = {"positive": "1", "false_negative": 5.0, "false_positive": 1.0}
+    settings = {"target": "y", "task": "classification", "costs": costs}
+    train, test = rows[::2], rows[1::2].drop("y")
+    code = fitted_by_code(settings, train, write)
+    assert np.array_equal(code.predict(test), step(train, **settings).predict(test))
+
+
+@pytest.mark.parametrize("write", [w for _, w in WRITERS])
+def test_costs_naming_no_class_fail_with_a_clear_error_in_the_code(
+    clf_numbers: pl.DataFrame, write: Any
+) -> None:
+    costs = {"positive": "absent", "false_negative": 5.0, "false_positive": 1.0}
+    settings = {"target": "y", "task": "classification", "costs": costs}
+    with pytest.raises(ValueError, match="'absent' is not one of the classes of y"):
+        fitted_by_code(settings, clf_numbers, write)

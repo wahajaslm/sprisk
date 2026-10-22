@@ -1,7 +1,7 @@
 import type { CodeSplitRequest, NotebookSettingsRequest, PipelineVersion } from "@sprisk/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { StageNotebook } from "../src/views/notebook/StageNotebook.tsx";
@@ -18,10 +18,12 @@ const flow: PipelineVersion = {
 };
 
 function withApi() {
-  const sent = { versions: [] as PipelineVersion[], runs: [] as unknown[], split: [] as CodeSplitRequest[] };
+  const sent = { versions: [] as PipelineVersion[], runs: [] as unknown[], split: [] as CodeSplitRequest[], code: [] as string[] };
+  // Impute writes itself as plain code; no other ready-made step here does.
+  const writing = operators.map((o) => (o.id.startsWith("sprisk.clean.impute@") ? { ...o, notebook_code: "sprisk_clean.impute:as_code" } : o));
   server.use(
     http.get("/api/pipeline_versions", () => HttpResponse.json([flow])),
-    http.get("/api/operators", () => HttpResponse.json([...operators, notebookOperator])),
+    http.get("/api/operators", () => HttpResponse.json([...writing, notebookOperator])),
     http.post("/api/code/split", async ({ request }) => {
       const body = (await request.json()) as CodeSplitRequest;
       sent.split.push(body);
@@ -41,7 +43,7 @@ function withApi() {
     }),
     // Impute has plain code; other steps have none yet.
     http.post("/api/operators/:id/notebook_code", ({ params }) =>
-      String(params.id).startsWith("sprisk.clean.impute@")
+      (sent.code.push(String(params.id)), String(params.id).startsWith("sprisk.clean.impute@"))
         ? HttpResponse.json({ code: "impute_train, impute_test = fill(split_train, split_test, method='median')\n" })
         : HttpResponse.json({ errors: [{ code: "no_plain_code", message: "none yet" }] }, { status: 404 }),
     ),
@@ -81,6 +83,31 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     expect(screen.queryByRole("textbox", { name: "Cell 1" })).not.toBeInTheDocument();
   });
 
+  it("asks for plain code only from steps that write it", async () => {
+    const sent = withApi();
+    renderWithApi(<StageNotebook pipeline={flow} stage="Split" />);
+    await screen.findByText("reads load_data → gives split_train, split_test");
+    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    await screen.findByRole("textbox", { name: "Cell 2" });
+    expect(sent.code).toEqual(["sprisk.clean.impute@1.0.0"]);
+  });
+
+  it("a step whose code cannot be written says so in its own cell, and the others still show", async () => {
+    withApi();
+    server.use(http.post("/api/operators/:id/notebook_code", () => HttpResponse.json({ errors: [{ code: "code_failed", message: "the writer broke" }] }, { status: 500 })));
+    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    expect(await screen.findByRole("textbox", { name: "Cell 2" })).toHaveValue("rate = impute_train.height");
+    expect(await screen.findByText(/impute's code could not be written: .*the writer broke/)).toBeInTheDocument();
+  });
+
+  it("shows no made-up run number on a cell", async () => {
+    withApi();
+    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    // The step ran in the run on screen, so its cell says Done, with no count to make up.
+    expect((await screen.findAllByText("Done")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^\[\d+\]$/)).not.toBeInTheDocument();
+  });
+
   it("editing a ready-made step's code makes it a code step running that code, and says its checks no longer cover it", async () => {
     const sent = withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
@@ -92,7 +119,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     const impute = sent.versions[0]!.nodes.find((n) => n.id === "impute")!;
     expect(impute.operator).toBe(notebookOperator.id);
     expect(impute.params["source"]).toBe("impute_train, impute_test = fill(split_train, split_test, 0)");
-    expect(await screen.findByText("impute is now your own Python code. The methodology checks for an Impute step no longer cover it.")).toBeInTheDocument();
+    expect(await screen.findByText("impute is now your own Python code. The methodology checks for Impute steps no longer cover it.")).toBeInTheDocument();
   });
 
   it("changing only a value in a ready-made step's code changes its setting and keeps the step", async () => {
@@ -135,6 +162,17 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Delete cell 2" }));
     await waitFor(() => expect(sent.versions).toHaveLength(1));
     expect(sent.versions[0]!.nodes.map((n) => n.id)).not.toContain("rate");
+  });
+
+  it("is busy while a deleted step's flow saves", async () => {
+    withApi();
+    server.use(http.post("/api/pipeline_versions", async () => {
+      await delay("infinite");
+      return HttpResponse.json({});
+    }));
+    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Delete cell 2" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Run All" })).toBeDisabled());
   });
 
   it("refuses to delete a step another step reads, naming it", async () => {

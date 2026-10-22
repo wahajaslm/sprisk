@@ -36,8 +36,6 @@ const entities: [keyof Entities, string][] = [
   ["KeyMatches", "key_matches"],
   ["CodeInterface", "code_interface"],
   ["CodeSplitRequest", "code_split_request"],
-  ["CellStepsRequest", "cell_steps_request"],
-  ["CellSteps", "cell_steps"],
   ["CodeSplit", "code_split"],
   ["NotebookCodeRequest", "notebook_code_request"],
   ["NotebookSettings", "notebook_settings"],

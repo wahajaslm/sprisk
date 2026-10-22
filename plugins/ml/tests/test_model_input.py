@@ -119,3 +119,16 @@ def test_a_fitted_model_loads_back_under_the_workers_trusted_types(name: str) ->
     model = fit(name, train)
     loaded = skops.io.loads(skops.io.dumps(model), trusted=TRUSTED_MODEL_TYPES)
     np.testing.assert_array_equal(loaded.predict(test.drop("y")), model.predict(test.drop("y")))
+
+
+@pytest.mark.parametrize("name", MODELS)
+def test_unset_features_leave_out_the_excluded_key_columns(name: str) -> None:
+    train = rows(60, seed=1).with_columns(customer=pl.int_range(60), day=pl.int_range(60))
+    model = fit(name, train, exclude=["customer", "day"])
+    assert list(model.feature_names_in_) == ["x", "i"]
+
+
+@pytest.mark.parametrize("name", MODELS)
+def test_a_column_both_listed_and_excluded_is_refused(name: str) -> None:
+    with pytest.raises(ValueError, match="^i is excluded, so it cannot be a feature"):
+        fit(name, rows(60, seed=1), features=["x", "i"], exclude=["i"])

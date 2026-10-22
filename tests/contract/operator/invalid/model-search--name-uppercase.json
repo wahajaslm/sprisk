@@ -29,7 +29,7 @@
       }
     ]
   },
-  "description": "Logistic (classification) or linear (regression) regression with imputation, scaling and one-hot encoding fit on train only.",
+  "description": "Logistic (classification) or linear (regression) regression. It fits only the model; Clean steps before it encode text, fill gaps and scale.",
   "entrypoint": "sprisk_ml.models:linear_model",
   "inputs": [
     {

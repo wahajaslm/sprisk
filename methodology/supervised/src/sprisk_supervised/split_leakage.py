@@ -21,6 +21,8 @@ HOLDOUT_PORTS = {
     "sprisk.validation.group_split": "test",
 }
 TRAIN_PORT = "train"
+# A code step may split rows in a way this check cannot see.
+CODE_OPERATOR = "sprisk.code.python"
 # Transforms that learn from their `train` input and apply to `train` and `test` (ADR-0018).
 TRAIN_OUTPUTS = frozenset({"train", "train_words"})
 FITTING_TRANSFORMS = frozenset(
@@ -58,6 +60,8 @@ def split_leakage(
       split's train port was fit on rows that include the holdout.
     - Per holdout, evaluators may score at most one non-baseline model, where a
       model is the nearest estimator upstream of the evaluator's model input.
+    - With no split step, a model scored on rows from the source it learns from FAILS; with a
+      code step that may split them, NOT_ASSESSED. Never PASS.
     """
     op_of = _operators_by_node(pipeline, operators)
     graph = _port_graph(pipeline, op_of)
@@ -124,6 +128,17 @@ def split_leakage(
         return _result(pipeline, check_id, now, Verdict.pass_, rationale, cited)
     if not evaluators:
         return _result(pipeline, check_id, now, Verdict.not_assessed, "No evaluator nodes.", [])
+    if not splits and estimators:
+        if not any(unversioned(op.id.root) == CODE_OPERATOR for op in op_of.values()):
+            problem = _scored_on_own_rows(graph, op_of, evaluators, sources)
+            if problem:
+                rationale, cited = problem
+                return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
+        rationale = (
+            "No split step, so this check cannot find the test rows the models are scored on. "
+            "A split written as code is not checked."
+        )
+        return _result(pipeline, check_id, now, Verdict.not_assessed, rationale, evaluators)
 
     candidates: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for evaluator in evaluators:
@@ -192,6 +207,27 @@ def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> Por
                 graph.remove_edge(node, f"{node}.{name}")
                 graph.add_edge(source, f"{node}.{name}")
     return graph
+
+
+def _scored_on_own_rows(
+    graph: PortGraph, op_of: Mapping[str, Operator], evaluators: list[str], sources: set[str]
+) -> tuple[str, list[str]] | None:
+    """A model an evaluator scores on rows from the source it learns from, with no step that
+    could split them: its score is on its own training rows."""
+    for evaluator in evaluators:
+        table, model = _input_sources(evaluator, op_of[evaluator], graph)
+        scored = sources & (nx.ancestors(graph, table) | {table.split(".")[0]})
+        for node in sorted(_nearest_estimators(graph, model, op_of)):
+            if unversioned(op_of[node].id.root) in BASELINE_OPERATORS:
+                continue
+            shared = sorted(scored & nx.ancestors(graph, node))
+            if shared:
+                rationale = (
+                    f"{node} is scored on the rows it learns from ({shared[0]}): no step splits "
+                    "them. Add a split and score the model on its test rows."
+                )
+                return rationale, sorted({node, evaluator, shared[0]})
+    return None
 
 
 def _fit_problem(

@@ -99,10 +99,11 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("question.error_costs".to_owned(), at("model")),
             ("question.task_type".to_owned(), at("model")),
             ("cleaning.outlier_strategy".to_owned(), None),
-            ("features.encoding_strategy".to_owned(), at("model")),
             ("features.date_parts".to_owned(), at("model")),
-            ("features.scaling_strategy".to_owned(), None),
+            ("features.scaling_strategy".to_owned(), at("model")),
+            // Rare categories are grouped first, so encoding sees the grouped columns.
             ("features.rare_categories".to_owned(), at("model")),
+            ("features.encoding_strategy".to_owned(), at("model")),
             ("features.skew_transform".to_owned(), at("model")),
             ("modeling.interpretability_requirement".to_owned(), None),
             ("modeling.estimator_selection".to_owned(), at("model")),

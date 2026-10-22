@@ -8,15 +8,14 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    CellSteps, CellStepsRequest, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    CreateRun, CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, FigureSet, KeyMatches,
-    LoadedTable, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
-    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
-    NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
-    NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
-    PipelineVersion, Problem, QuestionVersion, RuleDecision, RuleObservation, Run,
-    SelectionDecision, Study, StudyDetail, TablePage, Trial, Walk, WalkDetail, WalkStep,
-    WorkerMessage, parse,
+    CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, CreateStudy, CreateWalk,
+    DatasetProfile, DecisionProposal, FigureSet, KeyMatches, LoadedTable, MethodologyCheck,
+    MethodologyDecision, MethodologyReview, MethodologyRule, MethodologyRuleSource, ModelSelection,
+    NotebookCode, NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
+    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
+    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
+    RuleDecision, RuleObservation, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial,
+    Walk, WalkDetail, WalkStep, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -64,8 +63,6 @@ const ENTITIES: &[&str] = &[
     "artifact",
     "attempt",
     "attempt_output",
-    "cell_steps",
-    "cell_steps_request",
     "code_display",
     "code_interface",
     "code_split",
@@ -272,16 +269,6 @@ fn rule_decision() {
 #[test]
 fn code_interface() {
     check::<CodeInterface>("code_interface");
-}
-
-#[test]
-fn cell_steps() {
-    check::<CellSteps>("cell_steps");
-}
-
-#[test]
-fn cell_steps_request() {
-    check::<CellStepsRequest>("cell_steps_request");
 }
 
 #[test]

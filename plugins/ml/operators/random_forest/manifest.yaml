@@ -14,7 +14,8 @@ params_schema:
   required: [target, task]
   properties:
     target: { type: string, minLength: 1, description: "Column to predict." }
-    features: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns used as inputs, all numbers with no gaps. Unset: every column but the target." }
+    features: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns used as inputs, all numbers with no gaps. Unset: every column but the target and the excluded ones." }
+    exclude: { type: array, items: { type: string, minLength: 1 }, uniqueItems: true, description: "Columns that identify rows, groups or time: never inputs, even when features is unset." }
     task: { type: string, enum: [classification, regression], description: "Predict a class or a number." }
     n_estimators: { type: integer, minimum: 10, maximum: 2000, default: 200, description: "Number of trees." }
     seed: { type: integer, minimum: 0, default: 0, description: "Fixes the trees so runs repeat." }
