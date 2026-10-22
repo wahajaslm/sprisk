@@ -26,6 +26,19 @@ def test_which_text_means_missing_can_be_chosen(tmp_path: Path) -> None:
     assert file_source(csv, "csv", missing_values=["?"])["x"].to_list() == [1, None]
 
 
+def test_a_column_with_no_name_is_named_by_its_position(tmp_path: Path) -> None:
+    csv = tmp_path / "d.csv"
+    csv.write_text(",designation\n0,x\n1,y\n")
+    assert file_source(csv, "csv").columns == ["unnamed_0", "designation"]
+
+
+def test_a_name_given_to_a_nameless_column_must_be_free(tmp_path: Path) -> None:
+    csv = tmp_path / "d.csv"
+    csv.write_text(",unnamed_0\n0,x\n")
+    with pytest.raises(ValueError, match="unnamed_0"):
+        file_source(csv, "csv")
+
+
 def test_parquet_is_read_as_a_table(tmp_path: Path) -> None:
     src = tmp_path / "d.parquet"
     pl.DataFrame({"a": [1]}).write_parquet(src)
@@ -39,7 +52,7 @@ def test_missing_file_is_an_error_naming_it(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("format", ["csv", "parquet"])
 def test_plain_code_reads_the_file_as_the_step_does(tmp_path: Path, format: str) -> None:
-    table = pl.DataFrame({"a": [1, None, 3], "b": ["x", "NA", "z"]})
+    table = pl.DataFrame({"": [0, 1, 2], "a": [1, None, 3], "b": ["x", "NA", "z"]})
     path = tmp_path / f"t.{format}"
     table.write_csv(path) if format == "csv" else table.write_parquet(path)
     settings = {"path": str(path), "format": format, "missing_values": ["NA", "?"]}
