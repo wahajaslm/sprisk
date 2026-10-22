@@ -20,6 +20,7 @@ provenance:
     - "A date that is the target time or comes after the prediction is leakage; that is the point-in-time rule's decision, not this one."
     - "A date stored as text is not seen as a date: it must be parsed when loaded."
     - "A gap in the date leaves a gap in each part, for the missing-value rule."
+    - "After a temporal split every test year is later than any train year: a linear model extrapolates the year, a tree treats it as the last train year. Month and weekday do not have this problem."
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------

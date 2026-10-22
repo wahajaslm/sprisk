@@ -294,3 +294,12 @@ pub fn carries_decision(
         .iter()
         .any(|n| feeding.contains(n.id.as_str()) && by_rule(n))
 }
+
+/// Whether a split feeds `step`, directly or through other steps.
+pub fn after_a_split(
+    pipeline: &PipelineVersion,
+    step: &str,
+    is_split: impl Fn(&Node) -> bool,
+) -> bool {
+    carries_decision(pipeline, step, |n| n.id.as_str() != step && is_split(n))
+}

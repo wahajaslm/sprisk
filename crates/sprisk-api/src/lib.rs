@@ -1136,11 +1136,14 @@ fn before_the_split(
     let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n);
     let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let traced = sprisk_methodology::train_rows_source(pipeline, node.id.as_str(), is_split, keeps);
+    let step = node.id.as_str();
     traced.err().map(|e| {
-        format!(
-            "Step {} has no train rows to measure ({e}): it runs before the split, where this rule cannot decide.",
-            node.id.as_str()
-        )
+        if sprisk_methodology::review::after_a_split(pipeline, step, is_split) {
+            // After a split but untraceable: say why, since it may mean test rows reach it.
+            format!("Step {step} cannot be measured on train rows only: {e}")
+        } else {
+            format!("Step {step} runs before the split, so it has no train rows for this rule to measure.")
+        }
     })
 }
 

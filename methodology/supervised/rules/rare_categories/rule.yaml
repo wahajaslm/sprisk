@@ -27,9 +27,12 @@ policy_thresholds:
   # Most categories one-hot encoding takes (categorical_encoding's limit; a test keeps them
   # equal). Grouping keeps at most this many, counting "other", so encoding then takes it.
   high_cardinality_threshold: 15
-  # A category under this share of the train rows becomes "other".
+  # A category under this share of the train rows becomes "other". Project convention, not a
+  # published value: scikit-learn's min_frequency has no default. 1% keeps the categories a
+  # cross-validation fold is likely to see.
   min_share: 0.01
-  # A column with at least this many distinct values per train row is an identifier.
+  # A column with at least this many distinct values per train row is an identifier. Project
+  # convention: at half the rows most values occur once, so a category carries no shared signal.
   identifier_share: 0.5
 
 # 4. Methodological Alternatives & Scoped Settings

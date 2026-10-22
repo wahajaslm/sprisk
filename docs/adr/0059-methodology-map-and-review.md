@@ -54,3 +54,8 @@ Arch doc sections: §8 (methodology engine), §8.2 (rule kinds), §8.3 (decision
 
 ## Arch doc edits
 - §8.3: add the review before proposals, and `insert_node` (ADR-0057) to the effect plan.
+
+## Amendments
+- 2026-10-22: **A decision on a step feeding the subject counts.** A rule that adds a step records its decision on that step, so the review counts the subject as decided when it, or any step it reads from, carries a decision of that rule.
+- 2026-10-22: **Settings are free only within their schema.** A step that differs from the recommended route only in the route's `settings_schema` properties is settled when its values validate against them. So a setting must be a free choice: a value that changes what the method is (an embargo, an averaging mode) belongs in the decided params, not in `settings_schema`, before its rule goes active.
+- 2026-10-22: **"Before the split" only when no split feeds the step.** A step after a split whose rows cannot be traced to train rows shows the real reason, since test rows may reach it.

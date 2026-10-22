@@ -72,3 +72,11 @@ def test_the_limit_is_the_one_categorical_encoding_one_hot_encodes_up_to() -> No
     encoding = manifest("supervised/categorical_encoding")["policy_thresholds"]
     ours = manifest(RULE)["policy_thresholds"]
     assert ours["high_cardinality_threshold"] == encoding["high_cardinality_threshold"]
+
+
+def test_an_identifier_reaching_the_model_asks_a_person_to_confirm_it_is_no_feature() -> None:
+    # An identifier lets a model memorise rows; leaving it in is not a settled choice.
+    d = run(column("customer", "String", distinct=750))
+    keep = alternative(d, "keep_categories")
+    assert keep["applicability"] == "needs_fact"
+    assert "customer" in keep["reason"]

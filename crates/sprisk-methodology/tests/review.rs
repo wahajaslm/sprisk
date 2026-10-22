@@ -430,3 +430,18 @@ fn a_setting_outside_the_route_s_allowed_range_is_not_settled() {
     let item = serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap();
     assert_eq!(item["status"], "proposal", "{item}");
 }
+
+#[test]
+fn a_step_is_after_the_split_when_a_split_feeds_it() {
+    let pipeline = filled_linear();
+    let is_split = |n: &sprisk_contracts::Node| n.id.as_str() == "split";
+    assert!(sprisk_methodology::review::after_a_split(
+        &pipeline, "model", is_split
+    ));
+    assert!(!sprisk_methodology::review::after_a_split(
+        &pipeline, "source", is_split
+    ));
+    assert!(!sprisk_methodology::review::after_a_split(
+        &pipeline, "split", is_split
+    ));
+}

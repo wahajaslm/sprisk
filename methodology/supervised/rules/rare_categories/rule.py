@@ -15,6 +15,7 @@ from sprisk_workers.rule import (
     applicable,
     decision,
     measure,
+    needs_fact,
     not_applicable,
     profile_evidence,
     required,
@@ -60,6 +61,14 @@ def decide(observation: RuleObservation) -> RuleDecision:
         )
         keep = not_applicable(
             "keep_categories", f"{', '.join(many)}: too many categories for one-hot."
+        )
+    elif identifiers:
+        group = not_applicable("group_rare", nothing)
+        keep = needs_fact(
+            "keep_categories",
+            f"{', '.join(identifiers)} has its own value for most train rows, so it looks like "
+            "an identifier, which lets a model memorise rows. Confirm it is not a feature and "
+            "drop it.",
         )
     else:
         group = not_applicable("group_rare", nothing)
