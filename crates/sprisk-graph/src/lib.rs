@@ -620,29 +620,39 @@ fn resolve_port<'a>(
 /// reads every column but its target (ADR-0056): a model step with no `features`, and a
 /// comparison candidate with none. They join the step's own `exclude`. A model that lists its
 /// features reads only those, so it is left as it is.
-pub fn leave_out_keys(plan: &mut Plan, keys: &BTreeSet<String>) {
+pub fn leave_out_keys(plan: &mut Plan, keys: &BTreeSet<String>) -> Result<(), CompileError> {
     if keys.is_empty() {
-        return;
+        return Ok(());
     }
     for step in &mut plan.steps {
+        let invalid = |reason: String| CompileError::InvalidParams {
+            node: step.node_id.clone(),
+            reason,
+        };
         if step.operator.model.is_some() {
-            exclude_keys(&mut step.params, keys);
+            exclude_keys(&mut step.params, keys).map_err(invalid)?;
         }
         if let Some(serde_json::Value::Object(candidate)) = step.params.get_mut("candidate_params")
         {
-            exclude_keys(candidate, keys);
+            exclude_keys(candidate, keys).map_err(invalid)?;
         }
     }
+    Ok(())
 }
 
-fn exclude_keys(params: &mut serde_json::Map<String, serde_json::Value>, keys: &BTreeSet<String>) {
+fn exclude_keys(
+    params: &mut serde_json::Map<String, serde_json::Value>,
+    keys: &BTreeSet<String>,
+) -> Result<(), String> {
     if params.contains_key("features") {
-        return;
+        return Ok(());
     }
-    let mut excluded: BTreeSet<String> = params
-        .get("exclude")
-        .and_then(|e| serde_json::from_value(e.clone()).ok())
-        .unwrap_or_default();
+    let mut excluded: BTreeSet<String> = match params.get("exclude") {
+        None => BTreeSet::new(),
+        Some(given) => serde_json::from_value(given.clone())
+            .map_err(|error| format!("exclude is not a list of column names: {error}"))?,
+    };
     excluded.extend(keys.iter().cloned());
     params.insert("exclude".into(), serde_json::json!(excluded));
+    Ok(())
 }

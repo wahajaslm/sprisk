@@ -711,7 +711,7 @@ fn key_columns_are_left_out_of_every_model_that_reads_every_column() {
     let keys = ["customer".to_owned(), "day".to_owned()]
         .into_iter()
         .collect();
-    sprisk_graph::leave_out_keys(&mut plan, &keys);
+    sprisk_graph::leave_out_keys(&mut plan, &keys).unwrap();
     let params = |id: &str| {
         plan.steps
             .iter()
@@ -727,4 +727,30 @@ fn key_columns_are_left_out_of_every_model_that_reads_every_column() {
         json!(["customer", "day"])
     );
     assert!(params("split").get("exclude").is_none());
+}
+
+#[test]
+fn an_exclude_that_is_not_a_list_of_names_is_an_error_not_an_empty_list() {
+    let flow = pipeline(
+        json!([
+            { "id": "load", "operator": "sprisk.io.file_source@1.0.0", "params": { "path": "/d.csv", "format": "csv" } },
+            { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": { "test_fraction": 0.2, "seed": 1 } },
+            { "id": "all", "operator": "sprisk.ml.linear_model@2.0.0",
+              "params": { "target": "y", "task": "classification" } }
+        ]),
+        json!([
+            { "from": "load.data", "to": "split.data" },
+            { "from": "split.train", "to": "all.train" }
+        ]),
+    );
+    let mut plan = compile(&flow, &plugins()).unwrap();
+    plan.steps
+        .iter_mut()
+        .find(|s| s.node_id == "all")
+        .unwrap()
+        .params
+        .insert("exclude".into(), json!("note"));
+    let keys = ["customer".to_owned()].into_iter().collect();
+    let err = sprisk_graph::leave_out_keys(&mut plan, &keys).unwrap_err();
+    assert!(err.to_string().contains("all"), "{err}");
 }

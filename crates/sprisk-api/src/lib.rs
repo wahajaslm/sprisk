@@ -1326,11 +1326,14 @@ async fn train_profile_facts(
     let profile = state.profiler.profile(&local_table(&artifact)?).await?;
     // Unset: every column but the target and the key columns, as the model reads them.
     let keys = sprisk_methodology::key_columns(question, pipeline);
-    let excluded: Vec<String> = node
-        .params
-        .get("exclude")
-        .and_then(|c| serde_json::from_value(c.clone()).ok())
-        .unwrap_or_default();
+    let excluded: Vec<String> = match node.params.get("exclude") {
+        None => Vec::new(),
+        Some(given) => serde_json::from_value(given.clone()).map_err(|error| {
+            ApiError::Internal(format!(
+                "step {step}: exclude is not a list of names: {error}"
+            ))
+        })?,
+    };
     let columns = named.unwrap_or_else(|| {
         profile
             .columns
@@ -2274,7 +2277,7 @@ async fn run_plan(state: &AppState, pipeline: &PipelineVersion) -> Result<Plan, 
     if let Some(id) = &pipeline.question_version_id {
         let question = state.store.get_question_version(id).await?;
         let keys = sprisk_methodology::key_columns(&question, pipeline);
-        sprisk_graph::leave_out_keys(&mut plan, &keys);
+        sprisk_graph::leave_out_keys(&mut plan, &keys).map_err(|e| ApiError::Compile(vec![e]))?;
     }
     Ok(plan)
 }
