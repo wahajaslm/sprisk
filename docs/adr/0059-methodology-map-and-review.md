@@ -21,7 +21,7 @@ Arch doc sections: §8 (methodology engine), §8.2 (rule kinds), §8.3 (decision
 - **Step order** is the flow's `Stage` (ADR-0055). Inside Clean, steps follow fixed slots: drop columns → outliers → fill → encode → scale → select. Nothing fitted on rows sits before the split. Structure (types, IDs, duplicates) may be measured on all rows; statistics only on train rows.
 - **Decision order is derived** from what each rule `reads`: question facts need nothing; `column.*` and `rows` need the split and a run; `flow.*` needs the model step; `decision.<key>` needs the rule that decides it. A cycle is refused when packs load. `MethodologyStage` stays a label that groups decisions on the map.
 
-**The review.** `POST /pipeline_versions/{id}/methodology/review` returns, in decision order, each rule that fits the question, with its subject step and one status:
+**The review.** `GET /pipeline_versions/{id}/methodology/review` returns, in decision order, each rule that fits the question, with its subject step and one status:
 - `settled`: the step carries this rule's decision;
 - `proposal`: the rule wants a change; the proposal is stored as today;
 - `needs_fact`: a question fact it reads is missing;
