@@ -4367,12 +4367,12 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
 
     let review = review(&api).await;
     let expected: Vec<(String, String)> = [
-        ("split.method", "proposal"),
+        ("split.method", "settled"),
         ("cleaning.missingness_strategy", "no_subject"),
         ("cleaning.outlier_strategy", "no_subject"),
-        ("features.encoding_strategy", "waiting"),
+        ("features.encoding_strategy", "needs_run"),
         ("features.scaling_strategy", "no_subject"),
-        ("modeling.estimator_selection", "waiting"),
+        ("modeling.estimator_selection", "needs_run"),
         ("evaluation.decision_threshold", "settled"),
     ]
     .iter()
@@ -4381,8 +4381,8 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([0]),
-        "only the split can be worked on: {review}"
+        json!([3, 5]),
+        "the split already matches, so the flow must run next: {review}"
     );
 }
 

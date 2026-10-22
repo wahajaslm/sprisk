@@ -108,7 +108,9 @@ pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planne
 /// The review item for `planned`.
 pub fn item(planned: &Planned, outcome: Outcome) -> Result<MethodologyReviewItem, ResolveError> {
     let (status, reason, recommended) = match outcome {
-        Outcome::Proposed { proposal, decided } => verdict(&proposal, planned.subject, decided)?,
+        Outcome::Proposed { proposal, decided } => {
+            verdict(&proposal, planned.rule, planned.subject, decided)?
+        }
         Outcome::NeedsRun(why) => (MethodologyReviewStatus::NeedsRun, why, None),
         Outcome::NotApplicable(why) => (MethodologyReviewStatus::NotApplicable, why, None),
         Outcome::Waiting { on } => (
@@ -142,6 +144,7 @@ pub fn item(planned: &Planned, outcome: Outcome) -> Result<MethodologyReviewItem
 /// changes nothing; asks when it needs a fact; else a proposal.
 fn verdict(
     proposal: &DecisionProposal,
+    rule: &MethodologyRule,
     subject: Option<&Node>,
     decided: bool,
 ) -> Result<(MethodologyReviewStatus, String, Option<String>), ResolveError> {
@@ -171,7 +174,7 @@ fn verdict(
         .ok_or_else(|| ResolveError::UndeclaredAlternative(id.to_owned()))?;
     let status = if chosen.applicability == MethodologyAlternativeApplicability::NeedsFact {
         MethodologyReviewStatus::NeedsFact
-    } else if changes_nothing(chosen.effect.as_ref(), subject) {
+    } else if changes_nothing(chosen.effect.as_ref(), subject, &settings_of(rule, id)) {
         MethodologyReviewStatus::Settled
     } else {
         MethodologyReviewStatus::Proposal
@@ -179,8 +182,25 @@ fn verdict(
     Ok((status, chosen.reason.to_string(), recommended))
 }
 
-/// No effect, or a replacement by the operator and params the step already has.
-fn changes_nothing(effect: Option<&GraphEffect>, subject: Option<&Node>) -> bool {
+/// The settings a person may adjust on the route `id` (its `settings_schema`), such as the
+/// test share of a split. They are not part of what the rule decides.
+fn settings_of<'r>(rule: &'r MethodologyRule, id: &str) -> Vec<&'r str> {
+    rule.alternatives
+        .iter()
+        .find(|a| a.id.as_str() == id)
+        .and_then(|a| a.settings_schema.get("properties"))
+        .and_then(serde_json::Value::as_object)
+        .map(|properties| properties.keys().map(String::as_str).collect())
+        .unwrap_or_default()
+}
+
+/// No effect, or a replacement by the operator the step already runs, with the same params
+/// apart from the route's `settings`.
+fn changes_nothing(
+    effect: Option<&GraphEffect>,
+    subject: Option<&Node>,
+    settings: &[&str],
+) -> bool {
     match (effect, subject) {
         (None, _) => true,
         (
@@ -188,7 +208,16 @@ fn changes_nothing(effect: Option<&GraphEffect>, subject: Option<&Node>) -> bool
                 operator, params, ..
             }),
             Some(node),
-        ) => operator.as_str() == node.operator.as_str() && *params == node.params,
+        ) => {
+            let decided = |params: &serde_json::Map<String, serde_json::Value>| {
+                params
+                    .iter()
+                    .filter(|(name, _)| !settings.contains(&name.as_str()))
+                    .map(|(name, value)| (name.clone(), value.clone()))
+                    .collect::<std::collections::BTreeMap<_, _>>()
+            };
+            operator.as_str() == node.operator.as_str() && decided(params) == decided(&node.params)
+        }
         _ => false,
     }
 }

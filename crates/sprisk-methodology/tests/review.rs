@@ -359,3 +359,46 @@ fn a_rule_with_no_step_never_waits_since_it_has_nothing_to_decide() {
     let outliers = index_of(&planned, "cleaning.outlier_strategy");
     assert_eq!(waits_on(&pipeline, &planned, outliers, &open), None);
 }
+
+/// Load → Split (stratified, 25% test, seed 7) → Linear model.
+fn stratified_at(params: Value) -> PipelineVersion {
+    let mut pipeline = serde_json::to_value(filled_linear()).unwrap();
+    pipeline["nodes"][1]["params"] = params;
+    parse(&pipeline.to_string()).unwrap()
+}
+
+fn stratified_proposal(params: Value) -> Outcome {
+    let alternative = json!({ "id": "stratified_random", "label": "Stratified", "description": "d",
+        "applicability": "applicable", "reason": "Keeps each class's share.",
+        "effect": { "kind": "replace_node", "node_id": "split",
+                    "operator": "sprisk.validation.random_split@1.0.0", "params": params } });
+    let mut proposal = serde_json::to_value(split_proposal(alternative)).unwrap();
+    proposal["recommended_alternative_id"] = json!("stratified_random");
+    Outcome::Proposed {
+        proposal: Box::new(parse(&proposal.to_string()).unwrap()),
+        decided: false,
+    }
+}
+
+#[test]
+fn a_step_that_differs_only_in_the_route_s_settings_is_settled() {
+    let catalog = catalog();
+    let pipeline =
+        stratified_at(json!({ "stratify": "churned", "test_fraction": 0.25, "seed": 7 }));
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
+    let outcome =
+        stratified_proposal(json!({ "stratify": "churned", "test_fraction": 0.2, "seed": 42 }));
+    let item = serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap();
+    assert_eq!(item["status"], "settled", "{item}");
+}
+
+#[test]
+fn a_step_that_differs_in_what_the_route_decides_is_a_proposal() {
+    let catalog = catalog();
+    let pipeline = stratified_at(json!({ "test_fraction": 0.2, "seed": 42 }));
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
+    let outcome =
+        stratified_proposal(json!({ "stratify": "churned", "test_fraction": 0.2, "seed": 42 }));
+    let item = serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap();
+    assert_eq!(item["status"], "proposal", "{item}");
+}

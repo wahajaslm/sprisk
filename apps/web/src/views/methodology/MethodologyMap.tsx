@@ -29,7 +29,7 @@ export function MethodologyMap({ rules, reviews, picked, onPick }: Props) {
         nodeTypes={NODE_TYPES}
         onNodeClick={(_event, node) => node.type === "decision" && onPick(node.id)}
         // Readable size from the left: the whole map fitted to the window would be too small to read.
-        defaultViewport={{ x: 24, y: 24, zoom: 0.85 }}
+        defaultViewport={{ x: 24, y: 64, zoom: 0.85 }}
         panOnScroll
         nodesDraggable={false}
         nodesConnectable={false}
