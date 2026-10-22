@@ -2,13 +2,13 @@
 # Sprisk Methodology Rule: Numerical Feature Scaling
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.feature_scaling@3.0.0
+id: methodology.supervised.feature_scaling@4.0.0
 name: "Feature Scaling Strategy"
 stage: features
 decides: features.scaling_strategy
 status: active
-applies_to: [sprisk.clean.scale]
-reads: [flow.model_families, flow.models_hidden, flow.other_readers, column.*.data_type, column.*.kurtosis, column.*.outlier_share, column.*.iqr]
+applies_to: [sprisk.clean.scale, sprisk.ml.linear_model]
+reads: [question.task, step.task, flow.model_families, flow.models_hidden, flow.other_readers, flow.scaled_upstream, column.*.data_type, column.*.kurtosis, column.*.outlier_share, column.*.iqr]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -20,6 +20,8 @@ provenance:
     - "Tree ensembles (RandomForest, XGBoost, LightGBM) are invariant to monotonic transformations; scaling adds compute with zero predictive gain."
     - "Offline-Online Skew: Fitted parameters (mean_, std_, median_, IQR) must be serialized into the ModelPackage artifact so online inference uses the identical normalization."
     - "Centering sparse matrices (with_mean=True) converts zero elements to floats, causing severe memory exhaustion."
+    - "Logistic regression is penalised (L2 by default in scikit-learn), and the penalty treats every coefficient alike, so unscaled inputs are penalised unevenly: a linear model for classes gets a Scale step before it when none comes first."
+    - "Plain least-squares regression gives the same predictions whatever the scale of its inputs, so scaling for it alone has no effect."
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -54,6 +56,33 @@ alternatives:
     action:
       type: replace_node
       operator: sprisk.clean.scale@1.0.0
+  - id: leave_inputs
+    label: Leave the Model's Inputs as They Are
+    description: No Scale step is added before this model.
+    rationale: Its inputs are already scaled, or it is a plain least-squares regression, whose
+      predictions do not depend on the scale of its inputs.
+    action:
+      type: pass_through
+  - id: insert_robust_scaling
+    label: Add Robust Scaling Before the Model
+    description: A Scale step using median and IQR, fit on the train rows, is added before the model.
+    rationale: The model is a penalised logistic regression and some inputs have heavy tails or
+      outliers; median and IQR resist them.
+    action:
+      type: insert_step
+      placement: before
+      operator: sprisk.clean.scale@1.0.0
+      node_id: scaling
+  - id: insert_standard_scaling
+    label: Add Standard Scaling Before the Model
+    description: A Scale step using mean and SD, fit on the train rows, is added before the model.
+    rationale: The model is a penalised logistic regression, whose penalty depends on the scale
+      of its inputs; their tails are light, so mean and SD describe them.
+    action:
+      type: insert_step
+      placement: before
+      operator: sprisk.clean.scale@1.0.0
+      node_id: scaling
   - id: maxabs_scaling_sparse
     label: MaxAbs Scaling (Sparsity Preserving)
     description: Scale each feature by its maximum absolute value without centering, preserving sparse zero
@@ -77,5 +106,15 @@ examples:
     picks: standard_scaling
   - given: { flow.model_families: tree_ensemble, flow.models_hidden: none, column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
     picks: no_scaling
-  - given: { flow.model_families: linear, flow.models_hidden: none, column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
+  - given: { question.task: classification, flow.model_families: linear, flow.models_hidden: none, column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
     picks: robust_scaling
+  - given: { question.task: regression, flow.model_families: linear, flow.models_hidden: none, column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
+    picks: no_scaling
+  - given: { step.task: classification, flow.scaled_upstream: "no", column.age.data_type: Float64, column.age.kurtosis: 0.2, column.age.outlier_share: 0.0, column.age.iqr: 10.0 }
+    picks: insert_standard_scaling
+  - given: { step.task: classification, flow.scaled_upstream: "no", column.income.data_type: Float64, column.income.kurtosis: 9.0, column.income.outlier_share: 0.07, column.income.iqr: 12.0 }
+    picks: insert_robust_scaling
+  - given: { step.task: classification, flow.scaled_upstream: "yes", column.age.data_type: Float64, column.age.kurtosis: 0.2, column.age.outlier_share: 0.0, column.age.iqr: 10.0 }
+    picks: leave_inputs
+  - given: { step.task: regression, flow.scaled_upstream: "no", column.age.data_type: Float64, column.age.kurtosis: 0.2, column.age.outlier_share: 0.0, column.age.iqr: 10.0 }
+    picks: leave_inputs

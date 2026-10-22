@@ -15,6 +15,9 @@ use sprisk_contracts::{
 };
 
 use crate::compare::edge;
+
+/// The scale step's operator, without version.
+const SCALE: &str = "sprisk.clean.scale@";
 use crate::{ResolveError, facts};
 
 /// The rule's observation of this question, of the flow around the step (`flow_facts`)
@@ -88,6 +91,12 @@ pub fn flow_facts<'a>(
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
     keeps: impl Fn(&Node) -> bool,
 ) -> Result<Map<String, Value>, ResolveError> {
+    let is_model = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == node_id)
+        .and_then(|n| operator_of(n.operator.as_str()))
+        .is_some_and(|o| o.model.is_some());
     let Downstream {
         seen,
         hidden,
@@ -107,6 +116,22 @@ pub fn flow_facts<'a>(
                 json!({ "value": text, "origin": "explicit" }),
             );
         }
+    }
+    // A model step: whether its inputs are scaled, for the rule that adds a scale step.
+    if is_model {
+        let scaled = crate::compare::upstream(pipeline, node_id)
+            .into_iter()
+            .any(|id| {
+                id != node_id
+                    && pipeline
+                        .nodes
+                        .iter()
+                        .any(|n| n.id.as_str() == id && n.operator.as_str().starts_with(SCALE))
+            });
+        facts.insert(
+            "flow.scaled_upstream".into(),
+            measured(if scaled { "yes" } else { "no" }),
+        );
     }
     if !readers.is_empty() {
         let readers: Vec<String> = readers.into_iter().collect();

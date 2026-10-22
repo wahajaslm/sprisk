@@ -446,7 +446,9 @@ fn a_model_reached_both_directly_and_through_a_code_step_counts_once_as_hidden()
 #[test]
 fn a_model_step_does_not_count_itself() {
     let pipeline = flow(&[("km", "clustering.kmeans")], &[]);
-    assert!(facts_of(&pipeline, "km").is_empty());
+    let facts = facts_of(&pipeline, "km");
+    assert!(facts.get("flow.model_families").is_none(), "{facts:?}");
+    assert!(facts.get("flow.models_hidden").is_none(), "{facts:?}");
 }
 
 #[test]
@@ -474,7 +476,7 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
     assert_eq!(observed["facts"]["question.target"]["value"], "churned");
 }
 
-const SCALING: &str = "methodology.supervised.feature_scaling@3.0.0";
+const SCALING: &str = "methodology.supervised.feature_scaling@4.0.0";
 
 fn scaling_decision(applicability: &str) -> RuleDecision {
     parse(
@@ -795,20 +797,19 @@ fn every_flow_fact_in_the_catalog_is_one_rust_sends() {
         ],
         &[("scale.train", "rf.train"), ("scale.train", "summary.data")],
     );
-    let sent: Vec<String> = facts_of(&pipeline, "scale")
-        .keys()
+    // flow.scaled_upstream is sent for a model step only.
+    let sent: std::collections::BTreeSet<String> = ["scale", "rf"]
+        .iter()
+        .flat_map(|step| facts_of(&pipeline, step).into_iter().map(|(k, _)| k))
         .filter(|k| k.starts_with("flow."))
-        .cloned()
         .collect();
     let mut catalog: Vec<&str> = sprisk_methodology::facts::FACTS
         .iter()
         .copied()
         .filter(|f| f.starts_with("flow."))
         .collect();
-    let mut sent = sent;
-    sent.sort();
     catalog.sort();
-    assert_eq!(sent, catalog);
+    assert_eq!(sent.iter().collect::<Vec<_>>(), catalog);
 }
 
 /// The same cases run in the Python rule harness, so both match `reads` alike.
@@ -1950,4 +1951,37 @@ fn key_columns_are_the_questions_unit_and_time_and_every_steps_group_and_time() 
         let keys: Vec<String> = key_columns(&asked, &flow).into_iter().collect();
         assert_eq!(json!(keys), case["keys"], "{}", case["case"]);
     }
+}
+
+#[test]
+fn a_step_knows_whether_a_scale_step_comes_before_it() {
+    let scaled = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("scale", "clean.scale"),
+            ("lin", "ml.linear_model@2.0.0"),
+        ],
+        &[("split.train", "scale.train"), ("scale.train", "lin.train")],
+    );
+    assert_eq!(
+        facts_of(&scaled, "lin")["flow.scaled_upstream"]["value"],
+        "yes"
+    );
+    // Only a model step gets the fact.
+    assert!(
+        facts_of(&scaled, "scale")
+            .get("flow.scaled_upstream")
+            .is_none()
+    );
+    let plain = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("lin", "ml.linear_model@2.0.0"),
+        ],
+        &[("split.train", "lin.train")],
+    );
+    assert_eq!(
+        facts_of(&plain, "lin")["flow.scaled_upstream"]["value"],
+        "no"
+    );
 }

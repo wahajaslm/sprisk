@@ -19,6 +19,8 @@ pub const FACTS: &[&str] = &[
     "flow.models_hidden",
     // The analysis or code steps downstream, which read the step's output.
     "flow.other_readers",
+    // yes or no: whether a Scale step comes before the step, so its inputs are scaled.
+    "flow.scaled_upstream",
     // A text setting of the step itself, e.g. step.method.
     "step.*",
     // A model a shortlist rule may put forward: its family, featureless when it has none.

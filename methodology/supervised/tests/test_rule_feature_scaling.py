@@ -133,3 +133,44 @@ def test_no_scaling_asks_first_while_another_step_reads_the_output() -> None:
     assert none["applicability"] == "needs_fact"
     assert "knn" in none["reason"]
     assert d["recommended_alternative_id"] == "no_scaling"
+
+
+def model(task: str, scaled: str = "no") -> dict[str, tuple[str, str]]:
+    """The facts Rust sends about a linear model step."""
+    return {"step.task": (task, "explicit"), "flow.scaled_upstream": (scaled, "measured")}
+
+
+def test_a_logistic_regression_with_nothing_scaled_first_gets_a_scale_step_before_it() -> None:
+    d = run(
+        {**column("age", kurtosis=0.2, outlier_share=0.0), **column("const", "Float64")},
+        model("classification"),
+    )
+    assert d["recommended_alternative_id"] == "insert_standard_scaling"
+    # A column with no spread in train cannot be scaled, so it is left to the model as is.
+    assert alternative(d, "insert_standard_scaling")["params"] == {
+        "columns": ["age"],
+        "method": "z_score",
+    }
+    assert alternative(d, "leave_inputs")["applicability"] == "not_applicable"
+    assert alternative(d, "no_scaling")["applicability"] == "not_applicable"
+
+
+def test_heavy_tails_before_a_logistic_regression_get_robust_scaling() -> None:
+    d = run(column("income", kurtosis=9.0, outlier_share=0.07, iqr=3.0), model("classification"))
+    assert d["recommended_alternative_id"] == "insert_robust_scaling"
+    assert alternative(d, "insert_robust_scaling")["params"]["method"] == "robust"
+
+
+def test_a_scaled_or_least_squares_model_keeps_its_inputs() -> None:
+    age = column("age", kurtosis=0.2, outlier_share=0.0)
+    for facts in (model("classification", scaled="yes"), model("regression")):
+        d = run(age, facts)
+        assert d["recommended_alternative_id"] == "leave_inputs", facts
+        assert alternative(d, "insert_standard_scaling")["applicability"] == "not_applicable"
+
+
+def test_scaling_before_least_squares_only_has_no_effect() -> None:
+    facts = {**LINEAR, "question.task": ("regression", "confirmed")}
+    d = run(column("age", kurtosis=0.2, outlier_share=0.0), facts)
+    assert d["recommended_alternative_id"] == "no_scaling"
+    assert "least-squares" in alternative(d, "no_scaling")["reason"]

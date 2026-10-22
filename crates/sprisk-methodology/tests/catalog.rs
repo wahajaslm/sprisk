@@ -122,7 +122,7 @@ fn a_step_is_routed_to_the_active_rule_that_applies_to_its_operator() {
         .unwrap();
     assert_eq!(
         rule.id.to_string(),
-        "methodology.supervised.feature_scaling@3.0.0"
+        "methodology.supervised.feature_scaling@4.0.0"
     );
     assert!(
         catalog

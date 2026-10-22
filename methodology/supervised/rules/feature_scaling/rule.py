@@ -1,8 +1,12 @@
 """Which scaling a step uses, from the models downstream and the train rows' tails (ADR-0042).
 
-A model fits only the model (ADR-0056), so it takes its inputs as they are. Scaling here has
-no effect when only trees, or only models that ignore their features, are downstream.
-Otherwise heavy tails or outliers distort the mean and SD, so they get median and IQR scaling.
+A model fits only the model (ADR-0056), so it takes its inputs as they are. Scaling has no
+effect when only trees, models that ignore their features, or plain least-squares regressions
+are downstream. Otherwise heavy tails or outliers distort the mean and SD, so they get median
+and IQR scaling.
+
+On a linear model step (ADR-0057): logistic regression is penalised, and the penalty depends
+on the scale of its inputs, so when no Scale step comes first one is added before it.
 """
 
 from typing import Any
@@ -25,9 +29,71 @@ from sprisk_workers.rule import (
 FAMILIES = "flow.model_families"
 HIDDEN = "flow.models_hidden"
 READERS = "flow.other_readers"
+SCALED = "flow.scaled_upstream"
+SCALE_STEP = ("no_scaling", "robust_scaling", "standard_scaling", "maxabs_scaling_sparse")
+MODEL_STEP = ("leave_inputs", "insert_robust_scaling", "insert_standard_scaling")
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
+    # Only a model step is sent whether a Scale step comes before it.
+    if flow_fact(observation, SCALED) is not None:
+        return _model_step(observation)
+    return _scale_step(observation)
+
+
+def _model_step(observation: RuleObservation) -> RuleDecision:
+    s = observation.settings
+    task = flow_fact(observation, "step.task")
+    scaled = flow_fact(observation, SCALED) == "yes"
+    columns = [c for c in step_columns(observation) if is_numeric(observation, c)]
+    spread = [
+        c
+        for c in columns
+        if measured(observation, c, "kurtosis") is not None and measured(observation, c, "iqr") != 0
+    ]
+    heavy = [
+        c
+        for c in spread
+        if (measured(observation, c, "kurtosis") or 0.0) > s["outlier_kurtosis_threshold"]
+        or (measured(observation, c, "outlier_share") or 0.0) >= s["outlier_share_threshold"]
+    ]
+    evidence = flow_evidence(observation, ["step.task", SCALED])
+    off = [not_applicable(i, "This is a model step, not a Scale step.") for i in SCALE_STEP]
+    if task != "classification" or scaled or not spread:
+        why = (
+            "A Scale step already comes before it."
+            if scaled
+            else "Plain least-squares regression predicts the same whatever the scale."
+            if task != "classification"
+            else "No numeric input varies on the train rows, so there is nothing to scale."
+        )
+        leave = applicable("leave_inputs", why, {})
+        add = [not_applicable(i, why) for i in MODEL_STEP[1:]]
+        return decision(observation, "leave_inputs", [leave, *add, *off], evidence)
+    penalty = (
+        "Logistic regression's L2 penalty treats every coefficient alike, so unscaled inputs "
+        "are penalised unevenly."
+    )
+    leave = not_applicable("leave_inputs", penalty)
+    robust = applicable(
+        "insert_robust_scaling",
+        f"{penalty} {', '.join(heavy)} has heavy tails or outliers; median and IQR resist them."
+        if heavy
+        else f"{penalty} Available; tails are light.",
+        {"columns": spread, "method": "robust"},
+    )
+    standard = applicable(
+        "insert_standard_scaling",
+        f"{penalty} Light tails: mean and SD describe the spread."
+        if not heavy
+        else f"{penalty} Available, but outliers inflate the SD.",
+        {"columns": spread, "method": "z_score"},
+    )
+    pick = "insert_robust_scaling" if heavy else "insert_standard_scaling"
+    return decision(observation, pick, [leave, robust, standard, *off], evidence)
+
+
+def _scale_step(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
     families = model_families(observation)
     hidden = flow_fact(observation, HIDDEN)
@@ -49,7 +115,8 @@ def decide(observation: RuleObservation) -> RuleDecision:
         if kurtosis.get(c, 0.0) > s["outlier_kurtosis_threshold"]
         or outliers.get(c, 0.0) >= s["outlier_share_threshold"]
     ]
-    no_effect = _no_effect(families, hidden)
+    task = observation.facts.get("question.task")
+    no_effect = _no_effect(families, hidden, task.value if task is not None else None)
 
     if text or flat:
         why = (
@@ -91,7 +158,8 @@ def decide(observation: RuleObservation) -> RuleDecision:
         recommended = "robust_scaling"
     else:
         recommended = "standard_scaling"
-    return decision(observation, recommended, [none, robust, standard, maxabs], evidence)
+    off = [not_applicable(i, "This is a Scale step, not a model step.") for i in MODEL_STEP]
+    return decision(observation, recommended, [none, robust, standard, maxabs, *off], evidence)
 
 
 def _robust(spread: list[str], flat_iqr: list[str], reason: str) -> dict[str, Any]:
@@ -105,7 +173,7 @@ def _robust(spread: list[str], flat_iqr: list[str], reason: str) -> dict[str, An
     return applicable("robust_scaling", reason, {"columns": spread, "method": "robust"})
 
 
-def _no_effect(families: set[str], hidden: str | None) -> str | None:
+def _no_effect(families: set[str], hidden: str | None, task: str | None) -> str | None:
     """Why scaling here cannot change the models downstream, or None when it can."""
     if hidden != "none":
         return None
@@ -113,6 +181,11 @@ def _no_effect(families: set[str], hidden: str | None) -> str | None:
         return "Only tree models are downstream. They split on rank order, which scaling keeps."
     if families == {"featureless"}:
         return "The only models downstream ignore their features, such as a dummy baseline."
+    if task == "regression" and families <= {"linear", "tree_ensemble", "featureless"}:
+        return (
+            "The models downstream are plain least-squares regressions, trees or a baseline; "
+            "none of them predicts differently on scaled inputs."
+        )
     return None
 
 

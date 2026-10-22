@@ -1897,7 +1897,7 @@ async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     assert_eq!(
         proposal["rule"],
-        "methodology.supervised.feature_scaling@3.0.0"
+        "methodology.supervised.feature_scaling@4.0.0"
     );
     assert_eq!(proposal["recommended_alternative_id"], "robust_scaling");
     let robust = proposal["alternatives"]
@@ -4411,5 +4411,74 @@ async fn a_model_reading_every_column_leaves_out_the_key_columns_when_it_runs() 
     }
     std::fs::write(&api.csv, csv).unwrap();
     let (run, attempts) = run_version(&api, BASE).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+}
+
+/// Logistic regression is penalised, so the scaling rule adds a Scale step before a linear
+/// model for classes that has none, and the flow runs with it (ADR-0057).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_logistic_regression_gets_a_scale_step_before_it() {
+    let api = api().await;
+    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
+                "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
+        json!({ "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+                "params":{"target":"returned_within_30d","task":"classification"} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut csv = String::from("order_id,order_date,age,income,returned_within_30d\n");
+    for i in 0..60 {
+        csv.push_str(&format!(
+            "o{},{i},{},{},{}\n",
+            i / 12,
+            20 + i,
+            1000 * (i % 7),
+            u8::from(i % 2 == 0)
+        ));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    run_version(&api, BASE).await;
+
+    let uri =
+        format!("/pipeline_versions/{BASE}/methodology/proposals/model/features.scaling_strategy");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let id = proposal["recommended_alternative_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(id.starts_with("insert_"), "{proposal}");
+    let chosen = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == id.as_str())
+        .unwrap();
+    assert_eq!(chosen["effect"]["kind"], "insert_node", "{chosen}");
+    assert_eq!(chosen["effect"]["before"], "model", "{chosen}");
+    assert_eq!(
+        chosen["effect"]["params"]["columns"],
+        json!(["age", "income"])
+    );
+
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({ "alternative_id": id, "idempotency_key": "scale-before-logistic-1" });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let version = applied["pipeline"]["id"].as_str().unwrap().to_owned();
+    let (run, attempts) = run_version(&api, &version).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }
