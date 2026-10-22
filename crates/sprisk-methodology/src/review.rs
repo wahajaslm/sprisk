@@ -174,7 +174,7 @@ fn verdict(
         .ok_or_else(|| ResolveError::UndeclaredAlternative(id.to_owned()))?;
     let status = if chosen.applicability == MethodologyAlternativeApplicability::NeedsFact {
         MethodologyReviewStatus::NeedsFact
-    } else if changes_nothing(chosen.effect.as_ref(), subject, &settings_of(rule, id)) {
+    } else if changes_nothing(chosen.effect.as_ref(), subject, settings_of(rule, id)) {
         MethodologyReviewStatus::Settled
     } else {
         MethodologyReviewStatus::Proposal
@@ -182,25 +182,27 @@ fn verdict(
     Ok((status, chosen.reason.to_string(), recommended))
 }
 
-/// The settings a person may adjust on the route `id` (its `settings_schema`), such as the
-/// test share of a split. They are not part of what the rule decides.
-fn settings_of<'r>(rule: &'r MethodologyRule, id: &str) -> Vec<&'r str> {
+/// The settings a person may adjust on the route `id` (its `settings_schema` properties), such
+/// as the test share of a split, each with its schema. They are not part of what the rule decides.
+fn settings_of<'r>(
+    rule: &'r MethodologyRule,
+    id: &str,
+) -> Option<&'r serde_json::Map<String, serde_json::Value>> {
     rule.alternatives
         .iter()
         .find(|a| a.id.as_str() == id)
         .and_then(|a| a.settings_schema.get("properties"))
         .and_then(serde_json::Value::as_object)
-        .map(|properties| properties.keys().map(String::as_str).collect())
-        .unwrap_or_default()
 }
 
 /// No effect, or a replacement by the operator the step already runs, with the same params
-/// apart from the route's `settings`.
+/// apart from the route's `settings`, whose values the step has within their allowed range.
 fn changes_nothing(
     effect: Option<&GraphEffect>,
     subject: Option<&Node>,
-    settings: &[&str],
+    settings: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> bool {
+    let is_setting = |name: &str| settings.is_some_and(|s| s.contains_key(name));
     match (effect, subject) {
         (None, _) => true,
         (
@@ -212,11 +214,18 @@ fn changes_nothing(
             let decided = |params: &serde_json::Map<String, serde_json::Value>| {
                 params
                     .iter()
-                    .filter(|(name, _)| !settings.contains(&name.as_str()))
+                    .filter(|(name, _)| !is_setting(name))
                     .map(|(name, value)| (name.clone(), value.clone()))
                     .collect::<std::collections::BTreeMap<_, _>>()
             };
-            operator.as_str() == node.operator.as_str() && decided(params) == decided(&node.params)
+            let allowed = settings.into_iter().flatten().all(|(name, schema)| {
+                node.params
+                    .get(name)
+                    .is_none_or(|value| jsonschema::is_valid(schema, value))
+            });
+            operator.as_str() == node.operator.as_str()
+                && decided(params) == decided(&node.params)
+                && allowed
         }
         _ => false,
     }
@@ -270,4 +279,18 @@ pub fn fits_task<'a>(
     operators.any(|o| {
         decides(rule, o.id.as_str()) && o.model.as_ref().is_none_or(|m| m.tasks.contains(&task))
     })
+}
+
+/// Whether `subject`, or a step it reads from, carries a decision `by_rule` made. A rule that
+/// adds a step records its decision on that step, not on the subject it is anchored to.
+pub fn carries_decision(
+    pipeline: &PipelineVersion,
+    subject: &str,
+    by_rule: impl Fn(&Node) -> bool,
+) -> bool {
+    let feeding = upstream(pipeline, subject);
+    pipeline
+        .nodes
+        .iter()
+        .any(|n| feeding.contains(n.id.as_str()) && by_rule(n))
 }

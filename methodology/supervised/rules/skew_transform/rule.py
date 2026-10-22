@@ -37,7 +37,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
         transform = applicable(
             "yeo_johnson",
             f"{', '.join(f'{c} ({skewness[c]:.2f})' for c in skewed)}: skewness past "
-            f"{limit}. Yeo-Johnson, fit on the train rows, makes each close to symmetric.",
+            f"{limit}. Yeo-Johnson, fit on the train rows, reduces their skewness.",
             {"columns": skewed},
         )
         none = not_applicable("no_transform", f"{', '.join(skewed)} have a long tail.")

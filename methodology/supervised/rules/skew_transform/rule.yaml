@@ -35,7 +35,7 @@ alternatives:
   - id: yeo_johnson
     label: "Yeo-Johnson Transform"
     description: "Power transform of the skewed numbers, fit on the train rows, in a step added before the model."
-    rationale: "A long tail pulls a linear model's fit; Yeo-Johnson makes the column close to symmetric and handles zero and negative values."
+    rationale: "A long tail pulls a linear model's fit; Yeo-Johnson reduces its skew and handles zero and negative values."
     action:
       type: insert_step
       placement: before

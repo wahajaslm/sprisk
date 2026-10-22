@@ -405,3 +405,28 @@ fn a_step_that_differs_in_what_the_route_decides_is_a_proposal() {
     let item = serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap();
     assert_eq!(item["status"], "proposal", "{item}");
 }
+
+#[test]
+fn a_decision_on_a_step_feeding_the_subject_counts_as_the_rule_s_decision() {
+    // A rule anchored on the model adds a step before it; that step carries the decision.
+    let pipeline = filled_linear();
+    let by_rule = |n: &sprisk_contracts::Node| n.id.as_str() == "fill";
+    assert!(sprisk_methodology::review::carries_decision(
+        &pipeline, "model", by_rule
+    ));
+    assert!(!sprisk_methodology::review::carries_decision(
+        &pipeline, "split", by_rule
+    ));
+}
+
+#[test]
+fn a_setting_outside_the_route_s_allowed_range_is_not_settled() {
+    let catalog = catalog();
+    let pipeline =
+        stratified_at(json!({ "stratify": "churned", "test_fraction": 0.95, "seed": 7 }));
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
+    let outcome =
+        stratified_proposal(json!({ "stratify": "churned", "test_fraction": 0.2, "seed": 42 }));
+    let item = serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap();
+    assert_eq!(item["status"], "proposal", "{item}");
+}

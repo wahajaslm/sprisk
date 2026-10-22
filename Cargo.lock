@@ -2498,6 +2498,7 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "itertools",
+ "jsonschema",
  "petgraph",
  "rand 0.9.5",
  "rand_chacha",

@@ -1052,9 +1052,11 @@ async fn review_methodology(
         .collect();
     let applied = state.store.methodology_decisions(&applied).await?;
     let decided = |node: &sprisk_contracts::Node, rule: &MethodologyRule| {
-        applied.iter().any(|d| {
-            node.methodology_decision_id.as_ref() == Some(&d.id)
-                && d.rule.as_str() == rule.id.as_str()
+        review::carries_decision(&pipeline, node.id.as_str(), |step| {
+            applied.iter().any(|d| {
+                step.methodology_decision_id.as_ref() == Some(&d.id)
+                    && d.rule.as_str() == rule.id.as_str()
+            })
         })
     };
 
