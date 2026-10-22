@@ -1059,15 +1059,16 @@ const SPLIT_DECISION: &str = "split.method";
 /// decides it (ADR-0044), else the first rule of a step that fits on train rows (ADR-0050).
 /// None when nothing about the step is compared.
 fn compared_decision(state: &AppState, node: &sprisk_contracts::Node) -> Option<String> {
-    let mut rules = state.rules.rules_for_operator(node.operator.as_str());
-    let shortlist = state
+    let rules: Vec<_> = state
         .rules
         .rules_for_operator(node.operator.as_str())
-        .find(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist));
-    shortlist
+        .collect();
+    rules
+        .iter()
+        .find(|rule| rule.selection == Some(MethodologyRuleSelection::Shortlist))
         .or_else(|| {
             rules
-                .next()
+                .first()
                 .filter(|_| keeps_train_rows(&state.registry, node))
         })
         .map(|rule| rule.decides.as_str().to_owned())
