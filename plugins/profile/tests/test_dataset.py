@@ -210,3 +210,62 @@ def test_shape_is_left_out_where_it_means_nothing() -> None:
     flat, label = profile(data).columns
     assert flat.skewness is None and flat.outlier_share is None
     assert label.kurtosis is None
+
+
+def test_rows_equal_to_an_earlier_row_are_counted_as_duplicates() -> None:
+    p = profile(pl.DataFrame({"a": [1, 1, 2, 1, 2], "b": ["x", "x", "y", "x", "z"]}))
+    assert p.duplicate_rows == 2
+
+
+def unconverted(p: DatasetProfile, name: str) -> list[str]:
+    values = column(p, name).unconverted
+    assert values is not None, name
+    return [v.root for v in values]
+
+
+def test_duplicates_are_counted_as_drop_duplicates_compares_rows() -> None:
+    nan, gap = float("nan"), None
+    p = profile(pl.DataFrame({"a": [nan, gap, nan]}))
+    assert p.duplicate_rows == 1
+
+
+def test_a_table_wider_than_the_profile_gives_no_duplicate_count() -> None:
+    data = pl.DataFrame({f"c{i}": [1, 1] for i in range(MAX_COLUMNS)})
+    assert profile_of(data).duplicate_rows == 1
+    assert profile_of(data, total_columns=MAX_COLUMNS + 1).duplicate_rows is None
+    assert profile_of(data, total_rows=3).duplicate_rows is None
+
+
+def test_a_text_column_says_what_share_reads_as_numbers_and_which_values_do_not() -> None:
+    p = profile(pl.DataFrame({"age": ["31", "?", "n/a", "?", "4.5", "NaN", None]}))
+    age = column(p, "age")
+    assert age.numeric_share == pytest.approx(2 / 6)
+    assert unconverted(p, "age") == ["?", "NaN", "n/a"]
+
+
+def test_only_text_columns_with_some_numbers_list_unconverted_values() -> None:
+    p = profile(pl.DataFrame({"n": [1.0, 2.0], "all": ["1", "2"], "words": ["a", "b"]}))
+    assert (column(p, "n").numeric_share, column(p, "n").unconverted) == (None, None)
+    assert (column(p, "all").numeric_share, column(p, "all").unconverted) == (1.0, None)
+    assert (column(p, "words").numeric_share, column(p, "words").unconverted) == (0.0, None)
+
+
+def test_a_text_column_counts_numbers_with_a_leading_zero_like_a_code() -> None:
+    p = profile(pl.DataFrame({"zip": ["01234", "75001"], "n": ["0", "0.5"], "w": ["a", "b"]}))
+    assert column(p, "zip").leading_zero_values == 1
+    assert column(p, "n").leading_zero_values == 0
+    assert column(p, "w").leading_zero_values == 0
+
+
+def test_padded_numbers_read_as_numbers_and_padded_markers_keep_their_spaces() -> None:
+    p = profile(pl.DataFrame({"age": [" 12", "13 ", " ?", " 012"]}))
+    assert column(p, "age").numeric_share == pytest.approx(3 / 4)
+    assert column(p, "age").leading_zero_values == 1
+    assert unconverted(p, "age") == [" ?"]
+
+
+def test_unconverted_values_are_bounded_and_cut() -> None:
+    long = "x" * 100
+    p = profile(pl.DataFrame({"t": ["1"] + [f"v{i}" for i in range(20)] + [long, long]}))
+    values = unconverted(p, "t")
+    assert len(values) == 10 and values[0] == "x" * 60

@@ -20,6 +20,7 @@ from sprisk_workers.rule import (
     profile_evidence,
     required,
     step_columns,
+    train_rows,
 )
 
 TEXT_TYPES = ("String", "Utf8", "Categorical", "Enum")
@@ -27,7 +28,7 @@ TEXT_TYPES = ("String", "Utf8", "Categorical", "Enum")
 
 def decide(observation: RuleObservation) -> RuleDecision:
     limit = observation.settings["high_cardinality_threshold"]
-    rows = int(observation.profile["rows"])
+    rows = train_rows(observation)
     texts = [
         c
         for c in step_columns(observation)

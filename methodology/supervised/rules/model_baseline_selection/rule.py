@@ -8,14 +8,20 @@ comparing; the threshold is a setting.
 from typing import Any
 
 from sprisk_contracts import RuleDecision, RuleObservation
-from sprisk_workers.rule import applicable, profile_evidence, shortlist_decision, step_columns
+from sprisk_workers.rule import (
+    applicable,
+    profile_evidence,
+    shortlist_decision,
+    step_columns,
+    train_rows,
+)
 
 PREFIX, SUFFIX = "candidate.", ".family"
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
-    rows = int(observation.profile["rows"])
+    rows = train_rows(observation)
     shortlist: list[str] = []
     alternatives: list[dict[str, Any]] = []
     for id, family in sorted(_candidates(observation).items()):

@@ -2,8 +2,9 @@
 
 Run as `python -m sprisk_profile.dataset` with a Parquet path on stdin; prints a
 `DatasetProfile` as JSON. Rust starts one short process per request, bounds its time and
-checks the answer against the contract. Methodology rules read it too, but only of a step's
-train rows (ADR-0042): a whole-table profile sees held-out rows.
+checks the answer against the contract. Methodology rules read it too: of a step's train rows
+(ADR-0042), or only its structure (types, duplicates, values that do not read as numbers) of the
+rows before the split (ADR-0059), since statistics of all rows see held-out rows.
 """
 
 import json
@@ -41,6 +42,11 @@ def profile(
     data: pl.DataFrame, total_rows: int | None = None, total_columns: int | None = None
 ) -> dict[str, Any]:
     width = data.width
+    duplicates = _duplicates(
+        data,
+        data.height if total_rows is None else total_rows,
+        width if total_columns is None else total_columns,
+    )
     data = _finite(data.select(data[n] for n in data.columns[:MAX_COLUMNS]))
     rows = data.height
     band_rows = -(-rows // MAX_BANDS)
@@ -52,9 +58,19 @@ def profile(
         "total_columns": width if total_columns is None else total_columns,
         "profiled_rows": rows,
         "band_rows": band_rows,
+        **({} if duplicates is None else {"duplicate_rows": duplicates}),
         "columns": [_column(data[name], name in numeric, bins, band_rows) for name in data.columns],
         "correlation": {"columns": varying, "pairs": _pairs(data, varying)},
     }
+
+
+def _duplicates(data: pl.DataFrame, rows: int, columns: int) -> int | None:
+    """Rows equal in every column to an earlier one, as drop_duplicates compares them (NaN
+    equals NaN, not a gap). None when the table has rows or columns the profile does not read:
+    rows equal here may differ there, and copies may sit past the cut."""
+    if rows > data.height or columns > MAX_COLUMNS or data.width > MAX_COLUMNS:
+        return None
+    return data.height - data.n_unique() if data.height else 0
 
 
 def _finite(data: pl.DataFrame) -> pl.DataFrame:
@@ -77,6 +93,8 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
     }
     if numeric:
         column.update(_shape(s))
+    if s.dtype == pl.String:
+        column.update(_conversion(s))
     histogram = _bins(bins, s.name) if numeric else _top_values(s)
     if histogram is not None:
         column["histogram"] = histogram
@@ -102,6 +120,36 @@ def _shape(s: pl.Series) -> dict[str, float]:
         outside = ((present < q1 - fence) | (present > q3 + fence)).sum()
         shape["outlier_share"] = float(outside) / present.len()
     return shape
+
+
+def _conversion(s: pl.Series) -> dict[str, Any]:
+    """For missing-marker and type rules: the share of a text column's present values that read
+    as finite numbers, how many of those start with a zero like the code 01234, and the most
+    common values that do not read as numbers ("?", "n/a", "NaN") when some do. Spaces around a
+    number are ignored, as cast_types ignores them; values that are not numbers are given as
+    they are, so mark_missing can match them whole."""
+    present = s.drop_nulls()
+    if present.is_empty():
+        return {}
+    trimmed = present.str.strip_chars()
+    as_number = trimmed.cast(pl.Float64, strict=False)
+    numbers = as_number.is_not_null() & as_number.is_finite()
+    share = float(numbers.sum()) / present.len()
+    zeros = int((numbers & trimmed.str.contains(r"^[+-]?0\d")).sum())
+    if share in (0.0, 1.0):
+        return {"numeric_share": share, "leading_zero_values": zeros}
+    counts = (
+        present.filter(~numbers)
+        .rename("value")
+        .value_counts(name="n")
+        .sort(["n", "value"], descending=[True, False])
+        .head(TOP_VALUES)
+    )
+    return {
+        "numeric_share": share,
+        "leading_zero_values": zeros,
+        "unconverted": [v[:MAX_LABEL] for v in counts["value"]],
+    }
 
 
 def _missing_by_band(s: pl.Series, band_rows: int) -> list[float]:

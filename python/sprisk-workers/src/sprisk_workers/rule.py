@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_contracts.generated.models import Fact
+from sprisk_contracts.generated.models import Profile as ProfileValues
 from sprisk_workers.errors import RuleError
 
 Decide = Callable[[RuleObservation], RuleDecision]
@@ -90,17 +91,58 @@ def question_evidence(observation: RuleObservation, labels: dict[str, str]) -> l
 def step_columns(observation: RuleObservation) -> list[str]:
     """The step's columns: every profiled column has a data type, so a rule that reads
     column.*.data_type sees them all, text and constant ones too. One that does not sees none."""
+    return _columns(observation, "column.")
+
+
+def input_columns(observation: RuleObservation) -> list[str]:
+    """The columns of the rows the step reads, measured before the split (ADR-0059), for a
+    rule that reads input.column.*.data_type."""
+    return _columns(observation, "input.column.")
+
+
+def _columns(observation: RuleObservation, prefix: str) -> list[str]:
     suffix = ".data_type"
     names = {
-        key[len("column.") : -len(suffix)]
+        key[len(prefix) : -len(suffix)]
         for key in observation.profile
-        if key.startswith("column.") and key.endswith(suffix)
+        if key.startswith(prefix) and key.endswith(suffix)
     }
     return sorted(names)
 
 
 def measure(observation: RuleObservation, column: str, name: str) -> float | str | bool | None:
-    return observation.profile.get(f"column.{column}.{name}")
+    value = observation.profile.get(f"column.{column}.{name}")
+    if isinstance(value, ProfileValues):
+        raise RuleError(f"profile gives a list for {name} of column {column}, which is one value")
+    return value
+
+
+def train_rows(observation: RuleObservation) -> int:
+    """How many train rows the step's profile measured."""
+    rows = observation.profile.get("rows")
+    if not isinstance(rows, (int, float)):
+        raise RuleError(f"profile gives {rows!r} for rows, which is a count")
+    return int(rows)
+
+
+def input_number(observation: RuleObservation, name: str) -> float | None:
+    """A numeric structure measure of the rows the step reads, such as input.rows or
+    input.column.age.numeric_share; None where the profile left it out."""
+    value = observation.profile.get(f"input.{name}")
+    if value is not None and not isinstance(value, (int, float)):
+        raise RuleError(f"profile gives {value!r} for input.{name}, which is a number")
+    return value
+
+
+def input_values(observation: RuleObservation, column: str, name: str) -> list[str]:
+    """A list of dataset text measured on the rows the step reads, such as the values of a
+    column that do not read as numbers; empty where the profile left it out."""
+    value = observation.profile.get(f"input.column.{column}.{name}")
+    if value is None:
+        return []
+    if not isinstance(value, ProfileValues):
+        raise RuleError(f"profile gives {value!r} for {name} of column {column}, which is a list")
+    return [item.root for item in value.root]
 
 
 def measured(observation: RuleObservation, column: str, name: str) -> float | None:

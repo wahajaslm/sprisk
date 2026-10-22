@@ -537,7 +537,7 @@ export interface LoadedTableUse {
   node_id: NodeId;
 }
 /**
- * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bars, a missing-value map of at most 40 row bands, correlation of at most 30 columns. For people only: the AI planner and methodology checks never read it, since it covers held-out rows.
+ * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bars, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "DatasetProfile".
@@ -553,6 +553,10 @@ export interface DatasetProfile {
    * Rows in each band of the missing-value map; the last band may hold fewer.
    */
   band_rows: number;
+  /**
+   * Profiled rows equal in every column to an earlier one.
+   */
+  duplicate_rows?: number;
   columns: ColumnProfile[];
   correlation: Correlation;
 }
@@ -590,6 +594,31 @@ export interface ColumnProfile {
    * Interquartile range of a numeric column with variation. Zero when most values are equal: IQR fences and robust scaling then have no spread to use.
    */
   iqr?: number;
+  /**
+   * Of a text column's present values, the share that read as numbers. Absent for other columns.
+   */
+  numeric_share?: number;
+  /**
+   * Of a text column's present values, how many read as numbers but start with a zero before a digit, like the code 01234. Absent for other columns.
+   */
+  leading_zero_values?: number;
+  /**
+   * A text column's most common present values that do not read as numbers, most common first, when some do. Dataset text (untrusted, rule 7), cut to 60 characters.
+   *
+   * @maxItems 10
+   */
+  unconverted?:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string];
   /**
    * Share of missing cells (0 to 1) in each row band, in row order.
    */
@@ -1076,10 +1105,24 @@ export interface RuleObservation {
     [k: string]: Fact;
   };
   /**
-   * Measured profile values by name.
+   * Measured profile values by name. A list holds dataset text, such as the values of a column that do not read as numbers.
    */
   profile: {
-    [k: string]: number | string | boolean;
+    [k: string]:
+      | number
+      | string
+      | boolean
+      | []
+      | [string]
+      | [string, string]
+      | [string, string, string]
+      | [string, string, string, string]
+      | [string, string, string, string, string]
+      | [string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string];
   };
   /**
    * The rule's settings: policy thresholds with any overrides.
@@ -1257,12 +1300,23 @@ export interface MethodologyRule {
  */
 export interface RuleExample {
   /**
-   * Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }.
+   * Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }. A measured fact may also be a list of dataset text.
    */
   given: {
     [k: string]:
       | string
       | number
+      | []
+      | [string]
+      | [string, string]
+      | [string, string, string]
+      | [string, string, string, string]
+      | [string, string, string, string, string]
+      | [string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string]
       | {
           value: string;
           origin: Origin;

@@ -29,8 +29,8 @@
         },
         "profile": {
           "type": "object",
-          "description": "Measured profile values by name.",
-          "additionalProperties": { "oneOf": [{ "type": "number" }, { "type": "string" }, { "type": "boolean" }] }
+          "description": "Measured profile values by name. A list holds dataset text, such as the values of a column that do not read as numbers.",
+          "additionalProperties": { "oneOf": [{ "type": "number" }, { "type": "string" }, { "type": "boolean" }, { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 60 } }] }
         },
         "settings": {
           "type": "object",
@@ -417,11 +417,12 @@
       "properties": {
         "given": {
           "type": "object",
-          "description": "Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }.",
+          "description": "Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }. A measured fact may also be a list of dataset text.",
           "additionalProperties": {
             "oneOf": [
               { "type": "string" },
               { "type": "number" },
+              { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 60 } },
               {
                 "type": "object",
                 "additionalProperties": false,

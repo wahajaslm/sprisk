@@ -35,6 +35,10 @@ class TableRow(StrictModel):
     ]
 
 
+class UnconvertedItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=60)]
+
+
 class Kind(StrEnum):
     bins = "bins"
     top_values = "top_values"
@@ -311,6 +315,14 @@ class Error(StrictModel):
     message: Annotated[str, Field(min_length=1)]
 
 
+class ProfileItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=60)]
+
+
+class Profile(RootModel[list[ProfileItem]]):
+    root: Annotated[list[ProfileItem], Field(max_length=10)]
+
+
 class ShortlistItem(RootModel[str]):
     root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
 
@@ -449,6 +461,14 @@ class Kind2(StrEnum):
     flow_fact = "flow_fact"
     policy = "policy"
     user_reason = "user_reason"
+
+
+class GivenItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=60)]
+
+
+class Given(RootModel[list[GivenItem]]):
+    root: Annotated[list[GivenItem], Field(max_length=10)]
 
 
 class RuleActionType(StrEnum):
@@ -1448,7 +1468,10 @@ class RuleObservation(StrictModel):
         ),
     ]
     profile: Annotated[
-        dict[str, float | str | bool], Field(description="Measured profile values by name.")
+        dict[str, float | str | bool | Profile],
+        Field(
+            description="Measured profile values by name. A list holds dataset text, such as the values of a column that do not read as numbers."
+        ),
     ]
     settings: Annotated[
         dict[str, Any],
@@ -1515,7 +1538,7 @@ class MethodologyEvidence(StrictModel):
     artifact_id: ArtifactId | None = None
 
 
-class Given(StrictModel):
+class Given1(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1528,9 +1551,9 @@ class RuleExample(StrictModel):
         extra="forbid",
     )
     given: Annotated[
-        dict[str, str | float | Given],
+        dict[str, str | float | Given | Given1],
         Field(
-            description="Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }."
+            description="Facts by name. A question fact is confirmed and a flow fact measured unless given as { value, origin }. A measured fact may also be a list of dataset text."
         ),
     ]
     picks: Annotated[
@@ -2065,6 +2088,28 @@ class ColumnProfile(StrictModel):
             ge=0.0,
         ),
     ] = None
+    numeric_share: Annotated[
+        float | None,
+        Field(
+            description="Of a text column's present values, the share that read as numbers. Absent for other columns.",
+            ge=0.0,
+            le=1.0,
+        ),
+    ] = None
+    leading_zero_values: Annotated[
+        int | None,
+        Field(
+            description="Of a text column's present values, how many read as numbers but start with a zero before a digit, like the code 01234. Absent for other columns.",
+            ge=0,
+        ),
+    ] = None
+    unconverted: Annotated[
+        list[UnconvertedItem] | None,
+        Field(
+            description="A text column's most common present values that do not read as numbers, most common first, when some do. Dataset text (untrusted, rule 7), cut to 60 characters.",
+            max_length=10,
+        ),
+    ] = None
     missing_by_band: Annotated[
         list[float],
         Field(description="Share of missing cells (0 to 1) in each row band, in row order."),
@@ -2444,6 +2489,10 @@ class DatasetProfile(StrictModel):
             ge=0,
         ),
     ]
+    duplicate_rows: Annotated[
+        int | None,
+        Field(description="Profiled rows equal in every column to an earlier one.", ge=0),
+    ] = None
     columns: list[ColumnProfile]
     correlation: Correlation
 
