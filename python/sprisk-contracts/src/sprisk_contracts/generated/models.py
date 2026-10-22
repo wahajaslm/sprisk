@@ -711,6 +711,7 @@ class CapabilityClass(StrEnum):
 
 class PortKind(StrEnum):
     table = "table"
+    matrix = "matrix"
     model = "model"
     metrics = "metrics"
     diagnostics = "diagnostics"

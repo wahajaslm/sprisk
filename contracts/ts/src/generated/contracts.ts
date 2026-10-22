@@ -279,10 +279,12 @@ export type CapabilityClass =
  */
 export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
 /**
+ * What a port carries. A table is Parquet; a matrix is rows by named number columns, stored sparse (SciPy CSR in .npz, ADR-0058): row i is row i of the table it was made from.
+ *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "PortKind".
  */
-export type PortKind = "table" | "model" | "metrics" | "diagnostics" | "report" | "figure";
+export type PortKind = "table" | "matrix" | "model" | "metrics" | "diagnostics" | "report" | "figure";
 /**
  * pure: same inputs give same outputs, cacheable. nondeterministic: not replayable. side_effecting: changes the outside world; never auto-retried.
  *

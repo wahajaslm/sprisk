@@ -3051,8 +3051,10 @@
     },
     "PortKind": {
       "type": "string",
+      "description": "What a port carries. A table is Parquet; a matrix is rows by named number columns, stored sparse (SciPy CSR in .npz, ADR-0058): row i is row i of the table it was made from.",
       "enum": [
         "table",
+        "matrix",
         "model",
         "metrics",
         "diagnostics",

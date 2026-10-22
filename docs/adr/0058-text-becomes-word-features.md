@@ -1,5 +1,5 @@
 # ADR-0058: Free text becomes word features, passed between steps as a matrix
-Status: Proposed
+Status: Accepted
 Date: 2026-10-22
 Arch doc sections: §4 (domain model), §8 (methodology), §9 (runs). Builds on ADR-0055 (one cell is one step), ADR-0056 (a model fits only the model) and ADR-0057 (a rule can add a step).
 
@@ -11,7 +11,7 @@ Arch doc sections: §4 (domain model), §8 (methodology), §9 (runs). Builds on 
 - In Jupyter a person writes `X_train = tfidf.fit_transform(train["designation"])` and then `model.fit(X_train, y)`. The notebook cell should look the same (ADR-0055).
 
 ## Decision
-**A new value kind, `matrix`.** Rows × named number columns, stored sparse (SciPy CSR in `.npz`, with its column names). Row i is row i of the table it was made from. Steps pass it like any value; a code step gets it as a SciPy matrix.
+**A new value kind, `matrix`.** Rows × named number columns, stored sparse (SciPy CSR in `.npz`, with its column names). Row i is row i of the table it was made from. Steps pass it like any value; a step gets it as a `Matrix`: a SciPy CSR array and its column names.
 
 **An input port may be optional** (`optional: true`). Left unconnected, the step gets nothing for it. Nothing else changes for existing steps.
 
@@ -47,3 +47,11 @@ Arch doc sections: §4 (domain model), §8 (methodology), §9 (runs). Builds on 
 - Python: a model with `words` predicts as the plain code does; a study refits Vectorize text per fold.
 - Rule: a free-text column gets Vectorize text, a few-category column gets one-hot.
 - API: Rakuten-shaped synthetic data runs from Load to Evaluate with steps added by the rules only. The real Rakuten data never enters the repo.
+
+## Amendments
+- 2026-10-22: **A matrix is a SciPy array with its names.** A bare SciPy matrix has no column names, and importance must say which word mattered. So a step reads and returns a `Matrix` (`sprisk_workers.matrix`): a CSR array and one name per column, refused when they differ. It is stored as plain NumPy arrays in one `.npz` (media type `application/vnd.sprisk.matrix+npz`), loaded without pickles, so a file cannot run code. A notebook cell still holds the SciPy matrix `fit_transform` returns.
+- 2026-10-22: **What the later slices must hold** (methodology review of slice 1).
+  - *Rows line up.* A step that takes a table and its words refuses them when their row counts differ. No step that adds, drops or reorders rows sits between Vectorize text and the steps reading its words.
+  - *Names never clash.* A word column is named after its source column (`designation:red`), so two text columns, or a table column and a word, never share a name.
+  - *Empty text is said.* A missing text is read as empty, on purpose and stated in the step's code, never passed on as a gap.
+  - *Cross-validation refits the words.* A fold refits Vectorize text on the fold's train rows and passes its words to the model. A matrix fitted once is never cut into folds: test-fold words would shape the vocabulary and IDF weights.

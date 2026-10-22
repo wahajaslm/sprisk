@@ -59,7 +59,7 @@
 | [0055](0055-a-flow-is-its-notebooks.md) | A flow is its notebooks: one notebook per stage, one cell per step | Accepted |
 | [0056](0056-cleaning-is-its-own-steps.md) | Cleaning is its own steps; a model step fits only the model | Accepted |
 | [0057](0057-a-rule-can-add-a-step.md) | A rule can add a step | Accepted |
-| [0058](0058-text-becomes-word-features.md) | Free text becomes word features, passed between steps as a matrix | Proposed |
+| [0058](0058-text-becomes-word-features.md) | Free text becomes word features, passed between steps as a matrix | Accepted |
 | [0059](0059-methodology-map-and-review.md) | The methodology map and its review | Accepted |
 | [0060](0060-the-engine-walks-the-map.md) | The engine walks the methodology map from a question and data | Accepted |
 

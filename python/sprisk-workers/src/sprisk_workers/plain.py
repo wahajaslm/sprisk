@@ -23,7 +23,8 @@ from skops.io.exceptions import UntrustedTypesFoundException
 
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError, OperatorError
-from sprisk_workers.output import CONSOLE_PORT, JSON, PARQUET, SKOPS, Output
+from sprisk_workers.matrix import Matrix, read_matrix, write_matrix
+from sprisk_workers.output import CONSOLE_PORT, JSON, MATRIX, PARQUET, SKOPS, Output
 from sprisk_workers.serve import OperatorFn
 
 # skops trusts scikit-learn estimators by default. Anything beyond them and this list fails
@@ -277,6 +278,11 @@ def _check_paths(fn: Callable[..., Any], ref: str, marked: set[str]) -> None:
 def _read(path: Path, kind: str) -> Any:
     if kind == "table":
         return pl.read_parquet(path)
+    if kind == "matrix":
+        try:
+            return read_matrix(path)
+        except ValueError as e:
+            raise OperatorError("invalid_input", f"matrix {path.name}: {e}") from e
     if kind == "model":
         try:
             return skops.io.load(path, trusted=TRUSTED_MODEL_TYPES)
@@ -303,12 +309,18 @@ def _is_pandas_frame(value: Any) -> bool:
 
 def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
     """A table is Parquet on any port (profiles and histograms are tables too); a model is
-    skops; figures are one FigureSet (ADR-0024); anything else is JSON."""
+    skops; a matrix is .npz; figures are one FigureSet (ADR-0024); anything else is JSON."""
     if kind == "figure":
         figures = value if isinstance(value, list | tuple) else [value]
         path = out_dir / f"{port}.json"
         path.write_text(json.dumps({"items": [_figure(port, f) for f in figures]}))
         return Output(port, path, JSON)
+    if kind == "matrix":
+        if not isinstance(value, Matrix):
+            raise _wrong(port, "a Matrix (a SciPy sparse matrix and its column names)", value)
+        path = out_dir / f"{port}.npz"
+        write_matrix(value, path)
+        return Output(port, path, MATRIX)
     if kind == "table" and _is_pandas_frame(value):
         path = out_dir / f"{port}.parquet"
         value.to_parquet(path)

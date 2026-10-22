@@ -3,16 +3,19 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import polars as pl
 import pytest
 import skops.io
 import yaml
+from scipy import sparse
 from sklearn.base import clone
 from sklearn.linear_model import LogisticRegression
 
 from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError, OperatorError
-from sprisk_workers.output import JSON, PARQUET, SKOPS
+from sprisk_workers.matrix import Matrix
+from sprisk_workers.output import JSON, MATRIX, PARQUET, SKOPS
 from sprisk_workers.plain import CheckedFunction, adapt
 
 
@@ -564,3 +567,99 @@ def test_an_unknown_preparation_or_params_it_refuses_fail_before_the_step_runs(
             staging(tmp_path),
         )
     assert (e.value.code, e.value.message) == (code, message)
+
+
+def test_a_matrix_round_trips_with_its_column_names(tmp_path: Path) -> None:
+    words = operator("[{ name: data, kind: table }]", "[{ name: words, kind: matrix }]")
+    read = operator("[{ name: words, kind: matrix }]", "[{ name: metrics, kind: metrics }]")
+
+    def make(data: pl.DataFrame) -> Matrix:
+        return Matrix(sparse.csr_array([[0.0, 1.5], [2.0, 0.0]]), ("red", "blue"))
+
+    def use(words: Matrix) -> dict[str, Any]:
+        return {"columns": list(words.columns), "dense": words.values.toarray().tolist()}
+
+    [out] = adapt(make, words)(
+        {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1, 2]}))}, staging(tmp_path)
+    )
+    assert out.media_type == MATRIX
+    [metrics] = adapt(use, read)({}, {"words": out.path}, tmp_path / "staging")
+
+    assert json.loads(metrics.path.read_text()) == {
+        "columns": ["red", "blue"],
+        "dense": [[0.0, 1.5], [2.0, 0.0]],
+    }
+
+
+def test_a_matrix_needs_one_name_per_column() -> None:
+    with pytest.raises(ValueError, match="2 columns but 1 name"):
+        Matrix(sparse.csr_array([[0.0, 1.0]]), ("red",))
+
+
+def test_a_matrix_port_refuses_anything_else(tmp_path: Path) -> None:
+    words = operator("[{ name: data, kind: table }]", "[{ name: words, kind: matrix }]")
+
+    def make(data: pl.DataFrame) -> Any:
+        return sparse.csr_array([[1.0]])
+
+    with pytest.raises(OperatorError, match="output words: expected a Matrix"):
+        adapt(make, words)(
+            {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+        )
+
+
+def test_a_matrix_refuses_repeated_names_dense_values_and_gaps() -> None:
+    with pytest.raises(ValueError, match="names repeat: red"):
+        Matrix(sparse.csr_array([[0.0, 1.0]]), ("red", "red"))
+    with pytest.raises(ValueError, match="sparse"):
+        Matrix(np.array([[0.0, 1.0]]), ("red", "blue"))
+    with pytest.raises(ValueError, match="finite"):
+        Matrix(sparse.csr_array([[np.nan, 1.0]]), ("red", "blue"))
+
+
+def test_a_scipy_matrix_of_any_sparse_format_is_kept_as_csr() -> None:
+    m = Matrix(sparse.coo_matrix([[0.0, 1.0]]), ("red", "blue"))
+    assert isinstance(m.values, sparse.csr_array)
+
+
+def _bad_npz(tmp_path: Path, **arrays: Any) -> Path:
+    path = tmp_path / "words.npz"
+    np.savez(path, **arrays)
+    return path
+
+
+@pytest.mark.parametrize(
+    "arrays",
+    [
+        # No names.
+        {"data": [1.0], "indices": [0], "indptr": [0, 1], "shape": [1, 1]},
+        # Two columns, one name.
+        {"data": [1.0], "indices": [0], "indptr": [0, 1], "shape": [1, 2], "columns": ["a"]},
+        # A value outside the shape.
+        {"data": [1.0], "indices": [5], "indptr": [0, 1], "shape": [1, 2], "columns": ["a", "b"]},
+    ],
+)
+def test_a_bad_matrix_file_fails_the_step_as_invalid_input(
+    tmp_path: Path, arrays: dict[str, Any]
+) -> None:
+    read = operator("[{ name: words, kind: matrix }]", "[{ name: metrics, kind: metrics }]")
+
+    def use(words: Matrix) -> dict[str, Any]:
+        return {}
+
+    with pytest.raises(OperatorError) as e:
+        adapt(use, read)({}, {"words": _bad_npz(tmp_path, **arrays)}, staging(tmp_path))
+    assert e.value.code == "invalid_input"
+
+
+def test_a_file_that_is_no_npz_fails_the_step_as_invalid_input(tmp_path: Path) -> None:
+    read = operator("[{ name: words, kind: matrix }]", "[{ name: metrics, kind: metrics }]")
+    path = tmp_path / "words.npz"
+    path.write_bytes(b"not a matrix")
+
+    def use(words: Matrix) -> dict[str, Any]:
+        return {}
+
+    with pytest.raises(OperatorError) as e:
+        adapt(use, read)({}, {"words": path}, staging(tmp_path))
+    assert e.value.code == "invalid_input"

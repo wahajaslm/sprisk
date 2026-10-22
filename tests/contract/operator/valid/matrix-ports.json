@@ -1,0 +1,18 @@
+{
+  "schema_version": "sprisk.operator/v1",
+  "id": "acme.clean.words@1.0.0",
+  "capability_class": "transform",
+  "entrypoint": "acme_clean.words:words",
+  "fits_on_train": true,
+  "inputs": [{ "name": "train", "kind": "table" }, { "name": "test", "kind": "table" }],
+  "outputs": [
+    { "name": "train", "kind": "table" },
+    { "name": "test", "kind": "table" },
+    { "name": "train_words", "kind": "matrix" },
+    { "name": "test_words", "kind": "matrix" }
+  ],
+  "params_schema": { "type": "object" },
+  "effects": "pure",
+  "network": "none",
+  "resources": { "cpu_cores": 1, "memory_mb": 2048, "gpu": "none", "timeout_seconds": 600 }
+}
