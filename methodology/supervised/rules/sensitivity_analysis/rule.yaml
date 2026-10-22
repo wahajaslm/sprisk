@@ -1,0 +1,55 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.sensitivity_analysis@1.0.0
+name: "Sensitivity analysis"
+stage: evaluation
+decides: evaluation.sensitivity
+status: draft
+
+provenance:
+  standard: "Global sensitivity analysis (Saltelli et al. 2008); variance in ML results (Bouthillier et al. 2021)"
+  citation: "Saltelli et al. (2008) Global Sensitivity Analysis: The Primer, Wiley; Bouthillier et al. (2021) Accounting for Variance in Machine Learning Benchmarks, MLSys 3"
+  pitfall: "A score that holds only for one seed or one setting is luck. Reporting it as the model's score overstates what it will do on new data."
+  corner_cases:
+    - "Measured inside cross-validation on train rows: the same folds, rerun with other seeds and with each tuned setting moved one step."
+    - "Varied: the random seed, each tuned setting, and small noise added to numeric inputs. The question is how much the score moves, not which variant wins."
+    - "A variant is never picked because it scored best here; that would be tuning on the same folds again."
+    - "Partial dependence (how the prediction moves with one input) describes the model, not the world; it is not a causal effect."
+
+observes:
+  - profile: cv.score_by_seed
+    description: "Cross-validated score for each of several seeds"
+    required: true
+  - profile: cv.score_by_setting_step
+    description: "Cross-validated score with each tuned setting moved one step"
+    required: false
+
+policy_thresholds:
+  # Seeds rerun to measure the spread. Project convention: enough to see the spread, few
+  # enough to stay cheap; Bouthillier et al. show seeds alone move benchmark scores.
+  seeds: 5
+  # The score is fragile when the spread across seeds exceeds this share of the gap between
+  # the model and the baseline. Project convention: half the lift could vanish with a seed.
+  max_spread_share_of_lift: 0.5
+
+alternatives:
+  - id: stable
+    label: "The score is stable"
+    description: "Report the spread; it is small next to the lift over the baseline."
+    condition: "spread across seeds and setting steps <= max_spread_share_of_lift * lift"
+    rationale: "The score is a property of the model, not of one lucky run."
+    action:
+      type: pass_through
+
+  - id: fragile
+    label: "The score is fragile: reopen tuning"
+    description: "Report the spread and reopen tuning toward settings whose score moves less."
+    condition: "spread > max_spread_share_of_lift * lift"
+    rationale: "Half the lift could disappear with another seed. Needs a new operator (sprisk.ml.sensitivity, not built) that reruns the folds."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "score_sensitive_to_seed_or_settings"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: sensitivity reruns read train-fold rows only and pick nothing."

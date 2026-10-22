@@ -1,0 +1,52 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.bootstrap_robustness@1.0.0
+name: "Bootstrap robustness"
+stage: evaluation
+decides: evaluation.bootstrap_interval
+status: draft
+
+provenance:
+  standard: "Bootstrap confidence intervals (Efron & Tibshirani 1993)"
+  citation: "Efron & Tibshirani (1993) An Introduction to the Bootstrap, Chapman & Hall; Bouthillier et al. (2021) Accounting for Variance in Machine Learning Benchmarks, MLSys 3"
+  pitfall: "A single hold-out score has no error bar. Two models 0.01 apart may be the same model; reading the gap as real picks noise."
+  corner_cases:
+    - "The interval is drawn from the hold-out predictions after the one final scoring; it is reported, never used to choose or tune."
+    - "Rows are resampled by the unit of prediction: with a group or time split, whole groups or time blocks are resampled, else the interval is too narrow."
+    - "A rare class with few hold-out rows gives a wide interval; the report says the hold-out is too small to tell, rather than hiding it."
+    - "Percentile intervals can be biased for skewed metrics; BCa intervals (Efron 1987) are the better default where available, as in scipy.stats.bootstrap."
+
+observes:
+  - profile: holdout.predictions
+    description: "The final model's predictions on the hold-out, with the true values and the unit of each row"
+    required: true
+
+policy_thresholds:
+  # Bootstrap resamples. Efron & Tibshirani suggest at least about 1000 for percentile intervals.
+  resamples: 1000
+  # Interval coverage. A project convention matching the usual 95% intervals.
+  confidence: 0.95
+
+alternatives:
+  - id: interval
+    label: "Report a bootstrap interval"
+    description: "Report the hold-out score with a 95% interval from resampled hold-out rows (or groups)."
+    condition: "the hold-out has been scored once"
+    rationale: "Says how much the score could move on another sample of the same size. scipy.stats.bootstrap computes it; the step needs a new operator (sprisk.ml.bootstrap_interval, not built)."
+    action:
+      type: insert_step
+      placement: after_evaluation
+      operator: sprisk.ml.bootstrap_interval@1.0.0
+
+  - id: too_small
+    label: "Hold-out too small to tell"
+    description: "The interval is wider than the gap to the baseline or the success bar: report that the hold-out cannot tell them apart."
+    condition: "the interval contains the baseline score or the success bar"
+    rationale: "Honest reporting: the evidence does not separate the model from the baseline or the bar."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "holdout_interval_too_wide"
+
+verification:
+  check_id: supervised.split_leakage@1.0.0
+  invariant: "Partial: split_leakage checks the hold-out is scored by one model only. Nothing yet checks the interval is not used to choose."

@@ -1,0 +1,60 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.operational_constraints@1.0.0
+name: "Latency and cost constraints"
+stage: question
+decides: question.operational_constraints
+status: draft
+
+provenance:
+  standard: "Hidden costs of ML systems in production (Sculley et al. 2015)"
+  citation: "ref-v3 0.4; Sculley et al. (2015) Hidden Technical Debt in Machine Learning Systems, NeurIPS 28"
+  pitfall: "A model chosen on score alone may be too slow to answer in time, or too costly to train and run. Found after selection, the work is thrown away."
+  corner_cases:
+    - "Only a person states the limits, in their units: milliseconds per prediction, money or hours per training run."
+    - "Limits rule models out; they never rank them. Among models within the limits, the score decides."
+    - "Prediction time is measured on train rows only, on the machine the flow runs on; production hardware may differ, and the report says so."
+    - "Interpretability is a constraint too, already asked by question.hard_constraints."
+
+observes:
+  - fact: question.max_latency_ms
+    description: "Longest a single prediction may take, in milliseconds"
+    required: false
+  - fact: question.max_training_cost
+    description: "Most a training run may cost, in the person's units (money or hours)"
+    required: false
+  - profile: cv.prediction_ms_per_row
+    description: "Measured prediction time per row for each candidate, on train-fold rows"
+    required: false
+
+policy_thresholds: {}
+
+alternatives:
+  - id: within_limits
+    label: "Every candidate is within the limits"
+    description: "Record the limits; no candidate is ruled out."
+    condition: "limits are stated AND every candidate's measured time and cost is within them"
+    rationale: "The comparison may go ahead on score."
+    action:
+      type: pass_through
+
+  - id: rule_out
+    label: "Rule out candidates over a limit"
+    description: "Leave candidates that break a limit off the shortlist, naming the limit each breaks."
+    condition: "limits are stated AND some candidate exceeds one"
+    rationale: "A model that cannot run in time or within budget is not a choice. The shortlist rule would need to read these facts; that is not built, and prediction time is not measured yet."
+    action:
+      type: update_estimator_params
+
+  - id: ask
+    label: "Ask for the limits"
+    description: "Ask how fast a prediction must be and what a training run may cost, or that there is no limit."
+    condition: "the question states no latency or cost limit"
+    rationale: "Silence is not 'no limit'; only the person knows how the model will be used."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "operational_limits_not_stated"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: no selected model breaks a stated limit. Needs question fields for the limits and a measured prediction time per candidate."

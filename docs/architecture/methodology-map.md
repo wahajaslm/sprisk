@@ -18,6 +18,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | --- | --- | --- | --- | --- | --- |
 | Objective and success bar | 3 | Person: the business goal in units (money, risk, time) and the score that counts as good enough | — | active (`question.objective`) | knowledge: Methodology_in_Data_Science, step 1; ref-v3 0.1 |
 | Hard constraints | 3 | Person: interpretability (high, medium, low), latency, budget, fairness limits. Only interpretability is asked for yet | — | active (`question.hard_constraints`) | ref-v3 0.4 |
+| Latency and cost | 3, then 1 | Person states the limits (ms per prediction, cost per training run); candidates over a limit are ruled out, never ranked | Prediction time per candidate | draft (`question.operational_constraints`) | ref-v3 0.4; Sculley et al. 2015 |
 | Personal data | 1, then 3 | Detected per column (names, emails, IDs); a person confirms what may be used | — | none | `presidio`; EU AI Act risk tiers |
 | Target available, or derived | 3 | Person: which column, or how to build it. A built label is checked against a sample a person labels (Cohen's κ ≥ 0.7) | Target distribution | active (`question.target_definition`; building a label is not offered yet) | knowledge: step 1; ref-v3 1.2 |
 | Task type | 1, then 3 | Measured from the target: two values → binary, few → multiclass, number → regression; confirmed. Subtypes: multi-label, ordinal, count, survival, quantile | Target distribution | active (`question.task_type`) | REFORMS (Kapoor et al. 2024), module 1; ref-v3 1.3 |
@@ -83,6 +84,9 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Calibration | 2 | Tried when probabilities are used | Reliability diagram | draft | scikit-learn "Probability calibration" |
 | Over- or underfitting | 1 | Train vs validation score gap, and the learning curve | Learning curve | none | ref-v3 4.8 |
 | Error analysis | 1 | Errors by segment and class; a segment far worse than the rest reopens features or data | Confusion matrix; residual plot | none | ref-v3 4.8 |
+| Ablation | 2 | Remove each feature group and refit inside the same CV folds; a drop counts beyond one standard error of the paired fold differences. Predictive reliance, not cause | Score drop per group | draft (`evaluation.ablation`) | Breiman 2001; Fisher, Rudin & Dominici 2019 |
+| Sensitivity | 1 | Rerun the CV folds with other seeds and each tuned setting moved one step; fragile when the spread is over half the lift over the baseline | Score spread per seed and setting | draft (`evaluation.sensitivity`) | Saltelli et al. 2008; Bouthillier et al. 2021 |
+| Bootstrap interval | 1 | After the one hold-out scoring, resample hold-out rows (by unit) for a 95% interval; reported, never used to choose | Score with interval | draft (`evaluation.bootstrap_interval`) | Efron & Tibshirani 1993 |
 | Fairness slices | 3, then 1 | Person names the groups; scores per group against stated limits | Score per group | draft | ref-v3 4.7 |
 | Loop back | 1 | A CV result below the success bar reopens the decision that owns it | — | — (guardrails, ADR-0052) | knowledge: step 4 |
 

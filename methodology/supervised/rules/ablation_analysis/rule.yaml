@@ -1,0 +1,55 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.ablation_analysis@1.0.0
+name: "Ablation analysis"
+stage: evaluation
+decides: evaluation.ablation
+status: draft
+
+provenance:
+  standard: "Drop-column and permutation importance (Breiman 2001; Fisher, Rudin & Dominici 2019)"
+  citation: "Breiman (2001) Random Forests, Machine Learning 45(1):5-32; Fisher, Rudin & Dominici (2019) All Models are Wrong, but Many are Useful, JMLR 20(177):1-81; Meyes et al. (2019) Ablation Studies in Artificial Neural Networks, arXiv:1901.08644"
+  pitfall: "Removing a feature group and judging the drop on the hold-out turns the hold-out into a selection set. Reading a drop as the feature's effect on the outcome is a causal claim the model cannot support."
+  corner_cases:
+    - "Each group is removed and the model refit inside the same cross-validation folds, with the same seed; the hold-out is not read."
+    - "The drop says how much this model relies on the group for prediction, not that the group causes the outcome."
+    - "Correlated features stand in for each other: removing one may show no drop. Groups of related features are removed together."
+    - "Small drops within the fold-to-fold spread are noise; a drop counts only beyond one standard error of the paired fold differences."
+
+observes:
+  - fact: question.feature_groups
+    description: "Groups of related features to remove together, as the person names them; else one group per source column"
+    required: false
+  - profile: cv.score_without_group
+    description: "Cross-validated score with each group removed, paired by fold"
+    required: true
+
+policy_thresholds:
+  # A group matters only when removing it lowers the score by more than this many standard
+  # errors of the fold-paired differences. One SE follows Hastie et al.'s one-standard-error rule.
+  min_drop_se: 1
+
+alternatives:
+  - id: report
+    label: "Report what each group adds"
+    description: "Report the cross-validated drop for each removed group, with its spread."
+    condition: "a model is selected and feature groups are known"
+    rationale: "Shows which inputs the model leans on, so a person can check it makes sense. Needs a new operator (sprisk.ml.ablation, not built) that refits per fold."
+    action:
+      type: insert_step
+      placement: after_model_fit
+      fit_on: train_partition_only
+      operator: sprisk.ml.ablation@1.0.0
+
+  - id: reopen_features
+    label: "A group adds nothing: reopen feature selection"
+    description: "A group whose removal costs nothing beyond noise is named for the feature-selection decision."
+    condition: "some group's drop is within min_drop_se"
+    rationale: "Inputs that add nothing add cost and risk. The decision belongs to feature selection, judged inside cross-validation."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "feature_group_adds_nothing"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: every ablation refit reads train-fold rows only; the hold-out is not read. split_leakage does not flag a non-evaluator step reading the test port."
