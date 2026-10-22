@@ -29,7 +29,9 @@ def group_rare(
             .sort(["count", c], descending=[True, False])
         )
         kept = counts[c].to_list()
-        if max_categories is not None and len(kept) > max_categories:
+        # "other" takes a place too once any category is grouped into it.
+        has_other = len(kept) < train[c].drop_nulls().n_unique()
+        if max_categories is not None and len(kept) + has_other > max_categories:
             kept = kept[: max_categories - 1]
         text = pl.col(c).cast(pl.String)
         grouped.append(

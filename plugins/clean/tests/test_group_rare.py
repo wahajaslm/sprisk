@@ -64,3 +64,10 @@ def test_equal_counts_are_kept_in_name_order_so_the_result_never_changes() -> No
 def test_categories_that_fit_under_max_categories_are_all_kept() -> None:
     out = group_rare(TRAIN, TEST, columns=["purpose"], min_share=0.0, max_categories=3)
     assert out["train"]["purpose"].to_list() == TRAIN["purpose"].to_list()
+
+
+def test_rare_categories_grouped_on_top_of_max_categories_still_fit_counting_other() -> None:
+    # car 3, tv 2, boat 1: boat is rare, so "other" exists, and car and tv would make three values.
+    out = group_rare(TRAIN, TEST, columns=["purpose"], min_share=0.2, max_categories=2)
+    assert out["train"]["purpose"].n_unique() == 2
+    assert out["train"]["purpose"].to_list() == ["car", "other", "car", "other", "car", "other"]
