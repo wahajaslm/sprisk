@@ -2207,6 +2207,14 @@ class ColumnProfile(StrictModel):
             le=1.0,
         ),
     ] = None
+    word_share: Annotated[
+        float | None,
+        Field(
+            description="Of a text column's present values, the share holding more than one word: free text, not a code such as an identifier (ADR-0059). Absent for other columns.",
+            ge=0.0,
+            le=1.0,
+        ),
+    ] = None
     leading_zero_values: Annotated[
         int | None,
         Field(

@@ -53,6 +53,8 @@ pub const FACTS: &[&str] = &[
     // Distinct values, which say whether a column identifies rows (structure, not statistics).
     "input.column.*.distinct",
     "input.column.*.numeric_share",
+    // The share of a text column's values holding more than one word: free text, not a code.
+    "input.column.*.word_share",
     // How many distinct text values merge with another once spaces and case, then accents,
     // are ignored ('Paris' and 'paris '; 'café' and 'cafe').
     "input.column.*.case_variants",

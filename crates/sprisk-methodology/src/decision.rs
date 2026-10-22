@@ -271,8 +271,13 @@ pub fn input_facts(profile: &DatasetProfile) -> Map<String, Value> {
         let key = |measure: &str| format!("input.column.{}.{measure}", column.name);
         facts.insert(key("data_type"), json!(column.data_type));
         facts.insert(key("distinct"), json!(column.distinct));
-        if let Some(share) = column.numeric_share {
-            facts.insert(key("numeric_share"), json!(share));
+        for (measure, share) in [
+            ("numeric_share", column.numeric_share),
+            ("word_share", column.word_share),
+        ] {
+            if let Some(share) = share {
+                facts.insert(key(measure), json!(share));
+            }
         }
         for (measure, value) in [
             ("case_variants", column.case_variants),

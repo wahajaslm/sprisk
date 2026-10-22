@@ -655,6 +655,10 @@ export interface ColumnProfile {
    */
   numeric_share?: number;
   /**
+   * Of a text column's present values, the share holding more than one word: free text, not a code such as an identifier (ADR-0059). Absent for other columns.
+   */
+  word_share?: number;
+  /**
    * Of a text column's present values, how many read as numbers but start with a zero before a digit, like the code 01234. Absent for other columns.
    */
   leading_zero_values?: number;

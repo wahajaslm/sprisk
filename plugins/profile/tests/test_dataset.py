@@ -294,3 +294,23 @@ def test_unconverted_values_are_bounded_and_cut() -> None:
     p = profile(pl.DataFrame({"t": ["1"] + [f"v{i}" for i in range(20)] + [long, long]}))
     values = unconverted(p, "t")
     assert len(values) == 10 and values[0] == "x" * 60
+
+
+def test_a_text_column_says_what_share_holds_more_than_one_word() -> None:
+    p = profile(
+        pl.DataFrame(
+            {
+                "title": ["Klarstein Présentoir 2 Montres", "Journal des Arts", "Olivia", None],
+                "sku": ["SKU-1", " SKU-2 ", "SKU-3", "SKU-4"],
+                "n": [1, 2, 3, 4],
+            }
+        )
+    )
+    assert column(p, "title").word_share == pytest.approx(2 / 3)
+    assert column(p, "sku").word_share == 0.0
+    assert column(p, "n").word_share is None
+
+
+def test_a_text_column_with_no_values_has_no_word_share() -> None:
+    p = profile(pl.DataFrame({"blank": [None, None]}, schema={"blank": pl.String}))
+    assert column(p, "blank").word_share is None

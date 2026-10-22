@@ -323,6 +323,7 @@
         "accent_variants": { "type": "integer", "minimum": 0, "description": "How many more of a text column's distinct values merge once accents are also ignored ('café', 'cafe'). Absent for other columns." },
         "rarest_share": { "type": "number", "minimum": 0, "maximum": 1, "description": "For a column with at most 20 distinct values, the share of present values held by its least common value, such as the rarest class of a target. Absent for other columns." },
         "numeric_share": { "type": "number", "minimum": 0, "maximum": 1, "description": "Of a text column's present values, the share that read as numbers. Absent for other columns." },
+        "word_share": { "type": "number", "minimum": 0, "maximum": 1, "description": "Of a text column's present values, the share holding more than one word: free text, not a code such as an identifier (ADR-0059). Absent for other columns." },
         "leading_zero_values": { "type": "integer", "minimum": 0, "description": "Of a text column's present values, how many read as numbers but start with a zero before a digit, like the code 01234. Absent for other columns." },
         "unconverted": { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 60 }, "description": "A text column's most common present values that do not read as numbers, most common first, when some do. Dataset text (untrusted, rule 7), cut to 60 characters." },
         "missing_by_band": {

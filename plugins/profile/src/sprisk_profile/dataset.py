@@ -101,6 +101,7 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
     if s.dtype == pl.String:
         column.update(_conversion(s))
         column.update(_spelling(s))
+        column.update(_words(s))
     histogram = _bins(bins, s.name) if numeric else _top_values(s)
     if histogram is not None:
         column["histogram"] = histogram
@@ -181,6 +182,16 @@ def _spelling(s: pl.Series) -> dict[str, int]:
         "case_variants": present.len() - folded.n_unique(),
         "accent_variants": folded.n_unique() - unaccented.n_unique(),
     }
+
+
+def _words(s: pl.Series) -> dict[str, float]:
+    """For the column-roles rule: the share of a text column's present values holding more
+    than one word once trimmed. Codes and identifiers hold one; titles and descriptions more."""
+    present = s.drop_nulls()
+    if present.is_empty():
+        return {}
+    several = present.str.strip_chars().str.contains(r"\s")
+    return {"word_share": float(several.sum()) / present.len()}
 
 
 def _missing_by_band(s: pl.Series, band_rows: int) -> list[float]:

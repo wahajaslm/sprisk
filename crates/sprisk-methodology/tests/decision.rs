@@ -287,6 +287,7 @@ fn input_facts_give_the_structure_of_every_column_and_no_statistics() {
                   "missing_by_band": [], "skewness": 2.5 },
                 { "name": "age", "data_type": "String", "missing": 0, "distinct": 40,
                   "missing_by_band": [], "numeric_share": 0.98, "leading_zero_values": 0,
+                  "word_share": 0.25,
                   "case_variants": 3, "accent_variants": 1,
                   "unconverted": ["?", "n/a"] }
             ],
@@ -301,6 +302,7 @@ fn input_facts_give_the_structure_of_every_column_and_no_statistics() {
     assert_eq!(facts["input.duplicate_rows"], 4);
     assert_eq!(facts["input.column.income.data_type"], "Float64");
     assert_eq!(facts["input.column.age.numeric_share"], 0.98);
+    assert_eq!(facts["input.column.age.word_share"], 0.25);
     assert_eq!(facts["input.column.age.unconverted"], json!(["?", "n/a"]));
     assert_eq!(facts["input.column.age.leading_zero_values"], 0);
     assert_eq!(facts["input.column.age.distinct"], 40);
