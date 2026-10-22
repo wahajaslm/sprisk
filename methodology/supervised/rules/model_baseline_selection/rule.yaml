@@ -2,14 +2,14 @@
 # Sprisk Methodology Rule: Model Shortlist
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.model_baseline_selection@2.0.0
+id: methodology.supervised.model_baseline_selection@2.1.0
 name: "Model Shortlist"
 stage: models
 decides: modeling.estimator_selection
 status: active
 selection: shortlist
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
-reads: [question.task, rows, column.*.data_type, candidate.*.family]
+reads: [question.task, question.interpretability, rows, column.*.data_type, candidate.*.family]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -21,6 +21,7 @@ provenance:
     - "The dummy baseline is the floor: a model that does not beat it on the same folds learned nothing useful."
     - "The forest's row threshold is a sprisk default; the comparison, not the threshold, should decide."
     - "A model of a family with no heuristic yet is put forward to be compared."
+    - "A question that needs high interpretability leaves forests off: a person cannot follow a forest's prediction (Rudin 2019). One can still be chosen with a reason."
 
 # 2. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
@@ -45,3 +46,5 @@ examples:
     shortlist: [ml_dummy_baseline, ml_linear_model]
   - given: { question.task: classification, rows: 500, column.age.data_type: Float64, candidate.ml_dummy_baseline.family: featureless, candidate.ml_linear_model.family: linear, candidate.ml_random_forest.family: tree_ensemble }
     shortlist: [ml_dummy_baseline, ml_linear_model, ml_random_forest]
+  - given: { question.task: classification, question.interpretability: high, rows: 500, column.age.data_type: Float64, candidate.ml_dummy_baseline.family: featureless, candidate.ml_linear_model.family: linear, candidate.ml_random_forest.family: tree_ensemble }
+    shortlist: [ml_dummy_baseline, ml_linear_model]

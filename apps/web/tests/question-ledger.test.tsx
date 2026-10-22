@@ -69,3 +69,34 @@ describe("misclassification costs in the question", () => {
     expect(entry).toHaveTextContent("bad · false negative 5 · false positive 1");
   });
 });
+
+describe("interpretability in the question", () => {
+  it("is saved as an explicit fact when chosen", async () => {
+    const posted = open();
+    await userEvent.click(await screen.findByRole("button", { name: "New question" }));
+    await userEvent.selectOptions(screen.getByLabelText("Interpretability"), "high");
+    await userEvent.click(screen.getByRole("button", { name: "Save revision" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.interpretability).toEqual({ value: "high", origin: "explicit" });
+  });
+
+  it("is left out when not stated", async () => {
+    const posted = open();
+    await userEvent.click(await screen.findByRole("button", { name: "New question" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save revision" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.interpretability).toBeUndefined();
+  });
+
+  it("is shown on the ledger entry and kept when the question is revised", async () => {
+    const stated = { ...withCosts, interpretability: { value: "medium", origin: "explicit" } };
+    server.use(http.get("/api/question_versions", () => HttpResponse.json([stated])));
+    const posted = open();
+    const entry = await screen.findByRole("article");
+    expect(entry).toHaveTextContent("Interpretabilitymedium");
+    await userEvent.click(within(entry).getByRole("button", { name: "Revise" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save revision" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.interpretability).toEqual({ value: "medium", origin: "explicit" });
+  });
+});

@@ -3,45 +3,45 @@ id: methodology.supervised.interpretability_requirement@1.0.0
 name: "Need for interpretability"
 stage: models
 decides: modeling.interpretability_requirement
-status: draft
+status: active
+applies_to: [sprisk.ml.random_forest]
+reads: [question.interpretability]
 
 provenance:
   standard: "Rudin (2019) on interpretable models for high-stakes decisions"
   citation: "Rudin (2019) Nature Machine Intelligence 1:206-215; ref-v3 4.4; course: knowledge/Sprint_5_-_Machine_learning_24/Methodology_in_Data_Science/methodologie_projet_etape_4_EN.ipynb"
   pitfall: "Picking a black-box model, then explaining it after the fact, gives explanations that may not match how it decides."
   corner_cases:
-    - "Reads the interpretability level from question.hard_constraints."
-    - "This limits the shortlist. How a chosen model is explained is a separate rule (governance.explainability_framework)."
+    - "A forest cannot be read by a person; with high interpretability it is replaced by a linear model, keeping its target, task, features and costs."
+    - "Shallow trees are interpretable too, but no single-tree model is registered yet."
+    - "No level stated: the forest stays; the hard-constraints rule asks for the level."
+    - "How a chosen model is explained is a separate rule (governance.explainability_framework)."
 
-observes:
-  - fact: question.constraints
-    description: "Interpretability level: high, medium or low"
-    required: true
-
-policy_thresholds:
-  # Deepest tree still read as interpretable at "high". Project convention: a depth-4 tree
-  # has at most 16 leaves, which a person can read on one page.
-  max_tree_depth_high: 4
+policy_thresholds: {}
 
 alternatives:
-  - id: any_model
-    label: "Any model"
-    description: "Interpretability is low or medium. The shortlist is not limited."
-    condition: "interpretability is low or medium"
-    rationale: "Accuracy may lead when a person does not need to follow each decision."
+  - id: keep_model
+    label: "Keep the forest"
+    description: "Interpretability is medium or low, so the forest may stay."
+    rationale: "Accuracy may lead when a person does not need to follow each prediction."
     action:
       type: pass_through
-
   - id: interpretable_only
-    label: "Linear models and shallow trees only"
-    description: "Interpretability is high. The shortlist keeps linear models and trees no deeper than max_tree_depth_high."
-    condition: "interpretability is high"
-    rationale: "A person must be able to follow each decision. Filtering the shortlist is not built yet."
+    label: "Use a linear model"
+    description: "Interpretability is high: the forest is replaced by a linear model a person can read."
+    rationale: "A person must be able to follow each prediction; a linear model's coefficients show how it decides."
     action:
-      type: update_estimator_params
-      params:
-        families: [linear, shallow_tree]
+      type: replace_node
+      operator: sprisk.ml.linear_model@2.0.0
 
 verification:
   check_id: none
-  invariant: "No Gate B check exists yet. Planned: with high interpretability, no other model family is selected."
+  invariant: "No Gate B check exists yet. Planned: with high interpretability, no forest is selected."
+
+examples:
+  - given: { question.interpretability: high }
+    picks: interpretable_only
+  - given: { question.interpretability: low }
+    picks: keep_model
+  - given: {}
+    picks: keep_model

@@ -2,7 +2,8 @@
 
 Never one winner: the candidates are compared on the train rows, and the comparison decides.
 The dummy baseline is always on the list as the floor. A forest needs enough rows to be worth
-comparing; the threshold is a setting.
+comparing; the threshold is a setting. A question that needs high interpretability leaves
+forests off, since a person cannot follow their predictions.
 """
 
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 from sprisk_contracts import RuleDecision, RuleObservation
 from sprisk_workers.rule import (
     applicable,
+    authoritative,
     profile_evidence,
     shortlist_decision,
     step_columns,
@@ -22,10 +24,11 @@ PREFIX, SUFFIX = "candidate.", ".family"
 def decide(observation: RuleObservation) -> RuleDecision:
     s = observation.settings
     rows = train_rows(observation)
+    readable = authoritative(observation.facts.get("question.interpretability")) == "high"
     shortlist: list[str] = []
     alternatives: list[dict[str, Any]] = []
     for id, family in sorted(_candidates(observation).items()):
-        on_list, reason = _consider(family, rows, s)
+        on_list, reason = _consider(family, rows, s, readable)
         if on_list:
             shortlist.append(id)
         # Every candidate can still be chosen; choosing one without comparing needs a reason.
@@ -47,7 +50,7 @@ def _candidates(observation: RuleObservation) -> dict[str, str]:
     }
 
 
-def _consider(family: str, rows: int, s: dict[str, Any]) -> tuple[bool, str]:
+def _consider(family: str, rows: int, s: dict[str, Any], readable: bool) -> tuple[bool, str]:
     if family == "featureless":
         return True, (
             "The floor every model must beat: it ignores the features and predicts the most "
@@ -59,6 +62,11 @@ def _consider(family: str, rows: int, s: dict[str, Any]) -> tuple[bool, str]:
             "bias-variance trade-off on these rows (Hastie et al., ESL §2.9)."
         )
     if family == "tree_ensemble":
+        if readable:
+            return False, (
+                "Left off: the question needs high interpretability, and a person cannot follow "
+                "a forest's prediction (Rudin 2019). It can still be chosen with a reason."
+            )
         if rows < s["min_rows_for_forest"]:
             return False, (
                 f"Left off: {rows} train rows are below sprisk's default of "

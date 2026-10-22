@@ -22,9 +22,11 @@ const EXAMPLE = {
   positive: "",
   falseNegative: "",
   falsePositive: "",
+  interpretability: "" as Interpretability | "",
 };
 
 type Draft = typeof EXAMPLE;
+type Interpretability = NonNullable<QuestionVersion["interpretability"]>["value"];
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
 const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
 
@@ -114,6 +116,7 @@ function QuestionCard({ question, pipeline, current = false, onRevise }: {
       <dt>Entity key</dt><dd>{question.entity_column?.value ?? "not defined"}</dd>
       <dt>Time</dt><dd>{question.time_column?.value ?? "not defined"}</dd>
       <dt>Horizon</dt><dd>{question.prediction_horizon?.value ?? "not defined"}</dd>
+      <dt>Interpretability</dt><dd>{question.interpretability?.value ?? "not stated"}</dd>
       {question.costs && <>
         <dt>Misclassification costs</dt>
         <dd>{question.costs.value.positive} · false negative {question.costs.value.false_negative} · false positive {question.costs.value.false_positive}</dd>
@@ -140,6 +143,7 @@ function QuestionEditor({ base, pipeline, onClose }: { base: QuestionVersion | u
     positive: base.costs?.value.positive ?? "",
     falseNegative: base.costs ? String(base.costs.value.false_negative) : "",
     falsePositive: base.costs ? String(base.costs.value.false_positive) : "",
+    interpretability: base.interpretability?.value ?? "",
   } : EXAMPLE);
   const save = useSaveQuestionVersion();
   const savePipeline = useSavePipelineVersion();
@@ -164,6 +168,7 @@ function QuestionEditor({ base, pipeline, onClose }: { base: QuestionVersion | u
       unknowns: lines(draft.unknowns).map((question) => ({ question, blocks: "release" as const })),
       acceptance_criteria: lines(draft.criteria).map(fact),
       ...(costs ? { costs } : {}),
+      ...(draft.interpretability ? { interpretability: { value: draft.interpretability, origin: "explicit" as const } } : {}),
       created_at: timestamp(),
     };
     save.mutate(question, {
@@ -186,6 +191,7 @@ function QuestionEditor({ base, pipeline, onClose }: { base: QuestionVersion | u
         <label>Entity column<input value={draft.entity} onChange={(event) => set("entity", event.target.value)} /></label>
         <label>Time column<input value={draft.time} onChange={(event) => set("time", event.target.value)} /></label>
         <label>Prediction horizon<input value={draft.horizon} onChange={(event) => set("horizon", event.target.value)} placeholder="P30D" /></label>
+        <label>Interpretability<select value={draft.interpretability} onChange={(event) => set("interpretability", event.target.value as Interpretability | "")}><option value="">Not stated</option><option value="high">High: a person follows each prediction</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
       </div>
       {draft.task === "classification" && <fieldset className="ledger-fields">
         <legend>Misclassification costs</legend>

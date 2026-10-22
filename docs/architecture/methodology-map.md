@@ -17,7 +17,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Decision | Level | Decided by | Evidence chart | Rule | Source |
 | --- | --- | --- | --- | --- | --- |
 | Objective and success bar | 3 | Person: the business goal in units (money, risk, time) and the score that counts as good enough | — | active (`question.objective`) | knowledge: Methodology_in_Data_Science, step 1; ref-v3 0.1 |
-| Hard constraints | 3 | Person: interpretability (high, medium, low), latency, budget, fairness limits | — | none | ref-v3 0.4 |
+| Hard constraints | 3 | Person: interpretability (high, medium, low), latency, budget, fairness limits. Only interpretability is asked for yet | — | active (`question.hard_constraints`) | ref-v3 0.4 |
 | Personal data | 1, then 3 | Detected per column (names, emails, IDs); a person confirms what may be used | — | none | `presidio`; EU AI Act risk tiers |
 | Target available, or derived | 3 | Person: which column, or how to build it. A built label is checked against a sample a person labels (Cohen's κ ≥ 0.7) | Target distribution | active (`question.target_definition`; building a label is not offered yet) | knowledge: step 1; ref-v3 1.2 |
 | Task type | 1, then 3 | Measured from the target: two values → binary, few → multiclass, number → regression; confirmed. Subtypes: multi-label, ordinal, count, survival, quantile | Target distribution | active (`question.task_type`) | REFORMS (Kapoor et al. 2024), module 1; ref-v3 1.3 |
@@ -72,7 +72,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | --- | --- | --- | --- | --- | --- |
 | Baseline | 1 | Always: a model with no features (most frequent class, mean) | — | active (part of selection) | ADR-0044; ref-v3 4.1 |
 | Model shortlist and selection | 2 | Baseline + candidates on repeated CV; simplest within one standard error | Score per fold per model | active | Hastie et al. 2009 §7.10; ADR-0050; ref-v3 4.2 |
-| Need for interpretability | 3 | From the hard constraints: high → linear models and shallow trees only | — | none | knowledge: step 4; ref-v3 4.4 |
+| Need for interpretability | 3 | From the hard constraints: high → linear models and shallow trees only. A forest is replaced by a linear model and left off the shortlist; no single-tree model is registered yet | — | active (`modeling.interpretability_requirement`) | knowledge: step 4; ref-v3 4.4 |
 | Settings (tuning) | 2 | Nested CV within a budget | Score per trial | — (studies, ADR-0052) | Cawley & Talbot 2010; ref-v3 4.6 |
 | Class imbalance | 2 | Class weights vs resampling inside folds vs threshold, tried | Recall per class | draft | He & Garcia 2009; ref-v3 4.5 |
 
