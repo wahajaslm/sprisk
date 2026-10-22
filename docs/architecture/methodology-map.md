@@ -31,9 +31,9 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | --- | --- | --- | --- | --- | --- |
 | Join sources | 1, else 3 | One shared key with matching values joins; an ambiguous key asks | Key match counts | none | — |
 | Column roles (id, target, number, category, text, date) | 1, else 3 | Measured: distinct = rows → id; parses as date → date; long varied strings → text. Number-coded labels (postal codes) ask | Column type summary | none | Breck et al. 2019 |
-| Missing markers (`?`, `n/a`, `-1`) | 1, else 3 | Values that fail to convert in an otherwise numeric column. `NA` that may be a value (Namibia) asks | Top non-numeric values | none (`file_source.missing_values` exists) | Breck et al. 2019 |
+| Missing markers (`?`, `n/a`, `-1`) | 1, else 3 | Values that fail to convert in an otherwise numeric column. `NA` that may be a value (Namibia) asks | Top non-numeric values | none (`file_source.missing_values` and `mark_missing` exist; a rule needs a step before the split) | Breck et al. 2019 |
 | Wrong types | 1 | Share of values that convert | — | none | Breck et al. 2019 |
-| Exact duplicates | 1 | Row hash. Removed before the split, so no row is in train and test | — | none | Kapoor & Narayanan 2023 |
+| Exact duplicates | 1 | Row hash. Removed before the split, so no row is in train and test | — | none (`drop_duplicates` exists; a rule needs a step before the split) | Kapoor & Narayanan 2023 |
 | Duplicates by key | 3 | Person: which row to keep | — | none | — |
 | Same entity on both sides | 1 | An entity column with repeated values → group split | Rows per entity | active (part of split method) | Kapoor & Narayanan 2023; ref-v3 2.5 |
 | Columns not known at prediction time | 3, with a measured hint | Person confirms; a column that alone predicts the target almost perfectly on train rows is flagged | Single-feature score per column | draft (`features.leakage_exclusion`) | Kapoor & Narayanan 2023; ref-v3 2.5 |
@@ -49,17 +49,17 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | --- | --- | --- | --- | --- | --- |
 | Missing values | 1, then 2, else 3 | Missing target → drop rows. Mostly empty (default 60%) → drop column. Otherwise fill after the split: median for skewed, else mean. When gaps relate to the target, add a "was missing" column (tried). Model-based filling (iterative) is tried only when simple filling scores worse. Why values are missing is asked when it matters | Missing share per column; gaps by target | active | scikit-learn "Imputation" (`add_indicator`, `IterativeImputer`); Little & Rubin 2019; ref-v3 2.3 |
 | Outliers | 1, else 3 | Impossible values (domain range, asked) → missing. Real extremes: clip for linear and distance models, nothing for trees, robust scaling instead when many | Box plot per column | active | Tukey 1977; ref-v3 2.4 |
-| Constant columns | 1 | One distinct value on train rows → drop | — | draft | scikit-learn `VarianceThreshold` |
+| Constant columns | 1 | One distinct value on train rows → drop | — | draft (`select_columns` reads one table, so it cannot be added before a model) | scikit-learn `VarianceThreshold` |
 | Text spelling | 1, else 3 | Trim, lowercase, accents (key collision). Merges beyond that ask | Top variants per value | none (`clean_text` exists) | OpenRefine clustering |
 
 ## Features (Clean steps, ADR-0056; "model" = the answer depends on the model family)
 | Decision | Level | Decided by | Evidence chart | Rule | Source |
 | --- | --- | --- | --- | --- | --- |
 | Encoding (model) | 1, then 2 | Under 15 categories → one-hot before the model (ADR-0057). 15–100 → target encoding with cross-fitting vs frequency, tried. Over 100 → group rare values or hashing, tried | Categories per column | active | scikit-learn `TargetEncoder`; Micci-Barreca 2001; ref-v3 3.1 |
-| Rare categories | 1 | Below a frequency → "other" | Category frequency | none | scikit-learn `OneHotEncoder(min_frequency)` |
-| Skewed numbers (model) | 1, then 2 | Trees: none. Linear and distance models: Yeo-Johnson or quantile transform vs none, tried | Histogram per column | none | scikit-learn `PowerTransformer`; ref-v3 3.2 |
+| Rare categories | 1 | Text with more categories than one-hot takes (15): under 1% of train rows → "other", before the model. A value per row is an identifier, left alone | Category frequency | active (`features.rare_categories`) | scikit-learn `OneHotEncoder(min_frequency)` |
+| Skewed numbers (model) | 1, then 2 | Trees: none. Linear models: \|skewness\| over 1 → Yeo-Johnson before the model (0/1 columns never). Quantile transform vs none, tried, is not built | Histogram per column | active (`features.skew_transform`) | scikit-learn `PowerTransformer`; ref-v3 3.2 |
 | Scaling (model) | 1, then 2 | Trees: none. Linear, distance: standard; many outliers: robust | — | active | Hastie et al. 2009; scikit-learn preprocessing |
-| Date parts | 1, then 2 | Year, month, weekday from a date column; cyclic (sin/cos) for months and weekdays; kept when they help in cross-validation | Target by month | none | knowledge: step 3; ref-v3 2.6 |
+| Date parts | 1, then 2 | Year, month, weekday from a date column; cyclic (sin/cos) for months and weekdays; kept when they help in cross-validation (not built: the parts are always added) | Target by month | active (`features.date_parts`) | knowledge: step 3; ref-v3 2.6 |
 | Lags and rolling statistics | 1 | Time-series questions only, computed from past rows only | Target over time | draft (time-series pack) | ref-v3 3.4 |
 | Interactions | 2 | Linear models only, a few chosen pairs, tried | — | none | ref-v3 3.3 |
 | Text representation | 2 | TF-IDF words vs characters, tried; embeddings when the text is long or semantic | Text length per row | none (ADR-0058 proposed) | scikit-learn "Text feature extraction"; ref-v3 3.5 |
