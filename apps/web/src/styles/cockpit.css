@@ -2430,10 +2430,10 @@ p { margin: 0; }
 .mth-route-node.picked .mth-route-name { color: var(--white); }
 .mth-route-node.dimmed { opacity: 0.38; }
 .mth-edge path { fill: none; stroke-linecap: round; transition: stroke 0.15s, stroke-width 0.15s; }
-.mth-edge.trunk path { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.5; }
-.mth-edge.twig path { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1.2; }
-.mth-edge.leaf path { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1; }
-.mth-edge.path path { stroke: var(--white); stroke-width: 1.8; }
+.mth-edge.trunk path { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.2; }
+.mth-edge.branch path { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.2; }
+.mth-edge.skip path { stroke-dasharray: 4 5; }
+.mth-edge.path path { stroke: var(--white); stroke-width: 2; }
 .mth-stage-node.dimmed, .mth-rule-node.dimmed { opacity: 0.32; }
 .mth-edge.picked path { stroke: var(--white); stroke-width: 2.2; }
 .mth-summary { font-size: var(--text-sm); color: var(--soft); }

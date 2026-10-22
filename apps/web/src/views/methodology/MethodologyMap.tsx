@@ -14,17 +14,16 @@ type Props = {
   onPick: (ruleId: string) => void;
 };
 
-/** The methodology as a tree (ADR-0059): every possibility, from its stages in decision order
- * to each decision's routes with the condition that leads to them. With a flow selected, each
- * decision shows its status there; with `path`, the flow's path is lit and the rest dimmed. */
+/** The methodology as one connected tree (ADR-0059), every possibility: stages and decisions in
+ * decision order, each decision fanning out into its routes, each route leading on to the next
+ * step. With a flow selected, each decision shows its status; with `path`, the flow's path is
+ * one lit line and the rest dimmed. */
 export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) {
   const tree = useMemo(() => ruleTree(rules, reviews, { path }), [rules, reviews, path]);
-  const branch = rules.find((r) => r.id === picked)?.stage;
   const nodes = tree.nodes.map((n) => (n.type === "rule" ? { ...n, selected: n.id === picked } : n));
   const edges = tree.edges.map((e) => {
-    const lit = e.target === picked || e.target === `stage:${branch}` || e.source === picked;
-    const level = e.target.startsWith("stage:") ? "trunk" : e.source.startsWith("stage:") ? "twig" : "leaf";
-    return { ...e, type: "default", className: `mth-edge ${level}${lit ? " picked" : ""}${e.data?.onPath ? " path" : ""}` };
+    const near = e.source === picked || e.target === picked;
+    return { ...e, type: "default", className: `mth-edge ${e.data?.kind ?? "trunk"}${e.data?.onPath ? " path" : ""}${near ? " picked" : ""}` };
   });
   return (
     <div className="mth-map" role="region" aria-label="Methodology map">
@@ -37,8 +36,9 @@ export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) 
           if (node.type === "rule") onPick(node.id);
           if (node.type === "route") onPick(node.id.split("#")[0]!);
         }}
-        // Full size from the top: the whole tree fitted to the window would be too small to read.
-        defaultViewport={{ x: 24, y: 96, zoom: 0.9 }}
+        // Open on the tree's start at a readable size: the whole tree fitted would be too small.
+        fitView
+        fitViewOptions={{ nodes: tree.nodes.filter((n) => n.position.x < START_WIDTH).map((n) => ({ id: n.id })), maxZoom: 1, padding: 0.08 }}
         panOnScroll
         nodesDraggable={false}
         nodesConnectable={false}
@@ -85,9 +85,7 @@ function StageNode({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
         <h2>{stageName(data.stage)}</h2>
         <span>{data.count === 0 ? "no rules yet" : data.count === 1 ? "1 decision" : `${data.count} decisions`}</span>
       </span>
-      {/* The trunk runs on to the next stage; the branches hang down to this stage's decisions. */}
       <Handle type="source" position={Position.Right} isConnectable={false} />
-      <Handle id="branch" type="source" position={Position.Bottom} isConnectable={false} style={{ left: 13 }} />
     </div>
   );
 }
@@ -126,8 +124,12 @@ function RouteNode({ data }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
         <span className="mth-route-name">{route.label}</span>
         <span className="mth-rule-meta">{route.condition ? `When ${route.condition}` : (route.action.operator?.split("@")[0] ?? route.description)}</span>
       </span>
+      <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
   );
 }
+
+/** How much of the tree, from the left, the canvas fits on opening. */
+const START_WIDTH = 1150;
 
 const NODE_TYPES = { root: RootNode, stage: StageNode, rule: RuleNode, route: RouteNode };
