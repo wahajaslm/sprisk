@@ -5,6 +5,7 @@ mod catalog;
 mod compare;
 mod decision;
 pub mod facts;
+pub mod review;
 pub mod search;
 pub use catalog::{CatalogError, RuleCatalog};
 pub use compare::{

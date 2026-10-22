@@ -683,7 +683,7 @@ fn candidate<'p>(
 }
 
 /// `step` and every step it depends on.
-fn upstream<'p>(pipeline: &'p PipelineVersion, step: &str) -> HashSet<&'p str> {
+pub(crate) fn upstream<'p>(pipeline: &'p PipelineVersion, step: &str) -> HashSet<&'p str> {
     let mut graph = DiGraph::<&str, ()>::new();
     let index: std::collections::HashMap<&str, _> = pipeline
         .nodes

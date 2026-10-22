@@ -13,6 +13,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Decision | Level | Decided by | Rule | Source |
 | --- | --- | --- | --- | --- |
 | Target and task | 3 | Person states the target; task type measured from its values and confirmed | none | REFORMS (Kapoor et al. 2024), module 1 |
+| Target available, or derived | 3 | Person: which column, or how to build it from others | none | knowledge: Methodology_in_Data_Science, step 1 |
 | Unit of prediction | 3 | Person: one row per what? | none | TRIPOD+AI (Collins et al. 2024) |
 | Primary metric | 1, else 3 | Stated metric wins; else from task and class balance (unbalanced: macro or weighted F1, not accuracy) | draft | scikit-learn "Metrics and scoring" |
 | Cost of each error | 3 | Person | none | Elkan 2001, cost-sensitive learning |
@@ -47,10 +48,11 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | --- | --- | --- | --- | --- |
 | Scaling (model) | 1, then 2 | Trees: none. Linear, distance: standard; heavy outliers: robust | active | Hastie et al. 2009; scikit-learn preprocessing |
 | Encoding | 1, then 2 | Few categories → one-hot before the model (ADR-0057). Many → target encoding with cross-fitting vs frequency, tried | active | scikit-learn `TargetEncoder`; Micci-Barreca 2001 |
+| Date field useful | 1, then 2 | Date parts kept when they help in cross-validation | none | knowledge: Methodology_in_Data_Science, step 3 |
 | Rare categories | 1 | Below a frequency → "other" | none | scikit-learn `OneHotEncoder(min_frequency)` |
 | Text representation | 2 | TF-IDF words vs characters, tried | none (ADR-0058 proposed) | scikit-learn "Text feature extraction" |
 | Date parts | 1 | Year, month, weekday from a date column | none | — |
-| Feature selection | 2 | Only inside cross-validation, never on all rows | draft | Ambroise & McLachlan 2002 |
+| Feature selection | 2 | Only inside cross-validation, never on all rows; a feature that does not help is dropped | draft | Ambroise & McLachlan 2002 |
 | Dimensionality reduction | 2 | Tried against no reduction | draft | Hastie et al. 2009 |
 | Multicollinearity (model) | 1 | Linear models only | draft | — |
 
@@ -58,6 +60,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Decision | Level | Decided by | Rule | Source |
 | --- | --- | --- | --- | --- |
 | Model shortlist and selection | 2 | Baseline + candidates on repeated CV; simplest within one standard error | active | Hastie et al. 2009 §7.10; ADR-0050 |
+| Need for interpretability | 3 | Person: must the model be explained? If so the shortlist favours linear models | none | knowledge: Methodology_in_Data_Science, step 4 |
 | Settings (tuning) | 2 | Nested CV within a budget | — (studies, ADR-0052) | Cawley & Talbot 2010 |
 | Class imbalance | 2 | Class weights vs resampling inside folds vs threshold, tried | draft | He & Garcia 2009 |
 
@@ -71,6 +74,8 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 ## Reporting
 | Decision | Level | Decided by | Rule | Source |
 | --- | --- | --- | --- | --- |
+| Action rule (who to act on) | 3, then 2 | Person gives the budget or constraints; the probability bands are set on CV predictions | none | knowledge: Methodology_in_Data_Science, step 5 |
+| Business impact | 1 | The model compared with the current rule, in the person's cost units | none | knowledge: Methodology_in_Data_Science, step 5 |
 | Fairness, explainability, drift, serving parity | 3 | Person names groups and obligations | draft | TRIPOD+AI |
 
 Unsupervised (clustering, anomaly) rules follow the same levels; see `methodology/unsupervised/`.
@@ -81,4 +86,5 @@ Unsupervised (clustering, anomaly) rules follow the same levels; see `methodolog
 | Fill, encode or scale before the split | Fit on train rows only | Test rows would shape the model |
 | Select features or set a threshold on test results | Inside cross-validation | The score would be optimistic |
 | Tune with no hold-out | Nested CV | Same |
+| Judge performance on the test set, then iterate | Iterate on cross-validation results; the test set is scored once, at the end | Iterating on the test set tunes the model to it |
 | Drop mostly-empty columns measured on all rows | Measure train rows, drop from all | Statistics from train rows only |
