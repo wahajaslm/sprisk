@@ -4469,3 +4469,40 @@ async fn a_step_that_carries_the_rule_s_applied_decision_is_settled() {
         "{review}"
     );
 }
+
+#[tokio::test]
+async fn a_rule_that_measures_train_rows_does_not_apply_to_a_step_before_the_split() {
+    let api = api().await;
+    forest_flow(&api).await;
+    let uri = format!("/pipeline_versions/{BASE}");
+    let (_, mut flow) = call(&api.app, "GET", &uri, None).await;
+    flow["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
+    flow["parent_id"] = json!(BASE);
+    flow["nodes"].as_array_mut().unwrap().push(json!({ "id":"has_target",
+        "operator":"sprisk.clean.drop_missing@1.0.0", "params":{"columns":["returned_within_30d"]} }));
+    flow["edges"] = json!([
+        {"from":"load.data","to":"has_target.data"},
+        {"from":"has_target.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ5/methodology/review";
+    let (status, review) = call(&api.app, "GET", uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{review}");
+    let filling = review["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["decides"] == "cleaning.missingness_strategy")
+        .unwrap();
+    assert_eq!(filling["status"], "not_applicable", "{review}");
+    assert!(
+        filling["reason"]
+            .as_str()
+            .unwrap()
+            .contains("before the split"),
+        "{review}"
+    );
+}

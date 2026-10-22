@@ -6,7 +6,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
-import { stageName } from "./ruleTree.ts";
+import { reviewByRule, stageName } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
@@ -16,7 +16,7 @@ export function MethodologyPage() {
   const rules = useMethodologyRules();
   const versionId = useSelection((s) => s.pipelineVersionId);
   const review = useMethodologyReview(versionId);
-  const reviews = useMemo(() => new Map((review.data?.items ?? []).map((item) => [item.rule as string, item])), [review.data]);
+  const reviews = useMemo(() => reviewByRule(review.data?.items ?? []), [review.data]);
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;

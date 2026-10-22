@@ -1063,6 +1063,11 @@ async fn review_methodology(
     for (at, planned_rule) in planned.iter().enumerate() {
         let outcome = if let Some(on) = review::waits_on(&pipeline, &planned, at, &open) {
             Outcome::Waiting { on: on.to_owned() }
+        } else if let Some(why) = planned_rule
+            .subject
+            .and_then(|node| before_the_split(&state, &pipeline, node, planned_rule.rule))
+        {
+            Outcome::NotApplicable(why)
         } else if let Some(node) = planned_rule.subject {
             match decide(&state, &pipeline, &question, node, planned_rule.rule).await {
                 Ok(proposal) => Outcome::Proposed {
@@ -1113,6 +1118,28 @@ fn compared_decision(state: &AppState, node: &sprisk_contracts::Node) -> Option<
                 .filter(|_| keeps_train_rows(&state.registry, node))
         })
         .map(|rule| rule.decides.as_str().to_owned())
+}
+
+/// Why `rule` cannot decide `node`, when it measures train rows and `node` has none: it sits
+/// before the split, or its rows cannot be traced to one. A run would not change that.
+fn before_the_split(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    node: &sprisk_contracts::Node,
+    rule: &MethodologyRule,
+) -> Option<String> {
+    if !sprisk_methodology::facts::needs_train_rows(rule.reads.iter().map(|r| r.as_str())) {
+        return None;
+    }
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n);
+    let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
+    let traced = sprisk_methodology::train_rows_source(pipeline, node.id.as_str(), is_split, keeps);
+    traced.err().map(|e| {
+        format!(
+            "Step {} has no train rows to measure ({e}): it runs before the split, where this rule cannot decide.",
+            node.id.as_str()
+        )
+    })
 }
 
 /// A step the split rule decides, whatever its version.

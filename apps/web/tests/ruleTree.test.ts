@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ruleTree } from "../src/views/methodology/ruleTree.ts";
+import { reviewByRule, ruleTree } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes = 1) =>
   ({ id, stage, alternatives: Array.from({ length: routes }, (_, i) => ({ id: `r${i}` })) }) as never;
@@ -38,5 +38,19 @@ describe("methodology map", () => {
     const tree = ruleTree([rule("a", "split")], new Map([["a", item]]));
     const card = tree.nodes.find((n) => n.id === "a")!;
     expect(card.type === "decision" && card.data.review).toBe(item);
+  });
+});
+
+describe("one rule on several steps", () => {
+  const item = (rule: string, status: string, step: string) => ({ rule, status, subject_node_id: step }) as never;
+
+  it("shows the first open item, since that is where work is needed", () => {
+    const byRule = reviewByRule([item("a", "settled", "s1"), item("a", "needs_run", "s2"), item("a", "waiting", "s3")]);
+    expect(byRule.get("a")).toMatchObject({ subject_node_id: "s2" });
+  });
+
+  it("shows the first item when nothing is open", () => {
+    const byRule = reviewByRule([item("a", "settled", "s1"), item("a", "not_applicable", "s2")]);
+    expect(byRule.get("a")).toMatchObject({ subject_node_id: "s1" });
   });
 });
