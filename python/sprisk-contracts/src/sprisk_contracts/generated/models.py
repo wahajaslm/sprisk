@@ -938,6 +938,7 @@ class SelectionMetric(StrEnum):
     balanced_accuracy = "balanced_accuracy"
     expected_cost = "expected_cost"
     rmse = "rmse"
+    weighted_f1 = "weighted_f1"
 
 
 class BaselineRole(StrEnum):

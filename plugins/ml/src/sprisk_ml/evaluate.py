@@ -37,6 +37,8 @@ def evaluate(model: Any, test: pl.DataFrame, target: str, task: str) -> dict[str
         result["accuracy"] = float(metrics.accuracy_score(y_true, y_pred))
         result["balanced_accuracy"] = float(metrics.balanced_accuracy_score(y_true, y_pred))
         result["f1_macro"] = float(metrics.f1_score(y_true, y_pred, average="macro"))
+        # The metric a person may compare models by (ADR-0059), so the test rows report it.
+        result["weighted_f1"] = float(metrics.f1_score(y_true, y_pred, average="weighted"))
         labels = sorted(set(y_true.tolist()) | set(y_pred.tolist()))
         matrix = metrics.confusion_matrix(y_true, y_pred, labels=labels)
         # Rows are the true class, columns the predicted class.

@@ -21,10 +21,26 @@ from .evaluate import confusion_figure, predicted_figure
 from .importance import importance_figure, permutation
 from .models import model_input
 
-METRIC_OF_TASK = {"classification": "balanced_accuracy", "regression": "rmse"}
-SCORING = {"balanced_accuracy": "balanced_accuracy", "rmse": "neg_root_mean_squared_error"}
-GREATER_IS_BETTER = {"balanced_accuracy": True, "expected_cost": False, "rmse": False}
-LABEL = {"balanced_accuracy": "balanced accuracy", "expected_cost": "expected cost", "rmse": "RMSE"}
+# The metrics each task may be compared by, without costs: the task's own, or one a person
+# stated with the success bar (ADR-0059).
+METRICS_OF_TASK = {"classification": {"balanced_accuracy", "weighted_f1"}, "regression": {"rmse"}}
+SCORING = {
+    "balanced_accuracy": "balanced_accuracy",
+    "rmse": "neg_root_mean_squared_error",
+    "weighted_f1": "f1_weighted",
+}
+GREATER_IS_BETTER = {
+    "balanced_accuracy": True,
+    "expected_cost": False,
+    "rmse": False,
+    "weighted_f1": True,
+}
+LABEL = {
+    "balanced_accuracy": "balanced accuracy",
+    "expected_cost": "expected cost",
+    "rmse": "RMSE",
+    "weighted_f1": "weighted F1",
+}
 # Shuffles per feature and fold; with five folds, 25 per feature in all.
 IMPORTANCE_REPEATS = 5
 ALPHA = 0.05
@@ -112,16 +128,15 @@ def cross_validate(
     features, costs = candidate_params.get("features"), candidate_params.get("costs")
     # Rust picks the metric from the question's task and the step's costs; this checks a
     # step built by hand.
-    if task not in METRIC_OF_TASK:
+    if task not in METRICS_OF_TASK:
         raise ValueError(f"a {task} task has no comparison metric")
     if costs is not None and metric != "expected_cost":
         raise ValueError(f"costs are scored by expected_cost, not {metric}")
     if costs is None and metric == "expected_cost":
         raise ValueError("expected_cost needs the model step's costs")
-    if costs is None and METRIC_OF_TASK[task] != metric:
-        raise ValueError(
-            f"metric {metric} does not fit a {task} task; it is {METRIC_OF_TASK[task]}"
-        )
+    if costs is None and metric not in METRICS_OF_TASK[task]:
+        allowed = ", ".join(sorted(METRICS_OF_TASK[task]))
+        raise ValueError(f"metric {metric} does not fit a {task} task; it takes {allowed}")
     if features is not None and target in features:
         raise ValueError(f"target {target!r} is listed as a feature")
     y = train[target]

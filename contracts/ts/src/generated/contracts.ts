@@ -315,12 +315,12 @@ export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "densi
  */
 export type Stage = "load" | "split" | "explore" | "clean" | "model" | "evaluate";
 /**
- * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression.
+ * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression. weighted_f1 (higher is better; F1 per class weighted by its share of rows) for classification when a person states it with the success bar (ADR-0059).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "SelectionMetric".
  */
-export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse";
+export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse" | "weighted_f1";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "AttemptState".

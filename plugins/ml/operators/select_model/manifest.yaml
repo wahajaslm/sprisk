@@ -18,7 +18,7 @@ params_schema:
       x-sprisk-ports: input
     baseline: { type: string, pattern: "^[a-z][a-z0-9_]{0,62}$", description: "The trial every other must beat." }
     baseline_role: { type: string, enum: [floor, reference], description: "floor: a model that ignores its features, which never wins. reference: the rule's recommended preparation, which stands unless another beats it (ADR-0050)." }
-    metric: { type: string, enum: [balanced_accuracy, expected_cost, rmse], description: "The metric every trial was scored by. Lower is better for expected_cost and rmse." }
+    metric: { type: string, enum: [balanced_accuracy, expected_cost, rmse, weighted_f1], description: "The metric every trial was scored by. Lower is better for expected_cost and rmse." }
     complexity:
       type: object
       description: "Each trial's complexity: a model's from its manifest; for preparation, 0 when the step is removed, else 1. Of the trials within one standard error of the best, the simplest wins (ADR-0050)."

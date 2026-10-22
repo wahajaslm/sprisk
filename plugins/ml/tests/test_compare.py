@@ -275,6 +275,15 @@ def test_regression_is_scored_by_rmse_where_lower_is_better() -> None:
     assert linear["score"].sum() < dummy["score"].sum()
 
 
+def test_classification_may_be_scored_by_weighted_f1_where_higher_is_better() -> None:
+    train = rows(100, seed=1)
+    dummy = scores(train, dummy_baseline_estimator, CLASSIFY, metric="weighted_f1")
+    linear = scores(train, linear_model_estimator, CLASSIFY, metric="weighted_f1")
+    assert set(linear["metric"]) == {"weighted_f1"}
+    assert linear["score"].is_between(0, 1).all()
+    assert linear["score"].sum() > dummy["score"].sum()
+
+
 @pytest.mark.parametrize(
     ("train", "params", "metric", "message"),
     [
@@ -282,7 +291,13 @@ def test_regression_is_scored_by_rmse_where_lower_is_better() -> None:
             rows(100, seed=1),
             CLASSIFY,
             "rmse",
-            "metric rmse does not fit a classification task; it is balanced_accuracy",
+            "metric rmse does not fit a classification task",
+        ),
+        (
+            rows(100, seed=1),
+            REGRESS,
+            "weighted_f1",
+            "metric weighted_f1 does not fit a regression task",
         ),
         (rows(100, seed=1), {**CLASSIFY, "features": ["x", "y"]}, "balanced_accuracy", "'y'"),
         (

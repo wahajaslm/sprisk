@@ -11,7 +11,7 @@ import { CodeInput } from "./CodeInput.tsx";
 import { FigurePort } from "./inspector/FiguresTab.tsx";
 import { formatMetric } from "./NodeFact.tsx";
 
-const METRIC_LABEL: Record<SelectionDecision["metric"], string> = { balanced_accuracy: "balanced accuracy", expected_cost: "expected cost", rmse: "RMSE" };
+const METRIC_LABEL: Record<SelectionDecision["metric"], string> = { balanced_accuracy: "balanced accuracy", expected_cost: "expected cost", rmse: "RMSE", weighted_f1: "weighted F1" };
 type Candidate = SelectionDecision["candidates"][number];
 
 /** How Sprisk chose this flow's models and preparation steps (ADR-0050). For the flow's head it
