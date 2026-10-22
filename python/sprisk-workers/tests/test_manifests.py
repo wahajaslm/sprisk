@@ -35,6 +35,7 @@ def write(root: Path, entrypoint: str) -> None:
 def test_every_core_manifest_loads_with_its_entrypoint() -> None:
     ops = load_operators(PLUGINS)
     assert sorted(ops) == [
+        "sprisk.clean.cast_types@1.0.0",
         "sprisk.clean.clean_text@1.0.0",
         "sprisk.clean.clip_outliers@1.0.0",
         "sprisk.clean.date_parts@1.0.0",

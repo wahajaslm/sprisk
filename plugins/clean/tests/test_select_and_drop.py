@@ -1,7 +1,13 @@
 import polars as pl
 import pytest
 
-from sprisk_clean.columns import drop_duplicates, drop_missing, mark_missing, select_columns
+from sprisk_clean.columns import (
+    cast_types,
+    drop_duplicates,
+    drop_missing,
+    mark_missing,
+    select_columns,
+)
 
 DATA = pl.DataFrame({"a": [1, None, 3], "b": ["x", "y", None], "c": [1.0, 2.0, 3.0]})
 
@@ -55,3 +61,36 @@ def test_mark_missing_matches_whole_values_only() -> None:
 def test_mark_missing_refuses_a_number_column() -> None:
     with pytest.raises(ValueError, match="b is not text"):
         mark_missing(pl.DataFrame({"b": [1, 2]}), columns=["b"], values=["?"])
+
+
+def test_cast_types_reads_text_columns_as_numbers_and_keeps_gaps() -> None:
+    data = pl.DataFrame({"a": [" 1", None, "2.5 "], "b": ["x", "y", "z"]})
+    out = cast_types(data, columns=["a"])
+    assert out.schema["a"] == pl.Float64 and out["a"].to_list() == [1.0, None, 2.5]
+    assert out["b"].to_list() == ["x", "y", "z"]
+
+
+def test_cast_types_reads_whole_numbers_as_integers() -> None:
+    out = cast_types(pl.DataFrame({"n": ["1", "-20", None]}), columns=["n"])
+    assert out.schema["n"] == pl.Int64 and out["n"].to_list() == [1, -20, None]
+
+
+def test_cast_types_refuses_digits_a_float_cannot_hold() -> None:
+    with pytest.raises(ValueError, match=r"acct: '1234567890123456' has more than 15 digits"):
+        cast_types(pl.DataFrame({"acct": ["1", "1234567890123456"]}), columns=["acct"])
+
+
+def test_cast_types_names_the_column_and_a_value_that_is_not_a_number() -> None:
+    with pytest.raises(ValueError, match=r"a: 'NaN' does not read as a number"):
+        cast_types(pl.DataFrame({"a": ["1", "NaN"]}), columns=["a"])
+
+
+def test_cast_types_refuses_a_column_that_is_not_text() -> None:
+    with pytest.raises(ValueError, match="b is not text"):
+        cast_types(pl.DataFrame({"b": [1, 2]}), columns=["b"])
+
+
+def test_cast_types_reads_a_column_name_as_a_name_not_a_pattern() -> None:
+    data = pl.DataFrame({"^.*$": ["1"], "other": ["x"]})
+    out = cast_types(data, columns=["^.*$"])
+    assert out.schema["^.*$"] == pl.Int64 and out.schema["other"] == pl.String
