@@ -2397,7 +2397,7 @@ p { margin: 0; }
 .mth-page { display: grid; grid-template-columns: minmax(0, 1fr) minmax(440px, 40%); height: 100%; min-height: 0; background: var(--canvas); }
 .mth-canvas { position: relative; min-width: 0; min-height: 0; }
 .mth-map { position: absolute; inset: 0; }
-.mth-toolbar { position: absolute; top: var(--space-3); left: var(--space-3); z-index: 5; }
+.mth-toolbar { position: absolute; top: var(--space-3); left: var(--space-3); right: var(--space-3); z-index: 5; display: flex; align-items: center; gap: var(--space-4); }
 .mth-side { min-height: 0; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); }
 /* The map's look: rings, dots and white strands, no boxes. */
 .mth-map .react-flow__handle { opacity: 0; pointer-events: none; }

@@ -10,35 +10,47 @@ const tree = (rules = RULES, reviews = new Map(), path = false) => ruleTree(rule
 const at = (t: ReturnType<typeof ruleTree>, id: string) => t.nodes.find((n) => n.id === id)!.position;
 
 describe("methodology tree", () => {
-  it("shows every possibility: all stages in decision order, every decision, drafts too, and every route", () => {
+  it("runs every stage left to right along a trunk, even one with no rules yet, each branching into its decisions and routes", () => {
     expect(tree().edges.map((e) => `${e.source}>${e.target}`)).toEqual([
-      "root>stage:split",
+      "root>stage:question",
+      "stage:question>stage:data",
+      "stage:data>stage:split",
       "stage:split>split",
       "split>split#random",
       "split>split#time",
-      "root>stage:cleaning",
+      "stage:split>stage:cleaning",
       "stage:cleaning>fill",
       "fill>fill#median",
       "fill>fill#mean",
-      "root>stage:features",
+      "stage:cleaning>stage:features",
       "stage:features>pca",
       "pca>pca#pca",
+      "stage:features>stage:models",
+      "stage:models>stage:evaluation",
+      "stage:evaluation>stage:reporting",
     ]);
   });
 
-  it("stacks the routes as leaves and centres each parent on its children, one column per level", () => {
+  it("places the stages in one row, left to right in decision order, each with its decisions below it", () => {
+    const t = tree();
+    const stages = ["stage:split", "stage:cleaning", "stage:features"].map((id) => at(t, id));
+    expect(new Set(stages.map((p) => p.y)).size).toBe(1);
+    expect(stages.map((p) => p.x)).toEqual([...stages.map((p) => p.x)].sort((a, b) => a - b));
+    expect(at(t, "root").x).toBeLessThan(stages[0]!.x);
+    expect(at(t, "split").y).toBeGreaterThan(stages[0]!.y);
+    expect(at(t, "split").x).toBeLessThan(at(t, "split#time").x);
+    expect(at(t, "split#time").x).toBeLessThan(at(t, "stage:cleaning").x);
+  });
+
+  it("stacks a stage's routes as leaves and centres each decision on its routes", () => {
     const t = tree();
     expect(at(t, "split#time").y).toBeGreaterThan(at(t, "split#random").y);
     expect(at(t, "split").y).toBe((at(t, "split#random").y + at(t, "split#time").y) / 2);
-    expect(at(t, "stage:split").y).toBe(at(t, "split").y);
-    expect(at(t, "root").y).toBe((at(t, "stage:split").y + at(t, "stage:features").y) / 2);
-    const xs = ["root", "stage:split", "split", "split#random"].map((id) => at(t, id).x);
-    expect([...xs].sort((a, b) => a - b)).toEqual(xs);
   });
 
   it("gives a decision with no routes a row of its own", () => {
-    const t = tree([rule("models", "models", []), rule("split", "split", ["random"])]);
-    expect(at(t, "models").y).toBeGreaterThan(at(t, "split#random").y);
+    const t = tree([rule("split", "split", []), rule("other", "split", ["random"])]);
+    expect(at(t, "other").y).toBeGreaterThan(at(t, "split").y);
   });
 
 
@@ -61,7 +73,14 @@ describe("methodology tree", () => {
     expect(data("fill")).toMatchObject({ dimmed: true });
     expect(data("stage:cleaning")).toMatchObject({ dimmed: true });
     expect(data("stage:split")).toMatchObject({ dimmed: false });
-    expect(t.edges.filter((e) => e.data?.onPath).map((e) => e.id)).toEqual(["root>stage:split", "stage:split>split", "split>split#time"]);
+    expect(t.edges.filter((e) => e.data?.onPath).map((e) => e.id)).toEqual(["root>stage:question", "stage:question>stage:data", "stage:data>stage:split", "stage:split>split", "split>split#time"]);
+  });
+
+  it("lights the trunk from the start to the last stage the flow reaches", () => {
+    const fill = { rule: "fill", status: "settled", subject_node_id: "fill", recommended_alternative_id: "mean" } as never;
+    const t = tree(RULES, new Map([["fill", fill]]), true);
+    const lit = t.edges.filter((e) => e.data?.onPath).map((e) => e.id);
+    expect(lit).toEqual(["root>stage:question", "stage:question>stage:data", "stage:data>stage:split", "stage:split>stage:cleaning", "stage:cleaning>fill", "fill>fill#mean"]);
   });
 });
 

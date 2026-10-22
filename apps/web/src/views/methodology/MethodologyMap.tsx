@@ -23,7 +23,7 @@ export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) 
   const nodes = tree.nodes.map((n) => (n.type === "rule" ? { ...n, selected: n.id === picked } : n));
   const edges = tree.edges.map((e) => {
     const lit = e.target === picked || e.target === `stage:${branch}` || e.source === picked;
-    const level = e.source === "root" ? "trunk" : e.source.startsWith("stage:") ? "twig" : "leaf";
+    const level = e.target.startsWith("stage:") ? "trunk" : e.source.startsWith("stage:") ? "twig" : "leaf";
     return { ...e, type: "default", className: `mth-edge ${level}${lit ? " picked" : ""}${e.data?.onPath ? " path" : ""}` };
   });
   return (
@@ -38,7 +38,7 @@ export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) 
           if (node.type === "route") onPick(node.id.split("#")[0]!);
         }}
         // Full size from the top: the whole tree fitted to the window would be too small to read.
-        defaultViewport={{ x: 24, y: 64, zoom: 1 }}
+        defaultViewport={{ x: 24, y: 96, zoom: 0.9 }}
         panOnScroll
         nodesDraggable={false}
         nodesConnectable={false}
@@ -83,9 +83,11 @@ function StageNode({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
       <span className="mth-stage-ring">{data.number}</span>
       <span className="mth-stage-text">
         <h2>{stageName(data.stage)}</h2>
-        <span>{data.count === 1 ? "1 decision" : `${data.count} decisions`}</span>
+        <span>{data.count === 0 ? "no rules yet" : data.count === 1 ? "1 decision" : `${data.count} decisions`}</span>
       </span>
+      {/* The trunk runs on to the next stage; the branches hang down to this stage's decisions. */}
       <Handle type="source" position={Position.Right} isConnectable={false} />
+      <Handle id="branch" type="source" position={Position.Bottom} isConnectable={false} style={{ left: 13 }} />
     </div>
   );
 }

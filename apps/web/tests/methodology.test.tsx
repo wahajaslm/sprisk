@@ -87,13 +87,13 @@ describe("methodology page", () => {
   });
 
 
-  it("maps the rules from the API under their stages, in stage order", async () => {
+  it("maps every stage in decision order, with the rules from the API under theirs", async () => {
     serve([features, split]);
     renderWithApi(<MethodologyPage />);
 
     const map = await screen.findByRole("region", { name: "Methodology map" });
     const stages = (await within(map).findAllByRole("heading")).map((h) => h.textContent);
-    expect(stages).toEqual(["Split", "Features"]);
+    expect(stages).toEqual(["Question", "Data", "Split", "Cleaning", "Features", "Models", "Evaluation", "Reporting"]);
     expect(within(map).getByRole("button", { name: /Data Splitting/ })).toBeInTheDocument();
   });
 
