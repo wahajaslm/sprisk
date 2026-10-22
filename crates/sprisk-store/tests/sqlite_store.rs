@@ -1185,3 +1185,98 @@ async fn a_completed_study_is_a_look_too() {
         .unwrap();
     assert_eq!(looks().await.unwrap(), 1);
 }
+
+/// A store holding the question a walk asks, and the walk's request, record, first version
+/// and build step (ADR-0060).
+async fn walk_parts() -> (
+    SqliteStore,
+    sprisk_contracts::Walk,
+    sprisk_contracts::CreateWalk,
+    sprisk_contracts::PipelineVersion,
+    sprisk_contracts::WalkStep,
+) {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let question: sprisk_contracts::QuestionVersion = fixture_with(
+        "question_version",
+        "classification-all-fields.json",
+        serde_json::json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    store.insert_question_version(&question).await.unwrap();
+    let walk: sprisk_contracts::Walk = fixture("walk", "walking.json");
+    let request: sprisk_contracts::CreateWalk = fixture("create_walk", "two-sources.json");
+    let first: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    let detail: sprisk_contracts::WalkDetail = fixture("walk_detail", "trail.json");
+    let build = detail.steps[0].clone();
+    (store, walk, request, first, build)
+}
+
+#[tokio::test]
+async fn a_walk_key_gives_its_walk_to_the_same_request_and_refuses_another() {
+    let (store, walk, request, first, build) = walk_parts().await;
+    let (kept, created) = store
+        .insert_walk(&walk, &request, Some(&first), &build)
+        .await
+        .unwrap();
+    assert!(created);
+    assert_eq!(kept, walk);
+    assert_eq!(store.get_walk(&walk.id).await.unwrap(), walk);
+    assert_eq!(store.get_pipeline_version(&first.id).await.unwrap(), first);
+    assert_eq!(
+        store.walk_steps(&walk.id).await.unwrap(),
+        vec![build.clone()]
+    );
+
+    let mut again = walk.clone();
+    again.id = "wlk_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    let mut again_first = first.clone();
+    again_first.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    let (kept, created) = store
+        .insert_walk(&again, &request, Some(&again_first), &build)
+        .await
+        .unwrap();
+    assert!(!created);
+    assert_eq!(kept, walk);
+    assert!(matches!(
+        store.get_pipeline_version(&again_first.id).await,
+        Err(StoreError::NotFound { .. })
+    ));
+
+    let mut longer = request.clone();
+    longer.max_actions += 1;
+    let err = store
+        .insert_walk(&again, &longer, Some(&again_first), &build)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+}
+
+#[tokio::test]
+async fn a_walk_step_is_kept_once_per_round_with_the_walk_it_leaves() {
+    let (store, walk, request, first, build) = walk_parts().await;
+    store
+        .insert_walk(&walk, &request, Some(&first), &build)
+        .await
+        .unwrap();
+    let detail: sprisk_contracts::WalkDetail = fixture("walk_detail", "trail.json");
+    let run = detail.steps[1].clone();
+    let mut stopped = walk.clone();
+    stopped.status = sprisk_contracts::WalkStatus::Stopped;
+    stopped.stop = detail.walk.stop.clone();
+    stopped.finished_at = detail.walk.finished_at;
+
+    store.record_walk_step(&stopped, &run).await.unwrap();
+    assert_eq!(store.get_walk(&walk.id).await.unwrap(), stopped);
+    assert_eq!(
+        store.walk_steps(&walk.id).await.unwrap(),
+        vec![build.clone(), run.clone()]
+    );
+
+    // A restarted walk that redoes round 1 records nothing and leaves the walk as it was.
+    let err = store.record_walk_step(&walk, &run).await.unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    assert_eq!(store.get_walk(&walk.id).await.unwrap(), stopped);
+}

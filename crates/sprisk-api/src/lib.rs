@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 mod bounded;
+mod engine;
 mod figures;
 mod kernel;
 mod notebook_code;
@@ -154,6 +155,8 @@ pub fn router(state: AppState) -> Router {
         .route("/notebooks/{id}/interrupt", post(interrupt_kernel))
         .route("/notebooks/{id}/restart", post(restart_kernel))
         .route("/notebooks/{id}/variables", get(kernel_variables))
+        .route("/walks", post(engine::create_walk))
+        .route("/walks/{id}", get(engine::get_walk))
         .layer(axum::middleware::from_fn(local_host_only))
         .with_state(state)
 }

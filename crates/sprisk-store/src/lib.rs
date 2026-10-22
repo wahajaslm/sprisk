@@ -5,11 +5,11 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
-    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, CreateStudy, DecisionProposal,
-    InvestigationId, MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, NodeId,
-    NotebookId, NotebookVersion, NotebookVersionId, PipelineVersion, PipelineVersionId,
-    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyId, StudyStatus,
-    Timestamp, WorkerId,
+    Artifact, ArtifactId, Attempt, AttemptId, AttemptState, CreateStudy, CreateWalk,
+    DecisionProposal, InvestigationId, MethodologyDecision, MethodologyDecisionId,
+    MethodologyProposalId, NodeId, NotebookId, NotebookVersion, NotebookVersionId, PipelineVersion,
+    PipelineVersionId, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyId,
+    StudyStatus, Timestamp, Walk, WalkId, WalkStep, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -435,6 +435,104 @@ impl SqliteStore {
         audit(&mut tx, at, id.as_str(), &format!("study.{from}->{ended}")).await?;
         tx.commit().await?;
         Ok(study)
+    }
+
+    /// Stores `walk` with its first version and step in one transaction, unless a walk already
+    /// holds `request`'s idempotency key: then that walk is given back if it was asked for the
+    /// same way, and nothing of this one is stored (ADR-0060). Gives the kept walk and whether
+    /// it is this one. The same key asking for anything else is a conflict.
+    pub async fn insert_walk(
+        &self,
+        walk: &Walk,
+        request: &CreateWalk,
+        first: Option<&PipelineVersion>,
+        step: &WalkStep,
+    ) -> Result<(Walk, bool), StoreError> {
+        let key = request.idempotency_key.as_str();
+        let asked = to_json(request)?;
+        let mut tx = self.pool.begin().await?;
+        let claimed = sqlx::query(
+            "INSERT INTO walks (id, question_version_id, idempotency_key, request, status, body) \
+             VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (idempotency_key) DO NOTHING",
+        )
+        .bind(walk.id.as_str())
+        .bind(walk.question_version_id.as_str())
+        .bind(key)
+        .bind(&asked)
+        .bind(walk.status.to_string())
+        .bind(to_json(walk)?)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            == 1;
+        if !claimed {
+            tx.rollback().await?;
+            let (saved_request, body): (String, String) =
+                sqlx::query_as("SELECT request, body FROM walks WHERE idempotency_key = ?")
+                    .bind(key)
+                    .fetch_optional(&self.pool)
+                    .await?
+                    .ok_or_else(|| {
+                        StoreError::Conflict(format!("walk with idempotency key {key} lost"))
+                    })?;
+            let saved: Walk = serde_json::from_str(&body)?;
+            if serde_json::from_str::<CreateWalk>(&saved_request)? != *request {
+                return Err(StoreError::Conflict(format!(
+                    "idempotency key {key} was used for another request: walk {}",
+                    saved.id.as_str()
+                )));
+            }
+            return Ok((saved, false));
+        }
+        if let Some(first) = first {
+            insert_version(&mut *tx, first).await?;
+        }
+        insert_walk_step(&mut tx, step).await?;
+        tx.commit().await?;
+        Ok((walk.clone(), true))
+    }
+
+    pub async fn get_walk(&self, id: &WalkId) -> Result<Walk, StoreError> {
+        let body: Option<String> = sqlx::query_scalar("SELECT body FROM walks WHERE id = ?")
+            .bind(id.as_str())
+            .fetch_optional(&self.pool)
+            .await?;
+        from_json(body, "walk", id.as_str())
+    }
+
+    /// The walk's steps in round order. A walk takes at most its `max_actions` steps.
+    pub async fn walk_steps(&self, id: &WalkId) -> Result<Vec<WalkStep>, StoreError> {
+        let bodies: Vec<String> =
+            sqlx::query_scalar("SELECT body FROM walk_steps WHERE walk_id = ? ORDER BY round")
+                .bind(id.as_str())
+                .fetch_all(&self.pool)
+                .await?;
+        bodies
+            .iter()
+            .map(|b| Ok(serde_json::from_str(b)?))
+            .collect()
+    }
+
+    /// Appends `step` to its walk and saves `walk` as it stands after it, in one transaction.
+    /// A round already recorded is a conflict, and nothing changes.
+    pub async fn record_walk_step(&self, walk: &Walk, step: &WalkStep) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        insert_walk_step(&mut tx, step).await?;
+        let updated = sqlx::query("UPDATE walks SET status = ?, body = ? WHERE id = ?")
+            .bind(walk.status.to_string())
+            .bind(to_json(walk)?)
+            .bind(walk.id.as_str())
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        if updated != 1 {
+            return Err(StoreError::NotFound {
+                entity: "walk",
+                id: walk.id.to_string(),
+            });
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     /// The version comparing `proposal`'s shortlist (ADR-0046), if one was built.
@@ -1206,6 +1304,20 @@ async fn insert_run<'e>(db: impl sqlx::SqliteExecutor<'e>, run: &Run) -> Result<
     .bind(to_json(run)?)
     .execute(db)
     .await?;
+    Ok(())
+}
+
+async fn insert_walk_step(tx: &mut Tx<'_>, step: &WalkStep) -> Result<(), StoreError> {
+    sqlx::query("INSERT INTO walk_steps (walk_id, round, body) VALUES (?, ?, ?)")
+        .bind(step.walk_id.as_str())
+        .bind(
+            i64::try_from(step.round).map_err(|_| {
+                StoreError::Conflict(format!("round {} is out of range", step.round))
+            })?,
+        )
+        .bind(to_json(step)?)
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 

@@ -4,6 +4,7 @@
 mod catalog;
 mod compare;
 mod decision;
+pub mod engine;
 pub mod facts;
 pub mod review;
 pub mod search;
@@ -50,6 +51,10 @@ pub enum ResolveError {
     NotInsertable(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]
     UndeclaredAlternative(String),
+    #[error("a walk needs at least one source")]
+    NoSource,
+    #[error("cannot tell how {0} is stored: name a .csv or .parquet file")]
+    UnknownFormat(String),
     #[error("could not construct proposal: {0}")]
     Contract(#[from] sprisk_contracts::ContractError),
     #[error(transparent)]

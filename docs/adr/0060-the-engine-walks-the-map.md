@@ -32,6 +32,10 @@ Rules then decide each step like any other. The split rule may replace the split
 
 There is no separate "strategy" kind. A Try is a rule whose routes are compared; an Ask is a rule that needs a fact only a person has.
 
+**A guess is never built on.** A rule that reads a question fact still marked `inferred` (a guessed time column, say) is an Ask, not applied, whatever it recommends: the person's answer may change the decision (ADR-0059: a guess is confirmed before anything depends on it). A target is accepted only when stated or confirmed.
+
+**The level belongs to the rule.** A rule recommends a route only when practice settles it from facts. When it depends, the rule recommends nothing and the engine compares the routes (Try). There is no separate level field: the rule's author and its reviewer own that line.
+
 **One action per round, in decision order.** Each round the engine reviews the head version and takes the first item in the review's `next` list that it can act on. An Ask holds back only the rules that wait on it; the review already says which. The engine then reviews again. It stops when nothing in `next` is actionable.
 
 **Typed stop reasons.**
@@ -39,9 +43,10 @@ There is no separate "strategy" kind. A Try is a rule whose routes are compared;
 - `needs_person`: only Asks are open. The walk lists them.
 - `limitation`: a rule's recommended route reports a limit, such as no lift over the baseline.
 - `uncovered`: an open item has no engine action yet (for example two sources and no active join rule). The walk names it.
-- `run_failed`: the head's run failed and no rule can act on what it produced. A failed run alone does not stop the walk: for Rakuten the first run fails at the split (the target is in the second file), yet the join rule reads both loads' outputs. A version is run at most once, so a `needs_run` that stays open after its run is not actionable.
+- `run_failed`: the head's run failed and no rule can act on what it produced. It is named before any Ask, with each failed step and its error, since later steps were never judged. A failed run alone does not stop the walk: for Rakuten the first run fails at the split (the target is in the second file), yet the join rule reads both loads' outputs. A version is run at most once, so a `needs_run` that stays open after its run is not actionable.
 - `stale`: the head version changed outside the walk.
-- `source_changed`: a source file's content no longer matches its hash at the start.
+- `source_changed`: a source file's content no longer matches its hash at the start. Added to the contract with slice 3, which checks the hashes.
+- `error`: the engine could not take its next step (for example a source that was removed). The detail carries the error, so a walk never stays `walking` with nothing driving it.
 - `budget_exhausted`: the walk used its actions or its time.
 
 **Kept from the loop ADR.**
@@ -53,7 +58,7 @@ There is no separate "strategy" kind. A Try is a rule whose routes are compared;
 
 **Reuse, no second scheduler.** The engine is Rust (it orders and schedules; rules decide in Python). It calls the same functions as the review, Apply, model selection and run endpoints, and runs through the existing scheduler. Every version it makes is an ordinary `PipelineVersion` with an ordinary `MethodologyDecision`, so the UI, CLI and an AI agent see exactly what a person would have made (rule 4).
 
-**Records.** `Walk` (contract `walk.schema.json`): question, sources and their hashes, budget, head version, status (`walking`, `stopped`) and stop reason. It is the one mutable control record. `WalkStep` is immutable: the round, the version reviewed, the action, the rule and alternative, the version or run it made, and why. The trail is the steps in order.
+**Records.** `Walk` (contract `walk.schema.json`): question, sources (their hashes come with slice 3), budget, head version, status (`walking`, `stopped`) and stop reason. Budgets are bounded like a study's: 1 to 200 actions, 1 second to 7 days. It is the one mutable control record. `WalkStep` is immutable: the round, the version reviewed, the action (`build`, `run`, `apply`, `stop`; `compare` from slice 2), the rule and alternative, the version or run it made, and why. The trail is the steps in order.
 
 ## Alternatives considered
 - **Start from a hand-built flow** (the loop ADR, §1). Rejected: the engine is the product; a flow a person built is an add-on.
@@ -80,6 +85,8 @@ There is no separate "strategy" kind. A Try is a rule whose routes are compared;
 - A source edited during a walk stops it `source_changed`.
 - A version applied on the head by someone else stops it `stale`.
 - A restart in the middle of a walk finishes it without a second apply or run for the same round.
+
+Delivered with slice 3, not slice 1: source hashes and `source_changed`, resuming walks after a restart, the hold-out scoring, and the two-source join (its rule is drafted in another branch).
 
 ## Arch doc edits
 - §8.3: the engine applies the review's actions in a loop; a person is asked only for Asks.

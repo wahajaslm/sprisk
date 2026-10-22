@@ -5034,3 +5034,382 @@ async fn codes_loaded_from_another_file_are_joined_on_the_shared_key_before_the_
     let (run, attempts) = run_version(&api, &named).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }
+
+/// Rakuten's 27 product-type codes, rarest last: the challenge's classes are unbalanced.
+const PRODUCT_TYPES: [u32; 27] = [
+    2583, 1560, 1300, 2060, 2522, 1280, 2403, 2280, 1920, 1160, 1320, 10, 2705, 1140, 2582, 40,
+    2585, 1302, 1281, 50, 2462, 2905, 60, 2220, 1301, 1940, 1180,
+];
+
+/// A word typical of each product type, as a title would carry ("lego" for toys).
+const PRODUCT_WORDS: [&str; 27] = [
+    "piscine",
+    "meuble",
+    "livre",
+    "decoration",
+    "papeterie",
+    "jouet",
+    "magazine",
+    "figurine",
+    "literie",
+    "carte",
+    "puericulture",
+    "roman",
+    "console",
+    "poupee",
+    "jardin",
+    "jeu",
+    "outillage",
+    "bricolage",
+    "peluche",
+    "accessoire",
+    "lot",
+    "logiciel",
+    "manette",
+    "epicerie",
+    "chaussons",
+    "animalerie",
+    "drone",
+];
+
+/// A synthetic stand-in shaped like Rakuten's listings joined to their codes (ADR-0060): a
+/// nameless id column, a title, an often empty description, product and image ids, and the
+/// product type. Titles and descriptions carry a word of their class, never the code. Rows are
+/// shuffled with a fixed seed before ids are given, so no id tells the class. No challenge row
+/// is used: its data is confidential.
+fn rakuten_like_listings() -> String {
+    let mut rows = Vec::new();
+    for (rank, (code, word)) in PRODUCT_TYPES.iter().zip(PRODUCT_WORDS).enumerate() {
+        for n in 0..(40 - rank as u32) {
+            let description = if n % 3 == 0 {
+                String::new()
+            } else {
+                format!("{word} neuf taille {}", n % 5)
+            };
+            rows.push((format!("{word} modele {}", n % 7), description, *code));
+        }
+    }
+    // Fisher-Yates with a fixed linear congruential generator.
+    let mut state: u64 = 42;
+    for at in (1..rows.len()).rev() {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        rows.swap(at, (state >> 33) as usize % (at + 1));
+    }
+    let mut csv = String::from(",designation,description,productid,imageid,prdtypecode\n");
+    for (row, (designation, description, code)) in rows.iter().enumerate() {
+        csv.push_str(&format!(
+            "{row},{designation},{description},{},{},{code}\n",
+            100_000 + row,
+            900_000 + row
+        ));
+    }
+    csv
+}
+
+/// The question a person states for the stand-in: which product type each listing is.
+async fn rakuten_like_question(api: &Api) {
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["objective"]["value"] =
+        json!("Tell each listing's product type from its title and description.");
+    q["target"]["value"] = json!("prdtypecode");
+    q["unit_of_analysis"]["value"] = json!("listing");
+    let facts = q.as_object_mut().unwrap();
+    facts.remove("time_column");
+    facts.remove("entity_column");
+    facts.remove("prediction_horizon");
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+fn walk_request(sources: &[&Path], key: &str) -> Value {
+    json!({
+        "idempotency_key": key,
+        "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "sources": sources,
+        "max_actions": 40,
+        "max_wall_seconds": 600,
+    })
+}
+
+/// Starts a walk and waits, bounded, until it stops. Returns its detail.
+async fn walk_to_end(api: &Api, request: Value) -> Value {
+    let (status, walk) = call(&api.app, "POST", "/walks", Some(request)).await;
+    assert!(
+        status == StatusCode::ACCEPTED || status == StatusCode::OK,
+        "{status} {walk}"
+    );
+    let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
+    for _ in 0..6000 {
+        let (_, detail) = call(&api.app, "GET", &uri, None).await;
+        if detail["walk"]["status"] == "stopped" {
+            return detail;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("walk {uri} did not stop");
+}
+
+fn trail(detail: &Value) -> Vec<String> {
+    detail["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| match s["decides"].as_str() {
+            Some(decides) => format!(
+                "{} {decides} {}",
+                s["action"].as_str().unwrap(),
+                s["alternative_id"].as_str().unwrap_or("")
+            ),
+            None => s["action"].as_str().unwrap().to_owned(),
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_question_and_file() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0001")).await;
+    // Built from the question and the file. Each rule's change is applied, then the flow is
+    // run again for the rules that measure its rows.
+    assert_eq!(
+        trail(&detail),
+        [
+            "build",
+            "apply split.method stratified_random",
+            "run",
+            "apply features.rare_categories group_rare",
+            "run",
+            "apply features.encoding_strategy one_hot_encoding",
+            "run",
+            "stop"
+        ],
+        "{detail}"
+    );
+    // No active rule fills the empty descriptions before they are encoded yet, so the last run
+    // fails there, and the walk says so rather than guessing a fill.
+    let stop = &detail["walk"]["stop"];
+    assert_eq!(stop["reason"], "run_failed", "{detail}");
+    let open = stop["detail"].as_str().unwrap();
+    assert!(
+        open.contains("step categories failed: description has missing values"),
+        "{open}"
+    );
+    assert!(open.contains("question.hard_constraints"), "{open}");
+    let steps = detail["steps"].as_array().unwrap();
+    assert_eq!(
+        detail["walk"]["head_pipeline_version_id"], steps[5]["made_pipeline_version_id"],
+        "the head is the version the last apply made"
+    );
+
+    // Same key: the same walk, nothing started.
+    let (status, again) = call(
+        &api.app,
+        "POST",
+        "/walks",
+        Some(walk_request(&[&api.csv], "walk-rakuten-0001")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["id"], detail["walk"]["id"]);
+
+    // Same question and file, a new walk: the same decisions in the same order.
+    let second = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0002")).await;
+    assert_eq!(trail(&second), trail(&detail), "{second}");
+    assert_eq!(
+        second["walk"]["stop"]["reason"],
+        detail["walk"]["stop"]["reason"]
+    );
+}
+
+#[tokio::test]
+async fn a_walk_with_no_stated_target_stops_before_building_anything() {
+    let api = api().await;
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["target"]["origin"] = json!("inferred");
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (status, walk) = call(
+        &api.app,
+        "POST",
+        "/walks",
+        Some(walk_request(&[&api.csv], "walk-no-target")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{walk}");
+    assert_eq!(walk["status"], "stopped");
+    assert_eq!(walk["stop"]["reason"], "needs_person");
+    assert!(walk.get("head_pipeline_version_id").is_none(), "{walk}");
+    let (_, versions) = call(&api.app, "GET", "/pipeline_versions", None).await;
+    assert_eq!(versions, json!([]), "nothing is built");
+}
+
+#[tokio::test]
+async fn a_walk_reads_only_files_inside_the_data_roots() {
+    let api = api().await;
+    rakuten_like_question(&api).await;
+    let outside = Path::new("/etc/hosts.csv");
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/walks",
+        Some(walk_request(&[outside], "walk-outside")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/walks",
+        Some(walk_request(&[Path::new("/data/x.xlsx")], "walk-xlsx")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_walk", "{body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_walk_stops_when_it_has_taken_its_actions() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let mut request = walk_request(&[&api.csv], "walk-one-action");
+    request["max_actions"] = json!(1);
+    let detail = walk_to_end(&api, request).await;
+    assert_eq!(
+        trail(&detail),
+        ["build", "apply split.method stratified_random", "stop"],
+        "{detail}"
+    );
+    assert_eq!(
+        detail["walk"]["stop"]["reason"], "budget_exhausted",
+        "{detail}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_walk_stops_when_its_time_is_up() {
+    let python = root().join(".venv/bin/python");
+    let command = vec![
+        python.display().to_string(),
+        "-m".into(),
+        "sprisk_code.cells".into(),
+    ];
+    let host = session_host(&python);
+    // Two reads stamp the walk and its build step; the first round finds ten days gone.
+    let api = api_with_clock(
+        python,
+        Splitter::new(command, Duration::from_secs(30), 2),
+        KERNEL_LIMITS,
+        host,
+        passing_after(2),
+    )
+    .await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-no-time")).await;
+    assert_eq!(trail(&detail), ["build", "stop"], "{detail}");
+    assert_eq!(
+        detail["walk"]["stop"]["reason"], "budget_exhausted",
+        "{detail}"
+    );
+}
+
+#[tokio::test]
+async fn a_walk_needs_a_bounded_budget_and_its_own_key() {
+    let api = api().await;
+    rakuten_like_question(&api).await;
+    for (field, value) in [("max_actions", 0), ("max_wall_seconds", 8 * 24 * 60 * 60)] {
+        let mut request = walk_request(&[&api.csv], "walk-budget");
+        request[field] = json!(value);
+        let (status, body) = call(&api.app, "POST", "/walks", Some(request)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["errors"][0]["code"], "invalid_budget", "{body}");
+    }
+
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ1", None);
+    q["target"]["origin"] = json!("inferred");
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut request = walk_request(&[&api.csv], "walk-key-reused");
+    request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
+    let (status, body) = call(&api.app, "POST", "/walks", Some(request.clone())).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    request["max_actions"] = json!(3);
+    let (status, body) = call(&api.app, "POST", "/walks", Some(request)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_walk_whose_head_someone_else_changes_stops_as_stale() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (status, walk) = call(
+        &api.app,
+        "POST",
+        "/walks",
+        Some(walk_request(&[&api.csv], "walk-stale")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
+    // A person saves a version on the walk's first flow while its first round reviews it.
+    let head = walk["head_pipeline_version_id"].as_str().unwrap();
+    let (_, mut edited) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
+    edited["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
+    edited["parent_id"] = json!(head);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(edited)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
+    let mut detail = Value::Null;
+    for _ in 0..6000 {
+        (_, detail) = call(&api.app, "GET", &uri, None).await;
+        if detail["walk"]["status"] == "stopped" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
+    assert_eq!(
+        trail(&detail),
+        ["build", "stop"],
+        "nothing applied on a changed head: {detail}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_walk_that_cannot_take_its_next_step_stops_with_the_error() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (status, walk) = call(
+        &api.app,
+        "POST",
+        "/walks",
+        Some(walk_request(&[&api.csv], "walk-error")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
+    // The source goes before the walk runs the flow, so its run cannot start.
+    std::fs::remove_file(&api.csv).unwrap();
+
+    let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
+    let mut detail = Value::Null;
+    for _ in 0..6000 {
+        (_, detail) = call(&api.app, "GET", &uri, None).await;
+        if detail["walk"]["status"] == "stopped" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(detail["walk"]["stop"]["reason"], "error", "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("could not take its next step"), "{why}");
+}
