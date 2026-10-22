@@ -2,13 +2,13 @@
 # Sprisk Methodology Rule: Missingness & Imputation Strategy
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.missingness@3.0.0
+id: methodology.supervised.missingness@4.0.0
 name: "Missing Data Treatment Strategy"
 stage: cleaning
 decides: cleaning.missingness_strategy
 status: active
-applies_to: [sprisk.clean.impute, sprisk.clean.drop_missing]
-reads: [step.method, question.target, column.*.data_type, column.*.missing_share, column.*.skewness, column.*.distinct]
+applies_to: [sprisk.clean.impute, sprisk.clean.drop_missing, sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
+reads: [step.method, step.task, question.target, column.*.data_type, column.*.missing_share, column.*.skewness, column.*.distinct]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -68,6 +68,29 @@ alternatives:
     rationale: 'Not offered: a most-frequent fill gives a gap a value it never had. Text gaps get their own value instead: a category such as "missing", or empty text in free text.'
     action:
       type: replace_node
+  - id: fill_before_model
+    label: Fill Gaps Before the Model
+    description: Gaps in the columns a model reads are filled in a step added before it, from the train rows only. Numbers take the median when skewed, else the mean; text takes its own value.
+    rationale: A model fits only the model and refuses gaps (ADR-0056), so a gap reaching it must be filled first.
+    action:
+      type: insert_step
+      placement: before
+      operator: sprisk.clean.impute@1.0.0
+      node_id: gaps
+  - id: no_gaps
+    label: No Gaps Reach the Model
+    description: Leave the columns as they are.
+    rationale: No column the model reads has a gap on the train rows.
+    action:
+      type: pass_through
+  - id: gaps_left
+    label: Gaps No Step Fills
+    description: A column the model reads has gaps that no step can fill.
+    rationale: The impute step fills numbers and text only, so true/false with gaps stops the model; a mostly empty column is not filled. Report it rather than guess a fill.
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "gaps_no_step_fills"
   - id: drop_column
     label: Drop Column
     description: Exclude the column entirely from the feature matrix.
@@ -95,3 +118,9 @@ examples:
     picks: drop_rows
   - given: { question.target: churned, column.description.data_type: String, column.description.missing_share: 0.35, column.description.distinct: 50000 }
     picks: impute_mean
+  - given: { step.task: classification, column.income.data_type: Float64, column.income.missing_share: 0.1, column.income.skewness: 2.4 }
+    picks: fill_before_model
+  - given: { step.task: classification, column.income.data_type: Float64, column.income.missing_share: 0.0 }
+    picks: no_gaps
+  - given: { step.task: classification, column.member.data_type: Boolean, column.member.missing_share: 0.3 }
+    picks: gaps_left

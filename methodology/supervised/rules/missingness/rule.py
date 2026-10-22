@@ -29,9 +29,15 @@ from sprisk_workers.rule import (
 )
 
 TEXT_TYPES = ("String", "Utf8", "Categorical")
+# The routes of each kind of subject; the other kind's are never this step's.
+FILL_ALTERNATIVES = ("drop_rows", "impute_median", "impute_mean", "impute_mode", "drop_column")
+MODEL_ALTERNATIVES = ("fill_before_model", "no_gaps", "gaps_left")
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
+    # Only a model step states its task: the rule decides what reaches it.
+    if flow_fact(observation, "step.task") is not None:
+        return _before_model(observation)
     s = observation.settings
     columns = step_columns(observation)
     target_fact = observation.facts.get("question.target")
@@ -39,8 +45,6 @@ def decide(observation: RuleObservation) -> RuleDecision:
     # An inferred target only asks: until it is confirmed, no fill may touch it.
     maybe_target = target_fact.value if target_fact and target is None else None
     share = {c: required(observation, c, "missing_share") for c in columns}
-    # A numeric column without a skew has no variation: mean and median are the same.
-    skew = {c: abs(v) for c in columns if (v := measured(observation, c, "skewness")) is not None}
 
     has_target = target in columns
     may_be_target = maybe_target in columns
@@ -48,10 +52,10 @@ def decide(observation: RuleObservation) -> RuleDecision:
         f"Confirm the target first: if {maybe_target} is the target, a missing label must "
         "never be filled."
     )
-    text = [c for c in columns if str(measure(observation, c, "data_type")).startswith(TEXT_TYPES)]
+    text = _text_columns(observation, columns)
     other = [c for c in columns if not is_numeric(observation, c) and c not in text]
     mostly_empty = [c for c in columns if share[c] >= s["drop_column_threshold"]]
-    skewed = any(v > s["skewness_threshold"] for v in skew.values())
+    skewed = _fill_method(observation, columns) == "median"
 
     target_gaps = f"{target} is the target: a missing label must never be filled."
     other_gaps = f"The impute step fills numbers and text only; {', '.join(other)} is neither."
@@ -120,12 +124,102 @@ def decide(observation: RuleObservation) -> RuleDecision:
     if target_fact and target_fact.value in columns:
         evidence += question_evidence(observation, {"question.target": "Target"})
     evidence += [profile_evidence(f"{c} missing share", f"{share[c]:.1%}") for c in columns]
+    model_only = "This decides what reaches a model; the step is a fill step."
     return decision(
         observation,
         recommended,
-        [drop_rows, median, mean, mode, drop_column],
+        [
+            drop_rows,
+            median,
+            mean,
+            mode,
+            drop_column,
+            *(not_applicable(a, model_only) for a in MODEL_ALTERNATIVES),
+        ],
         evidence,
     )
+
+
+def _before_model(observation: RuleObservation) -> RuleDecision:
+    """Gaps in the columns a model reads (its train rows, the target and keys left out) are
+    filled in an impute step added before it, the method chosen as for a fill step. A mostly
+    empty column is not filled: most of its values would be made up."""
+    s = observation.settings
+    columns = step_columns(observation)
+    share = {c: required(observation, c, "missing_share") for c in columns}
+    gappy = [c for c in columns if share[c] > 0]
+    text = _text_columns(observation, gappy)
+    mostly_empty = [c for c in gappy if share[c] >= s["drop_column_threshold"]]
+    unfillable = [c for c in gappy if c not in text and not is_numeric(observation, c)]
+    fillable = [c for c in gappy if c not in mostly_empty and c not in unfillable]
+    left = " ".join(
+        part
+        for part in (
+            f"{', '.join(unfillable)} has gaps, and the impute step fills numbers and text only."
+            if unfillable
+            else "",
+            f"{', '.join(mostly_empty)} is at least {s['drop_column_threshold']:.0%} empty: "
+            "leave it out with a select step before the split rather than make up most of it."
+            if mostly_empty
+            else "",
+        )
+        if part
+    )
+
+    if fillable:
+        method = _fill_method(observation, fillable)
+        text_fill = {c: _text_fill(observation, c) for c in text if c in fillable}
+        filled = (
+            f"{', '.join(fillable)} has gaps the model would refuse: filled with the train "
+            f"rows' {method}" + (", text with its own value." if text_fill else ".")
+        )
+        fill = applicable(
+            "fill_before_model",
+            " ".join(part for part in (filled, left) if part),
+            {
+                "columns": fillable,
+                "method": method,
+                **({"text_fill": text_fill} if text_fill else {}),
+            },
+        )
+    else:
+        fill = not_applicable("fill_before_model", left or "No column the model reads has gaps.")
+    none = (
+        not_applicable("no_gaps", f"{', '.join(gappy)} has gaps.")
+        if gappy
+        else applicable("no_gaps", "No column the model reads has gaps.", {})
+    )
+    stuck = (
+        applicable("gaps_left", left, {})
+        if left
+        else not_applicable("gaps_left", "Every gap can be filled.")
+    )
+    recommended = "fill_before_model" if fillable else "gaps_left" if left else "no_gaps"
+    fill_only = "This decides a fill step; the step is a model."
+    alternatives = [
+        fill,
+        none,
+        stuck,
+        *(not_applicable(a, fill_only) for a in FILL_ALTERNATIVES),
+    ]
+    evidence = flow_evidence(observation, ["step.task"])
+    evidence += [profile_evidence(f"{c} missing share", f"{share[c]:.1%}") for c in gappy]
+    return decision(observation, recommended, alternatives, evidence)
+
+
+def _text_columns(observation: RuleObservation, columns: list[str]) -> list[str]:
+    return [c for c in columns if str(measure(observation, c, "data_type")).startswith(TEXT_TYPES)]
+
+
+def _fill_method(observation: RuleObservation, columns: list[str]) -> str:
+    """Median when any of `columns` is skewed, which pulls the mean; else mean. A numeric
+    column without a skew has no variation: mean and median are the same."""
+    skewed = any(
+        abs(v) > observation.settings["skewness_threshold"]
+        for c in columns
+        if (v := measured(observation, c, "skewness")) is not None
+    )
+    return "median" if skewed else "mean"
 
 
 def _text_fill(observation: RuleObservation, column: str) -> str:

@@ -3473,7 +3473,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/impute";
     let (status, proposal) = call(&api.app, "POST", uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["rule"], "methodology.supervised.missingness@3.0.0");
+    assert_eq!(proposal["rule"], "methodology.supervised.missingness@4.0.0");
     assert_eq!(
         proposal["recommended_alternative_id"], "impute_median",
         "{proposal}"
@@ -4738,15 +4738,15 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("question.class_balance", "waiting"),
         ("question.error_costs", "waiting"),
         ("question.task_type", "waiting"),
-        ("cleaning.missingness_strategy", "no_subject"),
         ("cleaning.outlier_strategy", "no_subject"),
-        // The data rules may change the rows the model is fit on, so its rules wait for them.
-        ("features.date_parts", "waiting"),
         ("features.scaling_strategy", "no_subject"),
         ("features.skew_transform", "no_subject"),
-        // Free text becomes words, then rare categories are grouped, then the text is encoded.
+        // The data rules may change the rows the model is fit on, so its rules wait for them,
+        // in INPUT_SHAPE order: words, date parts, rare categories, gaps filled, encoding.
         ("features.text_representation", "waiting"),
+        ("features.date_parts", "waiting"),
         ("features.rare_categories", "waiting"),
+        ("cleaning.missingness_strategy", "waiting"),
         ("features.encoding_strategy", "waiting"),
         ("modeling.interpretability_requirement", "settled"),
         ("modeling.estimator_selection", "waiting"),
@@ -5626,10 +5626,9 @@ fn learnable_table() -> String {
     csv
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_winner() {
-    let api = api().await;
-    std::fs::write(&api.csv, learnable_table()).unwrap();
+/// The question a person states for the learnable table, with costs and a bar, so the walk
+/// can compare models.
+async fn learnable_question(api: &Api) {
     let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
     q["objective"]["value"] = json!("Tell which doses get a response.");
     q["target"]["value"] = json!("outcome");
@@ -5645,6 +5644,49 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
     }
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+/// The learnable table with gaps in `batch` on every seventh row: a model refuses gaps. Rows
+/// 60 apart share a dose, and never both lose their batch, so no row copies another.
+fn gappy_table() -> String {
+    learnable_table()
+        .lines()
+        .enumerate()
+        .map(|(line, text)| {
+            const BATCH: usize = 1; // dose,batch,outcome
+            let mut cells: Vec<&str> = text.split(',').collect();
+            if line > 0 && (line - 1) % 7 == 3 {
+                cells[BATCH] = "";
+            }
+            cells.join(",") + "\n"
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engine_fills_gaps_before_the_model_and_walks_on_to_the_comparison() {
+    let api = api().await;
+    std::fs::write(&api.csv, gappy_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-gappy")).await;
+    let trail = trail(&detail);
+    let filled = trail
+        .iter()
+        .position(|s| s == "apply cleaning.missingness_strategy fill_before_model")
+        .unwrap_or_else(|| panic!("the gaps are filled: {detail}"));
+    let compared = trail
+        .iter()
+        .position(|s| s == "compare modeling.estimator_selection")
+        .unwrap_or_else(|| panic!("the filled flow runs, so the shortlist is compared: {detail}"));
+    assert!(filled < compared, "{detail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_winner() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
 
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-learnable")).await;
     let trail = trail(&detail);
