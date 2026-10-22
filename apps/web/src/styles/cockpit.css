@@ -2423,9 +2423,9 @@ p { margin: 0; }
 .mth-rule-node:hover .mth-rule-name, .mth-rule-node[aria-pressed="true"] .mth-rule-name { color: var(--white); }
 .mth-rule-node:hover .mth-rule-dot { border-color: var(--white); }
 .mth-rule-node[aria-pressed="true"] .mth-rule-dot { border-color: var(--white); background: var(--white); box-shadow: 0 0 4px var(--white); }
-.mth-route-node { width: 100%; height: 100%; display: flex; align-items: flex-start; gap: var(--space-2); padding-top: var(--space-1); transition: opacity 0.15s; }
+.mth-route-node { width: 100%; height: 100%; display: flex; align-items: flex-start; gap: var(--space-2); padding-top: var(--space-2); transition: opacity 0.15s; }
 .mth-route-dot { flex: none; width: 6px; height: 6px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 50%; background: var(--ground); }
-.mth-route-name { font-size: var(--text-xs); color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mth-route-name { line-height: 15px; font-size: var(--text-xs); color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mth-route-node.picked .mth-route-dot { background: var(--white); border-color: var(--white); box-shadow: 0 0 4px var(--white); }
 .mth-route-node.picked .mth-route-name { color: var(--white); }
 .mth-route-node.dimmed { opacity: 0.38; }
@@ -2439,7 +2439,6 @@ p { margin: 0; }
 .mth-edge.skip path { stroke-dasharray: 4 5; }
 .mth-edge.path path { stroke: var(--white); stroke-width: 2; }
 .mth-stage-node.dimmed, .mth-rule-node.dimmed { opacity: 0.32; }
-.mth-edge.picked path { stroke: var(--white); stroke-width: 2.2; }
 .mth-summary { font-size: var(--text-sm); color: var(--soft); }
 .mth-summary strong { font-weight: 500; color: var(--ink); }
 .mth-chip { flex: none; padding: 0 var(--space-1); border: 1px solid var(--line-strong); border-radius: 3px; font-size: var(--text-xs); color: var(--muted); }

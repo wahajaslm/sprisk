@@ -35,7 +35,7 @@ export type TreeNode =
 /** The pack a rule comes from (`methodology/<pack>/`), named in its id. */
 const packOf = (rule: MethodologyRule) => rule.id.split(".")[1] ?? "";
 
-const routeHeight = (when: string | undefined) => (when ? 20 + Math.min(WHEN_LINES, Math.ceil(when.length / WHEN_CHARS)) * WHEN_LINE + 6 : HEIGHT);
+const routeHeight = (when: string | undefined) => (when ? 24 + Math.min(WHEN_LINES, Math.ceil(when.length / WHEN_CHARS)) * WHEN_LINE + 6 : HEIGHT);
 
 /** The methodology as a connected tree (ADR-0059), every possibility, left to right. The
  * question and data stages are shared; then the tree forks into one lane per pack (supervised:
@@ -47,6 +47,10 @@ const routeHeight = (when: string | undefined) => (when ? 20 + Math.min(WHEN_LIN
  * picked. With `path`, the flow's path is marked (`data.onPath`): its lane, up to the last stage
  * it reaches, through the decisions it has a step for and the routes it takes, and straight on
  * (a "skip" link) from a stage it takes no route in. All else is dimmed. View state only. */
+/** Where a route's branches meet it: the middle of its label line, which the stylesheet puts
+ * 16px from its top (8px padding, then a 15px line). */
+export const ROUTE_LINE = 16;
+
 export function ruleTree(rules: MethodologyRule[], reviews: Map<string, MethodologyReviewItem>, { path }: { path: boolean }): { nodes: TreeNode[]; edges: Edge[] } {
   const nodes: TreeNode[] = [];
   const edges: Edge<{ onPath: boolean; kind: Kind }>[] = [];
@@ -73,7 +77,7 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
       const ruleCode = `${code}.${k + 1}`;
       edges.push({ id: `${stageId}>${rule.id}`, source: stageId, target: rule.id, data: { onPath: reach && ruleOnPath, kind: "branch" } });
       const top = y;
-      const middles = rule.alternatives.map((route, i) => {
+      const lines = rule.alternatives.map((route, i) => {
         const id = `${rule.id}#${route.id}`;
         const when = routeWhen(rule, route.id);
         const height = routeHeight(when);
@@ -82,16 +86,17 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
         nodes.push({ id, type: "route", position: { x: x + SIZE.rule.width + GAP, y }, width: SIZE.route.width, height, data: { route, when, code: `${ruleCode}${String.fromCharCode(97 + i)}`, picked, dimmed: path && !taken } });
         edges.push({ id: `${rule.id}>${id}`, source: rule.id, target: id, data: { onPath: reach && taken, kind: "branch" } });
         next.push({ id, lit: reach && taken, kind: "trunk" });
-        const middle = y + height / 2;
+        // Branches meet a route at its label line, the top row, above its wrapped condition.
+        const line = y + ROUTE_LINE;
         y += height + ROUTE_GAP;
-        return middle;
+        return line;
       });
-      if (middles.length === 0) {
+      if (lines.length === 0) {
         next.push({ id: rule.id, lit: reach && ruleOnPath, kind: "trunk" });
-        middles.push(y + HEIGHT / 2);
+        lines.push(y + HEIGHT / 2);
         y += HEIGHT + ROUTE_GAP;
       }
-      const middle = (middles[0]! + middles[middles.length - 1]!) / 2;
+      const middle = (lines[0]! + lines[lines.length - 1]!) / 2;
       nodes.push({ id: rule.id, type: "rule", position: { x, y: middle - HEIGHT / 2 }, width: SIZE.rule.width, height: HEIGHT, data: { rule, review, code: ruleCode, dimmed: path && !ruleOnPath } });
       y = Math.max(y, top + HEIGHT + ROUTE_GAP) - ROUTE_GAP + RULE_GAP;
     });

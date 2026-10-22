@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activation, reviewByRule, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
+import { activation, reviewByRule, ROUTE_LINE, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r })) }) as never;
@@ -71,7 +71,13 @@ describe("methodology tree", () => {
 
   it("stacks a stage's routes, centres each decision on its routes, and the stage on its whole fan", () => {
     const t = tree();
-    expect(mid(t, S("fill"))).toBe((mid(t, `${S("fill")}#median`) + mid(t, `${S("fill")}#mean`)) / 2);
+    // Branches meet a route at its label line, the top row, not the middle of its wrapped text.
+    const line = (id: string) => at(t, id).y + ROUTE_LINE;
+    expect(mid(t, S("fill"))).toBe((line(`${S("fill")}#median`) + line(`${S("fill")}#mean`)) / 2);
+    const long = { ...(rule(S("split"), "split", ["a", "b"]) as object), alternatives: [{ id: "a", label: "a", condition: "x".repeat(140) }, { id: "b", label: "b" }] } as never;
+    const wrapped = tree([long]);
+    const wLine = (id: string) => at(wrapped, id).y + ROUTE_LINE;
+    expect(mid(wrapped, S("split"))).toBe((wLine(`${S("split")}#a`) + wLine(`${S("split")}#b`)) / 2);
     expect(at(t, `${S("clip")}#clip`).y).toBeGreaterThan(at(t, `${S("fill")}#mean`).y);
     expect(mid(t, sup("cleaning"))).toBe((at(t, `${S("fill")}#median`).y + at(t, `${S("clip")}#keep`).y + t.nodes.find((n) => n.id === `${S("clip")}#keep`)!.height!) / 2);
   });

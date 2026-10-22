@@ -4,7 +4,7 @@ import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactF
 import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
 import { useMemo } from "react";
 
-import { activation, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
+import { activation, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
 
 type Props = {
   rules: MethodologyRule[];
@@ -21,10 +21,8 @@ type Props = {
 export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) {
   const tree = useMemo(() => ruleTree(rules, reviews, { path }), [rules, reviews, path]);
   const nodes = tree.nodes.map((n) => (n.type === "rule" ? { ...n, selected: n.id === picked } : n));
-  const edges = tree.edges.map((e) => {
-    const near = e.source === picked || e.target === picked;
-    return { ...e, type: "default", className: `mth-edge ${e.data?.kind ?? "trunk"}${e.data?.onPath ? " path" : ""}${near ? " picked" : ""}` };
-  });
+  // Lit lines mean the flow's path only; picking a decision highlights just that node.
+  const edges = tree.edges.map((e) => ({ ...e, type: "default", className: `mth-edge ${e.data?.kind ?? "trunk"}${e.data?.onPath ? " path" : ""}` }));
   return (
     <div className="mth-map" role="region" aria-label="Methodology map">
       <ReactFlow
@@ -138,7 +136,7 @@ function RouteNode({ data }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
   const { route, when, code, picked, dimmed } = data;
   return (
     <div className={`mth-route-node${picked ? " picked" : ""}${dimmed ? " dimmed" : ""}`} title={`${route.description}${when ? `\nWhen ${when}` : ""}\nWhy: ${route.rationale}`}>
-      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <Handle type="target" position={Position.Left} isConnectable={false} style={{ top: ROUTE_LINE }} />
       <span className="mth-route-dot" />
       <span className="mth-rule-text">
         <span className="mth-route-name">
@@ -146,7 +144,7 @@ function RouteNode({ data }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
         </span>
         {when ? <span className="mth-when">When {when}</span> : <span className="mth-rule-meta">{route.action.operator?.split("@")[0] ?? route.description}</span>}
       </span>
-      <Handle type="source" position={Position.Right} isConnectable={false} />
+      <Handle type="source" position={Position.Right} isConnectable={false} style={{ top: ROUTE_LINE }} />
     </div>
   );
 }
