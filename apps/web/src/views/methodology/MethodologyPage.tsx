@@ -18,6 +18,7 @@ export function MethodologyPage() {
   const review = useMethodologyReview(versionId);
   const reviews = useMemo(() => reviewByRule(review.data?.items ?? []), [review.data]);
   const [filter, setFilter] = useState("");
+  const [drafts, setDrafts] = useState(false);
   const [picked, setPicked] = useState<string>();
   if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
   if (rules.isPending) return <Loading text="Loading methodology rules…" pad />;
@@ -32,9 +33,12 @@ export function MethodologyPage() {
       <div className="mth-canvas">
         <div className="mth-toolbar">
           <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <label className="mth-toggle">
+            <input type="checkbox" checked={drafts} onChange={(e) => setDrafts(e.target.checked)} /> Show drafts
+          </label>
           <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
         </div>
-        <MethodologyMap rules={shown} reviews={reviews} picked={current?.id} onPick={setPicked} />
+        <MethodologyMap rules={shown} reviews={reviews} drafts={drafts} picked={current?.id} onPick={setPicked} />
       </div>
       <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} />}</aside>
     </main>

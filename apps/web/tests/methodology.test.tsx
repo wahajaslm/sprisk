@@ -38,6 +38,12 @@ function serve(rules: MethodologyRule[]) {
   );
 }
 
+/** The fixture rules are drafts, which the map shows only when asked. */
+async function renderWithDrafts() {
+  renderWithApi(<MethodologyPage />);
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Show drafts" }));
+}
+
 describe("methodology page", () => {
   it("shows the selected flow's status on each decision, what is next, and why", async () => {
     serve([features, split]);
@@ -55,7 +61,7 @@ describe("methodology page", () => {
       ),
     );
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
-    renderWithApi(<MethodologyPage />);
+    await renderWithDrafts();
 
     expect(await screen.findByLabelText("Flow review")).toHaveTextContent("2 open on this flow. Next: split.method (proposal)");
     const map = screen.getByRole("region", { name: "Methodology map" });
@@ -69,13 +75,13 @@ describe("methodology page", () => {
     useSelection.setState({ pipelineVersionId: undefined });
   });
 
-  it("lists each decision's routes on its card, with the condition that leads to them", async () => {
+  it("draws each route as its own node, with the condition that leads to it", async () => {
     serve([features]);
-    renderWithApi(<MethodologyPage />);
-    const card = await screen.findByRole("button", { name: features.name });
+    await renderWithDrafts();
+    const map = await screen.findByRole("region", { name: "Methodology map" });
     const route = features.alternatives.find((a) => a.condition)!;
-    expect(within(card).getByText(route.label)).toBeInTheDocument();
-    expect(within(card).getByText(`When ${route.condition}`)).toBeInTheDocument();
+    expect(await within(map).findByText(route.label)).toBeInTheDocument();
+    expect(within(map).getByText(`When ${route.condition}`)).toBeInTheDocument();
   });
 
   it("knows every stage the contract has, so no rule drops off the page", () => {
@@ -85,7 +91,7 @@ describe("methodology page", () => {
 
   it("maps the rules from the API under their stages, in stage order", async () => {
     serve([features, split]);
-    renderWithApi(<MethodologyPage />);
+    await renderWithDrafts();
 
     const map = await screen.findByRole("region", { name: "Methodology map" });
     const stages = (await within(map).findAllByRole("heading")).map((h) => h.textContent);
@@ -95,7 +101,7 @@ describe("methodology page", () => {
 
   it("shows what the picked rule decides, its source and its alternatives", async () => {
     serve([features, split]);
-    renderWithApi(<MethodologyPage />);
+    await renderWithDrafts();
 
     await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
     const detail = screen.getByRole("region", { name: features.name });
@@ -149,7 +155,7 @@ describe("methodology page", () => {
 
   it("marks a draft rule and shows its design notes", async () => {
     serve([features]);
-    renderWithApi(<MethodologyPage />);
+    await renderWithDrafts();
 
     await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
     const detail = screen.getByRole("region", { name: features.name });

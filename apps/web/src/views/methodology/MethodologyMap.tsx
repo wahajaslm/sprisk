@@ -2,38 +2,51 @@ import "@xyflow/react/dist/style.css";
 
 import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactFlow } from "@xyflow/react";
 import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
+import { Loading } from "../../components/ui/Loading.tsx";
+import { type DecisionTree, type DecisionTreeNode, decisionTree, layoutDecisionTree } from "../../flow/decisionTree.ts";
+import { stageName } from "./ruleTree.ts";
 
 type Props = {
   rules: MethodologyRule[];
   reviews: Map<string, MethodologyReviewItem>;
+  drafts: boolean;
   picked: string | undefined;
   onPick: (ruleId: string) => void;
 };
 
-/** The methodology map (ADR-0059): each stage in decision order, its decisions, and each
- * decision's routes with the condition that leads to them. With a flow selected, each
- * decision shows its status on that flow. */
-export function MethodologyMap({ rules, reviews, picked, onPick }: Props) {
-  const tree = useMemo(() => ruleTree(rules, reviews), [rules, reviews]);
-  const nodes = tree.nodes.map((n) => (n.type === "decision" ? { ...n, selected: n.id === picked } : n));
-  const edges = tree.edges.map((e) => ({ ...e, type: "smoothstep", className: "mth-edge trunk" }));
+/** The methodology as a node-based decision tree (ADR-0059): each decision branches into its
+ * routes, each route showing its condition, and every route leads on to the next decision. With a flow selected, the route its review recommends is lit. */
+export function MethodologyMap({ rules, reviews, drafts, picked, onPick }: Props) {
+  const tree = useMemo(() => decisionTree(rules, reviews, { drafts }), [rules, reviews, drafts]);
+  const laid = useLayout(tree);
+  if (laid === undefined) return <Loading text="Laying out the map…" pad />;
+  if (typeof laid === "string") return <p role="alert" className="error pad">{laid}</p>;
+
+  const lit = new Set(laid.nodes.filter((n) => n.type === "route" && n.data.picked).map((n) => n.id));
+  const nodes = laid.nodes.map((n) => (n.type === "decision" ? { ...n, selected: n.id === picked } : n));
+  const edges = laid.edges.map((e) => ({
+    ...e,
+    type: "smoothstep",
+    className: `mth-edge${lit.has(e.target) || lit.has(e.source) ? " picked" : ""}`,
+  }));
   return (
     <div className="mth-map" role="region" aria-label="Methodology map">
       <ReactFlow
-        key={rules.length}
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
-        onNodeClick={(_event, node) => node.type === "decision" && onPick(node.id)}
-        // Readable size from the left: the whole map fitted to the window would be too small to read.
-        defaultViewport={{ x: 24, y: 64, zoom: 0.85 }}
+        onNodeClick={(_event, node) => {
+          if (node.type === "decision") onPick(node.id);
+          if (node.type === "route") onPick(node.id.split("#")[0]!);
+        }}
+        // Readable size from the left: the whole tree fitted to the window would be too small to read.
+        defaultViewport={{ x: 24, y: 64, zoom: 0.8 }}
         panOnScroll
         nodesDraggable={false}
         nodesConnectable={false}
-        minZoom={0.25}
+        minZoom={0.15}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}
         colorMode="dark"
@@ -44,18 +57,20 @@ export function MethodologyMap({ rules, reviews, picked, onPick }: Props) {
   );
 }
 
-function StageBox({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
-  return (
-    <div className="mth-stage-box">
-      <Handle type="target" position={Position.Left} isConnectable={false} />
-      <header className="mth-stage-head">
-        <span className="mth-stage-ring">{data.number}</span>
-        <h2>{stageName(data.stage)}</h2>
-        <span className="muted">{data.count === 1 ? "1 decision" : `${data.count} decisions`}</span>
-      </header>
-      <Handle type="source" position={Position.Right} isConnectable={false} />
-    </div>
-  );
+/** The laid-out tree, an error message, or `undefined` while ELK works. */
+function useLayout(tree: DecisionTree): DecisionTree | string | undefined {
+  const [result, setResult] = useState<{ tree: DecisionTree; laid: DecisionTree | string }>();
+  useEffect(() => {
+    let live = true;
+    layoutDecisionTree(tree).then(
+      (laid) => live && setResult({ tree, laid }),
+      (e: unknown) => live && setResult({ tree, laid: e instanceof Error ? e.message : String(e) }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [tree]);
+  return result?.tree === tree ? result.laid : undefined;
 }
 
 /** Plain names for review statuses, as people read them. */
@@ -69,10 +84,23 @@ export const STATUS_LABEL: Record<MethodologyReviewItem["status"], string> = {
   not_applicable: "Not applicable",
 };
 
-function DecisionCard({ data, selected }: NodeProps<Extract<TreeNode, { type: "decision" }>>) {
+function StageBox({ data }: NodeProps<Extract<DecisionTreeNode, { type: "stage" }>>) {
+  return (
+    <div className="mth-stage-box">
+      <header className="mth-stage-head">
+        <h2>{stageName(data.stage)}</h2>
+        <span className="muted">{data.count === 1 ? "1 decision" : `${data.count} decisions`}</span>
+      </header>
+    </div>
+  );
+}
+
+function DecisionNode({ data, selected }: NodeProps<Extract<DecisionTreeNode, { type: "decision" }>>) {
   const { rule, review } = data;
   return (
     <button type="button" className="mth-decision" aria-pressed={selected} aria-label={rule.name}>
+      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <span className="mth-diamond" aria-hidden />
       <span className="mth-decision-head">
         <span className="mth-decision-name">{rule.name}</span>
         <span className="mth-decision-meta">
@@ -85,16 +113,22 @@ function DecisionCard({ data, selected }: NodeProps<Extract<TreeNode, { type: "d
           )}
         </span>
       </span>
-      <ol className="mth-routes">
-        {rule.alternatives.map((a) => (
-          <li key={a.id} className={a.id === review?.recommended_alternative_id ? "picked" : undefined} title={`${a.description}\nWhy: ${a.rationale}`}>
-            <span className="mth-route-name">{a.label}</span>
-            <span className="mth-route-when">{a.condition ? `When ${a.condition}` : a.description}</span>
-          </li>
-        ))}
-      </ol>
+      <Handle type="source" position={Position.Right} isConnectable={false} />
     </button>
   );
 }
 
-const NODE_TYPES = { stage: StageBox, decision: DecisionCard };
+function RouteNode({ data }: NodeProps<Extract<DecisionTreeNode, { type: "route" }>>) {
+  const { route, picked, dimmed } = data;
+  return (
+    <div className={`mth-route${picked ? " picked" : ""}${dimmed ? " dimmed" : ""}`} title={`${route.description}\nWhy: ${route.rationale}`}>
+      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <span className="mth-route-name">{route.label}</span>
+      <span className="mth-route-when">{route.condition ? `When ${route.condition}` : route.description}</span>
+      {route.action.operator && <code className="mth-route-step">{route.action.operator.split("@")[0]}</code>}
+      <Handle type="source" position={Position.Right} isConnectable={false} />
+    </div>
+  );
+}
+
+const NODE_TYPES = { stage: StageBox, decision: DecisionNode, route: RouteNode };
