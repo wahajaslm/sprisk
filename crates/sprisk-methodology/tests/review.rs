@@ -83,6 +83,7 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("cleaning.missingness_strategy".to_owned(), at("fill")),
             ("cleaning.outlier_strategy".to_owned(), None),
             ("features.encoding_strategy".to_owned(), at("model")),
+            ("features.date_parts".to_owned(), at("model")),
             ("features.scaling_strategy".to_owned(), None),
             ("features.rare_categories".to_owned(), at("model")),
             ("modeling.estimator_selection".to_owned(), at("model")),

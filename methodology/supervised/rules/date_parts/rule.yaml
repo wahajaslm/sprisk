@@ -1,0 +1,59 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Date Parts
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.date_parts@1.0.0
+name: "Date Parts"
+stage: features
+decides: features.date_parts
+status: active
+applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
+reads: [column.*.data_type]
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Calendar features with cyclical (sine and cosine) encoding"
+  citation: "scikit-learn User Guide example, 'Time-related feature engineering' (periodic features with sine and cosine); Hyndman & Athanasopoulos (2021) Forecasting: Principles and Practice, 3rd ed., §7.4 (calendar predictors)"
+  pitfall: "A model cannot read a date. As a single number, December and January are far apart though they are neighbours, and as a category every date is its own value."
+  corner_cases:
+    - "A date that is the target time or comes after the prediction is leakage; that is the point-in-time rule's decision, not this one."
+    - "A date stored as text is not seen as a date: it must be parsed when loaded."
+    - "A gap in the date leaves a gap in each part, for the missing-value rule."
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds: {}
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: date_parts
+    label: "Date Parts"
+    description: "Year, month and weekday, with month and weekday also as sine and cosine, in place of each date, in a step added before the model."
+    rationale: "A date reaches the model, which reads only numbers (ADR-0056). Each row is worked out on its own, so nothing is learned from test rows."
+    action:
+      type: insert_step
+      placement: before
+      operator: sprisk.clean.date_parts@1.0.0
+      node_id: date_parts
+  - id: no_dates
+    label: "No Dates"
+    description: "Leave the columns as they are."
+    rationale: "No date reaches the model."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.train_serve_parity@1.0.0
+  invariant: "Train and test rows get the same date parts, each from its own row, so the model scores test rows prepared as it was trained."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: { column.opened.data_type: Date, column.age.data_type: Int64 }
+    picks: date_parts
+  - given: { column.age.data_type: Int64, column.purpose.data_type: String }
+    picks: no_dates
