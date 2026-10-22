@@ -42,6 +42,12 @@ describe("methodology tree", () => {
     expect(at(t, "split#time").x).toBeLessThan(at(t, "stage:cleaning").x);
   });
 
+  it("gives a stage with no rules yet only the room its label needs", () => {
+    const t = tree();
+    const gap = (from: string, to: string) => at(t, to).x - at(t, from).x;
+    expect(gap("stage:question", "stage:data")).toBeLessThan(gap("stage:split", "stage:cleaning") / 2);
+  });
+
   it("stacks a stage's routes as leaves and centres each decision on its routes", () => {
     const t = tree();
     expect(at(t, "split#time").y).toBeGreaterThan(at(t, "split#random").y);

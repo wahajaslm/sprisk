@@ -16,6 +16,8 @@ const BRANCHES_TOP = 84;
 const INDENT = 36;
 const ROUTE_OFFSET = INDENT + SIZE.rule.width + 40;
 const COLUMN_WIDTH = ROUTE_OFFSET + SIZE.route.width + 80;
+/** A stage with no rules yet has nothing below it, so it takes only its label's room. */
+const EMPTY_WIDTH = SIZE.stage.width + 60;
 const FIRST_STAGE = 130;
 
 export type TreeNode =
@@ -41,10 +43,10 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
   const stages = STAGES;
   const reached = stages.reduce((last, stage, at) => (rules.some((r) => r.stage === stage && onPath(r)) ? at : last), -1);
   let previous = "root";
+  let x = FIRST_STAGE;
   stages.forEach((stage, at) => {
     const mine = rules.filter((r) => r.stage === stage);
     const stageId = `stage:${stage}`;
-    const x = FIRST_STAGE + at * COLUMN_WIDTH;
     const stageOnPath = mine.some(onPath);
     edges.push({ id: `${previous}>${stageId}`, source: previous, target: stageId, data: { onPath: path && at <= reached } });
     nodes.push({ id: stageId, type: "stage", position: { x, y: 0 }, ...SIZE.stage, data: { stage, count: mine.length, number: at + 1, dimmed: path && !stageOnPath } });
@@ -71,6 +73,7 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
       y += RULE_GAP;
     }
     previous = stageId;
+    x += mine.length > 0 ? COLUMN_WIDTH : EMPTY_WIDTH;
   });
   nodes.push({ id: "root", type: "root", position: { x: 0, y: 0 }, ...SIZE.root, data: { count: rules.length } });
   return { nodes, edges };
