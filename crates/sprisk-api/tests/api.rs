@@ -4372,6 +4372,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("cleaning.outlier_strategy", "no_subject"),
         ("features.encoding_strategy", "needs_run"),
         ("features.scaling_strategy", "no_subject"),
+        ("features.rare_categories", "needs_run"),
         ("modeling.estimator_selection", "needs_run"),
         ("evaluation.decision_threshold", "settled"),
     ]
