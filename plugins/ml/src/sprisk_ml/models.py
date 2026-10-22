@@ -212,12 +212,21 @@ def _model_code(
     costs = settings.get("costs") if settings["task"] == "classification" else None
     if not costs:
         return code + f"{model}.fit({fit})\n"
+    # Costs name a class by its text, so "1" names the number 1, as the step resolves it.
+    positive = f"{model}_positive"
+    code += (
+        "\n"
+        f"# The class the costs name, as {train}[{target!r}] holds it.\n"
+        f"{positive} = next(\n"
+        f"    c for c in {train}[{target!r}].unique() if str(c) == {costs['positive']!r}\n"
+        ")\n"
+    )
     if not tuned:
-        return code + _fixed_code(model, fit, costs)
-    return code + _costed_code(model, fit, costs, settings.get("seed", 0))
+        return code + _fixed_code(model, fit, costs, positive)
+    return code + _costed_code(model, fit, costs, positive, settings.get("seed", 0))
 
 
-def _fixed_code(model: str, fit: str, costs: dict[str, Any]) -> str:
+def _fixed_code(model: str, fit: str, costs: dict[str, Any], positive: str) -> str:
     """A cut-off set by the costs alone, for a model whose scores cannot be tuned (ADR-0053)."""
     fn, fp = costs["false_negative"], costs["false_positive"]
     return (
@@ -227,14 +236,14 @@ def _fixed_code(model: str, fit: str, costs: dict[str, Any]) -> str:
         # Labels are dataset text (rule 7): quoted with repr, never pasted into code.
         f"# Predict {costs['positive']!r} when its share is at least {fp!r} / ({fp!r} + {fn!r}).\n"
         f"{model} = FixedThresholdClassifier(\n"
-        f"    {model}, threshold={fp / (fp + fn)!r}, pos_label={costs['positive']!r}\n"
+        f"    {model}, threshold={fp / (fp + fn)!r}, pos_label={positive}\n"
         f").fit({fit})\n"
     )
 
 
-def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
+def _costed_code(model: str, fit: str, costs: dict[str, Any], positive: str, seed: int) -> str:
     """The cut-off tuned for least cost on the model's own training rows (ADR-0053)."""
-    positive, fn, fp = costs["positive"], costs["false_negative"], costs["false_positive"]
+    fn, fp = costs["false_negative"], costs["false_positive"]
     return (
         "\n"
         "import numpy as np\n"
@@ -246,7 +255,8 @@ def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
         "\n"
         "\n"
         f"def {model}_cost(y_true, y_pred, pos_label):\n"
-        f"    # Mean cost per row: a missed {positive!r} costs {fn!r}, a false alarm {fp!r}.\n"
+        f"    # Mean cost per row: a missed {costs['positive']!r} costs {fn!r},\n"
+        f"    # a false alarm {fp!r}.\n"
         "    truth, said = np.asarray(y_true) == pos_label, np.asarray(y_pred) == pos_label\n"
         f"    missed, alarms = (truth & ~said).sum(), (~truth & said).sum()\n"
         f"    return float(({fn!r} * missed + {fp!r} * alarms) / len(truth))\n"
@@ -255,12 +265,12 @@ def _costed_code(model: str, fit: str, costs: dict[str, Any], seed: int) -> str:
         "# The cut-off is tuned on 3 folds of the training rows only.\n"
         f"{model}_tuned = TunedThresholdClassifierCV(\n"
         f"    {model},\n"
-        f"    scoring=make_scorer({model}_cost, greater_is_better=False, pos_label={positive!r}),\n"
+        f"    scoring=make_scorer({model}_cost, greater_is_better=False, pos_label={positive}),\n"
         f"    cv=StratifiedKFold(3, shuffle=True, random_state={seed!r}),\n"
         f").fit({fit})\n"
         f"{model} = FixedThresholdClassifier(\n"
         f"    FrozenEstimator({model}_tuned.estimator_),\n"
         f"    threshold=float({model}_tuned.best_threshold_),\n"
-        f"    pos_label={positive!r},\n"
+        f"    pos_label={positive},\n"
         f").fit({fit})\n"
     )

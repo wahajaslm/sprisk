@@ -106,3 +106,16 @@ def test_dataset_text_never_becomes_code(write: Any, label: str, column: str) ->
         return written
 
     assert _shape(code(label, column)) == _shape(code("bad", "y"))
+
+
+@pytest.mark.parametrize(("step", "write"), WRITERS)
+def test_costs_name_a_number_class_by_its_text_in_the_code_too(
+    clf_numbers: pl.DataFrame, step: Any, write: Any
+) -> None:
+    # A 0/1 target: the costs name class 1 as "1", as they name any class (ADR-0053).
+    rows = clf_numbers.with_columns(y=(pl.col("y") == "hi").cast(pl.Int64))
+    costs = {"positive": "1", "false_negative": 5.0, "false_positive": 1.0}
+    settings = {"target": "y", "task": "classification", "costs": costs}
+    train, test = rows[::2], rows[1::2].drop("y")
+    code = fitted_by_code(settings, train, write)
+    assert np.array_equal(code.predict(test), step(train, **settings).predict(test))
