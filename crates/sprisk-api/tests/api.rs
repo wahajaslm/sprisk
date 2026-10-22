@@ -2029,7 +2029,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     assert_eq!(
         proposal["rule"],
-        "methodology.supervised.model_baseline_selection@2.0.0"
+        "methodology.supervised.model_baseline_selection@2.1.0"
     );
     // 30 train rows: too few for a forest, so the baseline and the linear model.
     assert_eq!(
@@ -4310,10 +4310,16 @@ async fn german_credit_runs_as_stage_notebooks_with_one_chart_per_step() {
 
 /// Load → Split → Forest on a classification question with no time or entity column.
 async fn forest_flow(api: &Api) {
+    forest_flow_with(api, json!({})).await;
+}
+
+/// `forest_flow` whose question also states `facts`.
+async fn forest_flow_with(api: &Api, facts: Value) {
     let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let facts = q.as_object_mut().unwrap();
-    facts.remove("time_column");
-    facts.remove("entity_column");
+    let fields = q.as_object_mut().unwrap();
+    fields.remove("time_column");
+    fields.remove("entity_column");
+    fields.extend(facts.as_object().unwrap().clone());
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let mut flow = pipeline(&api.csv);
@@ -4365,7 +4371,9 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
 
     let review = review(&api).await;
     let expected: Vec<(String, String)> = [
-        // The question is checked on the load step before any run.
+        // The question is checked before any run: its constraints on the model step, the
+        // rest on the load step.
+        ("question.hard_constraints", "needs_fact"),
         ("question.objective", "settled"),
         ("question.target_definition", "settled"),
         ("question.unit_of_prediction", "needs_run"),
@@ -4385,6 +4393,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("features.scaling_strategy", "no_subject"),
         ("features.rare_categories", "waiting"),
         ("features.skew_transform", "no_subject"),
+        ("modeling.interpretability_requirement", "settled"),
         ("modeling.estimator_selection", "waiting"),
         ("evaluation.decision_threshold", "settled"),
     ]
@@ -4394,8 +4403,8 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([2, 3, 4, 5, 6]),
-        "the split already matches, so the flow must run next: {review}"
+        json!([0, 3, 4, 5, 6, 7]),
+        "the split already matches: state the constraint and run the flow next: {review}"
     );
 }
 
@@ -4684,4 +4693,32 @@ async fn values_that_differ_only_in_case_are_lowercased_before_the_split() {
         effect["params"],
         json!({"columns": ["city"], "lowercase": true})
     );
+}
+
+/// ADR-0059: high interpretability replaces a forest by a linear model that keeps its target
+/// and task, and leaves forests off the shortlist.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_question_needing_high_interpretability_replaces_the_forest_by_a_linear_model() {
+    let api = api().await;
+    let high = json!({ "interpretability": { "value": "high", "origin": "explicit" } });
+    forest_flow_with(&api, high).await;
+
+    let proposal = propose_for(&api, BASE, "model", "modeling.interpretability_requirement").await;
+    assert_eq!(
+        proposal["recommended_alternative_id"], "interpretable_only",
+        "{proposal}"
+    );
+    let effect = recommended_effect(&proposal);
+    assert_eq!(
+        effect["operator"], "sprisk.ml.linear_model@2.0.0",
+        "{effect}"
+    );
+    assert_eq!(
+        effect["params"],
+        json!({ "target": "returned_within_30d", "task": "classification" }),
+        "the forest's own settings are dropped, its target and task kept"
+    );
+    let linear = apply_alternative(&api, &proposal, "interpretable_only").await;
+    let (run, attempts) = run_version(&api, &linear).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }

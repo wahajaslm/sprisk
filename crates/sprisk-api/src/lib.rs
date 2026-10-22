@@ -1279,7 +1279,7 @@ async fn decide(
     )
     .map_err(resolve)?;
     // A shortlist rule's alternatives are the registered models that fit the task (ADR-0044).
-    let candidates = if rule.selection == Some(MethodologyRuleSelection::Shortlist) {
+    if rule.selection == Some(MethodologyRuleSelection::Shortlist) {
         let task = question.task.value;
         let candidates = sprisk_methodology::candidates(task, state.registry.operators())
             .map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -1289,10 +1289,7 @@ async fn decide(
             )));
         }
         flow.extend(sprisk_methodology::candidate_facts(&candidates));
-        candidates
-    } else {
-        Default::default()
-    };
+    }
     let observation =
         sprisk_methodology::observation(rule, question, flow, profile).map_err(resolve)?;
     let decision = state
@@ -1306,7 +1303,7 @@ async fn decide(
         question,
         pipeline,
         node_id,
-        &candidates,
+        &state.registry.operators().collect::<Vec<_>>(),
         sprisk_methodology::Stamp {
             id: &format!("mpr_{}", ulid::Ulid::new()),
             created_at: &now(),

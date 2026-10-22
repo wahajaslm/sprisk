@@ -560,7 +560,7 @@ pub fn proposal(
     question: &QuestionVersion,
     pipeline: &PipelineVersion,
     node_id: &str,
-    candidates: &BTreeMap<String, &Operator>,
+    operators: &[&Operator],
     stamp: Stamp,
 ) -> Result<DecisionProposal, ResolveError> {
     let node = pipeline
@@ -570,6 +570,11 @@ pub fn proposal(
         .ok_or_else(|| ResolveError::UnknownNode(node_id.to_owned()))?;
     let shortlist = rule.selection == Some(MethodologyRuleSelection::Shortlist);
     check_selection(decision, shortlist)?;
+    let candidates = if shortlist {
+        candidates(question.task.value, operators.iter().copied())?
+    } else {
+        BTreeMap::new()
+    };
     // The baseline is the floor a comparison measures against (ADR-0044).
     let baseline = |id: &str| {
         candidates
@@ -640,7 +645,15 @@ pub fn proposal(
             } else if let (Some(params), Some(operator)) =
                 (&decided.params, &declared.action.operator)
             {
-                built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": operator, "params": params });
+                // A replacement keeps the step's settings the new operator accepts, such as a
+                // model's features and costs; the rule's own settings win.
+                let mut kept = operators
+                    .iter()
+                    .find(|o| o.id.to_string() == operator.as_str())
+                    .map(|o| params_for(o, node))
+                    .unwrap_or_default();
+                kept.extend(params.0.clone());
+                built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": operator, "params": kept });
             }
         }
         alternatives.push(built);

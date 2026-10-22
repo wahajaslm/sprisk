@@ -104,7 +104,7 @@ fn a_proposal_takes_labels_and_operators_from_the_manifest_and_params_from_the_d
         &question(),
         &pipeline(),
         "split",
-        &Default::default(),
+        &[],
         Stamp {
             id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
             created_at: "2026-10-15T10:00:00Z",
@@ -128,6 +128,48 @@ fn a_proposal_takes_labels_and_operators_from_the_manifest_and_params_from_the_d
 }
 
 #[test]
+fn a_replacement_keeps_the_steps_settings_the_new_operator_accepts_and_the_rules_win() {
+    let catalog = catalog();
+    let rule = catalog.rule(SPLIT).unwrap();
+    let mut flow = serde_json::to_value(pipeline()).unwrap();
+    flow["nodes"][0] = json!({ "id": "split", "operator": "sprisk.validation.group_split@1.0.0",
+                               "params": { "group_column": "customer", "test_fraction": 0.3, "seed": 7 } });
+    let flow: PipelineVersion = parse(&flow.to_string()).unwrap();
+    let decided: RuleDecision = parse(
+        &json!({
+            "schema_version": "sprisk.rule_decision/v1",
+            "rule": SPLIT,
+            "recommended_alternative_id": "temporal",
+            "alternatives": [{ "id": "temporal", "applicability": "applicable", "reason": "Time.",
+                               "params": { "time_column": "signup_date", "test_fraction": 0.2 } }],
+            "evidence": []
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let registry = registry();
+    let built = proposal(
+        rule,
+        &decided,
+        &question(),
+        &flow,
+        "split",
+        &registry.operators().collect::<Vec<_>>(),
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-15T10:00:00Z",
+        },
+    )
+    .unwrap();
+    let effect = serde_json::to_value(&built.alternatives[0].effect).unwrap();
+    // group_column is kept; seed is not a temporal split setting; the rule's share wins.
+    assert_eq!(
+        effect["params"],
+        json!({ "time_column": "signup_date", "test_fraction": 0.2, "group_column": "customer" })
+    );
+}
+
+#[test]
 fn a_decision_naming_an_alternative_the_manifest_lacks_is_refused() {
     let catalog = catalog();
     let rule = catalog.rule(SPLIT).unwrap();
@@ -141,7 +183,7 @@ fn a_decision_naming_an_alternative_the_manifest_lacks_is_refused() {
         &question(),
         &pipeline(),
         "split",
-        &Default::default(),
+        &[],
         Stamp {
             id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
             created_at: "2026-10-15T10:00:00Z",
@@ -632,7 +674,7 @@ fn an_applicable_alternative_that_removes_its_step_gets_a_remove_node_effect() {
             &question(),
             &before_forest(),
             "scale",
-            &Default::default(),
+            &[],
             Stamp {
                 id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
                 created_at: "2026-10-15T10:00:00Z",
@@ -709,7 +751,7 @@ fn one_hot_for_forest(pipeline: &PipelineVersion) -> Value {
         &question(),
         pipeline,
         "rf",
-        &Default::default(),
+        &[],
         Stamp {
             id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
             created_at: "2026-10-22T10:00:00Z",
@@ -1005,7 +1047,7 @@ fn shortlist_rule() -> sprisk_contracts::MethodologyRule {
     parse(
         &json!({
             "schema_version": "sprisk.methodology_rule/v1",
-            "id": "methodology.supervised.model_baseline_selection@2.0.0",
+            "id": "methodology.supervised.model_baseline_selection@2.1.0",
             "name": "Model shortlist", "stage": "models", "decides": "modeling.estimator_selection",
             "status": "active", "selection": "shortlist",
             "applies_to": ["sprisk.ml.linear_model"], "reads": ["candidate.*.family"],
@@ -1022,7 +1064,7 @@ fn shortlist_rule() -> sprisk_contracts::MethodologyRule {
 fn shortlist_decision(shortlist: Value, recommended: Option<&str>) -> RuleDecision {
     let mut decided = json!({
         "schema_version": "sprisk.rule_decision/v1",
-        "rule": "methodology.supervised.model_baseline_selection@2.0.0",
+        "rule": "methodology.supervised.model_baseline_selection@2.1.0",
         "alternatives": [
             { "id": "ml_dummy_baseline", "applicability": "applicable", "reason": "The floor." },
             { "id": "ml_linear_model", "applicability": "applicable", "reason": "Few rows." },
@@ -1079,14 +1121,13 @@ fn the_candidates_are_the_registered_models_that_fit_the_task() {
 #[test]
 fn a_shortlist_proposal_replaces_the_model_step_with_each_candidate() {
     let registry = registry();
-    let candidates = candidates(TaskType::Classification, registry.operators()).unwrap();
     let built = proposal(
         &shortlist_rule(),
         &shortlist_decision(json!(["ml_dummy_baseline", "ml_linear_model"]), None),
         &question(),
         &model_flow(),
         "model",
-        &candidates,
+        &registry.operators().collect::<Vec<_>>(),
         Stamp {
             id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
             created_at: "2026-10-15T10:00:00Z",
@@ -1114,7 +1155,6 @@ fn a_shortlist_proposal_replaces_the_model_step_with_each_candidate() {
 #[test]
 fn a_shortlist_decision_must_shortlist_and_not_recommend() {
     let registry = registry();
-    let candidates = candidates(TaskType::Classification, registry.operators()).unwrap();
     let build = |decided: RuleDecision| {
         proposal(
             &shortlist_rule(),
@@ -1122,7 +1162,7 @@ fn a_shortlist_decision_must_shortlist_and_not_recommend() {
             &question(),
             &model_flow(),
             "model",
-            &candidates,
+            &registry.operators().collect::<Vec<_>>(),
             Stamp {
                 id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
                 created_at: "2026-10-15T10:00:00Z",
@@ -1170,7 +1210,7 @@ fn a_recommend_decision_must_pick_one_it_offers_and_give_no_shortlist() {
             &question(),
             &pipeline(),
             "split",
-            &Default::default(),
+            &[],
             stamp,
         ) {
             Err(ResolveError::Selection(problem)) => problem,
@@ -1280,14 +1320,13 @@ fn evaluated_flow() -> PipelineVersion {
 
 fn shortlisted(pipeline: &PipelineVersion, shortlist: Value) -> DecisionProposal {
     let registry = registry();
-    let candidates = candidates(TaskType::Classification, registry.operators()).unwrap();
     proposal(
         &shortlist_rule(),
         &shortlist_decision(shortlist, None),
         &question(),
         pipeline,
         "model",
-        &candidates,
+        &registry.operators().collect::<Vec<_>>(),
         Stamp {
             id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
             created_at: "2026-10-15T10:00:00Z",
@@ -2013,7 +2052,7 @@ fn threshold_proposal(decided: Value, pipeline: &PipelineVersion) -> Result<Valu
         &costed_question(),
         pipeline,
         "model",
-        &Default::default(),
+        &[],
         stamp,
     )?;
     Ok(serde_json::to_value(built).unwrap())

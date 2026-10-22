@@ -7,6 +7,7 @@ pub const FACTS: &[&str] = &[
     // The success bar: the question's acceptance criteria joined by "; ", with the weakest
     // origin among them, so one inferred criterion makes the whole bar ask.
     "question.acceptance_criteria",
+    "question.interpretability",
     "question.target",
     "question.task",
     "question.unit_of_analysis",

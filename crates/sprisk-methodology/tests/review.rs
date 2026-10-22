@@ -79,6 +79,8 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
     assert_eq!(
         planned(&filled_linear()),
         vec![
+            // It reads no rows, so nothing orders it after the split.
+            ("question.hard_constraints".to_owned(), at("model")),
             ("question.objective".to_owned(), at("source")),
             ("question.target_definition".to_owned(), at("source")),
             ("question.unit_of_prediction".to_owned(), at("split")),
@@ -98,6 +100,7 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("features.scaling_strategy".to_owned(), None),
             ("features.rare_categories".to_owned(), at("model")),
             ("features.skew_transform".to_owned(), at("model")),
+            ("modeling.interpretability_requirement".to_owned(), None),
             ("modeling.estimator_selection".to_owned(), at("model")),
             ("evaluation.decision_threshold".to_owned(), at("model")),
         ]
