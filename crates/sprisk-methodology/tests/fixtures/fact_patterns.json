@@ -7,5 +7,7 @@
   { "pattern": "column.*.kurtosis", "name": "column.age.skewness", "covers": false },
   { "pattern": "step.*", "name": "step.method", "covers": true },
   { "pattern": "step.*", "name": "step.", "covers": false },
-  { "pattern": "rows", "name": "row", "covers": false }
+  { "pattern": "rows", "name": "row", "covers": false },
+  { "pattern": "input.column.*.unconverted", "name": "input.column.age.unconverted", "covers": true },
+  { "pattern": "column.*.data_type", "name": "input.column.age.data_type", "covers": false }
 ]

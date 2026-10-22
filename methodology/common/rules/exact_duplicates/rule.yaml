@@ -3,57 +3,52 @@ id: methodology.common.exact_duplicates@1.0.0
 name: "Exact duplicates"
 stage: data
 decides: data.exact_duplicates
-status: draft
+status: active
+applies_to: [sprisk.validation.random_split]
+reads: [input.rows, input.duplicate_rows]
 
 provenance:
   standard: "Leakage taxonomy: duplicates across train and test (Kapoor & Narayanan 2023)"
   citation: "Kapoor & Narayanan (2023) Leakage and the reproducibility crisis in machine-learning-based science, Patterns 4(9)"
   pitfall: "A row copied into both train and test is scored on a row the model has seen. The score goes up and means less."
   corner_cases:
-    - "A row hash fits nothing, so duplicates may be removed on all rows before the split."
+    - "A row match fits nothing, so duplicates may be removed on all rows before the split."
     - "Some repeats are real (two identical readings). Many duplicates ask before removal."
-    - "Duplicates that differ only in an ID column are not exact; they are the key-duplicates rule."
-
-observes:
-  - profile: rows.duplicate_share
-    description: "Share of rows that repeat an earlier row in every column"
-    required: true
+    - "Only before a random split. A group or time split keeps exact copies on one side already, since they share the group or time value; dropping them there would only reweight real repeats."
+    - "Rows that differ only in an ID column, or that share every feature but not the label, are not exact duplicates; they are the key-duplicates rule."
+    - "Not yet measured: whether the copies sit in one class. The 5% bar is of all rows, so copies concentrated in a rare class can still shift it; the evidence shows the count for a person to judge."
+    - "Marking placeholders or casting can make new copies (' ?' and 'n/a' both become a gap). The rule reads the rows the split takes, so after those steps run it proposes again."
 
 policy_thresholds:
-  # Duplicate share above which removal asks first. Project convention: a few copies are
-  # load errors; many may be real repeated observations.
+  # Duplicate share above which removal asks first. Project convention: a few copies are load
+  # errors; many may be real repeated observations, and dropping them changes class shares.
   ask_above_share: 0.05
 
 alternatives:
-  - id: none
-    label: "No duplicates"
-    description: "No row repeats."
-    condition: "rows.duplicate_share == 0"
-    rationale: "No change."
-    action:
-      type: pass_through
-
   - id: drop
     label: "Drop exact duplicates before the split"
-    description: "Keep the first copy of each row."
-    condition: "0 < rows.duplicate_share <= ask_above_share"
+    description: "Keep the first copy of each row, in a step added before the split."
     rationale: "So no row is in train and test at once."
     action:
       type: insert_step
-      placement: before_split
+      placement: before
       operator: sprisk.clean.drop_duplicates@1.0.0
-      params: {}
-
-  - id: ask
-    label: "Ask: copies or real repeats?"
-    description: "Many duplicates. Ask whether they are load errors or real repeats."
-    condition: "rows.duplicate_share > ask_above_share"
-    rationale: "Dropping real repeats changes class shares and the unit of prediction."
+      node_id: exact_duplicates
+  - id: keep
+    label: "Keep every row"
+    description: "Leave the rows as they are."
+    rationale: "No row repeats an earlier one, or the repeats are real observations."
     action:
-      type: emit_methodology_limitation
-      params:
-        reason: "many_exact_duplicates"
+      type: pass_through
 
 verification:
   check_id: none
-  invariant: "No Gate B check exists yet. Planned: after the split, no row hash is in both train and test."
+  invariant: "No Gate B check exists yet. Planned: after the split, no row is in both train and test."
+
+examples:
+  - given: { input.rows: 1000, input.duplicate_rows: 0 }
+    picks: keep
+  - given: { input.rows: 1000, input.duplicate_rows: 12 }
+    picks: drop
+  - given: { input.rows: 1000, input.duplicate_rows: 300 }
+    picks: keep

@@ -181,6 +181,14 @@ describe("activation conditions", () => {
     expect(routeWhen(split, "stratified")).toBe("task = classification · age missing share = 0.1");
   });
 
+  it("reads a list of dataset values and a fact measured before the split in plain words", () => {
+    const markers = {
+      alternatives: [{ id: "mark", label: "Mark" }],
+      examples: [{ given: { "input.column.age.numeric_share": 0.98, "input.column.age.unconverted": ["?", "n/a"] }, picks: "mark" }],
+    } as never;
+    expect(routeWhen(markers, "mark")).toBe("age numeric share = 0.98 · age unconverted = ?, n/a");
+  });
+
   it("gives nothing for a route with neither", () => {
     expect(routeWhen(split, "manual")).toBeUndefined();
   });

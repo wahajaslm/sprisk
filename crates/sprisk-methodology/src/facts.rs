@@ -32,6 +32,16 @@ pub const FACTS: &[&str] = &[
     "column.*.kurtosis",
     "column.*.outlier_share",
     "column.*.iqr",
+    // Structure of the rows the step reads, measured before the split on all of them
+    // (ADR-0059): types, duplicates, values that do not read as numbers. Never statistics.
+    "input.rows",
+    "input.duplicate_rows",
+    "input.column.*.data_type",
+    "input.column.*.numeric_share",
+    // How many text values reading as numbers start with a zero, like the code 01234.
+    "input.column.*.leading_zero_values",
+    // The most common values of a text column that do not read as numbers (dataset text).
+    "input.column.*.unconverted",
 ];
 
 /// Whether `name`, a fact or a pattern from a rule's `reads`, is one Rust sends.
@@ -49,6 +59,11 @@ pub fn covers(pattern: &str, name: &str) -> bool {
                 && name.ends_with(suffix)
         }
     }
+}
+
+/// Whether a rule reading `reads` needs the structure of the rows its step reads measured.
+pub fn needs_input_rows<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
+    reads.any(|r| r.starts_with("input."))
 }
 
 /// Whether a rule reading `reads` needs the train rows measured.

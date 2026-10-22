@@ -241,6 +241,31 @@ pub fn profile_facts(profile: &DatasetProfile, columns: &[String]) -> Map<String
     facts
 }
 
+/// The structure of the rows a step reads, measured before the split (ADR-0059): row and
+/// duplicate counts, and each column's type and the values that do not read as numbers. No
+/// statistics: those come from train rows only.
+pub fn input_facts(profile: &DatasetProfile) -> Map<String, Value> {
+    let mut facts = Map::new();
+    facts.insert("input.rows".into(), json!(profile.profiled_rows));
+    if let Some(duplicates) = profile.duplicate_rows {
+        facts.insert("input.duplicate_rows".into(), json!(duplicates));
+    }
+    for column in &profile.columns {
+        let key = |measure: &str| format!("input.column.{}.{measure}", column.name);
+        facts.insert(key("data_type"), json!(column.data_type));
+        if let Some(share) = column.numeric_share {
+            facts.insert(key("numeric_share"), json!(share));
+        }
+        if let Some(zeros) = column.leading_zero_values {
+            facts.insert(key("leading_zero_values"), json!(zeros));
+        }
+        if !column.unconverted.is_empty() {
+            facts.insert(key("unconverted"), json!(column.unconverted));
+        }
+    }
+    facts
+}
+
 /// The steps and edges of `pipeline` without `node_id` (ADR-0043): each edge out of
 /// `node_id.P` is fed from whatever fed `node_id.P`, and edges into it are dropped. Refused
 /// when an output with consumers has no input of the same name to take its place.
@@ -291,8 +316,11 @@ pub fn without_node(
 /// rows `before` learns from. `step` reads the train and test rows of S, the step whose
 /// `train` output feeds `before`'s `train`. `before` reads `step` in place of S, and so does
 /// any step that reads an output of `before` and S's test rows, so a model's evaluation
-/// scores rows prepared the same way. Every other reader of S keeps reading S. Refused
-/// unless `step` learns from train rows and keeps train and test apart.
+/// scores rows prepared the same way. Every other reader of S keeps reading S.
+///
+/// A step that fits nothing and turns one table into one (marking placeholders, dropping
+/// duplicates) is added instead on the one table `before` reads, such as the rows a split
+/// takes (ADR-0059). Any other step is refused.
 pub fn with_node_before<'a>(
     pipeline: &PipelineVersion,
     step: Node,
@@ -319,6 +347,13 @@ pub fn with_node_before<'a>(
             && ports(&o.inputs) == train_test
             && ports(&o.outputs) == train_test
     });
+    let data = BTreeSet::from(["data".to_owned()]);
+    let one_table = operator_of(operator).is_some_and(|o| {
+        o.fits_on_train != Some(true) && ports(&o.inputs) == data && ports(&o.outputs) == data
+    });
+    if one_table {
+        return on_the_one_table(pipeline, step, at, before);
+    }
     if !learns_from_train {
         return refuse(format!(
             "{operator} does not learn from train rows and keep train and test apart"
@@ -353,6 +388,54 @@ pub fn with_node_before<'a>(
             && ((to == before && input == port) || (port == "test" && readers.contains(to)));
         if moves {
             edges.push(edge(&format!("{id}.{port}"), e.to.as_str())?);
+        } else {
+            edges.push(e.clone());
+        }
+    }
+    let mut nodes = pipeline.nodes.clone();
+    nodes.insert(at, step);
+    Ok((nodes, edges))
+}
+
+/// The one edge into `step`'s `data` input, when that is all `step` reads: the table a
+/// structure rule measures and a one-table step goes in front of (ADR-0059). Otherwise why not.
+pub fn one_table_into<'a>(pipeline: &'a PipelineVersion, step: &str) -> Result<&'a Edge, String> {
+    let mut feeding = pipeline
+        .edges
+        .iter()
+        .filter(|e| e.to.step_and_port().0 == step);
+    let (Some(fed), None) = (feeding.next(), feeding.next()) else {
+        return Err(format!("step {step} does not read exactly one table"));
+    };
+    let port = fed.to.step_and_port().1;
+    if port != "data" {
+        return Err(format!(
+            "step {step} reads {port} rows, so test rows would skip it"
+        ));
+    }
+    Ok(fed)
+}
+
+/// `pipeline` with the one-table `step` placed on the one edge into `before`'s `data` input,
+/// at `at` in step order. Other readers of that edge's source keep reading it.
+fn on_the_one_table(
+    pipeline: &PipelineVersion,
+    step: Node,
+    at: usize,
+    before: &str,
+) -> Result<(Vec<Node>, Vec<Edge>), ResolveError> {
+    let id = step.id.as_str().to_owned();
+    let fed = one_table_into(pipeline, before).map_err(|why| {
+        ResolveError::NotInsertable(format!(
+            "{} turns one table into one, but {why}",
+            step.operator.as_str()
+        ))
+    })?;
+    let mut edges = Vec::with_capacity(pipeline.edges.len() + 1);
+    for e in &pipeline.edges {
+        if std::ptr::eq(e, fed) {
+            edges.push(edge(fed.from.as_str(), &format!("{id}.data"))?);
+            edges.push(edge(&format!("{id}.data"), fed.to.as_str())?);
         } else {
             edges.push(e.clone());
         }

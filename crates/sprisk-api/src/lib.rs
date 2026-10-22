@@ -1260,12 +1260,15 @@ async fn decide(
     let node_id = node.id.as_str();
     let rule_ref = rule.id.to_string();
     let rule_ref = rule_ref.as_str();
-    let profile =
-        if sprisk_methodology::facts::needs_train_rows(rule.reads.iter().map(|r| r.as_str())) {
-            train_profile_facts(state, pipeline, node).await?
-        } else {
-            Default::default()
-        };
+    let reads = || rule.reads.iter().map(|r| r.as_str());
+    let mut profile = if sprisk_methodology::facts::needs_train_rows(reads()) {
+        train_profile_facts(state, pipeline, node).await?
+    } else {
+        Default::default()
+    };
+    if sprisk_methodology::facts::needs_input_rows(reads()) {
+        profile.extend(input_profile_facts(state, pipeline, node).await?);
+    }
 
     let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
     let mut flow = sprisk_methodology::flow_facts(
@@ -1423,6 +1426,33 @@ async fn train_profile_facts(
             .collect()
     });
     Ok(sprisk_methodology::profile_facts(&profile, &columns))
+}
+
+/// The structure of the rows `node` reads, measured on all of them (ADR-0059): types,
+/// duplicates and values that do not read as numbers, never statistics, so a step before the
+/// split can be decided without test rows shaping a fitted value.
+async fn input_profile_facts(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    node: &sprisk_contracts::Node,
+) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
+    let step = node.id.as_str();
+    let edge = sprisk_methodology::one_table_into(pipeline, step).map_err(not_applicable)?;
+    let (source, port) = edge.from.step_and_port();
+    let artifact = state
+        .store
+        .latest_outputs(std::slice::from_ref(&pipeline.id))
+        .await?
+        .into_iter()
+        .find(|o| o.node_id == source && o.port == port)
+        .map(|o| o.artifact)
+        .ok_or_else(|| {
+            evidence_unavailable(format!(
+                "run the flow first: this rule measures the rows {source} gives step {step}"
+            ))
+        })?;
+    let profile = state.profiler.profile(&local_table(&artifact)?).await?;
+    Ok(sprisk_methodology::input_facts(&profile))
 }
 
 async fn apply_methodology(

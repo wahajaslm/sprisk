@@ -6,7 +6,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
-import { activation, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
+import { activation, givenText, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
@@ -155,7 +155,7 @@ function Overview({ rule }: { rule: MethodologyRule }) {
                   <span>
                     {Object.entries(example.given).map(([name, value]) => (
                       <code key={name}>
-                        {name} = {typeof value === "object" ? `${value.value} (${value.origin})` : String(value)}
+                        {name} = {typeof value === "object" && !Array.isArray(value) ? `${value.value} (${value.origin})` : givenText(value)}
                       </code>
                     ))}
                     {Object.keys(example.given).length === 0 && <span className="muted">nothing known</span>}

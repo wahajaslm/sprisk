@@ -164,8 +164,15 @@ export function reviewByRule(items: MethodologyReviewItem[]): Map<string, Method
 const factName = (name: string) =>
   name
     .replace(/^(question|flow|step|candidate)\./, "")
-    .replace(/^column\./, "")
+    .replace(/^(input\.)?column\./, "")
     .replace(/[._]/g, " ");
+
+type Given = NonNullable<MethodologyRule["examples"]>[number]["given"][string];
+
+/** An example's fact value as text: a list of dataset values joined, a fact with its origin
+ * shown as its value only. */
+export const givenText = (value: Given): string =>
+  Array.isArray(value) ? value.join(", ") : typeof value === "object" ? value.value : String(value);
 
 /** When a route is taken. A draft's route has its written condition. An active rule's logic is
  * its decide() alone (ADR-0045), so its route shows the first tested example that picks it, in
@@ -177,7 +184,7 @@ export function routeWhen(rule: MethodologyRule, routeId: string): string | unde
   if (!example) return undefined;
   return Object.entries(example.given)
     .filter(([name]) => name !== "question.target")
-    .map(([name, value]) => `${factName(name)} = ${typeof value === "object" ? value.value : String(value)}`)
+    .map(([name, value]) => `${factName(name)} = ${givenText(value)}`)
     .join(" · ");
 }
 

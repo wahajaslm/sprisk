@@ -79,6 +79,9 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
     assert_eq!(
         planned(&filled_linear()),
         vec![
+            ("data.exact_duplicates".to_owned(), at("split")),
+            ("data.missing_markers".to_owned(), at("split")),
+            ("data.type_repair".to_owned(), at("split")),
             ("split.method".to_owned(), at("split")),
             ("cleaning.missingness_strategy".to_owned(), at("fill")),
             ("cleaning.outlier_strategy".to_owned(), None),
@@ -124,7 +127,8 @@ fn split_item(outcome: Outcome) -> Value {
     let catalog = catalog();
     let pipeline = filled_linear();
     let planned = plan(&catalog, &pipeline, supervised).unwrap();
-    serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap()
+    serde_json::to_value(item(&planned[index_of(&planned, "split.method")], outcome).unwrap())
+        .unwrap()
 }
 
 fn proposed(alternative: Value) -> Outcome {
@@ -245,7 +249,7 @@ fn an_open_split_makes_every_rule_that_measures_rows_wait() {
     let pipeline = filled_linear();
     let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let mut open = vec![false; planned.len()];
-    open[0] = true;
+    open[index_of(&planned, "split.method")] = true;
     let missing = index_of(&planned, "cleaning.missingness_strategy");
     assert_eq!(
         waits_on(&pipeline, &planned, missing, &open),
@@ -343,7 +347,7 @@ fn a_recommendation_the_proposal_does_not_offer_is_an_error() {
         proposal: Box::new(parse(&proposal.to_string()).unwrap()),
         decided: false,
     };
-    assert!(item(&planned[0], outcome).is_err());
+    assert!(item(&planned[index_of(&planned, "split.method")], outcome).is_err());
 }
 
 fn without_effect() -> Value {
@@ -391,7 +395,9 @@ fn a_step_that_differs_only_in_the_route_s_settings_is_settled() {
     let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let outcome =
         stratified_proposal(json!({ "stratify": "churned", "test_fraction": 0.2, "seed": 42 }));
-    let item = serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap();
+    let item =
+        serde_json::to_value(item(&planned[index_of(&planned, "split.method")], outcome).unwrap())
+            .unwrap();
     assert_eq!(item["status"], "settled", "{item}");
 }
 
@@ -402,7 +408,9 @@ fn a_step_that_differs_in_what_the_route_decides_is_a_proposal() {
     let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let outcome =
         stratified_proposal(json!({ "stratify": "churned", "test_fraction": 0.2, "seed": 42 }));
-    let item = serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap();
+    let item =
+        serde_json::to_value(item(&planned[index_of(&planned, "split.method")], outcome).unwrap())
+            .unwrap();
     assert_eq!(item["status"], "proposal", "{item}");
 }
 
@@ -427,7 +435,9 @@ fn a_setting_outside_the_route_s_allowed_range_is_not_settled() {
     let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let outcome =
         stratified_proposal(json!({ "stratify": "churned", "test_fraction": 0.2, "seed": 42 }));
-    let item = serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap();
+    let item =
+        serde_json::to_value(item(&planned[index_of(&planned, "split.method")], outcome).unwrap())
+            .unwrap();
     assert_eq!(item["status"], "proposal", "{item}");
 }
 

@@ -4367,15 +4367,19 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
 
     let review = review(&api).await;
     let expected: Vec<(String, String)> = [
+        ("data.exact_duplicates", "needs_run"),
+        ("data.missing_markers", "needs_run"),
+        ("data.type_repair", "needs_run"),
         ("split.method", "settled"),
         ("cleaning.missingness_strategy", "no_subject"),
         ("cleaning.outlier_strategy", "no_subject"),
-        ("features.encoding_strategy", "needs_run"),
-        ("features.date_parts", "needs_run"),
+        // The data rules may change the rows the model is fit on, so its rules wait for them.
+        ("features.encoding_strategy", "waiting"),
+        ("features.date_parts", "waiting"),
         ("features.scaling_strategy", "no_subject"),
-        ("features.rare_categories", "needs_run"),
+        ("features.rare_categories", "waiting"),
         ("features.skew_transform", "no_subject"),
-        ("modeling.estimator_selection", "needs_run"),
+        ("modeling.estimator_selection", "waiting"),
         ("evaluation.decision_threshold", "settled"),
     ]
     .iter()
@@ -4384,7 +4388,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([3, 4, 6, 8]),
+        json!([0, 1, 2]),
         "the split already matches, so the flow must run next: {review}"
     );
 }
@@ -4466,9 +4470,8 @@ async fn a_step_that_carries_the_rule_s_applied_decision_is_settled() {
     );
     let (status, review) = call(&api.app, "GET", &uri, None).await;
     assert_eq!(status, StatusCode::OK, "{review}");
-    assert_eq!(
-        statuses(&review)[0],
-        ("split.method".to_owned(), "settled".to_owned()),
+    assert!(
+        statuses(&review).contains(&("split.method".to_owned(), "settled".to_owned())),
         "{review}"
     );
 }
@@ -4508,4 +4511,109 @@ async fn a_rule_that_measures_train_rows_does_not_apply_to_a_step_before_the_spl
             .contains("before the split"),
         "{review}"
     );
+}
+
+/// The proposal of the rule that makes `decides` for step `node` of `version`.
+async fn propose_for(api: &Api, version: &str, node: &str, decides: &str) -> Value {
+    let uri = format!("/pipeline_versions/{version}/methodology/proposals/{node}/{decides}");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    proposal
+}
+
+/// The flow version that applying `alternative` of `proposal` makes.
+async fn apply_alternative(api: &Api, proposal: &Value, alternative: &str) -> String {
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({ "alternative_id": alternative, "idempotency_key": format!("key-{alternative}-0001") });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    applied["pipeline"]["id"].as_str().unwrap().to_owned()
+}
+
+fn recommended_effect(proposal: &Value) -> Value {
+    let id = &proposal["recommended_alternative_id"];
+    proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| &a["id"] == id)
+        .map(|a| a["effect"].clone())
+        .unwrap_or_else(|| panic!("{proposal}"))
+}
+
+/// ADR-0059: structure is measured on the rows before the split. "?" in a number column is
+/// marked missing in a step before the split, then the column is read as numbers.
+#[tokio::test(flavor = "multi_thread")]
+async fn placeholders_are_marked_then_the_column_is_read_as_numbers_before_the_split() {
+    let api = api().await;
+    forest_flow(&api).await;
+    let mut csv = String::from("age,returned_within_30d\n");
+    for age in 20..80 {
+        let shown = if age % 25 == 0 {
+            "?".to_owned()
+        } else {
+            age.to_string()
+        };
+        csv.push_str(&format!("{shown},{}\n", u8::from(age >= 50)));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, _) = run_version(&api, BASE).await;
+    assert_eq!(run["status"], "failed", "the forest refuses text: {run}");
+
+    let markers = propose_for(&api, BASE, "split", "data.missing_markers").await;
+    assert_eq!(markers["recommended_alternative_id"], "mark", "{markers}");
+    let effect = recommended_effect(&markers);
+    assert_eq!(effect["kind"], "insert_node", "{effect}");
+    assert_eq!(effect["before"], "split", "{effect}");
+    assert_eq!(
+        effect["params"],
+        json!({"columns": ["age"], "values": ["?"]})
+    );
+    let marked = apply_alternative(&api, &markers, "mark").await;
+    let (run, _) = run_version(&api, &marked).await;
+    assert_eq!(run["status"], "failed", "still text: {run}");
+
+    let types = propose_for(&api, &marked, "split", "data.type_repair").await;
+    assert_eq!(types["recommended_alternative_id"], "cast", "{types}");
+    assert_eq!(
+        recommended_effect(&types)["params"],
+        json!({"columns": ["age"]})
+    );
+    let cast = apply_alternative(&api, &types, "cast").await;
+    let (_, attempts) = run_version(&api, &cast).await;
+    // The model now gets numbers with gaps where "?" was: missing values are the next decision.
+    let model = attempts
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["node_id"] == "model")
+        .unwrap_or_else(|| panic!("{attempts}"));
+    assert_eq!(model["state"], "failed", "{model}");
+    let why = model["error"]["message"].as_str().unwrap();
+    assert!(why.contains("age has missing values"), "{why}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rows_copied_in_the_data_are_dropped_before_the_split() {
+    let api = api().await;
+    forest_flow(&api).await;
+    let mut csv = std::fs::read_to_string(&api.csv).unwrap();
+    csv.push_str("21,0\n22,0\n");
+    std::fs::write(&api.csv, csv).unwrap();
+    let (run, _) = run_version(&api, BASE).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let proposal = propose_for(&api, BASE, "split", "data.exact_duplicates").await;
+    assert_eq!(proposal["recommended_alternative_id"], "drop", "{proposal}");
+    let evidence = proposal["evidence"].to_string();
+    assert!(
+        evidence.contains("\"62\"") && evidence.contains("\"2\""),
+        "{evidence}"
+    );
+    let dropped = apply_alternative(&api, &proposal, "drop").await;
+    let (run, attempts) = run_version(&api, &dropped).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }

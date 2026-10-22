@@ -3,69 +3,57 @@ id: methodology.common.wrong_types@1.0.0
 name: "Wrong types"
 stage: data
 decides: data.type_repair
-status: draft
+status: active
+applies_to: [sprisk.validation.random_split, sprisk.validation.group_split, sprisk.validation.temporal_split]
+reads: [input.column.*.data_type, input.column.*.numeric_share, input.column.*.leading_zero_values, input.column.*.unconverted]
 
 provenance:
   standard: "Schema checks for ML data (Breck et al. 2019)"
   citation: "Breck et al. (2019) Data Validation for Machine Learning, SysML"
-  pitfall: "Numbers stored as text are treated as categories, one per distinct value; dates stored as text cannot be split on."
+  pitfall: "Numbers stored as text are treated as categories, one per distinct value."
   corner_cases:
-    - "Runs after missing markers, so known placeholders are already missing."
-    - "Values that still fail after casting become missing and are counted in the report."
-    - "Casting fits nothing, so it runs before the split."
-
-observes:
-  - profile: column.numeric_share
-    description: "Share of a text column's values that convert to numbers"
-    required: true
-  - profile: column.date_parse_share
-    description: "Share that parse as dates"
-    required: true
+    - "Placeholders such as '?' are marked missing first (data.missing_markers); until then the column is not cast, and the values in the way are named."
+    - "Numbers written with a comma ('1,000', '2,5') are named, and a person says what the comma means."
+    - "Whole numbers become integers. A value with more than 15 digits (an account number) is refused, since a float cannot hold it exactly."
+    - "Number codes without leading zeros (ZIP 90210) cannot be told from quantities here; the column-roles rule asks about them."
+    - "Codes with leading zeros (postal codes '01234') read as numbers but are labels. They stay text unless a person says otherwise."
+    - "Casting fits nothing, so it runs before the split. It fails loudly on any value that does not read as a number."
+    - "Dates stored as text are not cast yet."
 
 policy_thresholds:
-  # Share of values that must convert before a column is cast. Project convention: the same
-  # bar as missing markers, so the two rules agree on what "mostly numbers" means.
-  min_convert_share: 0.95
-  # Below this share a column is plain text, not a broken number column. Project convention:
-  # fewer than half the values converting means numbers are the exception.
+  # Below this share a column is plain text. Project convention: fewer than half the values
+  # reading as numbers means numbers are the exception.
   mixed_min_share: 0.5
 
 alternatives:
+  - id: cast
+    label: "Read as numbers"
+    description: "Text columns whose every present value reads as a number are cast to numbers, in a step added before the split."
+    rationale: "The values are numbers stored as text; as text a model treats each one as a category."
+    action:
+      type: insert_step
+      placement: before
+      operator: sprisk.clean.cast_types@1.0.0
+      node_id: wrong_types
   - id: keep
     label: "Types are right"
-    description: "No column is mostly numbers or dates stored as text."
-    condition: "no text column passes min_convert_share"
-    rationale: "No change."
+    description: "Leave the columns as they are."
+    rationale: "No text column is numbers stored as text."
     action:
       type: pass_through
 
-  - id: cast
-    label: "Cast to number or date"
-    description: "Cast the column. Values that fail become missing and are counted."
-    condition: "column.numeric_share >= min_convert_share OR column.date_parse_share >= min_convert_share"
-    rationale: "Almost every value converts, so the column is a number or a date."
-    action:
-      type: insert_step
-      placement: before_split
-      operator: sprisk.clean.cast_types@1.0.0
-      params:
-        columns: "{settings.columns}"
-    settings_schema:
-      type: object
-      required: [columns]
-      properties:
-        columns: { type: array, items: { type: string } }
-
-  - id: ask
-    label: "Ask about a mixed column"
-    description: "Partly converts, below the bar. Ask whether it is text or a broken number column."
-    condition: "mixed_min_share <= column.numeric_share < min_convert_share"
-    rationale: "A half-numeric column may be codes or dirty numbers; the person knows which."
-    action:
-      type: emit_methodology_limitation
-      params:
-        reason: "mixed_type_column"
-
 verification:
   check_id: none
-  invariant: "No Gate B check exists yet. Planned: each cast reports how many values became missing. The cast step needs a new operator (sprisk.clean.cast_types, not built)."
+  invariant: "No Gate B check exists yet. Planned: each cast column read as numbers in full before the split."
+
+examples:
+  - given: { input.column.age.data_type: String, input.column.age.numeric_share: 1.0, input.column.city.data_type: String, input.column.city.numeric_share: 0.0 }
+    picks: cast
+  - given: { input.column.age.data_type: Int64 }
+    picks: keep
+  - given: { input.column.zip.data_type: String, input.column.zip.numeric_share: 1.0, input.column.zip.leading_zero_values: 40 }
+    picks: keep
+  - given: { input.column.age.data_type: String, input.column.age.numeric_share: 0.98, input.column.age.unconverted: ["?"] }
+    picks: keep
+  - given: { input.column.code.data_type: String, input.column.code.numeric_share: 0.7 }
+    picks: keep

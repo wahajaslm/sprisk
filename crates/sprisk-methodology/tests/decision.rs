@@ -8,8 +8,8 @@ use sprisk_contracts::{
 };
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
-    Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, flow_facts,
-    observation, preparation_comparison, profile_facts, proposal, train_rows_source,
+    Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, facts, flow_facts,
+    input_facts, observation, preparation_comparison, profile_facts, proposal, train_rows_source,
     with_node_before, without_node,
 };
 use sprisk_registry::Registry;
@@ -177,6 +177,55 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
     assert_eq!(facts["column.city.data_type"], "String");
     assert!(facts.get("column.city.skewness").is_none());
     assert!(facts.keys().all(|k| !k.starts_with("column.other.")));
+}
+
+#[test]
+fn input_facts_give_the_structure_of_every_column_and_no_statistics() {
+    let profile = parse(
+        &json!({
+            "total_rows": 200, "total_columns": 2, "profiled_rows": 200, "band_rows": 5,
+            "duplicate_rows": 4,
+            "columns": [
+                { "name": "income", "data_type": "Float64", "missing": 50, "distinct": 140,
+                  "missing_by_band": [], "skewness": 2.5 },
+                { "name": "age", "data_type": "String", "missing": 0, "distinct": 40,
+                  "missing_by_band": [], "numeric_share": 0.98, "leading_zero_values": 0,
+                  "unconverted": ["?", "n/a"] }
+            ],
+            "correlation": { "columns": [], "pairs": [] }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let facts = input_facts(&profile);
+
+    assert_eq!(facts["input.rows"], 200);
+    assert_eq!(facts["input.duplicate_rows"], 4);
+    assert_eq!(facts["input.column.income.data_type"], "Float64");
+    assert_eq!(facts["input.column.age.numeric_share"], 0.98);
+    assert_eq!(facts["input.column.age.unconverted"], json!(["?", "n/a"]));
+    assert_eq!(facts["input.column.age.leading_zero_values"], 0);
+    assert!(
+        facts
+            .keys()
+            .all(|k| !k.contains("skewness") && !k.contains("missing"))
+    );
+}
+
+#[test]
+fn input_facts_are_known_and_need_the_rows_before_the_split_not_train_rows() {
+    for read in [
+        "input.rows",
+        "input.duplicate_rows",
+        "input.column.*.unconverted",
+    ] {
+        assert!(facts::is_known(read), "{read}");
+        assert!(facts::needs_input_rows([read].into_iter()), "{read}");
+        assert!(!facts::needs_train_rows([read].into_iter()), "{read}");
+    }
+    assert!(!facts::needs_input_rows(
+        ["rows", "question.target"].into_iter()
+    ));
 }
 
 fn flow(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> PipelineVersion {
@@ -723,6 +772,60 @@ fn a_step_is_added_only_where_train_and_test_rows_feed_it() {
     let err = inserted(&pipeline, encode_step("categories"), "rf").unwrap_err();
     assert!(err.to_string().contains("rf"), "{err}");
     assert!(inserted(&before_forest(), encode_step("categories"), "nope").is_err());
+}
+
+fn markers_step(id: &str) -> Node {
+    parse(
+        &json!({ "id": id, "operator": "sprisk.clean.mark_missing@1.0.0",
+                   "params": { "columns": ["age"], "values": ["?"] } })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_table_step_added_before_a_split_takes_the_one_table_it_reads() {
+    let pipeline = flow(
+        &[
+            ("load", "io.file_source"),
+            ("chart", "profile.chart"),
+            ("split", "validation.random_split"),
+        ],
+        &[("load.data", "chart.data"), ("load.data", "split.data")],
+    );
+    let (nodes, edges) = inserted(&pipeline, markers_step("markers"), "split").unwrap();
+    assert_eq!(nodes, ["load", "chart", "markers", "split"]);
+    // The chart still shows the rows as they were loaded.
+    assert_eq!(
+        edges,
+        [
+            "load.data -> chart.data",
+            "load.data -> markers.data",
+            "markers.data -> split.data",
+        ]
+    );
+}
+
+#[test]
+fn a_table_step_is_not_added_before_a_step_reading_several_inputs() {
+    let err = inserted(&before_forest(), markers_step("markers"), "eval").unwrap_err();
+    assert!(
+        err.to_string().contains("does not read exactly one table"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_table_step_is_not_added_where_it_would_change_train_rows_only() {
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("rf", "ml.random_forest@2.0.0"),
+        ],
+        &[("split.train", "rf.train")],
+    );
+    let err = inserted(&pipeline, markers_step("markers"), "rf").unwrap_err();
+    assert!(err.to_string().contains("test rows would skip it"), "{err}");
 }
 
 #[test]

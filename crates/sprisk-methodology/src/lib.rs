@@ -13,8 +13,8 @@ pub use compare::{
     preparation_comparison, study_comparison, trial_steps,
 };
 pub use decision::{
-    Stamp, candidate_facts, candidates, flow_facts, observation, profile_facts, proposal,
-    train_rows_source, with_node_before, without_node,
+    Stamp, candidate_facts, candidates, flow_facts, input_facts, observation, one_table_into,
+    profile_facts, proposal, train_rows_source, with_node_before, without_node,
 };
 
 #[derive(Debug, thiserror::Error)]

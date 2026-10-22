@@ -31,9 +31,9 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | --- | --- | --- | --- | --- | --- |
 | Join sources | 1, else 3 | One shared key with matching values joins; an ambiguous key asks | Key match counts | none | — |
 | Column roles (id, target, number, category, text, date) | 1, else 3 | Measured: distinct = rows → id; parses as date → date; long varied strings → text. Number-coded labels (postal codes) ask | Column type summary | none | Breck et al. 2019 |
-| Missing markers (`?`, `n/a`, `-1`) | 1, else 3 | Values that fail to convert in an otherwise numeric column. `NA` that may be a value (Namibia) asks | Top non-numeric values | none (`file_source.missing_values` and `mark_missing` exist; a rule needs a step before the split) | Breck et al. 2019 |
-| Wrong types | 1 | Share of values that convert | — | none | Breck et al. 2019 |
-| Exact duplicates | 1 | Row hash. Removed before the split, so no row is in train and test | — | none (`drop_duplicates` exists; a rule needs a step before the split) | Kapoor & Narayanan 2023 |
+| Missing markers (`?`, `n/a`, `-1`) | 1, else 3 | Values that fail to convert in an otherwise numeric column. `NA` that may be a value (Namibia) asks | Top non-numeric values | active (`data.missing_markers`) | Breck et al. 2019 |
+| Wrong types | 1 | Share of values that convert; codes with leading zeros ask | — | active (`data.type_repair`) | Breck et al. 2019 |
+| Exact duplicates | 1 | Row hash. Removed before the split, so no row is in train and test | — | active (`data.exact_duplicates`) | Kapoor & Narayanan 2023 |
 | Duplicates by key | 3 | Person: which row to keep | — | none | — |
 | Same entity on both sides | 1 | An entity column with repeated values → group split | Rows per entity | active (part of split method) | Kapoor & Narayanan 2023; ref-v3 2.5 |
 | Columns not known at prediction time | 3, with a measured hint | Person confirms; a column that alone predicts the target almost perfectly on train rows is flagged | Single-feature score per column | draft (`features.leakage_exclusion`) | Kapoor & Narayanan 2023; ref-v3 2.5 |
