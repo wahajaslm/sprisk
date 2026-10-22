@@ -50,7 +50,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Missing values | 1, then 2, else 3 | Missing target → drop rows. Mostly empty (default 60%) → drop column. Otherwise fill after the split: median for skewed, else mean. When gaps relate to the target, add a "was missing" column (tried). Model-based filling (iterative) is tried only when simple filling scores worse. Why values are missing is asked when it matters | Missing share per column; gaps by target | active | scikit-learn "Imputation" (`add_indicator`, `IterativeImputer`); Little & Rubin 2019; ref-v3 2.3 |
 | Outliers | 1, else 3 | Impossible values (domain range, asked) → missing. Real extremes: clip for linear and distance models, nothing for trees, robust scaling instead when many | Box plot per column | active | Tukey 1977; ref-v3 2.4 |
 | Constant columns | 1 | One distinct value on train rows → drop | — | draft (`select_columns` reads one table, so it cannot be added before a model) | scikit-learn `VarianceThreshold` |
-| Text spelling | 1, else 3 | Trim, lowercase, accents (key collision). Merges beyond that ask | Top variants per value | none (`clean_text` exists) | OpenRefine clustering |
+| Text spelling | 1, else 3 | Trim and lowercase before the split (structure, nothing fitted). Accent-only variants and the target's labels ask: 'año' and 'ano' differ | Top variants per value | active (`data.text_spelling`, common pack) | OpenRefine clustering |
 
 ## Features (Clean steps, ADR-0056; "model" = the answer depends on the model family)
 | Decision | Level | Decided by | Evidence chart | Rule | Source |

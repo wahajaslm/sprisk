@@ -49,6 +49,10 @@ pub const FACTS: &[&str] = &[
     // Distinct values, which say whether a column identifies rows (structure, not statistics).
     "input.column.*.distinct",
     "input.column.*.numeric_share",
+    // How many distinct text values merge with another once spaces and case, then accents,
+    // are ignored ('Paris' and 'paris '; 'café' and 'cafe').
+    "input.column.*.case_variants",
+    "input.column.*.accent_variants",
     // How many text values reading as numbers start with a zero, like the code 01234.
     "input.column.*.leading_zero_values",
     // The most common values of a text column that do not read as numbers (dataset text).

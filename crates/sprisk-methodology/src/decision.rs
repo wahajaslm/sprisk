@@ -274,8 +274,14 @@ pub fn input_facts(profile: &DatasetProfile) -> Map<String, Value> {
         if let Some(share) = column.numeric_share {
             facts.insert(key("numeric_share"), json!(share));
         }
-        if let Some(zeros) = column.leading_zero_values {
-            facts.insert(key("leading_zero_values"), json!(zeros));
+        for (measure, value) in [
+            ("case_variants", column.case_variants),
+            ("accent_variants", column.accent_variants),
+            ("leading_zero_values", column.leading_zero_values),
+        ] {
+            if let Some(value) = value {
+                facts.insert(key(measure), json!(value));
+            }
         }
         if !column.unconverted.is_empty() {
             facts.insert(key("unconverted"), json!(column.unconverted));

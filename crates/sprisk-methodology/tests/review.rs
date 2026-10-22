@@ -84,6 +84,7 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("question.unit_of_prediction".to_owned(), at("split")),
             ("data.exact_duplicates".to_owned(), at("split")),
             ("data.missing_markers".to_owned(), at("split")),
+            ("data.text_spelling".to_owned(), at("split")),
             ("data.type_repair".to_owned(), at("split")),
             ("split.method".to_owned(), at("split")),
             ("cleaning.missingness_strategy".to_owned(), at("fill")),

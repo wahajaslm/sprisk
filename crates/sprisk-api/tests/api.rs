@@ -4371,6 +4371,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("question.unit_of_prediction", "needs_run"),
         ("data.exact_duplicates", "needs_run"),
         ("data.missing_markers", "needs_run"),
+        ("data.text_spelling", "needs_run"),
         ("data.type_repair", "needs_run"),
         ("split.method", "settled"),
         ("question.class_balance", "waiting"),
@@ -4393,7 +4394,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([2, 3, 4, 5]),
+        json!([2, 3, 4, 5, 6]),
         "the split already matches, so the flow must run next: {review}"
     );
 }
@@ -4658,4 +4659,29 @@ async fn after_a_run_the_target_on_the_train_rows_settles_the_task_and_class_bal
             "{decides}: {statuses:?}"
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn values_that_differ_only_in_case_are_lowercased_before_the_split() {
+    let api = api().await;
+    forest_flow(&api).await;
+    let mut csv = String::from("age,city,returned_within_30d\n");
+    for age in 20..80 {
+        let city = ["Paris", "paris ", "Lyon"][usize::try_from(age % 3).unwrap()];
+        csv.push_str(&format!("{age},{city},{}\n", u8::from(age >= 50)));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+    run_version(&api, BASE).await;
+
+    let spelling = propose_for(&api, BASE, "split", "data.text_spelling").await;
+    assert_eq!(
+        spelling["recommended_alternative_id"], "normalise",
+        "{spelling}"
+    );
+    let effect = recommended_effect(&spelling);
+    assert_eq!(effect["before"], "split", "{effect}");
+    assert_eq!(
+        effect["params"],
+        json!({"columns": ["city"], "lowercase": true})
+    );
 }
