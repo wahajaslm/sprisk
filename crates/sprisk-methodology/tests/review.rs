@@ -62,6 +62,7 @@ fn supervised(rule: &MethodologyRule) -> bool {
 fn planned(pipeline: &PipelineVersion) -> Vec<(String, Option<String>)> {
     let catalog = catalog();
     plan(&catalog, pipeline, supervised)
+        .unwrap()
         .iter()
         .map(|p| {
             (
@@ -119,7 +120,7 @@ fn temporal(effect: Value) -> Value {
 fn split_item(outcome: Outcome) -> Value {
     let catalog = catalog();
     let pipeline = filled_linear();
-    let planned = plan(&catalog, &pipeline, supervised);
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
     serde_json::to_value(item(&planned[0], outcome).unwrap()).unwrap()
 }
 
@@ -201,7 +202,7 @@ fn a_rule_behind_an_open_item_waits_for_it() {
 fn a_rule_with_no_step_says_which_steps_it_decides() {
     let catalog = catalog();
     let pipeline = filled_linear();
-    let planned = plan(&catalog, &pipeline, supervised);
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let scaling: &Planned = planned.iter().find(|p| p.subject.is_none()).unwrap();
     let item = serde_json::to_value(item(scaling, Outcome::NoSubject).unwrap()).unwrap();
     assert_eq!(item["status"], "no_subject");
@@ -225,7 +226,7 @@ fn index_of(planned: &[Planned], decides: &str) -> usize {
 fn a_rule_that_measures_rows_after_an_open_upstream_step_waits_for_it() {
     let catalog = catalog();
     let pipeline = filled_linear();
-    let planned = plan(&catalog, &pipeline, supervised);
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let mut open = vec![false; planned.len()];
     open[index_of(&planned, "cleaning.missingness_strategy")] = true;
     let encoding = index_of(&planned, "features.encoding_strategy");
@@ -239,7 +240,7 @@ fn a_rule_that_measures_rows_after_an_open_upstream_step_waits_for_it() {
 fn an_open_split_makes_every_rule_that_measures_rows_wait() {
     let catalog = catalog();
     let pipeline = filled_linear();
-    let planned = plan(&catalog, &pipeline, supervised);
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let mut open = vec![false; planned.len()];
     open[0] = true;
     let missing = index_of(&planned, "cleaning.missingness_strategy");
@@ -253,7 +254,7 @@ fn an_open_split_makes_every_rule_that_measures_rows_wait() {
 fn with_nothing_open_before_it_a_rule_does_not_wait() {
     let catalog = catalog();
     let pipeline = filled_linear();
-    let planned = plan(&catalog, &pipeline, supervised);
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let open = vec![false; planned.len()];
     let encoding = index_of(&planned, "features.encoding_strategy");
     assert_eq!(waits_on(&pipeline, &planned, encoding, &open), None);
@@ -263,7 +264,7 @@ fn with_nothing_open_before_it_a_rule_does_not_wait() {
 fn next_lists_the_open_items_that_wait_for_nothing() {
     let catalog = catalog();
     let pipeline = filled_linear();
-    let planned = plan(&catalog, &pipeline, supervised);
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let effect = json!({ "kind": "replace_node", "node_id": "split",
                          "operator": "sprisk.validation.temporal_split@1.0.0", "params": {} });
     let items = vec![
@@ -309,4 +310,41 @@ fn a_rule_fits_a_task_when_one_of_its_steps_is_not_a_model_or_is_a_model_for_tha
         "clustering.algorithm_choice",
         TaskType::Classification
     ));
+}
+
+#[test]
+fn a_shortlist_with_no_single_pick_is_a_proposal_to_compare() {
+    let mut proposal = serde_json::to_value(split_proposal(without_effect())).unwrap();
+    proposal
+        .as_object_mut()
+        .unwrap()
+        .remove("recommended_alternative_id");
+    proposal["shortlist"] = json!(["temporal"]);
+    let outcome = Outcome::Proposed {
+        proposal: Box::new(parse(&proposal.to_string()).unwrap()),
+        decided: false,
+    };
+    let item = split_item(outcome);
+    assert_eq!(item["status"], "proposal");
+    assert_eq!(item["reason"], "Compare the shortlist: temporal.");
+}
+
+#[test]
+fn a_recommendation_the_proposal_does_not_offer_is_an_error() {
+    let mut proposal = serde_json::to_value(split_proposal(without_effect())).unwrap();
+    proposal["recommended_alternative_id"] = json!("group");
+    let catalog = catalog();
+    let pipeline = filled_linear();
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
+    let outcome = Outcome::Proposed {
+        proposal: Box::new(parse(&proposal.to_string()).unwrap()),
+        decided: false,
+    };
+    assert!(item(&planned[0], outcome).is_err());
+}
+
+fn without_effect() -> Value {
+    let mut alternative = temporal(Value::Null);
+    alternative.as_object_mut().unwrap().remove("effect");
+    alternative
 }

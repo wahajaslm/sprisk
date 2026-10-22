@@ -39,6 +39,7 @@ use sprisk_contracts::{
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
+use sprisk_methodology::review::SPLIT_DECISION;
 use sprisk_registry::Registry;
 use sprisk_scheduler::{ProcessWorkers, Scheduler, Settings};
 use sprisk_store::{SqliteStore, StoreError};
@@ -96,7 +97,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/pipeline_versions/{id}/methodology/review",
-            post(review_methodology),
+            get(review_methodology),
         )
         .route(
             "/pipeline_versions/{id}/methodology/proposals/{node_id}/{decides}",
@@ -1042,7 +1043,8 @@ async fn review_methodology(
     let task = question.task.value;
     let planned = review::plan(&state.rules, &pipeline, |rule| {
         review::fits_task(rule, task, state.registry.operators())
-    });
+    })
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
     let applied: Vec<MethodologyDecisionId> = pipeline
         .nodes
         .iter()
@@ -1067,14 +1069,12 @@ async fn review_methodology(
                     decided: decided(node, planned_rule.rule),
                     proposal: Box::new(proposal),
                 },
-                Err(ApiError::BadRequest {
-                    code: "methodology_evidence_unavailable",
-                    message,
-                }) => Outcome::NeedsRun(message),
-                Err(ApiError::BadRequest {
-                    code: "methodology_not_applicable",
-                    message,
-                }) => Outcome::NotApplicable(message),
+                Err(ApiError::BadRequest { code, message }) if code == EVIDENCE_UNAVAILABLE => {
+                    Outcome::NeedsRun(message)
+                }
+                Err(ApiError::BadRequest { code, message }) if code == NOT_APPLICABLE => {
+                    Outcome::NotApplicable(message)
+                }
                 Err(other) => return Err(other),
             }
         } else {
@@ -1096,9 +1096,6 @@ async fn review_methodology(
         parse(&review.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?,
     ))
 }
-
-/// What the split rule decides, whatever its version.
-const SPLIT_DECISION: &str = "split.method";
 
 /// The decision a comparison of `node` measures: its model shortlist when a shortlist rule
 /// decides it (ADR-0044), else the first rule of a step that fits on train rows (ADR-0050).
@@ -1152,16 +1149,20 @@ fn keeps_flow_facts(registry: &Registry, node: &sprisk_contracts::Node) -> bool 
     rows_only || (keeps_train_rows(registry, node) && !zero_fill)
 }
 
+/// Codes the review turns into statuses, so a rename cannot slip past it.
+const NOT_APPLICABLE: &str = "methodology_not_applicable";
+const EVIDENCE_UNAVAILABLE: &str = "methodology_evidence_unavailable";
+
 fn not_applicable(message: String) -> ApiError {
     ApiError::BadRequest {
-        code: "methodology_not_applicable",
+        code: NOT_APPLICABLE,
         message,
     }
 }
 
 fn evidence_unavailable(message: String) -> ApiError {
     ApiError::BadRequest {
-        code: "methodology_evidence_unavailable",
+        code: EVIDENCE_UNAVAILABLE,
         message,
     }
 }

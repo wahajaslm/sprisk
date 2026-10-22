@@ -127,10 +127,9 @@ impl RuleCatalog {
     /// order: by stage, then id. Each decides something else: one owner per decision
     /// (ADR-0042, ADR-0053).
     pub fn rules_for_operator(&self, operator: &str) -> impl Iterator<Item = &MethodologyRule> {
-        let name = operator.split('@').next().unwrap_or_default();
         let mut rules: Vec<&MethodologyRule> = self
             .rules()
-            .filter(|rule| rule.applies_to.iter().any(|a| a.as_str() == name))
+            .filter(|rule| decides(rule, operator))
             .collect();
         // The stage enum lists stages in workflow order; rules() is already in id order.
         rules.sort_by_key(|rule| rule.stage);
@@ -284,4 +283,11 @@ fn read_source(
         path: manifest.to_owned(),
         source,
     })
+}
+
+/// Whether `rule` decides steps running `operator` (`<id>@<version>`): its `applies_to`
+/// names the operator without version (ADR-0045).
+pub fn decides(rule: &MethodologyRule, operator: &str) -> bool {
+    let name = operator.split('@').next().unwrap_or_default();
+    rule.applies_to.iter().any(|a| a.as_str() == name)
 }

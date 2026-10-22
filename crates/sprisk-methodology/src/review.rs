@@ -1,13 +1,14 @@
 //! The methodology review (ADR-0059): every active rule that fits the question, with the
 //! step it decides, in decision order, and each one's status.
 
-use serde_json::{Value, json};
+use serde_json::json;
 use sprisk_contracts::{
-    DecisionProposal, MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule,
-    MethodologyRuleStatus, Node, Operator, PipelineVersion, TaskType, parse,
+    DecisionProposal, GraphEffect, MethodologyAlternativeApplicability, MethodologyReviewItem,
+    MethodologyReviewStatus, MethodologyRule, MethodologyRuleStatus, Node, Operator,
+    PipelineVersion, TaskType, parse,
 };
 
-use crate::{ResolveError, RuleCatalog, compare::upstream, facts};
+use crate::{ResolveError, RuleCatalog, catalog::decides, compare::upstream, facts};
 
 /// What the split rule decides. A rule that measures train rows needs it decided first.
 pub const SPLIT_DECISION: &str = "split.method";
@@ -42,7 +43,7 @@ pub fn plan<'a>(
     catalog: &'a RuleCatalog,
     pipeline: &'a PipelineVersion,
     fits: impl Fn(&MethodologyRule) -> bool,
-) -> Vec<Planned<'a>> {
+) -> Result<Vec<Planned<'a>>, ResolveError> {
     let mut pending = Vec::new();
     for rule in catalog
         .rules()
@@ -51,7 +52,7 @@ pub fn plan<'a>(
         let subjects: Vec<&Node> = pipeline
             .nodes
             .iter()
-            .filter(|n| decides_step(rule, n.operator.as_str()))
+            .filter(|n| decides(rule, n.operator.as_str()))
             .collect();
         if subjects.is_empty() && fits(rule) {
             pending.push(Planned {
@@ -74,20 +75,16 @@ pub fn plan<'a>(
 
     let mut ordered = Vec::with_capacity(pending.len());
     while !pending.is_empty() {
-        // `comes_after` never holds both ways: the split rule reads no train rows, and
-        // upstream is strict on an acyclic flow. So some item is always free; take the first.
         let free = pending
             .iter()
             .position(|p| !pending.iter().any(|q| comes_after(pipeline, p, q)))
-            .unwrap_or(0);
+            .ok_or_else(|| {
+                let stuck: Vec<String> = pending.iter().map(|p| p.rule.id.to_string()).collect();
+                ResolveError::Unordered(stuck.join(", "))
+            })?;
         ordered.push(pending.remove(free));
     }
-    ordered
-}
-
-fn decides_step(rule: &MethodologyRule, operator: &str) -> bool {
-    let name = operator.split('@').next().unwrap_or_default();
-    rule.applies_to.iter().any(|a| a.as_str() == name)
+    Ok(ordered)
 }
 
 /// Whether `later` must wait for `earlier`: it measures train rows, and `earlier` decides
@@ -112,17 +109,17 @@ pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planne
 pub fn item(planned: &Planned, outcome: Outcome) -> Result<MethodologyReviewItem, ResolveError> {
     let (status, reason, recommended) = match outcome {
         Outcome::Proposed { proposal, decided } => verdict(&proposal, planned.subject, decided)?,
-        Outcome::NeedsRun(why) => ("needs_run", why, None),
-        Outcome::NotApplicable(why) => ("not_applicable", why, None),
+        Outcome::NeedsRun(why) => (MethodologyReviewStatus::NeedsRun, why, None),
+        Outcome::NotApplicable(why) => (MethodologyReviewStatus::NotApplicable, why, None),
         Outcome::Waiting { on } => (
-            "waiting",
+            MethodologyReviewStatus::Waiting,
             format!("Waits for {on}, which is still open."),
             None,
         ),
         Outcome::NoSubject => {
             let operators: Vec<&str> = planned.rule.applies_to.iter().map(|a| a.as_str()).collect();
             let why = format!("No step runs {} yet.", operators.join(" or "));
-            ("no_subject", why, None)
+            (MethodologyReviewStatus::NoSubject, why, None)
         }
     };
     let mut built = json!({
@@ -147,54 +144,51 @@ fn verdict(
     proposal: &DecisionProposal,
     subject: Option<&Node>,
     decided: bool,
-) -> Result<(&'static str, String, Option<String>), ResolveError> {
-    let proposal = serde_json::to_value(proposal)?;
-    let recommended = proposal["recommended_alternative_id"]
-        .as_str()
-        .map(str::to_owned);
+) -> Result<(MethodologyReviewStatus, String, Option<String>), ResolveError> {
+    let recommended = proposal
+        .recommended_alternative_id
+        .as_ref()
+        .map(|r| r.as_str().to_owned());
     if decided {
         return Ok((
-            "settled",
+            MethodologyReviewStatus::Settled,
             "The step carries the decision applied from this rule.".into(),
             recommended,
         ));
     }
     let Some(id) = recommended.as_deref() else {
-        let shortlist: Vec<&str> = proposal["shortlist"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .collect();
+        let shortlist: Vec<&str> = proposal.shortlist.iter().map(|s| s.as_str()).collect();
         return Ok((
-            "proposal",
+            MethodologyReviewStatus::Proposal,
             format!("Compare the shortlist: {}.", shortlist.join(", ")),
             None,
         ));
     };
-    let alternatives = proposal["alternatives"].as_array().into_iter().flatten();
-    let chosen = alternatives
-        .clone()
-        .find(|a| a["id"] == id)
+    let chosen = proposal
+        .alternatives
+        .iter()
+        .find(|a| a.id.as_str() == id)
         .ok_or_else(|| ResolveError::UndeclaredAlternative(id.to_owned()))?;
-    let reason = chosen["reason"].as_str().unwrap_or_default().to_owned();
-    let status = if chosen["applicability"] == "needs_fact" {
-        "needs_fact"
-    } else if changes_nothing(&chosen["effect"], subject) {
-        "settled"
+    let status = if chosen.applicability == MethodologyAlternativeApplicability::NeedsFact {
+        MethodologyReviewStatus::NeedsFact
+    } else if changes_nothing(chosen.effect.as_ref(), subject) {
+        MethodologyReviewStatus::Settled
     } else {
-        "proposal"
+        MethodologyReviewStatus::Proposal
     };
-    Ok((status, reason, recommended))
+    Ok((status, chosen.reason.to_string(), recommended))
 }
 
 /// No effect, or a replacement by the operator and params the step already has.
-fn changes_nothing(effect: &Value, subject: Option<&Node>) -> bool {
-    match (effect["kind"].as_str(), subject) {
+fn changes_nothing(effect: Option<&GraphEffect>, subject: Option<&Node>) -> bool {
+    match (effect, subject) {
         (None, _) => true,
-        (Some("replace_node"), Some(node)) => {
-            effect["operator"] == node.operator.as_str() && effect["params"] == json!(node.params)
-        }
+        (
+            Some(GraphEffect::ReplaceNode {
+                operator, params, ..
+            }),
+            Some(node),
+        ) => operator.as_str() == node.operator.as_str() && *params == node.params,
         _ => false,
     }
 }
@@ -243,7 +237,6 @@ pub fn fits_task<'a>(
     mut operators: impl Iterator<Item = &'a Operator>,
 ) -> bool {
     operators.any(|o| {
-        decides_step(rule, o.id.as_str())
-            && o.model.as_ref().is_none_or(|m| m.tasks.contains(&task))
+        decides(rule, o.id.as_str()) && o.model.as_ref().is_none_or(|m| m.tasks.contains(&task))
     })
 }

@@ -7,7 +7,7 @@ mod decision;
 pub mod facts;
 pub mod review;
 pub mod search;
-pub use catalog::{CatalogError, RuleCatalog};
+pub use catalog::{CatalogError, RuleCatalog, decides};
 pub use compare::{
     Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, StudySearch, TrialStep, comparison,
     preparation_comparison, study_comparison, trial_steps,
@@ -41,6 +41,8 @@ pub enum ResolveError {
     Selection(String),
     #[error("cannot remove the step: output {0} has no input of the same name to take its place")]
     Unremovable(String),
+    #[error("these rules wait on each other, so none can go first: {0}")]
+    Unordered(String),
     #[error("cannot add the step: {0}")]
     NotInsertable(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]

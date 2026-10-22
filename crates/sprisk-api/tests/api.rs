@@ -4341,7 +4341,7 @@ async fn forest_flow(api: &Api) {
 
 async fn review(api: &Api) -> Value {
     let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (status, review) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    let (status, review) = call(&api.app, "GET", &uri, None).await;
     assert_eq!(status, StatusCode::OK, "{review}");
     review
 }
@@ -4419,7 +4419,7 @@ async fn after_a_run_the_review_decides_the_rules_that_measure_rows_and_lists_wh
         );
     }
     let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (_, again) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    let (_, again) = call(&api.app, "GET", &uri, None).await;
     assert_eq!(statuses(&again), items, "the review is deterministic");
 }
 
@@ -4435,7 +4435,52 @@ async fn a_flow_with_no_question_cannot_be_reviewed() {
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let uri = format!("/pipeline_versions/{BASE}/methodology/review");
-    let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    let (status, body) = call(&api.app, "GET", &uri, None).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert_eq!(body["code"], "question_required", "{body}");
+}
+
+#[tokio::test]
+async fn an_unknown_flow_has_no_review() {
+    let api = api().await;
+    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
+    let (status, body) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}
+
+#[tokio::test]
+async fn a_step_that_carries_the_rule_s_applied_decision_is_settled() {
+    let api = api().await;
+    forest_flow(&api).await;
+    let uri = format!("/pipeline_versions/{BASE}/methodology/split/split/proposals");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let other = proposal["alternatives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| {
+            a["applicability"] == "applicable" && a["id"] != proposal["recommended_alternative_id"]
+        })
+        .unwrap();
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({ "alternative_id": other["id"], "reason": "the person prefers it",
+                         "idempotency_key": "review-override-1" });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+
+    let uri = format!(
+        "/pipeline_versions/{}/methodology/review",
+        applied["pipeline"]["id"].as_str().unwrap()
+    );
+    let (status, review) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{review}");
+    assert_eq!(
+        statuses(&review)[0],
+        ("split.method".to_owned(), "settled".to_owned()),
+        "{review}"
+    );
 }
