@@ -16,6 +16,7 @@ const entities: [keyof Entities, string][] = [
   ["QuestionVersion", "question_version"],
   ["MethodologyCheck", "methodology_check"],
   ["DecisionProposal", "decision_proposal"],
+  ["MethodologyReview", "methodology_review"],
   ["ApplyMethodologyDecision", "apply_methodology_decision"],
   ["MethodologyDecision", "methodology_decision"],
   ["AppliedMethodologyDecision", "applied_methodology_decision"],

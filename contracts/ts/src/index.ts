@@ -16,6 +16,7 @@ export interface Entities {
   QuestionVersion: C.QuestionVersion;
   MethodologyCheck: C.MethodologyCheck;
   DecisionProposal: C.DecisionProposal;
+  MethodologyReview: C.MethodologyReview;
   ApplyMethodologyDecision: C.ApplyMethodologyDecision;
   MethodologyDecision: C.MethodologyDecision;
   AppliedMethodologyDecision: C.AppliedMethodologyDecision;

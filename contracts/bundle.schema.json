@@ -2030,6 +2030,90 @@
         }
       }
     },
+    "MethodologyReview": {
+      "title": "MethodologyReview",
+      "description": "Every applicable rule's status on one pipeline version, in decision order (ADR-0059). Read-only: it stores nothing.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "pipeline_version_id",
+        "items",
+        "next"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "sprisk.methodology_review/v1"
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MethodologyReviewItem"
+          }
+        },
+        "next": {
+          "type": "array",
+          "description": "Indexes into items of the open items with nothing open before them.",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "MethodologyReviewItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule",
+        "decides",
+        "stage",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "rule": {
+          "$ref": "#/$defs/CheckRef"
+        },
+        "decides": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "stage": {
+          "$ref": "#/$defs/MethodologyStage"
+        },
+        "subject_node_id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "status": {
+          "$ref": "#/$defs/MethodologyReviewStatus"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommended_alternative_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        }
+      }
+    },
+    "MethodologyReviewStatus": {
+      "type": "string",
+      "description": "settled: the flow matches the rule's decision. proposal: the rule wants a change. needs_fact: a person must state a fact. needs_run: it measures train rows the flow has not produced. waiting: an earlier open item changes what it reads. no_subject: no step for it to decide yet. not_applicable: the rule does not apply to this step.",
+      "enum": [
+        "settled",
+        "proposal",
+        "needs_fact",
+        "needs_run",
+        "waiting",
+        "no_subject",
+        "not_applicable"
+      ]
+    },
     "ApplyMethodologyDecision": {
       "title": "ApplyMethodologyDecision",
       "type": "object",

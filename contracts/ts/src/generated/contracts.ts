@@ -194,6 +194,14 @@ export type GraphEffect =
  */
 export type CheckRef = string;
 /**
+ * settled: the flow matches the rule's decision. proposal: the rule wants a change. needs_fact: a person must state a fact. needs_run: it measures train rows the flow has not produced. waiting: an earlier open item changes what it reads. no_subject: no step for it to decide yet. not_applicable: the rule does not apply to this step.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyReviewStatus".
+ */
+export type MethodologyReviewStatus =
+  "settled" | "proposal" | "needs_fact" | "needs_run" | "waiting" | "no_subject" | "not_applicable";
+/**
  * Stable within a notebook across versions, as in Jupyter's nbformat 4.5.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1336,6 +1344,34 @@ export interface DecisionProposal {
   shortlist?: string[];
   fingerprint: ContentHash;
   created_at: Timestamp;
+}
+/**
+ * Every applicable rule's status on one pipeline version, in decision order (ADR-0059). Read-only: it stores nothing.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyReview".
+ */
+export interface MethodologyReview {
+  schema_version: "sprisk.methodology_review/v1";
+  pipeline_version_id: PipelineVersionId;
+  items: MethodologyReviewItem[];
+  /**
+   * Indexes into items of the open items with nothing open before them.
+   */
+  next: number[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyReviewItem".
+ */
+export interface MethodologyReviewItem {
+  rule: CheckRef;
+  decides: string;
+  stage: MethodologyStage;
+  subject_node_id?: NodeId;
+  status: MethodologyReviewStatus;
+  reason: string;
+  recommended_alternative_id?: string;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

@@ -515,6 +515,20 @@ class MethodologyAlternative(StrictModel):
     effect: GraphEffect | None = None
 
 
+class NextItem(RootModel[int]):
+    root: Annotated[int, Field(ge=0)]
+
+
+class MethodologyReviewStatus(StrEnum):
+    settled = "settled"
+    proposal = "proposal"
+    needs_fact = "needs_fact"
+    needs_run = "needs_run"
+    waiting = "waiting"
+    no_subject = "no_subject"
+    not_applicable = "not_applicable"
+
+
 class ApplyMethodologyDecision(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1551,6 +1565,21 @@ class DecisionProposal(StrictModel):
     created_at: Timestamp
 
 
+class MethodologyReviewItem(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    rule: CheckRef
+    decides: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")]
+    stage: MethodologyStage
+    subject_node_id: NodeId | None = None
+    status: MethodologyReviewStatus
+    reason: Annotated[str, Field(min_length=1)]
+    recommended_alternative_id: Annotated[str | None, Field(pattern="^[a-z][a-z0-9_]{0,62}$")] = (
+        None
+    )
+
+
 class MethodologyDecision(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2169,6 +2198,19 @@ class MethodologyRule(StrictModel):
         ),
     ]
     verification: Verification
+
+
+class MethodologyReview(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.methodology_review/v1"]
+    pipeline_version_id: PipelineVersionId
+    items: list[MethodologyReviewItem]
+    next: Annotated[
+        list[NextItem],
+        Field(description="Indexes into items of the open items with nothing open before them."),
+    ]
 
 
 class NotebookVersion(StrictModel):
