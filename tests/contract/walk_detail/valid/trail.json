@@ -1,0 +1,66 @@
+{
+  "walk": {
+    "schema_version": "sprisk.walk/v1",
+    "id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    "sources": [
+      "/data/x_train.csv"
+    ],
+    "max_actions": 40,
+    "max_wall_seconds": 3600,
+    "status": "stopped",
+    "head_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+    "created_at": "2026-10-22T10:00:00Z",
+    "stop": {
+      "reason": "needs_person",
+      "detail": "question.hard_constraints: state how far a person must follow each prediction."
+    },
+    "finished_at": "2026-10-22T10:05:00Z"
+  },
+  "steps": [
+    {
+      "schema_version": "sprisk.walk_step/v1",
+      "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "round": 0,
+      "action": "build",
+      "made_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "reason": "Load, Split and a baseline model: the steps every flow has.",
+      "created_at": "2026-10-22T10:00:00Z"
+    },
+    {
+      "schema_version": "sprisk.walk_step/v1",
+      "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "round": 1,
+      "action": "run",
+      "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "reason": "data.exact_duplicates measures rows the flow has not produced.",
+      "created_at": "2026-10-22T10:01:00Z"
+    },
+    {
+      "schema_version": "sprisk.walk_step/v1",
+      "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "round": 2,
+      "action": "apply",
+      "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "rule": "methodology.supervised.data_split@1.0.0",
+      "decides": "split.method",
+      "subject_node_id": "split",
+      "alternative_id": "stratified_split",
+      "methodology_decision_id": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "made_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+      "reason": "Unbalanced classes: keep each class's share on both sides.",
+      "created_at": "2026-10-22T10:02:00Z"
+    },
+    {
+      "schema_version": "sprisk.walk_step/v1",
+      "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+      "round": 3,
+      "action": "stop",
+      "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+      "reason": "Only questions for a person remain.",
+      "created_at": "2026-10-22T10:03:00Z"
+    }
+  ]
+}

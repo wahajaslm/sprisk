@@ -1062,6 +1062,89 @@ class TrialState(StrEnum):
     cancelled = "cancelled"
 
 
+class WalkId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^wlk_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
+class WalkSource(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class WalkSources(RootModel[list[WalkSource]]):
+    root: Annotated[
+        list[WalkSource],
+        Field(
+            description="Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule."
+        ),
+    ]
+
+
+class WalkStatus(StrEnum):
+    walking = "walking"
+    stopped = "stopped"
+
+
+class WalkStopReason(StrEnum):
+    complete = "complete"
+    needs_person = "needs_person"
+    limitation = "limitation"
+    uncovered = "uncovered"
+    run_failed = "run_failed"
+    stale = "stale"
+    budget_exhausted = "budget_exhausted"
+    error = "error"
+
+
+class WalkAction(StrEnum):
+    build = "build"
+    run = "run"
+    apply = "apply"
+    compare = "compare"
+    stop = "stop"
+
+
+class WalkStep(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.walk_step/v1"]
+    walk_id: WalkId
+    round: Annotated[int, Field(description="Its place in the trail, from 0.", ge=0)]
+    action: WalkAction
+    pipeline_version_id: Annotated[
+        PipelineVersionId | None, Field(description="The version it reviewed. Absent for build.")
+    ] = None
+    rule: Annotated[
+        CheckRef | None, Field(description="The rule it acted for. Absent for build and run.")
+    ] = None
+    decides: Annotated[
+        str | None,
+        Field(
+            description="What the rule decides. Absent for build, run and stop.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ] = None
+    subject_node_id: Annotated[
+        NodeId | None,
+        Field(description="The step the rule decided. Absent for build, run and stop."),
+    ] = None
+    alternative_id: Annotated[
+        str | None,
+        Field(description="The alternative it applied.", pattern="^[a-z][a-z0-9_]{0,62}$"),
+    ] = None
+    methodology_decision_id: Annotated[
+        MethodologyDecisionId | None, Field(description="The decision an apply recorded.")
+    ] = None
+    made_pipeline_version_id: Annotated[
+        PipelineVersionId | None, Field(description="The version a build or apply made.")
+    ] = None
+    run_id: Annotated[RunId | None, Field(description="The run a run step started.")] = None
+    reason: Annotated[
+        str, Field(description="Why, from the review item it acted on.", min_length=1)
+    ]
+    created_at: Timestamp
+
+
 class Handshake(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2093,6 +2176,32 @@ class StudyDetail(StrictModel):
     run: Run
 
 
+class CreateWalk(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    idempotency_key: Annotated[str, Field(max_length=128, min_length=8)]
+    project_id: ProjectId
+    question_version_id: QuestionVersionId
+    sources: WalkSources
+    max_actions: Annotated[
+        int, Field(description="Most actions (applies, runs, comparisons) the walk may take.", ge=0)
+    ]
+    max_wall_seconds: Annotated[
+        int, Field(description="Longest the walk may take, counted from its creation.", ge=0)
+    ]
+
+
+class WalkStop(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    reason: WalkStopReason
+    detail: Annotated[
+        str, Field(description="What is open, for a person to read. Never parsed.", min_length=1)
+    ]
+
+
 class LeaseAttempt(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2527,6 +2636,39 @@ class CandidateResult(StrictModel):
             description="Each declared guardrail, in declared order, as this candidate met it. Absent: none were declared."
         ),
     ] = None
+
+
+class Walk(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.walk/v1"]
+    id: WalkId
+    project_id: ProjectId
+    question_version_id: QuestionVersionId
+    sources: WalkSources
+    max_actions: Annotated[int, Field(ge=0)]
+    max_wall_seconds: Annotated[int, Field(ge=0)]
+    status: WalkStatus
+    head_pipeline_version_id: Annotated[
+        PipelineVersionId | None,
+        Field(
+            description="The latest version the walk made. Absent when it stopped before building one."
+        ),
+    ] = None
+    stop: Annotated[WalkStop | None, Field(description="Why it stopped. Present once stopped.")] = (
+        None
+    )
+    created_at: Timestamp
+    finished_at: Annotated[Timestamp | None, Field(description="Set once stopped.")] = None
+
+
+class WalkDetail(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    walk: Walk
+    steps: list[WalkStep]
 
 
 class WorkerMessage(

@@ -1,0 +1,7 @@
+{
+  "idempotency_key": "walk-rakuten-0001",
+  "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "max_actions": 40,
+  "max_wall_seconds": 3600
+}

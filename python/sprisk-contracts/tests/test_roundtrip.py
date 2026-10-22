@@ -21,6 +21,7 @@ from sprisk_contracts import (
     CodeSplitRequest,
     CreateRun,
     CreateStudy,
+    CreateWalk,
     DatasetProfile,
     DecisionProposal,
     FigureSet,
@@ -55,6 +56,9 @@ from sprisk_contracts import (
     StudyDetail,
     TablePage,
     Trial,
+    Walk,
+    WalkDetail,
+    WalkStep,
     WorkerMessage,
 )
 
@@ -102,6 +106,10 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (CreateStudy, "create_study"),
     (Study, "study"),
     (StudyDetail, "study_detail"),
+    (CreateWalk, "create_walk"),
+    (Walk, "walk"),
+    (WalkDetail, "walk_detail"),
+    (WalkStep, "walk_step"),
     (Trial, "trial"),
     (NotebookVersion, "notebook_version"),
     (NotebookExecute, "notebook_execute"),

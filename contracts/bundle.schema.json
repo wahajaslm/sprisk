@@ -4294,6 +4294,268 @@
         }
       }
     },
+    "WalkId": {
+      "type": "string",
+      "pattern": "^wlk_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "CreateWalk": {
+      "title": "CreateWalk",
+      "description": "Request for the engine to build, run and judge a flow from a question and its data (ADR-0060). Replaying the key with the same body returns the same walk; with another body, 409.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "idempotency_key",
+        "project_id",
+        "question_version_id",
+        "sources",
+        "max_actions",
+        "max_wall_seconds"
+      ],
+      "properties": {
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128
+        },
+        "project_id": {
+          "$ref": "#/$defs/ProjectId"
+        },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "sources": {
+          "$ref": "#/$defs/WalkSources"
+        },
+        "max_actions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Most actions (applies, runs, comparisons) the walk may take."
+        },
+        "max_wall_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Longest the walk may take, counted from its creation."
+        }
+      }
+    },
+    "WalkSources": {
+      "type": "array",
+      "description": "Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "Walk": {
+      "title": "Walk",
+      "description": "The engine walking the methodology map for one question (ADR-0060). The one mutable control record: its status, head and stop change as it walks. What it did is its WalkSteps, which never change.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "project_id",
+        "question_version_id",
+        "sources",
+        "max_actions",
+        "max_wall_seconds",
+        "status",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.walk/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/WalkId"
+        },
+        "project_id": {
+          "$ref": "#/$defs/ProjectId"
+        },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "sources": {
+          "$ref": "#/$defs/WalkSources"
+        },
+        "max_actions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_wall_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/$defs/WalkStatus"
+        },
+        "head_pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId",
+          "description": "The latest version the walk made. Absent when it stopped before building one."
+        },
+        "stop": {
+          "$ref": "#/$defs/WalkStop",
+          "description": "Why it stopped. Present once stopped."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "finished_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "Set once stopped."
+        }
+      }
+    },
+    "WalkStatus": {
+      "type": "string",
+      "description": "walking: it has more to do. stopped: it ended, for the reason in `stop`.",
+      "enum": [
+        "walking",
+        "stopped"
+      ]
+    },
+    "WalkStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "detail"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/WalkStopReason"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What is open, for a person to read. Never parsed."
+        }
+      }
+    },
+    "WalkStopReason": {
+      "type": "string",
+      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.",
+      "enum": [
+        "complete",
+        "needs_person",
+        "limitation",
+        "uncovered",
+        "run_failed",
+        "stale",
+        "budget_exhausted",
+        "error"
+      ]
+    },
+    "WalkAction": {
+      "type": "string",
+      "description": "build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. stop: ended the walk.",
+      "enum": [
+        "build",
+        "run",
+        "apply",
+        "compare",
+        "stop"
+      ]
+    },
+    "WalkStep": {
+      "title": "WalkStep",
+      "description": "One thing the engine did, and why (ADR-0060). Immutable; a walk's trail is its steps in round order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "walk_id",
+        "round",
+        "action",
+        "reason",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.walk_step/v1"
+          ]
+        },
+        "walk_id": {
+          "$ref": "#/$defs/WalkId"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Its place in the trail, from 0."
+        },
+        "action": {
+          "$ref": "#/$defs/WalkAction"
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId",
+          "description": "The version it reviewed. Absent for build."
+        },
+        "rule": {
+          "$ref": "#/$defs/CheckRef",
+          "description": "The rule it acted for. Absent for build and run."
+        },
+        "decides": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+          "description": "What the rule decides. Absent for build, run and stop."
+        },
+        "subject_node_id": {
+          "$ref": "#/$defs/NodeId",
+          "description": "The step the rule decided. Absent for build, run and stop."
+        },
+        "alternative_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "description": "The alternative it applied."
+        },
+        "methodology_decision_id": {
+          "$ref": "#/$defs/MethodologyDecisionId",
+          "description": "The decision an apply recorded."
+        },
+        "made_pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId",
+          "description": "The version a build or apply made."
+        },
+        "run_id": {
+          "$ref": "#/$defs/RunId",
+          "description": "The run a run step started."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why, from the review item it acted on."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "WalkDetail": {
+      "title": "WalkDetail",
+      "description": "A walk and its trail, oldest step first. A walk takes at most max_actions steps, so the trail is bounded.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "walk",
+        "steps"
+      ],
+      "properties": {
+        "walk": {
+          "$ref": "#/$defs/Walk"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WalkStep"
+          }
+        }
+      }
+    },
     "WorkerMessage": {
       "title": "WorkerMessage",
       "description": "Local worker protocol message (arch doc §11). Tagged by `type`.",

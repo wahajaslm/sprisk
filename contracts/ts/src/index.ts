@@ -54,6 +54,10 @@ export interface Entities {
   CreateStudy: C.CreateStudy;
   Study: C.Study;
   StudyDetail: C.StudyDetail;
+  CreateWalk: C.CreateWalk;
+  Walk: C.Walk;
+  WalkDetail: C.WalkDetail;
+  WalkStep: C.WalkStep;
   Trial: C.Trial;
 }
 

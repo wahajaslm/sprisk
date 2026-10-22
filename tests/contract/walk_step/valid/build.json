@@ -1,0 +1,9 @@
+{
+  "schema_version": "sprisk.walk_step/v1",
+  "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "round": 0,
+  "action": "build",
+  "made_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "reason": "Load, Split and a baseline model: the steps every flow has.",
+  "created_at": "2026-10-22T10:00:00Z"
+}

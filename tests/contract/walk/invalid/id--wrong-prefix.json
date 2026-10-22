@@ -1,0 +1,14 @@
+{
+  "schema_version": "sprisk.walk/v1",
+  "id": "std_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "sources": [
+    "/data/x_train.csv"
+  ],
+  "max_actions": 40,
+  "max_wall_seconds": 3600,
+  "status": "walking",
+  "head_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "created_at": "2026-10-22T10:00:00Z"
+}

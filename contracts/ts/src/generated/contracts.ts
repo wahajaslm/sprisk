@@ -372,6 +372,40 @@ export type StudyStatus = "running" | "completed" | "budget_reached" | "failed";
  */
 export type TrialState = "not_started" | "running" | "succeeded" | "failed" | "cancelled";
 /**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkId".
+ */
+export type WalkId = string;
+/**
+ * Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkSources".
+ */
+export type WalkSources = string[];
+/**
+ * walking: it has more to do. stopped: it ended, for the reason in `stop`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkStatus".
+ */
+export type WalkStatus = "walking" | "stopped";
+/**
+ * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkStopReason".
+ */
+export type WalkStopReason =
+  "complete" | "needs_person" | "limitation" | "uncovered" | "run_failed" | "stale" | "budget_exhausted" | "error";
+/**
+ * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. stop: ended the walk.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkAction".
+ */
+export type WalkAction = "build" | "run" | "apply" | "compare" | "stop";
+/**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2532,6 +2566,135 @@ export interface StudyDetail {
   study: Study;
   trials: Trial[];
   run: Run;
+}
+/**
+ * Request for the engine to build, run and judge a flow from a question and its data (ADR-0060). Replaying the key with the same body returns the same walk; with another body, 409.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CreateWalk".
+ */
+export interface CreateWalk {
+  idempotency_key: string;
+  project_id: ProjectId;
+  question_version_id: QuestionVersionId;
+  sources: WalkSources;
+  /**
+   * Most actions (applies, runs, comparisons) the walk may take.
+   */
+  max_actions: number;
+  /**
+   * Longest the walk may take, counted from its creation.
+   */
+  max_wall_seconds: number;
+}
+/**
+ * The engine walking the methodology map for one question (ADR-0060). The one mutable control record: its status, head and stop change as it walks. What it did is its WalkSteps, which never change.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Walk".
+ */
+export interface Walk {
+  schema_version: "sprisk.walk/v1";
+  id: WalkId;
+  project_id: ProjectId;
+  question_version_id: QuestionVersionId;
+  sources: WalkSources;
+  max_actions: number;
+  max_wall_seconds: number;
+  status: WalkStatus;
+  /**
+   * The latest version the walk made. Absent when it stopped before building one.
+   */
+  head_pipeline_version_id?: string;
+  stop?: WalkStop;
+  created_at: Timestamp;
+  /**
+   * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
+   */
+  finished_at?: string;
+}
+/**
+ * Why it stopped. Present once stopped.
+ */
+export interface WalkStop {
+  reason: WalkStopReason;
+  /**
+   * What is open, for a person to read. Never parsed.
+   */
+  detail: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkStop".
+ */
+export interface WalkStop1 {
+  reason: WalkStopReason;
+  /**
+   * What is open, for a person to read. Never parsed.
+   */
+  detail: string;
+}
+/**
+ * One thing the engine did, and why (ADR-0060). Immutable; a walk's trail is its steps in round order.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkStep".
+ */
+export interface WalkStep {
+  schema_version: "sprisk.walk_step/v1";
+  walk_id: WalkId;
+  /**
+   * Its place in the trail, from 0.
+   */
+  round: number;
+  action: WalkAction;
+  /**
+   * The version it reviewed. Absent for build.
+   */
+  pipeline_version_id?: string;
+  /**
+   * Pinned rule: <pack>.<rule>@<semver>.
+   */
+  rule?: string;
+  /**
+   * What the rule decides. Absent for build, run and stop.
+   */
+  decides?: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  subject_node_id?: string;
+  /**
+   * The alternative it applied.
+   */
+  alternative_id?: string;
+  /**
+   * The decision an apply recorded.
+   */
+  methodology_decision_id?: string;
+  /**
+   * The version a build or apply made.
+   */
+  made_pipeline_version_id?: string;
+  /**
+   * The run a run step started.
+   */
+  run_id?: string;
+  /**
+   * Why, from the review item it acted on.
+   */
+  reason: string;
+  created_at: Timestamp;
+}
+/**
+ * A walk and its trail, oldest step first. A walk takes at most max_actions steps, so the trail is bounded.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkDetail".
+ */
+export interface WalkDetail {
+  walk: Walk;
+  steps: WalkStep[];
 }
 /**
  * Worker → control plane, first message. Declares protocol version and operators the worker can run.

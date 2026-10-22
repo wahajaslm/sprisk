@@ -1,0 +1,15 @@
+{
+  "schema_version": "sprisk.walk_step/v1",
+  "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "round": -1,
+  "action": "apply",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "rule": "methodology.supervised.data_split@1.0.0",
+  "decides": "split.method",
+  "subject_node_id": "split",
+  "alternative_id": "stratified_split",
+  "methodology_decision_id": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "made_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "reason": "Unbalanced classes: keep each class's share on both sides.",
+  "created_at": "2026-10-22T10:02:00Z"
+}

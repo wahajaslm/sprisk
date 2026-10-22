@@ -9,13 +9,14 @@ use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     CellSteps, CellStepsRequest, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    CreateRun, CreateStudy, DatasetProfile, DecisionProposal, FigureSet, KeyMatches, LoadedTable,
-    MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
+    CreateRun, CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, FigureSet, KeyMatches,
+    LoadedTable, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
     NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
     PipelineVersion, Problem, QuestionVersion, RuleDecision, RuleObservation, Run,
-    SelectionDecision, Study, StudyDetail, TablePage, Trial, WorkerMessage, parse,
+    SelectionDecision, Study, StudyDetail, TablePage, Trial, Walk, WalkDetail, WalkStep,
+    WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -71,6 +72,7 @@ const ENTITIES: &[&str] = &[
     "code_split_request",
     "create_run",
     "create_study",
+    "create_walk",
     "dataset_profile",
     "decision_proposal",
     "figure_set",
@@ -105,6 +107,9 @@ const ENTITIES: &[&str] = &[
     "study_detail",
     "table_page",
     "trial",
+    "walk",
+    "walk_detail",
+    "walk_step",
     "worker_message",
 ];
 
@@ -362,4 +367,24 @@ fn trial() {
 #[test]
 fn study_detail() {
     check::<StudyDetail>("study_detail");
+}
+
+#[test]
+fn walk() {
+    check::<Walk>("walk");
+}
+
+#[test]
+fn create_walk() {
+    check::<CreateWalk>("create_walk");
+}
+
+#[test]
+fn walk_detail() {
+    check::<WalkDetail>("walk_detail");
+}
+
+#[test]
+fn walk_step() {
+    check::<WalkStep>("walk_step");
 }
