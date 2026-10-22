@@ -234,7 +234,13 @@ fn a_rule_that_leaves_the_choice_open_is_compared_after_changes_and_runs() {
     let with_change = review(vec![shortlist.clone(), split]);
     let action = next_action(&with_change, &asked, HeadRun::Succeeded, &catalog).unwrap();
     assert!(
-        matches!(action, Action::Apply { alternative: "stratified_random", .. }),
+        matches!(
+            action,
+            Action::Apply {
+                alternative: "stratified_random",
+                ..
+            }
+        ),
         "a rule's change comes before a comparison: {action:?}"
     );
     let with_rows = review(vec![shortlist, rows]);
@@ -247,7 +253,12 @@ fn a_rule_that_leaves_the_choice_open_is_compared_after_changes_and_runs() {
 
 #[test]
 fn a_shortlist_that_reads_a_guessed_task_is_asked_not_compared() {
-    let review = review(vec![item(SHORTLIST, "modeling.estimator_selection", "proposal", None)]);
+    let review = review(vec![item(
+        SHORTLIST,
+        "modeling.estimator_selection",
+        "proposal",
+        None,
+    )]);
     let guessed = question(json!({ "task": { "value": "classification", "origin": "inferred" } }));
     let (reason, detail) =
         stop(next_action(&review, &guessed, HeadRun::Succeeded, &catalog()).unwrap());
