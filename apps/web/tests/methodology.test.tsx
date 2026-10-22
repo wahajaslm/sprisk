@@ -82,6 +82,20 @@ describe("methodology page", () => {
     expect(within(map).getByText(`When ${route.condition}`)).toBeInTheDocument();
   });
 
+  it("selects the route a person clicks, not its decision, and marks that route beside the map", async () => {
+    serve([features]);
+    renderWithApi(<MethodologyPage />);
+    const map = await screen.findByRole("region", { name: "Methodology map" });
+    const route = features.alternatives[1]!;
+    await userEvent.click(await within(map).findByRole("button", { name: route.label }));
+
+    expect(within(map).getByRole("button", { name: route.label })).toHaveAttribute("aria-pressed", "true");
+    expect(within(map).getByRole("button", { name: features.name })).toHaveAttribute("aria-pressed", "false");
+    const detail = screen.getByRole("region", { name: features.name });
+    const marked = within(detail).getAllByRole("listitem").filter((li) => li.getAttribute("aria-current") === "true");
+    expect(marked.map((li) => within(li).getByRole("strong").textContent)).toEqual([route.label]);
+  });
+
   it("knows every stage the contract has, so no rule drops off the page", () => {
     expect(STAGES).toEqual(bundle.$defs.MethodologyStage.enum);
   });

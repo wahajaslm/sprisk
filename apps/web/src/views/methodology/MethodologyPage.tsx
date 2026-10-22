@@ -1,5 +1,5 @@
 import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
-import { useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource } from "../../api/methodology.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
@@ -26,7 +26,8 @@ export function MethodologyPage() {
 
   const query = filter.trim().toLowerCase();
   const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query));
-  const current = shown.find((r) => r.id === picked) ?? shown[0];
+  const [pickedRule, pickedRoute] = (picked ?? "").split("#");
+  const current = shown.find((r) => r.id === pickedRule) ?? shown[0];
 
   return (
     <main className="mth-page">
@@ -38,9 +39,9 @@ export function MethodologyPage() {
           </label>
           <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
         </div>
-        <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id} onPick={setPicked} />
+        <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
       </div>
-      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} />}</aside>
+      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} route={pickedRoute} />}</aside>
     </main>
   );
 }
@@ -65,7 +66,7 @@ function ReviewSummary({ versionId, items, next, error }: { versionId: string | 
   );
 }
 
-function RuleDetail({ rule, review }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined }) {
+function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined; route: string | undefined }) {
   const [tab, setTab] = useState<"overview" | "code">("overview");
   const source = useMethodologyRuleSource(rule.id);
   const python = source.data?.files.some((f) => f.language === "python");
@@ -103,12 +104,12 @@ function RuleDetail({ rule, review }: { rule: MethodologyRule; review: Methodolo
           <p>{review.reason}</p>
         </section>
       )}
-      {tab === "overview" ? <Overview rule={rule} /> : <RuleCode ruleRef={rule.id} />}
+      {tab === "overview" ? <Overview rule={rule} route={route} /> : <RuleCode ruleRef={rule.id} />}
     </section>
   );
 }
 
-function Overview({ rule }: { rule: MethodologyRule }) {
+function Overview({ rule, route }: { rule: MethodologyRule; route: string | undefined }) {
   const { provenance } = rule;
   return (
     <div className="mth-overview">
@@ -202,7 +203,7 @@ function Overview({ rule }: { rule: MethodologyRule }) {
           <h2 className="dsx-h">Alternatives</h2>
           <ol className="mth-alts">
             {rule.alternatives.map((a) => (
-              <li key={a.id}>
+              <PickedItem key={a.id} picked={a.id === route}>
                 <div className="mth-alt-head">
                   <strong>{a.label}</strong>
                   <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
@@ -210,7 +211,7 @@ function Overview({ rule }: { rule: MethodologyRule }) {
                 <p>{a.description}</p>
                 {routeWhen(rule, a.id) && <p className="muted">When: {routeWhen(rule, a.id)}</p>}
                 <p className="muted">Why: {a.rationale}</p>
-              </li>
+              </PickedItem>
             ))}
           </ol>
         </section>
@@ -247,5 +248,18 @@ function RuleCode({ ruleRef }: { ruleRef: string }) {
       </div>
       <CodeInput key={file.path} value={file.text} label={`Code of ${file.path}`} language={file.language} readOnly onChange={ignore} onRun={ignore} />
     </div>
+  );
+}
+
+/** A route in the detail, marked and brought into view when a person clicked it on the map. */
+function PickedItem({ picked, children }: { picked: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (picked) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [picked]);
+  return (
+    <li ref={ref} aria-current={picked} className={picked ? "selected" : undefined}>
+      {children}
+    </li>
   );
 }
