@@ -1,0 +1,65 @@
+# ==============================================================================
+# Sprisk Methodology Rule: Skewed Numbers
+# ==============================================================================
+schema_version: sprisk.methodology_rule/v1
+id: methodology.supervised.skew_transform@1.0.0
+name: "Skewed Numbers"
+stage: features
+decides: features.skew_transform
+status: active
+# Only linear models: a tree splits on order, which a power transform keeps, so it gains
+# nothing. Distance-based models are clustering steps, which have no train and test rows.
+applies_to: [sprisk.ml.linear_model]
+reads: [column.*.data_type, column.*.distinct, column.*.skewness]
+
+# 1. Scientific Standards & Provenance
+# ------------------------------------------------------------------------------
+provenance:
+  standard: "Yeo-Johnson power transform (scikit-learn PowerTransformer)"
+  citation: "Yeo & Johnson (2000) A new family of power transformations to improve normality or symmetry (Biometrika 87(4)); scikit-learn User Guide, Preprocessing data: Mapping to a Gaussian distribution; Hastie, Tibshirani & Friedman (2009) The Elements of Statistical Learning, 2nd ed."
+  pitfall: "A long tail lets a few large values pull a linear model's fit; transforming with lambdas fit on all rows lets test rows shape the train rows (rule 8)."
+  corner_cases:
+    - "A 0/1 column is skewed when one value is rare, but transforming it changes nothing a model can use."
+    - "Zero and negative values: Yeo-Johnson handles them, Box-Cox does not."
+    - "Trees split on order, which the transform keeps, so they gain nothing from it."
+
+# 3. Policy Recommendation Thresholds (Governs automated recommendation)
+# ------------------------------------------------------------------------------
+policy_thresholds:
+  # |skewness| above this is a long tail; 1 is the common rule of thumb for "highly skewed".
+  skewness_threshold: 1.0
+
+# 4. Methodological Alternatives & Scoped Settings
+# ------------------------------------------------------------------------------
+alternatives:
+  - id: yeo_johnson
+    label: "Yeo-Johnson Transform"
+    description: "Power transform of the skewed numbers, fit on the train rows, in a step added before the model."
+    rationale: "A long tail pulls a linear model's fit; Yeo-Johnson makes the column close to symmetric and handles zero and negative values."
+    action:
+      type: insert_step
+      placement: before
+      operator: sprisk.clean.power_transform@1.0.0
+      node_id: power_transform
+  - id: no_transform
+    label: "No Transform"
+    description: "Leave the numbers as they are."
+    rationale: "No number the model reads has a long tail."
+    action:
+      type: pass_through
+
+# 5. Matching Gate B Verification Check
+# ------------------------------------------------------------------------------
+verification:
+  check_id: sprisk.checks.supervised.scaler_leakage@1.0.0
+  invariant: "The power transform's lambdas, mean and spread are fit on the train rows only."
+
+# Examples: run as tests and shown on the Methodology page (ADR-0045)
+# ------------------------------------------------------------------------------
+examples:
+  - given: { column.income.data_type: Float64, column.income.distinct: 700, column.income.skewness: 3.2 }
+    picks: yeo_johnson
+  - given: { column.age.data_type: Int64, column.age.distinct: 53, column.age.skewness: 0.4 }
+    picks: no_transform
+  - given: { column.purpose_car.data_type: Int8, column.purpose_car.distinct: 2, column.purpose_car.skewness: 4.0 }
+    picks: no_transform

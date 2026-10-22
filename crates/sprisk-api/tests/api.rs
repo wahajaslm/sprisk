@@ -4374,6 +4374,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("features.date_parts", "needs_run"),
         ("features.scaling_strategy", "no_subject"),
         ("features.rare_categories", "needs_run"),
+        ("features.skew_transform", "no_subject"),
         ("modeling.estimator_selection", "needs_run"),
         ("evaluation.decision_threshold", "settled"),
     ]
