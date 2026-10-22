@@ -3,7 +3,7 @@ import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { plainCodeQuery, useCodeDisplay } from "../../api/code.ts";
-import { useOperators, useRunAttempts, useSaveAndRun } from "../../api/hooks.ts";
+import { useOperators, useRunAttempts } from "../../api/hooks.ts";
 import { readersOf, removeStep } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { type Stage, stepLabel } from "../../flow/stages.ts";
@@ -31,28 +31,29 @@ const LIVE = new Set<Attempt["state"]>(["created", "validated", "queued", "lease
 export function StageNotebook({ pipeline, stage }: { pipeline: PipelineVersion; stage: Stage }) {
   const operators = useOperators();
   const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
-  const readyMade = operators.data ? stageNodes(pipeline, byRef, stage).filter((n) => isReadyMade(pipeline, n.id)) : [];
-  const plain = useQueries({ queries: readyMade.map((n) => plainCodeQuery(n.operator, codeRequest(pipeline, byRef, n.id))) });
+  // Only steps whose manifest names a writer have plain code to ask for.
+  const writing = operators.data
+    ? stageNodes(pipeline, byRef, stage).filter((n) => isReadyMade(pipeline, n.id) && byRef.get(n.operator)?.notebook_code !== undefined)
+    : [];
+  const plain = useQueries({ queries: writing.map((n) => plainCodeQuery(n.operator, codeRequest(pipeline, byRef, n.id))) });
   if (operators.isError) return <p role="alert" className="error pad">Steps could not be read: {operators.error.message}</p>;
-  const failed = plain.find((q) => q.isError)?.error;
-  if (failed) return <p role="alert" className="error pad">A step's code could not be written: {failed.message}</p>;
   if (!operators.data || plain.some((q) => q.isPending)) return <Loading text="Loading the stage…" pad />;
-  const code = new Map(readyMade.flatMap((n, i) => (plain[i]?.data ? [[n.id, plain[i].data] as const] : [])));
-  return <StageEditor pipeline={pipeline} stage={stage} byRef={byRef} code={code} />;
+  const code = new Map(writing.flatMap((n, i) => (plain[i]?.data ? [[n.id, plain[i].data] as const] : [])));
+  // A step whose code could not be written shows why in its own cell, with its settings.
+  const unwritten = new Map(writing.flatMap((n, i) => (plain[i]?.error ? [[n.id, plain[i].error.message] as const] : [])));
+  return <StageEditor pipeline={pipeline} stage={stage} byRef={byRef} code={code} unwritten={unwritten} />;
 }
 
 /** The editor, made once the operators and the steps' code are known: its cells are read from
  * the flow once. */
-function StageEditor({ pipeline, stage, byRef, code }: { pipeline: PipelineVersion; stage: Stage; byRef: Map<string, Operator>; code: Map<string, string> }) {
+function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: PipelineVersion; stage: Stage; byRef: Map<string, Operator>; code: Map<string, string>; unwritten: Map<string, string> }) {
   const runId = useSelection((s) => s.runId);
-  const showRun = useSelection((s) => s.showRun);
   const attempts = useRunAttempts(pipeline.id, runId);
   const edit = useCellEditing(stageCells(pipeline, byRef, stage, code), stage);
   const { cells, active } = edit;
   const foldKey = `stage:${stage}`;
   const toggleFold = useCollapsed((s) => s.toggle);
   const foldOutputs = useCollapsed((s) => s.setOutputsCollapsed);
-  const saveAndRun = useSaveAndRun(runId);
   const stageSave = useStageSave(pipeline, byRef, stage, code);
   const { busy, setProblem, notes } = stageSave;
   const problem = stageSave.problem;
@@ -83,8 +84,7 @@ function StageEditor({ pipeline, stage, byRef, code }: { pipeline: PipelineVersi
     }
     const readers = readersOf(pipeline, cell.id);
     if (readers.length > 0) return setProblem(`Cannot delete ${cell.id}: ${[...new Set(readers)].join(", ")} read${readers.length === 1 ? "s" : ""} its output.`);
-    const version = removeStep(pipeline, cell.id);
-    saveAndRun.mutate(version, { onSuccess: (run) => showRun(version.id, run.id, undefined), onError: (e) => setProblem(e.message) });
+    void stageSave.saveVersion(removeStep(pipeline, cell.id));
   };
 
   const runAll = () => void save(cells, undefined);
@@ -149,6 +149,7 @@ function StageEditor({ pipeline, stage, byRef, code }: { pipeline: PipelineVersi
           stepOf={(cell) =>
             isReadyMade(pipeline, cell.id) && !code.has(cell.id) ? (
               <ViewInstance pin={cellPin(cell.id)} setPin={undefined}>
+                {unwritten.has(cell.id) && <p role="alert" className="error">{cell.id}'s code could not be written: {unwritten.get(cell.id)}</p>}
                 <StepForm names={stepNames(pipeline, byRef, cell.id)} />
               </ViewInstance>
             ) : undefined
@@ -170,7 +171,7 @@ function StageEditor({ pipeline, stage, byRef, code }: { pipeline: PipelineVersi
 function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline: PipelineVersion, code: Map<string, string>, starting: string | undefined) {
   const results: Record<string, Ran> = {};
   const live: string[] = [];
-  cells.forEach((cell, index) => {
+  cells.forEach((cell) => {
     const attempt = latest.get(cell.id);
     if (!attempt) return;
     if (LIVE.has(attempt.state)) return void live.push(cell.id);
@@ -180,7 +181,7 @@ function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline:
     results[cell.id] = {
       code: ran,
       result: ok
-        ? { status: "ok", execution_count: index + 1, outputs: [] }
+        ? { status: "ok", outputs: [] }
         : { status: attempt.state === "timed_out" ? "timed_out" : "error", outputs: [], error: { name: attempt.state, message: attempt.error?.message ?? attempt.state, traceback: [] } },
     };
   });

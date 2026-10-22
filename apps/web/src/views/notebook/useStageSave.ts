@@ -58,7 +58,17 @@ export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Opera
       setProblem(e instanceof Error ? e.message : String(e));
     }
   };
-  return { save, busy: readSettings.isPending || split.isPending || saveAndRun.isPending || runAgain.isPending, problem, setProblem, notes };
+  /** Save `version` as it is and run it, as deleting a step does. */
+  const saveVersion = async (version: PipelineVersion) => {
+    setProblem(undefined);
+    try {
+      const run = await saveAndRun.mutateAsync(version);
+      showRun(version.id, run.id, undefined);
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return { save, saveVersion, busy: readSettings.isPending || split.isPending || saveAndRun.isPending || runAgain.isPending, problem, setProblem, notes };
 }
 
 /** Equal but for empty cells the person added and never wrote in. */
