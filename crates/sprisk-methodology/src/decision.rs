@@ -58,6 +58,9 @@ pub fn observation(
 /// The question's fact at `path`. A part of a structured fact, such as `costs.positive`, is
 /// its own fact, as text, with the whole fact's origin.
 fn question_fact(question: &Value, path: &str) -> Option<Value> {
+    if path == "acceptance_criteria" {
+        return criteria(question.get(path)?.as_array()?);
+    }
     let Some((name, part)) = path.split_once('.') else {
         return question.get(path).cloned();
     };
@@ -67,6 +70,20 @@ fn question_fact(question: &Value, path: &str) -> Option<Value> {
         .as_str()
         .map_or_else(|| value.to_string(), str::to_owned);
     Some(json!({ "value": text, "origin": fact.get("origin")? }))
+}
+
+/// The acceptance criteria as one fact: their values joined by "; ", with the weakest origin
+/// among them. None when there are none.
+fn criteria(criteria: &[Value]) -> Option<Value> {
+    const WEAKEST_FIRST: [&str; 4] = ["inferred", "measured", "explicit", "confirmed"];
+    let texts: Vec<&str> = criteria
+        .iter()
+        .filter_map(|c| c["value"].as_str())
+        .collect();
+    let origin = WEAKEST_FIRST
+        .iter()
+        .find(|o| criteria.iter().any(|c| c["origin"] == **o))?;
+    Some(json!({ "value": texts.join("; "), "origin": origin }))
 }
 
 /// What the flow says about the models downstream of `node_id`, read from their manifests
@@ -253,6 +270,7 @@ pub fn input_facts(profile: &DatasetProfile) -> Map<String, Value> {
     for column in &profile.columns {
         let key = |measure: &str| format!("input.column.{}.{measure}", column.name);
         facts.insert(key("data_type"), json!(column.data_type));
+        facts.insert(key("distinct"), json!(column.distinct));
         if let Some(share) = column.numeric_share {
             facts.insert(key("numeric_share"), json!(share));
         }
@@ -262,6 +280,21 @@ pub fn input_facts(profile: &DatasetProfile) -> Map<String, Value> {
         if !column.unconverted.is_empty() {
             facts.insert(key("unconverted"), json!(column.unconverted));
         }
+    }
+    facts
+}
+
+/// The target column of a step's train rows: its type, distinct values and, when it has few,
+/// its rarest value's share. Empty when the rows have no such column.
+pub fn target_facts(profile: &DatasetProfile, target: &str) -> Map<String, Value> {
+    let mut facts = Map::new();
+    let Some(column) = profile.columns.iter().find(|c| c.name == target) else {
+        return facts;
+    };
+    facts.insert("target.data_type".into(), json!(column.data_type));
+    facts.insert("target.distinct".into(), json!(column.distinct));
+    if let Some(share) = column.rarest_share {
+        facts.insert("target.rarest_share".into(), json!(share));
     }
     facts
 }

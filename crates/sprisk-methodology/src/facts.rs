@@ -3,6 +3,10 @@
 
 /// Every fact Rust sends a rule. `*` stands for a column or setting name.
 pub const FACTS: &[&str] = &[
+    "question.objective",
+    // The success bar: the question's acceptance criteria joined by "; ", with the weakest
+    // origin among them, so one inferred criterion makes the whole bar ask.
+    "question.acceptance_criteria",
     "question.target",
     "question.task",
     "question.unit_of_analysis",
@@ -32,11 +36,18 @@ pub const FACTS: &[&str] = &[
     "column.*.kurtosis",
     "column.*.outlier_share",
     "column.*.iqr",
+    // The target column of the step's train rows: its type, distinct values, and the share
+    // of its rarest value when it has few.
+    "target.data_type",
+    "target.distinct",
+    "target.rarest_share",
     // Structure of the rows the step reads, measured before the split on all of them
     // (ADR-0059): types, duplicates, values that do not read as numbers. Never statistics.
     "input.rows",
     "input.duplicate_rows",
     "input.column.*.data_type",
+    // Distinct values, which say whether a column identifies rows (structure, not statistics).
+    "input.column.*.distinct",
     "input.column.*.numeric_share",
     // How many text values reading as numbers start with a zero, like the code 01234.
     "input.column.*.leading_zero_values",
@@ -68,5 +79,5 @@ pub fn needs_input_rows<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
 
 /// Whether a rule reading `reads` needs the train rows measured.
 pub fn needs_train_rows<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
-    reads.any(|r| r == "rows" || r.starts_with("column."))
+    reads.any(|r| r == "rows" || r.starts_with("column.") || r.starts_with("target."))
 }

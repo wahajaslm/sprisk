@@ -11,11 +11,11 @@ from sprisk_workers.rule import (
     applicable,
     decision,
     input_columns,
-    input_number,
     input_values,
     needs_fact,
     not_applicable,
     profile_evidence,
+    profile_number,
 )
 
 
@@ -24,7 +24,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
     known = set(settings["known_markers"])
     seen: dict[str, list[str]] = {}
     for column in input_columns(observation):
-        share = input_number(observation, f"column.{column}.numeric_share")
+        share = profile_number(observation, f"input.column.{column}.numeric_share")
         values = input_values(observation, column, "unconverted")
         if share is None or share < settings["min_numeric_share"]:
             continue

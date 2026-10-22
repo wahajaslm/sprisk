@@ -1262,7 +1262,7 @@ async fn decide(
     let rule_ref = rule_ref.as_str();
     let reads = || rule.reads.iter().map(|r| r.as_str());
     let mut profile = if sprisk_methodology::facts::needs_train_rows(reads()) {
-        train_profile_facts(state, pipeline, node).await?
+        train_profile_facts(state, pipeline, question, node).await?
     } else {
         Default::default()
     };
@@ -1387,6 +1387,7 @@ async fn decide(
 async fn train_profile_facts(
     state: &AppState,
     pipeline: &PipelineVersion,
+    question: &QuestionVersion,
     node: &sprisk_contracts::Node,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
@@ -1425,7 +1426,17 @@ async fn train_profile_facts(
             .filter(|name| Some(name.as_str()) != target)
             .collect()
     });
-    Ok(sprisk_methodology::profile_facts(&profile, &columns))
+    let mut facts = sprisk_methodology::profile_facts(&profile, &columns);
+    // The step's own target, else the question's when a person stated or confirmed it.
+    let stated = question
+        .target
+        .as_ref()
+        .filter(|t| t.origin != sprisk_contracts::Origin::Inferred);
+    let target = target.or_else(|| stated.map(|t| t.value.as_str()));
+    if let Some(target) = target {
+        facts.extend(sprisk_methodology::target_facts(&profile, target));
+    }
+    Ok(facts)
 }
 
 /// The structure of the rows `node` reads, measured on all of them (ADR-0059): types,

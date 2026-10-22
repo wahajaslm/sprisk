@@ -16,15 +16,15 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 ## Question
 | Decision | Level | Decided by | Evidence chart | Rule | Source |
 | --- | --- | --- | --- | --- | --- |
-| Objective and success bar | 3 | Person: the business goal in units (money, risk, time) and the score that counts as good enough | — | none | knowledge: Methodology_in_Data_Science, step 1; ref-v3 0.1 |
+| Objective and success bar | 3 | Person: the business goal in units (money, risk, time) and the score that counts as good enough | — | active (`question.objective`) | knowledge: Methodology_in_Data_Science, step 1; ref-v3 0.1 |
 | Hard constraints | 3 | Person: interpretability (high, medium, low), latency, budget, fairness limits | — | none | ref-v3 0.4 |
 | Personal data | 1, then 3 | Detected per column (names, emails, IDs); a person confirms what may be used | — | none | `presidio`; EU AI Act risk tiers |
-| Target available, or derived | 3 | Person: which column, or how to build it. A built label is checked against a sample a person labels (Cohen's κ ≥ 0.7) | Target distribution | none | knowledge: step 1; ref-v3 1.2 |
-| Task type | 1, then 3 | Measured from the target: two values → binary, few → multiclass, number → regression; confirmed. Subtypes: multi-label, ordinal, count, survival, quantile | Target distribution | none | REFORMS (Kapoor et al. 2024), module 1; ref-v3 1.3 |
-| Unit of prediction | 3 | Person: one row per what? Rows are aggregated to it before the split | — | none | TRIPOD+AI (Collins et al. 2024) |
-| Class imbalance | 1 | Rarest class under 10% of rows, or costs stated as unequal | Class balance bar | none | ref-v3 1.5; He & Garcia 2009 |
+| Target available, or derived | 3 | Person: which column, or how to build it. A built label is checked against a sample a person labels (Cohen's κ ≥ 0.7) | Target distribution | active (`question.target_definition`; building a label is not offered yet) | knowledge: step 1; ref-v3 1.2 |
+| Task type | 1, then 3 | Measured from the target: two values → binary, few → multiclass, number → regression; confirmed. Subtypes: multi-label, ordinal, count, survival, quantile | Target distribution | active (`question.task_type`) | REFORMS (Kapoor et al. 2024), module 1; ref-v3 1.3 |
+| Unit of prediction | 3 | Person: one row per what? Rows are aggregated to it before the split | — | active (`question.unit_of_prediction`; aggregation is not offered yet) | TRIPOD+AI (Collins et al. 2024) |
+| Class imbalance | 1 | Rarest class under a fifth of an even class's share (10% of rows for two classes). Unequal costs move the threshold instead (Elkan 2001) | Class balance bar | active (`question.class_balance`) | ref-v3 1.5; He & Garcia 2009 |
 | Primary metric | 1, else 3 | Stated metric wins. Else: binary balanced → ROC-AUC; binary unbalanced → PR-AUC or F1; multiclass → macro or weighted F1; costs stated → expected cost; regression → MAE or RMSE | — | draft | scikit-learn "Metrics and scoring"; ref-v3 1.4 |
-| Cost of each error | 3 | Person | — | none (costs read by ADR-0053) | Elkan 2001 |
+| Cost of each error | 3 | Person | — | active (`question.error_costs`; costs read by ADR-0053) | Elkan 2001 |
 
 ## Data
 | Decision | Level | Decided by | Evidence chart | Rule | Source |

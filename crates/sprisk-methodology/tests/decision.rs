@@ -9,8 +9,8 @@ use sprisk_contracts::{
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
     Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, facts, flow_facts,
-    input_facts, observation, preparation_comparison, profile_facts, proposal, train_rows_source,
-    with_node_before, without_node,
+    input_facts, observation, preparation_comparison, profile_facts, proposal, target_facts,
+    train_rows_source, with_node_before, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -205,11 +205,38 @@ fn input_facts_give_the_structure_of_every_column_and_no_statistics() {
     assert_eq!(facts["input.column.age.numeric_share"], 0.98);
     assert_eq!(facts["input.column.age.unconverted"], json!(["?", "n/a"]));
     assert_eq!(facts["input.column.age.leading_zero_values"], 0);
+    assert_eq!(facts["input.column.age.distinct"], 40);
     assert!(
         facts
             .keys()
             .all(|k| !k.contains("skewness") && !k.contains("missing"))
     );
+}
+
+#[test]
+fn target_facts_describe_the_target_column_of_the_train_rows() {
+    let profile = parse(
+        &json!({
+            "total_rows": 100, "total_columns": 2, "profiled_rows": 100, "band_rows": 5,
+            "columns": [
+                { "name": "churned", "data_type": "Int64", "missing": 0, "distinct": 2,
+                  "missing_by_band": [], "rarest_share": 0.08 },
+                { "name": "age", "data_type": "Int64", "missing": 0, "distinct": 50, "missing_by_band": [] }
+            ],
+            "correlation": { "columns": [], "pairs": [] }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let facts = target_facts(&profile, "churned");
+    assert_eq!(facts["target.data_type"], "Int64");
+    assert_eq!(facts["target.distinct"], 2);
+    assert_eq!(facts["target.rarest_share"], 0.08);
+    assert!(target_facts(&profile, "absent").is_empty());
+    for read in ["target.distinct", "target.rarest_share"] {
+        assert!(facts::is_known(read), "{read}");
+        assert!(facts::needs_train_rows([read].into_iter()), "{read}");
+    }
 }
 
 #[test]
@@ -496,6 +523,40 @@ fn a_model_reached_both_directly_and_through_a_code_step_counts_once_as_hidden()
 fn a_model_step_does_not_count_itself() {
     let pipeline = flow(&[("km", "clustering.kmeans")], &[]);
     assert!(facts_of(&pipeline, "km").is_empty());
+}
+
+fn with_criteria(criteria: Value) -> QuestionVersion {
+    let mut question = serde_json::to_value(question()).unwrap();
+    question["acceptance_criteria"] = criteria;
+    parse(&question.to_string()).unwrap()
+}
+
+#[test]
+fn the_acceptance_criteria_are_one_fact_with_the_weakest_origin() {
+    let catalog = catalog();
+    let rule = catalog.rule("methodology.common.objective@1.0.0").unwrap();
+    let observe = |criteria: Value| {
+        let observed = observation(
+            rule,
+            &with_criteria(criteria),
+            Default::default(),
+            Default::default(),
+        );
+        serde_json::to_value(observed.unwrap()).unwrap()["facts"].clone()
+    };
+    let facts = observe(json!([
+        { "value": "PR-AUC at least 0.4", "origin": "explicit" },
+        { "value": "beats the baseline", "origin": "inferred" }
+    ]));
+    assert_eq!(
+        facts["question.acceptance_criteria"],
+        json!({ "value": "PR-AUC at least 0.4; beats the baseline", "origin": "inferred" })
+    );
+    assert!(
+        observe(json!([]))
+            .get("question.acceptance_criteria")
+            .is_none()
+    );
 }
 
 #[test]

@@ -126,7 +126,7 @@ fn a_step_is_routed_to_the_active_rule_that_applies_to_its_operator() {
     );
     assert!(
         catalog
-            .rules_for_operator("sprisk.io.file_source@1.0.0")
+            .rules_for_operator("sprisk.profile.chart@1.0.0")
             .next()
             .is_none()
     );

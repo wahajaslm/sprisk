@@ -10,16 +10,16 @@ from sprisk_workers.errors import RuleError
 from sprisk_workers.rule import (
     applicable,
     decision,
-    input_number,
     needs_fact,
     not_applicable,
     profile_evidence,
+    profile_number,
 )
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
-    measured_rows = input_number(observation, "rows")
-    measured_duplicates = input_number(observation, "duplicate_rows")
+    measured_rows = profile_number(observation, "input.rows")
+    measured_duplicates = profile_number(observation, "input.duplicate_rows")
     if measured_rows is None or measured_duplicates is None:
         raise RuleError("profile has no input.rows or input.duplicate_rows")
     rows, duplicates = int(measured_rows), int(measured_duplicates)

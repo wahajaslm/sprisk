@@ -2699,8 +2699,9 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     );
     assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
 
-    // The step's first rule, in workflow order, is encoding: inputs are prepared before a
-    // model is chosen (ADR-0057). It measures the train rows, so the flow runs first.
+    // The step's first rule, in workflow order, is a question rule: the target's classes are
+    // checked before inputs are prepared (ADR-0059). It measures the train rows, so the flow
+    // runs first.
     let mut csv = String::from("age,returned_within_30d\n");
     for age in 20..80 {
         csv.push_str(&format!("{age},{}\n", u8::from(age >= 50)));
@@ -2710,10 +2711,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     assert_eq!(run["status"], "succeeded", "{run}");
     let (status, first) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{first}");
-    assert_eq!(
-        first["rule"],
-        "methodology.supervised.categorical_encoding@2.0.0"
-    );
+    assert_eq!(first["rule"], "methodology.common.class_balance@1.0.0");
 }
 
 #[tokio::test]
@@ -4367,10 +4365,17 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
 
     let review = review(&api).await;
     let expected: Vec<(String, String)> = [
+        // The question is checked on the load step before any run.
+        ("question.objective", "settled"),
+        ("question.target_definition", "settled"),
+        ("question.unit_of_prediction", "needs_run"),
         ("data.exact_duplicates", "needs_run"),
         ("data.missing_markers", "needs_run"),
         ("data.type_repair", "needs_run"),
         ("split.method", "settled"),
+        ("question.class_balance", "waiting"),
+        ("question.error_costs", "waiting"),
+        ("question.task_type", "waiting"),
         ("cleaning.missingness_strategy", "no_subject"),
         ("cleaning.outlier_strategy", "no_subject"),
         // The data rules may change the rows the model is fit on, so its rules wait for them.
@@ -4388,7 +4393,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([0, 1, 2]),
+        json!([2, 3, 4, 5]),
         "the split already matches, so the flow must run next: {review}"
     );
 }
@@ -4616,4 +4621,41 @@ async fn rows_copied_in_the_data_are_dropped_before_the_split() {
     let dropped = apply_alternative(&api, &proposal, "drop").await;
     let (run, attempts) = run_version(&api, &dropped).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+}
+
+/// ADR-0059: the question rules on a model step read its target on the train rows.
+#[tokio::test(flavor = "multi_thread")]
+async fn after_a_run_the_target_on_the_train_rows_settles_the_task_and_class_balance() {
+    let api = api().await;
+    forest_flow(&api).await;
+    let (run, _) = run_version(&api, BASE).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let task = propose_for(&api, BASE, "model", "question.task_type").await;
+    assert_eq!(
+        task["recommended_alternative_id"], "classification",
+        "{task}"
+    );
+    assert_eq!(
+        recommended_effect(&task)["params"]["task"],
+        "classification"
+    );
+    let balance = propose_for(&api, BASE, "model", "question.class_balance").await;
+    assert_eq!(
+        balance["recommended_alternative_id"], "balanced",
+        "{balance}"
+    );
+    assert!(
+        balance["evidence"]
+            .to_string()
+            .contains("Rarest class share"),
+        "{balance}"
+    );
+    let statuses = statuses(&review(&api).await);
+    for decides in ["question.task_type", "question.class_balance"] {
+        assert!(
+            statuses.contains(&(decides.to_owned(), "settled".to_owned())),
+            "{decides}: {statuses:?}"
+        );
+    }
 }

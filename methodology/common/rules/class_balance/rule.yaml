@@ -3,50 +3,52 @@ id: methodology.common.class_balance@1.0.0
 name: "Class balance"
 stage: question
 decides: question.class_balance
-status: draft
+status: active
+applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
+reads: [step.task, target.distinct, target.rarest_share]
 
 provenance:
   standard: "He & Garcia (2009) Learning from Imbalanced Data"
   citation: "He & Garcia (2009) IEEE Transactions on Knowledge and Data Engineering 21(9):1263-1284; ref-v3 1.5"
   pitfall: "Accuracy on a 95/5 target rewards a model that always says the common class. Spotting the imbalance early sets the split, metric and model choices that follow."
   corner_cases:
-    - "Only for classification targets; a question with no target or a regression target is not applicable."
-    - "Measured on all rows only to choose a stratified split. Later rules measure train rows again."
-    - "Unequal error costs make the problem unbalanced even when classes are even."
-
-observes:
-  - fact: question.task_type
-    description: "Binary or multiclass; this rule reads the decided task type"
-    required: true
-  - profile: target.rarest_class_share
-    description: "Share of rows in the rarest class"
-    required: true
-  - fact: question.costs
-    description: "Error costs, when stated"
-    required: false
+    - "Only for a model step that predicts a class; others are not applicable."
+    - "Measured on the train rows only."
+    - "The bar scales with the number of classes: 15 even classes hold 6.7% each and are balanced."
+    - "Unequal error costs are not imbalance: they move the decision threshold (Elkan 2001), which error_costs and decision_threshold handle. The map row counted them; this rule does not."
+    - "A target with more than 20 classes has no rarest share in the profile, so the rule asks."
+    - "Records the finding; the split, metric and imbalance rules act on it."
 
 policy_thresholds:
-  # Rarest class share below which the target counts as unbalanced. From ref-v3 1.5 (the map
-  # row); it is a project default, not a published cut-off: He & Garcia give no single number.
-  rarest_class_share: 0.10
+  # The rarest class is unbalanced below this fraction of an even class's share. For two
+  # classes that is 10% of rows, ref-v3 1.5's bar (the map row); scaled so that many even
+  # classes are not flagged. A project default: He & Garcia give no single number.
+  min_share_of_even: 0.2
 
 alternatives:
   - id: balanced
     label: "Balanced enough"
-    description: "Every class has at least the threshold share and costs are equal."
-    condition: "target.rarest_class_share >= rarest_class_share AND costs are not stated as unequal"
+    description: "The rarest class holds at least a fifth of the share an even class would."
     rationale: "Plain metrics and splits are fine."
     action:
       type: pass_through
-
   - id: unbalanced
     label: "Unbalanced"
-    description: "Mark the question unbalanced. The split stratifies, the metric avoids accuracy, and the model stage tries imbalance handling."
-    condition: "target.rarest_class_share < rarest_class_share OR costs are stated as unequal"
+    description: "A class is rare: stratify the split, avoid accuracy, and try imbalance handling."
     rationale: "Rare classes or unequal costs change what a good model is."
     action:
       type: pass_through
 
 verification:
-  check_id: none
-  invariant: "No Gate B check exists yet. The split design check (methodology.supervised.data_split) says itself that it does not check stratification. Planned: an unbalanced classification target is split with stratification, and its class shares match on both sides."
+  check_id: methodology.supervised.data_split@1.0.0
+  invariant: "Partial: the split design check matches the split to the question; it says itself that it does not check stratification."
+
+examples:
+  - given: { step.task: classification, target.distinct: 2, target.rarest_share: 0.3 }
+    picks: balanced
+  - given: { step.task: classification, target.distinct: 2, target.rarest_share: 0.04 }
+    picks: unbalanced
+  - given: { step.task: classification, target.distinct: 15, target.rarest_share: 0.066 }
+    picks: balanced
+  - given: { step.task: regression, target.distinct: 300 }
+    picks: balanced

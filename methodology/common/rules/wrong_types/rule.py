@@ -14,11 +14,11 @@ from sprisk_workers.rule import (
     applicable,
     decision,
     input_columns,
-    input_number,
     input_values,
     needs_fact,
     not_applicable,
     profile_evidence,
+    profile_number,
 )
 
 COMMA_NUMBER = re.compile(r"^\s*[+-]?\d[\d,]*(\.\d+)?\s*$")
@@ -30,13 +30,13 @@ def decide(observation: RuleObservation) -> RuleDecision:
     notes: list[str] = []
     shares: dict[str, float] = {}
     for column in input_columns(observation):
-        share = input_number(observation, f"column.{column}.numeric_share")
+        share = profile_number(observation, f"input.column.{column}.numeric_share")
         if share is None or share < observation.settings["mixed_min_share"]:
             continue
         shares[column] = share
         if share < 1.0:
             notes.append(_why_not(column, input_values(observation, column, "unconverted")))
-        elif input_number(observation, f"column.{column}.leading_zero_values"):
+        elif profile_number(observation, f"input.column.{column}.leading_zero_values"):
             codes.append(column)
         else:
             cast.append(column)

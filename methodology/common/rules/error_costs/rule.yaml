@@ -3,7 +3,9 @@ id: methodology.common.error_costs@1.0.0
 name: "Cost of each error"
 stage: question
 decides: question.error_costs
-status: draft
+status: active
+applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
+reads: [step.task, question.costs.positive, question.costs.false_negative, question.costs.false_positive, target.distinct]
 
 provenance:
   standard: "Elkan (2001) The Foundations of Cost-Sensitive Learning"
@@ -11,46 +13,37 @@ provenance:
   pitfall: "With unstated costs, the threshold defaults to 0.5. That is right only when a false alarm and a miss cost the same and the probabilities are calibrated."
   corner_cases:
     - "Costs are in the person's units. Only their ratio changes the threshold."
-    - "A benefit for a right call is entered as a negative cost."
-    - "The decision threshold rule (ADR-0053) reads these costs; it waits until they are settled."
-
-observes:
-  - fact: question.costs
-    description: "Cost of each kind of error, as the person states it"
-    required: false
-  - fact: question.task_type
-    description: "Costs apply to classification only"
-    required: true
+    - "Costs are stated for two classes (ADR-0053); a target with more classes is not applicable yet."
+    - "The decision threshold rule (ADR-0053) acts on these costs; this rule asks for them."
+    - "Follows the model step's task, which task_type sets, not a question task left undetermined."
+    - "Not checked yet: that the costly class is one of the target's values. A typo would attach the costs to no class."
 
 policy_thresholds: {}
 
 alternatives:
   - id: stated
-    label: "Record the stated costs"
-    description: "Store the cost of each error on the question."
-    condition: "question.costs is given"
+    label: "Costs stated"
+    description: "The question states what a miss and a false alarm cost."
     rationale: "Stated costs let the threshold minimise expected cost."
     action:
       type: pass_through
-
   - id: equal
     label: "Costs stated as equal"
-    description: "The person says every error costs the same."
-    condition: "the person states equal costs"
+    description: "The question states that a miss and a false alarm cost the same."
     rationale: "Equal costs are a choice the person makes, not a default sprisk assumes."
     action:
       type: pass_through
 
-  - id: ask
-    label: "Ask for the costs"
-    description: "Ask what a false alarm and a miss cost."
-    condition: "question.costs is missing AND the task is classification"
-    rationale: "Costs come from the business, not the data."
-    action:
-      type: emit_methodology_limitation
-      params:
-        reason: "error_costs_not_stated"
-
 verification:
   check_id: none
   invariant: "No Gate B check exists yet. Planned: a threshold set from costs cites the costs it used."
+
+examples:
+  - given: { step.task: classification, question.costs.positive: bad, question.costs.false_negative: "5.0", question.costs.false_positive: "1.0", target.distinct: 2 }
+    picks: stated
+  - given: { step.task: classification, question.costs.positive: bad, question.costs.false_negative: "1.0", question.costs.false_positive: "1.0", target.distinct: 2 }
+    picks: equal
+  - given: { step.task: classification, target.distinct: 2 }
+    picks: stated
+  - given: { step.task: regression, target.distinct: 300 }
+    picks: stated

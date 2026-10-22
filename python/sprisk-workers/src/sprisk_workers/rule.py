@@ -125,12 +125,12 @@ def train_rows(observation: RuleObservation) -> int:
     return int(rows)
 
 
-def input_number(observation: RuleObservation, name: str) -> float | None:
-    """A numeric structure measure of the rows the step reads, such as input.rows or
-    input.column.age.numeric_share; None where the profile left it out."""
-    value = observation.profile.get(f"input.{name}")
+def profile_number(observation: RuleObservation, name: str) -> float | None:
+    """A numeric measure by its full name, such as input.rows or target.distinct; None where
+    the profile left it out."""
+    value = observation.profile.get(name)
     if value is not None and not isinstance(value, (int, float)):
-        raise RuleError(f"profile gives {value!r} for input.{name}, which is a number")
+        raise RuleError(f"profile gives {value!r} for {name}, which is a number")
     return value
 
 
@@ -173,6 +173,7 @@ FLOW_LABELS = {
     "flow.models_hidden": "Models downstream behind a step the rules cannot see",
     "flow.other_readers": "Other steps reading this step's output",
     "step.method": "This step's method",
+    "step.task": "This step's task",
 }
 
 
