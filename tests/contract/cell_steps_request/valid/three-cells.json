@@ -1,7 +1,0 @@
-{
-  "cells": [
-    "import pandas as pd\nloans = pd.read_csv(\"loans.csv\")",
-    "train, test = object(loans), object(loans)",
-    "bad_rate = train[\"bad\"].mean()\nbad_rate"
-  ]
-}

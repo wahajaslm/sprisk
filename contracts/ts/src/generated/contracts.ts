@@ -928,57 +928,6 @@ export interface SplitNote {
   message: string;
 }
 /**
- * Every cell of a flow as code, in notebook order: stages in order, cells in order within each (ADR-0055). A ready-made step is sent as a line that reads its inputs and sets its outputs. Body of POST /code/steps. Read, never executed.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "CellStepsRequest".
- */
-export interface CellStepsRequest {
-  cells: string[];
-}
-/**
- * Each cell read as one step (ADR-0055), in the order sent, and what keeps the cells from being saved. Any problem refuses the save.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "CellSteps".
- */
-export interface CellSteps {
-  steps: CellStep[];
-  problems: CellProblem[];
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "CellStep".
- */
-export interface CellStep {
-  /**
-   * Values the cell reads that cells above set.
-   */
-  inputs: VariableName[];
-  /**
-   * Values the cell sets that cells below read.
-   */
-  outputs: VariableName[];
-  /**
-   * The imports, constants and functions from cells above that the cell uses, in order.
-   */
-  setup: string;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "CellProblem".
- */
-export interface CellProblem {
-  /**
-   * The cell, from 0, in the order sent.
-   */
-  cell: number;
-  /**
-   * What is wrong and what to write instead.
-   */
-  message: string;
-}
-/**
  * A ready-made step's settings and the variables its inputs and outputs go by. Body of POST /operators/{id}/notebook_code (ADR-0055).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema

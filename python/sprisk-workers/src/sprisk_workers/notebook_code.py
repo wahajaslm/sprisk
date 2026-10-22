@@ -18,18 +18,18 @@ from sprisk_contracts import (
     NotebookSettings,
     NotebookSettingsRequest,
 )
-from sprisk_workers.manifests import _function
+from sprisk_workers.manifests import load_function
 
 
 def write_code(entrypoint: str, request: NotebookCodeRequest) -> NotebookCode:
-    write = _function(Path(entrypoint), "notebook_code", entrypoint)
+    write = load_function(Path(entrypoint), "notebook_code", entrypoint)
     inputs = {port: name.root for port, name in request.inputs.items()}
     outputs = {port: name.root for port, name in request.outputs.items()}
     return NotebookCode(code=write(request.settings, inputs, outputs))
 
 
 def read_code(entrypoint: str, request: NotebookSettingsRequest) -> NotebookSettings:
-    write = _function(Path(entrypoint), "notebook_code", entrypoint)
+    write = load_function(Path(entrypoint), "notebook_code", entrypoint)
     inputs = {port: name.root for port, name in request.inputs.items()}
     outputs = {port: name.root for port, name in request.outputs.items()}
     settings = read_settings(write, request.settings, inputs, outputs, request.code)

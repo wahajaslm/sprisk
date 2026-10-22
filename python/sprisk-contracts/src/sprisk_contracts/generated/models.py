@@ -154,25 +154,6 @@ class CodeField(StrictModel):
     null_count: Annotated[int, Field(ge=0)]
 
 
-class Cell2(RootModel[str]):
-    root: Annotated[str, Field(max_length=100000)]
-
-
-class CellStepsRequest(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    cells: list[Cell2]
-
-
-class CellProblem(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    cell: Annotated[int, Field(description="The cell, from 0, in the order sent.", ge=0)]
-    message: Annotated[str, Field(description="What is wrong and what to write instead.")]
-
-
 class NotebookSettings1(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1342,24 +1323,6 @@ class SplitLink(StrictModel):
     name: PortName
 
 
-class CellStep(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    inputs: Annotated[
-        list[VariableName], Field(description="Values the cell reads that cells above set.")
-    ]
-    outputs: Annotated[
-        list[VariableName], Field(description="Values the cell sets that cells below read.")
-    ]
-    setup: Annotated[
-        str,
-        Field(
-            description="The imports, constants and functions from cells above that the cell uses, in order."
-        ),
-    ]
-
-
 class NotebookCodeRequest(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2074,14 +2037,6 @@ class CodeSplit(StrictModel):
     steps: list[SplitStep]
     links: list[SplitLink]
     notes: list[SplitNote]
-
-
-class CellSteps(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    steps: list[CellStep]
-    problems: list[CellProblem]
 
 
 class RuleDecision(StrictModel):
