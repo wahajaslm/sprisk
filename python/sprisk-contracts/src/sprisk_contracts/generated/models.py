@@ -2088,6 +2088,14 @@ class ColumnProfile(StrictModel):
             ge=0.0,
         ),
     ] = None
+    rarest_share: Annotated[
+        float | None,
+        Field(
+            description="For a column with at most 20 distinct values, the share of present values held by its least common value, such as the rarest class of a target. Absent for other columns.",
+            ge=0.0,
+            le=1.0,
+        ),
+    ] = None
     numeric_share: Annotated[
         float | None,
         Field(

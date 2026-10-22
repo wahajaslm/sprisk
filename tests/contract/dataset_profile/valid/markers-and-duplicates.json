@@ -71,6 +71,7 @@
       "data_type": "String",
       "missing": 0,
       "distinct": 40,
+      "rarest_share": 0.02,
       "numeric_share": 0.98,
       "leading_zero_values": 0,
       "unconverted": [

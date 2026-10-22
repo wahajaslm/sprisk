@@ -595,6 +595,10 @@ export interface ColumnProfile {
    */
   iqr?: number;
   /**
+   * For a column with at most 20 distinct values, the share of present values held by its least common value, such as the rarest class of a target. Absent for other columns.
+   */
+  rarest_share?: number;
+  /**
    * Of a text column's present values, the share that read as numbers. Absent for other columns.
    */
   numeric_share?: number;

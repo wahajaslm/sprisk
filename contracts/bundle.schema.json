@@ -331,6 +331,12 @@
           "minimum": 0,
           "description": "Interquartile range of a numeric column with variation. Zero when most values are equal: IQR fences and robust scaling then have no spread to use."
         },
+        "rarest_share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "For a column with at most 20 distinct values, the share of present values held by its least common value, such as the rarest class of a target. Absent for other columns."
+        },
         "numeric_share": {
           "type": "number",
           "minimum": 0,

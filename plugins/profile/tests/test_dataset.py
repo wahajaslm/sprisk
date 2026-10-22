@@ -9,7 +9,14 @@ import pytest
 
 from sprisk_contracts import DatasetProfile
 from sprisk_contracts.generated.models import ColumnProfile
-from sprisk_profile.dataset import MAX_BANDS, MAX_COLUMNS, MAX_CORRELATED, MIN_PAIRED, read_table
+from sprisk_profile.dataset import (
+    MAX_BANDS,
+    MAX_COLUMNS,
+    MAX_CORRELATED,
+    MAX_RARE_VALUES,
+    MIN_PAIRED,
+    read_table,
+)
 from sprisk_profile.dataset import profile as raw_profile
 
 
@@ -234,6 +241,14 @@ def test_a_table_wider_than_the_profile_gives_no_duplicate_count() -> None:
     assert profile_of(data).duplicate_rows == 1
     assert profile_of(data, total_columns=MAX_COLUMNS + 1).duplicate_rows is None
     assert profile_of(data, total_rows=3).duplicate_rows is None
+
+
+def test_a_column_with_few_values_gives_its_rarest_values_share() -> None:
+    p = profile(pl.DataFrame({"y": [0, 0, 0, 1], "c": ["a", "b", "b", None], "x": list(range(4))}))
+    assert column(p, "y").rarest_share == pytest.approx(0.25)
+    assert column(p, "c").rarest_share == pytest.approx(1 / 3)
+    many = profile(pl.DataFrame({"x": list(range(MAX_RARE_VALUES + 1))}))
+    assert column(many, "x").rarest_share is None
 
 
 def test_a_text_column_says_what_share_reads_as_numbers_and_which_values_do_not() -> None:

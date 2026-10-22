@@ -22,6 +22,9 @@ MAX_CORRELATED = 30
 # A correlation from fewer rows than this says little; it is left out rather than drawn as exact.
 MIN_PAIRED = 10
 TOP_VALUES = 10
+# Most distinct values a column may have and still report its rarest value's share: enough for
+# the classes of a target, few enough that the share means something.
+MAX_RARE_VALUES = 20
 # Bounds on the work and memory of one profile; the page says when a table is larger.
 MAX_COLUMNS = 200
 MAX_ROWS = 1_000_000
@@ -91,6 +94,8 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
         "distinct": s.drop_nulls().n_unique(),
         "missing_by_band": _missing_by_band(s, band_rows),
     }
+    if (rarest := _rarest_share(s)) is not None:
+        column["rarest_share"] = rarest
     if numeric:
         column.update(_shape(s))
     if s.dtype == pl.String:
@@ -99,6 +104,16 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
     if histogram is not None:
         column["histogram"] = histogram
     return column
+
+
+def _rarest_share(s: pl.Series) -> float | None:
+    """The share of present values held by the least common one, for a column with few values
+    (a target's rarest class). Renamed first: the column's own name could be "n" (rule 7)."""
+    present = s.drop_nulls()
+    if present.is_empty() or s.dtype.is_nested() or present.n_unique() > MAX_RARE_VALUES:
+        return None
+    counts: list[int] = present.rename("value").value_counts(name="n")["n"].to_list()
+    return min(counts) / present.len()
 
 
 def _shape(s: pl.Series) -> dict[str, float]:
