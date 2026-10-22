@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reviewByRule, ruleTree } from "../src/views/methodology/ruleTree.ts";
+import { activation, reviewByRule, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r })) }) as never;
@@ -113,5 +113,40 @@ describe("one rule on several steps", () => {
   it("shows the first item when nothing is open", () => {
     const byRule = reviewByRule([item("a", "settled", "s1"), item("a", "not_applicable", "s2")]);
     expect(byRule.get("a")).toMatchObject({ subject_node_id: "s1" });
+  });
+});
+
+describe("activation conditions", () => {
+  const split = {
+    id: "split",
+    applies_to: ["sprisk.validation.random_split", "sprisk.clean.drop_missing"],
+    alternatives: [
+      { id: "temporal", label: "Temporal" },
+      { id: "stratified", label: "Stratified" },
+      { id: "group", label: "Group", condition: "an entity column is confirmed" },
+      { id: "manual", label: "Manual" },
+    ],
+    examples: [
+      { given: { "question.target": "churned", "question.task": "classification", "question.time_column": "signup_date" }, picks: "temporal" },
+      { given: { "question.target": "churned", "question.task": { value: "classification", origin: "confirmed" }, "column.age.missing_share": 0.1 }, picks: "stratified" },
+    ],
+  } as never;
+
+  it("gives a route the written condition of a draft", () => {
+    expect(routeWhen(split, "group")).toBe("an entity column is confirmed");
+  });
+
+  it("gives an active rule's route the tested example that picks it, in plain words, leaving out the target's name", () => {
+    expect(routeWhen(split, "temporal")).toBe("task = classification · time column = signup_date");
+    expect(routeWhen(split, "stratified")).toBe("task = classification · age missing share = 0.1");
+  });
+
+  it("gives nothing for a route with neither", () => {
+    expect(routeWhen(split, "manual")).toBeUndefined();
+  });
+
+  it("says which steps a decision activates on", () => {
+    expect(activation(split)).toBe("on random split or drop missing steps");
+    expect(activation({ applies_to: [] } as never)).toBeUndefined();
   });
 });

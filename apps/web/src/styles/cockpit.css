@@ -2429,6 +2429,7 @@ p { margin: 0; }
 .mth-route-node.picked .mth-route-dot { background: var(--white); border-color: var(--white); box-shadow: 0 0 4px var(--white); }
 .mth-route-node.picked .mth-route-name { color: var(--white); }
 .mth-route-node.dimmed { opacity: 0.38; }
+.mth-rule-meta.mth-when { color: var(--muted); }
 .mth-edge path { fill: none; stroke-linecap: round; transition: stroke 0.15s, stroke-width 0.15s; }
 .mth-edge.trunk path { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.2; }
 .mth-edge.branch path { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.2; }

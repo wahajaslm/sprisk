@@ -109,7 +109,7 @@ describe("methodology page", () => {
     expect(within(detail).getByText("Pairwise Correlation Pruning")).toBeInTheDocument();
   });
 
-  it("shows an active rule's inputs and examples, and no design notes", async () => {
+  it("shows an active rule's inputs and examples, and explains its routes by its examples, not design notes", async () => {
     const plain = ({ condition: _, ...a }: MethodologyRule["alternatives"][number]) => a;
     const { observes: _notes, ...withoutNotes } = split;
     const active: MethodologyRule = {
@@ -128,7 +128,8 @@ describe("methodology page", () => {
     const example = within(detail).getByRole("listitem", { name: "Example 1" });
     expect(example).toHaveTextContent("question.time_column = signup_date");
     expect(example).toHaveTextContent("Pairwise Correlation Pruning");
-    expect(within(detail).queryByText(/^When:/)).not.toBeInTheDocument();
+    // An active rule's route is explained by the tested example that picks it, not a design note.
+    expect(within(detail).getByText(/^When: .*time column = signup_date/)).toBeInTheDocument();
   });
 
   it("says a shortlist rule's candidates are the registered models, and shows its examples' shortlists", async () => {

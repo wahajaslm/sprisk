@@ -6,7 +6,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
-import { reviewByRule, stageName } from "./ruleTree.ts";
+import { activation, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
@@ -75,7 +75,8 @@ function RuleDetail({ rule, review }: { rule: MethodologyRule; review: Methodolo
         <div>
           <h1>{rule.name}</h1>
           <p className="muted">
-            {stageName(rule.stage)} · decides <code>{rule.decides}</code> · <span className="tech">{rule.id}</span>
+            {stageName(rule.stage)} · decides <code>{rule.decides}</code>
+            {activation(rule) && ` · ${activation(rule)}`} · <span className="tech">{rule.id}</span>
           </p>
           {source.data && <p className="mth-tag">{python ? "Python decide() in rule.py" : "No rule.py yet: manifest only"}</p>}
         </div>
@@ -207,7 +208,7 @@ function Overview({ rule }: { rule: MethodologyRule }) {
                   <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
                 </div>
                 <p>{a.description}</p>
-                {a.condition && <p className="muted">When: {a.condition}</p>}
+                {routeWhen(rule, a.id) && <p className="muted">When: {routeWhen(rule, a.id)}</p>}
                 <p className="muted">Why: {a.rationale}</p>
               </li>
             ))}

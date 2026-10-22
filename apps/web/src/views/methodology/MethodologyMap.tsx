@@ -4,7 +4,7 @@ import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactF
 import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
 import { useMemo } from "react";
 
-import { ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
+import { activation, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
 
 type Props = {
   rules: MethodologyRule[];
@@ -98,8 +98,8 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
       <span className="mth-rule-dot" />
       <span className="mth-rule-text">
         <span className="mth-rule-name">{rule.name}</span>
-        <span className="mth-rule-meta">
-          {rule.decides}
+        <span className="mth-rule-meta" title={rule.decides}>
+          {activation(rule) ?? rule.decides}
           {rule.status === "draft" && " · draft"}
           {review && (
             <span className={`mth-rule-status ${review.status}`} title={review.reason}>
@@ -115,14 +115,14 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
 }
 
 function RouteNode({ data }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
-  const { route, picked, dimmed } = data;
+  const { route, when, picked, dimmed } = data;
   return (
-    <div className={`mth-route-node${picked ? " picked" : ""}${dimmed ? " dimmed" : ""}`} title={`${route.description}\nWhy: ${route.rationale}`}>
+    <div className={`mth-route-node${picked ? " picked" : ""}${dimmed ? " dimmed" : ""}`} title={`${route.description}${when ? `\nWhen ${when}` : ""}\nWhy: ${route.rationale}`}>
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <span className="mth-route-dot" />
       <span className="mth-rule-text">
         <span className="mth-route-name">{route.label}</span>
-        <span className="mth-rule-meta">{route.condition ? `When ${route.condition}` : (route.action.operator?.split("@")[0] ?? route.description)}</span>
+        <span className={`mth-rule-meta${data.when ? " mth-when" : ""}`}>{data.when ? `When ${data.when}` : (route.action.operator?.split("@")[0] ?? route.description)}</span>
       </span>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>

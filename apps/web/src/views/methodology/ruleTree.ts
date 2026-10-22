@@ -8,7 +8,7 @@ export const stageName = (stage: MethodologyStage) => stage[0]!.toUpperCase() + 
 /** Sizes given up front: a tree has no need to measure its nodes before placing them. One
  * height for all, so a parent centred on its children's tops is centred on them. */
 const HEIGHT = 36;
-const SIZE = { root: { width: 64, height: HEIGHT }, stage: { width: 170, height: HEIGHT }, rule: { width: 290, height: HEIGHT }, route: { width: 300, height: HEIGHT } };
+const SIZE = { root: { width: 64, height: HEIGHT }, stage: { width: 170, height: HEIGHT }, rule: { width: 290, height: HEIGHT }, route: { width: 360, height: HEIGHT } };
 const ROW = HEIGHT + 6;
 const RULE_GAP = 8;
 const GAP = 72;
@@ -19,7 +19,7 @@ export type TreeNode =
   | Node<{ count: number }, "root">
   | Node<{ stage: MethodologyStage; count: number; number: number; dimmed: boolean }, "stage">
   | Node<{ rule: MethodologyRule; review: MethodologyReviewItem | undefined; dimmed: boolean }, "rule">
-  | Node<{ route: MethodologyRule["alternatives"][number]; picked: boolean; dimmed: boolean }, "route">;
+  | Node<{ route: MethodologyRule["alternatives"][number]; when: string | undefined; picked: boolean; dimmed: boolean }, "route">;
 
 /** The methodology as a connected tree (ADR-0059), every possibility, left to right: the stages
  * in decision order on one line, each fanning out into a column of its decisions, each decision
@@ -67,7 +67,7 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
         const id = `${rule.id}#${route.id}`;
         const picked = review?.recommended_alternative_id === route.id;
         const taken = ruleOnPath && picked;
-        fan.push({ id, type: "route", position: { x: x + SIZE.rule.width + GAP, y }, ...SIZE.route, data: { route, picked, dimmed: path && !taken } });
+        fan.push({ id, type: "route", position: { x: x + SIZE.rule.width + GAP, y }, ...SIZE.route, data: { route, when: routeWhen(rule, route.id), picked, dimmed: path && !taken } });
         edges.push({ id: `${rule.id}>${id}`, source: rule.id, target: id, data: { onPath: reach && taken, kind: "branch" } });
         next.push({ id, lit: reach && taken, kind: "trunk" });
         const top = y;
@@ -103,4 +103,32 @@ export function reviewByRule(items: MethodologyReviewItem[]): Map<string, Method
     if (!shown || (!OPEN.includes(shown.status) && OPEN.includes(item.status))) byRule.set(item.rule, item);
   }
   return byRule;
+}
+
+/** A fact's name as people read it: `question.time_column` → "time column",
+ * `column.age.missing_share` → "age missing share". */
+const factName = (name: string) =>
+  name
+    .replace(/^(question|flow|step|candidate)\./, "")
+    .replace(/^column\./, "")
+    .replace(/[._]/g, " ");
+
+/** When a route is taken. A draft's route has its written condition. An active rule's logic is
+ * its decide() alone (ADR-0045), so its route shows the first tested example that picks it, in
+ * plain words, leaving out the target's name, which never decides a route. */
+export function routeWhen(rule: MethodologyRule, routeId: string): string | undefined {
+  const route = rule.alternatives.find((a) => a.id === routeId);
+  if (route?.condition) return route.condition;
+  const example = (rule.examples ?? []).find((e) => e.picks === routeId);
+  if (!example) return undefined;
+  return Object.entries(example.given)
+    .filter(([name]) => name !== "question.target")
+    .map(([name, value]) => `${factName(name)} = ${typeof value === "object" ? value.value : String(value)}`)
+    .join(" · ");
+}
+
+/** Which steps a decision activates on: the operators it decides, without pack and version. */
+export function activation(rule: MethodologyRule): string | undefined {
+  const steps = (rule.applies_to ?? []).map((op) => op.split(".").slice(2).join(" ").replace(/_/g, " "));
+  return steps.length ? `on ${steps.join(" or ")} steps` : undefined;
 }
