@@ -713,3 +713,12 @@ def test_excluded_key_columns_never_reach_the_model_or_its_importance() -> None:
         rows(200, seed=3), linear_model_estimator, params, 5, 0, "balanced_accuracy", 1, []
     )
     assert result["importance"]["feature"].to_list() == ["x"]
+
+
+def test_a_key_column_an_earlier_step_already_dropped_is_no_error() -> None:
+    # The run leaves out every key column the flow names; one may be gone already.
+    params = {"target": "y", "task": "classification", "exclude": ["c", "amount", "gone"]}
+    result = cross_validate(
+        rows(200, seed=3), linear_model_estimator, params, 5, 0, "balanced_accuracy", 1, []
+    )
+    assert result["importance"]["feature"].to_list() == ["x"]

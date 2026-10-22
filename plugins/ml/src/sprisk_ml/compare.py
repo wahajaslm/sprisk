@@ -135,8 +135,14 @@ def cross_validate(
         if k not in ("target", "features", "costs", "exclude")
     }
     # Preparation may read columns the model does not, so it gets every column but the target
-    # and the key columns, which identify rows, groups or time and are never inputs.
-    x = train.drop([target, *exclude]) if prepare or features is None else train.select(features)
+    # and the key columns, which identify rows, groups or time and are never inputs. A key
+    # column an earlier step dropped is already left out, as in the model step.
+    left_out = [target, *exclude]
+    x = (
+        train.drop(left_out, strict=False)
+        if prepare or features is None
+        else train.select(features)
+    )
     model = Pipeline(
         [
             *[(f"prepare_{i}", step) for i, step in enumerate(prepare)],
