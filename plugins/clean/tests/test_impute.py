@@ -27,3 +27,24 @@ def test_nan_is_treated_as_missing() -> None:
     out = impute(train, test, columns=["x"], method="mean")
     assert out["train"]["x"].to_list() == [1.0, 2.0, 3.0]
     assert out["test"]["x"].to_list() == [2.0]
+
+
+def test_text_gaps_get_the_text_fill_beside_a_number_fill() -> None:
+    # Rakuten: 35% of descriptions are empty; a gap becomes its own category.
+    train = pl.DataFrame({"x": [1.0, None, 3.0], "kind": ["a", None, "b"]})
+    test = pl.DataFrame({"x": [None], "kind": [None]}, schema=train.schema)
+    out = impute(train, test, columns=["x", "kind"], method="median", text_fill="missing")
+    assert out["train"]["kind"].to_list() == ["a", "missing", "b"]
+    assert out["test"].to_dicts() == [{"x": 2.0, "kind": "missing"}]
+
+
+def test_a_text_column_without_a_text_fill_is_an_error() -> None:
+    train = pl.DataFrame({"kind": ["a", None]})
+    with pytest.raises(ValueError, match="kind is text: give a text_fill"):
+        impute(train, train, columns=["kind"], method="median")
+
+
+def test_a_column_neither_number_nor_text_is_an_error() -> None:
+    train = pl.DataFrame({"flag": [True, None]})
+    with pytest.raises(ValueError, match="flag is Boolean"):
+        impute(train, train, columns=["flag"], method="median", text_fill="missing")

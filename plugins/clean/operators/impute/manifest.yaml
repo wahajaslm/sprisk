@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.impute@1.0.0
 capability_class: transform
-description: Fill missing values with the train median or mean, or with 0. Fit on train only.
+description: Fill missing numbers with the train median or mean, or with 0, and missing text with a category of its own. Fit on train only.
 entrypoint: sprisk_clean.impute:impute
 fits_on_train: true
 inputs: [{ name: train, kind: table }, { name: test, kind: table }]
@@ -12,7 +12,8 @@ params_schema:
   required: [columns, method]
   properties:
     columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns whose missing values are filled." }
-    method: { type: string, enum: [median, mean, zero], description: "Statistic of the train rows used to fill gaps; zero fills with 0." }
+    method: { type: string, enum: [median, mean, zero], description: "Statistic of the train rows used to fill gaps in numbers; zero fills with 0." }
+    text_fill: { type: string, minLength: 1, description: "Category that fills gaps in text columns, such as missing. Needed when a column is text." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }
