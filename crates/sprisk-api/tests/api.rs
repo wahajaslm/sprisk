@@ -4366,38 +4366,23 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     forest_flow(&api).await;
 
     let review = review(&api).await;
-    let items = statuses(&review);
-    assert_eq!(items[0].0, "split.method", "{review}");
-    for (decides, status) in &items[1..] {
-        assert!(
-            [
-                "needs_run",
-                "waiting",
-                "no_subject",
-                "settled",
-                "proposal",
-                "needs_fact"
-            ]
-            .contains(&status.as_str()),
-            "{decides}: {status}"
-        );
-    }
-    let encoding = items
-        .iter()
-        .find(|(d, _)| d == "features.encoding_strategy")
-        .unwrap();
-    assert!(
-        ["needs_run", "waiting"].contains(&encoding.1.as_str()),
-        "{review}"
-    );
-    let filling = items
-        .iter()
-        .find(|(d, _)| d == "cleaning.missingness_strategy")
-        .unwrap();
-    assert_eq!(filling.1, "no_subject", "{review}");
-    assert!(
-        !items.iter().any(|(d, _)| d.starts_with("clustering.")),
-        "{review}"
+    let expected: Vec<(String, String)> = [
+        ("split.method", "proposal"),
+        ("cleaning.missingness_strategy", "no_subject"),
+        ("cleaning.outlier_strategy", "no_subject"),
+        ("features.encoding_strategy", "waiting"),
+        ("features.scaling_strategy", "no_subject"),
+        ("modeling.estimator_selection", "waiting"),
+        ("evaluation.decision_threshold", "settled"),
+    ]
+    .iter()
+    .map(|(d, s)| ((*d).to_owned(), (*s).to_owned()))
+    .collect();
+    assert_eq!(statuses(&review), expected, "{review}");
+    assert_eq!(
+        review["next"],
+        json!([0]),
+        "only the split can be worked on: {review}"
     );
 }
 
@@ -4436,8 +4421,8 @@ async fn a_flow_with_no_question_cannot_be_reviewed() {
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let uri = format!("/pipeline_versions/{BASE}/methodology/review");
     let (status, body) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert_eq!(body["code"], "question_required", "{body}");
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "question_required", "{body}");
 }
 
 #[tokio::test]

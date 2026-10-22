@@ -193,7 +193,8 @@ fn changes_nothing(effect: Option<&GraphEffect>, subject: Option<&Node>) -> bool
     }
 }
 
-/// What the first open item before `at` that `at` must come after decides, if any.
+/// What the first open item before `at` that `at` must come after decides, if any. A rule
+/// with no step waits for nothing: it has nothing to decide yet.
 pub fn waits_on<'a>(
     pipeline: &PipelineVersion,
     planned: &'a [Planned],
@@ -201,6 +202,7 @@ pub fn waits_on<'a>(
     open: &[bool],
 ) -> Option<&'a str> {
     let later = planned.get(at)?;
+    later.subject?;
     planned[..at]
         .iter()
         .zip(open)

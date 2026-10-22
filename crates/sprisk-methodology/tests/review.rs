@@ -348,3 +348,14 @@ fn without_effect() -> Value {
     alternative.as_object_mut().unwrap().remove("effect");
     alternative
 }
+
+#[test]
+fn a_rule_with_no_step_never_waits_since_it_has_nothing_to_decide() {
+    let catalog = catalog();
+    let pipeline = filled_linear();
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
+    let mut open = vec![false; planned.len()];
+    open[0] = true;
+    let outliers = index_of(&planned, "cleaning.outlier_strategy");
+    assert_eq!(waits_on(&pipeline, &planned, outliers, &open), None);
+}
