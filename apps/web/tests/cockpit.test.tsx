@@ -1160,6 +1160,22 @@ describe("inputs tab", () => {
     expect(outputs).toHaveTextContent(/metrics.*metrics/);
   });
 
+  it("shows an optional input left unconnected as optional, not as an error", async () => {
+    server.use(
+      http.get("/api/operators", () =>
+        HttpResponse.json(
+          operators.map((o) =>
+            o.id === "sprisk.ml.evaluate@1.0.0" ? { ...o, inputs: [...o.inputs, { name: "words", kind: "matrix", optional: true }] } : o,
+          ),
+        ),
+      ),
+    );
+    await openInputs("score");
+    const inputs = await screen.findByRole("region", { name: "Input tables" });
+    await waitFor(() => expect(inputs).toHaveTextContent(/words.*matrix.*optional, not connected/));
+    expect(within(inputs).queryAllByText("not connected")).toHaveLength(0);
+  });
+
   it("runs a new version with the changed setting", async () => {
     server.use(
       http.get("/api/operators", () =>

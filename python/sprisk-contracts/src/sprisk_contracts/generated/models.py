@@ -1958,6 +1958,21 @@ class Port(StrictModel):
     description: str | None = None
 
 
+class InputPort(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: PortName
+    kind: PortKind
+    description: str | None = None
+    optional: Annotated[
+        bool | None,
+        Field(
+            description="An input the step may run without (ADR-0058): left unconnected, the step gets nothing for it. Only a matrix input may be optional today; the registry refuses any other."
+        ),
+    ] = None
+
+
 class Node(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2553,7 +2568,7 @@ class Operator(StrictModel):
             description="True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
         ),
     ] = None
-    inputs: list[Port]
+    inputs: list[InputPort]
     outputs: list[Port]
     params_schema: Annotated[
         dict[str, Any],

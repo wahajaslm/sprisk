@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
-use sprisk_contracts::{Operator, PipelineVersion, Port, PortKind, PortName};
+use sprisk_contracts::{InputPort, Operator, PipelineVersion, Port, PortKind, PortName};
 use sprisk_registry::Registry;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -191,16 +191,26 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
     for edge in &pipeline.edges {
         let (from_node, from_port) = edge.from.step_and_port();
         let (to_node, to_port) = edge.to.step_and_port();
-        let from = resolve_port(&operators, &index, from_node, from_port, |op| &op.outputs);
-        let to = resolve_port(&operators, &index, to_node, to_port, |op| &op.inputs);
+        let from = resolve_port(&operators, &index, from_node, |op| {
+            op.outputs
+                .iter()
+                .find(|p| p.name.as_str() == from_port)
+                .map(|p| &p.kind)
+        });
+        let to = resolve_port(&operators, &index, to_node, |op| {
+            op.inputs
+                .iter()
+                .find(|p| p.name.as_str() == to_port)
+                .map(|p| &p.kind)
+        });
         match (from, to) {
             (Lookup::Found(out), Lookup::Found(inp)) => {
-                if out.kind != inp.kind {
+                if out != inp {
                     errors.push(CompileError::KindMismatch {
                         from: edge.from.to_string(),
                         to: edge.to.to_string(),
-                        from_kind: out.kind.to_string(),
-                        to_kind: inp.kind.to_string(),
+                        from_kind: out.to_string(),
+                        to_kind: inp.to_string(),
                     });
                 }
                 feeds
@@ -238,7 +248,7 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
         }
     }
 
-    // Every input of every resolved node is fed exactly once.
+    // Every input of every resolved node is fed exactly once; an optional one at most once.
     for node in &pipeline.nodes {
         let Some(op) = operators.get(node.id.as_str()) else {
             continue;
@@ -247,6 +257,7 @@ pub fn compile(pipeline: &PipelineVersion, registry: &Registry) -> Result<Plan, 
             let key = (node.id.as_str(), input.name.as_str());
             let name = format!("{}.{}", key.0, key.1);
             match feeds.get(&key).map_or(0, Vec::len) {
+                0 if input.optional == Some(true) => {}
                 0 => errors.push(CompileError::Unconnected(name)),
                 1 => {}
                 _ => errors.push(CompileError::ConnectedTwice(name)),
@@ -318,9 +329,9 @@ fn with_named_ports(
         let Some(side) = schema.get("x-sprisk-ports") else {
             continue;
         };
-        let ports = match side.as_str() {
-            Some("input") => &mut named.inputs,
-            Some("output") => &mut named.outputs,
+        let input = match side.as_str() {
+            Some("input") => true,
+            Some("output") => false,
             _ => {
                 errors.push(schema_error(format!(
                     "x-sprisk-ports on {key} must be input or output"
@@ -350,15 +361,29 @@ fn with_named_ports(
                 errors.push(bad("port names are lowercase letters, digits and _"));
                 continue;
             };
-            if RESERVED_PORTS.contains(&name) || ports.iter().any(|p| p.name == port_name) {
+            let taken = if input {
+                named.inputs.iter().any(|p| p.name == port_name)
+            } else {
+                named.outputs.iter().any(|p| p.name == port_name)
+            };
+            if RESERVED_PORTS.contains(&name) || taken {
                 errors.push(bad("the step already has a port with this name"));
                 continue;
             }
-            ports.push(Port {
-                name: port_name,
-                kind: PortKind::Table,
-                description: None,
-            });
+            if input {
+                named.inputs.push(InputPort {
+                    name: port_name,
+                    kind: PortKind::Table,
+                    description: None,
+                    optional: None,
+                });
+            } else {
+                named.outputs.push(Port {
+                    name: port_name,
+                    kind: PortKind::Table,
+                    description: None,
+                });
+            }
         }
     }
     if errors.is_empty() {
@@ -594,15 +619,14 @@ enum Lookup<'a> {
     UnknownNode,
     UnknownOperator,
     MissingPort,
-    Found(&'a Port),
+    Found(&'a PortKind),
 }
 
 fn resolve_port<'a>(
     operators: &'a HashMap<&str, Operator>,
     index: &HashMap<&str, NodeIndex>,
     node: &str,
-    port: &str,
-    ports: impl Fn(&'a Operator) -> &'a Vec<Port>,
+    kind_of: impl Fn(&'a Operator) -> Option<&'a PortKind>,
 ) -> Lookup<'a> {
     if !index.contains_key(node) {
         return Lookup::UnknownNode;
@@ -610,8 +634,8 @@ fn resolve_port<'a>(
     let Some(op) = operators.get(node) else {
         return Lookup::UnknownOperator;
     };
-    match ports(op).iter().find(|p| p.name.as_str() == port) {
-        Some(p) => Lookup::Found(p),
+    match kind_of(op) {
+        Some(kind) => Lookup::Found(kind),
         None => Lookup::MissingPort,
     }
 }

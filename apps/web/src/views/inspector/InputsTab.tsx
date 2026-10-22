@@ -25,10 +25,13 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
   // Declared ports first; an edge to a port the manifest does not list still shows.
   const declared = [
     ...(operator?.inputs ?? []),
-    ...namedPorts(operator, node?.params, "input").map((name) => ({ name, kind: "table" as const })),
+    ...namedPorts(operator, node?.params, "input").map((name) => ({ name, kind: "table" as const, optional: false })),
   ];
   const extra = incoming.map((e) => portOf(e.to)).filter((p) => !declared.some((d) => d.name === p));
-  const inputs = [...declared.map((d) => ({ name: d.name, kind: d.kind as string })), ...extra.map((name) => ({ name, kind: "" }))];
+  const inputs = [
+    ...declared.map((d) => ({ name: d.name, kind: d.kind as string, optional: d.optional === true })),
+    ...extra.map((name) => ({ name, kind: "", optional: false })),
+  ];
   const outputs = [
     ...(operator?.outputs ?? []),
     ...namedPorts(operator, node?.params, "output").map((name) => ({ name, kind: "table" as const })),
@@ -71,6 +74,8 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
                       <SourceButton from={from} fromPort={fromPort} />
                       <ArtifactSize attempt={hasOutputs(producer) ? producer : undefined} port={fromPort} />
                     </>
+                  ) : input.optional ? (
+                    <span className="muted">optional, not connected</span>
                   ) : (
                     <span className="error">not connected</span>
                   )}

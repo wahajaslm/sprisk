@@ -1,0 +1,30 @@
+{
+  "schema_version": "sprisk.operator/v1",
+  "id": "acme.ml.fit@1.0.0",
+  "capability_class": "estimator",
+  "entrypoint": "acme_ml.fit:fit",
+  "inputs": [
+    {
+      "name": "train",
+      "kind": "table"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "model",
+      "kind": "model",
+      "optional": true
+    }
+  ],
+  "params_schema": {
+    "type": "object"
+  },
+  "effects": "pure",
+  "network": "none",
+  "resources": {
+    "cpu_cores": 1,
+    "memory_mb": 2048,
+    "gpu": "none",
+    "timeout_seconds": 600
+  }
+}

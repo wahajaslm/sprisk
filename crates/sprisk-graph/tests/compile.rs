@@ -67,8 +67,22 @@ fn registry_with_model(about: &str) -> (tempfile::TempDir, Registry) {
         "type": "object",
         "properties": { "lookup": { "type": "string", "x-sprisk-local-path": true } }
     });
+    let mut with_words = operator(
+        "sprisk.ml.train_words@1.0.0",
+        &[("training_data", "table"), ("words", "matrix")],
+        &[("model", "model")],
+        json!({ "type": "object" }),
+    );
+    with_words["inputs"][1]["optional"] = json!(true);
     let ops = [
         model,
+        with_words,
+        operator(
+            "sprisk.text.words@1.0.0",
+            &[("data", "table")],
+            &[("words", "matrix")],
+            json!({ "type": "object" }),
+        ),
         shift,
         noisy,
         online,
@@ -325,6 +339,50 @@ fn every_input_is_connected_exactly_once() {
     );
     assert!(
         errs.contains(&CompileError::ConnectedTwice("train.training_data".into())),
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn an_optional_input_may_be_left_unconnected_and_keeps_its_kind() {
+    let (_dir, registry) = registry();
+    let nodes = json!([
+        node("ingest", "sprisk.source.parquet@1.0.0"),
+        node("train", "sprisk.ml.train_words@1.0.0"),
+    ]);
+    let fed = edge("ingest.data", "train.training_data");
+    let plan = compile(&pipeline(nodes.clone(), json!([fed])), &registry).unwrap();
+    let train = plan.steps.iter().find(|s| s.node_id == "train").unwrap();
+    assert_eq!(train.inputs.len(), 1);
+
+    let errs = errors(nodes, json!([fed, edge("ingest.data", "train.words")]));
+    assert!(
+        errs.contains(&CompileError::KindMismatch {
+            from: "ingest.data".into(),
+            to: "train.words".into(),
+            from_kind: "table".into(),
+            to_kind: "matrix".into(),
+        }),
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn an_optional_input_is_still_fed_at_most_once() {
+    let nodes = json!([
+        node("ingest", "sprisk.source.parquet@1.0.0"),
+        node("words", "sprisk.text.words@1.0.0"),
+        node("train", "sprisk.ml.train_words@1.0.0"),
+    ]);
+    let edges = json!([
+        edge("ingest.data", "words.data"),
+        edge("ingest.data", "train.training_data"),
+        edge("words.words", "train.words"),
+        edge("words.words", "train.words"),
+    ]);
+    let errs = errors(nodes, edges);
+    assert!(
+        errs.contains(&CompileError::ConnectedTwice("train.words".into())),
         "{errs:?}"
     );
 }

@@ -103,8 +103,11 @@ function callOf(pipeline: PipelineVersion, operators: Operators, node: Node): st
   if (!operator) return `# operator ${node.operator} is not installed`;
   const fn = node.code?.function ?? node.id;
   const properties = (operator.params_schema["properties"] ?? {}) as Record<string, Record<string, unknown>>;
+  const fed = inputsOf(pipeline, node.id);
   const args = [
-    ...inputsOf(pipeline, node.id).map((i) => `${i.port}=${i.name}`),
+    ...fed.map((i) => `${i.port}=${i.name}`),
+    // The worker passes None for an optional input left unconnected (ADR-0058).
+    ...operator.inputs.filter((p) => p.optional && !fed.some((i) => i.port === p.name)).map((p) => `${p.name}=None`),
     ...Object.entries(node.params).map(([k, v]) => `${k}=${properties[k]?.["x-sprisk-local-path"] === true ? `Path(${python(v)})` : python(v)}`),
   ];
   const call = `${fn}(${args.join(", ")})`;

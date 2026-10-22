@@ -1954,7 +1954,7 @@ export interface Operator {
    * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows.
    */
   fits_on_train?: boolean;
-  inputs: Port[];
+  inputs: InputPort[];
   outputs: Port[];
   /**
    * JSON Schema for this operator's params. The compiler validates node params against it.
@@ -2003,6 +2003,19 @@ export interface OperatorModel {
 export interface SearchSetting {
   name: string;
   values: unknown[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "InputPort".
+ */
+export interface InputPort {
+  name: PortName;
+  kind: PortKind;
+  description?: string;
+  /**
+   * An input the step may run without (ADR-0058): left unconnected, the step gets nothing for it. Only a matrix input may be optional today; the registry refuses any other.
+   */
+  optional?: boolean;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

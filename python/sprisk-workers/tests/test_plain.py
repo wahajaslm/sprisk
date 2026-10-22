@@ -663,3 +663,26 @@ def test_a_file_that_is_no_npz_fails_the_step_as_invalid_input(tmp_path: Path) -
     with pytest.raises(OperatorError) as e:
         adapt(use, read)({}, {"words": path}, staging(tmp_path))
     assert e.value.code == "invalid_input"
+
+
+def test_an_optional_input_left_unconnected_arrives_as_none(tmp_path: Path) -> None:
+    fit = operator(
+        "[{ name: train, kind: table }, { name: words, kind: matrix, optional: true }]",
+        "[{ name: metrics, kind: metrics }]",
+    )
+
+    def op(train: pl.DataFrame, words: Matrix | None) -> dict[str, Any]:
+        return {"rows": train.height, "words": words is not None}
+
+    [out] = adapt(op, fit)(
+        {}, {"train": parquet(tmp_path, pl.DataFrame({"x": [1, 2]}))}, staging(tmp_path)
+    )
+    assert json.loads(out.path.read_text()) == {"rows": 2, "words": False}
+
+
+def test_a_required_input_left_unconnected_fails_the_step(tmp_path: Path) -> None:
+    def op(data: pl.DataFrame, factor: float) -> pl.DataFrame:
+        return data
+
+    with pytest.raises(OperatorError, match="input data is not connected"):
+        adapt(op, ONE_TABLE)({"factor": 1}, {}, staging(tmp_path))

@@ -124,6 +124,30 @@ fn a_supervised_model_without_an_estimator_or_complexity_names_the_file() {
 }
 
 #[test]
+fn only_a_matrix_input_may_be_optional() {
+    let dir = tempfile::tempdir().unwrap();
+    let optional = SPLIT.replace(
+        "inputs: [{ name: data, kind: table }]",
+        "inputs: [{ name: data, kind: table, optional: true }]",
+    );
+    write(dir.path(), "bad/manifest.yaml", &optional);
+
+    let err = Registry::load_dir(dir.path()).unwrap_err();
+
+    assert!(matches!(err, RegistryError::OptionalInput { .. }), "{err}");
+    assert!(err.to_string().contains("bad/manifest.yaml"), "{err}");
+    assert!(err.to_string().contains("input data"), "{err}");
+
+    let dir = tempfile::tempdir().unwrap();
+    let words = SPLIT.replace(
+        "inputs: [{ name: data, kind: table }]",
+        "inputs: [{ name: data, kind: table }, { name: words, kind: matrix, optional: true }]",
+    );
+    write(dir.path(), "ok/manifest.yaml", &words);
+    assert_eq!(Registry::load_dir(dir.path()).unwrap().len(), 1);
+}
+
+#[test]
 fn malformed_yaml_names_the_file() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "bad/manifest.yaml", "id: [unclosed");

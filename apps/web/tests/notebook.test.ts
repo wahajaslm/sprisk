@@ -60,6 +60,15 @@ describe("a flow as notebook cells", () => {
     ]);
   });
 
+  it("passes None for an optional input left unconnected, as the worker does", () => {
+    const words = new Map(ops);
+    const split = ops.get("sprisk.validation.random_split@1.0.0");
+    if (!split) throw new Error("fixture has no split");
+    words.set(split.id, { ...split, inputs: [...split.inputs, { name: "words", kind: "matrix", optional: true }] });
+    const call = notebookSteps(mixed, words).find((s) => s.nodeId === "split");
+    expect(call).toEqual({ kind: "builtin", nodeId: "split", call: SPLIT_CALL.replace("data=clean,", "data=clean, words=None,") });
+  });
+
   it("shows a step whose operator is not installed as a comment, not as code", () => {
     const missing = { ...pipeline, nodes: [{ id: "old", operator: "sprisk.io.gone@1.0.0", params: {} }], edges: [] };
     expect(notebookSteps(missing, ops)).toEqual([{ kind: "builtin", nodeId: "old", call: "# operator sprisk.io.gone@1.0.0 is not installed" }]);

@@ -7,7 +7,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
-use sprisk_contracts::{ContractError, Operator, OperatorSource, OperatorSourceLanguage};
+use sprisk_contracts::{
+    ContractError, InputPort, Operator, OperatorSource, OperatorSourceLanguage, PortKind,
+};
 use walkdir::WalkDir;
 
 const MANIFEST: &str = "manifest.yaml";
@@ -38,6 +40,8 @@ pub enum RegistryError {
         "{path}: a model with tasks must declare its estimator and complexity, so it can be cross-validated and ranked"
     )]
     IncompleteModel { path: PathBuf },
+    #[error("{path}: input {port} is optional, but only a matrix input may be (ADR-0058)")]
+    OptionalInput { path: PathBuf, port: String },
     #[error("{path}: model.search: {reason}")]
     BadSearch { path: PathBuf, reason: String },
     #[error("unknown operator {0}")]
@@ -229,6 +233,15 @@ fn read_manifest(path: &Path) -> Result<Operator, RegistryError> {
     {
         return Err(RegistryError::IncompleteModel {
             path: path.to_owned(),
+        });
+    }
+    // A table or model left out would leave a step to guess a default; words are the one
+    // input a step does well without (ADR-0058).
+    let optional = |p: &&InputPort| p.optional == Some(true) && p.kind != PortKind::Matrix;
+    if let Some(port) = operator.inputs.iter().find(optional) {
+        return Err(RegistryError::OptionalInput {
+            path: path.to_owned(),
+            port: port.name.to_string(),
         });
     }
     check_search(&operator).map_err(|reason| RegistryError::BadSearch {

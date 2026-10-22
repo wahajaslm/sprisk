@@ -28,3 +28,47 @@ pub(crate) fn cache_key(project: &str, step: &Step, inputs: &[(String, String)])
         hex::encode(Sha256::digest(doc.to_string().as_bytes()))
     )
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    fn step() -> Step {
+        let operator = json!({
+            "schema_version": "sprisk.operator/v1",
+            "id": "acme.ml.fit@1.0.0",
+            "capability_class": "estimator",
+            "entrypoint": "acme.fit:fit",
+            "inputs": [
+                { "name": "train", "kind": "table" },
+                { "name": "words", "kind": "matrix", "optional": true }
+            ],
+            "outputs": [{ "name": "model", "kind": "model" }],
+            "params_schema": { "type": "object" },
+            "effects": "pure",
+            "network": "none",
+            "resources": { "cpu_cores": 1, "memory_mb": 64, "gpu": "none", "timeout_seconds": 60 }
+        });
+        Step {
+            node_id: "fit".into(),
+            operator: sprisk_contracts::parse(&operator.to_string()).unwrap(),
+            implementation_digest: "sha256:code".into(),
+            params: serde_json::Map::new(),
+            inputs: Vec::new(),
+            code: None,
+        }
+    }
+
+    #[test]
+    fn a_step_run_with_its_optional_words_never_reuses_one_run_without_them() {
+        let train = ("train".to_owned(), "sha256:rows".to_owned());
+        let words = ("words".to_owned(), "sha256:rows".to_owned());
+
+        let without = cache_key("prj", &step(), std::slice::from_ref(&train));
+        let with = cache_key("prj", &step(), &[train, words]);
+
+        assert_ne!(without, with);
+    }
+}

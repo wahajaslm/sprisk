@@ -76,6 +76,7 @@ def adapt(
     `models` are the estimators a setting marked `x-sprisk-model-operator` may name;
     `preparations` the steps a setting marked `x-sprisk-preparation` may list."""
     inputs = {p.name.root: p.kind.value for p in operator.inputs}
+    optional = {p.name.root for p in operator.inputs if p.optional}
     outputs = {p.name.root: p.kind.value for p in operator.outputs}
     properties: Mapping[str, Any] = operator.params_schema.get("properties") or {}
     settings = set(properties)
@@ -97,7 +98,14 @@ def adapt(
     named_in, named_out = named_ports(operator, "input"), named_ports(operator, "output")
 
     def run(params: Mapping[str, Any], paths: Mapping[str, Path], out_dir: Path) -> list[Output]:
-        values = {port: _read(paths[port], kind) for port, kind in inputs.items()}
+        unconnected = sorted(set(inputs) - set(paths) - optional)
+        if unconnected:
+            raise OperatorError("unconnected_input", f"input {unconnected[0]} is not connected")
+        # An optional input left unconnected arrives as None (ADR-0058).
+        values = {
+            port: _read(paths[port], kind) if port in paths else None
+            for port, kind in inputs.items()
+        }
         named = named_port_names(operator, params, "output")
         expected = dict(outputs) | {name: "table" for name in named}
         try:

@@ -383,22 +383,24 @@ pub fn with_node_before<'a>(
         .position(|n| n.id.as_str() == before)
         .ok_or_else(|| ResolveError::UnknownNode(before.to_owned()))?;
     let operator = step.operator.as_str();
-    let ports = |ports: &[sprisk_contracts::Port]| -> BTreeSet<String> {
-        ports.iter().map(|p| p.name.as_str().to_owned()).collect()
-    };
+    fn ports<'p>(
+        names: impl IntoIterator<Item = &'p sprisk_contracts::PortName>,
+    ) -> BTreeSet<String> {
+        names.into_iter().map(|n| n.as_str().to_owned()).collect()
+    }
     let train_test = BTreeSet::from(["test".to_owned(), "train".to_owned()]);
     let learns_from_train = operator_of(operator).is_some_and(|o| {
         o.fits_on_train == Some(true)
-            && ports(&o.inputs) == train_test
-            && ports(&o.outputs) == train_test
+            && ports(o.inputs.iter().map(|p| &p.name)) == train_test
+            && ports(o.outputs.iter().map(|p| &p.name)) == train_test
     });
     let data = BTreeSet::from(["data".to_owned()]);
     let data_and_other = BTreeSet::from(["data".to_owned(), "other".to_owned()]);
     let fits_nothing_into_one = |inputs: &BTreeSet<String>| {
         operator_of(operator).is_some_and(|o| {
             o.fits_on_train != Some(true)
-                && ports(&o.inputs) == *inputs
-                && ports(&o.outputs) == data
+                && ports(o.inputs.iter().map(|p| &p.name)) == *inputs
+                && ports(o.outputs.iter().map(|p| &p.name)) == data
         })
     };
     // A join reads a second table besides the one `before` reads (ADR-0059).

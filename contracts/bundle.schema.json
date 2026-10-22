@@ -2924,7 +2924,7 @@
         "inputs": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/Port"
+            "$ref": "#/$defs/InputPort"
           }
         },
         "outputs": {
@@ -3046,6 +3046,29 @@
         },
         "description": {
           "type": "string"
+        }
+      }
+    },
+    "InputPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/PortName"
+        },
+        "kind": {
+          "$ref": "#/$defs/PortKind"
+        },
+        "description": {
+          "type": "string"
+        },
+        "optional": {
+          "type": "boolean",
+          "description": "An input the step may run without (ADR-0058): left unconnected, the step gets nothing for it. Only a matrix input may be optional today; the registry refuses any other."
         }
       }
     },
