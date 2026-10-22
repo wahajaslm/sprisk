@@ -645,13 +645,7 @@ pub fn proposal(
             } else if let (Some(params), Some(operator)) =
                 (&decided.params, &declared.action.operator)
             {
-                // A replacement keeps the step's settings the new operator accepts, such as a
-                // model's features and costs; the rule's own settings win.
-                let mut kept = operators
-                    .iter()
-                    .find(|o| o.id.to_string() == operator.as_str())
-                    .map(|o| params_for(o, node))
-                    .unwrap_or_default();
+                let mut kept = model_settings(operators, node, operator.as_str())?;
                 kept.extend(params.0.clone());
                 built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": operator, "params": kept });
             }
@@ -750,6 +744,27 @@ fn params_for(operator: &Operator, node: &Node) -> Map<String, Value> {
         .filter(|(name, _)| accepted.is_some_and(|a| a.contains_key(*name)))
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect()
+}
+
+/// The settings a model step keeps when a rule replaces it by another model: its target,
+/// task, features and costs, whatever the new model accepts. Any other step keeps nothing, so
+/// it takes only the settings the rule decided: an old split's stratify or group column must
+/// not come back.
+fn model_settings(
+    operators: &[&Operator],
+    node: &Node,
+    replacement: &str,
+) -> Result<Map<String, Value>, ResolveError> {
+    let find = |id: &str| operators.iter().find(|o| o.id.to_string() == id);
+    if find(node.operator.as_str()).is_none_or(|o| o.model.is_none()) {
+        return Ok(Map::new());
+    }
+    let new = find(replacement).ok_or_else(|| ResolveError::UnknownOperator(replacement.into()))?;
+    Ok(if new.model.is_some() {
+        params_for(new, node)
+    } else {
+        Map::new()
+    })
 }
 
 /// `wanted`, or `wanted` with the first suffix `_2`, `_3`, … that no step of `pipeline` has.

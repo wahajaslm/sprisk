@@ -127,13 +127,12 @@ fn a_proposal_takes_labels_and_operators_from_the_manifest_and_params_from_the_d
     assert_eq!(stratified["effect"]["params"]["stratify"], "churned");
 }
 
-#[test]
-fn a_replacement_keeps_the_steps_settings_the_new_operator_accepts_and_the_rules_win() {
+fn temporal_over(params: Value) -> Value {
     let catalog = catalog();
     let rule = catalog.rule(SPLIT).unwrap();
     let mut flow = serde_json::to_value(pipeline()).unwrap();
     flow["nodes"][0] = json!({ "id": "split", "operator": "sprisk.validation.group_split@1.0.0",
-                               "params": { "group_column": "customer", "test_fraction": 0.3, "seed": 7 } });
+                               "params": params });
     let flow: PipelineVersion = parse(&flow.to_string()).unwrap();
     let decided: RuleDecision = parse(
         &json!({
@@ -161,11 +160,67 @@ fn a_replacement_keeps_the_steps_settings_the_new_operator_accepts_and_the_rules
         },
     )
     .unwrap();
-    let effect = serde_json::to_value(&built.alternatives[0].effect).unwrap();
-    // group_column is kept; seed is not a temporal split setting; the rule's share wins.
+    serde_json::to_value(&built.alternatives[0].effect).unwrap()
+}
+
+#[test]
+fn a_replaced_split_takes_only_the_settings_the_rule_decided() {
+    // A split rule states every setting it means; an old one, such as an unconfirmed group
+    // column, must not come back.
+    let effect =
+        temporal_over(json!({ "group_column": "customer", "test_fraction": 0.3, "seed": 7 }));
     assert_eq!(
         effect["params"],
-        json!({ "time_column": "signup_date", "test_fraction": 0.2, "group_column": "customer" })
+        json!({ "time_column": "signup_date", "test_fraction": 0.2 })
+    );
+}
+
+#[test]
+fn a_model_replaced_by_an_unregistered_model_is_an_error_not_a_step_without_settings() {
+    let catalog = catalog();
+    let rule = catalog
+        .rule("methodology.supervised.interpretability_requirement@1.0.0")
+        .unwrap();
+    let decided: RuleDecision = parse(
+        &json!({
+            "schema_version": "sprisk.rule_decision/v1",
+            "rule": "methodology.supervised.interpretability_requirement@1.0.0",
+            "recommended_alternative_id": "interpretable_only",
+            "alternatives": [{ "id": "interpretable_only", "applicability": "applicable",
+                               "reason": "High.", "params": {} }],
+            "evidence": []
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let registry = registry();
+    let without_linear: Vec<_> = registry
+        .operators()
+        .filter(|o| !o.id.to_string().starts_with("sprisk.ml.linear_model@"))
+        .collect();
+    let forest = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("model", "ml.random_forest@2.0.0"),
+        ],
+        &[("split.train", "model.train")],
+    );
+    let err = proposal(
+        rule,
+        &decided,
+        &question(),
+        &forest,
+        "model",
+        &without_linear,
+        Stamp {
+            id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            created_at: "2026-10-15T10:00:00Z",
+        },
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("sprisk.ml.linear_model@2.0.0"),
+        "{err}"
     );
 }
 
