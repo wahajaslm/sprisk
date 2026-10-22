@@ -33,16 +33,14 @@ export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Opera
       let flow = pipeline;
       const known = new Map(code);
       const converted: string[] = [];
-      for (const id of editedReadyMade(pipeline, now, code)) {
+      for (const { id, source } of editedReadyMade(pipeline, now, code)) {
         const node = nodeOf(pipeline, id);
-        const source = now.find((c) => c.id === id)!.source;
         const read = await readSettings.mutateAsync({ operator: node.operator, request: { ...codeRequest(pipeline, byRef, id), code: source } });
         if (read.reads_as === "settings") {
           flow = withSettings(flow, id, read.settings);
           known.set(id, source);
         } else {
-          const kind = stepLabel(node).title;
-          converted.push(`${id} is now your own Python code. The methodology checks for ${/^[AEIOU]/.test(kind) ? "an" : "a"} ${kind} step no longer cover it.`);
+          converted.push(`${id} is now your own Python code. The methodology checks for ${stepLabel(node).title} steps no longer cover it.`);
         }
       }
       const edits = stageEdits(flow, byRef, stage, now, known);

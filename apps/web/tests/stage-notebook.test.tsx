@@ -119,7 +119,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     const impute = sent.versions[0]!.nodes.find((n) => n.id === "impute")!;
     expect(impute.operator).toBe(notebookOperator.id);
     expect(impute.params["source"]).toBe("impute_train, impute_test = fill(split_train, split_test, 0)");
-    expect(await screen.findByText("impute is now your own Python code. The methodology checks for an Impute step no longer cover it.")).toBeInTheDocument();
+    expect(await screen.findByText("impute is now your own Python code. The methodology checks for Impute steps no longer cover it.")).toBeInTheDocument();
   });
 
   it("changing only a value in a ready-made step's code changes its setting and keeps the step", async () => {
