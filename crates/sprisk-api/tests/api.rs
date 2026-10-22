@@ -5086,7 +5086,7 @@ fn rakuten_like_listings() -> String {
             } else {
                 format!("{word} neuf taille {}", n % 5)
             };
-            rows.push((format!("{word} modele {}", n % 7), description, *code));
+            rows.push((format!("{word} modele {n}"), description, *code));
         }
     }
     // Fisher-Yates with a fixed linear congruential generator.
@@ -5183,6 +5183,8 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "build",
             "apply split.method stratified_random",
             "run",
+            "apply data.column_roles drop_identifiers",
+            "run",
             "apply features.rare_categories group_rare",
             "run",
             "apply features.encoding_strategy one_hot_encoding",
@@ -5203,7 +5205,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     assert!(open.contains("question.hard_constraints"), "{open}");
     let steps = detail["steps"].as_array().unwrap();
     assert_eq!(
-        detail["walk"]["head_pipeline_version_id"], steps[5]["made_pipeline_version_id"],
+        detail["walk"]["head_pipeline_version_id"], steps[7]["made_pipeline_version_id"],
         "the head is the version the last apply made"
     );
 
@@ -5412,4 +5414,52 @@ async fn a_walk_that_cannot_take_its_next_step_stops_with_the_error() {
     assert_eq!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
     assert!(why.contains("could not take its next step"), "{why}");
+}
+
+/// Rakuten's own shape: the listings in one file and their product types in another, keyed by
+/// the nameless row index. Written next to the test's CSV, inside the data roots.
+fn rakuten_like_files(api: &Api) -> (PathBuf, PathBuf) {
+    let (mut listings, mut codes) = (String::new(), String::new());
+    for line in rakuten_like_listings().lines() {
+        let (row, code) = line.rsplit_once(',').unwrap();
+        listings.push_str(row);
+        listings.push('\n');
+        let key = line.split(',').next().unwrap();
+        codes.push_str(&format!("{key},{code}\n"));
+    }
+    let dir = api.csv.parent().unwrap();
+    let (x, y) = (dir.join("x_train.csv"), dir.join("y_train.csv"));
+    std::fs::write(&x, listings).unwrap();
+    std::fs::write(&y, codes).unwrap();
+    (x, y)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
+    let api = api().await;
+    let (x, y) = rakuten_like_files(&api);
+    rakuten_like_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&x, &y], "walk-rakuten-files")).await;
+    // The first run fails at the split, which finds no target in the listings; the join rule
+    // reads both loads all the same. Then the walk goes on as with one joined file.
+    assert_eq!(
+        trail(&detail),
+        [
+            "build",
+            "apply split.method stratified_random",
+            "run",
+            "apply data.join_sources join_on_key",
+            "run",
+            "apply data.column_roles drop_identifiers",
+            "run",
+            "apply features.rare_categories group_rare",
+            "run",
+            "apply features.encoding_strategy one_hot_encoding",
+            "run",
+            "stop"
+        ],
+        "{detail}"
+    );
+    assert_eq!(detail["walk"]["stop"]["reason"], "run_failed", "{detail}");
 }
