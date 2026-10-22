@@ -4309,3 +4309,133 @@ async fn german_credit_runs_as_stage_notebooks_with_one_chart_per_step() {
         "{code}"
     );
 }
+
+/// Load → Split → Forest on a classification question with no time or entity column.
+async fn forest_flow(api: &Api) {
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    let facts = q.as_object_mut().unwrap();
+    facts.remove("time_column");
+    facts.remove("entity_column");
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({ "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
+                "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+                "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
+    ]);
+    flow["edges"] = json!([
+        {"from":"load.data","to":"split.data"},
+        {"from":"split.train","to":"model.train"}
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut csv = String::from("age,returned_within_30d\n");
+    for age in 20..80 {
+        csv.push_str(&format!("{age},{}\n", u8::from(age >= 50)));
+    }
+    std::fs::write(&api.csv, csv).unwrap();
+}
+
+async fn review(api: &Api) -> Value {
+    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
+    let (status, review) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::OK, "{review}");
+    review
+}
+
+fn statuses(review: &Value) -> Vec<(String, String)> {
+    review["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| {
+            (
+                i["decides"].as_str().unwrap().to_owned(),
+                i["status"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure_rows_after_it() {
+    let api = api().await;
+    forest_flow(&api).await;
+
+    let review = review(&api).await;
+    let items = statuses(&review);
+    assert_eq!(items[0].0, "split.method", "{review}");
+    for (decides, status) in &items[1..] {
+        assert!(
+            [
+                "needs_run",
+                "waiting",
+                "no_subject",
+                "settled",
+                "proposal",
+                "needs_fact"
+            ]
+            .contains(&status.as_str()),
+            "{decides}: {status}"
+        );
+    }
+    let encoding = items
+        .iter()
+        .find(|(d, _)| d == "features.encoding_strategy")
+        .unwrap();
+    assert!(
+        ["needs_run", "waiting"].contains(&encoding.1.as_str()),
+        "{review}"
+    );
+    let filling = items
+        .iter()
+        .find(|(d, _)| d == "cleaning.missingness_strategy")
+        .unwrap();
+    assert_eq!(filling.1, "no_subject", "{review}");
+    assert!(
+        !items.iter().any(|(d, _)| d.starts_with("clustering.")),
+        "{review}"
+    );
+}
+
+#[tokio::test]
+async fn after_a_run_the_review_decides_the_rules_that_measure_rows_and_lists_what_is_next() {
+    let api = api().await;
+    forest_flow(&api).await;
+    let (run, _) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+
+    let review = review(&api).await;
+    let items = statuses(&review);
+    assert!(!items.iter().any(|(_, s)| s == "needs_run"), "{review}");
+    for at in review["next"].as_array().unwrap() {
+        let status = &items[at.as_u64().unwrap() as usize].1;
+        assert!(
+            ["proposal", "needs_fact"].contains(&status.as_str()),
+            "{review}"
+        );
+    }
+    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
+    let (_, again) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(statuses(&again), items, "the review is deterministic");
+}
+
+#[tokio::test]
+async fn a_flow_with_no_question_cannot_be_reviewed() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let uri = format!("/pipeline_versions/{BASE}/methodology/review");
+    let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "question_required", "{body}");
+}

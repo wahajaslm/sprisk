@@ -29,13 +29,13 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
     CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
     GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyAlternativeApplicability,
-    MethodologyDecision, MethodologyProposalId, MethodologyRule, MethodologyRuleSelection,
-    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
-    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookSettings,
-    NotebookSettingsRequest, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
-    OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
-    QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId, StudyStatus, TaskType,
-    Trial, parse,
+    MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, MethodologyReview,
+    MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
+    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
+    NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
+    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem,
+    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId,
+    StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -93,6 +93,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/pipeline_versions/{id}/methodology/proposals/{node_id}",
             post(propose_node_methodology),
+        )
+        .route(
+            "/pipeline_versions/{id}/methodology/review",
+            post(review_methodology),
         )
         .route(
             "/pipeline_versions/{id}/methodology/proposals/{node_id}/{decides}",
@@ -1016,6 +1020,83 @@ async fn propose_node_decision(
     propose(&state, &raw, &node_id, Some(&decides)).await
 }
 
+/// Every applicable rule's status on this version, in decision order (ADR-0059). Each rule
+/// decides as `propose` would, but nothing is stored: a person asks for the proposal to apply.
+async fn review_methodology(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Json<MethodologyReview>, ApiError> {
+    use sprisk_methodology::review::{self, Outcome};
+
+    let pipeline = state.store.get_pipeline_version(&id(raw.as_str())?).await?;
+    let question_id =
+        pipeline
+            .question_version_id
+            .as_ref()
+            .ok_or_else(|| ApiError::BadRequest {
+                code: "question_required",
+                message: "link a question revision to this flow before reviewing its methodology"
+                    .into(),
+            })?;
+    let question = state.store.get_question_version(question_id).await?;
+    let task = question.task.value;
+    let planned = review::plan(&state.rules, &pipeline, |rule| {
+        review::fits_task(rule, task, state.registry.operators())
+    });
+    let applied: Vec<MethodologyDecisionId> = pipeline
+        .nodes
+        .iter()
+        .filter_map(|n| n.methodology_decision_id.clone())
+        .collect();
+    let applied = state.store.methodology_decisions(&applied).await?;
+    let decided = |node: &sprisk_contracts::Node, rule: &MethodologyRule| {
+        applied.iter().any(|d| {
+            node.methodology_decision_id.as_ref() == Some(&d.id)
+                && d.rule.as_str() == rule.id.as_str()
+        })
+    };
+
+    let mut items = Vec::with_capacity(planned.len());
+    let mut open = Vec::with_capacity(planned.len());
+    for (at, planned_rule) in planned.iter().enumerate() {
+        let outcome = if let Some(on) = review::waits_on(&pipeline, &planned, at, &open) {
+            Outcome::Waiting { on: on.to_owned() }
+        } else if let Some(node) = planned_rule.subject {
+            match decide(&state, &pipeline, &question, node, planned_rule.rule).await {
+                Ok(proposal) => Outcome::Proposed {
+                    decided: decided(node, planned_rule.rule),
+                    proposal: Box::new(proposal),
+                },
+                Err(ApiError::BadRequest {
+                    code: "methodology_evidence_unavailable",
+                    message,
+                }) => Outcome::NeedsRun(message),
+                Err(ApiError::BadRequest {
+                    code: "methodology_not_applicable",
+                    message,
+                }) => Outcome::NotApplicable(message),
+                Err(other) => return Err(other),
+            }
+        } else {
+            Outcome::NoSubject
+        };
+        let item =
+            review::item(planned_rule, outcome).map_err(|e| ApiError::Internal(e.to_string()))?;
+        open.push(review::is_open(&item));
+        items.push(item);
+    }
+    let next = review::next(&items);
+    let review = json!({
+        "schema_version": "sprisk.methodology_review/v1",
+        "pipeline_version_id": pipeline.id,
+        "items": items,
+        "next": next,
+    });
+    Ok(Json(
+        parse(&review.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?,
+    ))
+}
+
 /// What the split rule decides, whatever its version.
 const SPLIT_DECISION: &str = "split.method";
 
@@ -1129,18 +1210,33 @@ async fn propose(
                 node.operator.as_str()
             ))
         })?;
+    let proposal = decide(state, &pipeline, &question, node, rule).await?;
+    state.store.insert_methodology_proposal(&proposal).await?;
+    Ok((StatusCode::CREATED, Json(proposal)))
+}
+
+/// The proposal `rule` makes for step `node`, decided by the rule's Python `decide()`. Every
+/// offered effect passes the compiler; nothing is stored.
+async fn decide(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    question: &QuestionVersion,
+    node: &sprisk_contracts::Node,
+    rule: &MethodologyRule,
+) -> Result<DecisionProposal, ApiError> {
+    let node_id = node.id.as_str();
     let rule_ref = rule.id.to_string();
     let rule_ref = rule_ref.as_str();
     let profile =
         if sprisk_methodology::facts::needs_train_rows(rule.reads.iter().map(|r| r.as_str())) {
-            train_profile_facts(state, &pipeline, node).await?
+            train_profile_facts(state, pipeline, node).await?
         } else {
             Default::default()
         };
 
     let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
     let mut flow = sprisk_methodology::flow_facts(
-        &pipeline,
+        pipeline,
         node_id,
         |operator| state.registry.get(operator),
         |n| keeps_flow_facts(&state.registry, n),
@@ -1162,7 +1258,7 @@ async fn propose(
         Default::default()
     };
     let observation =
-        sprisk_methodology::observation(rule, &question, flow, profile).map_err(resolve)?;
+        sprisk_methodology::observation(rule, question, flow, profile).map_err(resolve)?;
     let decision = state
         .rule_runner
         .decide(state.rules.module(rule_ref)?, &observation)
@@ -1171,8 +1267,8 @@ async fn propose(
     let proposal = sprisk_methodology::proposal(
         rule,
         &decision,
-        &question,
-        &pipeline,
+        question,
+        pipeline,
         node_id,
         &candidates,
         sprisk_methodology::Stamp {
@@ -1203,7 +1299,7 @@ async fn propose(
             .map_err(|error| ApiError::Internal(error.to_string()))?;
         let preview = materialize_effect(
             &state.registry,
-            &pipeline,
+            pipeline,
             &value,
             "plv_01JABCDEFGHJKMNPQRSTVWXYZ9",
             "mdc_01JABCDEFGHJKMNPQRSTVWXYZ9",
@@ -1245,8 +1341,7 @@ async fn propose(
             .map_err(|error| ApiError::Internal(format!("reason of {id}: {error}")))?;
         alternative.effect = None;
     }
-    state.store.insert_methodology_proposal(&proposal).await?;
-    Ok((StatusCode::CREATED, Json(proposal)))
+    Ok(proposal)
 }
 
 /// Profile facts of the step's `columns` or `features`, measured on the table a split step's
