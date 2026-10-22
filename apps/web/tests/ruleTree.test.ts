@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { activation, isOpen, reviewByRule, ROUTE_LINE, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
-  ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r })) }) as never;
+  ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r, rationale: "r" })) }) as never;
 const S = (name: string) => `m.supervised.${name}`;
 const U = (name: string) => `m.unsupervised.${name}`;
 
@@ -24,7 +24,7 @@ const mid = (t: ReturnType<typeof ruleTree>, id: string) => {
 const data = (t: ReturnType<typeof ruleTree>, id: string) => t.nodes.find((n) => n.id === id)!.data;
 const links = (t: ReturnType<typeof ruleTree>) => t.edges.map((e) => `${e.source}>${e.target}`);
 const lit = (t: ReturnType<typeof ruleTree>) => t.edges.filter((e) => e.data?.onPath).map((e) => `${e.source}>${e.target}`);
-const settled = (rule: string, route: string) => ({ rule, status: "settled", subject_node_id: "step", recommended_alternative_id: route }) as never;
+const settled = (rule: string, route: string) => ({ rule, status: "settled", subject_node_id: "step", reason: "r", recommended_alternative_id: route }) as never;
 const sup = (stage: string) => `stage:supervised:${stage}`;
 
 describe("methodology tree", () => {
@@ -74,7 +74,7 @@ describe("methodology tree", () => {
     // Branches meet a route at its label line, the top row, not the middle of its wrapped text.
     const line = (id: string) => at(t, id).y + ROUTE_LINE;
     expect(mid(t, S("fill"))).toBe((line(`${S("fill")}#median`) + line(`${S("fill")}#mean`)) / 2);
-    const long = { ...(rule(S("split"), "split", ["a", "b"]) as object), alternatives: [{ id: "a", label: "a", condition: "x".repeat(140) }, { id: "b", label: "b" }] } as never;
+    const long = { ...(rule(S("split"), "split", ["a", "b"]) as object), alternatives: [{ id: "a", label: "a", condition: "x".repeat(140), rationale: "r" }, { id: "b", label: "b", rationale: "r" }] } as never;
     const wrapped = tree([long]);
     const wLine = (id: string) => at(wrapped, id).y + ROUTE_LINE;
     expect(mid(wrapped, S("split"))).toBe((wLine(`${S("split")}#a`) + wLine(`${S("split")}#b`)) / 2);
@@ -96,7 +96,7 @@ describe("methodology tree", () => {
   });
 
   it("makes a route tall enough for its condition to wrap onto new lines", () => {
-    const long = { ...(rule(S("split"), "split", ["a", "b"]) as object), alternatives: [{ id: "a", label: "a", condition: "x".repeat(140) }, { id: "b", label: "b" }] } as never;
+    const long = { ...(rule(S("split"), "split", ["a", "b"]) as object), alternatives: [{ id: "a", label: "a", condition: "x".repeat(140), rationale: "r" }, { id: "b", label: "b", rationale: "r" }] } as never;
     const t = tree([long]);
     const height = (id: string) => t.nodes.find((n) => n.id === id)!.height!;
     expect(height(`${S("split")}#a`)).toBeGreaterThan(height(`${S("split")}#b`));
@@ -168,10 +168,10 @@ describe("activation conditions", () => {
     id: "split",
     applies_to: ["sprisk.validation.random_split", "sprisk.clean.drop_missing"],
     alternatives: [
-      { id: "temporal", label: "Temporal" },
-      { id: "stratified", label: "Stratified" },
+      { id: "temporal", label: "Temporal", rationale: "r" },
+      { id: "stratified", label: "Stratified", rationale: "r" },
       { id: "group", label: "Group", condition: "an entity column is confirmed" },
-      { id: "manual", label: "Manual" },
+      { id: "manual", label: "Manual", rationale: "r" },
     ],
     examples: [
       { given: { "question.target": "churned", "question.task": "classification", "question.time_column": "signup_date" }, picks: "temporal" },
@@ -190,7 +190,7 @@ describe("activation conditions", () => {
 
   it("reads a list of dataset values and a fact measured before the split in plain words", () => {
     const markers = {
-      alternatives: [{ id: "mark", label: "Mark" }],
+      alternatives: [{ id: "mark", label: "Mark", rationale: "r" }],
       examples: [{ given: { "input.column.age.numeric_share": 0.98, "input.column.age.unconverted": ["?", "n/a"] }, picks: "mark" }],
     } as never;
     expect(routeWhen(markers, "mark")).toBe("age numeric share = 0.98 · age unconverted = ?, n/a");

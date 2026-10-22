@@ -4,7 +4,7 @@ import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactF
 import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
 import { useMemo } from "react";
 
-import { activation, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
+import { activation, LANE_NOTE, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
 
 type Props = {
   rules: MethodologyRule[];
@@ -76,9 +76,6 @@ function RootNode({ data }: NodeProps<Extract<TreeNode, { type: "root" }>>) {
   );
 }
 
-/** What each lane is for, as people read it. */
-const LANE_NOTE: Record<string, string> = { supervised: "the question has a target", unsupervised: "the question has no target" };
-
 function LaneNode({ data }: NodeProps<Extract<TreeNode, { type: "lane" }>>) {
   return (
     <div className={`mth-stage-node mth-lane${data.dimmed ? " dimmed" : ""}`}>
@@ -135,7 +132,7 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
 }
 
 function RouteNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
-  const { route, when, code, picked, dimmed } = data;
+  const { route, reason, code, picked, dimmed } = data;
   return (
     // `picked` is the flow's recommended route; `selected` is the one a person clicked.
     <button
@@ -143,7 +140,7 @@ function RouteNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rout
       className={`mth-route-node nopan${picked ? " picked" : ""}${dimmed ? " dimmed" : ""}`}
       aria-pressed={selected}
       aria-label={route.label}
-      title={`${route.description}${when ? `\nWhen ${when}` : ""}\nWhy: ${route.rationale}`}
+      title={`${route.description}\n${REASON_LABEL[reason.kind]} ${reason.text}\nWhy: ${route.rationale}`}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} style={{ top: ROUTE_LINE }} />
       <span className="mth-route-dot" />
@@ -151,12 +148,17 @@ function RouteNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rout
         <span className="mth-route-name">
           <span className="mth-node-code">{code}</span> {route.label}
         </span>
-        {when ? <span className="mth-when">When {when}</span> : <span className="mth-rule-meta">{route.action.operator?.split("@")[0] ?? route.description}</span>}
+        <span className={`mth-when ${reason.kind}`}>
+          {REASON_LABEL[reason.kind]} {reason.text}
+        </span>
       </span>
       <Handle type="source" position={Position.Right} isConnectable={false} style={{ top: ROUTE_LINE }} />
     </button>
   );
 }
+
+/** How each kind of route reason reads on the map. */
+const REASON_LABEL = { because: "Because:", when: "When", why: "Why:" } as const;
 
 /** How much of the tree, from the left, the canvas fits on opening. */
 const START_WIDTH = 1150;

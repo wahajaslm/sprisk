@@ -1,4 +1,4 @@
-import { parse, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
+import { parse, type MethodologyReviewItem, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -8,7 +8,7 @@ import bundle from "../../../contracts/bundle.schema.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
 import { useSelection } from "../src/workbench/selection.ts";
 import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
-import { STAGES } from "../src/views/methodology/ruleTree.ts";
+import { ruleTree, STAGES } from "../src/views/methodology/ruleTree.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -94,6 +94,28 @@ describe("methodology page", () => {
     const detail = screen.getByRole("region", { name: features.name });
     const marked = within(detail).getAllByRole("listitem").filter((li) => li.getAttribute("aria-current") === "true");
     expect(marked.map((li) => within(li).getByRole("strong").textContent)).toEqual([route.label]);
+  });
+
+  it("gives every route the reason it is taken: the flow's own reason, else its condition, else its rationale", () => {
+    const [first, second] = features.alternatives;
+    const { condition: _unused, ...unconditioned } = second!;
+    const plain = { ...features, alternatives: [first!, unconditioned] };
+    const reasons = (reviews: Map<string, MethodologyReviewItem>) =>
+      ruleTree([plain], reviews, { path: false }).nodes.flatMap((n) => (n.type === "route" ? [n.data.reason] : []));
+
+    expect(reasons(new Map())).toEqual([
+      { kind: "when", text: first!.condition },
+      { kind: "why", text: second!.rationale },
+    ]);
+    const review: MethodologyReviewItem = { rule: plain.id, decides: plain.decides, stage: plain.stage, subject_node_id: "model", status: "proposal", reason: "age and income correlate at 0.93.", recommended_alternative_id: second!.id };
+    expect(reasons(new Map([[plain.id, review]]))[1]).toEqual({ kind: "because", text: "age and income correlate at 0.93." });
+  });
+
+  it("labels the fork into each lane with what sends a question down it", () => {
+    const { edges } = ruleTree([features, { ...features, id: "methodology.unsupervised.clusters@1.0.0", decides: "clustering.k" }], new Map(), { path: false });
+    const into = (lane: string) => edges.filter((e) => e.target === `lane:${lane}`).map((e) => e.label);
+    expect(new Set(into("supervised"))).toEqual(new Set(["the question has a target"]));
+    expect(new Set(into("unsupervised"))).toEqual(new Set(["the question has no target"]));
   });
 
   it("knows every stage the contract has, so no rule drops off the page", () => {
