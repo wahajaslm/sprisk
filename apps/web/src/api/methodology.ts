@@ -1,5 +1,5 @@
 import type { AppliedMethodologyDecision, ApplyMethodologyDecision, PipelineVersion } from "@sprisk/contracts";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ulid } from "ulid";
 
 import { getList, getOne, postOne } from "./client.ts";
@@ -67,6 +67,16 @@ export const useMethodologyRuleSource = (ruleRef: string) =>
     queryKey: ["methodology_rule_source", ruleRef],
     queryFn: () => getOne("MethodologyRuleSource", `/methodology_rules/${encodeURIComponent(ruleRef)}/source`),
     staleTime: Infinity,
+  });
+
+/** Every rule's status on one flow version (ADR-0059). A version never changes, but its run
+ * results do, so the review is fetched again when asked for. */
+export const useMethodologyReview = (pipelineVersionId: string | undefined) =>
+  useQuery({
+    queryKey: ["methodology_review", pipelineVersionId],
+    queryFn: () => getOne("MethodologyReview", `/pipeline_versions/${pipelineVersionId}/methodology/review`),
+    enabled: pipelineVersionId !== undefined,
+    placeholderData: keepPreviousData,
   });
 
 /** A decision never changes once applied (ADR-0042). */

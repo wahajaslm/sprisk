@@ -1,22 +1,25 @@
 import "@xyflow/react/dist/style.css";
 
 import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactFlow } from "@xyflow/react";
-import type { MethodologyRule } from "@sprisk/contracts";
+import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
 import { useMemo } from "react";
 
 import { ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
 
-type Props = { rules: MethodologyRule[]; picked: string | undefined; onPick: (ruleId: string) => void };
+type Props = {
+  rules: MethodologyRule[];
+  reviews: Map<string, MethodologyReviewItem>;
+  picked: string | undefined;
+  onPick: (ruleId: string) => void;
+};
 
-/** The rule packs as a tree: methodology, its stages in order, and each stage's rules. */
-export function MethodologyMap({ rules, picked, onPick }: Props) {
-  const tree = useMemo(() => ruleTree(rules), [rules]);
-  const nodes = tree.nodes.map((n) => (n.type === "rule" ? { ...n, selected: n.id === picked } : n));
-  const branch = rules.find((r) => r.id === picked)?.stage;
-  const edges = tree.edges.map((e) => {
-    const lit = e.target === picked || e.target === `stage:${branch}`;
-    return { ...e, type: "default", className: `mth-edge ${e.source === "root" ? "trunk" : "twig"}${lit ? " picked" : ""}` };
-  });
+/** The methodology map (ADR-0059): each stage in decision order, its decisions, and each
+ * decision's routes with the condition that leads to them. With a flow selected, each
+ * decision shows its status on that flow. */
+export function MethodologyMap({ rules, reviews, picked, onPick }: Props) {
+  const tree = useMemo(() => ruleTree(rules, reviews), [rules, reviews]);
+  const nodes = tree.nodes.map((n) => (n.type === "decision" ? { ...n, selected: n.id === picked } : n));
+  const edges = tree.edges.map((e) => ({ ...e, type: "smoothstep", className: "mth-edge trunk" }));
   return (
     <div className="mth-map" role="region" aria-label="Methodology map">
       <ReactFlow
@@ -24,13 +27,13 @@ export function MethodologyMap({ rules, picked, onPick }: Props) {
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
-        onNodeClick={(_event, node) => node.type === "rule" && onPick(node.id)}
-        // Full size from the top: 30 rules fitted to the window would be too small to read.
-        defaultViewport={{ x: 24, y: 64, zoom: 1 }}
+        onNodeClick={(_event, node) => node.type === "decision" && onPick(node.id)}
+        // Readable size from the left: the whole map fitted to the window would be too small to read.
+        defaultViewport={{ x: 24, y: 24, zoom: 0.85 }}
         panOnScroll
         nodesDraggable={false}
         nodesConnectable={false}
-        minZoom={0.3}
+        minZoom={0.25}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}
         colorMode="dark"
@@ -41,43 +44,57 @@ export function MethodologyMap({ rules, picked, onPick }: Props) {
   );
 }
 
-function RootNode({ data }: NodeProps<Extract<TreeNode, { type: "root" }>>) {
+function StageBox({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
   return (
-    <div className="mth-root" title="Methodology rules">
-      <span className="mth-root-ring">
-        <strong>Rules</strong>
-        <span>{data.count}</span>
-      </span>
-      <Handle type="source" position={Position.Right} isConnectable={false} />
-    </div>
-  );
-}
-
-function StageNode({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
-  return (
-    <div className="mth-stage-node">
+    <div className="mth-stage-box">
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <span className="mth-stage-ring">{data.number}</span>
-      <span className="mth-stage-text">
+      <header className="mth-stage-head">
+        <span className="mth-stage-ring">{data.number}</span>
         <h2>{stageName(data.stage)}</h2>
-        <span>{data.count === 1 ? "1 rule" : `${data.count} rules`}</span>
-      </span>
+        <span className="muted">{data.count === 1 ? "1 decision" : `${data.count} decisions`}</span>
+      </header>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
   );
 }
 
-function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule" }>>) {
+/** Plain names for review statuses, as people read them. */
+export const STATUS_LABEL: Record<MethodologyReviewItem["status"], string> = {
+  settled: "Settled",
+  proposal: "Proposal",
+  needs_fact: "Needs a fact",
+  needs_run: "Needs a run",
+  waiting: "Waiting",
+  no_subject: "No step yet",
+  not_applicable: "Not applicable",
+};
+
+function DecisionCard({ data, selected }: NodeProps<Extract<TreeNode, { type: "decision" }>>) {
+  const { rule, review } = data;
   return (
-    <button type="button" className="mth-rule-node" aria-pressed={selected}>
-      <Handle type="target" position={Position.Left} isConnectable={false} />
-      <span className="mth-rule-dot" />
-      <span className="mth-rule-text">
-        <span className="mth-rule-name">{data.rule.name}</span>
-        <span className="mth-rule-meta">{data.rule.decides}</span>
+    <button type="button" className="mth-decision" aria-pressed={selected} aria-label={rule.name}>
+      <span className="mth-decision-head">
+        <span className="mth-decision-name">{rule.name}</span>
+        <span className="mth-decision-meta">
+          <code>{rule.decides}</code>
+          {rule.status === "draft" && <span className="mth-chip draft">Draft</span>}
+          {review && (
+            <span className={`mth-chip ${review.status}`} title={review.reason}>
+              {STATUS_LABEL[review.status]}
+            </span>
+          )}
+        </span>
       </span>
+      <ol className="mth-routes">
+        {rule.alternatives.map((a) => (
+          <li key={a.id} className={a.id === review?.recommended_alternative_id ? "picked" : undefined} title={`${a.description}\nWhy: ${a.rationale}`}>
+            <span className="mth-route-name">{a.label}</span>
+            <span className="mth-route-when">{a.condition ? `When ${a.condition}` : a.description}</span>
+          </li>
+        ))}
+      </ol>
     </button>
   );
 }
 
-const NODE_TYPES = { root: RootNode, stage: StageNode, rule: RuleNode };
+const NODE_TYPES = { stage: StageBox, decision: DecisionCard };

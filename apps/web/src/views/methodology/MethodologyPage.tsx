@@ -1,18 +1,22 @@
-import type { MethodologyRule } from "@sprisk/contracts";
-import { useState } from "react";
+import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
+import { useMemo, useState } from "react";
 
-import { useMethodologyRules, useMethodologyRuleSource } from "../../api/methodology.ts";
+import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource } from "../../api/methodology.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
-import { MethodologyMap } from "./MethodologyMap.tsx";
+import { useSelection } from "../../workbench/selection.ts";
+import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
 import { stageName } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
-/** The rule packs (ADR-0042) as a map of stages and rules, and the picked rule's guidance
- * and code beside it. */
+/** The methodology map (ADR-0059): stages, decisions and their routes, with the selected
+ * flow's status on each decision, and the picked rule's guidance and code beside it. */
 export function MethodologyPage() {
   const rules = useMethodologyRules();
+  const versionId = useSelection((s) => s.pipelineVersionId);
+  const review = useMethodologyReview(versionId);
+  const reviews = useMemo(() => new Map((review.data?.items ?? []).map((item) => [item.rule as string, item])), [review.data]);
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
@@ -28,15 +32,36 @@ export function MethodologyPage() {
       <div className="mth-canvas">
         <div className="mth-toolbar">
           <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
         </div>
-        <MethodologyMap rules={shown} picked={current?.id} onPick={setPicked} />
+        <MethodologyMap rules={shown} reviews={reviews} picked={current?.id} onPick={setPicked} />
       </div>
-      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} />}</aside>
+      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} />}</aside>
     </main>
   );
 }
 
-function RuleDetail({ rule }: { rule: MethodologyRule }) {
+/** What the selected flow's review says: how many decisions are open, and what to do next. */
+function ReviewSummary({ versionId, items, next, error }: { versionId: string | undefined; items: MethodologyReviewItem[] | undefined; next: number[] | undefined; error: string | undefined }) {
+  if (!versionId) return <span className="muted">Select a flow to see its status on each decision.</span>;
+  if (error) return <span role="alert" className="error">{error}</span>;
+  if (!items || !next) return <Loading text="Reviewing the flow…" />;
+  const open = items.filter((i) => ["proposal", "needs_fact", "needs_run", "waiting"].includes(i.status)).length;
+  const first = next[0] === undefined ? undefined : items[next[0]];
+  return (
+    <span className="mth-summary" aria-label="Flow review">
+      {open === 0 ? "Nothing open on this flow." : `${open} open on this flow.`}
+      {first && (
+        <>
+          {" "}
+          Next: <strong>{first.decides}</strong> ({STATUS_LABEL[first.status].toLowerCase()})
+        </>
+      )}
+    </span>
+  );
+}
+
+function RuleDetail({ rule, review }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined }) {
   const [tab, setTab] = useState<"overview" | "code">("overview");
   const source = useMethodologyRuleSource(rule.id);
   const python = source.data?.files.some((f) => f.language === "python");
@@ -58,6 +83,21 @@ function RuleDetail({ rule }: { rule: MethodologyRule }) {
           </button>
         ))}
       </div>
+      {review && (
+        <section className="mth-on-flow" aria-label="On this flow">
+          <h2 className="dsx-h">On this flow</h2>
+          <p>
+            <span className={`mth-chip ${review.status}`}>{STATUS_LABEL[review.status]}</span>
+            {review.subject_node_id && (
+              <>
+                {" "}
+                step <code>{review.subject_node_id}</code>
+              </>
+            )}
+          </p>
+          <p>{review.reason}</p>
+        </section>
+      )}
       {tab === "overview" ? <Overview rule={rule} /> : <RuleCode ruleRef={rule.id} />}
     </section>
   );

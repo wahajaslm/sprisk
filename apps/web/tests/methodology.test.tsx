@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import bundle from "../../../contracts/bundle.schema.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
+import { useSelection } from "../src/workbench/selection.ts";
 import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
 import { STAGES } from "../src/views/methodology/ruleTree.ts";
 import { renderWithApi } from "./render.tsx";
@@ -38,6 +39,45 @@ function serve(rules: MethodologyRule[]) {
 }
 
 describe("methodology page", () => {
+  it("shows the selected flow's status on each decision, what is next, and why", async () => {
+    serve([features, split]);
+    server.use(
+      http.get("/api/pipeline_versions/:id/methodology/review", () =>
+        HttpResponse.json({
+          schema_version: "sprisk.methodology_review/v1",
+          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+          items: [
+            { rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "proposal", reason: "Keeps each class's share the same in train and test.", recommended_alternative_id: split.alternatives[0]!.id },
+            { rule: features.id, decides: features.decides, stage: "features", status: "waiting", reason: "Waits for split.method, which is still open." },
+          ],
+          next: [0],
+        }),
+      ),
+    );
+    useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
+    renderWithApi(<MethodologyPage />);
+
+    expect(await screen.findByLabelText("Flow review")).toHaveTextContent("2 open on this flow. Next: split.method (proposal)");
+    const map = screen.getByRole("region", { name: "Methodology map" });
+    const card = within(map).getByRole("button", { name: split.name });
+    expect(within(card).getByText("Proposal")).toBeInTheDocument();
+    expect(within(within(map).getByRole("button", { name: features.name })).getByText("Waiting")).toBeInTheDocument();
+
+    await userEvent.click(card);
+    const onFlow = screen.getByRole("region", { name: "On this flow" });
+    expect(within(onFlow).getByText("Keeps each class's share the same in train and test.")).toBeInTheDocument();
+    useSelection.setState({ pipelineVersionId: undefined });
+  });
+
+  it("lists each decision's routes on its card, with the condition that leads to them", async () => {
+    serve([features]);
+    renderWithApi(<MethodologyPage />);
+    const card = await screen.findByRole("button", { name: features.name });
+    const route = features.alternatives.find((a) => a.condition)!;
+    expect(within(card).getByText(route.label)).toBeInTheDocument();
+    expect(within(card).getByText(`When ${route.condition}`)).toBeInTheDocument();
+  });
+
   it("knows every stage the contract has, so no rule drops off the page", () => {
     expect(STAGES).toEqual(bundle.$defs.MethodologyStage.enum);
   });
