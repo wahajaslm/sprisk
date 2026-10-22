@@ -947,33 +947,48 @@ async fn create_question_version(
                 message: "a question revision must keep its investigation id".into(),
             });
         }
+        // Models may already have been compared by the stated metric, so changing it would
+        // pick a metric after seeing the scores (ADR-0059).
+        let metric = |q: &QuestionVersion| q.success_bar.as_ref().map(|bar| bar.value.metric);
+        if let (Some(was), Some(now)) = (metric(&parent), metric(&question))
+            && was != now
+        {
+            return Err(ApiError::BadRequest {
+                code: "success_bar_metric_changed",
+                message: format!(
+                    "the success bar was stated in {was}; a revision keeps that metric"
+                ),
+            });
+        }
     }
     state.store.insert_question_version(&question).await?;
     Ok((StatusCode::CREATED, Json(question)))
 }
 
-/// A success bar is a score its metric can take, in a metric its task is compared by (ADR-0059):
-/// a balanced accuracy from 0 to 1 or an expected cost for classification, a non-negative RMSE
-/// for regression.
+/// A success bar is a score its metric can take, in a metric its task is compared by: a
+/// balanced accuracy or weighted F1 from 0 to 1, or an expected cost, for classification; a
+/// non-negative RMSE for regression. With costs, only expected cost (ADR-0059).
 fn check_success_bar(question: &QuestionVersion) -> Result<(), ApiError> {
     let Some(bar) = &question.success_bar else {
         return Ok(());
     };
     let (metric, score) = (bar.value.metric, bar.value.score);
-    let task = match metric {
-        SelectionMetric::BalancedAccuracy | SelectionMetric::ExpectedCost => {
-            TaskType::Classification
+    let (task, capped_at_one) = match metric {
+        SelectionMetric::BalancedAccuracy | SelectionMetric::WeightedF1 => {
+            (TaskType::Classification, true)
         }
-        SelectionMetric::Rmse => TaskType::Regression,
+        SelectionMetric::ExpectedCost => (TaskType::Classification, false),
+        SelectionMetric::Rmse => (TaskType::Regression, false),
     };
-    let reachable = score.is_finite()
-        && score >= 0.0
-        && (metric != SelectionMetric::BalancedAccuracy || score <= 1.0);
+    let reachable = score.is_finite() && score >= 0.0 && (!capped_at_one || score <= 1.0);
+    let costed = question.costs.is_some() && metric != SelectionMetric::ExpectedCost;
     let why = if question.task.value != task {
         format!(
             "{metric} scores a {task} question, not a {} one",
             question.task.value
         )
+    } else if costed {
+        format!("with costs, models are compared by expected cost, not {metric}")
     } else if !reachable {
         format!("{metric} never takes the score {score}")
     } else {
@@ -1906,14 +1921,18 @@ async fn comparison_version(
     let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n);
     let keeps_train = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let operator_of = |operator: &str| state.registry.get(operator);
-    let task = question.task.value;
+    // A metric a person stated with the success bar is what models are compared by (ADR-0059).
+    let scoring = sprisk_methodology::Scoring {
+        task: question.task.value,
+        stated: question.success_bar.as_ref().map(|bar| bar.value.metric),
+    };
     let built = if proposal.shortlist.is_empty() {
         let rule = state.rules.rule(proposal.rule.as_str())?;
         sprisk_methodology::preparation_comparison(
             &base,
             proposal,
             rule,
-            task,
+            scoring,
             is_split,
             keeps_train,
             operator_of,
@@ -1922,14 +1941,14 @@ async fn comparison_version(
         sprisk_methodology::study_comparison(
             &base,
             proposal,
-            task,
+            scoring,
             is_split,
             keeps_train,
             operator_of,
             study,
         )
     } else {
-        sprisk_methodology::comparison(&base, proposal, task, is_split, keeps_train, operator_of)
+        sprisk_methodology::comparison(&base, proposal, scoring, is_split, keeps_train, operator_of)
     }
     .map_err(|e| match e {
         sprisk_methodology::ResolveError::NothingToCompare(_) => ApiError::BadRequest {

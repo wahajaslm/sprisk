@@ -104,3 +104,12 @@ def test_results_without_a_verdict_are_a_broken_observation(name: str) -> None:
     del profile[name]
     with pytest.raises(RuleError, match=name):
         decide(RULE, facts=bar("0.7"), profile=profile)
+
+
+def test_a_weighted_f1_bar_is_met_from_above() -> None:
+    f1 = results(0.82, metric="weighted_f1")
+    met = decide(RULE, facts=bar("0.81", "weighted_f1"), profile=f1)
+    assert met["recommended_alternative_id"] == "proceed"
+    assert "weighted F1" in alternative(met, "proceed")["reason"]
+    missed = decide(RULE, facts=bar("0.85", "weighted_f1"), profile=f1)
+    assert missed["recommended_alternative_id"] == "reopen"

@@ -1,16 +1,19 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    DecisionProposal, Node, PipelineVersion, QuestionVersion, RuleDecision, TaskType, parse,
+    DecisionProposal, Node, PipelineVersion, QuestionVersion, RuleDecision, SelectionMetric,
+    TaskType, parse,
 };
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
-    Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, facts, flow_facts,
-    input_facts, join_facts, observation, preparation_comparison, profile_facts, proposal,
-    result_facts, target_facts, train_rows_source, unread_sources, with_node_before, without_node,
+    Comparison, RuleCatalog, Scoring, Stamp, candidate_facts, candidates, comparison, facts,
+    flow_facts, input_facts, join_facts, observation, preparation_comparison, profile_facts,
+    proposal, result_facts, target_facts, train_rows_source, unread_sources, with_node_before,
+    without_node,
 };
 use sprisk_registry::Registry;
 
@@ -1405,15 +1408,54 @@ fn compare(
     pipeline: &PipelineVersion,
     proposal: &DecisionProposal,
 ) -> Result<Comparison, ResolveError> {
+    compare_by(pipeline, proposal, None)
+}
+
+fn compare_by(
+    pipeline: &PipelineVersion,
+    proposal: &DecisionProposal,
+    stated: Option<SelectionMetric>,
+) -> Result<Comparison, ResolveError> {
     let registry = registry();
     comparison(
         pipeline,
         proposal,
-        TaskType::Classification,
+        Scoring {
+            task: TaskType::Classification,
+            stated,
+        },
         is_split,
         keeps_train,
         |operator| registry.get(operator),
     )
+}
+
+/// The metric every step of `built` scores by.
+fn metrics_of(built: &Comparison) -> BTreeSet<String> {
+    built
+        .nodes
+        .iter()
+        .filter_map(|n| n.params.get("metric").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn the_metric_a_person_stated_with_the_success_bar_is_what_models_are_compared_by() {
+    let pipeline = evaluated_flow();
+    let proposal = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
+    let task_default = compare(&pipeline, &proposal).unwrap();
+    assert_eq!(
+        metrics_of(&task_default),
+        BTreeSet::from(["balanced_accuracy".to_owned()])
+    );
+    let stated = compare_by(&pipeline, &proposal, Some(SelectionMetric::WeightedF1)).unwrap();
+    assert_eq!(
+        metrics_of(&stated),
+        BTreeSet::from(["weighted_f1".to_owned()])
+    );
+    let err = compare_by(&pipeline, &proposal, Some(SelectionMetric::Rmse)).unwrap_err();
+    assert!(err.to_string().contains("rmse"), "{err}");
 }
 
 #[test]
@@ -1704,7 +1746,10 @@ fn compare_preparation(
         pipeline,
         proposal,
         catalog.rule(rule).unwrap(),
-        TaskType::Classification,
+        Scoring {
+            task: TaskType::Classification,
+            stated: None,
+        },
         is_split,
         fits,
         |operator| registry.get(operator),

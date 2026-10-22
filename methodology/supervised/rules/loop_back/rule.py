@@ -23,7 +23,12 @@ from sprisk_workers.rule import (
     required_number,
 )
 
-LABEL = {"balanced_accuracy": "balanced accuracy", "expected_cost": "expected cost", "rmse": "RMSE"}
+LABEL = {
+    "balanced_accuracy": "balanced accuracy",
+    "expected_cost": "expected cost",
+    "rmse": "RMSE",
+    "weighted_f1": "weighted F1",
+}
 LOWER_IS_BETTER = {"expected_cost", "rmse"}
 ALTERNATIVES = ("proceed", "reopen", "reopen_models", "stop")
 LABELS = {

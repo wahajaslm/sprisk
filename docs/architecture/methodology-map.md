@@ -24,7 +24,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Task type | 1, then 3 | Measured from the target: two values → binary, few → multiclass, number → regression; confirmed. Subtypes: multi-label, ordinal, count, survival, quantile | Target distribution | active (`question.task_type`) | REFORMS (Kapoor et al. 2024), module 1; ref-v3 1.3 |
 | Unit of prediction | 3 | Person: one row per what? Rows are aggregated to it before the split | — | active (`question.unit_of_prediction`; aggregation is not offered yet) | TRIPOD+AI (Collins et al. 2024) |
 | Class imbalance | 1 | Rarest class under a fifth of an even class's share (10% of rows for two classes). Unequal costs move the threshold instead (Elkan 2001) | Class balance bar | active (`question.class_balance`) | ref-v3 1.5; He & Garcia 2009 |
-| Primary metric | 1, else 3 | Stated metric wins. Else: binary balanced → ROC-AUC; binary unbalanced → PR-AUC or F1; multiclass → macro or weighted F1; costs stated → expected cost; regression → MAE or RMSE | — | draft | scikit-learn "Metrics and scoring"; ref-v3 1.4 |
+| Primary metric | 1, else 3 | Stated metric wins. Else: binary balanced → ROC-AUC; binary unbalanced → PR-AUC or F1; multiclass → macro or weighted F1; costs stated → expected cost; regression → MAE or RMSE | — | draft (a stated metric wins already: the success bar's metric, weighted F1 among them, is what models are compared by; costs mean expected cost) | scikit-learn "Metrics and scoring"; ref-v3 1.4 |
 | Cost of each error | 3 | Person | — | active (`question.error_costs`; costs read by ADR-0053) | Elkan 2001 |
 
 ## Data

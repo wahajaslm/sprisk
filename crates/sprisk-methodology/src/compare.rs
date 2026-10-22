@@ -11,7 +11,7 @@ use serde_json::json;
 use sprisk_contracts::{
     BaselineRole, DecisionProposal, Edge, GraphEffect, Guardrail, MethodologyAlternative,
     MethodologyAlternativeApplicability, MethodologyRule, Node, Operator, PipelineVersion,
-    PipelineVersionId, StudyStrategy, TaskType, parse,
+    PipelineVersionId, SelectionMetric, StudyStrategy, TaskType, parse,
 };
 
 use crate::ResolveError;
@@ -41,12 +41,12 @@ pub struct Comparison {
 pub fn comparison<'a>(
     base: &PipelineVersion,
     proposal: &DecisionProposal,
-    task: TaskType,
+    scoring: Scoring,
     is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
 ) -> Result<Comparison, ResolveError> {
-    let shortlist = shortlist(base, proposal, task, is_split, keeps_train, &operator_of)?;
+    let shortlist = shortlist(base, proposal, scoring, is_split, keeps_train, &operator_of)?;
     build(base, &shortlist, &Study::default())
 }
 
@@ -66,13 +66,13 @@ pub struct StudySearch<'s> {
 pub fn study_comparison<'a>(
     base: &PipelineVersion,
     proposal: &DecisionProposal,
-    task: TaskType,
+    scoring: Scoring,
     is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
     asked: &StudySearch,
 ) -> Result<Comparison, ResolveError> {
-    let mut shortlist = shortlist(base, proposal, task, is_split, keeps_train, &operator_of)?;
+    let mut shortlist = shortlist(base, proposal, scoring, is_split, keeps_train, &operator_of)?;
     let searches: Vec<_> = shortlist
         .trials
         .iter()
@@ -152,7 +152,7 @@ struct Shortlist<'p> {
 fn shortlist<'p, 'a>(
     base: &'p PipelineVersion,
     proposal: &DecisionProposal,
-    task: TaskType,
+    scoring: Scoring,
     is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
     operator_of: &impl Fn(&str) -> Option<&'a Operator>,
@@ -163,7 +163,7 @@ fn shortlist<'p, 'a>(
             proposal.id.as_str()
         )));
     }
-    let metric = metric_of(task, step_of(base, proposal.subject_node_id.as_str())?)?;
+    let metric = metric_of(scoring, step_of(base, proposal.subject_node_id.as_str())?)?;
     let chain = train_rows_chain(
         base,
         proposal.subject_node_id.as_str(),
@@ -242,7 +242,7 @@ pub fn preparation_comparison<'a>(
     base: &PipelineVersion,
     proposal: &DecisionProposal,
     rule: &MethodologyRule,
-    task: TaskType,
+    scoring: Scoring,
     is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
@@ -259,7 +259,7 @@ pub fn preparation_comparison<'a>(
         })?;
     let subject = proposal.subject_node_id.as_str();
     let (model, chain) = model_after(base, subject, &is_split, &keeps_train, &operator_of)?;
-    let metric = metric_of(task, model)?;
+    let metric = metric_of(scoring, model)?;
     refits_as_flow_runs(model)?;
     let (split, between) = chain
         .split_last()
@@ -494,20 +494,36 @@ pub fn trial_steps(comparison: &PipelineVersion) -> Result<Vec<TrialStep<'_>>, R
         .collect()
 }
 
+/// What a comparison scores by (ADR-0059): the question's task, and the metric a person
+/// stated with the success bar, if any.
+#[derive(Clone, Copy, Debug)]
+pub struct Scoring {
+    pub task: TaskType,
+    pub stated: Option<SelectionMetric>,
+}
+
 /// Fixed before any score is seen (ADR-0044): expected cost when the `model` step states
-/// misclassification costs (ADR-0053), else the task's.
-fn metric_of(task: TaskType, model: &Node) -> Result<&'static str, ResolveError> {
+/// misclassification costs (ADR-0053), whatever the bar's metric; else the metric a person
+/// stated with the success bar (ADR-0059) when it fits the task, else the task's.
+fn metric_of(scoring: Scoring, model: &Node) -> Result<&'static str, ResolveError> {
+    let Scoring { task, stated } = scoring;
+    use SelectionMetric::{BalancedAccuracy, Rmse, WeightedF1};
     let costed = model.params.contains_key("costs");
-    match task {
-        TaskType::Classification if costed => Ok("expected_cost"),
-        _ if costed => Err(ResolveError::Selection(format!(
+    let refuse = |why: String| Err(ResolveError::Selection(why));
+    match (task, costed, stated) {
+        // Costs may sit on the model step without being on the question; a bar stated in
+        // another metric then asks again at the loop back.
+        (TaskType::Classification, true, _) => Ok("expected_cost"),
+        (_, true, _) => refuse(format!(
             "costs apply to a classification question, not a {task} one"
-        ))),
-        TaskType::Classification => Ok("balanced_accuracy"),
-        TaskType::Regression => Ok("rmse"),
-        other => Err(ResolveError::Selection(format!(
-            "a {other} question has no metric to compare by"
-        ))),
+        )),
+        (TaskType::Classification, false, None | Some(BalancedAccuracy)) => Ok("balanced_accuracy"),
+        (TaskType::Classification, false, Some(WeightedF1)) => Ok("weighted_f1"),
+        (TaskType::Regression, false, None | Some(Rmse)) => Ok("rmse"),
+        (TaskType::Classification | TaskType::Regression, false, Some(other)) => {
+            refuse(format!("a {task} question is not compared by {other}"))
+        }
+        (other, false, _) => refuse(format!("a {other} question has no metric to compare by")),
     }
 }
 

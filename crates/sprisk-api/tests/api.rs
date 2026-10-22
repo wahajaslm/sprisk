@@ -1541,6 +1541,7 @@ async fn a_question_s_success_bar_must_be_a_score_its_task_can_reach() {
         ("balanced_accuracy", -0.1),
         ("expected_cost", -1.0),
         ("rmse", 2.0),
+        ("weighted_f1", 1.2),
     ] {
         let (status, body) = call(
             &api.app,
@@ -1564,6 +1565,64 @@ async fn a_question_s_success_bar_must_be_a_score_its_task_can_reach() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    // With costs, models are compared by expected cost, so a bar in another metric clashes.
+    for metric in ["weighted_f1", "balanced_accuracy"] {
+        let mut costed = barred(metric, 0.8);
+        costed["id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
+        costed["costs"] = json!({ "value": { "positive": "1", "false_negative": 5.0, "false_positive": 1.0 },
+                                   "origin": "explicit" });
+        let (status, body) = call(&api.app, "POST", "/question_versions", Some(costed)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{metric}: {body}");
+        assert!(
+            body["errors"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("expected cost"),
+            "{body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_revision_keeps_the_metric_its_success_bar_was_stated_in() {
+    let api = api().await;
+    let barred = |id: &str, parent: Option<&str>, metric: &str| {
+        let mut q = question(id, parent);
+        q["success_bar"] =
+            json!({ "value": { "metric": metric, "score": 0.7 }, "origin": "explicit" });
+        q
+    };
+    let first = barred("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None, "balanced_accuracy");
+    assert_eq!(
+        call(&api.app, "POST", "/question_versions", Some(first))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    // Models may have been compared by it: a new metric would be chosen after the scores.
+    let switched = barred(
+        "qv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        Some("qv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+        "weighted_f1",
+    );
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(switched)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(
+        body["errors"][0]["code"], "success_bar_metric_changed",
+        "{body}"
+    );
+    let raised = barred(
+        "qv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        Some("qv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+        "balanced_accuracy",
+    );
+    assert_eq!(
+        call(&api.app, "POST", "/question_versions", Some(raised))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
 }
 
 #[tokio::test]
@@ -1854,6 +1913,16 @@ async fn scaling_flow(api: &Api) {
 
 /// The scaling flow with `nodes` and `edges` added after the scale step.
 async fn scaling_flow_into(api: &Api, extra_nodes: &[Value], extra_edges: &[Value]) {
+    scaling_flow_barred(api, extra_nodes, extra_edges, "balanced_accuracy").await;
+}
+
+/// The scaling flow, its question's success bar stated in `metric`.
+async fn scaling_flow_barred(
+    api: &Api,
+    extra_nodes: &[Value],
+    extra_edges: &[Value],
+    metric: &str,
+) {
     let mut csv = String::from("age,returned_within_30d\n");
     for i in 0..39 {
         csv.push_str(&format!("{},{}\n", 20 + i % 20, i % 2));
@@ -1868,7 +1937,7 @@ async fn scaling_flow_into(api: &Api, extra_nodes: &[Value], extra_edges: &[Valu
     facts.remove("entity_column");
     facts.insert(
         "success_bar".into(),
-        json!({ "value": { "metric": "balanced_accuracy", "score": 0.7 }, "origin": "explicit" }),
+        json!({ "value": { "metric": metric, "score": 0.7 }, "origin": "explicit" }),
     );
     assert_eq!(
         call(&api.app, "POST", "/question_versions", Some(q))
@@ -2556,14 +2625,20 @@ async fn gate_b_stops_a_hand_built_comparison_that_reads_the_test_rows() {
 
 /// The model flow on rows whose target is age 40 or more, so a linear model can learn it.
 async fn learnable_model_flow(api: &Api) {
+    learnable_model_flow_barred(api, "balanced_accuracy").await;
+}
+
+/// The learnable model flow, its question's success bar stated in `metric`.
+async fn learnable_model_flow_barred(api: &Api, metric: &str) {
     let model = json!({
         "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
-    scaling_flow_into(
+    scaling_flow_barred(
         api,
         &[model],
         &[json!({"from":"scale.train","to":"model.train"})],
+        metric,
     )
     .await;
     let mut csv = String::from("age,returned_within_30d\n");
@@ -2708,6 +2783,28 @@ async fn the_loop_back_rule_reads_the_results_the_chosen_model_was_compared_by()
         looks["value"], "1",
         "choosing the winner is no new look: {proposal}"
     );
+}
+
+#[tokio::test]
+async fn models_are_compared_by_the_metric_the_success_bar_is_stated_in() {
+    let api = api().await;
+    learnable_model_flow_barred(&api, "weighted_f1").await;
+
+    let uri = format!("/pipeline_versions/{BASE}/model_selection/model");
+    let (status, selection) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{selection}");
+    let metrics: Vec<&Value> = selection["comparison"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|n| n["params"].get("metric"))
+        .collect();
+    assert!(!metrics.is_empty(), "{selection}");
+    assert!(metrics.iter().all(|m| *m == "weighted_f1"), "{selection}");
+    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let decision = output(&api, &attempts, "select_model", "decision").await;
+    assert_eq!(decision["metric"], "weighted_f1", "{decision}");
 }
 
 #[tokio::test]

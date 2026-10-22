@@ -9,8 +9,8 @@ pub mod review;
 pub mod search;
 pub use catalog::{CatalogError, RuleCatalog, decides, reopened_stage};
 pub use compare::{
-    Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, StudySearch, TrialStep, comparison,
-    preparation_comparison, study_comparison, trial_steps,
+    Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, Scoring, StudySearch, TrialStep,
+    comparison, preparation_comparison, study_comparison, trial_steps,
 };
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, input_facts, join_facts, observation,
