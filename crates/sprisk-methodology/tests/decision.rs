@@ -577,9 +577,9 @@ fn removing_an_unknown_step_is_refused() {
 
 const ENCODING: &str = "methodology.supervised.categorical_encoding@2.0.0";
 
-/// The encoding rule's one-hot pick for the forest of `pipeline`, as a proposal's alternative.
-fn one_hot_for_forest(pipeline: &PipelineVersion) -> Value {
-    let decided: RuleDecision = parse(
+/// The encoding rule picking one-hot for `purpose`.
+fn one_hot_decision() -> RuleDecision {
+    parse(
         &json!({
             "schema_version": "sprisk.rule_decision/v1",
             "rule": ENCODING,
@@ -590,11 +590,15 @@ fn one_hot_for_forest(pipeline: &PipelineVersion) -> Value {
         })
         .to_string(),
     )
-    .unwrap();
+    .unwrap()
+}
+
+/// The encoding rule's one-hot pick for the forest of `pipeline`, as a proposal's alternative.
+fn one_hot_for_forest(pipeline: &PipelineVersion) -> Value {
     let catalog = catalog();
     let built = proposal(
         catalog.rule(ENCODING).unwrap(),
-        &decided,
+        &one_hot_decision(),
         &question(),
         pipeline,
         "rf",
@@ -615,6 +619,46 @@ fn an_applicable_alternative_that_adds_a_step_gets_an_insert_node_effect_before_
         json!({ "kind": "insert_node", "node_id": "categories", "operator": "sprisk.clean.encode@1.0.0",
                 "params": { "columns": ["purpose"] }, "before": "rf" })
     );
+}
+
+#[test]
+fn an_insert_step_with_no_place_or_id_for_the_step_is_refused_not_ignored() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology/supervised/rules");
+    for (drop, kept) in [
+        ("      node_id: categories\n", "node_id"),
+        ("      placement: before\n", "placement"),
+    ] {
+        let packs = tempfile::tempdir().unwrap();
+        let rule = packs.path().join("supervised/rules/categorical_encoding");
+        std::fs::create_dir_all(&rule).unwrap();
+        let manifest =
+            std::fs::read_to_string(root.join("categorical_encoding/rule.yaml")).unwrap();
+        assert!(manifest.contains(drop), "{drop}");
+        std::fs::write(rule.join("rule.yaml"), manifest.replacen(drop, "", 1)).unwrap();
+        std::fs::copy(
+            root.join("categorical_encoding/rule.py"),
+            rule.join("rule.py"),
+        )
+        .unwrap();
+        let catalog = RuleCatalog::load_dir(packs.path()).unwrap();
+        let err = proposal(
+            catalog.rule(ENCODING).unwrap(),
+            &one_hot_decision(),
+            &question(),
+            &before_forest(),
+            "rf",
+            &Default::default(),
+            Stamp {
+                id: "mpr_01JABCDEFGHJKMNPQRSTVWXYZ8",
+                created_at: "2026-10-22T10:00:00Z",
+            },
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("one_hot_encoding"),
+            "{kept}: {err}"
+        );
+    }
 }
 
 #[test]

@@ -540,18 +540,23 @@ pub fn proposal(
                     built["effect"] = json!({ "kind": "replace_node", "node_id": node_id, "operator": node.operator, "params": params });
                 }
             } else if declared.action.type_ == RuleActionType::InsertStep {
-                // Only an insert before the rule's step is wired (ADR-0057).
-                let before = declared
-                    .action
-                    .placement
-                    .as_ref()
-                    .is_some_and(|p| p.as_str() == "before");
-                if let (true, Some(params), Some(operator), Some(wanted)) = (
-                    before,
-                    &decided.params,
-                    &declared.action.operator,
-                    &declared.action.node_id,
-                ) {
+                if applicable {
+                    // Only an insert before the rule's step is wired (ADR-0057).
+                    let before = declared
+                        .action
+                        .placement
+                        .as_ref()
+                        .is_some_and(|p| p.as_str() == "before");
+                    let (true, Some(params), Some(operator), Some(wanted)) = (
+                        before,
+                        &decided.params,
+                        &declared.action.operator,
+                        &declared.action.node_id,
+                    ) else {
+                        return Err(ResolveError::NotInsertable(format!(
+                            "{id} needs placement before, an operator, a node_id and params"
+                        )));
+                    };
                     let step = free_id(pipeline, wanted.as_str());
                     built["effect"] = json!({ "kind": "insert_node", "node_id": step, "operator": operator,
                                               "params": params, "before": node_id });
