@@ -2,8 +2,10 @@
 
 A text column with more categories than one-hot encoding takes has rare ones a model learns
 little from. A step added before the model makes each category under a share of the train
-rows "other", as scikit-learn's OneHotEncoder(min_frequency) does. A column with a value per
-row is an identifier: grouping would leave one value, so it is named and left alone.
+rows "other", and keeps at most as many categories as one-hot takes, counting "other", as
+scikit-learn's OneHotEncoder(min_frequency, max_categories) does. The encoding rule can then
+take the column. A column with its own value for most rows is an identifier: grouping would
+leave one value, so it is named and left alone.
 """
 
 from typing import Any
@@ -31,21 +33,30 @@ def decide(observation: RuleObservation) -> RuleDecision:
         if str(measure(observation, c, "data_type")).startswith(TEXT_TYPES)
     ]
     distinct = {c: int(required(observation, c, "distinct")) for c in texts}
-    identifiers = [c for c in texts if distinct[c] >= rows]
-    many = [c for c in texts if limit < distinct[c] < rows]
+    over = [c for c in texts if distinct[c] > limit]
+    identifiers = [
+        c for c in over if distinct[c] >= observation.settings["identifier_share"] * rows
+    ]
+    many = [c for c in over if c not in identifiers]
     named = (
-        f" Left alone: {', '.join(identifiers)}, a value per train row, so an identifier."
+        f" Left alone: {', '.join(identifiers)}, its own value for most train rows, so an "
+        "identifier."
         if identifiers
         else ""
     )
-    nothing = f"No text column has more than {limit} categories but fewer than the rows.{named}"
+    nothing = f"No text column other than an identifier has more than {limit} categories.{named}"
 
     if many:
         group = applicable(
             "group_rare",
             f"{', '.join(f'{c} ({distinct[c]} categories)' for c in many)}: more than {limit}, "
-            'too many for one-hot. Rare ones become "other", counted on the train rows.' + named,
-            {"columns": many, "min_share": observation.settings["min_share"]},
+            f'too many for one-hot. Rare ones become "other", keeping at most {limit}, counted '
+            "on the train rows." + named,
+            {
+                "columns": many,
+                "min_share": observation.settings["min_share"],
+                "max_categories": limit,
+            },
         )
         keep = not_applicable(
             "keep_categories", f"{', '.join(many)}: too many categories for one-hot."

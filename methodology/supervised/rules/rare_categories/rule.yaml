@@ -18,24 +18,27 @@ provenance:
   pitfall: "A category seen a handful of times gives a model almost nothing to learn from, and one 0/1 column each makes too many columns. Shares counted on all rows would let test rows decide what is rare (rule 8)."
   corner_cases:
     - "A category seen only in test rows: it was never learned, so it becomes \"other\"."
-    - "A column with a value per row is an identifier: grouping would make it one \"other\" value. It is named, not grouped."
-    - "A column already called \"other\" merges with the grouped categories."
+    - "A column with its own value for most rows is an identifier: grouping would make it one \"other\" value. It is named, not grouped."
+    - "A category already named \"other\" merges with the grouped ones."
 
 # 3. Policy Recommendation Thresholds (Governs automated recommendation)
 # ------------------------------------------------------------------------------
 policy_thresholds:
-  # More categories than one-hot encoding takes (categorical_encoding's limit).
+  # Most categories one-hot encoding takes (categorical_encoding's limit; a test keeps them
+  # equal). Grouping keeps at most this many, counting "other", so encoding then takes it.
   high_cardinality_threshold: 15
   # A category under this share of the train rows becomes "other".
   min_share: 0.01
+  # A column with at least this many distinct values per train row is an identifier.
+  identifier_share: 0.5
 
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------
 alternatives:
   - id: group_rare
     label: "Group Rare Categories"
-    description: "Categories under a share of the train rows become \"other\", in a step added before the model."
-    rationale: "Text with more categories than one-hot takes: grouping the rare ones leaves fewer, better-supported categories. Shares come from the train rows only."
+    description: "Categories under a share of the train rows become \"other\", and only the most frequent stay, in a step added before the model."
+    rationale: "Text with more categories than one-hot takes: grouping keeps at most that many, counting \"other\", so the column can then be one-hot encoded. Counts come from the train rows only."
     action:
       type: insert_step
       placement: before
@@ -51,7 +54,7 @@ alternatives:
 # 5. Matching Gate B Verification Check
 # ------------------------------------------------------------------------------
 verification:
-  check_id: sprisk.checks.supervised.data_access_matrix@1.0.0
+  check_id: supervised.split_leakage@1.0.0
   invariant: "Category shares are counted on the train rows only; test rows are only mapped, never counted."
 
 # Examples: run as tests and shown on the Methodology page (ADR-0045)
@@ -61,5 +64,5 @@ examples:
     picks: group_rare
   - given: { rows: 750, column.purpose.data_type: String, column.purpose.distinct: 10 }
     picks: keep_categories
-  - given: { rows: 750, column.customer.data_type: String, column.customer.distinct: 750 }
+  - given: { rows: 750, column.customer.data_type: String, column.customer.distinct: 400 }
     picks: keep_categories
