@@ -117,12 +117,12 @@
     },
     "MethodologyStage": {
       "type": "string",
-      "description": "ADR-0042 stages, run in this order.",
+      "description": "Stages in decision order (ADR-0059): the split comes before cleaning, since cleaning rules measure train rows.",
       "enum": [
         "question",
         "data",
-        "cleaning",
         "split",
+        "cleaning",
         "features",
         "models",
         "evaluation",

@@ -349,8 +349,8 @@ class MethodologyRuleRef(RootModel[str]):
 class MethodologyStage(StrEnum):
     question = "question"
     data = "data"
-    cleaning = "cleaning"
     split = "split"
+    cleaning = "cleaning"
     features = "features"
     models = "models"
     evaluation = "evaluation"

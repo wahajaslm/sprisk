@@ -137,13 +137,13 @@ export type WorkerId = string;
  */
 export type MethodologyRuleRef = string;
 /**
- * ADR-0042 stages, run in this order.
+ * Stages in decision order (ADR-0059): the split comes before cleaning, since cleaning rules measure train rows.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodologyStage".
  */
 export type MethodologyStage =
-  "question" | "data" | "cleaning" | "split" | "features" | "models" | "evaluation" | "reporting";
+  "question" | "data" | "split" | "cleaning" | "features" | "models" | "evaluation" | "reporting";
 /**
  * What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.
  *
