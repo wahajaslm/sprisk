@@ -722,3 +722,28 @@ def test_a_key_column_an_earlier_step_already_dropped_is_no_error() -> None:
         rows(200, seed=3), linear_model_estimator, params, 5, 0, "balanced_accuracy", 1, []
     )
     assert result["importance"]["feature"].to_list() == ["x"]
+
+
+class Rescale(TransformerMixin, BaseEstimator):  # type: ignore[misc]
+    """Makes x_scaled from x and drops x, as a Clean step that renames would."""
+
+    def fit(self, x: Any, y: Any = None) -> "Rescale":
+        return self
+
+    def transform(self, x: Any) -> Any:
+        return x.with_columns(x_scaled=pl.col("x") * 2).drop("x")
+
+
+def test_importance_keeps_a_column_the_model_reads_through_a_made_feature() -> None:
+    # The features name x_scaled, which preparation makes from x: x matters to the model.
+    result = cross_validate(
+        rows(200, seed=3),
+        linear_model_estimator,
+        {**CLASSIFY, "features": ["x_scaled", "c"]},
+        5,
+        0,
+        "balanced_accuracy",
+        1,
+        [Rescale()],
+    )
+    assert result["importance"]["feature"].to_list()[0] == "x"

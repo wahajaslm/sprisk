@@ -208,9 +208,10 @@ def cross_validate(
         }
     ).sort("importance", descending=True)
     # Listed features, when preparation passes them through by name: other columns only feed
-    # the preparation, so their importance says nothing about the model.
-    if features is not None and (read := [c for c in x.columns if c in features]):
-        importance = importance.filter(pl.col("feature").is_in(read))
+    # the preparation, so their importance says nothing about the model. A feature made by the
+    # preparation hides which columns it came from, so then every column stays.
+    if features is not None and set(features) <= set(x.columns):
+        importance = importance.filter(pl.col("feature").is_in(features))
     predictions = pl.DataFrame(
         {"row": held_out, "fold": fold_of, "actual": truth[held_out], "predicted": predicted}
     )
