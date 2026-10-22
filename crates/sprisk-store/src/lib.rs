@@ -197,8 +197,10 @@ impl SqliteStore {
         Ok((comparison.clone(), true))
     }
 
-    /// Stores `run` as the selection's run, unless one was claimed first: then that one is
-    /// given back and `run` is never stored. The caller starts the run only if it gets `run`.
+    /// Stores `run` as the selection's run, unless one was claimed first and has not failed or
+    /// been cancelled: then that one is given back and `run` is never stored. A failed or
+    /// cancelled run is kept in history and gives way, so a selection never stays blocked.
+    /// The caller starts the run only if it gets `run`.
     pub async fn claim_selection_run(
         &self,
         pipeline: &PipelineVersionId,
@@ -209,7 +211,9 @@ impl SqliteStore {
         insert_run(&mut *tx, run).await?;
         let claimed = sqlx::query(
             "UPDATE model_selections SET run_id = ? \
-             WHERE pipeline_version_id = ? AND node_id = ? AND run_id IS NULL",
+             WHERE pipeline_version_id = ? AND node_id = ? \
+               AND (run_id IS NULL \
+                    OR run_id IN (SELECT id FROM runs WHERE status IN ('failed', 'cancelled')))",
         )
         .bind(run.id.as_str())
         .bind(pipeline.as_str())

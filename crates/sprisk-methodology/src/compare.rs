@@ -507,7 +507,7 @@ pub struct Scoring {
 /// stated with the success bar (ADR-0059) when it fits the task, else the task's.
 fn metric_of(scoring: Scoring, model: &Node) -> Result<&'static str, ResolveError> {
     let Scoring { task, stated } = scoring;
-    use SelectionMetric::{BalancedAccuracy, Rmse, WeightedF1};
+    use SelectionMetric::{BalancedAccuracy, ExpectedCost, Rmse, WeightedF1};
     let costed = model.params.contains_key("costs");
     let refuse = |why: String| Err(ResolveError::Selection(why));
     match (task, costed, stated) {
@@ -520,6 +520,9 @@ fn metric_of(scoring: Scoring, model: &Node) -> Result<&'static str, ResolveErro
         (TaskType::Classification, false, None | Some(BalancedAccuracy)) => Ok("balanced_accuracy"),
         (TaskType::Classification, false, Some(WeightedF1)) => Ok("weighted_f1"),
         (TaskType::Regression, false, None | Some(Rmse)) => Ok("rmse"),
+        // Costs stated, but the threshold rule kept the plain threshold (under time order):
+        // the task's metric, and the loop back asks for the bar again.
+        (TaskType::Classification, false, Some(ExpectedCost)) => Ok("balanced_accuracy"),
         (TaskType::Classification | TaskType::Regression, false, Some(other)) => {
             refuse(format!("a {task} question is not compared by {other}"))
         }

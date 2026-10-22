@@ -36,7 +36,13 @@ There is no separate "strategy" kind. A Try is a rule whose routes are compared;
 
 **The level belongs to the rule.** A rule recommends a route only when practice settles it from facts. When it depends, the rule recommends nothing and the engine compares the routes (Try). There is no separate level field: the rule's author and its reviewer own that line.
 
-**A Try is the model selection a person would run.** For a rule that recommends nothing on a step, the engine asks for that step's model selection (`POST /pipeline_versions/{id}/model_selection/{step}`, ADR-0050): the shortlist's models, or the rule's preparation routes, scored on the same repeated folds with a fixed seed against a baseline. It records a `compare` step, waits for the comparison's run, then applies the winner in the next round through the same Apply. With no winner (no candidate beats the baseline on the same folds) it stops as a `limitation`, as the map's loop-back row says. A comparison of another rule on the same step is `uncovered`.
+**A Try is the model selection a person would run.** For a rule that recommends nothing on a step, the engine asks for that step's model selection (`POST /pipeline_versions/{id}/model_selection/{step}`, ADR-0050): the shortlist's models, or the rule's preparation routes, scored on the same repeated folds with a fixed seed against a baseline. It records a `compare` step, waits for the comparison's run, then applies the winner in the next round through the same Apply. With no winner (no candidate beats the baseline on the same folds) it stops as a `limitation`, as the map's loop-back row says; a preparation comparison always has one, since its reference stands when nothing beats it. A comparison of another rule on the same step is `uncovered`.
+
+**A Try is held to what the scores may not change** (ADR-0059).
+- It waits for every open Ask: a person's answer may change what is compared, or how it is scored.
+- It needs the success bar stated: the bar's metric is what the routes are scored by, fixed before any score.
+- A new comparison is a new look at the folds. Past the loop-back rule's `max_looks` for the flow's family, the walk stops as a `limitation` rather than fit the folds.
+- A comparison run still going (started by a person, or left by a walk that stopped mid-run) stops the walk as an `error`, to walk again once it ends. A run that failed or was cancelled, say at the walk's deadline, gives way to a fresh one.
 
 **One action per round, in decision order.** A rule's change comes first, then a run, then a comparison: the comparison then scores the flow as the rules left it. Each round the engine reviews the head version and takes the first item in the review's `next` list that it can act on. An Ask holds back only the rules that wait on it; the review already says which. The engine then reviews again. It stops when nothing in `next` is actionable.
 
@@ -88,7 +94,7 @@ There is no separate "strategy" kind. A Try is a rule whose routes are compared;
 - A version applied on the head by someone else stops it `stale`.
 - A restart in the middle of a walk finishes it without a second apply or run for the same round.
 
-Known gap: the comparison's run is started by the model selection without the walk's deadline, so it may finish after the walk stops for time. Delivered with slice 3, not slices 1 and 2: source hashes and `source_changed`, resuming walks after a restart, the hold-out scoring, and the two-source join (its rule is drafted in another branch).
+Known gap: the looks cap and the stop for a comparison run still going have no API test yet. Delivered with slice 3, not slices 1 and 2: source hashes and `source_changed`, resuming walks after a restart, the hold-out scoring, and the two-source join (its rule is drafted in another branch).
 
 ## Arch doc edits
 - §8.3: the engine applies the review's actions in a loop; a person is asked only for Asks.

@@ -144,7 +144,7 @@ pub fn next_action<'r>(
     question: &QuestionVersion,
     head: HeadRun,
     rules: &RuleCatalog,
-) -> Result<Action<'r>, CatalogError> {
+) -> Result<Action<'r>, ResolveError> {
     for item in &review.items {
         if item.status == MethodologyReviewStatus::Settled && is_limitation(item, rules)? {
             return Ok(Action::Stop {
@@ -167,7 +167,7 @@ pub fn next_action<'r>(
                     uncovered.push(describe(item));
                     continue;
                 };
-                let guesses = unconfirmed_reads(rules.rule(item.rule.as_str())?, question);
+                let guesses = unconfirmed_reads(rules.rule(item.rule.as_str())?, question)?;
                 if !guesses.is_empty() {
                     asks.push(format!(
                         "{} It reads {}, still a guess: confirm it first.",
@@ -207,6 +207,23 @@ pub fn next_action<'r>(
         return Ok(Action::Run { reason });
     }
     if let Some(compare) = compare {
+        // A person's answer may change what is compared, or how it is scored.
+        if !asks.is_empty() {
+            let open = asks.join(" ");
+            return Ok(Action::Stop {
+                reason: WalkStopReason::NeedsPerson,
+                detail: format!("Answer these before models are compared: {open}"),
+            });
+        }
+        // The metric must be fixed before any score is seen (ADR-0059).
+        if question.success_bar.is_none() {
+            return Ok(Action::Stop {
+                reason: WalkStopReason::NeedsPerson,
+                detail: "State the success bar: its metric is what the routes are compared by, \
+                         and it must be fixed before any score is seen."
+                    .to_owned(),
+            });
+        }
         return Ok(compare);
     }
     // A failed run is named even when only Asks are left: its later steps were never judged.
@@ -231,16 +248,18 @@ pub fn next_action<'r>(
 /// The question facts `rule` reads that are still a guess (`inferred`). A rule's default is
 /// not applied over one (ADR-0059: a guess is confirmed before anything depends on it): the
 /// person's answer may change the decision, such as a time column that makes a split temporal.
-pub fn unconfirmed_reads(rule: &MethodologyRule, question: &QuestionVersion) -> Vec<String> {
-    let Ok(Value::Object(facts)) = serde_json::to_value(question) else {
-        return Vec::new();
-    };
-    rule.reads
+pub fn unconfirmed_reads(
+    rule: &MethodologyRule,
+    question: &QuestionVersion,
+) -> Result<Vec<String>, ResolveError> {
+    let facts = serde_json::to_value(question)?;
+    Ok(rule
+        .reads
         .iter()
         .filter_map(|read| read.as_str().strip_prefix("question."))
         .filter(|name| facts.get(*name).and_then(|f| f.get("origin")) == Some(&json!("inferred")))
         .map(|name| format!("question.{name}"))
-        .collect()
+        .collect())
 }
 
 /// Whether the item's recommended route reports a limit the engine cannot go past.

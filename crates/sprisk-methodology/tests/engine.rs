@@ -222,7 +222,7 @@ fn a_rule_that_leaves_the_choice_open_is_compared_after_changes_and_runs() {
     let shortlist = item(SHORTLIST, "modeling.estimator_selection", "proposal", None);
     let split = item(SPLIT, "split.method", "proposal", Some("stratified_random"));
     let rows = item(DUPLICATES, "data.exact_duplicates", "needs_run", None);
-    let asked = question(json!({}));
+    let asked = question(barred());
     let catalog = catalog();
 
     let only = review(vec![shortlist.clone()]);
@@ -264,6 +264,43 @@ fn a_shortlist_that_reads_a_guessed_task_is_asked_not_compared() {
         stop(next_action(&review, &guessed, HeadRun::Succeeded, &catalog()).unwrap());
     assert_eq!(reason, WalkStopReason::NeedsPerson);
     assert!(detail.contains("question.task, still a guess"), "{detail}");
+}
+
+/// The success bar a person states, its metric what models are compared by.
+fn barred() -> Value {
+    json!({ "success_bar": { "value": { "metric": "weighted_f1", "score": 0.8 }, "origin": "explicit" } })
+}
+
+#[test]
+fn models_are_compared_only_once_the_success_bar_fixes_the_metric() {
+    let review = review(vec![item(
+        SHORTLIST,
+        "modeling.estimator_selection",
+        "proposal",
+        None,
+    )]);
+    let (reason, detail) = stop(
+        next_action(
+            &review,
+            &question(json!({})),
+            HeadRun::Succeeded,
+            &catalog(),
+        )
+        .unwrap(),
+    );
+    assert_eq!(reason, WalkStopReason::NeedsPerson);
+    assert!(detail.contains("success bar"), "{detail}");
+}
+
+#[test]
+fn a_comparison_waits_for_what_a_person_is_asked() {
+    let shortlist = item(SHORTLIST, "modeling.estimator_selection", "proposal", None);
+    let asked = item(CONSTRAINTS, "question.hard_constraints", "needs_fact", None);
+    let review = review(vec![shortlist, asked]);
+    let (reason, detail) =
+        stop(next_action(&review, &question(barred()), HeadRun::Succeeded, &catalog()).unwrap());
+    assert_eq!(reason, WalkStopReason::NeedsPerson);
+    assert!(detail.contains("question.hard_constraints"), "{detail}");
 }
 
 /// A Rakuten-shaped question: which product type, from the listing's text.
@@ -412,6 +449,13 @@ fn only_guessed_question_facts_a_rule_reads_are_unconfirmed() {
         "time_column": { "value": "date", "origin": "inferred" },
         "unit_of_analysis": { "value": "listing", "origin": "inferred" },
     }));
-    assert_eq!(unconfirmed_reads(split, &guessed), ["question.time_column"]);
-    assert!(unconfirmed_reads(split, &question(json!({}))).is_empty());
+    assert_eq!(
+        unconfirmed_reads(split, &guessed).unwrap(),
+        ["question.time_column"]
+    );
+    assert!(
+        unconfirmed_reads(split, &question(json!({})))
+            .unwrap()
+            .is_empty()
+    );
 }

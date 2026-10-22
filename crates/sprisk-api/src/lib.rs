@@ -1238,6 +1238,9 @@ fn keeps_flow_facts(registry: &Registry, node: &sprisk_contracts::Node) -> bool 
 /// Codes the review turns into statuses, so a rename cannot slip past it.
 const NOT_APPLICABLE: &str = "methodology_not_applicable";
 const EVIDENCE_UNAVAILABLE: &str = "methodology_evidence_unavailable";
+/// Codes the engine turns into a stop: the step has nothing a comparison could score.
+pub(crate) const NOT_COMPARED: &str = "not_compared";
+pub(crate) const NOTHING_TO_COMPARE: &str = "nothing_to_compare";
 
 fn not_applicable(message: String) -> ApiError {
     ApiError::BadRequest {
@@ -1955,7 +1958,7 @@ async fn comparison_version(
     }
     .map_err(|e| match e {
         sprisk_methodology::ResolveError::NothingToCompare(_) => ApiError::BadRequest {
-            code: "nothing_to_compare",
+            code: NOTHING_TO_COMPARE,
             message: e.to_string(),
         },
         sprisk_methodology::ResolveError::OverBudget(_) => ApiError::BadRequest {
@@ -1991,9 +1994,13 @@ async fn select_model(
     State(state): State<AppState>,
     Path((raw, node_id)): Path<(String, String)>,
 ) -> Result<(StatusCode, Json<ModelSelection>), ApiError> {
-    let (selection, claimed, built) = claim_selection(&state, &raw, &node_id).await?;
-    let started = claimed.is_some();
-    if let Some(plan) = claimed {
+    let Claimed {
+        selection,
+        plan,
+        built,
+    } = claim_selection(&state, &raw, &node_id).await?;
+    let started = plan.is_some();
+    if let Some(plan) = plan {
         spawn_run(
             &state,
             &selection.run,
@@ -2010,14 +2017,18 @@ async fn select_model(
     Ok((status, Json(selection)))
 }
 
+/// A step's model selection as `claim_selection` found or made it.
+pub(crate) struct Claimed {
+    pub selection: ModelSelection,
+    /// The plan of the run when this call queued it, for the caller to drive.
+    pub plan: Option<Plan>,
+    /// Whether this call built the comparison.
+    pub built: bool,
+}
+
 /// The model selection of step `node_id`: its proposal, comparison and run, each made once
-/// if missing. Gives the plan of the run when this call queued it, for the caller to drive,
-/// and whether this call built the comparison.
-async fn claim_selection(
-    state: &AppState,
-    raw: &str,
-    node_id: &str,
-) -> Result<(ModelSelection, Option<Plan>, bool), ApiError> {
+/// if missing.
+async fn claim_selection(state: &AppState, raw: &str, node_id: &str) -> Result<Claimed, ApiError> {
     let pipeline_id: PipelineVersionId = id(raw)?;
     let step: sprisk_contracts::NodeId = id(node_id)?;
     // Each part is claimed once in the store, so concurrent requests share one proposal's
@@ -2032,7 +2043,7 @@ async fn claim_selection(
                 .find(|n| n.id == step)
                 .and_then(|n| compared_decision(state, n))
                 .ok_or_else(|| ApiError::BadRequest {
-                    code: "not_compared",
+                    code: NOT_COMPARED,
                     message: format!(
                         "no rule compares step {node_id}: only a model step a shortlist rule decides, or a step a rule decides that fits on train rows, is compared"
                     ),
@@ -2046,9 +2057,11 @@ async fn claim_selection(
             (comparison, None, built)
         }
     };
+    // A run that failed or was cancelled, say at a walk's deadline, gives way to a fresh one.
+    let ended_badly = |run: &Run| matches!(run.status, RunStatus::Failed | RunStatus::Cancelled);
     let (run, claimed) = match run {
-        Some(run) => (run, None),
-        None => {
+        Some(run) if !ended_badly(&run) => (run, None),
+        _ => {
             let (queued, plan) = queued_run(state, &comparison).await?;
             let run = state
                 .store
@@ -2067,7 +2080,11 @@ async fn claim_selection(
         comparison,
         run,
     };
-    Ok((selection, claimed, built))
+    Ok(Claimed {
+        selection,
+        plan: claimed,
+        built,
+    })
 }
 
 /// Studies the model step `node_id` (ADR-0052): its own shortlist proposal, compared with

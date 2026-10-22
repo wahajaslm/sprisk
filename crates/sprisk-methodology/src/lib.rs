@@ -59,6 +59,8 @@ pub enum ResolveError {
     Contract(#[from] sprisk_contracts::ContractError),
     #[error(transparent)]
     OverBudget(#[from] search::BudgetError),
+    #[error(transparent)]
+    Rules(#[from] CatalogError),
     #[error("could not serialize proposal input: {0}")]
     Json(#[from] serde_json::Error),
 }

@@ -1280,3 +1280,52 @@ async fn a_walk_step_is_kept_once_per_round_with_the_walk_it_leaves() {
     assert!(matches!(err, StoreError::Conflict(_)), "{err}");
     assert_eq!(store.get_walk(&walk.id).await.unwrap(), stopped);
 }
+
+#[tokio::test]
+async fn a_selection_run_that_failed_or_was_cancelled_gives_way_to_a_fresh_one() {
+    let (store, decision) = store_with_decision().await;
+    let base = decision.base_pipeline_version_id.clone();
+    let step = decision.subject_node_id.clone();
+    let first = selection(
+        &store,
+        &base,
+        &step,
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ6",
+        "run_01JABCDEFGHJKMNPQRSTVWXYZ6",
+    )
+    .await;
+    store
+        .set_run_status(&first.id, RunStatus::Cancelled, LATER)
+        .await
+        .unwrap();
+
+    let (comparison, _) = store.selection_for(&base, &step).await.unwrap().unwrap();
+    let mut fresh: Run = fixture("run", "running.json");
+    fresh.id = "run_01JABCDEFGHJKMNPQRSTVWXYZ7".parse().unwrap();
+    fresh.pipeline_version_id = comparison.id.clone();
+    assert_eq!(
+        store
+            .claim_selection_run(&base, &step, &fresh)
+            .await
+            .unwrap(),
+        fresh
+    );
+    assert_eq!(
+        store.get_run(&first.id).await.unwrap().status,
+        RunStatus::Cancelled,
+        "kept"
+    );
+
+    // A run that succeeded stays the selection's run.
+    store
+        .set_run_status(&fresh.id, RunStatus::Succeeded, LATER)
+        .await
+        .unwrap();
+    let mut late = fresh.clone();
+    late.id = "run_01JABCDEFGHJKMNPQRSTVWXYZ8".parse().unwrap();
+    let kept = store
+        .claim_selection_run(&base, &step, &late)
+        .await
+        .unwrap();
+    assert_eq!(kept.id, fresh.id);
+}

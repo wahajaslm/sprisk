@@ -5157,13 +5157,13 @@ fn trail(detail: &Value) -> Vec<String> {
         .as_array()
         .unwrap()
         .iter()
-        .map(|s| match s["decides"].as_str() {
-            Some(decides) => format!(
-                "{} {decides} {}",
-                s["action"].as_str().unwrap(),
-                s["alternative_id"].as_str().unwrap_or("")
-            ),
-            None => s["action"].as_str().unwrap().to_owned(),
+        .map(|s| {
+            let action = s["action"].as_str().unwrap();
+            match (s["decides"].as_str(), s["alternative_id"].as_str()) {
+                (Some(decides), Some(alternative)) => format!("{action} {decides} {alternative}"),
+                (Some(decides), None) => format!("{action} {decides}"),
+                (None, _) => action.to_owned(),
+            }
         })
         .collect()
 }
@@ -5485,6 +5485,11 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
     q["objective"]["value"] = json!("Tell which doses get a response.");
     q["target"]["value"] = json!("outcome");
     q["interpretability"] = json!({ "value": "low", "origin": "explicit" });
+    // A person states what each mistake costs and the bar in that metric before any score.
+    q["costs"] = json!({ "value": { "positive": "responds", "false_negative": 1.0, "false_positive": 1.0 },
+                         "origin": "explicit" });
+    q["success_bar"] =
+        json!({ "value": { "metric": "expected_cost", "score": 0.2 }, "origin": "explicit" });
     let facts = q.as_object_mut().unwrap();
     for gone in ["time_column", "entity_column", "prediction_horizon"] {
         facts.remove(gone);
@@ -5493,22 +5498,18 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-learnable")).await;
-    assert_eq!(
-        trail(&detail),
-        [
-            "build",
-            "apply split.method stratified_random",
-            "run",
-            "compare modeling.estimator_selection ",
-            "apply modeling.estimator_selection ml_random_forest",
-            "run",
-            "stop"
-        ],
-        "{detail}"
+    let trail = trail(&detail);
+    let compared = trail
+        .iter()
+        .position(|s| s == "compare modeling.estimator_selection")
+        .unwrap_or_else(|| panic!("the shortlist is compared: {detail}"));
+    assert!(
+        trail[compared + 1].starts_with("apply modeling.estimator_selection ml_"),
+        "then its winner is applied: {detail}"
     );
     let steps = detail["steps"].as_array().unwrap();
     assert!(
-        steps[3]["run_id"].is_string(),
+        steps[compared]["run_id"].is_string(),
         "the comparison's run: {detail}"
     );
     let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
@@ -5519,15 +5520,13 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@2.0.0", "{flow}");
-    // The costs of each error are the person's to state; nothing else is open.
-    assert_eq!(detail["walk"]["stop"]["reason"], "needs_person", "{detail}");
-    assert!(
-        detail["walk"]["stop"]["detail"]
-            .as_str()
-            .unwrap()
-            .starts_with("question.error_costs"),
-        "{detail}"
+    assert_ne!(
+        model["operator"], "sprisk.ml.dummy_baseline@2.0.0",
+        "a model that beats the baseline: {flow}"
+    );
+    assert_eq!(
+        model["params"]["costs"]["positive"], "responds",
+        "compared by the costs the person stated: {flow}"
     );
 }
 
@@ -5554,6 +5553,10 @@ async fn a_walk_where_no_model_beats_the_baseline_stops_and_says_so() {
     let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
     q["target"]["value"] = json!("outcome");
     q["interpretability"] = json!({ "value": "low", "origin": "explicit" });
+    q["costs"] = json!({ "value": { "positive": "responds", "false_negative": 1.0, "false_positive": 1.0 },
+                         "origin": "explicit" });
+    q["success_bar"] =
+        json!({ "value": { "metric": "expected_cost", "score": 0.2 }, "origin": "explicit" });
     let facts = q.as_object_mut().unwrap();
     for gone in ["time_column", "entity_column", "prediction_horizon"] {
         facts.remove(gone);

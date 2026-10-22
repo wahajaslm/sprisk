@@ -14,9 +14,14 @@ use sprisk_core::time::format;
 use sprisk_methodology::engine::{Action, HeadRun, Start, next_action, start};
 
 use crate::{
-    ApiError, AppState, apply_methodology, body, check_local_paths, claim_selection, compile,
-    decision_of, drive_run, id, propose, queued_run, review_methodology,
+    ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
+    check_local_paths, claim_selection, compile, decision_of, drive_run, id, propose, queued_run,
+    review_methodology,
 };
+
+/// What the loop-back rule decides; its `max_looks` caps the walk's comparisons too, so the
+/// cap has one source.
+const LOOP_BACK: &str = "evaluation.loop_back";
 
 const MAX_ACTIONS: u64 = 200;
 const MAX_WALL_SECONDS: u64 = 7 * 24 * 60 * 60;
@@ -182,7 +187,11 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         .store
         .get_question_version(&walk.question_version_id)
         .await?;
-    match next_action(&review, &question, head_run, &state.rules)? {
+    let action = next_action(&review, &question, head_run, &state.rules).map_err(|e| match e {
+        sprisk_methodology::ResolveError::Rules(rules) => ApiError::Rules(rules),
+        other => ApiError::Internal(other.to_string()),
+    })?;
+    match action {
         Action::Apply {
             item,
             subject,
@@ -312,12 +321,31 @@ async fn compare(
     item: &MethodologyReviewItem,
     subject: &str,
 ) -> Result<WalkStatus, ApiError> {
-    let (selection, claimed, _) = match claim_selection(state, head.as_str(), subject).await {
+    // A new comparison is a new look at the folds; past the cap, more looks would fit them.
+    let fresh = state
+        .store
+        .selection_for(head, &id(subject)?)
+        .await?
+        .is_none();
+    let looks = state.store.looks(head).await?;
+    let most = max_looks(state)?;
+    if fresh && looks >= most {
+        let detail = format!(
+            "{} (step {subject}): the flow has looked at its folds {looks} times, the most \
+             allowed ({most}); more comparisons would fit the folds.",
+            item.decides.as_str()
+        );
+        return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+    }
+    let Claimed {
+        selection,
+        plan: claimed,
+        ..
+    } = match claim_selection(state, head.as_str(), subject).await {
         Ok(claimed) => claimed,
-        Err(ApiError::BadRequest {
-            code: code @ ("not_compared" | "nothing_to_compare"),
-            message,
-        }) => {
+        Err(ApiError::BadRequest { code, message })
+            if code == NOT_COMPARED || code == NOTHING_TO_COMPARE =>
+        {
             let detail = format!("{} ({code}: {message})", item.decides.as_str());
             return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
         }
@@ -355,10 +383,13 @@ async fn compare(
     }
     let ended = state.store.get_run(&run_id).await?.status;
     if matches!(ended, RunStatus::Queued | RunStatus::Running) {
-        return Err(ApiError::Internal(format!(
-            "the comparison's run {} is {ended}, driven by another request",
+        // Started by a person, or left by a walk that stopped mid-run: walk again once it ends.
+        let detail = format!(
+            "The comparison for {} is still {ended} in run {}; walk again once it ends.",
+            item.decides.as_str(),
             run_id.as_str()
-        )));
+        );
+        return record_stop(state, walk, round, WalkStopReason::Error, &detail).await;
     }
     if ended != RunStatus::Succeeded {
         let failed = failed_attempts(state, &run_id).await?;
@@ -517,4 +548,15 @@ fn step(
 
 fn internal<T>(parsed: Result<T, sprisk_contracts::ContractError>) -> Result<T, ApiError> {
     parsed.map_err(|e| ApiError::Internal(e.to_string()))
+}
+
+/// The most looks at a flow's folds, as the loop-back rule's settings state it.
+fn max_looks(state: &AppState) -> Result<i64, ApiError> {
+    state
+        .rules
+        .rules()
+        .find(|r| r.decides.as_str() == LOOP_BACK)
+        .and_then(|r| r.policy_thresholds.get("max_looks"))
+        .and_then(serde_json::Value::as_i64)
+        .ok_or_else(|| ApiError::Internal(format!("no rule deciding {LOOP_BACK} states max_looks")))
 }
