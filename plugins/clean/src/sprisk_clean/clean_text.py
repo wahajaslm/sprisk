@@ -12,10 +12,11 @@ def clean_text(
             raise pl.exceptions.ColumnNotFoundError(c)
         if dtype != pl.String:
             raise ValueError(f"{c} is not a text column ({dtype})")
-        col = pl.col(c).str.strip_chars().str.replace_all(r"\s+", " ")
+        # A series, never pl.col(c): a column name (untrusted, rule 7) may look like a pattern.
+        text = data[c].str.strip_chars().str.replace_all(r"\s+", " ")
         if lowercase:
-            col = col.str.to_lowercase()
+            text = text.str.to_lowercase()
         if empty_to_null:
-            col = pl.when(col == "").then(None).otherwise(col)
-        cleaned.append(col.alias(c))
+            text = text.set(text == "", None)
+        cleaned.append(text)
     return data.with_columns(cleaned)

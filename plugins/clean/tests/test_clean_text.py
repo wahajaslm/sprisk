@@ -41,3 +41,9 @@ def test_a_column_that_is_not_text_is_an_error() -> None:
 
     with pytest.raises(ValueError, match="n is not a text column"):
         clean_text(DATA, columns=["n"])
+
+
+def test_a_column_name_that_looks_like_a_pattern_cleans_only_that_column() -> None:
+    data = pl.DataFrame({"^.*$": [" A "], "other": [" B "]})
+    out = clean_text(data, columns=["^.*$"])
+    assert out["^.*$"].to_list() == ["A"] and out["other"].to_list() == [" B "]
