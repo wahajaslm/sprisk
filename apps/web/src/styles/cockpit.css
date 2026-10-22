@@ -2430,7 +2430,7 @@ p { margin: 0; }
 .mth-route-node.picked .mth-route-name { color: var(--white); }
 .mth-route-node.dimmed { opacity: 0.38; }
 .mth-when { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font: var(--text-xs) var(--mono); line-height: 15px; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
-.mth-code { font: var(--text-xs) var(--mono); color: var(--quiet); }
+.mth-node-code { font: var(--text-xs) var(--mono); color: var(--quiet); }
 .mth-route-node .mth-route-dot { margin-top: 5px; }
 .mth-lane-mark { flex: none; width: 12px; height: 12px; transform: rotate(45deg); border: 1.2px solid rgba(255, 255, 255, 0.5); background: var(--panel); }
 .mth-edge path { fill: none; stroke-linecap: round; transition: stroke 0.15s, stroke-width 0.15s; }

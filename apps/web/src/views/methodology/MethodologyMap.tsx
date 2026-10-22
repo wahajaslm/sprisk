@@ -36,9 +36,10 @@ export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) 
           if (node.type === "rule") onPick(node.id);
           if (node.type === "route") onPick(node.id.split("#")[0]!);
         }}
-        // Open on the tree's start at a readable size: the whole tree fitted would be too small.
+        // Open on the shared start and the first lane, which runs above the shared line, at a
+        // readable size: the whole tree fitted would be too small.
         fitView
-        fitViewOptions={{ nodes: tree.nodes.filter((n) => n.position.x < START_WIDTH).map((n) => ({ id: n.id })), maxZoom: 1, padding: 0.08 }}
+        fitViewOptions={{ nodes: tree.nodes.filter((n) => n.position.x < START_WIDTH && n.position.y <= 0).map((n) => ({ id: n.id })), maxZoom: 1, padding: 0.08 }}
         panOnScroll
         nodesDraggable={false}
         nodesConnectable={false}
@@ -115,7 +116,7 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
       <span className="mth-rule-dot" />
       <span className="mth-rule-text">
         <span className="mth-rule-name">
-          <span className="mth-code">{data.code}</span> {rule.name}
+          <span className="mth-node-code">{data.code}</span> {rule.name}
         </span>
         <span className="mth-rule-meta" title={rule.decides}>
           {activation(rule) ?? rule.decides}
@@ -141,7 +142,7 @@ function RouteNode({ data }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
       <span className="mth-route-dot" />
       <span className="mth-rule-text">
         <span className="mth-route-name">
-          <span className="mth-code">{code}</span> {route.label}
+          <span className="mth-node-code">{code}</span> {route.label}
         </span>
         {when ? <span className="mth-when">When {when}</span> : <span className="mth-rule-meta">{route.action.operator?.split("@")[0] ?? route.description}</span>}
       </span>
