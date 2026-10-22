@@ -8,7 +8,7 @@ stage: cleaning
 decides: cleaning.missingness_strategy
 status: active
 applies_to: [sprisk.clean.impute, sprisk.clean.drop_missing]
-reads: [step.method, question.target, column.*.data_type, column.*.missing_share, column.*.skewness]
+reads: [step.method, question.target, column.*.data_type, column.*.missing_share, column.*.skewness, column.*.distinct]
 
 # 1. Scientific Standards & Provenance
 # ------------------------------------------------------------------------------
@@ -27,6 +27,12 @@ policy_thresholds:
   drop_column_threshold: 0.60
   indicator_flag_threshold: 0.20
   skewness_threshold: 1.50
+  # Text with more values than this is free text, as the encoding rule counts it.
+  high_cardinality_threshold: 15
+  # A gap in text with few values becomes this category.
+  category_text_fill: "missing"
+  # A gap in free text becomes empty text: no words.
+  free_text_fill: ""
 
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------
@@ -41,7 +47,7 @@ alternatives:
       operator: sprisk.clean.drop_missing@1.0.0
   - id: impute_median
     label: Median Imputation (train rows)
-    description: Fill each gap in numbers with the column's median over the train rows only, and each gap in text with the category "missing".
+    description: Fill each gap in numbers with the column's median over the train rows only, and each gap in text with its own value, a category such as "missing" or empty text in free text.
     rationale: Skewed values pull the mean; the median is robust to them. The impute step cannot add a missing-indicator
       column yet, so an informative gap loses that signal.
     action:
@@ -49,7 +55,7 @@ alternatives:
       operator: sprisk.clean.impute@1.0.0
   - id: impute_mean
     label: Mean Imputation
-    description: Fill each gap in numbers with the column's mean over the train rows only, and each gap in text with the category "missing".
+    description: Fill each gap in numbers with the column's mean over the train rows only, and each gap in text with its own value, a category such as "missing" or empty text in free text.
     rationale: For roughly symmetric values. It shrinks variance and weakens correlations, more so as the
       missing share grows.
     action:
@@ -59,7 +65,7 @@ alternatives:
     label: Mode / Frequent Category Imputation
     description: Fill missing categorical entries with the most frequent category or an explicit 'missing'
       sentinel category.
-    rationale: 'Not offered: a most-frequent fill gives a gap a value it never had. Text gaps get the category "missing" instead.'
+    rationale: 'Not offered: a most-frequent fill gives a gap a value it never had. Text gaps get their own value instead: a category such as "missing", or empty text in free text.'
     action:
       type: replace_node
   - id: drop_column
@@ -87,5 +93,5 @@ examples:
     picks: impute_mean
   - given: { question.target: churned, column.churned.data_type: Int64, column.churned.missing_share: 0.1 }
     picks: drop_rows
-  - given: { question.target: churned, column.description.data_type: String, column.description.missing_share: 0.35 }
+  - given: { question.target: churned, column.description.data_type: String, column.description.missing_share: 0.35, column.description.distinct: 50000 }
     picks: impute_mean

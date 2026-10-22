@@ -6,13 +6,14 @@ def impute(
     test: pl.DataFrame,
     columns: list[str],
     method: str,
-    text_fill: str | None = None,
+    text_fill: dict[str, str] | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Fill gaps with a statistic of the train rows, applied to train and test alike.
 
     The statistic comes from train only, so nothing about the test rows leaks into it.
-    NaN counts as missing. Text gaps get `text_fill`, a category of their own: a most-frequent
-    fill would give a gap a value it never had."""
+    NaN counts as missing. Each text column's gaps get its `text_fill`: a category of their
+    own, such as "missing", or "" for free text, where a gap is no words. A most-frequent fill
+    would give a gap a value it never had."""
     nan_to_null = [pl.col(c).fill_nan(None) for c in columns if train.schema[c].is_float()]
     train, test = train.with_columns(nan_to_null), test.with_columns(nan_to_null)
 
@@ -20,13 +21,15 @@ def impute(
     for c in columns:
         dtype = train.schema[c]
         if dtype in (pl.String, pl.Categorical):
-            if text_fill is None:
-                raise ValueError(f"{c} is text: give a text_fill for its gaps")
-            if (train[c].cast(pl.String) == text_fill).any() or (
-                test[c].cast(pl.String) == text_fill
-            ).any():
-                raise ValueError(f"{c} already has the value {text_fill!r}; pick another text_fill")
-            fills[c] = text_fill
+            fill = (text_fill or {}).get(c)
+            if fill is None:
+                raise ValueError(f"{c} is text: give it a text_fill for its gaps")
+            # Empty text already means no words, as a gap filled with "" does.
+            if fill and (
+                (train[c].cast(pl.String) == fill).any() or (test[c].cast(pl.String) == fill).any()
+            ):
+                raise ValueError(f"{c} already has the value {fill!r}; pick another text_fill")
+            fills[c] = fill
             continue
         if not dtype.is_numeric():
             raise ValueError(f"{c} is {dtype}: impute fills numbers and text only")

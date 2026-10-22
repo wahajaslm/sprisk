@@ -29,30 +29,41 @@ def test_nan_is_treated_as_missing() -> None:
     assert out["test"]["x"].to_list() == [2.0]
 
 
-def test_text_gaps_get_the_text_fill_beside_a_number_fill() -> None:
-    # Rakuten: 35% of descriptions are empty; a gap becomes its own category.
-    train = pl.DataFrame({"x": [1.0, None, 3.0], "kind": ["a", None, "b"]})
-    test = pl.DataFrame({"x": [None], "kind": [None]}, schema=train.schema)
-    out = impute(train, test, columns=["x", "kind"], method="median", text_fill="missing")
+def test_each_text_column_gets_its_own_fill_beside_a_number_fill() -> None:
+    # A category gap becomes a named category; a free-text gap becomes no words at all.
+    train = pl.DataFrame(
+        {"x": [1.0, None, 3.0], "kind": ["a", None, "b"], "about": ["red shirt", None, "blue"]}
+    )
+    test = pl.DataFrame({"x": [None], "kind": [None], "about": [None]}, schema=train.schema)
+    fills = {"kind": "missing", "about": ""}
+    out = impute(train, test, columns=["x", "kind", "about"], method="median", text_fill=fills)
     assert out["train"]["kind"].to_list() == ["a", "missing", "b"]
-    assert out["test"].to_dicts() == [{"x": 2.0, "kind": "missing"}]
+    assert out["train"]["about"].to_list() == ["red shirt", "", "blue"]
+    assert out["test"].to_dicts() == [{"x": 2.0, "kind": "missing", "about": ""}]
 
 
 def test_a_text_column_without_a_text_fill_is_an_error() -> None:
     train = pl.DataFrame({"kind": ["a", None]})
-    with pytest.raises(ValueError, match="kind is text: give a text_fill"):
-        impute(train, train, columns=["kind"], method="median")
+    with pytest.raises(ValueError, match="kind is text: give it a text_fill"):
+        impute(train, train, columns=["kind"], method="median", text_fill={})
 
 
 def test_a_column_neither_number_nor_text_is_an_error() -> None:
     train = pl.DataFrame({"flag": [True, None]})
     with pytest.raises(ValueError, match="flag is Boolean"):
-        impute(train, train, columns=["flag"], method="median", text_fill="missing")
+        impute(train, train, columns=["flag"], method="median", text_fill={"flag": "missing"})
 
 
-def test_a_text_fill_the_column_already_has_is_an_error() -> None:
+def test_a_named_fill_the_column_already_has_is_an_error() -> None:
     # The gaps would merge with a real category and lose their own meaning.
     train = pl.DataFrame({"kind": ["a", None]})
     test = pl.DataFrame({"kind": ["missing"]})
     with pytest.raises(ValueError, match="kind already has the value 'missing'"):
-        impute(train, test, columns=["kind"], method="median", text_fill="missing")
+        impute(train, test, columns=["kind"], method="median", text_fill={"kind": "missing"})
+
+
+def test_an_empty_fill_may_meet_empty_text_already_there() -> None:
+    # Empty text and a gap both mean no words, so merging them loses nothing.
+    train = pl.DataFrame({"about": ["", None, "red"]})
+    out = impute(train, train, columns=["about"], method="median", text_fill={"about": ""})
+    assert out["train"]["about"].to_list() == ["", "", "red"]

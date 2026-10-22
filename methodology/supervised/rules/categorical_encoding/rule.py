@@ -39,7 +39,8 @@ def decide(observation: RuleObservation) -> RuleDecision:
     few = [c for c in categories if distinct[c] <= limit]
     many = [c for c in categories if distinct[c] > limit]
     # Two values are one 0/1 column either way; more may be codes.
-    codes = [c for c in whole if 2 < distinct[c] <= limit]
+    least = observation.settings["min_code_values"]
+    codes = [c for c in whole if least <= distinct[c] <= limit]
     too_many = (
         f"{', '.join(f'{c} ({distinct[c]} categories)' for c in many)}: too many for one 0/1 "
         "column each, and no step turns them into numbers yet."

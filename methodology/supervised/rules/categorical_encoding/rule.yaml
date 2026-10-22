@@ -27,6 +27,8 @@ provenance:
 policy_thresholds:
   # Most categories a column may have for one 0/1 column each.
   high_cardinality_threshold: 15
+  # Fewest values a whole-number column needs before the rule asks whether they are codes.
+  min_code_values: 3
 
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------

@@ -3,7 +3,7 @@ from typing import Any
 from rule_harness import alternative, column, decide
 
 RULE = "supervised/categorical_encoding"
-SETTINGS = {"high_cardinality_threshold": 15}
+SETTINGS = {"high_cardinality_threshold": 15, "min_code_values": 3}
 
 
 def run(
@@ -126,3 +126,12 @@ def test_target_and_ordinal_encoding_are_never_offered_as_applicable() -> None:
     assert "order" in alternative(d, "ordinal_encoding")["reason"]
     for id in ("target_encoding_oof", "ordinal_encoding"):
         assert alternative(d, id)["applicability"] == "not_applicable", id
+
+
+def test_the_fewest_values_that_may_be_codes_is_a_setting() -> None:
+    d = decide(
+        RULE,
+        profile={"rows": 750, **column("rate", "Int64", distinct=4)},
+        settings={**SETTINGS, "min_code_values": 5},
+    )
+    assert alternative(d, "one_hot_integer_codes")["applicability"] == "not_applicable"

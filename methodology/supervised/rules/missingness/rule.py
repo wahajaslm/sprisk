@@ -1,9 +1,11 @@
 """How a step fills or drops gaps, from the train rows' measured missing shares (ADR-0042).
 
-Fills are fit on train rows only (the impute step's train/test ports). Text gaps get the
-category "missing", so a gap keeps its own meaning. A target is never filled, and a column
-neither number nor text (a date, true/false) cannot be, so either means dropping rows. A model
-fits only the model and refuses gaps (ADR-0056), so every gap is filled or dropped here.
+Fills are fit on train rows only (the impute step's train/test ports). A gap in text with few
+values becomes a category of its own (a setting, "missing"); one in free text, with more
+values than the encoding limit, becomes empty text, no words (a setting, ""). A target is
+never filled, and a column neither number nor text (a date, true/false) cannot be, so either
+means dropping rows. A model fits only the model and refuses gaps (ADR-0056), so every gap is
+filled or dropped here.
 """
 
 from typing import Any
@@ -27,7 +29,6 @@ from sprisk_workers.rule import (
 )
 
 TEXT_TYPES = ("String", "Utf8", "Categorical")
-TEXT_FILL = "missing"
 
 
 def decide(observation: RuleObservation) -> RuleDecision:
@@ -55,8 +56,9 @@ def decide(observation: RuleObservation) -> RuleDecision:
     target_gaps = f"{target} is the target: a missing label must never be filled."
     other_gaps = f"The impute step fills numbers and text only; {', '.join(other)} is neither."
     blocked = target_gaps if has_target else other_gaps if other else None
-    text_note = f" {', '.join(text)}: gaps become the category {TEXT_FILL!r}." if text else ""
-    text_params = {"text_fill": TEXT_FILL} if text else {}
+    text_fill = {c: _text_fill(observation, c) for c in text}
+    text_note = "".join(f" {c}: gaps become {fill!r}." for c, fill in text_fill.items())
+    text_params = {"text_fill": text_fill} if text else {}
     ask = confirm if may_be_target else None
     method_now = flow_fact(observation, "step.method")
 
@@ -95,7 +97,7 @@ def decide(observation: RuleObservation) -> RuleDecision:
     )
     mode = not_applicable(
         "impute_mode",
-        f"A most-frequent fill gives a gap a value it never had; text gaps get {TEXT_FILL!r}.",
+        "A most-frequent fill gives a gap a value it never had; text gaps get their own value.",
     )
     drop_column = not_applicable(
         "drop_column",
@@ -124,6 +126,14 @@ def decide(observation: RuleObservation) -> RuleDecision:
         [drop_rows, median, mean, mode, drop_column],
         evidence,
     )
+
+
+def _text_fill(observation: RuleObservation, column: str) -> str:
+    """A category's gap is a category of its own; free text's is empty text, no words: a word
+    such as "missing" would be read as the word in other rows."""
+    s = observation.settings
+    few = required(observation, column, "distinct") <= s["high_cardinality_threshold"]
+    return str(s["category_text_fill"] if few else s["free_text_fill"])
 
 
 def _impute(
