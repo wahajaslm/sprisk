@@ -3,6 +3,7 @@ train output as train rows only, and comparisons refit the step on each fold (AD
 
 import importlib
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,8 @@ import yaml
 from polars.testing import assert_frame_equal
 
 PLUGINS = Path(__file__).parents[2]
-# Settings that make each step do real work (on column x, y for encoding, t for grouping).
+# Settings that make each step do real work (on column x, y for encoding, t for grouping,
+# d for dates).
 SETTINGS: dict[str, dict[str, Any]] = {
     "sprisk.clean.impute@1.0.0": {"columns": ["x"], "method": "median"},
     "sprisk.clean.scale@1.0.0": {"columns": ["x"], "method": "z_score"},
@@ -21,6 +23,7 @@ SETTINGS: dict[str, dict[str, Any]] = {
     "sprisk.clean.encode@1.0.0": {"columns": ["y"]},
     # b is rare on train; c is seen only in test.
     "sprisk.clean.group_rare@1.0.0": {"columns": ["t"], "min_share": 0.2},
+    "sprisk.clean.date_parts@1.0.0": {"columns": ["d"]},
 }
 
 
@@ -43,9 +46,17 @@ TRAIN = pl.DataFrame(
         "x": [1.0, 2.0, None, 4.0, 5.0, 6.0, 7.0, 40.0],
         "y": [0, 1] * 4,
         "t": ["a", "a", "a", "b", "a", "a", "a", "a"],
+        "d": [date(2024, 1, day) for day in range(1, 9)],
     }
 )
-TEST = pl.DataFrame({"x": [3.0, None, 100.0, -9.0], "y": [1, 0, 1, 0], "t": ["a", "b", "c", None]})
+TEST = pl.DataFrame(
+    {
+        "x": [3.0, None, 100.0, -9.0],
+        "y": [1, 0, 1, 0],
+        "t": ["a", "b", "c", None],
+        "d": [date(2025, 5, 1), None, date(2025, 12, 31), date(2026, 2, 28)],
+    }
+)
 
 
 @pytest.mark.parametrize(("ref", "step"), claimed())
