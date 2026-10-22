@@ -49,7 +49,29 @@
           "$ref": "#/$defs/InterpretabilityFact",
           "description": "How far a person must follow each prediction, a hard constraint (ref-v3 0.4). high: only models a person can read, such as linear ones. Only a person can state it. Absent: not stated."
         },
+        "success_bar": {
+          "$ref": "#/$defs/SuccessBarFact",
+          "description": "The cross-validated score that counts as good enough, in a metric models are compared by (ADR-0059). Only a person can state it. Absent: not stated; the text acceptance criteria hold everything else."
+        },
         "created_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "SuccessBarFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "origin"],
+      "properties": {
+        "value": { "$ref": "#/$defs/SuccessBar" },
+        "origin": { "type": "string", "enum": ["explicit", "confirmed"], "description": "A bar is never inferred or measured: one set from the scores always looks met." }
+      }
+    },
+    "SuccessBar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "score"],
+      "properties": {
+        "metric": { "$ref": "#/$defs/SelectionMetric" },
+        "score": { "type": "number", "description": "At least this for balanced_accuracy, at most this for expected_cost and rmse. The API refuses a balanced accuracy outside 0 to 1 and a negative cost or error." }
       }
     },
     "InterpretabilityFact": {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activation, reviewByRule, ROUTE_LINE, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
+import { activation, isOpen, reviewByRule, ROUTE_LINE, routeWhen, ruleTree } from "../src/views/methodology/ruleTree.ts";
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r })) }) as never;
@@ -148,6 +148,13 @@ describe("one rule on several steps", () => {
   it("shows the first open item, since that is where work is needed", () => {
     const byRule = reviewByRule([item("a", "settled", "s1"), item("a", "needs_run", "s2"), item("a", "waiting", "s3")]);
     expect(byRule.get("a")).toMatchObject({ subject_node_id: "s2" });
+  });
+
+  it("counts a reopened decision as open", () => {
+    const byRule = reviewByRule([item("a", "settled", "s1"), item("a", "reopen", "s2")]);
+    expect(byRule.get("a")).toMatchObject({ subject_node_id: "s2" });
+    expect(isOpen("reopen")).toBe(true);
+    expect(isOpen("settled")).toBe(false);
   });
 
   it("shows the first item when nothing is open", () => {

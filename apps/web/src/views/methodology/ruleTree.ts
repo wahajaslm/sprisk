@@ -146,7 +146,10 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
   return { nodes, edges };
 }
 
-const OPEN: MethodologyReviewItem["status"][] = ["proposal", "needs_fact", "needs_run", "waiting"];
+const OPEN: MethodologyReviewItem["status"][] = ["proposal", "needs_fact", "needs_run", "waiting", "reopen"];
+
+/** Whether a review status leaves work to do before the map is complete. */
+export const isOpen = (status: MethodologyReviewItem["status"]) => OPEN.includes(status);
 
 /** One review item per rule, for its node: a rule deciding several steps shows its first open
  * item, where work is needed, or its first item when none is open. */
@@ -154,7 +157,7 @@ export function reviewByRule(items: MethodologyReviewItem[]): Map<string, Method
   const byRule = new Map<string, MethodologyReviewItem>();
   for (const item of items) {
     const shown = byRule.get(item.rule);
-    if (!shown || (!OPEN.includes(shown.status) && OPEN.includes(item.status))) byRule.set(item.rule, item);
+    if (!shown || (!isOpen(shown.status) && isOpen(item.status))) byRule.set(item.rule, item);
   }
   return byRule;
 }

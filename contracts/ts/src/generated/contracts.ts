@@ -145,7 +145,7 @@ export type MethodologyRuleRef = string;
 export type MethodologyStage =
   "question" | "data" | "split" | "cleaning" | "features" | "models" | "evaluation" | "reporting";
 /**
- * What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.
+ * What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); reopen changes nothing in the flow: recommended, it makes the review item `reopen` for the stage its params name (ADR-0059). The others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RuleActionType".
@@ -161,7 +161,8 @@ export type RuleActionType =
   | "configure_dbscan_params"
   | "configure_evaluation_params"
   | "emit_methodology_limitation"
-  | "enforce_compiler_invariant";
+  | "enforce_compiler_invariant"
+  | "reopen";
 /**
  * Typed mutation previewed and compiled before it can create a pipeline version.
  *
@@ -194,13 +195,13 @@ export type GraphEffect =
  */
 export type CheckRef = string;
 /**
- * settled: the flow matches the rule's decision. proposal: the rule wants a change. needs_fact: a person must state a fact. needs_run: it measures train rows the flow has not produced. waiting: an earlier open item changes what it reads. no_subject: no step for it to decide yet. not_applicable: the rule does not apply to this step.
+ * settled: the flow matches the rule's decision. proposal: the rule wants a change. needs_fact: a person must state a fact. needs_run: it measures train rows the flow has not produced. waiting: an earlier open item changes what it reads. no_subject: no step for it to decide yet. not_applicable: the rule does not apply to this step. reopen: cross-validation results say the stage in `reopens` must change; it stays open until the flow does (ADR-0059).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodologyReviewStatus".
  */
 export type MethodologyReviewStatus =
-  "settled" | "proposal" | "needs_fact" | "needs_run" | "waiting" | "no_subject" | "not_applicable";
+  "settled" | "proposal" | "needs_fact" | "needs_run" | "waiting" | "no_subject" | "not_applicable" | "reopen";
 /**
  * Stable within a notebook across versions, as in Jupyter's nbformat 4.5.
  *
@@ -310,6 +311,13 @@ export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "densi
  */
 export type Stage = "load" | "split" | "explore" | "clean" | "model" | "evaluate";
 /**
+ * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SelectionMetric".
+ */
+export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse";
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "AttemptState".
  */
@@ -326,13 +334,6 @@ export type AttemptState =
   | "timed_out"
   | "skipped"
   | "cache_hit";
-/**
- * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "SelectionMetric".
- */
-export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse";
 /**
  * What the baseline is for. floor: a model that ignores its features; it never wins, so no winner means no model beats it. reference: the rule's recommendation; it stands unless another alternative beats it (ADR-0050).
  *
@@ -1438,6 +1439,10 @@ export interface MethodologyReviewItem {
   status: MethodologyReviewStatus;
   reason: string;
   recommended_alternative_id?: string;
+  /**
+   * Stages in decision order (ADR-0059): the split comes before cleaning, since cleaning rules measure train rows.
+   */
+  reopens?: "question" | "data" | "split" | "cleaning" | "features" | "models" | "evaluation" | "reporting";
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2001,6 +2006,7 @@ export interface QuestionVersion {
   acceptance_criteria: Fact[];
   costs?: CostsFact;
   interpretability?: InterpretabilityFact;
+  success_bar?: SuccessBarFact;
   created_at: Timestamp;
 }
 /**
@@ -2078,6 +2084,38 @@ export interface InterpretabilityFact {
   value: "high" | "medium" | "low";
   /**
    * A constraint is never inferred or measured.
+   */
+  origin: "explicit" | "confirmed";
+}
+/**
+ * The cross-validated score that counts as good enough, in a metric models are compared by (ADR-0059). Only a person can state it. Absent: not stated; the text acceptance criteria hold everything else.
+ */
+export interface SuccessBarFact {
+  value: SuccessBar;
+  /**
+   * A bar is never inferred or measured: one set from the scores always looks met.
+   */
+  origin: "explicit" | "confirmed";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SuccessBar".
+ */
+export interface SuccessBar {
+  metric: SelectionMetric;
+  /**
+   * At least this for balanced_accuracy, at most this for expected_cost and rmse. The API refuses a balanced accuracy outside 0 to 1 and a negative cost or error.
+   */
+  score: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SuccessBarFact".
+ */
+export interface SuccessBarFact1 {
+  value: SuccessBar;
+  /**
+   * A bar is never inferred or measured: one set from the scores always looks met.
    */
   origin: "explicit" | "confirmed";
 }

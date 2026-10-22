@@ -1888,7 +1888,7 @@
     },
     "RuleActionType": {
       "type": "string",
-      "description": "What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); the others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.",
+      "description": "What choosing an alternative does to the flow. Rust builds graph effects for replace_node, remove_node (ADR-0043) and insert_step before the rule's step (ADR-0057); reopen changes nothing in the flow: recommended, it makes the review item `reopen` for the stage its params name (ADR-0059). The others describe actions not wired yet. A new type is a contract change, so a typo cannot pass as a silent no-op.",
       "enum": [
         "replace_node",
         "remove_node",
@@ -1900,7 +1900,8 @@
         "configure_dbscan_params",
         "configure_evaluation_params",
         "emit_methodology_limitation",
-        "enforce_compiler_invariant"
+        "enforce_compiler_invariant",
+        "reopen"
       ]
     },
     "GraphEffect": {
@@ -2155,12 +2156,16 @@
         "recommended_alternative_id": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "reopens": {
+          "$ref": "#/$defs/MethodologyStage",
+          "description": "With status reopen: the stage the results send the flow back to. Absent otherwise."
         }
       }
     },
     "MethodologyReviewStatus": {
       "type": "string",
-      "description": "settled: the flow matches the rule's decision. proposal: the rule wants a change. needs_fact: a person must state a fact. needs_run: it measures train rows the flow has not produced. waiting: an earlier open item changes what it reads. no_subject: no step for it to decide yet. not_applicable: the rule does not apply to this step.",
+      "description": "settled: the flow matches the rule's decision. proposal: the rule wants a change. needs_fact: a person must state a fact. needs_run: it measures train rows the flow has not produced. waiting: an earlier open item changes what it reads. no_subject: no step for it to decide yet. not_applicable: the rule does not apply to this step. reopen: cross-validation results say the stage in `reopens` must change; it stays open until the flow does (ADR-0059).",
       "enum": [
         "settled",
         "proposal",
@@ -2168,7 +2173,8 @@
         "needs_run",
         "waiting",
         "no_subject",
-        "not_applicable"
+        "not_applicable",
+        "reopen"
       ]
     },
     "ApplyMethodologyDecision": {
@@ -3322,8 +3328,50 @@
           "$ref": "#/$defs/InterpretabilityFact",
           "description": "How far a person must follow each prediction, a hard constraint (ref-v3 0.4). high: only models a person can read, such as linear ones. Only a person can state it. Absent: not stated."
         },
+        "success_bar": {
+          "$ref": "#/$defs/SuccessBarFact",
+          "description": "The cross-validated score that counts as good enough, in a metric models are compared by (ADR-0059). Only a person can state it. Absent: not stated; the text acceptance criteria hold everything else."
+        },
         "created_at": {
           "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "SuccessBarFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "origin"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/SuccessBar"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "explicit",
+            "confirmed"
+          ],
+          "description": "A bar is never inferred or measured: one set from the scores always looks met."
+        }
+      }
+    },
+    "SuccessBar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "score"
+      ],
+      "properties": {
+        "metric": {
+          "$ref": "#/$defs/SelectionMetric"
+        },
+        "score": {
+          "type": "number",
+          "description": "At least this for balanced_accuracy, at most this for expected_cost and rmse. The API refuses a balanced accuracy outside 0 to 1 and a negative cost or error."
         }
       }
     },

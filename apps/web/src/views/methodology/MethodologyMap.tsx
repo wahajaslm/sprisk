@@ -61,6 +61,7 @@ export const STATUS_LABEL: Record<MethodologyReviewItem["status"], string> = {
   waiting: "Waiting",
   no_subject: "No step yet",
   not_applicable: "Not applicable",
+  reopen: "Reopen",
 };
 
 function RootNode({ data }: NodeProps<Extract<TreeNode, { type: "root" }>>) {

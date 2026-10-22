@@ -2413,12 +2413,12 @@ p { margin: 0; }
 .mth-rule-node { width: 100%; height: 36px; display: flex; align-items: center; gap: var(--space-2); padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .mth-rule-dot { flex: none; width: 8px; height: 8px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 50%; background: var(--ground); transition: all 0.15s; }
 .mth-rule-node.settled .mth-rule-dot { background: var(--soft); border-color: var(--soft); }
-.mth-rule-node.proposal .mth-rule-dot, .mth-rule-node.needs_fact .mth-rule-dot { border-color: var(--white); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15); }
+.mth-rule-node.proposal .mth-rule-dot, .mth-rule-node.needs_fact .mth-rule-dot, .mth-rule-node.reopen .mth-rule-dot { border-color: var(--white); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15); }
 .mth-rule-node.draft .mth-rule-dot { border-style: dashed; }
 .mth-rule-text { display: grid; min-width: 0; }
 .mth-rule-name { font-size: var(--text-sm); color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 0.15s; }
 .mth-rule-meta { font: var(--text-xs) var(--mono); color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mth-rule-status.proposal, .mth-rule-status.needs_fact { color: var(--white); }
+.mth-rule-status.proposal, .mth-rule-status.needs_fact, .mth-rule-status.reopen { color: var(--white); }
 .mth-rule-status.settled, .mth-rule-status.needs_run, .mth-rule-status.waiting { color: var(--soft); }
 .mth-rule-node:hover .mth-rule-name, .mth-rule-node[aria-pressed="true"] .mth-rule-name { color: var(--white); }
 .mth-rule-node:hover .mth-rule-dot { border-color: var(--white); }
@@ -2443,7 +2443,7 @@ p { margin: 0; }
 .mth-summary strong { font-weight: 500; color: var(--ink); }
 .mth-chip { flex: none; padding: 0 var(--space-1); border: 1px solid var(--line-strong); border-radius: 3px; font-size: var(--text-xs); color: var(--muted); }
 .mth-chip.settled { color: var(--soft); }
-.mth-chip.proposal, .mth-chip.needs_fact { border-color: var(--white); color: var(--white); }
+.mth-chip.proposal, .mth-chip.needs_fact, .mth-chip.reopen { border-color: var(--white); color: var(--white); }
 .mth-chip.needs_run, .mth-chip.waiting { color: var(--soft); border-style: dashed; }
 .mth-chip.draft, .mth-chip.no_subject, .mth-chip.not_applicable { color: var(--quiet); }
 .mth-toggle { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); color: var(--soft); white-space: nowrap; }

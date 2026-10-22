@@ -6,7 +6,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
-import { activation, givenText, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
+import { activation, givenText, isOpen, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
@@ -50,7 +50,7 @@ function ReviewSummary({ versionId, items, next, error }: { versionId: string | 
   if (!versionId) return <span className="muted">Select a flow to see its status on each decision.</span>;
   if (error) return <span role="alert" className="error">{error}</span>;
   if (!items || !next) return <Loading text="Reviewing the flow…" />;
-  const open = items.filter((i) => ["proposal", "needs_fact", "needs_run", "waiting"].includes(i.status)).length;
+  const open = items.filter((i) => isOpen(i.status)).length;
   const first = next[0] === undefined ? undefined : items[next[0]];
   return (
     <span className="mth-summary" aria-label="Flow review">

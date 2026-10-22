@@ -483,6 +483,7 @@ class RuleActionType(StrEnum):
     configure_evaluation_params = "configure_evaluation_params"
     emit_methodology_limitation = "emit_methodology_limitation"
     enforce_compiler_invariant = "enforce_compiler_invariant"
+    reopen = "reopen"
 
 
 class GraphEffect1(StrictModel):
@@ -547,6 +548,7 @@ class MethodologyReviewStatus(StrEnum):
     waiting = "waiting"
     no_subject = "no_subject"
     not_applicable = "not_applicable"
+    reopen = "reopen"
 
 
 class ApplyMethodologyDecision(StrictModel):
@@ -826,15 +828,15 @@ class PortRef(RootModel[str]):
     ]
 
 
+class Origin1(StrEnum):
+    explicit = "explicit"
+    confirmed = "confirmed"
+
+
 class Value(StrEnum):
     high = "high"
     medium = "medium"
     low = "low"
-
-
-class Origin1(StrEnum):
-    explicit = "explicit"
-    confirmed = "confirmed"
 
 
 class InterpretabilityFact(StrictModel):
@@ -860,7 +862,7 @@ class Fact(StrictModel):
     origin: Origin
 
 
-class Origin2(StrEnum):
+class Origin3(StrEnum):
     explicit = "explicit"
     confirmed = "confirmed"
 
@@ -1620,6 +1622,12 @@ class MethodologyReviewItem(StrictModel):
     recommended_alternative_id: Annotated[str | None, Field(pattern="^[a-z][a-z0-9_]{0,62}$")] = (
         None
     )
+    reopens: Annotated[
+        MethodologyStage | None,
+        Field(
+            description="With status reopen: the stage the results send the flow back to. Absent otherwise."
+        ),
+    ] = None
 
 
 class MethodologyDecision(StrictModel):
@@ -1875,12 +1883,25 @@ class Edge(StrictModel):
     to: PortRef
 
 
+class SuccessBar(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    metric: SelectionMetric
+    score: Annotated[
+        float,
+        Field(
+            description="At least this for balanced_accuracy, at most this for expected_cost and rmse. The API refuses a balanced accuracy outside 0 to 1 and a negative cost or error."
+        ),
+    ]
+
+
 class CostsFact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     value: Costs
-    origin: Annotated[Origin2, Field(description="Costs are never inferred or measured.")]
+    origin: Annotated[Origin3, Field(description="Costs are never inferred or measured.")]
 
 
 class TaskFact(StrictModel):
@@ -2405,53 +2426,17 @@ class PipelineVersion(StrictModel):
     created_at: Timestamp
 
 
-class QuestionVersion(StrictModel):
+class SuccessBarFact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["sprisk.question_version/v1"]
-    id: QuestionVersionId
-    investigation_id: InvestigationId
-    parent_id: Annotated[
-        QuestionVersionId | None,
-        Field(description="Version this one revises. Absent for the first version."),
-    ] = None
-    objective: Fact
-    task: TaskFact
-    target: Annotated[
-        Fact | None,
-        Field(description="Target column. Absent when there is no legitimate supervised target."),
-    ] = None
-    unit_of_analysis: Fact | None = None
-    entity_column: Annotated[
-        Fact | None,
+    value: SuccessBar
+    origin: Annotated[
+        Origin1,
         Field(
-            description="Column whose values identify the unit or group that must not cross an entity-aware split."
+            description="A bar is never inferred or measured: one set from the scores always looks met."
         ),
-    ] = None
-    time_column: Fact | None = None
-    prediction_horizon: Annotated[
-        Fact | None,
-        Field(
-            description="How far after prediction time the outcome is observed, preferably an ISO-8601 duration such as P30D."
-        ),
-    ] = None
-    assumptions: list[Fact]
-    unknowns: list[Unknown]
-    acceptance_criteria: list[Fact]
-    costs: Annotated[
-        CostsFact | None,
-        Field(
-            description="What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same."
-        ),
-    ] = None
-    interpretability: Annotated[
-        InterpretabilityFact | None,
-        Field(
-            description="How far a person must follow each prediction, a hard constraint (ref-v3 0.4). high: only models a person can read, such as linear ones. Only a person can state it. Absent: not stated."
-        ),
-    ] = None
-    created_at: Timestamp
+    ]
 
 
 class CandidateResult(StrictModel):
@@ -2559,6 +2544,61 @@ class ModelSelection(StrictModel):
     proposal: DecisionProposal
     comparison: PipelineVersion
     run: Run
+
+
+class QuestionVersion(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.question_version/v1"]
+    id: QuestionVersionId
+    investigation_id: InvestigationId
+    parent_id: Annotated[
+        QuestionVersionId | None,
+        Field(description="Version this one revises. Absent for the first version."),
+    ] = None
+    objective: Fact
+    task: TaskFact
+    target: Annotated[
+        Fact | None,
+        Field(description="Target column. Absent when there is no legitimate supervised target."),
+    ] = None
+    unit_of_analysis: Fact | None = None
+    entity_column: Annotated[
+        Fact | None,
+        Field(
+            description="Column whose values identify the unit or group that must not cross an entity-aware split."
+        ),
+    ] = None
+    time_column: Fact | None = None
+    prediction_horizon: Annotated[
+        Fact | None,
+        Field(
+            description="How far after prediction time the outcome is observed, preferably an ISO-8601 duration such as P30D."
+        ),
+    ] = None
+    assumptions: list[Fact]
+    unknowns: list[Unknown]
+    acceptance_criteria: list[Fact]
+    costs: Annotated[
+        CostsFact | None,
+        Field(
+            description="What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same."
+        ),
+    ] = None
+    interpretability: Annotated[
+        InterpretabilityFact | None,
+        Field(
+            description="How far a person must follow each prediction, a hard constraint (ref-v3 0.4). high: only models a person can read, such as linear ones. Only a person can state it. Absent: not stated."
+        ),
+    ] = None
+    success_bar: Annotated[
+        SuccessBarFact | None,
+        Field(
+            description="The cross-validated score that counts as good enough, in a metric models are compared by (ADR-0059). Only a person can state it. Absent: not stated; the text acceptance criteria hold everything else."
+        ),
+    ] = None
+    created_at: Timestamp
 
 
 class SelectionDecision(StrictModel):
