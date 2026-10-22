@@ -1,4 +1,4 @@
-import type { Attempt, CodeDisplay, CodeInterface, NotebookCodeRequest } from "@sprisk/contracts";
+import type { Attempt, CodeDisplay, CodeInterface, NotebookCodeRequest, NotebookSettingsRequest } from "@sprisk/contracts";
 import { parse } from "@sprisk/contracts";
 import { useMutation } from "@tanstack/react-query";
 
@@ -53,6 +53,14 @@ export const useConsole = (attempt: Attempt | undefined): Read<CodeDisplay> =>
 /** Python reads notebook cells into suggested code steps (ADR-0031). It never runs them. */
 export const useSplitCells = () =>
   useMutation({ mutationFn: (cells: string[]) => postOne("CodeSplit", "/code/split", { cells }) });
+
+/** What an edited ready-made cell is (ADR-0055): the step with the settings it states, when
+ * only values changed, or code. */
+export const useReadSettings = () =>
+  useMutation({
+    mutationFn: ({ operator, request }: { operator: string; request: NotebookSettingsRequest }) =>
+      postOne("NotebookSettings", `/operators/${encodeURIComponent(operator)}/notebook_settings`, request),
+  });
 
 /** A ready-made step as plain Python for its notebook cell (ADR-0055); null while the step has
  * none yet. */

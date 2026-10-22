@@ -12,9 +12,10 @@ use sprisk_contracts::{
     CreateRun, CreateStudy, DatasetProfile, DecisionProposal, FigureSet, LoadedTable,
     MethodologyCheck, MethodologyDecision, MethodologyRule, MethodologyRuleSource, ModelSelection,
     NotebookCode, NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
-    NotebookKernelRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
-    PipelineVersion, Problem, QuestionVersion, RuleDecision, RuleObservation, Run,
-    SelectionDecision, Study, StudyDetail, TablePage, Trial, WorkerMessage, parse,
+    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
+    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
+    RuleDecision, RuleObservation, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial,
+    WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -85,6 +86,8 @@ const ENTITIES: &[&str] = &[
     "notebook_execution",
     "notebook_execution_event",
     "notebook_kernel_request",
+    "notebook_settings",
+    "notebook_settings_request",
     "notebook_variables",
     "notebook_version",
     "operator",
@@ -272,6 +275,16 @@ fn notebook_code() {
 #[test]
 fn notebook_code_request() {
     check::<NotebookCodeRequest>("notebook_code_request");
+}
+
+#[test]
+fn notebook_settings_request() {
+    check::<NotebookSettingsRequest>("notebook_settings_request");
+}
+
+#[test]
+fn notebook_settings() {
+    check::<NotebookSettings>("notebook_settings");
 }
 
 #[test]

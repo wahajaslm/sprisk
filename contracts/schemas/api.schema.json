@@ -967,6 +967,40 @@
         }
       }
     },
+    "NotebookSettingsRequest": {
+      "title": "NotebookSettingsRequest",
+      "description": "A ready-made step's settings, the variables its ports go by, and its cell as a person edited it. Body of POST /operators/{id}/notebook_settings (ADR-0055).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["settings", "inputs", "outputs", "code"],
+      "properties": {
+        "settings": { "type": "object", "additionalProperties": true, "description": "The step's params as the flow has them." },
+        "inputs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/VariableName" }, "description": "The variable each input port reads, by port." },
+        "outputs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/VariableName" }, "description": "The variable each output port sets, by port." },
+        "code": { "type": "string", "maxLength": 100000, "description": "The cell as edited." }
+      }
+    },
+    "NotebookSettings": {
+      "title": "NotebookSettings",
+      "description": "What an edited ready-made cell is (ADR-0055): the step with new settings, when only values changed, so it keeps its checks; otherwise code, and the step becomes a code step.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reads_as", "settings"],
+          "properties": {
+            "reads_as": { "const": "settings" },
+            "settings": { "type": "object", "additionalProperties": true, "description": "The step's params, as the edited cell states them." }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reads_as"],
+          "properties": { "reads_as": { "const": "code" } }
+        }
+      ]
+    },
     "NotebookCode": {
       "title": "NotebookCode",
       "description": "A ready-made step written as plain Python for a notebook cell (ADR-0055).",

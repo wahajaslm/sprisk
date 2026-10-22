@@ -173,6 +173,33 @@ class CellProblem(StrictModel):
     message: Annotated[str, Field(description="What is wrong and what to write instead.")]
 
 
+class NotebookSettings1(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    reads_as: Literal["settings"]
+    settings: Annotated[
+        dict[str, Any], Field(description="The step's params, as the edited cell states them.")
+    ]
+
+
+class NotebookSettings2(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    reads_as: Literal["code"]
+
+
+class NotebookSettings(RootModel[NotebookSettings1 | NotebookSettings2]):
+    root: Annotated[
+        NotebookSettings1 | NotebookSettings2,
+        Field(
+            description="What an edited ready-made cell is (ADR-0055): the step with new settings, when only values changed, so it keeps its checks; otherwise code, and the step becomes a code step.",
+            title="NotebookSettings",
+        ),
+    ]
+
+
 class NotebookCode(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1346,6 +1373,22 @@ class NotebookCodeRequest(StrictModel):
     outputs: Annotated[
         dict[str, VariableName], Field(description="The variable each output port sets, by port.")
     ]
+
+
+class NotebookSettingsRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    settings: Annotated[
+        dict[str, Any], Field(description="The step's params as the flow has them.")
+    ]
+    inputs: Annotated[
+        dict[str, VariableName], Field(description="The variable each input port reads, by port.")
+    ]
+    outputs: Annotated[
+        dict[str, VariableName], Field(description="The variable each output port sets, by port.")
+    ]
+    code: Annotated[str, Field(description="The cell as edited.", max_length=100000)]
 
 
 class Artifact(StrictModel):

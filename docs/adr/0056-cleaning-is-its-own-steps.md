@@ -28,7 +28,7 @@ Arch doc sections: §8 (methodology), §9 (runs). Builds on ADR-0050 (preparatio
 
 **Checks keep seeing every step.**
 - `encode` joins the steps `split_leakage` and `code_leakage` treat as fitting on train.
-- A ready-made step's plain code is shown, not edited, when a check depends on it (source, split, model, evaluate). A person changes its settings, or adds a code step after it.
+- An edit to a ready-made step's code that only changes values keeps the step and its checks; any other edit makes it a code step, and the notebook says the checks no longer cover it (ADR-0055).
 
 ## Alternatives considered
 - **Show the model's internal pipeline as separate cells of one step.** Rejected: one cell is one step (ADR-0055); several cells per step brings back the matching problems of ADR-0037.

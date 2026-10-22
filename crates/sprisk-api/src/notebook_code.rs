@@ -3,7 +3,9 @@
 
 use std::time::Duration;
 
-use sprisk_contracts::{NotebookCode, NotebookCodeRequest, parse};
+use sprisk_contracts::{
+    NotebookCode, NotebookCodeRequest, NotebookSettings, NotebookSettingsRequest, parse,
+};
 
 use crate::bounded::{BoundedProcess, ProcessError};
 
@@ -31,5 +33,20 @@ impl CodeWriter {
             .map_err(|e| ProcessError::Failed(format!("request: {e}")))?;
         let text = self.0.run_with(&[writer.to_owned()], input).await?;
         parse(&text).map_err(|e| ProcessError::Failed(format!("invalid plain code: {e}")))
+    }
+
+    /// What an edited cell of the step `writer` writes is: its settings, or code (ADR-0055).
+    pub async fn read(
+        &self,
+        writer: &str,
+        request: &NotebookSettingsRequest,
+    ) -> Result<NotebookSettings, ProcessError> {
+        let input = serde_json::to_vec(request)
+            .map_err(|e| ProcessError::Failed(format!("request: {e}")))?;
+        let text = self
+            .0
+            .run_with(&["--read".to_owned(), writer.to_owned()], input)
+            .await?;
+        parse(&text).map_err(|e| ProcessError::Failed(format!("invalid settings read: {e}")))
     }
 }

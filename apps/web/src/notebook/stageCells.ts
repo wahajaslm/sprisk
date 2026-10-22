@@ -39,6 +39,16 @@ export const isReadyMade = (pipeline: PipelineVersion, cellId: string) => {
   return node !== undefined && !isCodeOperator(node.operator);
 };
 
+/** Ready-made steps whose plain Python (`code`) a person edited in `cells`. */
+export const editedReadyMade = (pipeline: PipelineVersion, cells: NotebookCell[], code: Map<string, string>) =>
+  cells.filter((c) => c.kind === "code" && isReadyMade(pipeline, c.id) && code.has(c.id) && c.source !== code.get(c.id)).map((c) => c.id);
+
+/** `pipeline` with step `id` running on `settings`; everything else about it stays. */
+export const withSettings = (pipeline: PipelineVersion, id: string, settings: Node["params"]): PipelineVersion => ({
+  ...pipeline,
+  nodes: pipeline.nodes.map((n) => (n.id === id ? { ...n, params: settings } : n)),
+});
+
 /** The flow with a stage's cells as edited: Markdown kept as the notes of the step below it
  * (after the last step for text at the end), edited code in its step, and each new code cell
  * as a new step right after the step above it. `steps` go to Python to read their links

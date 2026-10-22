@@ -1,0 +1,8 @@
+{
+  "reads_as": "settings",
+  "settings": {
+    "test_fraction": 0.3,
+    "seed": 42,
+    "stratify": "credit_risk"
+  }
+}

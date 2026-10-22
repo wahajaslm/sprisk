@@ -38,6 +38,8 @@ const entities: [keyof Entities, string][] = [
   ["CellSteps", "cell_steps"],
   ["CodeSplit", "code_split"],
   ["NotebookCodeRequest", "notebook_code_request"],
+  ["NotebookSettings", "notebook_settings"],
+  ["NotebookSettingsRequest", "notebook_settings_request"],
   ["NotebookCode", "notebook_code"],
   ["NotebookVersion", "notebook_version"],
   ["NotebookExecute", "notebook_execute"],

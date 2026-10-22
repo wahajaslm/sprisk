@@ -30,6 +30,8 @@ export interface Entities {
   CellStepsRequest: C.CellStepsRequest;
   CellSteps: C.CellSteps;
   NotebookCodeRequest: C.NotebookCodeRequest;
+  NotebookSettings: C.NotebookSettings;
+  NotebookSettingsRequest: C.NotebookSettingsRequest;
   NotebookCode: C.NotebookCode;
   OperatorSource: C.OperatorSource;
   MethodologyRule: C.MethodologyRule;

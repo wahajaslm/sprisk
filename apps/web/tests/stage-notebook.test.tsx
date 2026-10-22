@@ -1,4 +1,4 @@
-import type { CodeSplitRequest, PipelineVersion } from "@sprisk/contracts";
+import type { CodeSplitRequest, NotebookSettingsRequest, PipelineVersion } from "@sprisk/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -13,7 +13,7 @@ import { server } from "./server.ts";
 /** The fixture flow with a code step in Clean that reads the imputed train rows. */
 const flow: PipelineVersion = {
   ...pipeline,
-  nodes: [...pipeline.nodes, { id: "rate", operator: notebookOperator.id, params: { source: "rate = impute_train.height", inputs: ["impute_train"], outputs: [] } }],
+  nodes: [...pipeline.nodes.map((n) => (n.id === "impute" ? { ...n, methodology_decision_id: "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0", stage: "clean" as const } : n)), { id: "rate", operator: notebookOperator.id, params: { source: "rate = impute_train.height", inputs: ["impute_train"], outputs: [] } }],
   edges: [...pipeline.edges, { from: "impute.train", to: "rate.impute_train" }],
 };
 
@@ -42,9 +42,15 @@ function withApi() {
     // Impute has plain code; other steps have none yet.
     http.post("/api/operators/:id/notebook_code", ({ params }) =>
       String(params.id).startsWith("sprisk.clean.impute@")
-        ? HttpResponse.json({ code: "impute_train, impute_test = fill(split_train, split_test)\n" })
+        ? HttpResponse.json({ code: "impute_train, impute_test = fill(split_train, split_test, method='median')\n" })
         : HttpResponse.json({ errors: [{ code: "no_plain_code", message: "none yet" }] }, { status: 404 }),
     ),
+    // As Python reads an edited cell: the same call with another method is that setting.
+    http.post("/api/operators/:id/notebook_settings", async ({ request }) => {
+      const body = (await request.json()) as NotebookSettingsRequest;
+      const method = /^impute_train, impute_test = fill\(split_train, split_test, method='(\w+)'\)\n?$/.exec(body.code)?.[1];
+      return HttpResponse.json(method ? { reads_as: "settings", settings: { ...body.settings, method } } : { reads_as: "code" });
+    }),
     http.post("/api/pipeline_versions", async ({ request }) => {
       const body = (await request.json()) as PipelineVersion;
       sent.versions.push(body);
@@ -64,7 +70,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
   it("shows each step as plain Python: a ready-made step's code, a code step's own", async () => {
     withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
-    expect(await screen.findByRole("textbox", { name: "Cell 1" })).toHaveValue("impute_train, impute_test = fill(split_train, split_test)\n");
+    expect(await screen.findByRole("textbox", { name: "Cell 1" })).toHaveValue("impute_train, impute_test = fill(split_train, split_test, method='median')\n");
     expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("rate = impute_train.height");
   });
 
@@ -75,7 +81,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     expect(screen.queryByRole("textbox", { name: "Cell 1" })).not.toBeInTheDocument();
   });
 
-  it("editing a ready-made step's code makes it a code step running that code", async () => {
+  it("editing a ready-made step's code makes it a code step running that code, and says its checks no longer cover it", async () => {
     const sent = withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
     const code = await screen.findByRole("textbox", { name: "Cell 1" });
@@ -86,6 +92,19 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     const impute = sent.versions[0]!.nodes.find((n) => n.id === "impute")!;
     expect(impute.operator).toBe(notebookOperator.id);
     expect(impute.params["source"]).toBe("impute_train, impute_test = fill(split_train, split_test, 0)");
+    expect(await screen.findByText("impute is now your own Python code. The methodology checks for an Impute step no longer cover it.")).toBeInTheDocument();
+  });
+
+  it("changing only a value in a ready-made step's code changes its setting and keeps the step", async () => {
+    const sent = withApi();
+    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    const code = await screen.findByRole("textbox", { name: "Cell 1" });
+    await userEvent.clear(code);
+    await userEvent.type(code, "impute_train, impute_test = fill(split_train, split_test, method='mean')");
+    await userEvent.click(screen.getByRole("button", { name: "Run cell 1" }));
+    await waitFor(() => expect(sent.versions).toHaveLength(1));
+    const impute = sent.versions[0]!.nodes.find((n) => n.id === "impute")!;
+    expect(impute).toEqual({ ...flow.nodes.find((n) => n.id === "impute"), params: { columns: ["x"], method: "mean" } });
   });
 
   it("running an edited code cell saves its step in a new flow version and runs it", async () => {

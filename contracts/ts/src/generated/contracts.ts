@@ -66,6 +66,25 @@ export type Origin = "explicit" | "inferred" | "measured" | "confirmed";
  */
 export type VariableName = string;
 /**
+ * What an edited ready-made cell is (ADR-0055): the step with new settings, when only values changed, so it keeps its checks; otherwise code, and the step becomes a code step.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookSettings".
+ */
+export type NotebookSettings =
+  | {
+      reads_as: "settings";
+      /**
+       * The step's params, as the edited cell states them.
+       */
+      settings: {
+        [k: string]: unknown;
+      };
+    }
+  | {
+      reads_as: "code";
+    };
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "SchemaId".
  */
@@ -984,6 +1003,36 @@ export interface NotebookCodeRequest {
   outputs: {
     [k: string]: VariableName;
   };
+}
+/**
+ * A ready-made step's settings, the variables its ports go by, and its cell as a person edited it. Body of POST /operators/{id}/notebook_settings (ADR-0055).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "NotebookSettingsRequest".
+ */
+export interface NotebookSettingsRequest {
+  /**
+   * The step's params as the flow has them.
+   */
+  settings: {
+    [k: string]: unknown;
+  };
+  /**
+   * The variable each input port reads, by port.
+   */
+  inputs: {
+    [k: string]: VariableName;
+  };
+  /**
+   * The variable each output port sets, by port.
+   */
+  outputs: {
+    [k: string]: VariableName;
+  };
+  /**
+   * The cell as edited.
+   */
+  code: string;
 }
 /**
  * A ready-made step written as plain Python for a notebook cell (ADR-0055).

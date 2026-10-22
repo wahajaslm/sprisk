@@ -20,6 +20,8 @@ function withApi(plain: boolean) {
     http.post("/api/operators/:id/notebook_code", () =>
       plain ? HttpResponse.json({ code: PLAIN }) : HttpResponse.json({ errors: [{ code: "no_plain_code", message: "none yet" }] }, { status: 404 }),
     ),
+    // This edit is more than values, so it reads as code.
+    http.post("/api/operators/:id/notebook_settings", () => HttpResponse.json({ reads_as: "code" })),
     http.get("/api/operators/:id/source", ({ params }) =>
       HttpResponse.json({ operator: params.id, path: "sprisk_clean/impute.py", language: "python", text: "def impute(train, test):\n    ...\n", digest: `sha256:${"0".repeat(64)}` }),
     ),

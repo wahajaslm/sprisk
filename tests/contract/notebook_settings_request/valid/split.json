@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "test_fraction": 0.25,
+    "seed": 42,
+    "stratify": "credit_risk"
+  },
+  "inputs": {
+    "data": "df"
+  },
+  "outputs": {
+    "train": "train",
+    "test": "test"
+  },
+  "code": "train_rows, test_rows = train_test_split(list(range(df.height)), test_size=0.3, random_state=42)\n"
+}

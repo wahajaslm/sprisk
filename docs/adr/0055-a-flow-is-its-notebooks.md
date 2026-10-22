@@ -30,7 +30,7 @@ Arch doc sections: §2A (Notebook views), §4 (domain model), §9 (runs). Supers
 - Its cell shows normal Python (pandas, polars, scikit-learn) with its settings and variable names filled in. The step's manifest names the function that writes it (`notebook_code`); `POST /operators/{id}/notebook_code` runs it in a bounded Python process (rule 2).
 - A test runs each step's plain code against the step on fixtures: same tables, same predictions. Dataset text is quoted with `repr`, never pasted (rule 7); a property test feeds hostile labels.
 - Changing a setting on the canvas rewrites the cell. The node's Code tab shows the same code.
-- A step whose checks depend on it (source, split, model, evaluate) is not edited as code: a person changes its settings, or adds a code step after it. Other ready-made steps become code steps when their code is edited.
+- Editing a ready-made step's cell (decided 2026-10-22): an edit that only changes values (`n_estimators=200` to `500`) is read back as the step's settings, so the step and its checks stay. Python finds where each setting goes by writing the code with a marker in its place, and accepts the settings only if they write the edited code again. Any other edit makes the step a code step, and the notebook says plainly that the checks for that kind of step no longer cover it.
 - A step with no plain code yet shows its settings form.
 - `Node.names` keeps the variable each output goes by (`df`, `train`, `test`, `model`). Absent: `<step>_<port>`.
 - `Node.title` names the kind of step (Box plot, Train/test split); the step's id says what it is about. Canvas cards and cells show both.

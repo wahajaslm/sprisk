@@ -578,7 +578,10 @@ fn check_params(
 }
 
 /// Why `instance` fails `op`'s params schema, or the schema's own error.
-fn validate_against(op: &Operator, instance: &serde_json::Value) -> Result<Vec<String>, String> {
+pub fn validate_against(
+    op: &Operator,
+    instance: &serde_json::Value,
+) -> Result<Vec<String>, String> {
     let schema = serde_json::Value::Object(op.params_schema.clone());
     let validator = jsonschema::validator_for(&schema).map_err(|e| e.to_string())?;
     Ok(validator

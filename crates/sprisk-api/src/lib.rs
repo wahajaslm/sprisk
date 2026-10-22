@@ -31,10 +31,11 @@ use sprisk_contracts::{
     GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyAlternativeApplicability,
     MethodologyDecision, MethodologyProposalId, MethodologyRule, MethodologyRuleSelection,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
-    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookVariables, NotebookVersion,
-    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem,
-    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId,
-    StudyStatus, TaskType, Trial, parse,
+    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookSettings,
+    NotebookSettingsRequest, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
+    OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
+    QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId, StudyStatus, TaskType,
+    Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -123,6 +124,10 @@ pub fn router(state: AppState) -> Router {
         .route("/operators", get(list_operators))
         .route("/operators/{id}/source", get(get_operator_source))
         .route("/operators/{id}/notebook_code", post(write_notebook_code))
+        .route(
+            "/operators/{id}/notebook_settings",
+            post(read_notebook_settings),
+        )
         .route("/code/split", post(split_code))
         .route("/pipeline_versions/{id}", get(get_pipeline_version))
         .route("/runs", post(create_run).get(list_runs))
@@ -834,6 +839,64 @@ async fn write_notebook_code(
         .await
         .map_err(ApiError::Code)?;
     Ok(Json(code))
+}
+
+/// What an edited ready-made cell is (ADR-0055): the step with the settings it states, when
+/// only values changed, or code. Defaults show in the cell, so a person may edit them too; one
+/// left as it was is not written into the settings. Settings the step does not allow are
+/// refused with the rule they break.
+async fn read_notebook_settings(
+    State(state): State<AppState>,
+    Path(operator_ref): Path<String>,
+    text: String,
+) -> Result<Json<NotebookSettings>, ApiError> {
+    let mut request: NotebookSettingsRequest = body(&text)?;
+    let operator = state
+        .registry
+        .get(&operator_ref)
+        .ok_or_else(|| sprisk_registry::RegistryError::UnknownOperator(operator_ref.clone()))?;
+    let writer = operator
+        .notebook_code
+        .as_ref()
+        .ok_or_else(|| ApiError::NoPlainCode(operator_ref.clone()))?;
+    let defaults: serde_json::Map<String, serde_json::Value> = operator
+        .params_schema
+        .get("properties")
+        .and_then(|p| p.as_object())
+        .into_iter()
+        .flatten()
+        .filter(|(name, _)| !request.settings.contains_key(*name))
+        .filter_map(|(name, schema)| Some((name.clone(), schema.get("default")?.clone())))
+        .collect();
+    request.settings.extend(defaults.clone());
+    let read = state
+        .code_writer
+        .read(&writer.to_string(), &request)
+        .await
+        .map_err(ApiError::Code)?;
+    let mut read =
+        serde_json::to_value(read).map_err(|error| ApiError::Internal(error.to_string()))?;
+    let Some(settings) = read.get_mut("settings").and_then(|s| s.as_object_mut()) else {
+        return Ok(Json(
+            parse(&read.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?,
+        ));
+    };
+    for (name, default) in &defaults {
+        if settings.get(name) == Some(default) {
+            settings.remove(name);
+        }
+    }
+    let errors =
+        sprisk_graph::validate_against(operator, &json!(settings)).map_err(ApiError::Internal)?;
+    if !errors.is_empty() {
+        return Err(ApiError::BadRequest {
+            code: "invalid_settings",
+            message: errors.join("; "),
+        });
+    }
+    Ok(Json(
+        parse(&read.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?,
+    ))
 }
 
 async fn list_pipeline_versions(

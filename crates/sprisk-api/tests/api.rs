@@ -600,6 +600,64 @@ async fn a_step_is_written_as_plain_python_with_its_settings_and_names() {
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
 
+/// An edited ready-made cell (ADR-0055): only values changed reads back as the step's
+/// settings, so it keeps its checks; anything more reads as code.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_edited_cell_reads_back_as_settings_when_only_values_changed() {
+    let api = api().await;
+    // n_estimators is unset, so the cell shows its default, 200.
+    let names = json!({ "inputs": {"train": "train"}, "outputs": {"model": "model"} });
+    let settings = json!({"target": "y", "task": "classification"});
+    let mut request = names.clone();
+    request["settings"] = settings.clone();
+    let forest = "/operators/sprisk.ml.random_forest@2.0.0";
+    let (_, written) = call(
+        &api.app,
+        "POST",
+        &format!("{forest}/notebook_code"),
+        Some(request.clone()),
+    )
+    .await;
+    let code = written["code"].as_str().unwrap().to_owned();
+    let read = |code: String| {
+        let mut edited = request.clone();
+        edited["code"] = json!(code);
+        let app = api.app.clone();
+        async move {
+            call(
+                &app,
+                "POST",
+                &format!("{forest}/notebook_settings"),
+                Some(edited),
+            )
+            .await
+        }
+    };
+
+    let (status, body) = read(code.replace("n_estimators=200", "n_estimators=500")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"reads_as": "settings", "settings": {"target": "y", "task": "classification", "n_estimators": 500}})
+    );
+    // A default left as it was is not written into the settings.
+    let (_, body) = read(code.clone()).await;
+    assert_eq!(body, json!({"reads_as": "settings", "settings": settings}));
+    let (_, body) = read(format!("{code}print(model)\n")).await;
+    assert_eq!(body, json!({"reads_as": "code"}));
+    // A value the step's settings do not allow is refused, naming the rule it breaks.
+    let (status, body) = read(code.replace("n_estimators=200", "n_estimators=3")).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_settings", "{body}");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("10"),
+        "{body}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_can_reuse_an_earlier_run_which_must_exist() {
     let api = api().await;
