@@ -1,0 +1,15 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.drop_duplicates@1.0.0
+capability_class: transform
+description: Drop exact duplicate rows, keeping the first. Run before the split, so no row is in both train and test.
+entrypoint: sprisk_clean.columns:drop_duplicates
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: data, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  properties:
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Compare only these columns. Left out: rows must match in every column." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

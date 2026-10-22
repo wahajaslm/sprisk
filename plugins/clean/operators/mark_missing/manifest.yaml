@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.mark_missing@1.0.0
+capability_class: transform
+description: Text that stands for a gap, such as "?" or "n/a", becomes a missing value in the named columns. Whole values only.
+entrypoint: sprisk_clean.columns:mark_missing
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: data, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [columns, values]
+  properties:
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Text columns to look in." }
+    values: { type: array, items: { type: string }, minItems: 1, uniqueItems: true, description: "Values that mean missing, matched whole, e.g. \"?\" or \"n/a\"." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }
