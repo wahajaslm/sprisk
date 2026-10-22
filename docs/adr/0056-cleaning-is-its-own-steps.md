@@ -49,3 +49,4 @@ Arch doc sections: §8 (methodology), §9 (runs). Builds on ADR-0050 (preparatio
 
 ## Amendments
 - 2026-10-22: **Key columns never reach a model.** A model with its features unset reads every column but its target and its `exclude`d columns. A run adds the key columns to `exclude`: the question's unit and time columns, and every step's group and time column. It does this for model steps and comparison candidates that list no features, from the stored version and question, so a rerun is the same. Rules measure the same columns. A model that lists its features reads only those.
+- 2026-10-22: **The operator contract changed in place.** `sprisk.operator/v1` lost `prepares` without a new schema version, because no plugin outside this repo exists yet. Once one does, such a change gets a new version.

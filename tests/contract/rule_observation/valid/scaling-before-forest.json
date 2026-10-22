@@ -4,8 +4,7 @@
   "facts": {
     "question.target": { "value": "churned", "origin": "confirmed" },
     "flow.model_families": { "value": "tree_ensemble", "origin": "measured" },
-    "flow.models_hidden": { "value": "none", "origin": "measured" },
-    "flow.models_standardize": { "value": "all", "origin": "measured" }
+    "flow.models_hidden": { "value": "none", "origin": "measured" }
   },
   "profile": { "column.age.data_type": "Float64", "column.age.kurtosis": 0.4 },
   "settings": { "outlier_kurtosis_threshold": 3.0, "outlier_share_threshold": 0.05 }
