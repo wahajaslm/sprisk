@@ -4,101 +4,135 @@ import { activation, reviewByRule, routeWhen, ruleTree } from "../src/views/meth
 
 const rule = (id: string, stage: string, routes: string[], status = "active") =>
   ({ id, stage, status, alternatives: routes.map((r) => ({ id: r, label: r })) }) as never;
+const S = (name: string) => `m.supervised.${name}`;
+const U = (name: string) => `m.unsupervised.${name}`;
 
 const RULES = [
-  rule("fill", "cleaning", ["median", "mean"]),
-  rule("clip", "cleaning", ["clip", "keep"]),
-  rule("split", "split", ["random", "time"]),
-  rule("pca", "features", ["pca"], "draft"),
+  rule(S("fill"), "cleaning", ["median", "mean"]),
+  rule(S("clip"), "cleaning", ["clip", "keep"]),
+  rule(S("split"), "split", ["random", "time"]),
+  rule(S("pca"), "features", ["pca"], "draft"),
+  rule(U("algo"), "models", ["kmeans", "dbscan"]),
 ];
 const tree = (rules = RULES, reviews = new Map(), path = false) => ruleTree(rules, reviews, { path });
 const at = (t: ReturnType<typeof ruleTree>, id: string) => t.nodes.find((n) => n.id === id)!.position;
+/** A node's middle, since a route grows to fit its condition. */
+const mid = (t: ReturnType<typeof ruleTree>, id: string) => {
+  const n = t.nodes.find((node) => node.id === id)!;
+  return n.position.y + n.height! / 2;
+};
+const data = (t: ReturnType<typeof ruleTree>, id: string) => t.nodes.find((n) => n.id === id)!.data;
 const links = (t: ReturnType<typeof ruleTree>) => t.edges.map((e) => `${e.source}>${e.target}`);
 const lit = (t: ReturnType<typeof ruleTree>) => t.edges.filter((e) => e.data?.onPath).map((e) => `${e.source}>${e.target}`);
-const settled = (rule: string, route: string) => ({ rule, status: "settled", subject_node_id: rule, recommended_alternative_id: route }) as never;
+const settled = (rule: string, route: string) => ({ rule, status: "settled", subject_node_id: "step", recommended_alternative_id: route }) as never;
+const sup = (stage: string) => `stage:supervised:${stage}`;
 
 describe("methodology tree", () => {
-  it("connects the steps: each stage fans out into its decisions, each decision into its routes, and the routes join into the next stage", () => {
+  it("shares the question and data stages, then forks into a supervised and an unsupervised lane", () => {
     expect(links(tree())).toEqual([
       "root>stage:question",
       "stage:question>stage:data",
-      "stage:data>stage:split",
-      "stage:split>split",
-      "split>split#random",
-      "split>split#time",
-      "split#random>stage:cleaning",
-      "split#time>stage:cleaning",
-      "stage:cleaning>fill",
-      "fill>fill#median",
-      "fill>fill#mean",
-      "stage:cleaning>clip",
-      "clip>clip#clip",
-      "clip>clip#keep",
-      "fill#median>stage:features",
-      "fill#mean>stage:features",
-      "clip#clip>stage:features",
-      "clip#keep>stage:features",
-      "stage:features>pca",
-      "pca>pca#pca",
-      "pca#pca>stage:models",
-      "stage:models>stage:evaluation",
-      "stage:evaluation>stage:reporting",
+      "stage:data>lane:supervised",
+      `lane:supervised>${sup("split")}`,
+      `${sup("split")}>${S("split")}`,
+      `${S("split")}>${S("split")}#random`,
+      `${S("split")}>${S("split")}#time`,
+      `${S("split")}#random>${sup("cleaning")}`,
+      `${S("split")}#time>${sup("cleaning")}`,
+      `${sup("cleaning")}>${S("fill")}`,
+      `${S("fill")}>${S("fill")}#median`,
+      `${S("fill")}>${S("fill")}#mean`,
+      `${sup("cleaning")}>${S("clip")}`,
+      `${S("clip")}>${S("clip")}#clip`,
+      `${S("clip")}>${S("clip")}#keep`,
+      `${S("fill")}#median>${sup("features")}`,
+      `${S("fill")}#mean>${sup("features")}`,
+      `${S("clip")}#clip>${sup("features")}`,
+      `${S("clip")}#keep>${sup("features")}`,
+      `${sup("features")}>${S("pca")}`,
+      `${S("pca")}>${S("pca")}#pca`,
+      "stage:data>lane:unsupervised",
+      "lane:unsupervised>stage:unsupervised:models",
+      `stage:unsupervised:models>${U("algo")}`,
+      `${U("algo")}>${U("algo")}#kmeans`,
+      `${U("algo")}>${U("algo")}#dbscan`,
     ]);
   });
 
-  it("reads left to right: stages on one line, then a column of decisions, then a column of routes", () => {
+  it("reads left to right: each lane's stages on its own line, decisions then routes after each stage", () => {
     const t = tree();
-    const xs = ["root", "stage:split", "split", "split#time", "stage:cleaning", "fill", "fill#mean", "stage:features"].map((id) => at(t, id).x);
+    const xs = ["root", "stage:data", "lane:supervised", sup("split"), S("split"), `${S("split")}#time`, sup("cleaning"), S("fill")].map((id) => at(t, id).x);
     expect(xs).toEqual([...xs].sort((a, b) => a - b));
-    expect(new Set(["stage:split", "stage:cleaning", "stage:features"].map((id) => at(t, id).y)).size).toBe(1);
-    expect(at(t, "fill").x).toBe(at(t, "clip").x);
-    expect(at(t, "fill#median").x).toBe(at(t, "clip#keep").x);
+    expect(new Set([sup("split"), sup("cleaning"), sup("features"), "lane:supervised"].map((id) => mid(t, id))).size).toBe(1);
+    expect(mid(t, "lane:supervised")).toBeLessThan(mid(t, "lane:unsupervised"));
+    expect(at(t, "lane:supervised").x).toBe(at(t, "lane:unsupervised").x);
+    expect(at(t, S("fill")).x).toBe(at(t, S("clip")).x);
   });
 
   it("stacks a stage's routes, centres each decision on its routes, and the stage on its whole fan", () => {
     const t = tree();
-    expect(at(t, "fill").y).toBe((at(t, "fill#median").y + at(t, "fill#mean").y) / 2);
-    expect(at(t, "clip#clip").y).toBeGreaterThan(at(t, "fill#mean").y);
-    expect(at(t, "stage:cleaning").y).toBe((at(t, "fill#median").y + at(t, "clip#keep").y) / 2);
+    expect(mid(t, S("fill"))).toBe((mid(t, `${S("fill")}#median`) + mid(t, `${S("fill")}#mean`)) / 2);
+    expect(at(t, `${S("clip")}#clip`).y).toBeGreaterThan(at(t, `${S("fill")}#mean`).y);
+    expect(mid(t, sup("cleaning"))).toBe((at(t, `${S("fill")}#median`).y + at(t, `${S("clip")}#keep`).y + t.nodes.find((n) => n.id === `${S("clip")}#keep`)!.height!) / 2);
   });
 
   it("leads a decision with no routes straight on to the next stage", () => {
-    expect(links(tree([rule("split", "split", [])]))).toContain("split>stage:cleaning");
+    expect(links(tree([rule(S("split"), "split", []), rule(S("fill"), "cleaning", ["median"])]))).toContain(`${S("split")}>${sup("cleaning")}`);
+  });
+
+  it("numbers every node so it can be named: stage, decision within it, route within that", () => {
+    const t = tree();
+    expect(data(t, "stage:question")).toMatchObject({ code: "1" });
+    expect(data(t, sup("split"))).toMatchObject({ code: "3" });
+    expect(data(t, S("fill"))).toMatchObject({ code: "4.1" });
+    expect(data(t, `${S("clip")}#keep`)).toMatchObject({ code: "4.2b" });
+    expect(data(t, U("algo"))).toMatchObject({ code: "3.1" });
+  });
+
+  it("makes a route tall enough for its condition to wrap onto new lines", () => {
+    const long = { ...(rule(S("split"), "split", ["a", "b"]) as object), alternatives: [{ id: "a", label: "a", condition: "x".repeat(140) }, { id: "b", label: "b" }] } as never;
+    const t = tree([long]);
+    const height = (id: string) => t.nodes.find((n) => n.id === id)!.height!;
+    expect(height(`${S("split")}#a`)).toBeGreaterThan(height(`${S("split")}#b`));
   });
 
   it("shows drafts too, so every possibility is in the tree", () => {
-    expect(tree().nodes.some((n) => n.id === "pca#pca")).toBe(true);
+    expect(tree().nodes.some((n) => n.id === `${S("pca")}#pca`)).toBe(true);
   });
 
   it("marks the route the flow's review recommends, and lights nothing while showing every possibility", () => {
-    const t = tree(RULES, new Map([["split", settled("split", "time")]]));
-    expect(t.nodes.find((n) => n.id === "split#time")!.data).toMatchObject({ picked: true, dimmed: false });
+    const t = tree(RULES, new Map([[S("split"), settled(S("split"), "time")]]));
+    expect(data(t, `${S("split")}#time`)).toMatchObject({ picked: true, dimmed: false });
     expect(lit(t)).toEqual([]);
   });
 
-  it("with the pipeline path on, lights the line through the decisions the flow uses and the routes it takes", () => {
+  it("with the pipeline path on, lights the flow's lane and the routes it takes, and dims the other lane", () => {
     const reviews = new Map([
-      ["split", settled("split", "time")],
-      ["clip", settled("clip", "keep")],
+      [S("split"), settled(S("split"), "time")],
+      [S("clip"), settled(S("clip"), "keep")],
     ]);
-    expect(lit(tree(RULES, reviews, true))).toEqual([
+    const t = tree(RULES, reviews, true);
+    expect(lit(t)).toEqual([
       "root>stage:question",
       "stage:question>stage:data",
-      "stage:data>stage:split",
-      "stage:split>split",
-      "split>split#time",
-      "split#time>stage:cleaning",
-      "stage:cleaning>clip",
-      "clip>clip#keep",
+      "stage:data>lane:supervised",
+      `lane:supervised>${sup("split")}`,
+      `${sup("split")}>${S("split")}`,
+      `${S("split")}>${S("split")}#time`,
+      `${S("split")}#time>${sup("cleaning")}`,
+      `${sup("cleaning")}>${S("clip")}`,
+      `${S("clip")}>${S("clip")}#keep`,
     ]);
+    expect(data(t, "lane:unsupervised")).toMatchObject({ dimmed: true });
+    expect(data(t, U("algo"))).toMatchObject({ dimmed: true });
   });
 
   it("passes the line straight on from a stage the flow uses nothing of, and dims what it does not touch", () => {
-    const t = tree(RULES, new Map([["clip", settled("clip", "keep")]]), true);
-    expect(t.edges.find((e) => e.id === "stage:split>stage:cleaning")!.data).toMatchObject({ onPath: true, kind: "skip" });
-    expect(t.nodes.find((n) => n.id === "split")!.data).toMatchObject({ dimmed: true });
-    expect(t.nodes.find((n) => n.id === "fill#median")!.data).toMatchObject({ dimmed: true });
-    expect(t.nodes.find((n) => n.id === "stage:features")!.data).toMatchObject({ dimmed: true });
+    const t = tree(RULES, new Map([[S("clip"), settled(S("clip"), "keep")]]), true);
+    expect(t.edges.find((e) => e.id === `${sup("split")}>${sup("cleaning")}`)!.data).toMatchObject({ onPath: true, kind: "skip" });
+    expect(data(t, S("split"))).toMatchObject({ dimmed: true });
+    expect(data(t, `${S("fill")}#median`)).toMatchObject({ dimmed: true });
+    expect(data(t, sup("features"))).toMatchObject({ dimmed: true });
   });
 });
 

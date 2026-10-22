@@ -76,11 +76,28 @@ function RootNode({ data }: NodeProps<Extract<TreeNode, { type: "root" }>>) {
   );
 }
 
+/** What each lane is for, as people read it. */
+const LANE_NOTE: Record<string, string> = { supervised: "the question has a target", unsupervised: "the question has no target" };
+
+function LaneNode({ data }: NodeProps<Extract<TreeNode, { type: "lane" }>>) {
+  return (
+    <div className={`mth-stage-node mth-lane${data.dimmed ? " dimmed" : ""}`}>
+      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <span className="mth-lane-mark" aria-hidden />
+      <span className="mth-stage-text">
+        <h2>{data.lane[0]!.toUpperCase() + data.lane.slice(1)}</h2>
+        <span>{LANE_NOTE[data.lane] ?? `the ${data.lane} pack`}</span>
+      </span>
+      <Handle type="source" position={Position.Right} isConnectable={false} />
+    </div>
+  );
+}
+
 function StageNode({ data }: NodeProps<Extract<TreeNode, { type: "stage" }>>) {
   return (
     <div className={`mth-stage-node${data.dimmed ? " dimmed" : ""}`}>
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <span className="mth-stage-ring">{data.number}</span>
+      <span className="mth-stage-ring">{data.code}</span>
       <span className="mth-stage-text">
         <h2>{stageName(data.stage)}</h2>
         <span>{data.count === 0 ? "no rules yet" : data.count === 1 ? "1 decision" : `${data.count} decisions`}</span>
@@ -97,7 +114,9 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <span className="mth-rule-dot" />
       <span className="mth-rule-text">
-        <span className="mth-rule-name">{rule.name}</span>
+        <span className="mth-rule-name">
+          <span className="mth-code">{data.code}</span> {rule.name}
+        </span>
         <span className="mth-rule-meta" title={rule.decides}>
           {activation(rule) ?? rule.decides}
           {rule.status === "draft" && " · draft"}
@@ -115,14 +134,16 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
 }
 
 function RouteNode({ data }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
-  const { route, when, picked, dimmed } = data;
+  const { route, when, code, picked, dimmed } = data;
   return (
     <div className={`mth-route-node${picked ? " picked" : ""}${dimmed ? " dimmed" : ""}`} title={`${route.description}${when ? `\nWhen ${when}` : ""}\nWhy: ${route.rationale}`}>
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <span className="mth-route-dot" />
       <span className="mth-rule-text">
-        <span className="mth-route-name">{route.label}</span>
-        <span className={`mth-rule-meta${data.when ? " mth-when" : ""}`}>{data.when ? `When ${data.when}` : (route.action.operator?.split("@")[0] ?? route.description)}</span>
+        <span className="mth-route-name">
+          <span className="mth-code">{code}</span> {route.label}
+        </span>
+        {when ? <span className="mth-when">When {when}</span> : <span className="mth-rule-meta">{route.action.operator?.split("@")[0] ?? route.description}</span>}
       </span>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
@@ -132,4 +153,4 @@ function RouteNode({ data }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
 /** How much of the tree, from the left, the canvas fits on opening. */
 const START_WIDTH = 1150;
 
-const NODE_TYPES = { root: RootNode, stage: StageNode, rule: RuleNode, route: RouteNode };
+const NODE_TYPES = { root: RootNode, lane: LaneNode, stage: StageNode, rule: RuleNode, route: RouteNode };
