@@ -22,6 +22,10 @@ def impute(
         if dtype in (pl.String, pl.Categorical):
             if text_fill is None:
                 raise ValueError(f"{c} is text: give a text_fill for its gaps")
+            if (train[c].cast(pl.String) == text_fill).any() or (
+                test[c].cast(pl.String) == text_fill
+            ).any():
+                raise ValueError(f"{c} already has the value {text_fill!r}; pick another text_fill")
             fills[c] = text_fill
             continue
         if not dtype.is_numeric():

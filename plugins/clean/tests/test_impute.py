@@ -48,3 +48,11 @@ def test_a_column_neither_number_nor_text_is_an_error() -> None:
     train = pl.DataFrame({"flag": [True, None]})
     with pytest.raises(ValueError, match="flag is Boolean"):
         impute(train, train, columns=["flag"], method="median", text_fill="missing")
+
+
+def test_a_text_fill_the_column_already_has_is_an_error() -> None:
+    # The gaps would merge with a real category and lose their own meaning.
+    train = pl.DataFrame({"kind": ["a", None]})
+    test = pl.DataFrame({"kind": ["missing"]})
+    with pytest.raises(ValueError, match="kind already has the value 'missing'"):
+        impute(train, test, columns=["kind"], method="median", text_fill="missing")
