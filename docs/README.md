@@ -4,6 +4,7 @@
 | --- | --- |
 | [architecture/](architecture/sprisk-enterprise-platform-design-v2.md) | Enterprise v2 architecture target and core-first delivery sequence. |
 | [architecture integration map](architecture/architecture-integration-map.md) | Verified repository capabilities, gaps and implementation order. |
+| [methodology map](architecture/methodology-map.md) | What the methodology decides, where, and how: rule, try or ask (ADR-0059). |
 | [adr/](adr/README.md) | Architecture decision records, one per decision. |
 | [research/](research/) | Research notes behind decisions, with sources. |
 | [design/](design/sprisk-studio.html) | sprisk Studio UI concept. Reference only, not a contract. |
