@@ -6,7 +6,7 @@ export const STAGES: MethodologyStage[] = ["question", "data", "split", "cleanin
 export const stageName = (stage: MethodologyStage) => stage[0]!.toUpperCase() + stage.slice(1);
 
 /** Sizes given up front: a tree has no need to measure its nodes before placing them. A route
- * grows to fit its condition, wrapped onto up to three lines; every other node has one height. */
+ * grows to fit its reason, wrapped onto up to three lines; every other node has one height. */
 const HEIGHT = 36;
 const SIZE = { root: { width: 64 }, stage: { width: 180 }, rule: { width: 300 }, route: { width: 340 } };
 const WHEN_LINE = 15;
@@ -23,6 +23,12 @@ const SHARED: MethodologyStage[] = ["question", "data"];
 const LANE_ORDER = ["supervised", "unsupervised"];
 
 type Kind = "trunk" | "branch" | "skip";
+/** Why a route is taken: the selected flow's own reason when its rule chose the route, else
+ * the condition that leads to it, else the route's rationale. */
+export type RouteReason = { kind: "because" | "when" | "why"; text: string };
+
+/** What sends a question down each lane. */
+export const LANE_NOTE: Record<string, string> = { supervised: "the question has a target", unsupervised: "the question has no target" };
 type Tail = { id: string; lit: boolean; kind: Kind };
 
 export type TreeNode =
@@ -30,12 +36,18 @@ export type TreeNode =
   | Node<{ lane: string; code: string; dimmed: boolean }, "lane">
   | Node<{ stage: MethodologyStage; count: number; code: string; dimmed: boolean }, "stage">
   | Node<{ rule: MethodologyRule; review: MethodologyReviewItem | undefined; code: string; dimmed: boolean }, "rule">
-  | Node<{ route: MethodologyRule["alternatives"][number]; when: string | undefined; code: string; picked: boolean; dimmed: boolean }, "route">;
+  | Node<{ route: MethodologyRule["alternatives"][number]; reason: RouteReason; code: string; picked: boolean; dimmed: boolean }, "route">;
 
 /** The pack a rule comes from (`methodology/<pack>/`), named in its id. */
-const packOf = (rule: MethodologyRule) => rule.id.split(".")[1] ?? "";
+export const packOf = (rule: MethodologyRule) => rule.id.split(".")[1] ?? "";
 
-const routeHeight = (when: string | undefined) => (when ? 24 + Math.min(WHEN_LINES, Math.ceil(when.length / WHEN_CHARS)) * WHEN_LINE + 6 : HEIGHT);
+const routeHeight = (reason: RouteReason) => 24 + Math.min(WHEN_LINES, Math.ceil((reason.text.length + 9) / WHEN_CHARS)) * WHEN_LINE + 6;
+
+export function routeReason(rule: MethodologyRule, route: MethodologyRule["alternatives"][number], review: MethodologyReviewItem | undefined): RouteReason {
+  if (review?.recommended_alternative_id === route.id) return { kind: "because", text: review.reason };
+  const when = routeWhen(rule, route.id);
+  return when ? { kind: "when", text: when } : { kind: "why", text: route.rationale };
+}
 
 /** The methodology as a connected tree (ADR-0059), every possibility, left to right. The
  * question and data stages are shared; then the tree forks into one lane per pack (supervised:
@@ -55,11 +67,11 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
   const nodes: TreeNode[] = [];
   const edges: Edge<{ onPath: boolean; kind: Kind }>[] = [];
   const onPath = (rule: MethodologyRule) => reviews.get(rule.id)?.subject_node_id !== undefined;
-  const link = (tails: Tail[], target: string, reach: boolean) => {
-    for (const tail of tails) edges.push({ id: `${tail.id}>${target}`, source: tail.id, target, data: { onPath: tail.lit && reach, kind: tail.kind } });
+  const link = (tails: Tail[], target: string, reach: boolean, label?: string) => {
+    for (const tail of tails) edges.push({ id: `${tail.id}>${target}`, source: tail.id, target, data: { onPath: tail.lit && reach, kind: tail.kind }, ...(label ? { label } : {}) });
   };
   const fanHeight = (mine: MethodologyRule[]) =>
-    mine.reduce((h, rule) => h + Math.max(HEIGHT, rule.alternatives.reduce((r, a) => r + routeHeight(routeWhen(rule, a.id)) + ROUTE_GAP, -ROUTE_GAP)) + RULE_GAP, -RULE_GAP);
+    mine.reduce((h, rule) => h + Math.max(HEIGHT, rule.alternatives.reduce((r, a) => r + routeHeight(routeReason(rule, a, reviews.get(rule.id))) + ROUTE_GAP, -ROUTE_GAP)) + RULE_GAP, -RULE_GAP);
 
   /** Places one stage centred on `centre` at `x`: its node, then its fan. Returns the tails the
    * next stage is reached from and the x after it. */
@@ -79,11 +91,11 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
       const top = y;
       const lines = rule.alternatives.map((route, i) => {
         const id = `${rule.id}#${route.id}`;
-        const when = routeWhen(rule, route.id);
-        const height = routeHeight(when);
+        const reason = routeReason(rule, route, review);
+        const height = routeHeight(reason);
         const picked = review?.recommended_alternative_id === route.id;
         const taken = ruleOnPath && picked;
-        nodes.push({ id, type: "route", position: { x: x + SIZE.rule.width + GAP, y }, width: SIZE.route.width, height, data: { route, when, code: `${ruleCode}${String.fromCharCode(97 + i)}`, picked, dimmed: path && !taken } });
+        nodes.push({ id, type: "route", position: { x: x + SIZE.rule.width + GAP, y }, width: SIZE.route.width, height, data: { route, reason, code: `${ruleCode}${String.fromCharCode(97 + i)}`, picked, dimmed: path && !taken } });
         edges.push({ id: `${rule.id}>${id}`, source: rule.id, target: id, data: { onPath: reach && taken, kind: "branch" } });
         next.push({ id, lit: reach && taken, kind: "trunk" });
         // Branches meet a route at its label line, the top row, above its wrapped condition.
@@ -133,7 +145,7 @@ export function ruleTree(rules: MethodologyRule[], reviews: Map<string, Methodol
     top += spans[i]! + LANE_GAP;
     const reached = laneReached(lane);
     const laneId = `lane:${lane}`;
-    link(forkTails, laneId, path && reached >= 0);
+    link(forkTails, laneId, path && reached >= 0, LANE_NOTE[lane]);
     nodes.push({ id: laneId, type: "lane", position: { x, y: centre - HEIGHT / 2 }, width: SIZE.stage.width, height: HEIGHT, data: { lane, code: "", dimmed: path && reached < 0 } });
     let laneTails: Tail[] = [{ id: laneId, lit: path && reached >= 0, kind: "trunk" }];
     let laneX = x + SIZE.stage.width + GAP;

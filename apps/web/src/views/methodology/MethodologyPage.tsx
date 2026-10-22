@@ -1,10 +1,12 @@
 import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
-import { useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource } from "../../api/methodology.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
+import { type Chapter, chapters, chapterState, ends } from "./flowGraph.ts";
+import { FlowMap } from "./FlowMap.tsx";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
 import { activation, givenText, isOpen, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
 
@@ -20,28 +22,83 @@ export function MethodologyPage() {
   const [filter, setFilter] = useState("");
   const [path, setPath] = useState(false);
   const [picked, setPicked] = useState<string>();
+  const [view, setView] = useState<"tree" | "flow">("tree");
+  const [drafts, setDrafts] = useState(false);
+  const [chapterKey, setChapterKey] = useState<string>();
   if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
   if (rules.isPending) return <Loading text="Loading methodology rules…" pad />;
   if (rules.data.length === 0) return <p className="muted pad">No methodology rules are loaded.</p>;
 
   const query = filter.trim().toLowerCase();
-  const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query));
-  const current = shown.find((r) => r.id === picked) ?? shown[0];
+  // The flow shows what runs: the active rules, and the drafts only when asked.
+  const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query) && (view === "tree" || drafts || r.status === "active"));
+  const [pickedRule, pickedRoute] = (picked ?? "").split("#");
+  const current = shown.find((r) => r.id === pickedRule) ?? shown[0];
+  const all = chapters(shown);
+  // The chosen stage, else the one holding the picked rule, else the first.
+  const byKey = all.findIndex((c) => c.key === chapterKey);
+  const byRule = all.findIndex((c) => current !== undefined && c.rules.includes(current));
+  const at = byKey >= 0 ? byKey : Math.max(0, byRule);
+  const chapter = all[at];
 
   return (
     <main className="mth-page">
       <div className="mth-canvas">
         <div className="mth-toolbar">
+          <div className="mth-views" role="radiogroup" aria-label="View">
+            {(["tree", "flow"] as const).map((v) => (
+              <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}>
+                {v === "tree" ? "Tree" : "Flow"}
+              </button>
+            ))}
+          </div>
           <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          {view === "flow" && (
+            <label className="mth-toggle">
+              <input type="checkbox" role="switch" checked={drafts} onChange={(e) => setDrafts(e.target.checked)} /> Show drafts
+            </label>
+          )}
           <label className="mth-toggle" title={versionId ? "Light the selected flow's path through the tree" : "Select a flow first"}>
             <input type="checkbox" role="switch" checked={path && versionId !== undefined} disabled={!versionId} onChange={(e) => setPath(e.target.checked)} /> Pipeline path
           </label>
           <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
         </div>
-        <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id} onPick={setPicked} />
+        {view === "tree" ? (
+          <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+        ) : chapter ? (
+          <>
+            <Stepper all={all} at={at} reviews={reviews} onChoose={setChapterKey} />
+            <FlowMap chapter={chapter} reviews={reviews} path={path && versionId !== undefined} {...ends(all, at)} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+          </>
+        ) : (
+          <p className="muted pad">No rule matches.</p>
+        )}
       </div>
-      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} />}</aside>
+      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} route={pickedRoute} />}</aside>
     </main>
+  );
+}
+
+/** The stages in decision order, one chosen: each says how many decisions it holds, and for
+ * the selected flow, whether the flow reaches it and how many of its decisions are open. */
+function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; reviews: Map<string, MethodologyReviewItem>; onChoose: (key: string) => void }) {
+  return (
+    <nav className="mth-stepper" aria-label="Stages">
+      {all.map((c, i) => {
+        const { open, reached } = chapterState(c, reviews);
+        const laneStart = c.lane !== undefined && all[i - 1]?.lane !== c.lane;
+        return (
+          <span key={c.key} className="mth-step-wrap">
+            {laneStart && <span className="mth-step-lane">{c.lane![0]!.toUpperCase() + c.lane!.slice(1)}</span>}
+            <button type="button" className={`mth-step${reached ? " reached" : ""}`} aria-current={i === at ? "step" : undefined} onClick={() => onChoose(c.key)}>
+              <span className="mth-node-code">{c.code}</span> {stageName(c.stage)}
+              <span className="mth-step-count">{c.rules.length}</span>
+              {open > 0 && <span className="mth-step-open" title={`${open} open on this flow`} />}
+            </button>
+          </span>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -65,7 +122,7 @@ function ReviewSummary({ versionId, items, next, error }: { versionId: string | 
   );
 }
 
-function RuleDetail({ rule, review }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined }) {
+function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined; route: string | undefined }) {
   const [tab, setTab] = useState<"overview" | "code">("overview");
   const source = useMethodologyRuleSource(rule.id);
   const python = source.data?.files.some((f) => f.language === "python");
@@ -103,12 +160,12 @@ function RuleDetail({ rule, review }: { rule: MethodologyRule; review: Methodolo
           <p>{review.reason}</p>
         </section>
       )}
-      {tab === "overview" ? <Overview rule={rule} /> : <RuleCode ruleRef={rule.id} />}
+      {tab === "overview" ? <Overview rule={rule} route={route} /> : <RuleCode ruleRef={rule.id} />}
     </section>
   );
 }
 
-function Overview({ rule }: { rule: MethodologyRule }) {
+function Overview({ rule, route }: { rule: MethodologyRule; route: string | undefined }) {
   const { provenance } = rule;
   return (
     <div className="mth-overview">
@@ -202,7 +259,7 @@ function Overview({ rule }: { rule: MethodologyRule }) {
           <h2 className="dsx-h">Alternatives</h2>
           <ol className="mth-alts">
             {rule.alternatives.map((a) => (
-              <li key={a.id}>
+              <PickedItem key={a.id} picked={a.id === route}>
                 <div className="mth-alt-head">
                   <strong>{a.label}</strong>
                   <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
@@ -210,7 +267,7 @@ function Overview({ rule }: { rule: MethodologyRule }) {
                 <p>{a.description}</p>
                 {routeWhen(rule, a.id) && <p className="muted">When: {routeWhen(rule, a.id)}</p>}
                 <p className="muted">Why: {a.rationale}</p>
-              </li>
+              </PickedItem>
             ))}
           </ol>
         </section>
@@ -247,5 +304,18 @@ function RuleCode({ ruleRef }: { ruleRef: string }) {
       </div>
       <CodeInput key={file.path} value={file.text} label={`Code of ${file.path}`} language={file.language} readOnly onChange={ignore} onRun={ignore} />
     </div>
+  );
+}
+
+/** A route in the detail, marked and brought into view when a person clicked it on the map. */
+function PickedItem({ picked, children }: { picked: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (picked) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [picked]);
+  return (
+    <li ref={ref} aria-current={picked} className={picked ? "selected" : undefined}>
+      {children}
+    </li>
   );
 }

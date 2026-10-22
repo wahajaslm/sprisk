@@ -4,14 +4,15 @@ import { Background, BackgroundVariant, Handle, type NodeProps, Position, ReactF
 import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
 import { useMemo } from "react";
 
-import { activation, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
+import { activation, LANE_NOTE, ROUTE_LINE, ruleTree, stageName, type TreeNode } from "./ruleTree.ts";
 
 type Props = {
   rules: MethodologyRule[];
   reviews: Map<string, MethodologyReviewItem>;
   path: boolean;
+  /** A rule's id, or a route's (`<rule id>#<route id>`). */
   picked: string | undefined;
-  onPick: (ruleId: string) => void;
+  onPick: (nodeId: string) => void;
 };
 
 /** The methodology as one connected tree (ADR-0059), every possibility: stages and decisions in
@@ -20,7 +21,7 @@ type Props = {
  * one lit line and the rest dimmed. */
 export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) {
   const tree = useMemo(() => ruleTree(rules, reviews, { path }), [rules, reviews, path]);
-  const nodes = tree.nodes.map((n) => (n.type === "rule" ? { ...n, selected: n.id === picked } : n));
+  const nodes = tree.nodes.map((n) => (n.type === "rule" || n.type === "route" ? { ...n, selected: n.id === picked } : n));
   // Lit lines mean the flow's path only; picking a decision highlights just that node.
   const edges = tree.edges.map((e) => ({ ...e, type: "default", className: `mth-edge ${e.data?.kind ?? "trunk"}${e.data?.onPath ? " path" : ""}` }));
   return (
@@ -31,8 +32,7 @@ export function MethodologyMap({ rules, reviews, path, picked, onPick }: Props) 
         edges={edges}
         nodeTypes={NODE_TYPES}
         onNodeClick={(_event, node) => {
-          if (node.type === "rule") onPick(node.id);
-          if (node.type === "route") onPick(node.id.split("#")[0]!);
+          if (node.type === "rule" || node.type === "route") onPick(node.id);
         }}
         // Open on the shared start and the first lane, which runs above the shared line, at a
         // readable size: the whole tree fitted would be too small.
@@ -75,9 +75,6 @@ function RootNode({ data }: NodeProps<Extract<TreeNode, { type: "root" }>>) {
     </div>
   );
 }
-
-/** What each lane is for, as people read it. */
-const LANE_NOTE: Record<string, string> = { supervised: "the question has a target", unsupervised: "the question has no target" };
 
 function LaneNode({ data }: NodeProps<Extract<TreeNode, { type: "lane" }>>) {
   return (
@@ -134,22 +131,34 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
   );
 }
 
-function RouteNode({ data }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
-  const { route, when, code, picked, dimmed } = data;
+function RouteNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "route" }>>) {
+  const { route, reason, code, picked, dimmed } = data;
   return (
-    <div className={`mth-route-node${picked ? " picked" : ""}${dimmed ? " dimmed" : ""}`} title={`${route.description}${when ? `\nWhen ${when}` : ""}\nWhy: ${route.rationale}`}>
+    // `picked` is the flow's recommended route; `selected` is the one a person clicked.
+    <button
+      type="button"
+      className={`mth-route-node nopan${picked ? " picked" : ""}${dimmed ? " dimmed" : ""}`}
+      aria-pressed={selected}
+      aria-label={route.label}
+      title={`${route.description}\n${REASON_LABEL[reason.kind]} ${reason.text}\nWhy: ${route.rationale}`}
+    >
       <Handle type="target" position={Position.Left} isConnectable={false} style={{ top: ROUTE_LINE }} />
       <span className="mth-route-dot" />
       <span className="mth-rule-text">
         <span className="mth-route-name">
           <span className="mth-node-code">{code}</span> {route.label}
         </span>
-        {when ? <span className="mth-when">When {when}</span> : <span className="mth-rule-meta">{route.action.operator?.split("@")[0] ?? route.description}</span>}
+        <span className={`mth-when ${reason.kind}`}>
+          {REASON_LABEL[reason.kind]} {reason.text}
+        </span>
       </span>
       <Handle type="source" position={Position.Right} isConnectable={false} style={{ top: ROUTE_LINE }} />
-    </div>
+    </button>
   );
 }
+
+/** How each kind of route reason reads on the map. */
+const REASON_LABEL = { because: "Because:", when: "When", why: "Why:" } as const;
 
 /** How much of the tree, from the left, the canvas fits on opening. */
 const START_WIDTH = 1150;

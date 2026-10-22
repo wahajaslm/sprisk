@@ -1,4 +1,4 @@
-import { parse, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
+import { parse, type MethodologyReviewItem, type MethodologyRule, type MethodologyRuleSource } from "@sprisk/contracts";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -8,7 +8,7 @@ import bundle from "../../../contracts/bundle.schema.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
 import { useSelection } from "../src/workbench/selection.ts";
 import { MethodologyPage } from "../src/views/methodology/MethodologyPage.tsx";
-import { STAGES } from "../src/views/methodology/ruleTree.ts";
+import { ruleTree, STAGES } from "../src/views/methodology/ruleTree.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -80,6 +80,71 @@ describe("methodology page", () => {
     const route = features.alternatives.find((a) => a.condition)!;
     expect(await within(map).findByText(route.label)).toBeInTheDocument();
     expect(within(map).getByText(`When ${route.condition}`)).toBeInTheDocument();
+  });
+
+  it("selects the route a person clicks, not its decision, and marks that route beside the map", async () => {
+    serve([features]);
+    renderWithApi(<MethodologyPage />);
+    const map = await screen.findByRole("region", { name: "Methodology map" });
+    const route = features.alternatives[1]!;
+    await userEvent.click(await within(map).findByRole("button", { name: route.label }));
+
+    expect(within(map).getByRole("button", { name: route.label })).toHaveAttribute("aria-pressed", "true");
+    expect(within(map).getByRole("button", { name: features.name })).toHaveAttribute("aria-pressed", "false");
+    const detail = screen.getByRole("region", { name: features.name });
+    const marked = within(detail).getAllByRole("listitem").filter((li) => li.getAttribute("aria-current") === "true");
+    expect(marked.map((li) => within(li).getByRole("strong").textContent)).toEqual([route.label]);
+  });
+
+  it("gives every route the reason it is taken: the flow's own reason, else its condition, else its rationale", () => {
+    const [first, second] = features.alternatives;
+    const { condition: _unused, ...unconditioned } = second!;
+    const plain = { ...features, alternatives: [first!, unconditioned] };
+    const reasons = (reviews: Map<string, MethodologyReviewItem>) =>
+      ruleTree([plain], reviews, { path: false }).nodes.flatMap((n) => (n.type === "route" ? [n.data.reason] : []));
+
+    expect(reasons(new Map())).toEqual([
+      { kind: "when", text: first!.condition },
+      { kind: "why", text: second!.rationale },
+    ]);
+    const review: MethodologyReviewItem = { rule: plain.id, decides: plain.decides, stage: plain.stage, subject_node_id: "model", status: "proposal", reason: "age and income correlate at 0.93.", recommended_alternative_id: second!.id };
+    expect(reasons(new Map([[plain.id, review]]))[1]).toEqual({ kind: "because", text: "age and income correlate at 0.93." });
+  });
+
+  it("labels the fork into each lane with what sends a question down it", () => {
+    const { edges } = ruleTree([features, { ...features, id: "methodology.unsupervised.clusters@1.0.0", decides: "clustering.k" }], new Map(), { path: false });
+    const into = (lane: string) => edges.filter((e) => e.target === `lane:${lane}`).map((e) => e.label);
+    expect(new Set(into("supervised"))).toEqual(new Set(["the question has a target"]));
+    expect(new Set(into("unsupervised"))).toEqual(new Set(["the question has no target"]));
+  });
+
+  it("shows the flow diagram of the active rules, and the drafts only when asked", async () => {
+    const active: MethodologyRule = { ...split, status: "active" };
+    serve([features, active]);
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Flow" }));
+
+    const flow = screen.getByRole("region", { name: "Methodology flow" });
+    expect(within(flow).getByRole("button", { name: active.name })).toBeInTheDocument();
+    expect(within(flow).queryByRole("button", { name: features.name })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("switch", { name: "Show drafts" }));
+    expect(within(screen.getByRole("region", { name: "Methodology flow" })).getByRole("button", { name: features.name })).toBeInTheDocument();
+  });
+
+  it("shows one stage at a time in the flow, chosen from the stages in decision order", async () => {
+    const splitting: MethodologyRule = { ...split, status: "active" };
+    const featuring: MethodologyRule = { ...features, status: "active" };
+    serve([featuring, splitting]);
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Flow" }));
+
+    const stages = screen.getByRole("navigation", { name: "Stages" });
+    expect(within(stages).getAllByRole("button").map((b) => b.textContent)).toEqual(["3 Split1", "4 Features1"]);
+    await userEvent.click(within(stages).getByRole("button", { name: /Features/ }));
+    expect(within(stages).getByRole("button", { name: /Features/ })).toHaveAttribute("aria-current", "step");
+    const flow = screen.getByRole("region", { name: "Methodology flow" });
+    expect(within(flow).getByRole("button", { name: featuring.name })).toBeInTheDocument();
+    expect(within(flow).queryByRole("button", { name: splitting.name })).not.toBeInTheDocument();
   });
 
   it("knows every stage the contract has, so no rule drops off the page", () => {
