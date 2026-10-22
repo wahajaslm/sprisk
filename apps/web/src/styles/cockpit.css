@@ -2523,3 +2523,54 @@ p { margin: 0; }
 .react-flow__edge.mth-flow-edge .react-flow__edge-path { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1.2; }
 .react-flow__edge.mth-flow-edge.skip .react-flow__edge-path { stroke-dasharray: 4 5; }
 .react-flow__edge.mth-flow-edge.path .react-flow__edge-path { stroke: var(--white); stroke-width: 2; }
+
+/* Methodology canvas: one map, left to right, drawn like a transit map. */
+.mth-cmap { position: absolute; inset: 56px 0 0 0; }
+.mth-cmap-view { position: absolute; inset: 0; overflow: auto; cursor: grab; }
+.mth-cmap-view:active { cursor: grabbing; }
+.mth-cmap-view svg { display: block; }
+.mth-cmap-zoom { position: absolute; right: var(--space-3); bottom: var(--space-3); z-index: 4; display: inline-flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; background: var(--ground); }
+.mth-cmap-zoom button { border: 0; background: transparent; color: var(--soft); font: inherit; font-size: var(--text-sm); padding: 4px 10px; cursor: pointer; }
+.mth-cmap-zoom button + button { border-left: 1px solid var(--line-strong); }
+.mth-cmap-band rect { fill: none; }
+.mth-cmap-band.live rect { fill: rgba(255, 255, 255, 0.022); }
+.mth-cmap-band line { stroke: rgba(255, 255, 255, 0.08); }
+.mth-cmap-band .title { font-size: 22px; font-weight: 600; letter-spacing: 1.2px; fill: var(--quiet); }
+.mth-cmap-band.live .title { fill: var(--soft); }
+.mth-cmap-band .caption { font: 11px var(--mono); fill: var(--quiet); }
+.mth-cmap-lane { font: 12px var(--mono); letter-spacing: 1.4px; fill: var(--muted); }
+.mth-cmap-route { fill: none; stroke: rgba(255, 255, 255, 0.14); stroke-width: 1; }
+.mth-cmap-route.loop { stroke: rgba(255, 255, 255, 0.24); stroke-dasharray: 3 5; }
+.mth-cmap-route.fan { stroke: rgba(255, 255, 255, 0.45); stroke-width: 1.3; }
+.mth-cmap-lit { fill: none; stroke: var(--white); stroke-width: 2.4; stroke-linecap: round; }
+.mth-cmap-lit.glow { stroke-width: 9; stroke-opacity: 0.14; }
+.mth-cmap-dot .hit { fill: transparent; }
+.mth-cmap-dot.pick { cursor: pointer; }
+.mth-cmap-dot .mark { fill: rgba(255, 255, 255, 0.32); }
+.mth-cmap-dot.chosen .mark { fill: var(--white); }
+.mth-cmap-dot text { font: 11px var(--mono); text-anchor: middle; fill: var(--quiet); stroke: var(--ground); stroke-width: 4px; stroke-linejoin: round; paint-order: stroke; }
+.mth-cmap-dot.near text, .mth-cmap-dot.pick:hover text { fill: var(--soft); }
+.mth-cmap-dot.chosen text, .mth-cmap-dot[aria-pressed="true"] text { fill: var(--white); font-weight: 600; }
+.mth-cmap-node { outline: none; }
+.mth-cmap-node.decision { cursor: pointer; }
+.mth-cmap-node .hit { fill: transparent; }
+.mth-cmap-node:focus-visible .hit { stroke: var(--white); stroke-width: 1.5; }
+.mth-cmap-node .label { font-size: 12px; text-anchor: middle; fill: var(--muted); stroke: var(--ground); stroke-width: 4px; stroke-linejoin: round; paint-order: stroke; }
+.mth-cmap-node.on .label, .mth-cmap-node:hover .label { fill: var(--soft); }
+.mth-cmap-node.selected .label, .mth-cmap-node.current .label { fill: var(--white); font-weight: 600; }
+.mth-cmap-node .mark { stroke: #9a9dab; stroke-width: 2; fill: var(--ground); }
+.mth-cmap-node .mark.solid { fill: #9a9dab; stroke: none; }
+.mth-cmap-node.on .mark { stroke: var(--soft); }
+.mth-cmap-node.on .mark.solid { fill: var(--soft); }
+.mth-cmap-node.settled .mark { stroke: var(--white); }
+.mth-cmap-node.settled .mark.solid, .mth-cmap-node.settled polygon.mark { fill: var(--white); }
+.mth-cmap-node.draft .mark { fill: var(--ground); stroke: #9a9dab; stroke-dasharray: 2 2; }
+.mth-cmap-node.end .mark { stroke: var(--soft); }
+.mth-cmap-node .end-title { font: 11px var(--mono); letter-spacing: 1.3px; fill: var(--muted); }
+.mth-cmap-node .end-note { font: 13px var(--mono); fill: var(--quiet); }
+.mth-cmap-node .halo { fill: none; stroke: var(--white); stroke-opacity: 0.22; stroke-width: 5; }
+.mth-cmap-node .pulse { fill: none; stroke: var(--white); stroke-width: 2; }
+@media (prefers-reduced-motion: no-preference) {
+  .mth-cmap-node .pulse { animation: mth-pulse 1.4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+}
+@keyframes mth-pulse { from { transform: scale(1); opacity: 0.8; } to { transform: scale(2.7); opacity: 0; } }
