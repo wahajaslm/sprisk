@@ -7,14 +7,15 @@ mod decision;
 pub mod facts;
 pub mod review;
 pub mod search;
-pub use catalog::{CatalogError, RuleCatalog, decides};
+pub use catalog::{CatalogError, RuleCatalog, decides, reopened_stage};
 pub use compare::{
     Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, StudySearch, TrialStep, comparison,
     preparation_comparison, study_comparison, trial_steps,
 };
 pub use decision::{
     Stamp, candidate_facts, candidates, flow_facts, input_facts, observation, one_table_into,
-    profile_facts, proposal, target_facts, train_rows_source, with_node_before, without_node,
+    profile_facts, proposal, result_facts, target_facts, train_rows_source, with_node_before,
+    without_node,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +30,8 @@ pub enum ResolveError {
         first: String,
         second: String,
     },
+    #[error("the model selection scored no candidate {0}")]
+    NotCompared(String),
     #[error("the train rows cannot be traced to a split: {0}")]
     NotTrainRows(String),
     #[error(

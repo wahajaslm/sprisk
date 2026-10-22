@@ -8,10 +8,10 @@ use petgraph::graph::DiGraph;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    CapabilityClass, DatasetProfile, DecisionProposal, Edge, MethodologyRule,
+    BaselineRole, CapabilityClass, DatasetProfile, DecisionProposal, Edge, MethodologyRule,
     MethodologyRuleSelection, Node, Operator, OperatorModel, PipelineVersion, PortRef,
     QuestionVersion, RuleActionType, RuleDecision, RuleDecisionAlternativesItemApplicability,
-    RuleObservation, TaskType, parse,
+    RuleObservation, SelectionDecision, TaskType, parse,
 };
 
 use crate::compare::edge;
@@ -781,8 +781,8 @@ fn free_id(pipeline: &PipelineVersion, wanted: &str) -> String {
 
 /// The id a candidate model goes by: its operator name without `sprisk.`, with dots as
 /// underscores, e.g. `ml_random_forest`.
-fn candidate_id(operator: &Operator) -> String {
-    let name = operator.id.as_str().split('@').next().unwrap_or_default();
+fn candidate_id(operator: &str) -> String {
+    let name = operator.split('@').next().unwrap_or_default();
     name.strip_prefix("sprisk.")
         .unwrap_or(name)
         .replace('.', "_")
@@ -797,7 +797,7 @@ pub fn candidates<'a>(
     let mut found = BTreeMap::new();
     let fits = |o: &Operator| o.model.as_ref().is_some_and(|m| m.tasks.contains(&task));
     for operator in operators.filter(|o| fits(o)) {
-        let id = candidate_id(operator);
+        let id = candidate_id(operator.id.as_str());
         if let Some(first) = found.insert(id.clone(), operator) {
             return Err(ResolveError::SharedCandidateId {
                 id,
@@ -807,6 +807,43 @@ pub fn candidates<'a>(
         }
     }
     Ok(found)
+}
+
+/// The `cv.*` facts of the model a step runs (`operator`), read from its model selection
+/// (ADR-0059): the metric, its mean fold score, the baseline's, whether it beats the baseline
+/// by the selection's test (absent for the baseline itself), whether the selection chose it,
+/// and how many decided looks the flow's family of versions has taken. Only a comparison of
+/// models against a floor baseline has them: a reference baseline compares preparation.
+pub fn result_facts(
+    selection: &SelectionDecision,
+    operator: &str,
+    looks: i64,
+) -> Result<Map<String, Value>, ResolveError> {
+    if selection.baseline_role == Some(BaselineRole::Reference) {
+        return Err(ResolveError::Selection(
+            "it compares ways of preparing the data, not models against a floor".into(),
+        ));
+    }
+    let id = candidate_id(operator);
+    let scored = |id: &str| selection.candidates.iter().find(|c| c.id.as_str() == id);
+    let model = scored(&id).ok_or_else(|| ResolveError::NotCompared(id.clone()))?;
+    let baseline = scored(selection.baseline.as_str())
+        .ok_or_else(|| ResolveError::NotCompared(selection.baseline.to_string()))?;
+    let mut facts = Map::new();
+    facts.insert("cv.metric".into(), json!(selection.metric));
+    facts.insert("cv.score".into(), json!(model.mean));
+    facts.insert("cv.baseline_score".into(), json!(baseline.mean));
+    if let Some(versus) = &model.versus_baseline {
+        let verdict = if versus.beats_baseline { "yes" } else { "no" };
+        facts.insert("cv.beats_baseline".into(), json!(verdict));
+    }
+    let chosen = selection.winner.as_ref().is_some_and(|w| w.as_str() == id);
+    facts.insert(
+        "cv.selected".into(),
+        json!(if chosen { "yes" } else { "no" }),
+    );
+    facts.insert("cv.looks".into(), json!(looks));
+    Ok(facts)
 }
 
 /// `candidate.<id>.family` for each candidate, `featureless` for one with no family.

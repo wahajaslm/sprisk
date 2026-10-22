@@ -6,7 +6,9 @@ use serde_json::{Value, json};
 use sprisk_contracts::TaskType;
 use sprisk_contracts::{DecisionProposal, MethodologyRule, PipelineVersion, parse};
 use sprisk_methodology::RuleCatalog;
-use sprisk_methodology::review::{Outcome, Planned, fits_task, item, next, plan, waits_on};
+use sprisk_methodology::review::{
+    Outcome, Planned, comes_after, fits_task, is_open, item, next, plan, waits_on,
+};
 use sprisk_registry::Registry;
 
 fn catalog() -> RuleCatalog {
@@ -103,6 +105,7 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("modeling.interpretability_requirement".to_owned(), None),
             ("modeling.estimator_selection".to_owned(), at("model")),
             ("evaluation.decision_threshold".to_owned(), at("model")),
+            ("evaluation.loop_back".to_owned(), at("model")),
         ]
     );
 }
@@ -465,4 +468,64 @@ fn a_step_is_after_the_split_when_a_split_feeds_it() {
     assert!(!sprisk_methodology::review::after_a_split(
         &pipeline, "split", is_split
     ));
+}
+
+/// `rule` rewritten to read cross-validation results, with `temporal`, when it has one,
+/// reopening the features.
+fn reading_results(rule: &MethodologyRule) -> MethodologyRule {
+    let mut value = serde_json::to_value(rule).unwrap();
+    value["reads"] = json!(["cv.score"]);
+    for alternative in value["alternatives"].as_array_mut().unwrap() {
+        if alternative["id"] == "temporal" {
+            alternative["action"] = json!({ "type": "reopen", "params": { "stage": "features" } });
+        }
+    }
+    parse(&value.to_string()).unwrap()
+}
+
+#[test]
+fn a_recommendation_to_reopen_is_open_and_names_the_stage() {
+    let catalog = catalog();
+    let pipeline = filled_linear();
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
+    let split = &planned[index_of(&planned, "split.method")];
+    let rule = reading_results(split.rule);
+    let reopening = Planned {
+        rule: &rule,
+        subject: split.subject,
+    };
+    let mut reopen = temporal(Value::Null);
+    reopen.as_object_mut().unwrap().remove("effect");
+    reopen["reason"] = json!("The score misses the bar.");
+
+    let item = item(&reopening, proposed(reopen)).unwrap();
+    let shown = serde_json::to_value(&item).unwrap();
+    assert_eq!(shown["status"], "reopen");
+    assert_eq!(shown["reopens"], "features");
+    assert_eq!(shown["reason"], "The score misses the bar.");
+    assert!(is_open(&item));
+    assert_eq!(next(&[item]), vec![0]);
+}
+
+#[test]
+fn a_rule_reading_results_comes_after_the_rules_of_its_own_step_that_do_not() {
+    let catalog = catalog();
+    let pipeline = filled_linear();
+    let planned = plan(&catalog, &pipeline, supervised).unwrap();
+    let shortlist = &planned[index_of(&planned, "modeling.estimator_selection")];
+    let threshold = &planned[index_of(&planned, "evaluation.decision_threshold")];
+    let results = reading_results(threshold.rule);
+    let reading = Planned {
+        rule: &results,
+        subject: threshold.subject,
+    };
+    let other = reading_results(shortlist.rule);
+    let also_reading = Planned {
+        rule: &other,
+        subject: shortlist.subject,
+    };
+
+    assert!(comes_after(&pipeline, &reading, shortlist));
+    assert!(!comes_after(&pipeline, &reading, &also_reading));
+    assert!(!comes_after(&pipeline, threshold, shortlist));
 }

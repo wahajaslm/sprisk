@@ -387,3 +387,26 @@ fn a_recommend_rule_needs_a_menu_and_examples_that_pick_from_it() {
     );
     assert!(refused(&manifest).contains("picks"));
 }
+
+fn reopening(params: &str) -> String {
+    active_yaml(
+        "methodology.pack.a@1.0.0",
+        "cleaning.a",
+        "sprisk.clean.scale",
+        READS_AND_EXAMPLE,
+    )
+    .replace(
+        "action: { type: remove_node }",
+        &format!("action: {{ type: reopen{params} }}"),
+    )
+}
+
+#[test]
+fn a_rule_that_reopens_names_a_stage() {
+    let dir = tempfile::tempdir().unwrap();
+    write_active(dir.path(), "a", &reopening(", params: { stage: features }"));
+    RuleCatalog::load_dir(dir.path()).unwrap();
+
+    assert!(refused(&reopening("")).contains("reopen"));
+    assert!(refused(&reopening(", params: { stage: modelling }")).contains("modelling"));
+}

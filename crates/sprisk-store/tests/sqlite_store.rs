@@ -1083,3 +1083,105 @@ async fn a_study_s_deadline_is_set_once_so_a_resumed_run_keeps_it() {
         .unwrap();
     assert_eq!(resumed.deadline.unwrap().as_str(), "2026-10-21T10:10:00Z");
 }
+
+/// Stores a model selection of `step` of `pipeline`, compared by `comparison` in `run`.
+async fn selection(
+    store: &SqliteStore,
+    pipeline: &sprisk_contracts::PipelineVersionId,
+    step: &sprisk_contracts::NodeId,
+    comparison: &str,
+    run: &str,
+) -> Run {
+    let mut compared: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "comparison.json",
+        serde_json::json!({ "id": comparison, "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0" }),
+    );
+    compared.compares = None;
+    store
+        .insert_selection(pipeline, step, &compared)
+        .await
+        .unwrap();
+    let mut claimed: Run = fixture("run", "running.json");
+    claimed.id = run.parse().unwrap();
+    claimed.pipeline_version_id = compared.id;
+    store
+        .claim_selection_run(pipeline, step, &claimed)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn looks_count_the_decided_model_selections_of_the_flow_s_whole_family() {
+    let (store, decision) = store_with_decision().await;
+    let base = decision.base_pipeline_version_id.clone();
+    let step = decision.subject_node_id.clone();
+    let made_from = |id: &str| -> sprisk_contracts::PipelineVersion {
+        fixture_with(
+            "pipeline_version",
+            "single-node-no-parent.json",
+            serde_json::json!({ "id": id, "parent_id": base }),
+        )
+    };
+    let child = made_from("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
+    let sibling = made_from("plv_01JABCDEFGHJKMNPQRSTVWXYZ4");
+    store.insert_pipeline_version(&child).await.unwrap();
+    store.insert_pipeline_version(&sibling).await.unwrap();
+    assert_eq!(store.looks(&child.id).await.unwrap(), 0);
+
+    let first = selection(
+        &store,
+        &base,
+        &step,
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ6",
+        "run_01JABCDEFGHJKMNPQRSTVWXYZ6",
+    )
+    .await;
+    store
+        .set_run_status(&first.id, RunStatus::Succeeded, LATER)
+        .await
+        .unwrap();
+    assert_eq!(store.looks(&child.id).await.unwrap(), 1);
+
+    // A renamed model step is still a look at the same folds.
+    let renamed: sprisk_contracts::NodeId = "renamed".parse().unwrap();
+    let second = selection(
+        &store,
+        &child.id,
+        &renamed,
+        "plv_01JABCDEFGHJKMNPQRSTVWXYZ7",
+        "run_01JABCDEFGHJKMNPQRSTVWXYZ7",
+    )
+    .await;
+    assert_eq!(store.looks(&child.id).await.unwrap(), 1, "still running");
+    store
+        .set_run_status(&second.id, RunStatus::Succeeded, LATER)
+        .await
+        .unwrap();
+    // A branch from the same root cannot start its count again.
+    for version in [&base, &child.id, &sibling.id] {
+        assert_eq!(
+            store.looks(version).await.unwrap(),
+            2,
+            "{}",
+            version.as_str()
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_completed_study_is_a_look_too() {
+    let (store, decision) = store_with_decision().await;
+    let (study, request, comparison, run) = study_parts(&decision);
+    store
+        .insert_study(&study, &request, &comparison, &run)
+        .await
+        .unwrap();
+    let looks = || store.looks(&study.pipeline_version_id);
+    assert_eq!(looks().await.unwrap(), 0);
+    store
+        .finish_study(&study.id, sprisk_contracts::StudyStatus::Completed, NOW)
+        .await
+        .unwrap();
+    assert_eq!(looks().await.unwrap(), 1);
+}

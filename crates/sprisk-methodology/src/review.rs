@@ -4,11 +4,13 @@
 use serde_json::json;
 use sprisk_contracts::{
     DecisionProposal, GraphEffect, MethodologyAlternativeApplicability, MethodologyReviewItem,
-    MethodologyReviewStatus, MethodologyRule, MethodologyRuleStatus, Node, Operator,
-    PipelineVersion, TaskType, parse,
+    MethodologyReviewStatus, MethodologyRule, MethodologyRuleStatus, MethodologyStage, Node,
+    Operator, PipelineVersion, RuleActionType, TaskType, parse,
 };
 
-use crate::{ResolveError, RuleCatalog, catalog::decides, compare::upstream, facts};
+use crate::{
+    ResolveError, RuleCatalog, catalog::decides, compare::upstream, facts, reopened_stage,
+};
 
 /// What the split rule decides. A rule that measures train rows needs it decided first.
 pub const SPLIT_DECISION: &str = "split.method";
@@ -88,21 +90,30 @@ pub fn plan<'a>(
 }
 
 /// Whether `later` must wait for `earlier`: it measures train rows, and `earlier` decides
-/// the split or a step strictly upstream of `later`'s.
+/// the split or a step strictly upstream of `later`'s. A rule reading cross-validation
+/// results also waits for the rules of its own step that do not (ADR-0059): they may change
+/// what was compared.
 pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planned) -> bool {
-    if !facts::needs_train_rows(later.rule.reads.iter().map(|r| r.as_str())) {
+    let results = facts::needs_results(reads(later));
+    if !results && !facts::needs_train_rows(reads(later)) {
         return false;
     }
     if earlier.rule.decides.as_str() == SPLIT_DECISION {
         return true;
     }
     match (later.subject, earlier.subject) {
-        (Some(later), Some(earlier)) => {
-            later.id != earlier.id
-                && upstream(pipeline, later.id.as_str()).contains(earlier.id.as_str())
+        (Some(later_step), Some(earlier_step)) if later_step.id == earlier_step.id => {
+            results && !facts::needs_results(reads(earlier))
+        }
+        (Some(later_step), Some(earlier_step)) => {
+            upstream(pipeline, later_step.id.as_str()).contains(earlier_step.id.as_str())
         }
         _ => false,
     }
+}
+
+fn reads<'a>(planned: &'a Planned) -> impl Iterator<Item = &'a str> {
+    planned.rule.reads.iter().map(|r| r.as_str())
 }
 
 /// The review item for `planned`.
@@ -135,6 +146,9 @@ pub fn item(planned: &Planned, outcome: Outcome) -> Result<MethodologyReviewItem
         built["subject_node_id"] = json!(subject.id);
     }
     if let Some(recommended) = recommended {
+        if status == MethodologyReviewStatus::Reopen {
+            built["reopens"] = json!(reopens(planned.rule, &recommended));
+        }
         built["recommended_alternative_id"] = json!(recommended);
     }
     Ok(parse(&built.to_string())?)
@@ -174,12 +188,22 @@ fn verdict(
         .ok_or_else(|| ResolveError::UndeclaredAlternative(id.to_owned()))?;
     let status = if chosen.applicability == MethodologyAlternativeApplicability::NeedsFact {
         MethodologyReviewStatus::NeedsFact
+    } else if reopens(rule, id).is_some() {
+        MethodologyReviewStatus::Reopen
     } else if changes_nothing(chosen.effect.as_ref(), subject, settings_of(rule, id)) {
         MethodologyReviewStatus::Settled
     } else {
         MethodologyReviewStatus::Proposal
     };
     Ok((status, chosen.reason.to_string(), recommended))
+}
+
+/// The stage the rule's alternative `id` reopens, when its action is `reopen` (ADR-0059).
+fn reopens(rule: &MethodologyRule, id: &str) -> Option<MethodologyStage> {
+    rule.alternatives
+        .iter()
+        .find(|a| a.id.as_str() == id && a.action.type_ == RuleActionType::Reopen)
+        .and_then(|a| reopened_stage(&a.action.params))
 }
 
 /// The settings a person may adjust on the route `id` (its `settings_schema` properties), such
@@ -256,6 +280,7 @@ pub fn is_open(item: &MethodologyReviewItem) -> bool {
             | MethodologyReviewStatus::NeedsFact
             | MethodologyReviewStatus::NeedsRun
             | MethodologyReviewStatus::Waiting
+            | MethodologyReviewStatus::Reopen
     )
 }
 

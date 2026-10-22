@@ -131,6 +131,39 @@ impl SqliteStore {
         Ok(Some((serde_json::from_str(&comparison)?, run)))
     }
 
+    /// How many decided looks at cross-validation folds the family of `pipeline` has taken
+    /// (ADR-0059): model selections whose run succeeded and completed studies, of every version
+    /// made from the same first version. Counted for the family, not one line or step id, so
+    /// a branch or a renamed model step cannot start the count again.
+    pub async fn looks(&self, pipeline: &PipelineVersionId) -> Result<i64, StoreError> {
+        let count = sqlx::query_scalar(
+            "WITH RECURSIVE up(id) AS ( \
+                 SELECT ? \
+                 UNION \
+                 SELECT json_extract(v.body, '$.parent_id') FROM pipeline_versions v \
+                 JOIN up ON v.id = up.id \
+                 WHERE json_extract(v.body, '$.parent_id') IS NOT NULL \
+             ), \
+             family(id) AS ( \
+                 SELECT id FROM up \
+                 UNION \
+                 SELECT v.id FROM pipeline_versions v \
+                 JOIN family f ON json_extract(v.body, '$.parent_id') = f.id \
+             ) \
+             SELECT (SELECT COUNT(*) FROM model_selections s \
+                     JOIN family ON s.pipeline_version_id = family.id \
+                     JOIN runs r ON r.id = s.run_id \
+                     WHERE r.status = 'succeeded') \
+                  + (SELECT COUNT(*) FROM studies t \
+                     JOIN family ON t.pipeline_version_id = family.id \
+                     WHERE t.status = 'completed')",
+        )
+        .bind(pipeline.as_str())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
+
     /// Stores `comparison` as the model selection of `step` of `pipeline`, unless another
     /// request stored one first: then that one is kept and this one is never stored. Gives the
     /// kept comparison and whether it is this one.

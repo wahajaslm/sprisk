@@ -88,7 +88,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Sensitivity | 1 | Rerun CV with other model and split seeds, and each tuned setting one step away; fragile when the SD across seeds is over half the lift. Reported, never used to pick | Score spread per seed and setting | draft (`evaluation.sensitivity`) | Bouthillier et al. 2021 |
 | Bootstrap interval | 1 | After the one hold-out scoring: a 95% BCa interval, and a paired interval of model minus baseline (groups resampled whole; time splits not yet). Reported, never used to choose | Score with interval | draft (`evaluation.bootstrap_interval`) | Efron & Tibshirani 1993; Efron 1987 |
 | Fairness slices | 3, then 1 | Person names the groups; scores per group against stated limits | Score per group | draft | ref-v3 4.7 |
-| Loop back | 1 | A CV result below the success bar reopens the decision that owns it | — | — (guardrails, ADR-0052) | knowledge: step 4 |
+| Loop back | 1, bar from 3 | No lift over the baseline (the selection's own test) stops and reports. A model the selection did not choose reopens the model choice. A chosen model below the success bar a person states in the comparison's metric reopens the features. Reopens stop after 3 looks across the flow's family | — | active (`evaluation.loop_back`; reopens the features only until fit diagnosis and error analysis point elsewhere) | knowledge: step 4; Cawley & Talbot 2010 |
 
 ## Reporting
 | Decision | Level | Decided by | Evidence chart | Rule | Source |

@@ -1519,6 +1519,45 @@ async fn a_question_s_costs_must_be_positive_and_belong_to_a_classification() {
 }
 
 #[tokio::test]
+async fn a_question_s_success_bar_must_be_a_score_its_task_can_reach() {
+    let api = api().await;
+    let barred = |metric: &str, score: f64| {
+        let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+        q["success_bar"] =
+            json!({ "value": { "metric": metric, "score": score }, "origin": "explicit" });
+        q
+    };
+    for (metric, score) in [
+        ("balanced_accuracy", 1.5),
+        ("balanced_accuracy", -0.1),
+        ("expected_cost", -1.0),
+        ("rmse", 2.0),
+    ] {
+        let (status, body) = call(
+            &api.app,
+            "POST",
+            "/question_versions",
+            Some(barred(metric, score)),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{metric} {score}: {body}"
+        );
+        assert_eq!(body["errors"][0]["code"], "invalid_success_bar", "{body}");
+    }
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/question_versions",
+        Some(barred("balanced_accuracy", 0.7)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
 async fn question_ledger_is_immutable_filterable_and_revision_checked() {
     let api = api().await;
     let first = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
@@ -1818,6 +1857,10 @@ async fn scaling_flow_into(api: &Api, extra_nodes: &[Value], extra_edges: &[Valu
     let facts = q.as_object_mut().unwrap();
     facts.remove("time_column");
     facts.remove("entity_column");
+    facts.insert(
+        "success_bar".into(),
+        json!({ "value": { "metric": "balanced_accuracy", "score": 0.7 }, "origin": "explicit" }),
+    );
     assert_eq!(
         call(&api.app, "POST", "/question_versions", Some(q))
             .await
@@ -2590,6 +2633,72 @@ async fn sprisk_selects_a_model_by_itself_once_per_version() {
     assert_eq!(run["status"], "succeeded", "{run}");
     let decision = output(&api, &attempts, "select_model", "decision").await;
     assert_eq!(decision["winner"], "ml_linear_model", "{decision}");
+}
+
+#[tokio::test]
+async fn the_loop_back_rule_reads_the_results_the_chosen_model_was_compared_by() {
+    let api = api().await;
+    learnable_model_flow(&api).await;
+    let loop_back = |version: &str| {
+        format!("/pipeline_versions/{version}/methodology/proposals/model/evaluation.loop_back")
+    };
+    let base = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";
+    let (status, body) = call(&api.app, "POST", &loop_back(base), Some(json!({}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(
+        body["errors"][0]["code"],
+        "methodology_evidence_unavailable"
+    );
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("compare the models first"),
+        "{body}"
+    );
+
+    let (_, selection) = select_model(&api, "model").await;
+    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run}");
+    let decided = output(&api, &attempts, "select_model", "decision").await;
+    assert_eq!(decided["winner"], "ml_linear_model", "{decided}");
+
+    // Choosing the winner makes a new version, which the same comparison scored.
+    let uri = format!(
+        "/methodology_proposals/{}/apply",
+        selection["proposal"]["id"].as_str().unwrap()
+    );
+    let choice =
+        json!({ "alternative_id": "ml_linear_model", "idempotency_key": "test-loop-back" });
+    let (status, applied) = call(&api.app, "POST", &uri, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+    let chosen = applied["pipeline"]["id"].as_str().unwrap();
+
+    let (status, proposal) = call(&api.app, "POST", &loop_back(chosen), Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    assert_eq!(
+        proposal["recommended_alternative_id"], "proceed",
+        "{proposal}"
+    );
+    let proceed = &proposal["alternatives"][0];
+    assert_eq!(proceed["applicability"], "applicable", "{proposal}");
+    assert!(
+        proceed["reason"]
+            .as_str()
+            .unwrap()
+            .contains("meets the bar of 0.7"),
+        "{proposal}"
+    );
+    let looks = proposal["evidence"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["label"] == "Looks at these folds")
+        .unwrap();
+    assert_eq!(
+        looks["value"], "1",
+        "choosing the winner is no new look: {proposal}"
+    );
 }
 
 #[tokio::test]
@@ -4396,6 +4505,8 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("modeling.interpretability_requirement", "settled"),
         ("modeling.estimator_selection", "waiting"),
         ("evaluation.decision_threshold", "settled"),
+        // It reads the model selection's results, so it waits for the model step's rules.
+        ("evaluation.loop_back", "waiting"),
     ]
     .iter()
     .map(|(d, s)| ((*d).to_owned(), (*s).to_owned()))

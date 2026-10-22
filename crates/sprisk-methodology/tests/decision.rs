@@ -9,8 +9,8 @@ use sprisk_contracts::{
 use sprisk_methodology::ResolveError;
 use sprisk_methodology::{
     Comparison, RuleCatalog, Stamp, candidate_facts, candidates, comparison, facts, flow_facts,
-    input_facts, observation, preparation_comparison, profile_facts, proposal, target_facts,
-    train_rows_source, with_node_before, without_node,
+    input_facts, observation, preparation_comparison, profile_facts, proposal, result_facts,
+    target_facts, train_rows_source, with_node_before, without_node,
 };
 use sprisk_registry::Registry;
 
@@ -2181,4 +2181,62 @@ fn a_decision_setting_a_param_its_action_does_not_declare_is_refused() {
             .contains("cost_optimal_threshold sets n_estimators, which its action does not name"),
         "{err}"
     );
+}
+
+fn selection() -> sprisk_contracts::SelectionDecision {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/contract/selection_decision/valid/expected-cost.json");
+    parse(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+#[test]
+fn result_facts_describe_the_step_s_own_model_in_its_model_selection() {
+    let facts = result_facts(&selection(), "sprisk.ml.random_forest@1.1.0", 2).unwrap();
+    assert_eq!(
+        Value::Object(facts),
+        json!({
+            "cv.metric": "expected_cost",
+            "cv.score": 0.888,
+            "cv.baseline_score": 0.5,
+            "cv.beats_baseline": "yes",
+            "cv.selected": "no",
+            "cv.looks": 2,
+        })
+    );
+    let winner = result_facts(&selection(), "sprisk.ml.linear_model@2.0.0", 2).unwrap();
+    assert_eq!(winner["cv.selected"], json!("yes"));
+    for name in [
+        "cv.metric",
+        "cv.score",
+        "cv.baseline_score",
+        "cv.beats_baseline",
+        "cv.selected",
+        "cv.looks",
+    ] {
+        assert!(facts::is_known(name), "{name}");
+        assert!(facts::needs_results([name].into_iter()), "{name}");
+        assert!(!facts::needs_train_rows([name].into_iter()), "{name}");
+    }
+}
+
+#[test]
+fn the_baseline_has_no_verdict_against_itself() {
+    let facts = result_facts(&selection(), "sprisk.ml.dummy_baseline@1.0.0", 1).unwrap();
+    assert!(!facts.contains_key("cv.beats_baseline"));
+    assert_eq!(facts["cv.score"], json!(0.5));
+}
+
+#[test]
+fn a_comparison_of_preparation_gives_no_model_results() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/contract/selection_decision/valid/reference-stands.json");
+    let preparation = parse(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let err = result_facts(&preparation, "sprisk.ml.linear_model@2.0.0", 1).unwrap_err();
+    assert!(err.to_string().contains("preparing"), "{err}");
+}
+
+#[test]
+fn a_step_whose_model_was_not_compared_has_no_results() {
+    let err = result_facts(&selection(), "sprisk.ml.kmeans@1.0.0", 1).unwrap_err();
+    assert!(err.to_string().contains("ml_kmeans"), "{err}");
 }

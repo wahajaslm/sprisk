@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use serde_json::json;
 use sprisk_contracts::{
     ContractError, MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource,
-    MethodologyRuleStatus,
+    MethodologyRuleStatus, MethodologyStage, RuleActionType,
 };
 
 use crate::facts;
@@ -200,6 +200,16 @@ fn check_status(rule: &MethodologyRule, has_module: bool) -> Result<(), String> 
             a.id.as_str()
         ));
     }
+    if let Some(a) = rule.alternatives.iter().find(|a| {
+        a.action.type_ == RuleActionType::Reopen && reopened_stage(&a.action.params).is_none()
+    }) {
+        let named = a.action.params.get("stage").map(ToString::to_string);
+        return Err(format!(
+            "alternative {} reopens, but params.stage ({}) is not a stage",
+            a.id.as_str(),
+            named.as_deref().unwrap_or("absent")
+        ));
+    }
     if rule.applies_to.is_empty() {
         return Err("an active rule needs applies_to".into());
     }
@@ -290,4 +300,11 @@ fn read_source(
 pub fn decides(rule: &MethodologyRule, operator: &str) -> bool {
     let name = operator.split('@').next().unwrap_or_default();
     rule.applies_to.iter().any(|a| a.as_str() == name)
+}
+
+/// The stage a `reopen` action sends the flow back to (ADR-0059); None when its params name none.
+pub fn reopened_stage(
+    params: &serde_json::Map<String, serde_json::Value>,
+) -> Option<MethodologyStage> {
+    sprisk_contracts::parse(&params.get("stage")?.to_string()).ok()
 }

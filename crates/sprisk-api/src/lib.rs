@@ -34,8 +34,8 @@ use sprisk_contracts::{
     NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
     NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
     NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem,
-    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyDetail, StudyId,
-    StudyStatus, TaskType, Trial, parse,
+    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study, StudyDetail,
+    StudyId, StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -922,6 +922,7 @@ async fn create_question_version(
 ) -> Result<(StatusCode, Json<QuestionVersion>), ApiError> {
     let question: QuestionVersion = body(&text)?;
     check_costs(&question)?;
+    check_success_bar(&question)?;
     if let Some(parent_id) = &question.parent_id {
         let parent =
             state
@@ -947,6 +948,39 @@ async fn create_question_version(
     }
     state.store.insert_question_version(&question).await?;
     Ok((StatusCode::CREATED, Json(question)))
+}
+
+/// A success bar is a score its metric can take, in a metric its task is compared by (ADR-0059):
+/// a balanced accuracy from 0 to 1 or an expected cost for classification, a non-negative RMSE
+/// for regression.
+fn check_success_bar(question: &QuestionVersion) -> Result<(), ApiError> {
+    let Some(bar) = &question.success_bar else {
+        return Ok(());
+    };
+    let (metric, score) = (bar.value.metric, bar.value.score);
+    let task = match metric {
+        SelectionMetric::BalancedAccuracy | SelectionMetric::ExpectedCost => {
+            TaskType::Classification
+        }
+        SelectionMetric::Rmse => TaskType::Regression,
+    };
+    let reachable = score.is_finite()
+        && score >= 0.0
+        && (metric != SelectionMetric::BalancedAccuracy || score <= 1.0);
+    let why = if question.task.value != task {
+        format!(
+            "{metric} scores a {task} question, not a {} one",
+            question.task.value
+        )
+    } else if !reachable {
+        format!("{metric} never takes the score {score}")
+    } else {
+        return Ok(());
+    };
+    Err(ApiError::BadRequest {
+        code: "invalid_success_bar",
+        message: why,
+    })
 }
 
 /// Misclassification costs are positive and belong to a classification question (ADR-0053).
@@ -1269,6 +1303,9 @@ async fn decide(
     if sprisk_methodology::facts::needs_input_rows(reads()) {
         profile.extend(input_profile_facts(state, pipeline, node).await?);
     }
+    if sprisk_methodology::facts::needs_results(reads()) {
+        profile.extend(result_profile_facts(state, pipeline, node).await?);
+    }
 
     let resolve = |e: sprisk_methodology::ResolveError| not_applicable(e.to_string());
     let mut flow = sprisk_methodology::flow_facts(
@@ -1434,6 +1471,58 @@ async fn train_profile_facts(
         facts.extend(sprisk_methodology::target_facts(&profile, target));
     }
     Ok(facts)
+}
+
+/// The cross-validation results of `node`'s model (ADR-0059): from this version's model
+/// selection of the step, else from the selection the step's model was chosen by when choosing
+/// it made this version, since that comparison scored exactly this flow. Train rows only, so a
+/// rule acting on them never tunes to the test rows.
+async fn result_profile_facts(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    node: &sprisk_contracts::Node,
+) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
+    let step = node.id.as_str();
+    let own = match state.store.selection_for(&pipeline.id, &node.id).await? {
+        Some((comparison, _)) => decision_of(state, &comparison).await?.map(|(d, _)| d),
+        None => None,
+    };
+    let selection = match own {
+        Some(selection) => Some(selection),
+        None => chosen_by(state, pipeline, node).await?,
+    };
+    let selection = selection.ok_or_else(|| {
+        evidence_unavailable(format!(
+            "compare the models first: this rule reads the cross-validation results of step {step}'s model selection, once it has decided"
+        ))
+    })?;
+    let looks = state.store.looks(&pipeline.id).await?;
+    sprisk_methodology::result_facts(&selection, node.operator.as_str(), looks)
+        .map_err(|e| not_applicable(e.to_string()))
+}
+
+/// The SelectionDecision `node`'s model was chosen by, when that choice made `pipeline`.
+async fn chosen_by(
+    state: &AppState,
+    pipeline: &PipelineVersion,
+    node: &sprisk_contracts::Node,
+) -> Result<Option<sprisk_contracts::SelectionDecision>, ApiError> {
+    let Some(id) = &node.methodology_decision_id else {
+        return Ok(None);
+    };
+    let decisions = state
+        .store
+        .methodology_decisions(std::slice::from_ref(id))
+        .await?;
+    let Some(selection) = decisions
+        .into_iter()
+        .find(|d| d.pipeline_version_id == pipeline.id)
+        .and_then(|d| d.selection_id)
+    else {
+        return Ok(None);
+    };
+    let artifact = state.store.get_artifact(&selection).await?;
+    Ok(Some(read_selection(state, &artifact).await?))
 }
 
 /// The structure of the rows `node` reads, measured on all of them (ADR-0059): types,
@@ -1675,6 +1764,15 @@ async fn selection_of(
     let Some(comparison) = state.store.comparison_of(proposal).await? else {
         return Ok(None);
     };
+    decision_of(state, &comparison).await
+}
+
+/// The SelectionDecision the latest run of `comparison` wrote, and its artifact. None until a
+/// run has decided.
+async fn decision_of(
+    state: &AppState,
+    comparison: &PipelineVersion,
+) -> Result<Option<(sprisk_contracts::SelectionDecision, ArtifactId)>, ApiError> {
     let Some(output) = state
         .store
         .latest_outputs(std::slice::from_ref(&comparison.id))
@@ -1684,20 +1782,24 @@ async fn selection_of(
     else {
         return Ok(None);
     };
-    let bytes = state
-        .artifacts
-        .get(output.artifact.content_hash.as_str())
-        .await?;
-    let text = std::str::from_utf8(&bytes).map_err(|e| {
-        ApiError::Internal(format!("selection {}: {e}", output.artifact.id.as_str()))
-    })?;
-    let decision = parse(text).map_err(|e| {
+    let decision = read_selection(state, &output.artifact).await?;
+    Ok(Some((decision, output.artifact.id)))
+}
+
+/// The SelectionDecision `artifact` holds, read through the contract.
+async fn read_selection(
+    state: &AppState,
+    artifact: &sprisk_contracts::Artifact,
+) -> Result<sprisk_contracts::SelectionDecision, ApiError> {
+    let bytes = state.artifacts.get(artifact.content_hash.as_str()).await?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|e| ApiError::Internal(format!("selection {}: {e}", artifact.id.as_str())))?;
+    parse(text).map_err(|e| {
         ApiError::Internal(format!(
             "selection {} is not a SelectionDecision: {e}",
-            output.artifact.id.as_str()
+            artifact.id.as_str()
         ))
-    })?;
-    Ok(Some((decision, output.artifact.id)))
+    })
 }
 
 /// The version that cross-validates a shortlist proposal's models on its flow's train rows

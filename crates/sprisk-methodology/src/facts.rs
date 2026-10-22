@@ -8,6 +8,9 @@ pub const FACTS: &[&str] = &[
     // origin among them, so one inferred criterion makes the whole bar ask.
     "question.acceptance_criteria",
     "question.interpretability",
+    // The success bar (ADR-0059): its metric and score, the score as a decimal.
+    "question.success_bar.metric",
+    "question.success_bar.score",
     "question.target",
     "question.task",
     "question.unit_of_analysis",
@@ -58,6 +61,16 @@ pub const FACTS: &[&str] = &[
     "input.column.*.leading_zero_values",
     // The most common values of a text column that do not read as numbers (dataset text).
     "input.column.*.unconverted",
+    // Cross-validation results of the step's own model selection (ADR-0059), train rows only:
+    // the metric, the step's model's mean fold score, the baseline's, whether the model beats
+    // the baseline by the selection's test and whether the selection chose it (each yes or
+    // no), and how many decided looks the flow's family of versions has taken.
+    "cv.metric",
+    "cv.score",
+    "cv.baseline_score",
+    "cv.beats_baseline",
+    "cv.selected",
+    "cv.looks",
 ];
 
 /// Whether `name`, a fact or a pattern from a rule's `reads`, is one Rust sends.
@@ -85,4 +98,10 @@ pub fn needs_input_rows<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
 /// Whether a rule reading `reads` needs the train rows measured.
 pub fn needs_train_rows<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
     reads.any(|r| r == "rows" || r.starts_with("column.") || r.starts_with("target."))
+}
+
+/// Whether a rule reading `reads` needs the cross-validation results of its step's model
+/// selection (ADR-0059).
+pub fn needs_results<'a>(mut reads: impl Iterator<Item = &'a str>) -> bool {
+    reads.any(|r| r.starts_with("cv."))
 }
