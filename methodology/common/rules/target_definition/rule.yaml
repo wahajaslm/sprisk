@@ -1,0 +1,77 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.target_definition@1.0.0
+name: "Target available, or derived"
+stage: question
+decides: question.target_definition
+status: draft
+
+provenance:
+  standard: "Inter-rater agreement for built labels (Cohen 1960; Landis & Koch 1977)"
+  citation: "ref-v3 1.2; Cohen (1960) A coefficient of agreement for nominal scales, Educational and Psychological Measurement 20(1):37-46; Landis & Koch (1977) Biometrics 33:159-174; course: knowledge/Sprint_5_-_Machine_learning_24/Methodology_in_Data_Science/methodologie_projet_etape_1_EN.ipynb"
+  pitfall: "A label built from a rule can encode the answer, or a proxy for it, and the model then learns the rule, not the outcome. sprisk never makes up a target (rule 8)."
+  corner_cases:
+    - "No target at all: the question goes to the unsupervised lane. That is a choice, not a failure."
+    - "A built label is checked against a sample a person labels by hand. Columns used to build it are left out of the features."
+    - "A target measured after the prediction time is fine; a feature measured after it is not (split.point_in_time_policy)."
+
+observes:
+  - fact: question.target
+    description: "The target column, when the person names one"
+    required: false
+  - fact: question.target_rule
+    description: "How to build the label, when no column holds it"
+    required: false
+
+policy_thresholds:
+  # Cohen's kappa between the built label and a person's labels on a sample. 0.7 sits in
+  # Landis & Koch's "substantial" band (0.61-0.80); the map sets it there.
+  min_label_agreement_kappa: 0.7
+  # Rows a person labels to check a built label. Project convention: at 200 rows kappa's
+  # 95% interval is about +/-0.1, enough to tell 0.7 from chance-level agreement, not to
+  # tell 0.7 from 0.75. The person may label more.
+  label_check_sample_rows: 200
+
+alternatives:
+  - id: column
+    label: "Use the named column"
+    description: "The person names the target column."
+    condition: "question.target is given and present in the data"
+    rationale: "The plain case: the outcome is recorded."
+    action:
+      type: pass_through
+
+  - id: derived
+    label: "Build the label, then check it"
+    description: "Build the label from the person's rule, then compare it with a hand-labelled sample drawn from train rows. Below the kappa bar, the rule goes back to the person."
+    condition: "question.target_rule is given"
+    rationale: "A built label is a measurement and needs a check of its own."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.question.derive_target@1.0.0
+    settings_schema:
+      type: object
+      properties:
+        sample_rows: { type: integer, minimum: 50, default: 200 }
+
+  - id: no_target
+    label: "No target: unsupervised"
+    description: "The person confirms there is no outcome to predict. The flow takes the unsupervised lane."
+    condition: "the person confirms no target"
+    rationale: "Clustering and anomaly work need no label. Inventing one would break rule 8."
+    action:
+      type: pass_through
+
+  - id: ask
+    label: "Ask for the target"
+    description: "Ask which column is the outcome, how to build it, or whether there is none."
+    condition: "neither question.target nor question.target_rule is given"
+    rationale: "Only a person knows what the outcome is."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "target_not_stated"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: a built label carries its kappa against the hand sample, and the columns used to build it feed no model. The derive step needs a new operator (sprisk.question.derive_target, not built)."

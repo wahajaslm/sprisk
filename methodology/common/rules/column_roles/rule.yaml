@@ -1,0 +1,93 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.column_roles@1.0.0
+name: "Column roles"
+stage: data
+decides: data.column_roles
+status: draft
+
+provenance:
+  standard: "Schema checks for ML data (Breck et al. 2019)"
+  citation: "Breck et al. (2019) Data Validation for Machine Learning, SysML"
+  pitfall: "A postal code read as a number gets scaled and averaged; an ID read as a feature lets the model memorise rows."
+  corner_cases:
+    - "Codes stored as numbers (postal codes, product codes) are labels. The person confirms."
+    - "Roles come from structure only (distinct counts, parsing), so they may be measured on all rows. Nothing about the target is read."
+    - "Untrusted text in column names is read as data only."
+    - "An all-unique decimal column (amounts, lab values, timestamps) is a measurement, not an identifier. Only whole-number or text columns can be identifiers."
+    - "Routes are tried in this order: date, identifier, then the rest, so an all-unique date column stays a date."
+
+observes:
+  - profile: column.distinct_ratio
+    description: "Distinct values over rows, per column"
+    required: true
+  - profile: column.date_parse_share
+    description: "Share of values that parse as dates"
+    required: true
+  - profile: column.mean_text_length
+    description: "Mean characters per text value"
+    required: true
+
+policy_thresholds:
+  # Distinct ratio at which a column is an identifier. From the map row: every value unique.
+  id_distinct_ratio: 1.0
+  # Share of values that must parse as dates. Project convention: allows a few bad entries,
+  # which the wrong-types rule then handles.
+  date_parse_share: 0.95
+  # Mean length past which text is free text, not a category. Project convention: longer than
+  # a typical label or short name.
+  free_text_min_length: 30
+
+alternatives:
+  - id: date
+    label: "Date"
+    description: "Values parse as dates."
+    condition: "column.date_parse_share >= date_parse_share"
+    rationale: "Dates feed the split and date parts."
+    action:
+      type: pass_through
+
+  - id: identifier
+    label: "Identifier"
+    description: "Every value is unique in a whole-number or text column. Kept for joins and grouping, never a feature."
+    condition: "not a date AND (whole-number or text column) AND column.distinct_ratio >= id_distinct_ratio"
+    rationale: "A unique code per row carries no pattern, only identity. A unique decimal is a measurement and stays a number."
+    action:
+      type: pass_through
+
+  - id: free_text
+    label: "Free text"
+    description: "Long, varied strings."
+    condition: "text column AND column.mean_text_length > free_text_min_length"
+    rationale: "Free text needs its own representation (features.text_representation)."
+    action:
+      type: pass_through
+
+  - id: category
+    label: "Category"
+    description: "Short text with repeated values."
+    condition: "text column AND column.mean_text_length <= free_text_min_length"
+    rationale: "Categories are encoded later (features.encoding_strategy)."
+    action:
+      type: pass_through
+
+  - id: number
+    label: "Number"
+    description: "Numeric values that are quantities."
+    condition: "numeric column AND not number-coded AND not an identifier (all-unique decimals land here)"
+    rationale: "Quantities may be scaled and transformed."
+    action:
+      type: pass_through
+
+  - id: ask_number_coded
+    label: "Ask: number or code?"
+    description: "Numbers that look like codes (fixed width, leading zeros, no order). Ask the person."
+    condition: "numeric column that looks like a code"
+    rationale: "Only a person knows whether 75001 is an amount or a place."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "number_coded_label_needs_confirmation"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: an identifier column feeds no model."

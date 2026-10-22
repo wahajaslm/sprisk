@@ -1,0 +1,71 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.join_sources@1.0.0
+name: "Join sources"
+stage: data
+decides: data.join_sources
+status: draft
+
+provenance:
+  standard: "Data validation for production ML (Polyzotis et al. 2018; Breck et al. 2019)"
+  citation: "Polyzotis, Roy, Whang & Zinkevich (2018) Data Lifecycle Challenges in Production Machine Learning, SIGMOD Record 47(2); Breck et al. (2019) Data Validation for Machine Learning, SysML"
+  pitfall: "A one-to-many join quietly copies rows, which changes the unit of prediction and can put copies of one entity in train and test."
+  corner_cases:
+    - "Key values that differ only in case or spaces look unmatched. Match counts are shown before joining."
+    - "A joined table with values recorded after the prediction time leaks the future (split.point_in_time_policy)."
+    - "Joins only reshape rows; nothing is fitted, so they run before the split."
+
+observes:
+  - fact: question.sources
+    description: "The tables the question uses"
+    required: true
+  - profile: join.key_match_share
+    description: "Share of left rows whose key finds a match, per candidate key"
+    required: false
+  - profile: join.right_rows_per_key_max
+    description: "Most right rows any key matches"
+    required: false
+
+policy_thresholds:
+  # Share of rows whose key must match for a join to be proposed without asking. Project
+  # convention: a lower share usually means the wrong key or a format mismatch.
+  min_key_match_share: 0.95
+
+alternatives:
+  - id: single_source
+    label: "One source"
+    description: "Only one table. Nothing to join."
+    condition: "question.sources has one table"
+    rationale: "No join, no risk."
+    action:
+      type: pass_through
+
+  - id: join_on_key
+    label: "Join on the shared key"
+    description: "One shared key, matching well, at most one right row per key. Join before the split."
+    condition: "one candidate key AND join.key_match_share >= min_key_match_share AND join.right_rows_per_key_max == 1"
+    rationale: "A clean many-to-one join keeps the row count and the unit."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.io.join@1.0.0
+      params:
+        key: "{settings.key}"
+    settings_schema:
+      type: object
+      required: [key]
+      properties:
+        key: { type: string }
+
+  - id: ask
+    label: "Ask which key and how"
+    description: "Several keys, a low match share, or many right rows per key. Ask the person."
+    condition: "otherwise"
+    rationale: "Which rows belong together is a fact about the business, not the data."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "join_key_ambiguous"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: a join does not change the row count unless the person confirmed it. The join step needs a new operator (sprisk.io.join, not built)."

@@ -75,7 +75,7 @@ fn refused(manifest: &str) -> String {
 #[test]
 fn every_rule_in_the_repo_loads_with_its_manifest_as_source() {
     let catalog = RuleCatalog::load_dir(&repo_methodology()).unwrap();
-    assert_eq!(catalog.rules().count(), 33);
+    assert_eq!(catalog.rules().count(), 47);
 
     let source = catalog
         .source("methodology.supervised.multicollinearity@1.0.0")

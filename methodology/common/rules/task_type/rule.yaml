@@ -1,0 +1,80 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.task_type@1.0.0
+name: "Task type"
+stage: question
+decides: question.task_type
+status: draft
+
+provenance:
+  standard: "REFORMS reporting standard, module 1 (Kapoor et al. 2024)"
+  citation: "Kapoor et al. (2024) REFORMS: Consensus-based recommendations for machine-learning-based science, Science Advances 10(18); ref-v3 1.3"
+  pitfall: "An integer target read as a number becomes regression when it is really ordered classes or counts, and the metric and models then answer a different question."
+  corner_cases:
+    - "Integers with few values may be classes, ordered grades or counts. The person confirms."
+    - "Several labels per row (multi-label), time to event (survival) and quantiles are subtypes the person names."
+    - "The type is measured from the target's values only, never from how features relate to it."
+
+observes:
+  - fact: question.target
+    description: "The target column"
+    required: true
+  - profile: target.distinct_count
+    description: "Distinct target values"
+    required: true
+  - profile: target.is_numeric
+    description: "Whether the target converts to numbers"
+    required: true
+
+policy_thresholds:
+  # Most distinct values a target can have and still be read as classes. Project convention:
+  # past this, a numeric target is read as a quantity. It is a default; the person confirms.
+  max_classes: 20
+
+alternatives:
+  - id: binary
+    label: "Binary classification"
+    description: "The target has two values."
+    condition: "target.distinct_count == 2"
+    rationale: "Two values means two classes."
+    action:
+      type: pass_through
+
+  - id: multiclass
+    label: "Multiclass classification"
+    description: "The target has a few text values."
+    condition: "target.distinct_count > 2 AND not target.is_numeric"
+    rationale: "A few named values are classes."
+    action:
+      type: pass_through
+
+  - id: regression
+    label: "Regression"
+    description: "The target is a number with many values."
+    condition: "target.is_numeric AND target.distinct_count > max_classes"
+    rationale: "Many numeric values are a quantity."
+    action:
+      type: pass_through
+
+  - id: ask_subtype
+    label: "Ask: ordinal, count or other subtype"
+    description: "A numeric target with few values, or a subtype the data cannot show (multi-label, survival, quantile)."
+    condition: "target.is_numeric AND 2 < target.distinct_count <= max_classes"
+    rationale: "Grades 1-5 and counts 0-5 look the same; only the person knows which it is."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "task_subtype_needs_confirmation"
+
+  - id: constant_target
+    label: "Target has one value"
+    description: "Every row has the same target. There is nothing to predict."
+    condition: "target.distinct_count <= 1"
+    rationale: "A constant target cannot be learned. Ask the person to check the target or the data."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "constant_target"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: the metric and model steps match the confirmed task type."

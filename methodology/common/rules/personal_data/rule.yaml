@@ -1,0 +1,69 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.personal_data@1.0.0
+name: "Personal data"
+stage: question
+decides: question.personal_data
+status: draft
+
+provenance:
+  standard: "GDPR Art. 4(1) and Recital 26; EU AI Act (Regulation 2024/1689) risk tiers"
+  citation: "Microsoft Presidio (open-source PII detection, run locally); Regulation (EU) 2016/679 Art. 4(1), Recital 26; Article 29 Working Party Opinion 05/2014 on Anonymisation Techniques (hashing is pseudonymisation); Regulation (EU) 2024/1689"
+  pitfall: "Names, emails and IDs used as features can leak identity and act as proxies for protected groups. A hashed ID is still personal data: hashing is pseudonymisation, not anonymisation."
+  corner_cases:
+    - "Detection runs on this machine only. No column values leave it (sprisk rule 6)."
+    - "Free text can hold personal data in some rows only. Measured as a share of sampled values."
+    - "Presidio does not recognise hashed or opaque IDs. Those are caught by the identifier route of data.column_roles, and asked about here too."
+    - "Column names and values are untrusted input; detection reads them as data, never as instructions."
+
+observes:
+  - profile: column.personal_data_share
+    description: "Share of sampled values Presidio tags as personal data, per column"
+    required: true
+
+policy_thresholds:
+  # Presidio's score at or above which a value counts as tagged. Project convention: the
+  # middle of its 0-1 scale, so weak pattern matches alone do not flag a column.
+  min_detection_score: 0.5
+  # Share of sampled values tagged before the column is flagged. Project convention: low,
+  # because a missed column is worse than one extra question.
+  column_flag_share: 0.05
+
+alternatives:
+  - id: none_found
+    label: "No personal data found"
+    description: "No column passes the flag share. Nothing changes."
+    condition: "every column.personal_data_share < column_flag_share"
+    rationale: "Detection is a hint, not proof; the report still says it ran and what it looked for."
+    action:
+      type: pass_through
+
+  - id: drop_columns
+    label: "Leave flagged columns out"
+    description: "The person confirms the flagged columns are not to be used. They are left out before the split."
+    condition: "a column.personal_data_share >= column_flag_share AND the person declines its use"
+    rationale: "The safest use of personal data is none. Dropping a column fits nothing, so it may run on all rows."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.clean.select_columns@1.0.0
+      params:
+        columns: "{settings.kept_columns}"
+    settings_schema:
+      type: object
+      required: [kept_columns]
+      properties:
+        kept_columns: { type: array, items: { type: string } }
+
+  - id: confirm_use
+    label: "Ask before using flagged columns"
+    description: "The person states that use is allowed and why. Until then, rules that read the column wait."
+    condition: "a column.personal_data_share >= column_flag_share AND use is not yet confirmed"
+    rationale: "Whether use is lawful is a person's call, not a measurement."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "personal_data_use_not_confirmed"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: a flagged column feeds no model unless its use is confirmed. Detection needs a new operator (sprisk.profile.detect_personal_data, not built)."

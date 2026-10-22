@@ -1,0 +1,56 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.error_costs@1.0.0
+name: "Cost of each error"
+stage: question
+decides: question.error_costs
+status: draft
+
+provenance:
+  standard: "Elkan (2001) The Foundations of Cost-Sensitive Learning"
+  citation: "Elkan (2001) Proceedings of IJCAI 2001, 973-978"
+  pitfall: "With unstated costs, the threshold defaults to 0.5. That is right only when a false alarm and a miss cost the same and the probabilities are calibrated."
+  corner_cases:
+    - "Costs are in the person's units. Only their ratio changes the threshold."
+    - "A benefit for a right call is entered as a negative cost."
+    - "The decision threshold rule (ADR-0053) reads these costs; it waits until they are settled."
+
+observes:
+  - fact: question.costs
+    description: "Cost of each kind of error, as the person states it"
+    required: false
+  - fact: question.task_type
+    description: "Costs apply to classification only"
+    required: true
+
+policy_thresholds: {}
+
+alternatives:
+  - id: stated
+    label: "Record the stated costs"
+    description: "Store the cost of each error on the question."
+    condition: "question.costs is given"
+    rationale: "Stated costs let the threshold minimise expected cost."
+    action:
+      type: pass_through
+
+  - id: equal
+    label: "Costs stated as equal"
+    description: "The person says every error costs the same."
+    condition: "the person states equal costs"
+    rationale: "Equal costs are a choice the person makes, not a default sprisk assumes."
+    action:
+      type: pass_through
+
+  - id: ask
+    label: "Ask for the costs"
+    description: "Ask what a false alarm and a miss cost."
+    condition: "question.costs is missing AND the task is classification"
+    rationale: "Costs come from the business, not the data."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "error_costs_not_stated"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: a threshold set from costs cites the costs it used."

@@ -1,0 +1,59 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.exact_duplicates@1.0.0
+name: "Exact duplicates"
+stage: data
+decides: data.exact_duplicates
+status: draft
+
+provenance:
+  standard: "Leakage taxonomy: duplicates across train and test (Kapoor & Narayanan 2023)"
+  citation: "Kapoor & Narayanan (2023) Leakage and the reproducibility crisis in machine-learning-based science, Patterns 4(9)"
+  pitfall: "A row copied into both train and test is scored on a row the model has seen. The score goes up and means less."
+  corner_cases:
+    - "A row hash fits nothing, so duplicates may be removed on all rows before the split."
+    - "Some repeats are real (two identical readings). Many duplicates ask before removal."
+    - "Duplicates that differ only in an ID column are not exact; they are the key-duplicates rule."
+
+observes:
+  - profile: rows.duplicate_share
+    description: "Share of rows that repeat an earlier row in every column"
+    required: true
+
+policy_thresholds:
+  # Duplicate share above which removal asks first. Project convention: a few copies are
+  # load errors; many may be real repeated observations.
+  ask_above_share: 0.05
+
+alternatives:
+  - id: none
+    label: "No duplicates"
+    description: "No row repeats."
+    condition: "rows.duplicate_share == 0"
+    rationale: "No change."
+    action:
+      type: pass_through
+
+  - id: drop
+    label: "Drop exact duplicates before the split"
+    description: "Keep the first copy of each row."
+    condition: "0 < rows.duplicate_share <= ask_above_share"
+    rationale: "So no row is in train and test at once."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.clean.drop_duplicates@1.0.0
+      params: {}
+
+  - id: ask
+    label: "Ask: copies or real repeats?"
+    description: "Many duplicates. Ask whether they are load errors or real repeats."
+    condition: "rows.duplicate_share > ask_above_share"
+    rationale: "Dropping real repeats changes class shares and the unit of prediction."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "many_exact_duplicates"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: after the split, no row hash is in both train and test."

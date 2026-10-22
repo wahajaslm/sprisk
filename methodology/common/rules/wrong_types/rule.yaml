@@ -1,0 +1,71 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.wrong_types@1.0.0
+name: "Wrong types"
+stage: data
+decides: data.type_repair
+status: draft
+
+provenance:
+  standard: "Schema checks for ML data (Breck et al. 2019)"
+  citation: "Breck et al. (2019) Data Validation for Machine Learning, SysML"
+  pitfall: "Numbers stored as text are treated as categories, one per distinct value; dates stored as text cannot be split on."
+  corner_cases:
+    - "Runs after missing markers, so known placeholders are already missing."
+    - "Values that still fail after casting become missing and are counted in the report."
+    - "Casting fits nothing, so it runs before the split."
+
+observes:
+  - profile: column.numeric_share
+    description: "Share of a text column's values that convert to numbers"
+    required: true
+  - profile: column.date_parse_share
+    description: "Share that parse as dates"
+    required: true
+
+policy_thresholds:
+  # Share of values that must convert before a column is cast. Project convention: the same
+  # bar as missing markers, so the two rules agree on what "mostly numbers" means.
+  min_convert_share: 0.95
+  # Below this share a column is plain text, not a broken number column. Project convention:
+  # fewer than half the values converting means numbers are the exception.
+  mixed_min_share: 0.5
+
+alternatives:
+  - id: keep
+    label: "Types are right"
+    description: "No column is mostly numbers or dates stored as text."
+    condition: "no text column passes min_convert_share"
+    rationale: "No change."
+    action:
+      type: pass_through
+
+  - id: cast
+    label: "Cast to number or date"
+    description: "Cast the column. Values that fail become missing and are counted."
+    condition: "column.numeric_share >= min_convert_share OR column.date_parse_share >= min_convert_share"
+    rationale: "Almost every value converts, so the column is a number or a date."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.clean.cast_types@1.0.0
+      params:
+        columns: "{settings.columns}"
+    settings_schema:
+      type: object
+      required: [columns]
+      properties:
+        columns: { type: array, items: { type: string } }
+
+  - id: ask
+    label: "Ask about a mixed column"
+    description: "Partly converts, below the bar. Ask whether it is text or a broken number column."
+    condition: "mixed_min_share <= column.numeric_share < min_convert_share"
+    rationale: "A half-numeric column may be codes or dirty numbers; the person knows which."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "mixed_type_column"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: each cast reports how many values became missing. The cast step needs a new operator (sprisk.clean.cast_types, not built)."

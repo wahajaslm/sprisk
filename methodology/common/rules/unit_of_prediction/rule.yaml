@@ -1,0 +1,76 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.unit_of_prediction@1.0.0
+name: "Unit of prediction"
+stage: question
+decides: question.unit_of_prediction
+status: draft
+
+provenance:
+  standard: "TRIPOD+AI reporting guideline (Collins et al. 2024)"
+  citation: "Collins et al. (2024) TRIPOD+AI statement, BMJ 385:e078378"
+  pitfall: "When there are many rows per patient, customer or machine, a row split puts the same entity in train and test. The score then measures memory of the entity, not prediction for a new one."
+  corner_cases:
+    - "Rows aggregated to the unit must use only rows before the prediction time."
+    - "Keeping many rows per entity is allowed, but then the split groups by entity (split.method, group route)."
+
+observes:
+  - fact: question.unit
+    description: "What one prediction is about, e.g. one customer per month"
+    required: false
+  - profile: entity.rows_per_entity_max
+    description: "Most rows any value of the named entity column has"
+    required: false
+
+policy_thresholds: {}
+
+alternatives:
+  - id: one_row_per_unit
+    label: "One row per unit already"
+    description: "Each unit has one row. Nothing changes."
+    condition: "question.unit is given AND entity.rows_per_entity_max == 1"
+    rationale: "The table already matches the question."
+    action:
+      type: pass_through
+
+  - id: aggregate
+    label: "Aggregate rows to the unit"
+    description: "Combine each unit's rows into one before the split, using the summaries the person picks."
+    condition: "question.unit is given AND entity.rows_per_entity_max > 1 AND the person picks aggregation"
+    rationale: "One row per unit makes the split and the score mean what the question asks."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.clean.aggregate_rows@1.0.0
+      params:
+        by: "{settings.unit_column}"
+        time_column: "{settings.time_column}"
+        as_of: "{settings.as_of}"
+    settings_schema:
+      type: object
+      required: [unit_column]
+      properties:
+        unit_column: { type: string }
+        time_column: { type: string, description: "Required when the data has a time column." }
+        as_of: { type: string, description: "Prediction time; only rows before it are aggregated." }
+
+  - id: keep_rows_group_split
+    label: "Keep rows, split by unit"
+    description: "Keep many rows per unit, and set the question's entity column to the unit, so the split groups by it."
+    condition: "question.unit is given AND entity.rows_per_entity_max > 1 AND the person keeps the rows"
+    rationale: "Some questions predict per event, not per unit. Grouping still keeps a unit on one side. The split rule reads question.entity_column."
+    action:
+      type: pass_through
+
+  - id: ask
+    label: "Ask what one row stands for"
+    description: "Ask the person what one prediction is about."
+    condition: "question.unit is missing"
+    rationale: "The data cannot say which grouping the question means."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "unit_of_prediction_not_stated"
+
+verification:
+  check_id: methodology.supervised.data_split@1.0.0
+  invariant: "When rows repeat a unit, the split is a group split on question.entity_column. Partial: the split design check compares settings only; it reads no rows, so it cannot show that no unit is on both sides. Aggregation needs a new operator (sprisk.clean.aggregate_rows, not built) that refuses rows after as_of."

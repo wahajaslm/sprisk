@@ -1,0 +1,73 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.missing_markers@1.0.0
+name: "Missing markers"
+stage: data
+decides: data.missing_markers
+status: draft
+
+provenance:
+  standard: "Schema checks for ML data (Breck et al. 2019)"
+  citation: "Breck et al. (2019) Data Validation for Machine Learning, SysML"
+  pitfall: "A '?' or '-1' standing for missing turns a number column into text, or worse, into a real value the model trusts."
+  corner_cases:
+    - "'NA' can be a value (Namibia's country code). Markers that may be real values ask."
+    - "A sentinel like -1 or 999 inside a numeric column only shows as a spike; it asks, never auto-marks."
+    - "Marking replaces fixed strings and fits nothing, so it runs before the split."
+
+observes:
+  - profile: column.numeric_share
+    description: "Share of a text column's values that convert to numbers"
+    required: true
+  - profile: column.top_non_numeric_values
+    description: "The most common values that do not convert"
+    required: true
+
+policy_thresholds:
+  # A text column is "numbers with markers" when at least this share converts. Project
+  # convention: most values are numbers, so the rest are likely markers.
+  min_numeric_share: 0.95
+  # Most distinct non-converting values that can be markers. Project convention: markers
+  # are few and repeated; many distinct failures are data errors (wrong types rule).
+  max_marker_values: 5
+
+alternatives:
+  - id: none
+    label: "No markers"
+    description: "Nothing to mark."
+    condition: "no column has non-converting values, or a column is plainly text"
+    rationale: "No change."
+    action:
+      type: pass_through
+
+  - id: mark
+    label: "Mark as missing"
+    description: "Replace the few non-converting values with missing, before the split."
+    condition: "column.numeric_share >= min_numeric_share AND count(top_non_numeric_values) <= max_marker_values AND none could be a real value"
+    rationale: "The values are placeholders, so missing is their true meaning."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.clean.mark_missing@1.0.0
+      params:
+        columns: "{settings.columns}"
+        values: "{settings.values}"
+    settings_schema:
+      type: object
+      required: [columns, values]
+      properties:
+        columns: { type: array, items: { type: string } }
+        values: { type: array, items: { type: string } }
+
+  - id: ask
+    label: "Ask about possible markers"
+    description: "A candidate marker may be a real value ('NA', '0', '-1'). Ask the person."
+    condition: "a candidate marker could be a real value"
+    rationale: "The data cannot tell a placeholder from a value that looks like one."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "missing_marker_may_be_a_value"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: the marked values are fixed strings the person or this rule named, never learned from the target."

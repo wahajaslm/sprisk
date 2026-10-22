@@ -1,0 +1,67 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.key_duplicates@1.0.0
+name: "Duplicates by key"
+stage: data
+decides: data.key_duplicates
+status: draft
+
+provenance:
+  standard: "Record linkage and deduplication (Christen 2012)"
+  citation: "Christen (2012) Data Matching: Concepts and Techniques for Record Linkage, Entity Resolution, and Duplicate Detection, Springer"
+  pitfall: "Picking which conflicting row to keep by looking at the target, or at what scores best, leaks the answer into the data."
+  corner_cases:
+    - "Rows that share a key but differ elsewhere may be updates over time (keep latest) or conflicting records (ask)."
+    - "The choice is made from the rows' own fields (date, source), never from the target. order_by naming the target is refused when the rule decides, not only checked later."
+    - "'Keep latest' keeps the latest row known at the prediction time, not a row recorded after it."
+
+observes:
+  - fact: question.key
+    description: "The column that should be unique per unit"
+    required: false
+  - profile: key.duplicate_share
+    description: "Share of key values with more than one row"
+    required: false
+
+policy_thresholds: {}
+
+alternatives:
+  - id: unique
+    label: "Key is unique"
+    description: "Each key has one row."
+    condition: "key.duplicate_share == 0"
+    rationale: "No change."
+    action:
+      type: pass_through
+
+  - id: keep_by_rule
+    label: "Keep one row per key, by the person's rule"
+    description: "The person picks the rule, such as the latest row by a date column. Applied before the split."
+    condition: "key.duplicate_share > 0 AND the person gave a keep rule AND order_by is not the target"
+    rationale: "A fixed rule from the person is repeatable and blind to the target."
+    action:
+      type: insert_step
+      placement: before_split
+      operator: sprisk.clean.keep_one_per_key@1.0.0
+      params:
+        key: "{settings.key}"
+        order_by: "{settings.order_by}"
+    settings_schema:
+      type: object
+      required: [key, order_by]
+      properties:
+        key: { type: string }
+        order_by: { type: string }
+
+  - id: ask
+    label: "Ask which row to keep"
+    description: "Keys repeat and no keep rule is given."
+    condition: "key.duplicate_share > 0 AND no keep rule"
+    rationale: "Which record is right is a business fact."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "key_duplicates_need_keep_rule"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: the keep rule reads no target column. The step needs a new operator (sprisk.clean.keep_one_per_key, not built)."

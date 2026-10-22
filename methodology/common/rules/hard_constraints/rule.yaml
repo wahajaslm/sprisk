@@ -1,0 +1,45 @@
+schema_version: sprisk.methodology_rule/v1
+id: methodology.common.hard_constraints@1.0.0
+name: "Hard constraints"
+stage: question
+decides: question.hard_constraints
+status: draft
+
+provenance:
+  standard: "Rudin (2019) on interpretable models for high-stakes decisions"
+  citation: "ref-v3 0.4; Rudin (2019) Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead, Nature Machine Intelligence 1:206-215"
+  pitfall: "Constraints found after model selection throw away the work: a model that wins on score may be one the person cannot use."
+  corner_cases:
+    - "Interpretability is high, medium or low. High limits the models later (see modeling.interpretability_requirement)."
+    - "Latency and budget limits are stated in the person's units; they rule models out, they do not rank them."
+    - "Fairness limits name groups and a bound; they are checked in evaluation (governance.fairness_policy)."
+
+observes:
+  - fact: question.constraints
+    description: "Interpretability level, latency, budget and fairness limits, as stated"
+    required: false
+
+policy_thresholds: {}
+
+alternatives:
+  - id: stated
+    label: "Record the stated constraints"
+    description: "Store each constraint on the question so later rules read it."
+    condition: "question.constraints is given, even as 'none'"
+    rationale: "Constraints settle choices before scores are seen."
+    action:
+      type: pass_through
+
+  - id: ask
+    label: "Ask for the constraints"
+    description: "Ask for the interpretability level, latency, budget and fairness limits."
+    condition: "question.constraints is missing"
+    rationale: "Only a person knows how the model will be used. Silence is not the same as 'no constraints'."
+    action:
+      type: emit_methodology_limitation
+      params:
+        reason: "hard_constraints_not_stated"
+
+verification:
+  check_id: none
+  invariant: "No Gate B check exists yet. Planned: a model outside the stated interpretability level is never selected."
