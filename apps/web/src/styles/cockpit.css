@@ -1852,7 +1852,7 @@ p { margin: 0; }
 }
 
 .deploy-empty-title {
-  font-size: var(--fs-18);
+  font-size: var(--fs-17);
   font-weight: 500;
   color: var(--text-strong);
   margin: 0;
@@ -3614,7 +3614,7 @@ p { margin: 0; }
   gap: 16px;
 }
 .mth-side .dsx-title h1 {
-  font-size: var(--fs-18);
+  font-size: var(--fs-17);
   font-weight: 500;
   color: var(--text-strong);
   margin: 0 0 6px;
