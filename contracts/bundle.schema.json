@@ -1544,7 +1544,7 @@
     },
     "ConceptSet": {
       "title": "ConceptSet",
-      "description": "A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for.",
+      "description": "A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for. Served by GET /concepts with the concepts of every loaded pack.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1715,6 +1715,49 @@
           }
         }
       }
+    },
+    "EvidenceSet": {
+      "title": "EvidenceSet",
+      "description": "What one evidence producer measured, written to its output port named evidence (ADR-0063): each kind it produces, with each field's value. The operator's produces says which kinds and fields, of which types; the control plane checks the file against it when the step's outputs are saved.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/EvidenceFields"
+      }
+    },
+    "EvidenceFields": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/EvidenceValue"
+      }
+    },
+    "EvidenceValue": {
+      "description": "A field's value: a number, a yes or no, a short text, or a list of short texts (string_list).",
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
     },
     "EvidenceFieldType": {
       "type": "string",
@@ -3431,7 +3474,7 @@
         },
         "produces": {
           "type": "object",
-          "description": "The evidence the step measures, by kind, with its fields (ADR-0063). Absent: none.",
+          "description": "The evidence the step measures, by kind, with its fields (ADR-0063). The step writes it as one EvidenceSet to its output named evidence, and needs an attach. Absent: none.",
           "propertyNames": {
             "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
           },

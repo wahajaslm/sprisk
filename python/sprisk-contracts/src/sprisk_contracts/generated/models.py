@@ -448,6 +448,15 @@ class OperatorScope(StrEnum):
     train = "train"
 
 
+class EvidenceValue(RootModel[int | float | bool | str | list[str]]):
+    root: Annotated[
+        int | float | bool | str | list[str],
+        Field(
+            description="A field's value: a number, a yes or no, a short text, or a list of short texts (string_list)."
+        ),
+    ]
+
+
 class EvidenceFieldType(StrEnum):
     integer = "integer"
     number = "number"
@@ -1761,6 +1770,14 @@ class EvidenceProduced(StrictModel):
     ]
 
 
+class EvidenceFields(
+    RootModel[
+        dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], EvidenceValue]
+    ]
+):
+    root: dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], EvidenceValue]
+
+
 class BindingSetBy(RootModel[BindingStated | BindingByMethod]):
     root: Annotated[
         BindingStated | BindingByMethod,
@@ -2655,6 +2672,26 @@ class Binding(StrictModel):
     set_by: BindingSetBy
 
 
+class EvidenceSet(
+    RootModel[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")],
+            EvidenceFields,
+        ]
+    ]
+):
+    root: Annotated[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")],
+            EvidenceFields,
+        ],
+        Field(
+            description="What one evidence producer measured, written to its output port named evidence (ADR-0063): each kind it produces, with each field's value. The operator's produces says which kinds and fields, of which types; the control plane checks the file against it when the step's outputs are saved.",
+            title="EvidenceSet",
+        ),
+    ]
+
+
 class RuleDecision(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2863,7 +2900,7 @@ class Operator(StrictModel):
         ]
         | None,
         Field(
-            description="The evidence the step measures, by kind, with its fields (ADR-0063). Absent: none."
+            description="The evidence the step measures, by kind, with its fields (ADR-0063). The step writes it as one EvidenceSet to its output named evidence, and needs an attach. Absent: none."
         ),
     ] = None
     inputs: list[InputPort]

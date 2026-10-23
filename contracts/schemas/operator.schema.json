@@ -69,7 +69,7 @@
         },
         "produces": {
           "type": "object",
-          "description": "The evidence the step measures, by kind, with its fields (ADR-0063). Absent: none.",
+          "description": "The evidence the step measures, by kind, with its fields (ADR-0063). The step writes it as one EvidenceSet to its output named evidence, and needs an attach. Absent: none.",
           "propertyNames": { "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
           "additionalProperties": { "$ref": "#/$defs/EvidenceProduced" }
         },

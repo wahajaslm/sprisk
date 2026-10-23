@@ -19,6 +19,7 @@ from sprisk_contracts import (
     CodeSplit,
     CodeSplitRequest,
     ConceptSet,
+    EvidenceSet,
     CreateRun,
     CreateStudy,
     CreateWalk,
@@ -122,6 +123,7 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (NotebookKernelRequest, "notebook_kernel_request"),
     (Method, "method"),
     (ConceptSet, "concept_set"),
+    (EvidenceSet, "evidence_set"),
     (Binding, "binding"),
 ]
 

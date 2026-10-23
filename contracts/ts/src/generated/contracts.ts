@@ -205,6 +205,13 @@ export type OperatorScope = "all" | "train";
  */
 export type EvidenceFieldType = "integer" | "number" | "boolean" | "string" | "string_list";
 /**
+ * A field's value: a number, a yes or no, a short text, or a list of short texts (string_list).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceValue".
+ */
+export type EvidenceValue = number | boolean | string | string[];
+/**
  * methodology.<pack>.<rule>@<semver>
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1354,7 +1361,7 @@ export interface Params2 {
   [k: string]: unknown;
 }
 /**
- * A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for.
+ * A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for. Served by GET /concepts with the concepts of every loaded pack.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ConceptSet".
@@ -1434,6 +1441,22 @@ export interface EvidenceProduced {
   fields: {
     [k: string]: EvidenceFieldType;
   };
+}
+/**
+ * What one evidence producer measured, written to its output port named evidence (ADR-0063): each kind it produces, with each field's value. The operator's produces says which kinds and fields, of which types; the control plane checks the file against it when the step's outputs are saved.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceSet".
+ */
+export interface EvidenceSet {
+  [k: string]: EvidenceFields;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceFields".
+ */
+export interface EvidenceFields {
+  [k: string]: EvidenceValue;
 }
 /**
  * What a rule's decide() reads (ADR-0042): confirmed question facts and measured profile values, never raw rows, plus its settings. Sent by Rust to the Python rule runner.
@@ -2261,7 +2284,7 @@ export interface Operator {
     [k: string]: ConceptId;
   };
   /**
-   * The evidence the step measures, by kind, with its fields (ADR-0063). Absent: none.
+   * The evidence the step measures, by kind, with its fields (ADR-0063). The step writes it as one EvidenceSet to its output named evidence, and needs an attach. Absent: none.
    */
   produces?: {
     [k: string]: EvidenceProduced;

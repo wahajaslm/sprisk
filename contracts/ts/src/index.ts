@@ -61,6 +61,7 @@ export interface Entities {
   Trial: C.Trial;
   Method: C.Method;
   ConceptSet: C.ConceptSet;
+  EvidenceSet: C.EvidenceSet;
   Binding: C.Binding;
 }
 

@@ -61,6 +61,7 @@ const entities: [keyof Entities, string][] = [
   ["WalkStep", "walk_step"],
   ["Method", "method"],
   ["ConceptSet", "concept_set"],
+  ["EvidenceSet", "evidence_set"],
   ["Binding", "binding"],
 ];
 

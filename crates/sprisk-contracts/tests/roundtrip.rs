@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
+    Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, EvidenceSet,
     CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, FigureSet, KeyMatches, LoadedTable,
     Method, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
@@ -75,6 +75,7 @@ const ENTITIES: &[&str] = &[
     "create_walk",
     "dataset_profile",
     "decision_proposal",
+    "evidence_set",
     "figure_set",
     "key_matches",
     "loaded_table",
@@ -400,6 +401,11 @@ fn method() {
 #[test]
 fn concept_set() {
     check::<ConceptSet>("concept_set");
+}
+
+#[test]
+fn evidence_set() {
+    check::<EvidenceSet>("evidence_set");
 }
 
 #[test]
