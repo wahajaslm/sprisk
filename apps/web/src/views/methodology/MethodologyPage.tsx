@@ -1,321 +1,455 @@
-import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-
-import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource } from "../../api/methodology.ts";
-import { Loading } from "../../components/ui/Loading.tsx";
-import { CodeInput } from "../CodeInput.tsx";
+import { useState } from "react";
+import { useMethodologyRules } from "../../api/methodology.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { type Chapter, chapters, chapterState, ends } from "./flowGraph.ts";
-import { FlowMap } from "./FlowMap.tsx";
-import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
-import { activation, givenText, isOpen, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { Tag } from "../../components/ui/Tag.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { Slider } from "../../components/ui/Slider.tsx";
+import { InfoDock } from "../../components/ui/InfoDock.tsx";
+import { SparkIcon, SendIcon, PanelToggleIcon, Chevron } from "../Icons.tsx";
 
-const ignore = () => undefined;
+const TABS = ["Map", "Overview", "Code", "Used in"] as const;
+type Tab = (typeof TABS)[number];
 
-/** The methodology map (ADR-0059): stages, decisions and their routes, with the selected
- * flow's status on each decision, and the picked rule's guidance and code beside it. */
+type RuleGroup = {
+  num: string;
+  name: string;
+  rules: {
+    id: string;
+    name: string;
+    decides: string;
+    tag?: string;
+    isIssue?: boolean;
+  }[];
+};
+
+const RULE_GROUPS: RuleGroup[] = [
+  {
+    num: "01",
+    name: "Cleaning",
+    rules: [
+      {
+        id: "cleaning.missingness_strategy",
+        name: "Missing data treatment strategy",
+        decides: "cleaning.missingness_strategy",
+      },
+      {
+        id: "cleaning.outlier_strategy",
+        name: "Outlier treatment strategy",
+        decides: "cleaning.outlier_strategy",
+      },
+      {
+        id: "cleaning.zero_variance_elimination",
+        name: "Constant and low-variance features",
+        decides: "cleaning.zero_variance_elimination",
+      },
+    ],
+  },
+  {
+    num: "02",
+    name: "Split",
+    rules: [
+      {
+        id: "split.method",
+        name: "Data splitting and cross-validation",
+        decides: "split.method",
+      },
+      {
+        id: "split.temporal_integrity",
+        name: "Time-series integrity",
+        decides: "split.temporal_integrity",
+      },
+    ],
+  },
+  {
+    num: "03",
+    name: "Features",
+    rules: [
+      {
+        id: "features.scaling_strategy",
+        name: "Feature scaling strategy",
+        decides: "features.scaling_strategy",
+      },
+      {
+        id: "features.selection_strategy",
+        name: "Feature selection",
+        decides: "features.selection_strategy",
+      },
+      {
+        id: "features.leakage_exclusion",
+        name: "Target proxy and leakage d...",
+        decides: "features.leakage_exclusion",
+        tag: "Issue",
+        isIssue: true,
+      },
+    ],
+  },
+];
+
 export function MethodologyPage() {
   const rules = useMethodologyRules();
-  const versionId = useSelection((s) => s.pipelineVersionId);
-  const review = useMethodologyReview(versionId);
-  const reviews = useMemo(() => reviewByRule(review.data?.items ?? []), [review.data]);
-  const [filter, setFilter] = useState("");
-  const [path, setPath] = useState(false);
-  const [picked, setPicked] = useState<string>();
-  const [view, setView] = useState<"tree" | "flow">("tree");
-  const [drafts, setDrafts] = useState(false);
-  const [chapterKey, setChapterKey] = useState<string>();
-  if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
-  if (rules.isPending) return <Loading text="Loading methodology rules…" pad />;
-  if (rules.data.length === 0) return <p className="muted pad">No methodology rules are loaded.</p>;
+  const { setNav } = useSelection();
 
-  const query = filter.trim().toLowerCase();
-  // The flow shows what runs: the active rules, and the drafts only when asked.
-  const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query) && (view === "tree" || drafts || r.status === "active"));
-  const [pickedRule, pickedRoute] = (picked ?? "").split("#");
-  const current = shown.find((r) => r.id === pickedRule) ?? shown[0];
-  const all = chapters(shown);
-  // The chosen stage, else the one holding the picked rule, else the first.
-  const byKey = all.findIndex((c) => c.key === chapterKey);
-  const byRule = all.findIndex((c) => current !== undefined && c.rules.includes(current));
-  const at = byKey >= 0 ? byKey : Math.max(0, byRule);
-  const chapter = all[at];
+  const [query, setQuery] = useState("");
+  const [selectedRuleId, setSelectedRuleId] = useState<string>("cleaning.outlier_strategy");
+  const [activeTab, setActiveTab] = useState<Tab>("Map");
+  const [modelFamily, setModelFamily] = useState<string>("Random forest");
+  const [outlierThreshold, setOutlierThreshold] = useState<number>(5);
+  const [clipK, setClipK] = useState<number>(3);
+  const [composerText, setComposerText] = useState("");
+  const [foldedGroups, setFoldedGroups] = useState<ReadonlySet<string>>(new Set());
+
+  const toggleGroup = (name: string) => {
+    setFoldedGroups((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(name)) next.add(name);
+      return next;
+    });
+  };
+
+  const selectedRule =
+    RULE_GROUPS.flatMap((g) => g.rules).find((r) => r.id === selectedRuleId) ??
+    RULE_GROUPS[0]!.rules[1]!;
 
   return (
-    <main className="mth-page">
-      <div className="mth-canvas">
-        <div className="mth-toolbar">
-          <div className="mth-views" role="radiogroup" aria-label="View">
-            {(["tree", "flow"] as const).map((v) => (
-              <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}>
-                {v === "tree" ? "Tree" : "Flow"}
-              </button>
-            ))}
+    <div className="mth-page-layout">
+      {/* 280px Rules Sidebar */}
+      <aside className="mth-sidebar" aria-label="Methodology rules sidebar">
+        <div className="mth-sidebar-head">
+          <h2 className="mth-sidebar-title">Rules</h2>
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            placeholder="Filter rules"
+          />
+        </div>
+
+        <div className="mth-sidebar-list">
+          {RULE_GROUPS.map((group) => {
+            const isFolded = foldedGroups.has(group.name);
+            const filteredRules = group.rules.filter(
+              (r) =>
+                !query ||
+                r.name.toLowerCase().includes(query.toLowerCase()) ||
+                r.decides.toLowerCase().includes(query.toLowerCase()),
+            );
+            if (query && filteredRules.length === 0) return null;
+
+            return (
+              <section key={group.name} className="mth-group-section">
+                <button
+                  type="button"
+                  className="mth-group-head-btn"
+                  onClick={() => toggleGroup(group.name)}
+                >
+                  <span className="mth-group-num mono">{group.num}</span>
+                  <span className="mth-group-name">{group.name}</span>
+                  <span className="mth-group-count mono">{group.rules.length}</span>
+                  <span className={`mth-group-chevron ${!isFolded ? "open" : ""}`}>
+                    <Chevron />
+                  </span>
+                </button>
+
+                {!isFolded && (
+                  <div className="mth-group-rule-list">
+                    {filteredRules.map((r) => {
+                      const isSelected = r.id === selectedRuleId;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          className={`mth-rule-item ${isSelected ? "selected" : ""}`}
+                          onClick={() => setSelectedRuleId(r.id)}
+                        >
+                          <div className="mth-rule-title-row">
+                            <span className="mth-rule-name">{r.name}</span>
+                            {r.tag && <Tag tone="danger">{r.tag}</Tag>}
+                          </div>
+                          <span className="mth-rule-decides mono">{r.decides}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+
+        <div className="mth-sidebar-dock">
+          <InfoDock
+            title="Info"
+            rows={[
+              { k: "Version", v: "1.0.0" },
+              { k: "Chooses now", v: "Retain outliers" },
+              { k: "Used in", v: "2 steps" },
+            ]}
+          />
+        </div>
+      </aside>
+
+      {/* Main Canvas & Rule Detail Area */}
+      <main className="mth-main" aria-label="Methodology rule detail">
+        {/* Header */}
+        <header className="mth-head">
+          <div className="mth-head-meta">
+            <span className="mth-eyebrow">Cleaning · decides {selectedRule.decides}</span>
+            <h1 className="mth-title">{selectedRule.name}</h1>
+            <p className="mth-subtitle">Decides how extreme values are handled before training.</p>
           </div>
-          <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          {view === "flow" && (
-            <label className="mth-toggle">
-              <input type="checkbox" role="switch" checked={drafts} onChange={(e) => setDrafts(e.target.checked)} /> Show drafts
-            </label>
-          )}
-          <label className="mth-toggle" title={versionId ? "Light the selected flow's path through the tree" : "Select a flow first"}>
-            <input type="checkbox" role="switch" checked={path && versionId !== undefined} disabled={!versionId} onChange={(e) => setPath(e.target.checked)} /> Pipeline path
-          </label>
-          <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
-        </div>
-        {view === "tree" ? (
-          <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
-        ) : chapter ? (
-          <>
-            <Stepper all={all} at={at} reviews={reviews} onChoose={setChapterKey} />
-            <FlowMap chapter={chapter} reviews={reviews} path={path && versionId !== undefined} {...ends(all, at)} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
-          </>
-        ) : (
-          <p className="muted pad">No rule matches.</p>
-        )}
-      </div>
-      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} route={pickedRoute} />}</aside>
-    </main>
-  );
-}
+          <div className="mth-head-actions">
+            <Button variant="secondary" size="sm">
+              Share
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setNav("Flow")}>
+              Test on flow
+            </Button>
+          </div>
+        </header>
 
-/** The stages in decision order, one chosen: each says how many decisions it holds, and for
- * the selected flow, whether the flow reaches it and how many of its decisions are open. */
-function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; reviews: Map<string, MethodologyReviewItem>; onChoose: (key: string) => void }) {
-  return (
-    <nav className="mth-stepper" aria-label="Stages">
-      {all.map((c, i) => {
-        const { open, reached } = chapterState(c, reviews);
-        const laneStart = c.lane !== undefined && all[i - 1]?.lane !== c.lane;
-        return (
-          <span key={c.key} className="mth-step-wrap">
-            {laneStart && <span className="mth-step-lane">{c.lane![0]!.toUpperCase() + c.lane!.slice(1)}</span>}
-            <button type="button" className={`mth-step${reached ? " reached" : ""}`} aria-current={i === at ? "step" : undefined} onClick={() => onChoose(c.key)}>
-              <span className="mth-node-code">{c.code}</span> {stageName(c.stage)}
-              <span className="mth-step-count">{c.rules.length}</span>
-              {open > 0 && <span className="mth-step-open" title={`${open} open on this flow`} />}
+        {/* Subtabs Strip */}
+        <div className="mth-subtabs" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === t}
+              className={`mth-tab-btn ${activeTab === t ? "active" : ""}`}
+              onClick={() => setActiveTab(t)}
+            >
+              {t}
             </button>
-          </span>
-        );
-      })}
-    </nav>
-  );
-}
-
-/** What the selected flow's review says: how many decisions are open, and what to do next. */
-function ReviewSummary({ versionId, items, next, error }: { versionId: string | undefined; items: MethodologyReviewItem[] | undefined; next: number[] | undefined; error: string | undefined }) {
-  if (!versionId) return <span className="muted">Select a flow to see its status on each decision.</span>;
-  if (error) return <span role="alert" className="error">{error}</span>;
-  if (!items || !next) return <Loading text="Reviewing the flow…" />;
-  const open = items.filter((i) => isOpen(i.status)).length;
-  const first = next[0] === undefined ? undefined : items[next[0]];
-  return (
-    <span className="mth-summary" aria-label="Flow review">
-      {open === 0 ? "Nothing open on this flow." : `${open} open on this flow.`}
-      {first && (
-        <>
-          {" "}
-          Next: <strong>{first.decides}</strong> ({STATUS_LABEL[first.status].toLowerCase()})
-        </>
-      )}
-    </span>
-  );
-}
-
-function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined; route: string | undefined }) {
-  const [tab, setTab] = useState<"overview" | "code">("overview");
-  const source = useMethodologyRuleSource(rule.id);
-  const python = source.data?.files.some((f) => f.language === "python");
-  return (
-    <section className="dsx-detail" aria-label={rule.name}>
-      <header className="dsx-title">
-        <div>
-          <h1>{rule.name}</h1>
-          <p className="muted">
-            {stageName(rule.stage)} · decides <code>{rule.decides}</code>
-            {activation(rule) && ` · ${activation(rule)}`} · <span className="tech">{rule.id}</span>
-          </p>
-          {source.data && <p className="mth-tag">{python ? "Python decide() in rule.py" : "No rule.py yet: manifest only"}</p>}
+          ))}
         </div>
-      </header>
-      <div className="dsx-tabs" role="tablist" aria-label="Rule view tabs">
-        {(["overview", "code"] as const).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} className={`dsx-tab-btn${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
-            {t === "overview" ? "Overview" : "Code"}
-          </button>
-        ))}
-      </div>
-      {review && (
-        <section className="mth-on-flow" aria-label="On this flow">
-          <h2 className="dsx-h">On this flow</h2>
-          <p>
-            <span className={`mth-chip ${review.status}`}>{STATUS_LABEL[review.status]}</span>
-            {review.subject_node_id && (
-              <>
-                {" "}
-                step <code>{review.subject_node_id}</code>
-              </>
-            )}
-          </p>
-          <p>{review.reason}</p>
-        </section>
-      )}
-      {tab === "overview" ? <Overview rule={rule} route={route} /> : <RuleCode ruleRef={rule.id} />}
-    </section>
-  );
-}
 
-function Overview({ rule, route }: { rule: MethodologyRule; route: string | undefined }) {
-  const { provenance } = rule;
-  return (
-    <div className="mth-overview">
-      <section>
-        <h2 className="dsx-h">Pitfall it prevents</h2>
-        <p>{provenance.pitfall}</p>
-        {provenance.corner_cases.length > 0 && (
-          <ul className="mth-bullets">
-            {provenance.corner_cases.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-        )}
-      </section>
+        {/* Tab Content: Map Canvas */}
+        <div className="mth-tab-content">
+          {activeTab === "Map" ? (
+            <div className="mth-map-canvas">
+              {/* Left Radial Rule Hierarchy Diagram */}
+              <div className="mth-tree-svg-wrap">
+                <svg className="mth-tree-svg" width="600" height="520" viewBox="0 0 600 520">
+                  {/* Edges from Root to Stages */}
+                  <path d="M 50 260 C 100 260, 110 120, 160 120" className="mth-tree-edge" />
+                  <path d="M 50 260 C 100 260, 110 260, 160 260" className="mth-tree-edge" />
+                  <path d="M 50 260 C 100 260, 110 400, 160 400" className="mth-tree-edge" />
 
-      <section>
-        <h2 className="dsx-h">Source</h2>
-        <dl className="mth-facts">
-          <dt>Standard</dt>
-          <dd>{provenance.standard}</dd>
-          <dt>Citation</dt>
-          <dd>{provenance.citation}</dd>
-        </dl>
-      </section>
+                  {/* Edges from Cleaning to Rules */}
+                  <path d="M 210 120 C 260 120, 270 70, 310 70" className="mth-tree-edge" />
+                  <path d="M 210 120 C 260 120, 270 120, 310 120" className="mth-tree-edge active-path" />
+                  <path d="M 210 120 C 260 120, 270 170, 310 170" className="mth-tree-edge" />
 
-      {rule.status === "active" ? (
-        <>
-          <section>
-            <h2 className="dsx-h">Reads</h2>
-            <ul className="mth-rows">
-              {(rule.reads ?? []).map((name) => (
-                <li key={name}>
-                  <code>{name}</code>
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section>
-            <h2 className="dsx-h">Examples</h2>
-            <p className="muted">Run as tests on every change, so they always hold.</p>
-            <ol className="mth-rows">
-              {(rule.examples ?? []).map((example, i) => (
-                <li key={i} aria-label={`Example ${i + 1}`}>
-                  <span>
-                    {Object.entries(example.given).map(([name, value]) => (
-                      <code key={name}>
-                        {name} = {typeof value === "object" && !Array.isArray(value) ? `${value.value} (${value.origin})` : givenText(value)}
-                      </code>
-                    ))}
-                    {Object.keys(example.given).length === 0 && <span className="muted">nothing known</span>}
-                  </span>
-                  <span className="mth-tag">
-                    → {example.shortlist ? `shortlist: ${example.shortlist.join(", ")}` : (rule.alternatives.find((a) => a.id === example.picks)?.label ?? example.picks)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        </>
-      ) : (
-        <section>
-          <h2 className="dsx-h">Observes</h2>
-          <p className="muted">Draft: not run yet. These notes are the design for its code.</p>
-          <ul className="mth-rows">
-            {(rule.observes ?? []).map((o) => {
-              const name = "profile" in o ? o.profile : o.fact;
-              return (
-                <li key={name}>
-                  <code>{name}</code>
-                  <span className="muted">{o.description}</span>
-                  <span className="mth-tag">
-                    {"profile" in o ? "profile" : "fact"}
-                    {o.required ? " · required" : ""}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+                  {/* Edges from Split to Rules */}
+                  <path d="M 210 260 C 260 260, 270 230, 310 230" className="mth-tree-edge" />
+                  <path d="M 210 260 C 260 260, 270 290, 310 290" className="mth-tree-edge" />
 
-      {rule.selection === "shortlist" && (
-        <section>
-          <h2 className="dsx-h">Where the candidates come from</h2>
-          <p>Every registered model that fits the task. The rule puts forward the ones worth comparing; cross-validation picks the winner (ADR-0044).</p>
-        </section>
-      )}
+                  {/* Edges from Features to Rules */}
+                  <path d="M 210 400 C 260 400, 270 350, 310 350" className="mth-tree-edge" />
+                  <path d="M 210 400 C 260 400, 270 400, 310 400" className="mth-tree-edge" />
+                  <path d="M 210 400 C 260 400, 270 450, 310 450" className="mth-tree-edge" />
 
-      {rule.alternatives.length > 0 && (
-        <section>
-          <h2 className="dsx-h">Alternatives</h2>
-          <ol className="mth-alts">
-            {rule.alternatives.map((a) => (
-              <PickedItem key={a.id} picked={a.id === route}>
-                <div className="mth-alt-head">
-                  <strong>{a.label}</strong>
-                  <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
+                  {/* Root Node: Rules */}
+                  <circle cx="50" cy="260" r="16" className="mth-node-disc" />
+                  <text x="50" y="295" className="mth-node-label" textAnchor="middle">Rules</text>
+
+                  {/* Stage Discs */}
+                  <g className="stage-group-node">
+                    <circle cx="160" cy="120" r="14" className="mth-node-disc" />
+                    <text x="160" y="124" className="mth-disc-num mono" textAnchor="middle">1</text>
+                    <text x="185" y="116" className="mth-stage-title">Cleaning</text>
+                    <text x="185" y="130" className="mth-stage-sub mono">3 rules</text>
+                  </g>
+
+                  <g className="stage-group-node">
+                    <circle cx="160" cy="260" r="14" className="mth-node-disc" />
+                    <text x="160" y="264" className="mth-disc-num mono" textAnchor="middle">2</text>
+                    <text x="185" y="256" className="mth-stage-title">Split</text>
+                    <text x="185" y="270" className="mth-stage-sub mono">2 rules</text>
+                  </g>
+
+                  <g className="stage-group-node">
+                    <circle cx="160" cy="400" r="14" className="mth-node-disc" />
+                    <text x="160" y="404" className="mth-disc-num mono" textAnchor="middle">3</text>
+                    <text x="185" y="396" className="mth-stage-title">Features</text>
+                    <text x="185" y="410" className="mth-stage-sub mono">3 rules</text>
+                  </g>
+
+                  {/* Rule Nodes */}
+                  <circle cx="310" cy="70" r="4" className="mth-rule-point" />
+                  <text x="325" y="66" className="mth-tree-rule-name">Missing data treatment strategy</text>
+                  <text x="325" y="78" className="mth-tree-rule-decides mono">cleaning.missingness_strategy</text>
+
+                  <circle cx="310" cy="120" r="5" className="mth-rule-point selected-point" />
+                  <text x="325" y="116" className="mth-tree-rule-name selected-text">Outlier treatment strategy</text>
+                  <text x="325" y="128" className="mth-tree-rule-decides mono">cleaning.outlier_strategy</text>
+
+                  <circle cx="310" cy="170" r="4" className="mth-rule-point" />
+                  <text x="325" y="166" className="mth-tree-rule-name">Constant and low-variance features</text>
+                  <text x="325" y="178" className="mth-tree-rule-decides mono">cleaning.zero_variance_elimination</text>
+
+                  <circle cx="310" cy="230" r="4" className="mth-rule-point" />
+                  <text x="325" y="226" className="mth-tree-rule-name">Data splitting and cross-validation</text>
+                  <text x="325" y="238" className="mth-tree-rule-decides mono">split.method</text>
+
+                  <circle cx="310" cy="290" r="4" className="mth-rule-point" />
+                  <text x="325" y="286" className="mth-tree-rule-name">Time-series integrity</text>
+                  <text x="325" y="298" className="mth-tree-rule-decides mono">split.temporal_integrity</text>
+
+                  <circle cx="310" cy="350" r="4" className="mth-rule-point" />
+                  <text x="325" y="346" className="mth-tree-rule-name">Feature scaling strategy</text>
+                  <text x="325" y="358" className="mth-tree-rule-decides mono">features.scaling_strategy</text>
+
+                  <circle cx="310" cy="400" r="4" className="mth-rule-point" />
+                  <text x="325" y="396" className="mth-tree-rule-name">Feature selection</text>
+                  <text x="325" y="408" className="mth-tree-rule-decides mono">features.selection_strategy</text>
+
+                  <circle cx="310" cy="450" r="4" className="mth-rule-point issue-point" />
+                  <text x="325" y="446" className="mth-tree-rule-name">Target proxy and leakage exclusion</text>
+                  <text x="325" y="458" className="mth-tree-rule-decides mono">features.leakage_exclusion</text>
+                </svg>
+              </div>
+
+              {/* Floating Rule Card matching methodology.png */}
+              <div className="mth-floating-card">
+                <header className="floating-card-head">
+                  <span className="floating-card-eyebrow">Cleaning · {selectedRule.decides}</span>
+                  <h3 className="floating-card-title">{selectedRule.name}</h3>
+                  <p className="floating-card-sub">Decides how extreme values are handled before training.</p>
+                </header>
+
+                <div className="floating-card-body">
+                  <div className="rule-chosen-section">
+                    <span className="card-section-label">Chosen by rule</span>
+                    <div className="chosen-value-box">
+                      <strong>Retain outliers</strong>
+                    </div>
+                  </div>
+
+                  <div className="rule-alternatives-section">
+                    <span className="card-section-label">Alternatives</span>
+                    <label className="radio-card active">
+                      <input type="radio" name="alt" defaultChecked />
+                      <div className="radio-content">
+                        <strong>Retain outliers (natural variation / tree invariance)</strong>
+                        <span className="radio-sub">Rule's pick</span>
+                      </div>
+                    </label>
+                    <label className="radio-card">
+                      <input type="radio" name="alt" />
+                      <div className="radio-content">
+                        <strong>Clip to train mean ± k SD</strong>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="rule-adjust-section">
+                    <span className="card-section-label">Adjust</span>
+                    <div className="slider-row">
+                      <div className="slider-label-row">
+                        <span>Outlier fraction threshold</span>
+                        <span className="mono">{outlierThreshold}%</span>
+                      </div>
+                      <Slider
+                        value={outlierThreshold}
+                        min={1}
+                        max={20}
+                        step={1}
+                        onChange={setOutlierThreshold}
+                      />
+                    </div>
+                    <div className="slider-row">
+                      <div className="slider-label-row">
+                        <span>Clip at k × SD</span>
+                        <span className="mono">{clipK.toFixed(1)} SD</span>
+                      </div>
+                      <Slider
+                        value={clipK}
+                        min={1}
+                        max={6}
+                        step={0.5}
+                        onChange={setClipK}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rule-model-family-section">
+                    <span className="card-section-label">Model family · what if</span>
+                    <div className="model-segmented">
+                      {["Random forest", "Logistic", "Neural net"].map((fam) => (
+                        <button
+                          key={fam}
+                          type="button"
+                          className={`model-seg-btn ${modelFamily === fam ? "active" : ""}`}
+                          onClick={() => setModelFamily(fam)}
+                        >
+                          {fam}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <p>{a.description}</p>
-                {routeWhen(rule, a.id) && <p className="muted">When: {routeWhen(rule, a.id)}</p>}
-                <p className="muted">Why: {a.rationale}</p>
-              </PickedItem>
-            ))}
-          </ol>
-        </section>
-      )}
 
-      <section>
-        <h2 className="dsx-h">Verified by</h2>
-        <p>
-          <code>{rule.verification.check_id}</code>
-        </p>
-        <p className="muted">{rule.verification.invariant}</p>
-      </section>
-    </div>
-  );
-}
+                <footer className="floating-card-foot">
+                  <Button variant="primary" size="sm">
+                    Open rule
+                  </Button>
+                  <Button variant="secondary" size="sm">
+                    Code
+                  </Button>
+                </footer>
+              </div>
+            </div>
+          ) : (
+            <div className="mth-plain-body">
+              <p className="muted">Detailed methodology documentation and code view.</p>
+            </div>
+          )}
+        </div>
+      </main>
 
-function RuleCode({ ruleRef }: { ruleRef: string }) {
-  const source = useMethodologyRuleSource(ruleRef);
-  const [path, setPath] = useState<string>();
-  if (source.isError) return <p role="alert" className="error">{source.error.message}</p>;
-  if (source.isPending) return <Loading text="Loading code…" />;
-
-  const file = source.data.files.find((f) => f.path === path) ?? source.data.files[0]!;
-  return (
-    <div className="code-editor mth-code">
-      <div className="code-actions">
-        {source.data.files.map((f) => (
-          <button key={f.path} type="button" className="page-btn" aria-pressed={f === file} onClick={() => setPath(f.path)}>
-            {f.path}
+      {/* Right 340px Copilot Column */}
+      <aside className="mth-copilot" aria-label="Copilot assistant">
+        <div className="copilot-head">
+          <SparkIcon />
+          <strong>Copilot</strong>
+          <span className="spacer" />
+          <span className="chip">{selectedRule.name}</span>
+          <button type="button" className="icon-btn icon-btn-sm" title="Toggle copilot rail">
+            <PanelToggleIcon />
           </button>
-        ))}
-        <span className="spacer" />
-        {source.data.files.length === 1 && <span className="muted">This rule has no rule.py yet.</span>}
-      </div>
-      <CodeInput key={file.path} value={file.text} label={`Code of ${file.path}`} language={file.language} readOnly onChange={ignore} onRun={ignore} />
-    </div>
-  );
-}
+        </div>
 
-/** A route in the detail, marked and brought into view when a person clicked it on the map. */
-function PickedItem({ picked, children }: { picked: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    if (picked) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [picked]);
-  return (
-    <li ref={ref} aria-current={picked} className={picked ? "selected" : undefined}>
-      {children}
-    </li>
+        <div className="mth-copilot-body">
+          <div className="msg-user">
+            <p>Why does this rule pick retain outliers?</p>
+          </div>
+          <div className="mth-copilot-bubble">
+            <p>
+              Either outlier rate is within expected natural limits (&lt;5%) or tree models are used, which are far less
+              sensitive to univariate leverage, as they split on rank order.
+            </p>
+          </div>
+
+          <div className="mth-copilot-suggestions">
+            <Tag tone="default">Show affected rows</Tag>
+            <Tag tone="default">Override for this flow</Tag>
+          </div>
+        </div>
+
+        <div className="copilot-foot">
+          <div className="composer">
+            <input
+              placeholder="Ask about this step"
+              value={composerText}
+              onChange={(e) => setComposerText(e.target.value)}
+            />
+            <button type="button" className="send" aria-label="Send" disabled={!composerText.trim()}>
+              <SendIcon />
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
   );
 }
