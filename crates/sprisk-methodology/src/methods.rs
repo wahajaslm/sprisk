@@ -15,6 +15,8 @@ use crate::catalog::{CatalogError, parse_yaml};
 pub(crate) const METHOD: &str = "method.yaml";
 const METHOD_MODULE: &str = "method.py";
 pub(crate) const CONCEPTS: &str = "concepts.yaml";
+/// The output where an evidence producer writes what it measured, by kind.
+pub const EVIDENCE_PORT: &str = "evidence";
 
 #[derive(Debug)]
 pub(crate) struct MethodEntry {
@@ -97,6 +99,17 @@ fn check_operator(operator: &Operator, provided: &Provided) -> Result<(), Catalo
         operator: operator.id.to_string(),
         problem,
     };
+    // The engine reads what a producer measured from this one port.
+    if !operator.produces.is_empty()
+        && !operator
+            .outputs
+            .iter()
+            .any(|p| p.name.as_str() == EVIDENCE_PORT)
+    {
+        return Err(refuse(format!(
+            "produces evidence, so it needs an output named {EVIDENCE_PORT}"
+        )));
+    }
     for (param, concept) in &operator.concepts {
         let found = known_concept(concept.as_str(), provided).map_err(refuse)?;
         if param_schema(operator, param.as_str()).is_none() {

@@ -468,3 +468,17 @@ verification: {{ check_id: sprisk.checks.x@1.0.0, invariant: i }}
 "
     )
 }
+
+#[test]
+fn a_producer_with_no_evidence_output_is_refused() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        NEAR_DUPLICATES,
+        "{ name: evidence, kind: report }",
+        "{ name: groups, kind: report }",
+    );
+    assert!(
+        refused(pack.path()).contains("produces evidence, so it needs an output named evidence")
+    );
+}
