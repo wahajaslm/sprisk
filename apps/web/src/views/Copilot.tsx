@@ -1,22 +1,21 @@
-import { useState } from "react";
 import type { Attempt } from "@sprisk/contracts";
 
-import { useRunAttempts } from "../api/hooks.ts";
+import { usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
+import { flowName } from "../flow/labels.ts";
 import { hasOutputs, isGateNode } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { PanelToggleIcon, SendIcon, SparkIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
 import { CopilotMessage } from "../components/ui/CopilotMessage.tsx";
-import { Tag } from "../components/ui/Tag.tsx";
 
-/** Copilot pane: 340px width folding to a 44px rail (ADR-0061). */
+/** Copilot pane: 340px width folding to a 44px rail (ADR-0061). No AI is connected yet, and external
+ * AI is off by default (rule 6), so it says so instead of answering. */
 export function Copilot() {
   const { nav, pipelineVersionId, runId, nodeId } = useSelection();
   const attempts = useRunAttempts(pipelineVersionId, runId);
+  const flow = usePipelineVersions().data?.find((v) => v.id === pipelineVersionId);
   const { copilotOpen, toggleCopilot } = useWorkbench();
-  const [inputText, setInputText] = useState("");
-  const [chatMessages, setChatMessages] = useState<{ role: "assistant" | "user"; text: string }[]>([]);
 
   if (!copilotOpen) {
     return (
@@ -47,38 +46,9 @@ export function Copilot() {
 
   const contextText = nodeId
     ? `Step · ${nodeId}`
-    : nav === "Objective"
-      ? "Objective · Ledger"
-      : nav === "Flow"
-        ? "German Credit · 7 steps"
-        : `${nav} · Context`;
-
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-    const text = inputText;
-    setInputText("");
-    setChatMessages((prev) => [...prev, { role: "user", text }]);
-    setTimeout(() => {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: `Analyzing ${contextText.toLowerCase()}: "${text}". Studio recommendation updated for the pipeline graph.`,
-        },
-      ]);
-    }, 400);
-  };
-
-  const handleChipClick = (suggestion: string) => {
-    setChatMessages((prev) => [
-      ...prev,
-      { role: "user", text: suggestion },
-      {
-        role: "assistant",
-        text: `Executing "${suggestion}" for ${contextText.toLowerCase()}. Parameters and lineage verified.`,
-      },
-    ]);
-  };
+    : nav === "Flow" && flow
+      ? `${flowName(flow)} · ${flow.nodes.length} steps`
+      : nav;
 
   return (
     <aside className="copilot-card copilot" aria-label="Copilot">
@@ -107,117 +77,16 @@ export function Copilot() {
             </div>
           </div>
         )}
-        {chatMessages.length === 0 ? (
-          <>
-            {nav === "Objective" ? (
-              <CopilotMessage
-                role="assistant"
-                card={{
-                  title: "Objective Fact Extraction",
-                  rows: [
-                    { k: "Profiled dataset", v: "store_sales_2021_2026.csv" },
-                    { k: "Open questions", v: "3 in ledger", warn: true },
-                    { k: "Identified target", v: "Sales (units or revenue)" },
-                  ],
-                  foot: "Answer ledger questions to unlock pipeline generation.",
-                }}
-              >
-                I drafted the objective ledger from your prompt and dataset profile. Answer the open questions to generate the full pipeline graph.
-              </CopilotMessage>
-            ) : nav === "Flow" ? (
-              <CopilotMessage
-                role="assistant"
-                card={{
-                  title: "Step Audit · Missing values ≥ 20%",
-                  rows: [
-                    { k: "Affected columns", v: "3 dropped", warn: true },
-                    { k: "Accuracy impact", v: "−0.4 points" },
-                    { k: "Alternative", v: "Median imputation (+41 cells)" },
-                  ],
-                  foot: "Rule CLEAN-02 recommends dropping when missing rate exceeds 20%.",
-                }}
-              >
-                Above 20% missing, imputation creates synthetic bias. Dropping costs 0.4 points of accuracy while preserving signal integrity.
-              </CopilotMessage>
-            ) : nav === "Reports" ? (
-              <CopilotMessage
-                role="assistant"
-                card={{
-                  title: "Evidence Linkage",
-                  rows: [
-                    { k: "Active ledger", v: "German Credit v2" },
-                    { k: "Linked evidence", v: "3 artifacts" },
-                    { k: "Sign-off gate", v: "Pending" },
-                  ],
-                }}
-              >
-                This report links questions directly to audited run evidence. I will flag any changes if upstream pipeline runs differ.
-              </CopilotMessage>
-            ) : (
-              <CopilotMessage role="assistant">
-                Studio assistant active for {nav}. Select any step, node, or metric to audit methodology decisions and parameter sensitivity.
-              </CopilotMessage>
-            )}
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-              {nav === "Objective" ? (
-                <>
-                  <Tag tone="default" onClick={() => handleChipClick("Explain open questions")}>
-                    Explain questions
-                  </Tag>
-                  <Tag tone="default" onClick={() => handleChipClick("Show data profile")}>
-                    Show data profile
-                  </Tag>
-                </>
-              ) : nav === "Flow" ? (
-                <>
-                  <Tag tone="default" onClick={() => handleChipClick("Compare with 30% cutoff")}>
-                    Compare with 30%
-                  </Tag>
-                  <Tag tone="default" onClick={() => handleChipClick("Show affected rows")}>
-                    Show affected rows
-                  </Tag>
-                </>
-              ) : (
-                <>
-                  <Tag tone="default" onClick={() => handleChipClick("Summarise active view")}>
-                    Summarise view
-                  </Tag>
-                  <Tag tone="default" onClick={() => handleChipClick("Check methodology rules")}>
-                    Check rules
-                  </Tag>
-                </>
-              )}
-            </div>
-          </>
-        ) : (
-          chatMessages.map((m, idx) => (
-            <CopilotMessage key={idx} role={m.role}>
-              {m.text}
-            </CopilotMessage>
-          ))
-        )}
+        <CopilotMessage role="assistant">
+          Copilot is not connected. No AI model is set up, and data never leaves this machine without your
+          consent. Methodology decisions come from the rules, not from Copilot.
+        </CopilotMessage>
       </div>
 
       <div className="copilot-foot">
         <div className="composer">
-          <input
-            id="copilot-input"
-            aria-label="Ask Copilot"
-            placeholder={`Ask about ${contextText.toLowerCase()}…`}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSend();
-            }}
-          />
-          <button
-            type="button"
-            className="send"
-            aria-label="Send"
-            disabled={!inputText.trim()}
-            onClick={handleSend}
-          >
+          <input id="copilot-input" aria-label="Ask Copilot" placeholder="Copilot is not connected" disabled />
+          <button type="button" className="send" aria-label="Send" disabled>
             <SendIcon />
           </button>
         </div>

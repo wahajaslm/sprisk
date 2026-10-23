@@ -1553,6 +1553,25 @@ describe("a run that finishes between polls", () => {
 });
 
 describe("copilot", () => {
+  it("says it is not connected instead of making up answers", async () => {
+    useSelection.setState({ nav: "Flow", pipelineVersionId: PV, runId: undefined, nodeId: undefined });
+    renderWithApi(<Copilot />);
+
+    expect(screen.getByText(/Copilot is not connected/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Ask Copilot" })).toBeDisabled();
+    for (const fake of ["Step Audit · Missing values ≥ 20%", "store_sales_2021_2026.csv", "German Credit v2", "Compare with 30%"]) {
+      expect(screen.queryByText(fake)).not.toBeInTheDocument();
+    }
+  });
+
+  it("names the open flow and its steps", async () => {
+    useSelection.setState({ nav: "Flow", pipelineVersionId: PV, runId: undefined, nodeId: undefined });
+    renderWithApi(<Copilot />);
+
+    expect(await screen.findByText(`iris.csv · ${pipeline.nodes.length} steps`)).toBeInTheDocument();
+    expect(screen.queryByText("German Credit · 7 steps")).not.toBeInTheDocument();
+  });
+
   it("summarises the run's step attempts, without the gate", async () => {
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
