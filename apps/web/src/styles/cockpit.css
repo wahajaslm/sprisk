@@ -3263,20 +3263,8 @@ p { margin: 0; }
   background: var(--bg-canvas);
 }
 .mth-map { position: absolute; inset: 0; }
-.mth-toolbar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: calc(320px + 28px);
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-  background: var(--bg-surface);
-  border-radius: var(--radius-md);
-}
-.mth-toolbar .mth-views {
+.mth-bar { position: absolute; left: 12px; bottom: 12px; right: calc(320px + 28px); z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 3px 10px 3px 3px; border-radius: var(--radius-md); background: var(--bg-surface); font-size: var(--fs-12); color: var(--text-secondary); }
+.mth-bar .mth-views {
   display: inline-flex;
   background: var(--bg-surface);
   border: 1px solid var(--border-panel);
@@ -3284,7 +3272,7 @@ p { margin: 0; }
   padding: 2px;
   gap: 2px;
 }
-.mth-toolbar .mth-views button {
+.mth-bar .mth-views button {
   border: 0;
   background: transparent;
   color: var(--text-muted);
@@ -3294,14 +3282,14 @@ p { margin: 0; }
   cursor: pointer;
   transition: all var(--dur-fast);
 }
-.mth-toolbar .mth-views button:hover {
+.mth-bar .mth-views button:hover {
   color: var(--text-primary);
 }
-.mth-toolbar .mth-views button[aria-checked="true"] {
+.mth-bar .mth-views button[aria-checked="true"] {
   background: var(--bg-hover);
   color: var(--text-strong);
 }
-.mth-toolbar .ds-filter {
+.mth-bar .ds-filter {
   width: 200px;
   height: 28px;
   padding: 0 10px;
@@ -3311,7 +3299,7 @@ p { margin: 0; }
   color: var(--text-primary);
   font-size: var(--fs-12);
 }
-.mth-toolbar .ds-filter:focus {
+.mth-bar .ds-filter:focus {
   outline: none;
   border-color: var(--ink-2);
 }
@@ -8003,3 +7991,42 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .flow-inspector-actions { display: flex; align-items: center; gap: 2px; height: 100%; padding-left: 12px; }
 .flow-inspector-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; }
 .flow-inspector-btn:hover { background: var(--alpha-06); color: var(--text-primary); }
+
+/* ── Methodology rule map (design: Rules root → numbered stage discs → rule dots) ── */
+.rule-tree { position: absolute; inset: 0; overflow: auto; background-color: var(--bg-canvas); background-image: radial-gradient(var(--alpha-06) 1px, transparent 1px); background-size: 16px 16px; }
+.rule-tree-inner { position: relative; min-width: 760px; margin: 0 0 60px 24px; }
+.rule-tree-lines { position: absolute; left: 0; top: 0; overflow: visible; }
+.rule-tree-lines path { fill: none; stroke: var(--alpha-20); stroke-width: 1; }
+.rule-tree-lines path.lit { stroke: var(--text-primary); stroke-width: 1.5; }
+.rule-tree-root { position: absolute; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--alpha-08); font-size: var(--fs-11); color: var(--text-secondary); }
+.rule-tree-group { position: absolute; display: flex; align-items: center; gap: 12px; }
+.rule-tree-disc { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--alpha-35); border-radius: 50%; background: var(--bg-canvas); font-size: var(--fs-12); color: var(--text-primary); }
+.rule-tree-group-text { display: flex; flex-direction: column; gap: 2px; }
+.rule-tree-group-text strong { font-size: var(--fs-14); font-weight: var(--fw-medium); color: var(--text-primary); }
+.rule-tree-group-text span { font-size: var(--fs-12); color: var(--text-label); }
+.rule-tree-rule { position: absolute; display: flex; align-items: flex-start; gap: 12px; max-width: 300px; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.rule-tree-dot { flex-shrink: 0; width: 10px; height: 10px; margin-top: 4px; border: 1px solid var(--alpha-35); border-radius: 50%; background: var(--bg-canvas); }
+.rule-tree-rule.picked .rule-tree-dot { border-color: var(--text-primary); background: var(--text-primary); }
+.rule-tree-rule.open .rule-tree-dot { border-color: var(--danger); background: var(--danger); }
+.rule-tree-rule-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rule-tree-rule-name { font-size: var(--fs-13-5); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rule-tree-rule.picked .rule-tree-rule-name, .rule-tree-rule:hover .rule-tree-rule-name { color: var(--text-primary); }
+.rule-tree-rule-id { font: var(--fs-12) var(--font-mono); color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── The rule card over the map (design: eyebrow, title, Chosen by rule, alternatives, Open rule) ── */
+.mth-detail.compact { gap: 14px; }
+.mth-eyebrow { display: block; margin-bottom: 4px; font-size: var(--fs-12); color: var(--text-label); }
+.mth-detail.compact .mth-detail-head h2 { font-size: var(--fs-17); }
+.mth-chosen { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--alpha-05); font-size: var(--fs-12-5); color: var(--text-label); }
+.mth-chosen strong { font-size: var(--fs-13-5); font-weight: var(--fw-medium); color: var(--text-primary); }
+.mth-alts.compact { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.mth-alts.compact li { display: flex; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); font-size: var(--fs-13); }
+.mth-alts.compact li.selected { background: var(--alpha-05); }
+.mth-alts.compact strong { font-weight: var(--fw-regular); color: var(--text-primary); }
+.mth-radio { flex-shrink: 0; width: 12px; height: 12px; margin-top: 3px; border: 1px solid var(--alpha-35); border-radius: 50%; }
+.mth-radio.on { border-color: var(--text-primary); box-shadow: inset 0 0 0 3px var(--bg-surface), inset 0 0 0 6px var(--text-primary); }
+.mth-pick { display: block; margin-top: 2px; font-size: var(--fs-12); color: var(--text-label); }
+.mth-card-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding-top: 12px; border-top: 1px solid var(--alpha-08); }
+.mth-alts.compact li { border: 0; background: transparent; }
+.mth-alts.compact li.selected { background: var(--alpha-05); }
+.mth-eyebrow { font-family: var(--font-sans); }

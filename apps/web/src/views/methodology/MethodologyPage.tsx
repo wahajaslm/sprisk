@@ -17,11 +17,15 @@ import { type Chapter, chapters, chapterState, ends } from "./flowGraph.ts";
 import { FlowMap } from "./FlowMap.tsx";
 import { MethodologyCanvas } from "./MethodologyCanvas.tsx";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
+import { RuleTree } from "./RuleTree.tsx";
 import { activation, givenText, isOpen, lookedAt, reviewByRule, routeWhen, stageName, withSettings } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
 const TABS = ["Map", "Overview", "Code", "Used in"] as const;
+/** Map is the design's rule tree; Canvas, Tree and Flow are the ADR-0059 views of the same rules. */
+const VIEWS = ["map", "canvas", "tree", "flow"] as const;
+type View = (typeof VIEWS)[number];
 type Tab = (typeof TABS)[number];
 
 /** The methodology map (ADR-0059) in the Flow Studio frame: the rules by stage beside it, and
@@ -34,7 +38,7 @@ export function MethodologyPage() {
   const [filter, setFilter] = useState("");
   const [path, setPath] = useState(false);
   const [picked, setPicked] = useState<string>();
-  const [view, setView] = useState<"map" | "tree" | "flow">("map");
+  const [view, setView] = useState<View>("map");
   const [drafts, setDrafts] = useState(false);
   const [chapterKey, setChapterKey] = useState<string>();
   const [tab, setTab] = useState<Tab>("Map");
@@ -107,9 +111,28 @@ export function MethodologyPage() {
     >
       {tab === "Map" && (
         <div className="mth-canvas">
-          <div className="mth-toolbar">
+          {view === "map" ? (
+            <RuleTree chapters={all} reviews={reviews} picked={current?.id} onPick={setPicked} />
+          ) : view === "canvas" ? (
+            <MethodologyCanvas rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={pickedId} onPick={setPicked} />
+          ) : view === "tree" ? (
+            <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={pickedId} onPick={setPicked} />
+          ) : chapter ? (
+            <>
+              <Stepper all={all} at={at} reviews={reviews} onChoose={setChapterKey} />
+              <FlowMap chapter={chapter} reviews={reviews} path={path && versionId !== undefined} {...ends(all, at)} picked={pickedId} onPick={setPicked} />
+            </>
+          ) : (
+            <p className="muted pad">No rule matches.</p>
+          )}
+          {current && (
+            <aside className="mth-card">
+              <RuleCard key={current.id} rule={current} review={onFlow} route={pickedRoute} onOpen={setTab} />
+            </aside>
+          )}
+          <div className="mth-bar">
             <div className="mth-views" role="radiogroup" aria-label="View">
-              {(["map", "tree", "flow"] as const).map((v) => (
+              {VIEWS.map((v) => (
                 <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}>
                   {v[0]!.toUpperCase() + v.slice(1)}
                 </button>
@@ -125,23 +148,6 @@ export function MethodologyPage() {
             </label>
             <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
           </div>
-          {view === "map" ? (
-            <MethodologyCanvas rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={pickedId} onPick={setPicked} />
-          ) : view === "tree" ? (
-            <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={pickedId} onPick={setPicked} />
-          ) : chapter ? (
-            <>
-              <Stepper all={all} at={at} reviews={reviews} onChoose={setChapterKey} />
-              <FlowMap chapter={chapter} reviews={reviews} path={path && versionId !== undefined} {...ends(all, at)} picked={pickedId} onPick={setPicked} />
-            </>
-          ) : (
-            <p className="muted pad">No rule matches.</p>
-          )}
-          {current && (
-            <aside className="mth-card">
-              <RuleDetail key={current.id} rule={current} review={onFlow} route={pickedRoute} onOpen={setTab} />
-            </aside>
-          )}
         </div>
       )}
       {tab === "Overview" && current && <RuleDetail rule={current} review={onFlow} route={pickedRoute} />}
@@ -194,6 +200,7 @@ function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; r
 /** What the selected flow's review says: how many decisions are open, and what to do next. */
 function ReviewSummary({ versionId, items, next, error }: { versionId: string | undefined; items: MethodologyReviewItem[] | undefined; next: number[] | undefined; error: string | undefined }) {
   if (!versionId) return <span className="muted">Select a flow to see its status on each decision.</span>;
+  if (error?.startsWith("question_required")) return <span className="muted">Link a question to this flow to review it.</span>;
   if (error) return <span role="alert" className="error">{error}</span>;
   if (!items || !next) return <Loading text="Reviewing the flow…" />;
   const open = items.filter((i) => isOpen(i.status)).length;
@@ -211,9 +218,57 @@ function ReviewSummary({ versionId, items, next, error }: { versionId: string | 
   );
 }
 
-/** The picked rule: what it decides, its status on the selected flow, and its overview. On the
- * map it floats as a card with links to the full Overview and Code tabs. */
-function RuleDetail({ rule, review, route, onOpen }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined; route: string | undefined; onOpen?: (tab: Tab) => void }) {
+/** The design's rule card over the map: what the rule chose on this flow, its alternatives with
+ * the rule's pick marked, and the way into its overview and code. */
+function RuleCard({ rule, review, route, onOpen }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined; route: string | undefined; onOpen: (tab: Tab) => void }) {
+  const chosen = rule.alternatives.find((a) => a.id === review?.recommended_alternative_id);
+  return (
+    <section className="mth-detail compact" aria-label={rule.name}>
+      <header className="mth-detail-head">
+        <span className="mth-eyebrow">
+          {stageName(rule.stage)} · {rule.decides}
+        </span>
+        <h2>{rule.name}</h2>
+        {rule.question && <p>{rule.question}</p>}
+      </header>
+      <div className="mth-chosen">
+        <span>Chosen by rule</span>
+        <strong>{chosen ? chosen.label : review ? STATUS_LABEL[review.status] : "Not reviewed on this flow"}</strong>
+      </div>
+      {review && (
+        <section className="mth-on-flow" aria-label="On this flow">
+          <h3 className="dsx-h">On this flow</h3>
+          <p>{review.reason}</p>
+        </section>
+      )}
+      {rule.alternatives.length > 0 && (
+        <section>
+          <h3 className="dsx-h">Alternatives</h3>
+          <ol className="mth-alts compact">
+            {rule.alternatives.map((a) => (
+              <PickedItem key={a.id} picked={a.id === route}>
+                <span className={`mth-radio${a.id === chosen?.id ? " on" : ""}`} aria-hidden="true" />
+                <span>
+                  <strong>{a.label}</strong>
+                  {a.id === chosen?.id && <span className="mth-pick">Rule's pick</span>}
+                </span>
+              </PickedItem>
+            ))}
+          </ol>
+        </section>
+      )}
+      <div className="mth-card-foot">
+        <Button variant="primary" onClick={() => onOpen("Overview")}>
+          Open rule
+        </Button>
+        <Button onClick={() => onOpen("Code")}>Code</Button>
+      </div>
+    </section>
+  );
+}
+
+/** The picked rule in full: what it decides, its status on the selected flow, and its overview. */
+function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: MethodologyReviewItem | undefined; route: string | undefined }) {
   const source = useMethodologyRuleSource(rule.id);
   const python = source.data?.files.some((f) => f.language === "python");
   return (
@@ -225,12 +280,6 @@ function RuleDetail({ rule, review, route, onOpen }: { rule: MethodologyRule; re
           {activation(rule) && ` · ${activation(rule)}`} · <span className="tech">{rule.id}</span>
         </p>
         {source.data && <p className="mth-tag">{python ? "Python decide() in rule.py" : "No rule.py yet: manifest only"}</p>}
-        {onOpen && (
-          <div className="mth-detail-links">
-            <Button size="sm" onClick={() => onOpen("Overview")}>Overview</Button>
-            <Button size="sm" onClick={() => onOpen("Code")}>Code</Button>
-          </div>
-        )}
       </header>
       {review && (
         <section className="mth-on-flow" aria-label="On this flow">

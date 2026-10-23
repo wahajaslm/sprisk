@@ -181,10 +181,24 @@ describe("methodology page", () => {
     expect(within(flow).getByText(/hold out 0.2 of rows at random/)).toBeInTheDocument();
   });
 
-  it("opens on the map canvas of the active rules, where a decision or a route is picked by a click", async () => {
+  it("opens on the design's rule map: numbered stages, a dot per active rule, picked by a click", async () => {
     const splitting: MethodologyRule = { ...split, status: "active", question: "How should the rows be split?" };
     serve([features, splitting]);
     renderWithApi(<MethodologyPage />);
+    const map = await screen.findByRole("region", { name: "Rule map" });
+    expect(within(map).getByText("Split")).toBeInTheDocument();
+    const rule = within(map).getByRole("button", { name: new RegExp(splitting.name) });
+    expect(within(map).queryByRole("button", { name: new RegExp(features.name) })).not.toBeInTheDocument();
+    await userEvent.click(rule);
+    expect(rule).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: splitting.name })).toHaveTextContent("Chosen by rule");
+  });
+
+  it("shows the transit canvas of the active rules when asked, where a decision or a route is picked by a click", async () => {
+    const splitting: MethodologyRule = { ...split, status: "active", question: "How should the rows be split?" };
+    serve([features, splitting]);
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Canvas" }));
 
     const canvas = await screen.findByRole("region", { name: "Methodology canvas" });
     expect(within(canvas).getByRole("button", { name: splitting.name })).toHaveTextContent("How should the rows be split?");
@@ -218,6 +232,7 @@ describe("methodology page", () => {
     await showTree();
 
     await userEvent.click(await within(await screen.findByRole("region", { name: "Methodology map" })).findByRole("button", { name: /Multicollinearity/ }));
+    await userEvent.click(screen.getByRole("tab", { name: "Overview" }));
     const detail = screen.getByRole("region", { name: features.name });
     expect(screen.getByRole("heading", { level: 1, name: features.name })).toBeInTheDocument();
     expect(within(detail).getByText(features.decides)).toBeInTheDocument();
@@ -240,6 +255,7 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
     const detail = await screen.findByRole("region", { name: active.name });
     expect(within(detail).getByText("question.time_column", { selector: "code" })).toBeInTheDocument();
     const example = within(detail).getByRole("listitem", { name: "Example 1" });
@@ -264,6 +280,7 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
     const detail = await screen.findByRole("region", { name: shortlist.name });
     expect(within(detail).getByText(/every registered model that fits the task/i)).toBeInTheDocument();
     expect(within(detail).getByRole("listitem", { name: "Example 1" })).toHaveTextContent("shortlist: ml_dummy_baseline, ml_linear_model");
@@ -276,6 +293,7 @@ describe("methodology page", () => {
     await showTree();
 
     await userEvent.click(await within(await screen.findByRole("region", { name: "Methodology map" })).findByRole("button", { name: /Multicollinearity/ }));
+    await userEvent.click(screen.getByRole("tab", { name: "Overview" }));
     const detail = screen.getByRole("region", { name: features.name });
     expect(within(detail).getByText(/Draft: not run yet/)).toBeInTheDocument();
     expect(within(detail).getAllByText(/^When:/).length).toBeGreaterThan(0);
