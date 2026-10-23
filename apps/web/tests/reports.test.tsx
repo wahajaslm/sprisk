@@ -60,7 +60,7 @@ describe("the question ledger report", () => {
   it("counts the open entries in the info dock", async () => {
     ledger();
     renderWithApi(<ReportsPage />);
-    const dock = await screen.findByRole("region", { name: "Ledger" });
+    const dock = await screen.findByRole("region", { name: "Info" });
     expect(dock).toHaveTextContent("Open1");
   });
 

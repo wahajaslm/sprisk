@@ -8,6 +8,8 @@ import { Loading } from "../components/ui/Loading.tsx";
 import { PageFrame } from "../components/ui/PageFrame.tsx";
 import { SearchField } from "../components/ui/SearchField.tsx";
 import { SideGroup } from "../components/ui/SideGroup.tsx";
+import { BodySection } from "../components/ui/RowList.tsx";
+import { stepLabel } from "../flow/stages.ts";
 import { Sidebar } from "../components/ui/Sidebar.tsx";
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { type NodeInRun, useFlowRuns, useRunNodes } from "../api/runs.ts";
@@ -187,26 +189,52 @@ function Monitor({ run, version }: { run: Run; version: PipelineVersion | undefi
   if (attempts.isError) return <p role="alert" className="error pad">{attempts.error.message}</p>;
   if (attempts.isPending) return <Loading text="Loading the run's steps…" pad />;
   const latest = (node: string) => attempts.data.filter((a) => a.node_id === node).sort((a, b) => b.number - a.number)[0];
-  const steps = (version?.nodes ?? []).map((n) => ({ id: n.id, attempt: latest(n.id) }));
+  const steps = (version?.nodes ?? []).map((n) => ({ id: n.id, title: stepLabel(n).title, attempt: latest(n.id) }));
   const failed = steps.filter((s) => s.attempt?.state === "failed");
+  const done = steps.filter((s) => s.attempt !== undefined && FINISHED.has(s.attempt.state)).length;
   return (
     <div className="exp-monitor">
+      <div className="exp-progress">
+        <span className="exp-progress-bar" aria-hidden="true">
+          <span style={{ width: `${steps.length === 0 ? 0 : (done / steps.length) * 100}%` }} />
+        </span>
+        <span>
+          {done} of {steps.length} steps
+        </span>
+      </div>
       {failed.map((s) => (
         <p key={s.id} role="alert" className="exp-failure">
           {s.id} failed: {s.attempt?.error?.message ?? "no message"}
         </p>
       ))}
-      <ul className="exp-steps" aria-label="Steps">
-        {steps.map((s) => (
-          <li key={s.id} className={s.attempt?.state === "failed" ? "failed" : undefined}>
-            <span className="exp-step-name">{s.id}</span>
-            <span className="exp-step-state">{s.attempt ? s.attempt.state.replaceAll("_", " ") : "not started"}</span>
-          </li>
-        ))}
-      </ul>
+      <BodySection title="Steps">
+        <ul className="exp-steps" aria-label="Steps">
+          {steps.map((s) => {
+            const state = s.attempt?.state;
+            const tone = state === "failed" ? "failed" : state === "running" || state === "leased" ? "running" : state && FINISHED.has(state) ? "done" : "waiting";
+            return (
+              <li key={s.id} className={tone}>
+                <span className="exp-step-name">
+                  {s.title} <span className="exp-step-subject">{s.id}</span>
+                </span>
+                <span className="exp-step-state">
+                  <span className="exp-step-dot" aria-hidden="true" />
+                  {state ? state.replaceAll("_", " ") : "not started"}
+                </span>
+                <span className="exp-step-bar" aria-hidden="true">
+                  <span />
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </BodySection>
     </div>
   );
 }
+
+/** Attempt states after which a step has its outputs. */
+const FINISHED = new Set(["succeeded", "cache_hit"]);
 
 /** The shown run's headline metric, and how far it moved from the run before. */
 function RunDock({ run, label, metrics, before, beforeMetrics, beforeLabel }: {
@@ -219,13 +247,13 @@ function RunDock({ run, label, metrics, before, beforeMetrics, beforeLabel }: {
 }) {
   const now = firstHeadline(metrics);
   const then = now && before ? firstHeadline(beforeMetrics, now.name) : undefined;
-  const rows: { k: string; v: string }[] = [{ k: "Status", v: run.status }];
+  const rows: { k: string; v: string }[] = [{ k: "Run", v: label }, { k: "Status", v: run.status }];
   if (now) rows.push({ k: now.name, v: formatMetric(now.value) });
   if (now && then && beforeLabel) {
     const delta = now.value - then.value;
     rows.push({ k: "Change", v: `${delta < 0 ? "−" : "+"}${formatMetric(Math.abs(delta))} from run ${beforeLabel}` });
   }
-  return <InfoDock title="Run" subtitle={label} rows={rows} />;
+  return <InfoDock rows={rows} />;
 }
 
 /** The first evaluator's headline metric, or the one named. */

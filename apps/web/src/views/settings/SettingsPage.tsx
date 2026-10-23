@@ -90,7 +90,6 @@ export function SettingsPage() {
           search={<SearchField value={search} onChange={setSearch} placeholder="Search settings" />}
           dock={
             <InfoDock
-              title="Installed"
               rows={[
                 { k: "Operators", v: String(operators.data.length) },
                 { k: "Rules", v: count(rules, (r) => r.length) },

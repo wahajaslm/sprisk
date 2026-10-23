@@ -81,7 +81,7 @@ describe("settings", () => {
     renderWithApi(<SettingsPage />);
     const side = await screen.findByRole("complementary", { name: "Settings" });
     expect(await within(side).findByRole("button", { name: /^Packs/ })).toHaveTextContent("Could not read");
-    expect(within(screen.getByRole("region", { name: "Installed" })).getByText("Rules").nextSibling).toHaveTextContent("Could not read");
+    expect(within(screen.getByRole("region", { name: "Info" })).getByText("Rules").nextSibling).toHaveTextContent("Could not read");
   });
 
   it("shows why the operators cannot be read", async () => {

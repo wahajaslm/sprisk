@@ -1736,7 +1736,6 @@ p { margin: 0; }
 .ds-summary dt { color: var(--muted); }
 .ds-summary dd { margin: 0; text-align: right; color: var(--soft); font-family: var(--mono); }
 .ds-note { white-space: normal; margin: 0; padding: 0; font-size: var(--fs-12-5); color: var(--text-muted); }
-.ds-profile { display: grid; align-content: start; gap: var(--space-4); padding: var(--space-4) var(--space-5); min-width: 0; }
 .ds-missing { display: flex; align-items: center; gap: var(--space-2); }
 .ds-missing-bar { width: 120px; height: 6px; background: var(--wash-strong); overflow: hidden; }
 .ds-missing-bar span { display: block; height: 100%; }
@@ -4106,7 +4105,6 @@ p { margin: 0; }
 /* InfoDock (design: border-top .1, 10/14/12, "Info" 13/500, rows 12.5px with 4px padding) */
 .info-dock { display: flex; flex-direction: column; padding: 10px 14px 12px; border-top: 1px solid var(--alpha-10); flex-shrink: 0; }
 .info-dock-title { margin: 0; padding-bottom: 4px; font-size: var(--fs-13); font-weight: var(--fw-medium); color: var(--text-primary); }
-.info-dock-subtitle { font-weight: var(--fw-regular); color: var(--text-label); }
 .info-dock-row { display: flex; justify-content: space-between; gap: var(--sp-12); padding: 4px 0; font-size: var(--fs-12-5); }
 .info-dock-key { color: var(--text-label); white-space: nowrap; }
 .info-dock-val { color: var(--text-primary); font-variant-numeric: tabular-nums; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -6289,13 +6287,6 @@ p { margin: 0; }
   font-size: var(--fs-13);
 }
 
-.exp-step-name {
-  width: 180px;
-  color: var(--ink-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .exp-step-status {
   width: 80px;
@@ -8039,11 +8030,6 @@ p { margin: 0; }
 /* ── Experiments: Monitor tab ── */
 .exp-monitor { display: flex; flex-direction: column; gap: var(--sp-12); max-width: 720px; }
 .exp-failure { margin: 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--danger-wash-soft); color: var(--danger); font-size: var(--fs-13); line-height: var(--lh-body); }
-.exp-steps { list-style: none; margin: 0; padding: 0; }
-.exp-steps li { display: flex; justify-content: space-between; gap: var(--sp-12); padding: 7px 0; border-bottom: 1px solid var(--alpha-05); font-size: var(--fs-13); }
-.exp-step-name { color: var(--text-primary); font-family: var(--font-mono); }
-.exp-step-state { color: var(--text-label); font-variant-numeric: tabular-nums; }
-.exp-steps li.failed .exp-step-state { color: var(--danger); }
 
 /* ── Reports: question ledger ── */
 
@@ -8075,7 +8061,7 @@ p { margin: 0; }
 
 /* ── Datasets: detail, profile and lineage ── */
 
-.ds-profile { display: grid; gap: var(--sp-16); max-width: 1200px; }
+.ds-profile { display: grid; align-content: start; gap: var(--sp-16); max-width: 1200px; min-width: 0; }
 
 .nb-new { padding: var(--sp-8) var(--sp-10); }
 
@@ -8105,3 +8091,37 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .side-add-btn { width: 100%; height: 32px; border: 1px dashed var(--alpha-16); border-radius: var(--radius-sm); background: transparent; font: inherit; font-size: var(--fs-13); color: var(--text-secondary); cursor: pointer; }
 .side-add-btn:hover:not(:disabled) { background: var(--alpha-04); }
 .side-add-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ── Experiments Monitor (design: progress, then each step's state and bar) ── */
+.exp-progress { display: flex; align-items: center; gap: 16px; font-size: var(--fs-12-5); color: var(--text-label); white-space: nowrap; }
+.exp-progress-bar { flex: 1; height: 2px; background: var(--alpha-08); }
+.exp-progress-bar > span { display: block; height: 100%; background: var(--text-primary); }
+.exp-steps { list-style: none; margin: 0; padding: 0; }
+.exp-steps li { display: grid; grid-template-columns: minmax(0, 1fr) 110px 100px; align-items: center; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--alpha-05); font-size: var(--fs-13); }
+.exp-step-name { color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-step-subject { margin-left: 6px; font-size: var(--fs-12); color: var(--text-faint); }
+.exp-step-state { display: flex; align-items: center; gap: 6px; color: var(--text-label); }
+.exp-step-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-label); }
+.exp-step-bar { height: 2px; background: var(--alpha-08); }
+.exp-step-bar > span { display: block; height: 100%; width: 0; background: var(--text-label); }
+.exp-steps li.done .exp-step-bar > span { width: 100%; }
+.exp-steps li.running .exp-step-bar > span { width: 50%; background: var(--text-primary); }
+.exp-steps li.running .exp-step-state { color: var(--text-primary); }
+.exp-steps li.running .exp-step-dot { background: var(--text-primary); }
+.exp-steps li.failed .exp-step-state { color: var(--danger); }
+.exp-steps li.failed .exp-step-dot { background: var(--danger); }
+.exp-steps li.failed .exp-step-bar > span { width: 100%; background: var(--danger); }
+.exp-steps li.waiting .exp-step-name, .exp-steps li.waiting .exp-step-state { color: var(--text-disabled); }
+
+/* ── Datasets profile (design: missing share bars, then the columns missing most) ── */
+.ds-bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; border-bottom: 1px solid var(--alpha-12); margin-bottom: 12px; }
+.ds-bars > span { flex: 1; border-radius: 1px 1px 0 0; background: var(--alpha-35); }
+.ds-bars > span.warn { background: var(--danger); }
+.ds-worst { list-style: none; margin: 0; padding: 0; }
+.ds-worst li { display: grid; grid-template-columns: 160px minmax(0, 1fr) 60px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--alpha-04); font-size: var(--fs-13); }
+.ds-worst-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-worst-bar { height: 4px; border-radius: 2px; background: var(--alpha-08); }
+.ds-worst-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--text-secondary); }
+.ds-worst-share { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.ds-worst li.warn .ds-worst-bar > span { background: var(--danger); }
+.ds-worst li.warn .ds-worst-share { color: var(--danger); }

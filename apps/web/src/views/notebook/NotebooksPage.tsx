@@ -73,7 +73,6 @@ export function NotebooksPage() {
         search={<SearchField value={filter} onChange={setFilter} placeholder="Search notebooks" ariaLabel="Filter notebooks" />}
         dock={
           <InfoDock
-            title="Flow"
             rows={[
               { k: "Flow", v: shownFlow ? flowName(shownFlow) : "None yet" },
               { k: "Stages", v: String(stages.length) },

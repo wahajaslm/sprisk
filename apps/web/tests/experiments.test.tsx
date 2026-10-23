@@ -129,7 +129,7 @@ describe("experiments frame", () => {
   it("shows the chosen run's headline metric and its change from the run before", async () => {
     twoVersions();
     renderWithApi(<Experiments />);
-    const dock = await screen.findByRole("region", { name: "Run" });
+    const dock = await screen.findByRole("region", { name: "Info" });
     await waitFor(() => expect(dock).toHaveTextContent(/accuracy\s*0\.9/));
     expect(dock).toHaveTextContent("−0.047 from run #1");
   });

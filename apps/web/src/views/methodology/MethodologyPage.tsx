@@ -68,7 +68,6 @@ export function MethodologyPage() {
           dock={
             current && (
               <InfoDock
-                title="Rule"
                 rows={[
                   { k: "Status", v: current.status },
                   { k: "Stage", v: stageName(current.stage) },

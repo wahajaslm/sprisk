@@ -259,7 +259,6 @@ export function StepLibrary() {
 
       {/* Info Dock */}
       <InfoDock
-        title="Info"
         rows={[
           {
             k: "Type",

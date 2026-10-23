@@ -61,7 +61,6 @@ export function ReportsPage() {
           dock={
             question && (
               <InfoDock
-                title="Ledger"
                 rows={[
                   { k: "Open", v: String(open), warn: open > 0 },
                   { k: "Assumptions", v: String(question.assumptions.length) },

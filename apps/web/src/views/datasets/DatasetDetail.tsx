@@ -18,22 +18,27 @@ export function ProfileTab({ dataset }: { dataset: LoadedTable }) {
   const profile = useDatasetProfile(dataset.artifact.id);
   return (
     <div className="ds-profile">
-      {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
-      <p className="nv-note ds-note">
-        Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
-        Missing counts empty cells, NaN and infinity.
-      </p>
       {profile.isError ? (
         <p role="alert" className="error">{profile.error.message}</p>
       ) : profile.isPending ? (
         <Loading text="Profiling the table…" />
       ) : (
         <>
-          <Partial profile={profile.data} />
-          <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
-          <Plots profile={profile.data} />
+          <MissingShare profile={profile.data} />
+          <BodySection title="Columns" note="Each column's type, missing share, distinct values and shape.">
+            <Partial profile={profile.data} />
+            <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
+          </BodySection>
+          <BodySection title="Distributions" note="Where values are missing, how numeric columns correlate, and each column's spread.">
+            <Plots profile={profile.data} />
+          </BodySection>
         </>
       )}
+      {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
+      <p className="ds-note">
+        Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
+        Missing counts empty cells, NaN and infinity.
+      </p>
     </div>
   );
 }
@@ -48,6 +53,35 @@ export function LineageTab({ lineage, onOpen }: { lineage: Use[]; onOpen: (use: 
           <RowItem key={l.label} name={l.label} meta={`run ${l.use.run_id.slice(-6)}`} action={<Button size="sm" onClick={() => onOpen(l.use)}>Open</Button>} />
         ))}
       </RowList>
+    </BodySection>
+  );
+}
+
+/** The design's profile view: one bar per column for its missing share, red from 20%, then
+ * the columns missing most. */
+function MissingShare({ profile }: { profile: DatasetProfile }) {
+  const rows = profile.profiled_rows;
+  const shares = profile.columns.map((c) => ({ name: c.name, share: rows === 0 ? 0 : c.missing / rows }));
+  const most = Math.max(...shares.map((c) => c.share), 0.0001);
+  const worst = [...shares].sort((a, b) => b.share - a.share).slice(0, 4);
+  return (
+    <BodySection title="Missing share per column" note="Red from 20% empty.">
+      <div className="ds-bars" aria-hidden="true">
+        {shares.map((c) => (
+          <span key={c.name} className={c.share >= MISSING_WARN ? "warn" : undefined} style={{ height: `${Math.max(2, (c.share / most) * 100)}%` }} />
+        ))}
+      </div>
+      <ul className="ds-worst" aria-label="Columns missing most">
+        {worst.map((c) => (
+          <li key={c.name} className={c.share >= MISSING_WARN ? "warn" : undefined}>
+            <span className="ds-worst-name">{c.name}</span>
+            <span className="ds-worst-bar">
+              <span style={{ width: `${(c.share / most) * 100}%` }} />
+            </span>
+            <span className="ds-worst-share">{percent(c.share)}</span>
+          </li>
+        ))}
+      </ul>
     </BodySection>
   );
 }
