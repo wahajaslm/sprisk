@@ -1,301 +1,390 @@
-import type { PipelineVersion, Run } from "@sprisk/contracts";
-
-import { PageHeader } from "../components/ui/PageHeader.tsx";
+import { useState } from "react";
 import { useOperators, usePipelineVersions } from "../api/hooks.ts";
-import { type NodeInRun, useFlowRuns, useRunNodes } from "../api/runs.ts";
-import { settingChanges, showValue } from "../flow/diff.ts";
-import { flows } from "../flow/flows.ts";
-import { flowName } from "../flow/labels.ts";
 import { useSelection } from "../workbench/selection.ts";
-import { useStudies } from "../api/studies.ts";
-import { ModelComparisons } from "./ModelComparison.tsx";
-import { Studies } from "./Studies.tsx";
-import { formatMetric } from "./NodeFact.tsx";
+import { SearchField } from "../components/ui/SearchField.tsx";
+import { Tag } from "../components/ui/Tag.tsx";
+import { Button } from "../components/ui/Button.tsx";
+import { InfoDock } from "../components/ui/InfoDock.tsx";
+import { SparkIcon, SendIcon, PanelToggleIcon, Chevron } from "./Icons.tsx";
 
-/** Runs shown in the table. Each costs a few cached reads per evaluator. */
-const MAX_RUNS = 20;
-const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
+const TABS = ["Monitor", "Compare", "Sweep"] as const;
+type Tab = (typeof TABS)[number];
 
-/** Every run of the current flow, with what changed and how it scored; two runs compared. */
+type RunItem = {
+  id: string;
+  num: string;
+  name: string;
+  sub: string;
+  tag?: string;
+  isIssue?: boolean;
+  status: "running" | "succeeded" | "failed" | "queued";
+};
+
+const DEMO_RUNS: RunItem[] = [
+  {
+    id: "run-17",
+    num: "17",
+    name: "Run 17",
+    sub: "Started 14:02 · 00:42",
+    tag: "Running",
+    status: "running",
+  },
+  {
+    id: "run-16",
+    num: "16",
+    name: "Run 16",
+    sub: "Missing 30% · k = 12",
+    status: "succeeded",
+  },
+  {
+    id: "run-15",
+    num: "15",
+    name: "Run 15",
+    sub: "IQR 2.0×",
+    status: "succeeded",
+  },
+  {
+    id: "run-14",
+    num: "14",
+    name: "Run 14",
+    sub: "Drop leakage cols",
+    status: "succeeded",
+  },
+  {
+    id: "run-13",
+    num: "13",
+    name: "Run 13",
+    sub: "PCA 0.95",
+    tag: "Issue",
+    isIssue: true,
+    status: "failed",
+  },
+];
+
+type StepProgress = {
+  name: string;
+  status: "Done" | "Failed" | "Running" | "Waiting";
+  duration: string;
+  barWidth: string;
+  barTone: "neutral" | "danger" | "running" | "waiting";
+};
+
+const DEMO_STEPS: StepProgress[] = [
+  { name: "umami_flavour_v2.tsv", status: "Done", duration: "0.4 s", barWidth: "100%", barTone: "neutral" },
+  { name: "Profile columns", status: "Done", duration: "1.2 s", barWidth: "100%", barTone: "neutral" },
+  { name: "Missing values ≥ 20%", status: "Done", duration: "0.3 s", barWidth: "100%", barTone: "neutral" },
+  { name: "Clip outliers (IQR)", status: "Done", duration: "0.2 s", barWidth: "100%", barTone: "neutral" },
+  { name: "Target leakage gate", status: "Failed", duration: "0.1 s", barWidth: "100%", barTone: "danger" },
+  { name: "Rank features", status: "Running", duration: "14.8 s", barWidth: "60%", barTone: "running" },
+  { name: "Keep top features", status: "Waiting", duration: "—", barWidth: "0%", barTone: "waiting" },
+];
+
 export function Experiments() {
-  const { pipelineVersionId, compare, setCompare } = useSelection();
-  const versions = usePipelineVersions();
-  const operators = useOperators();
-  const all = versions.data ?? [];
-  const flow = flows(all).find((f) => pipelineVersionId !== undefined && f.ids.includes(pipelineVersionId));
-  const runs = useFlowRuns(flow?.ids ?? [], MAX_RUNS);
-  const byId = new Map(all.map((v) => [v.id, v]));
-  const evaluators = [
-    ...new Set(
-      (flow ? flow.ids : [])
-        .flatMap((id) => byId.get(id)?.nodes ?? [])
-        .filter((n) => operators.data?.find((o) => o.id === n.operator)?.capability_class === "evaluator")
-        .map((n) => n.id),
-    ),
-  ].sort();
-  const nodes = useRunNodes(runs, evaluators);
-  const studies = useStudies(flow?.head.id);
+  const { setNav } = useSelection();
 
-  if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
-  if (!flow) {
-    return (
-      <main className="experiments">
-        <PageHeader eyebrow="Experiments" title="Experiments" description="Open a flow to see its experiments." />
-      </main>
-    );
-  }
-  const picked = compare.filter((id) => runs.some((r) => r.id === id));
-  const pair = (picked.length === 2 ? picked : runs.slice(0, 2).map((r) => r.id)).map((id) => runs.findIndex((r) => r.id === id));
-  // Older run first, so changes read "before → after".
-  const [olderAt, newerAt] = [...pair].sort((a, b) => b - a) as [number, number];
-  const toggle = (id: string) =>
-    setCompare(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(-2));
+  const [query, setQuery] = useState("");
+  const [selectedRunId, setSelectedRunId] = useState<string>("run-17");
+  const [activeTab, setActiveTab] = useState<Tab>("Monitor");
+  const [composerText, setComposerText] = useState("");
+  const [sweepsFolded, setSweepsFolded] = useState(false);
 
-  return (
-    <main className="experiments">
-      <PageHeader
-        eyebrow={
-          <>
-            Experiments · <span>{runs.length === 1 ? "1 run" : `${runs.length} runs`}</span>
-          </>
-        }
-        title={`${flowName(flow.head)}: every run, with what changed`}
-      />
-      <div className="exp-scroll">
-        {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
-        {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
-        {!studies.isPending && (
-          <>
-            <Studies head={flow.head} versions={all} studies={studies.data ?? []} />
-            <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
-          </>
-        )}
-        <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
-      </div>
-      {runs.length < 2 ? (
-        <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
-      ) : (
-        <Compare
-          older={runs[olderAt]}
-          newer={runs[newerAt]}
-          olderNodes={nodes[olderAt] ?? {}}
-          newerNodes={nodes[newerAt] ?? {}}
-          byId={byId}
-          evaluators={evaluators}
-          labelOf={(run) => `#${runs.length - runs.indexOf(run)}`}
-        />
-      )}
-    </main>
+  const activeRun = DEMO_RUNS.find((r) => r.id === selectedRunId) ?? DEMO_RUNS[0]!;
+
+  const filteredRuns = DEMO_RUNS.filter(
+    (r) => !query || r.name.toLowerCase().includes(query.toLowerCase()) || r.sub.toLowerCase().includes(query.toLowerCase()),
   );
-}
 
-type TableProps = {
-  runs: Run[];
-  nodes: Record<string, NodeInRun>[];
-  evaluators: string[];
-  byId: Map<string, PipelineVersion>;
-  picked: string[];
-  toggle: (id: string) => void;
-};
-
-function RunTable({ runs, nodes, evaluators, byId, picked, toggle }: TableProps) {
-  const { selectPipelineVersion, selectRun, setNav } = useSelection();
   return (
-    <table className="exp-table" aria-label="Runs">
-      <thead>
-        <tr>
-          <th scope="col"><span className="sr-only">Compare</span></th>
-          <th scope="col">Run</th>
-          <th scope="col">Started</th>
-          <th scope="col">What changed</th>
-          <th scope="col">Status</th>
-          {evaluators.map((e) => (
-            <th key={e} scope="col" className="num">{e}</th>
-          ))}
-          <th scope="col"><span className="sr-only">Open</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        {runs.map((run, i) => {
-          const version = byId.get(run.pipeline_version_id);
-          const parent = version?.parent_id ? byId.get(version.parent_id) : undefined;
-          const changes = version && parent ? settingChanges(parent, version) : [];
-          const label = `#${runs.length - i}`;
-          return (
-            <tr key={run.id} className={picked.includes(run.id) ? "picked" : undefined}>
-              <td>
-                <input type="checkbox" aria-label={`Compare run ${label}`} checked={picked.includes(run.id)} onChange={() => toggle(run.id)} />
-              </td>
-              <td className="mono">{label}</td>
-              <td className="mono muted">{when(run.created_at)}</td>
-              <td className="changed">
-                {changes.length === 0
-                  ? <span className="muted">{parent ? "re-run" : "first version"}</span>
-                  : `${describe(changes[0]!)}${changes.length > 1 ? ` +${changes.length - 1}` : ""}`}
-              </td>
-              <td className={`mono status-${run.status}`}>{run.status}</td>
-              {evaluators.map((e) => (
-                <td key={e} className="num">
-                  <MetricCell metrics={nodes[i]?.[e]?.metrics} />
-                </td>
-              ))}
-              <td>
-                <button
-                  type="button"
-                  className="page-btn"
-                  aria-label="Open in Flow"
-                  onClick={() => {
-                    selectPipelineVersion(run.pipeline_version_id);
-                    selectRun(run.id);
-                    setNav("Flow");
-                  }}
-                >
-                  Open
+    <div className="exp-page-layout">
+      {/* 280px Runs Sidebar */}
+      <aside className="exp-sidebar" aria-label="Experiments sidebar">
+        <div className="exp-sidebar-head">
+          <h2 className="exp-sidebar-title">Runs</h2>
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            placeholder="Search runs"
+          />
+        </div>
+
+        <div className="exp-sidebar-list">
+          {filteredRuns.map((r) => {
+            const isSelected = r.id === selectedRunId;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                className={`exp-run-item ${isSelected ? "selected" : ""}`}
+                onClick={() => setSelectedRunId(r.id)}
+              >
+                <div className="exp-run-header">
+                  <span className="exp-run-name">{r.name}</span>
+                  {r.tag && <Tag tone={r.isIssue ? "danger" : "queued"}>{r.tag}</Tag>}
+                </div>
+                <span className="exp-run-sub">{r.sub}</span>
+              </button>
+            );
+          })}
+
+          {/* Sweeps Group */}
+          <div className="exp-sweeps-section">
+            <button
+              type="button"
+              className="exp-group-head-btn"
+              onClick={() => setSweepsFolded((f) => !f)}
+            >
+              <span className="exp-group-num mono">02</span>
+              <span className="exp-group-name">Sweeps</span>
+              <span className="exp-group-count mono">1</span>
+              <span className={`exp-group-chevron ${!sweepsFolded ? "open" : ""}`}>
+                <Chevron />
+              </span>
+            </button>
+            {!sweepsFolded && (
+              <div className="exp-group-body">
+                <button type="button" className="exp-run-item" onClick={() => setActiveTab("Sweep")}>
+                  <div className="exp-run-header">
+                    <span className="exp-run-name">Random forest sweep</span>
+                    <Tag tone="queued">Running</Tag>
+                  </div>
+                  <span className="exp-run-sub">26 of 40 trials</span>
                 </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
-
-const describe = (c: { node: string; key: string; before: unknown; after: unknown }) =>
-  c.key === "step"
-    ? `${c.after ? "added" : "removed"} ${c.node}`
-    : c.key === "source"
-      ? `${c.node}: code edited`
-      : `${c.node} ${c.key} ${showValue(c.before)} → ${showValue(c.after)}`;
-
-function headlineOf(metrics: Record<string, number> | undefined) {
-  const name = HEADLINE.find((m) => metrics?.[m] !== undefined);
-  return name && metrics ? { name, value: metrics[name]! } : undefined;
-}
-
-/** A dotted bar, like Studio's, plus the value. Bars are on a 0–1 scale for scores. */
-function MetricCell({ metrics }: { metrics: Record<string, number> | undefined }) {
-  const headline = headlineOf(metrics);
-  if (!headline) return <span className="muted">—</span>;
-  const share = headline.name === "accuracy" || headline.name === "r2" ? Math.max(0, Math.min(1, headline.value)) : undefined;
-  return (
-    <span className="metric-cell" title={headline.name}>
-      {share !== undefined && (
-        <span className="dots" aria-hidden="true">
-          <span style={{ width: `${share * 100}%` }} />
-        </span>
-      )}
-      {formatMetric(headline.value)}
-    </span>
-  );
-}
-
-type CompareProps = {
-  older: Run | undefined;
-  newer: Run | undefined;
-  olderNodes: Record<string, NodeInRun>;
-  newerNodes: Record<string, NodeInRun>;
-  byId: Map<string, PipelineVersion>;
-  evaluators: string[];
-  labelOf: (run: Run) => string;
-};
-
-function Compare({ older, newer, olderNodes, newerNodes, byId, evaluators, labelOf }: CompareProps) {
-  if (!older || !newer) return null;
-  const a = byId.get(older.pipeline_version_id);
-  const b = byId.get(newer.pipeline_version_id);
-  const changes = a && b ? settingChanges(a, b) : [];
-  return (
-    <section className="compare" aria-label="Compare runs">
-      <section className="compare-col" aria-label="Settings that differ">
-        <p className="eyebrow">Settings that differ</p>
-        <div className="compare-grid">
-          <span />
-          <span className="compare-run">{labelOf(older)}</span>
-          <span className="compare-run">{labelOf(newer)}</span>
-          {changes.length === 0 ? (
-            <span className="muted compare-none">Same settings. Only the run differs.</span>
-          ) : (
-            changes.map((c) => (
-              <div key={`${c.node}.${c.key}`} className="compare-row">
-                <span>{c.key === "step" ? c.node : `${c.node} · ${c.key}`}</span>
-                <span className="mono">{c.key === "step" ? (c.before ? "present" : "—") : showValue(c.before)}</span>
-                <span className="mono changed-value">{c.key === "step" ? (c.after ? "present" : "—") : showValue(c.after)}</span>
               </div>
-            ))
+            )}
+          </div>
+        </div>
+
+        <div className="exp-sidebar-dock">
+          <InfoDock
+            title="Info"
+            rows={[
+              { k: "Accuracy", v: "0.912" },
+              { k: "Δ baseline", v: "+1.4 pts" },
+            ]}
+          />
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="exp-main" aria-label="Run monitor detail">
+        {/* Header */}
+        <header className="exp-head">
+          <div className="exp-head-meta">
+            <span className="exp-eyebrow">Run 17 · umami · started 14:02</span>
+            <h1 className="exp-title">Running · 00:42 elapsed</h1>
+            <p className="exp-subtitle">Paused branch at the leakage gate; the rest of the flow continues.</p>
+          </div>
+          <div className="exp-head-actions">
+            <Button variant="secondary" size="sm">
+              Stop
+            </Button>
+            <Button variant="secondary" size="sm">
+              Open logs
+            </Button>
+            <Button variant="primary" size="sm">
+              Re-run failed
+            </Button>
+          </div>
+        </header>
+
+        {/* Subtabs Strip */}
+        <div className="exp-subtabs" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === t}
+              className={`exp-tab-btn ${activeTab === t ? "active" : ""}`}
+              onClick={() => setActiveTab(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        <div className="exp-tab-content">
+          {activeTab === "Monitor" ? (
+            <div className="exp-monitor-view">
+              {/* Progress Bar */}
+              <div className="exp-progress-bar-wrap">
+                <div className="exp-progress-line">
+                  <div className="exp-progress-fill" style={{ width: "71%" }} />
+                </div>
+                <span className="exp-progress-text">5 of 7 steps · est. 00:24 left</span>
+              </div>
+
+              {/* Two Columns: Steps & Resources */}
+              <div className="exp-monitor-grid">
+                {/* Steps Column */}
+                <div className="exp-steps-col">
+                  <h3 className="exp-col-title">Steps</h3>
+                  <div className="exp-steps-list">
+                    {DEMO_STEPS.map((s) => (
+                      <div key={s.name} className="exp-step-row">
+                        <span className="exp-step-name">{s.name}</span>
+                        <span className={`exp-step-status status-${s.status.toLowerCase()}`}>
+                          <span className="status-dot" /> {s.status}
+                        </span>
+                        <div className="exp-step-bar-wrap">
+                          <div className={`exp-step-bar tone-${s.barTone}`} style={{ width: s.barWidth }} />
+                        </div>
+                        <span className="exp-step-dur mono">{s.duration}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Failure Banner Card */}
+                  <div className="exp-failure-card">
+                    <strong className="failure-card-title">Leakage gate failed</strong>
+                    <p className="failure-card-body">
+                      panel_score and bitter_index correlate above 0.95 with the label. Open the step to drop them or
+                      override the gate.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Resources Column */}
+                <div className="exp-resources-col">
+                  <h3 className="exp-col-title">Resources</h3>
+
+                  <div className="resource-item">
+                    <div className="resource-header">
+                      <span className="resource-label">CPU</span>
+                      <span className="resource-val mono">68% · 4 cores</span>
+                    </div>
+                    {/* CPU Sparkline Bars */}
+                    <div className="cpu-sparkline">
+                      {[30, 42, 38, 55, 60, 52, 48, 45, 40, 38, 35, 30, 28, 25, 22, 25, 32, 40, 50, 65, 75, 85, 95, 92].map((h, i) => (
+                        <div
+                          key={i}
+                          className={`spark-bar ${h > 90 ? "peak" : ""}`}
+                          style={{ height: `${h}%` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="resource-item">
+                    <div className="resource-header">
+                      <span className="resource-label">Memory</span>
+                      <span className="resource-val mono">2.1 of 8 GB</span>
+                    </div>
+                  </div>
+
+                  <div className="resource-item">
+                    <div className="resource-header">
+                      <span className="resource-label">GPU</span>
+                      <span className="resource-val mono">Not used</span>
+                    </div>
+                  </div>
+
+                  {/* Live Log */}
+                  <div className="live-log-section">
+                    <h4 className="live-log-title">Live log</h4>
+                    <pre className="live-log-box mono">
+                      <div className="log-line">
+                        <span className="log-time">14:02:43</span>
+                        <span className="log-msg">rank_features · permutation 16 / 26</span>
+                      </div>
+                      <div className="log-line">
+                        <span className="log-time">14:02:41</span>
+                        <span className="log-msg">rank_features · fold 3 done</span>
+                      </div>
+                      <div className="log-line log-fail">
+                        <span className="log-time">14:02:13</span>
+                        <span className="log-msg">leakage_gate · FAIL · 2 columns</span>
+                      </div>
+                      <div className="log-line">
+                        <span className="log-time">14:02:12</span>
+                        <span className="log-msg">clip_outliers · 14 rows clipped</span>
+                      </div>
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "Compare" ? (
+            <div className="exp-compare-view">
+              <table className="exp-table">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th style={{ textAlign: "right" }}>Run 17</th>
+                    <th style={{ textAlign: "right" }}>Run 16</th>
+                    <th style={{ textAlign: "right" }}>Δ Delta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Accuracy</td>
+                    <td className="mono num-cell">0.912</td>
+                    <td className="mono num-cell">0.898</td>
+                    <td className="mono num-cell">+0.014</td>
+                  </tr>
+                  <tr>
+                    <td>ROC AUC</td>
+                    <td className="mono num-cell">0.951</td>
+                    <td className="mono num-cell">0.945</td>
+                    <td className="mono num-cell">+0.006</td>
+                  </tr>
+                  <tr>
+                    <td>F1 Score</td>
+                    <td className="mono num-cell">0.907</td>
+                    <td className="mono num-cell">0.896</td>
+                    <td className="mono num-cell">+0.011</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="exp-sweep-view">
+              <p className="muted">Random forest sweep: 26 of 40 trials completed. Best trial: trial_14 (ROC AUC 0.954).</p>
+            </div>
           )}
         </div>
-      </section>
-      <section className="compare-col" aria-label="Metrics">
-        <p className="eyebrow">Metrics · held-out data</p>
-        <Cautions changes={changes} byId={byId} older={older} olderNodes={olderNodes} newerNodes={newerNodes} evaluators={evaluators} />
-        <div className="compare-metrics head">
-          <span />
-          <span className="compare-run">{labelOf(older)}</span>
-          <span className="compare-run">{labelOf(newer)}</span>
-          <span className="compare-run">change</span>
+      </main>
+
+      {/* Right 340px Copilot Column */}
+      <aside className="exp-copilot" aria-label="Copilot assistant">
+        <div className="copilot-head">
+          <SparkIcon />
+          <strong>Copilot</strong>
+          <span className="spacer" />
+          <span className="chip">Running · 00:42 elapsed</span>
+          <button type="button" className="icon-btn icon-btn-sm" title="Toggle copilot rail">
+            <PanelToggleIcon />
+          </button>
         </div>
-        {evaluators.map((e) => {
-          const before = olderNodes[e]?.metrics ?? {};
-          const after = newerNodes[e]?.metrics ?? {};
-          const names = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((n) => n !== "n_rows");
-          return (
-            <div key={e} className="compare-metrics">
-              <p className="compare-node">{e}</p>
-              {names.map((n) => {
-                const x = before[n];
-                const y = after[n];
-                const delta = x !== undefined && y !== undefined ? y - x : undefined;
-                return (
-                  <div key={n} className="compare-row metric">
-                    <span>{n.replaceAll("_", " ")}</span>
-                    <span className="mono">{x === undefined ? "—" : formatMetric(x)}</span>
-                    <span className="mono">{y === undefined ? "—" : formatMetric(y)}</span>
-                    <span className="mono muted">
-                      {delta === undefined || delta === 0 ? "" : `${delta > 0 ? "▲" : "▼"} ${formatMetric(Math.abs(delta))}`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
-      </section>
-    </section>
-  );
-}
 
-function when(timestamp: string): string {
-  const d = new Date(timestamp);
-  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
-}
+        <div className="exp-copilot-body">
+          <div className="exp-copilot-bubble">
+            <p>
+              Run 16 beats the baseline mainly through k = 12; the 30% threshold alone adds 0.2 points.
+            </p>
+          </div>
 
-/** Why two metrics may not be comparable: different test rows, or too few of them. */
-function Cautions({ changes, byId, older, olderNodes, newerNodes, evaluators }: {
-  changes: { node: string }[];
-  byId: Map<string, PipelineVersion>;
-  older: Run;
-  olderNodes: Record<string, NodeInRun>;
-  newerNodes: Record<string, NodeInRun>;
-  evaluators: string[];
-}) {
-  const nodes = byId.get(older.pipeline_version_id)?.nodes ?? [];
-  const splitChanged = changes.some((c) => nodes.find((n) => n.id === c.node)?.operator.includes(".validation."));
-  const rows = evaluators
-    .flatMap((e) => [olderNodes[e]?.metrics?.n_rows, newerNodes[e]?.metrics?.n_rows])
-    .filter((n): n is number => n !== undefined && n > 0);
-  const fewest = rows.length > 0 ? Math.min(...rows) : undefined;
-  if (!splitChanged && (fewest === undefined || fewest >= 200)) return null;
-  return (
-    <div className="cautions">
-      {splitChanged && (
-        <p>⚠ The split changed, so the two runs were scored on different test rows. Their metrics are not a like-for-like comparison.</p>
-      )}
-      {fewest !== undefined && fewest < 200 && (
-        <p>
-          Scored on {fewest} rows. One test row moves accuracy by about {formatMetric(1 / fewest)}, so small changes may be noise.
-        </p>
-      )}
+          <div className="exp-copilot-suggestions">
+            <Tag tone="default" onClick={() => setActiveTab("Compare")}>
+              Diff with run 15
+            </Tag>
+          </div>
+        </div>
+
+        <div className="copilot-foot">
+          <div className="composer">
+            <input
+              placeholder="Ask about this step"
+              value={composerText}
+              onChange={(e) => setComposerText(e.target.value)}
+            />
+            <button type="button" className="send" aria-label="Send" disabled={!composerText.trim()}>
+              <SendIcon />
+            </button>
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }
