@@ -544,7 +544,6 @@ p { margin: 0; }
   flex: none;
 }
 
-
 /* ── Flow Canvas Viewport & Flow Inspector ──────────────── */
 .flow-canvas-viewport {
   flex: 1;
@@ -680,211 +679,14 @@ p { margin: 0; }
   font-size: var(--fs-13);
 }
 
-/* ── Methodology 3-Column Decision Grid ──────────────────── */
-.methodology-grid-view {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.3fr) minmax(0, 1fr);
-  gap: 0;
-  height: 100%;
-  min-height: 0;
-}
-
-.methodology-col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  padding: 14px 18px;
-  border-right: 1px solid var(--border-divider);
-  overflow-y: auto;
-}
-
-.methodology-col:last-child {
-  border-right: 0;
-}
-
-.methodology-section-title {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-label);
-}
-
-.methodology-rule-title {
-  font-size: var(--fs-14);
-  font-weight: var(--fw-medium);
-  color: var(--text-strong);
-  line-height: var(--lh-snug);
-}
-
-.methodology-rule-desc {
-  font-size: var(--fs-12-5);
-  color: var(--text-muted);
-  line-height: var(--lh-body);
-}
-
-.methodology-decision-block {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-divider);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.methodology-fact-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: var(--fs-12);
-}
-
-.methodology-fact-row .fact-key {
-  color: var(--text-label);
-}
-
-.methodology-fact-row .fact-val {
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-}
-
-.methodology-alts-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.alt-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-panel);
-  background: transparent;
-  cursor: pointer;
-  transition: all var(--dur-fast);
-}
-
-.alt-card:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-control);
-}
-
 .alt-card.selected {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.18);
 }
 
-.alt-radio-dot {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 1.5px solid var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-sizing: border-box;
-}
-
 .alt-card.selected .alt-radio-dot {
   border-color: #ffffff;
 }
-
-.alt-radio-fill {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #ffffff;
-}
-
-.alt-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.alt-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.alt-title {
-  font-size: var(--fs-13);
-  font-weight: var(--fw-medium);
-  color: var(--text-primary);
-}
-
-.alt-tag {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  color: #e0e0e0;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.adjust-control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-panel);
-  background: var(--bg-card);
-}
-
-.adjust-label-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  font-size: var(--fs-12-5);
-}
-
-.adjust-label {
-  color: var(--text-label);
-}
-
-.adjust-val {
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
-}
-
-.adjust-slider {
-  width: 100%;
-  accent-color: #f2f2f2;
-  cursor: pointer;
-  margin: 4px 0;
-}
-
-.rule-details-btn {
-  height: 30px;
-  padding: 0 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-control);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--fs-12);
-  font-weight: var(--fw-medium);
-  cursor: pointer;
-  align-self: flex-start;
-  transition: all var(--dur-fast);
-}
-
-.rule-details-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-control-hover);
-  color: var(--text-primary);
-}
-
 
 /* ── Activity bar (52px Flow Studio Rail) ─────────────── */
 .activity-bar {
@@ -1443,7 +1245,6 @@ p { margin: 0; }
   background: var(--alpha-06);
   flex-shrink: 0;
 }
-
 
 /* ── Dock: Studio regions, no tab bars ───────────────── */
 .dock-tab { display: flex; align-items: center; gap: var(--space-2); height: 100%; padding: 0 var(--space-2); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
@@ -5255,8 +5056,6 @@ p { margin: 0; }
   align-items: flex-start;
   gap: 10px;
 }
-
-
 
 /* ── Step 6: Flow Page Elements ──────────────────────── */
 .flow-sidebar {
@@ -9095,5 +8894,4 @@ p { margin: 0; }
   gap: 8px;
   flex-wrap: wrap;
 }
-
 
