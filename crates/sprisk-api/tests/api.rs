@@ -5651,7 +5651,7 @@ async fn a_restarted_server_finishes_its_walks_without_a_second_run_for_a_round(
         json!({ "pipeline_version_id": head, "run_id": run_id }),
     );
     api.store
-        .record_walk_run(&walk, &ran, &parse(&queued.to_string()).unwrap())
+        .record_walk_run(&walk, &ran, &parse(&queued.to_string()).unwrap(), None)
         .await
         .unwrap();
 
@@ -5668,6 +5668,49 @@ async fn a_restarted_server_finishes_its_walks_without_a_second_run_for_a_round(
     // The walk goes on from the run: the split rule reads what it produced.
     assert_eq!(steps[2]["action"], "apply", "{detail}");
     assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restarted_walk_finishes_scoring_its_test_rows_and_ends_on_that_score() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+    let (mut walk, head) = walk_left_walking(&api).await;
+    // The server stopped while round 1 scored the test rows.
+    let head_id: sprisk_contracts::PipelineVersionId = parse(&json!(head).to_string()).unwrap();
+    let base = api.store.get_pipeline_version(&head_id).await.unwrap();
+    let (nodes, edges) = sprisk_methodology::engine::with_test_scoring(&base).unwrap();
+    let scored_id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8";
+    let mut scored = serde_json::to_value(&base).unwrap();
+    scored["id"] = json!(scored_id);
+    scored["parent_id"] = json!(head);
+    scored["nodes"] = json!(nodes);
+    scored["edges"] = json!(edges);
+    let run_id = "run_01JABCDEFGHJKMNPQRSTVWXYZ8";
+    let queued = json!({
+        "schema_version": "sprisk.run/v1", "id": run_id,
+        "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0", "pipeline_version_id": scored_id,
+        "status": "queued", "created_at": "2026-10-23T10:00:01Z",
+    });
+    let made = json!({
+        "pipeline_version_id": head, "made_pipeline_version_id": scored_id, "run_id": run_id,
+    });
+    let step = walk_step(&walk, 1, "score", made);
+    walk.head_pipeline_version_id = Some(parse(&json!(scored_id).to_string()).unwrap());
+    let queued = parse(&queued.to_string()).unwrap();
+    let scored = parse(&scored.to_string()).unwrap();
+    api.store
+        .record_walk_run(&walk, &step, &queued, Some(&scored))
+        .await
+        .unwrap();
+
+    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
+    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
+
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+    assert_eq!(trail(&detail), ["build", "score", "stop"], "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("Test rows, scored once"), "{why}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5803,6 +5846,49 @@ async fn learnable_question(api: &Api) {
     }
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-scored")).await;
+
+    let trail = trail(&detail);
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+    assert_eq!(
+        trail.iter().filter(|s| *s == "score").count(),
+        1,
+        "{detail}"
+    );
+    assert_eq!(&trail[trail.len() - 2..], ["score", "stop"], "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("Test rows, scored once"), "{why}");
+    assert!(why.contains("the success bar of 0.2"), "{why}");
+    assert!(why.contains("expected cost"), "{why}");
+    let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
+    let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
+    assert!(
+        flow["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n["id"] == "score_test"),
+        "{flow}"
+    );
+    // The scored flow is sealed: changing or comparing it would choose by the test rows.
+    let uri = format!("/pipeline_versions/{head}/methodology/proposals/model");
+    let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "test_rows_scored", "{body}");
+    let uri = format!("/pipeline_versions/{head}/model_selection/model");
+    let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(
+        body["errors"][0]["code"], "test_rows_scored",
+        "{status} {body}"
+    );
 }
 
 /// The learnable table with gaps in `batch` on every seventh row: a model refuses gaps. Rows

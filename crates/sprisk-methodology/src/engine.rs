@@ -3,8 +3,8 @@
 
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    MethodologyReview, MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule, Origin,
-    QuestionVersion, RuleActionType, TaskType, WalkStopReason,
+    Edge, MethodologyReview, MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule, Node,
+    Origin, PipelineVersion, QuestionVersion, RuleActionType, TaskType, WalkStopReason, parse,
 };
 
 use crate::{CatalogError, ResolveError, RuleCatalog, compare::SEED};
@@ -73,14 +73,72 @@ pub fn start(question: &QuestionVersion, sources: &[String]) -> Result<Start, Re
         "params": { "test_fraction": TEST_FRACTION, "seed": SEED },
     }));
     nodes.push(json!({
-        "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
+        "id": MODEL_NODE, "operator": "sprisk.ml.dummy_baseline@3.0.0",
         "params": { "target": target.value.as_str(), "task": task },
     }));
     let edges = vec![
         json!({ "from": "load.data", "to": "split.data" }),
-        json!({ "from": "split.train", "to": "model.train" }),
+        json!({ "from": "split.train", "to": format!("{MODEL_NODE}.train") }),
     ];
     Ok(Start::Flow { nodes, edges })
+}
+
+/// The model step the engine builds and the rules decide.
+pub const MODEL_NODE: &str = "model";
+/// The step that scores the model on the test rows, once, when the walk is complete.
+pub const SCORE_NODE: &str = "score_test";
+
+/// `pipeline` with an Evaluate step scoring the model on the test rows (ADR-0060): the rows
+/// of the step whose train rows the model fits on, so they are prepared the same way, and the
+/// test words of the step whose train words it reads. Refused when the flow already has it.
+pub fn with_test_scoring(
+    pipeline: &PipelineVersion,
+) -> Result<(Vec<Node>, Vec<Edge>), ResolveError> {
+    let refuse = |why: String| ResolveError::NotInsertable(why);
+    if pipeline.nodes.iter().any(|n| n.id.as_str() == SCORE_NODE) {
+        return Err(refuse(format!("the flow already has a {SCORE_NODE} step")));
+    }
+    let model = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == MODEL_NODE)
+        .ok_or_else(|| ResolveError::UnknownNode(MODEL_NODE.to_owned()))?;
+    let feeding = |input: &str| {
+        pipeline
+            .edges
+            .iter()
+            .find(|e| e.to.step_and_port() == (MODEL_NODE, input))
+            .map(|e| e.from.step_and_port())
+    };
+    let Some((rows, "train")) = feeding("train") else {
+        return Err(refuse(format!("{MODEL_NODE} reads no train rows")));
+    };
+    let mut edges = vec![
+        json!({ "from": format!("{MODEL_NODE}.model"), "to": format!("{SCORE_NODE}.model") }),
+        json!({ "from": format!("{rows}.test"), "to": format!("{SCORE_NODE}.test") }),
+    ];
+    if let Some((words, port)) = feeding("words") {
+        if port != "train_words" {
+            return Err(refuse(format!(
+                "{MODEL_NODE} reads {words}.{port}, not train words"
+            )));
+        }
+        edges.push(json!({
+            "from": format!("{words}.test_words"), "to": format!("{SCORE_NODE}.words")
+        }));
+    }
+    let params = |name: &str| model.params.get(name).cloned();
+    let score = json!({
+        "id": SCORE_NODE, "operator": "sprisk.ml.evaluate@2.0.0",
+        "params": { "target": params("target"), "task": params("task") },
+    });
+    let mut nodes = pipeline.nodes.clone();
+    nodes.push(parse(&score.to_string())?);
+    let mut all = pipeline.edges.clone();
+    for e in edges {
+        all.push(parse(&e.to_string())?);
+    }
+    Ok((nodes, all))
 }
 
 fn format_of(path: &str) -> Result<&'static str, ResolveError> {

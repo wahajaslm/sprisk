@@ -1,0 +1,11 @@
+{
+  "schema_version": "sprisk.walk_step/v1",
+  "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "round": 9,
+  "action": "score",
+  "reason": "Every rule that fits the question is settled: the model is scored once on the test rows.",
+  "created_at": "2026-10-22T10:00:00Z",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "made_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ0"
+}

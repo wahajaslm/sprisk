@@ -11,7 +11,9 @@ use sprisk_contracts::{
     WalkDetail, WalkId, WalkStatus, WalkStep, WalkStopReason, parse,
 };
 use sprisk_core::time::format;
-use sprisk_methodology::engine::{Action, HeadRun, Start, next_action, start};
+use sprisk_methodology::engine::{
+    Action, HeadRun, MODEL_NODE, SCORE_NODE, Start, next_action, start, with_test_scoring,
+};
 
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
@@ -144,7 +146,12 @@ async fn finish_left_run(state: &AppState, walk_id: &WalkId) -> Result<(), ApiEr
     let steps = state.store.walk_steps(walk_id).await?;
     let Some(run_id) = steps
         .last()
-        .filter(|s| matches!(s.action, WalkAction::Run | WalkAction::Compare))
+        .filter(|s| {
+            matches!(
+                s.action,
+                WalkAction::Run | WalkAction::Compare | WalkAction::Score
+            )
+        })
         .and_then(|s| s.run_id.clone())
     else {
         return Ok(());
@@ -213,6 +220,10 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     }
     let steps = state.store.walk_steps(walk_id).await?;
     let round = steps.len();
+    // The test rows were scored: the walk ends on that score, and never acts after it.
+    if let Some(scored) = steps.last().filter(|s| s.action == WalkAction::Score) {
+        return finish_scoring(state, walk, round, scored).await;
+    }
     let head = walk.head_pipeline_version_id.clone().ok_or_else(|| {
         ApiError::Internal(format!("walk {} is walking with no head", walk_id.as_str()))
     })?;
@@ -306,8 +317,188 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             let detail = format!("{failed} Still open: {detail}");
             record_stop(state, walk, round, WalkStopReason::RunFailed, &detail).await
         }
+        Action::Stop {
+            reason: WalkStopReason::Complete,
+            detail,
+        } => score_test_rows(state, walk, round, &head, deadline, &detail).await,
         Action::Stop { reason, detail } => record_stop(state, walk, round, reason, &detail).await,
     }
+}
+
+/// Every rule is settled: the model is scored on the test rows, once (ADR-0060). A version
+/// with one Evaluate added is stored with its run and step, and run; the next round reads the
+/// score and ends the walk. No rule reads it.
+async fn score_test_rows(
+    state: &AppState,
+    mut walk: Walk,
+    round: usize,
+    head: &PipelineVersionId,
+    deadline: jiff::Timestamp,
+    settled: &str,
+) -> Result<WalkStatus, ApiError> {
+    let pipeline = state.store.get_pipeline_version(head).await?;
+    // A baseline has no family: nothing was chosen, so the test rows stay sealed.
+    let chosen = pipeline
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == MODEL_NODE)
+        .and_then(|n| state.registry.get(n.operator.as_str()))
+        .and_then(|o| o.model.as_ref())
+        .is_some_and(|m| m.family.is_some());
+    if !chosen {
+        let detail = format!(
+            "{settled} The model step is still the baseline: no model was chosen, so the test \
+             rows stay sealed."
+        );
+        return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+    }
+    let (nodes, edges) = with_test_scoring(&pipeline).map_err(|e| {
+        ApiError::Internal(format!("scoring the test rows of {}: {e}", head.as_str()))
+    })?;
+    let scored: PipelineVersion = internal(parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": format!("plv_{}", ulid::Ulid::new()),
+            "project_id": pipeline.project_id, "parent_id": head,
+            "question_version_id": pipeline.question_version_id,
+            "nodes": nodes, "edges": edges, "created_at": format((state.clock)()),
+        })
+        .to_string(),
+    ))?;
+    let (queued, plan) = queued_run(state, &scored).await?;
+    let made = json!({
+        "pipeline_version_id": head, "made_pipeline_version_id": scored.id, "run_id": queued.id,
+    });
+    let reason = format!("{settled} The model is scored on the test rows, once.");
+    let step = step(
+        state,
+        walk.id.as_str(),
+        round,
+        WalkAction::Score,
+        &reason,
+        made,
+    )?;
+    walk.head_pipeline_version_id = Some(scored.id.clone());
+    state
+        .store
+        .record_walk_run(&walk, &step, &queued, Some(&scored))
+        .await?;
+    drive_run(state, &queued.id, &scored, &plan, None, Some(deadline))
+        .await
+        .map_err(|e| ApiError::Internal(format!("run {}: {e}", queued.id.as_str())))?;
+    Ok(WalkStatus::Walking)
+}
+
+/// Ends the walk on the score of its test rows: complete with the scores, or why not.
+async fn finish_scoring(
+    state: &AppState,
+    walk: Walk,
+    round: usize,
+    scored: &WalkStep,
+) -> Result<WalkStatus, ApiError> {
+    let run_id = scored
+        .run_id
+        .clone()
+        .ok_or_else(|| ApiError::Internal("the score step names no run".into()))?;
+    match state.store.get_run(&run_id).await?.status {
+        RunStatus::Succeeded => {}
+        RunStatus::Cancelled => {
+            let detail = format!(
+                "The walk used its {} seconds while it scored the test rows.",
+                walk.max_wall_seconds
+            );
+            return record_stop(state, walk, round, WalkStopReason::BudgetExhausted, &detail).await;
+        }
+        _ => {
+            let failed = failed_attempts(state, &run_id).await?;
+            let detail = format!("Scoring the test rows failed. {failed}");
+            return record_stop(state, walk, round, WalkStopReason::RunFailed, &detail).await;
+        }
+    }
+    let metrics = run_metrics(state, &run_id).await?;
+    let question = state
+        .store
+        .get_question_version(&walk.question_version_id)
+        .await?;
+    let n_rows = metrics["n_rows"]
+        .as_u64()
+        .ok_or_else(|| ApiError::Internal(format!("run {} gives no row count", run_id.as_str())))?;
+    let reported = scores(&metrics);
+    if reported.is_empty() {
+        return Err(ApiError::Internal(format!(
+            "run {} reports no score",
+            run_id.as_str()
+        )));
+    }
+    let bar = question
+        .success_bar
+        .as_ref()
+        .map(|bar| {
+            against_bar(
+                &metrics,
+                bar.value.metric.to_string().as_str(),
+                bar.value.score,
+            )
+        })
+        .unwrap_or_default();
+    let detail = format!(
+        "Every rule that fits the question is settled. Test rows, scored once ({n_rows} rows): \
+         {bar}{reported}."
+    );
+    record_stop(state, walk, round, WalkStopReason::Complete, &detail).await
+}
+
+/// The metrics the score step of `run_id` wrote: its own run's, never another run's.
+async fn run_metrics(state: &AppState, run_id: &RunId) -> Result<Value, ApiError> {
+    let attempt = state
+        .store
+        .list_attempts(run_id)
+        .await?
+        .into_iter()
+        .find(|a| a.node_id.as_str() == SCORE_NODE && a.state == AttemptState::Succeeded)
+        .ok_or_else(|| ApiError::Internal(format!("run {} scored nothing", run_id.as_str())))?;
+    let (_, artifact) = state
+        .store
+        .outputs(&attempt.id)
+        .await?
+        .into_iter()
+        .find(|(port, _)| port == "metrics")
+        .ok_or_else(|| ApiError::Internal(format!("run {} wrote no metrics", run_id.as_str())))?;
+    let bytes = state.artifacts.get(artifact.content_hash.as_str()).await?;
+    serde_json::from_slice(&bytes)
+        .map_err(|e| ApiError::Internal(format!("the test rows' metrics: {e}")))
+}
+
+/// The success bar's metric on the test rows, and whether it reaches the bar. Lower is better
+/// for a cost or an error.
+fn against_bar(metrics: &Value, metric: &str, bar: f64) -> String {
+    let Some(score) = metrics.get(metric).and_then(Value::as_f64) else {
+        return format!("the success bar's {metric} was not reported; ");
+    };
+    let met = if matches!(metric, "expected_cost" | "rmse") {
+        score <= bar
+    } else {
+        score >= bar
+    };
+    let verdict = if met { "meets" } else { "misses" };
+    format!("{metric} {score:.3} {verdict} the success bar of {bar}; ")
+}
+
+/// The scores Evaluate reports, as a person reads them.
+fn scores(metrics: &Value) -> String {
+    [
+        ("weighted_f1", "weighted F1"),
+        ("balanced_accuracy", "balanced accuracy"),
+        ("accuracy", "accuracy"),
+        ("expected_cost", "expected cost"),
+        ("rmse", "RMSE"),
+        ("mae", "MAE"),
+        ("r2", "R²"),
+    ]
+    .iter()
+    .filter_map(|(key, label)| Some(format!("{label} {:.3}", metrics.get(key)?.as_f64()?)))
+    .collect::<Vec<_>>()
+    .join(", ")
 }
 
 /// Each source's SHA-256, in order, as the walk begins.
@@ -635,7 +826,10 @@ async fn run(
     let (queued, plan) = queued_run(state, &pipeline).await?;
     let ran = json!({ "pipeline_version_id": head, "run_id": queued.id });
     let step = step(state, walk.id.as_str(), round, WalkAction::Run, reason, ran)?;
-    state.store.record_walk_run(&walk, &step, &queued).await?;
+    state
+        .store
+        .record_walk_run(&walk, &step, &queued, None)
+        .await?;
     // drive_run logs a run that stops. The next round reads how the run ended, and its review
     // may still act on what a failed run produced.
     // A step that fails ends the run failed, which the next round judges: its review may still

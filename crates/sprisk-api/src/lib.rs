@@ -1341,6 +1341,7 @@ async fn propose(
                 .into(),
         });
     }
+    refuse_scored(&pipeline)?;
     let question = state.store.get_question_version(question_id).await?;
     let node = pipeline
         .nodes
@@ -2122,6 +2123,23 @@ pub(crate) struct Claimed {
 
 /// The model selection of step `node_id`: its proposal, comparison and run, each made once
 /// if missing.
+/// A version whose model was scored on the test rows is sealed (ADR-0060): changing or
+/// comparing it after that score would choose by the test rows.
+fn refuse_scored(pipeline: &PipelineVersion) -> Result<(), ApiError> {
+    let scored = sprisk_methodology::engine::SCORE_NODE;
+    if pipeline.nodes.iter().any(|n| n.id.as_str() == scored) {
+        return Err(ApiError::BadRequest {
+            code: "test_rows_scored",
+            message: format!(
+                "version {} scored its test rows (step {scored}); change the version it was made \
+                 from, and know that its test rows were already looked at",
+                pipeline.id.as_str()
+            ),
+        });
+    }
+    Ok(())
+}
+
 async fn claim_selection(state: &AppState, raw: &str, node_id: &str) -> Result<Claimed, ApiError> {
     let pipeline_id: PipelineVersionId = id(raw)?;
     let step: sprisk_contracts::NodeId = id(node_id)?;
@@ -2131,6 +2149,7 @@ async fn claim_selection(state: &AppState, raw: &str, node_id: &str) -> Result<C
         Some((comparison, run)) => (comparison, run, false),
         None => {
             let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
+            refuse_scored(&pipeline)?;
             let decides = pipeline
                 .nodes
                 .iter()

@@ -5,7 +5,9 @@ use std::path::Path;
 use serde_json::{Value, json};
 use sprisk_contracts::{MethodologyReview, QuestionVersion, WalkStopReason, parse};
 use sprisk_methodology::RuleCatalog;
-use sprisk_methodology::engine::{Action, HeadRun, Start, next_action, start, unconfirmed_reads};
+use sprisk_methodology::engine::{
+    Action, HeadRun, Start, next_action, start, unconfirmed_reads, with_test_scoring,
+};
 
 fn catalog() -> RuleCatalog {
     RuleCatalog::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology")).unwrap()
@@ -458,4 +460,85 @@ fn only_guessed_question_facts_a_rule_reads_are_unconfirmed() {
             .unwrap()
             .is_empty()
     );
+}
+
+fn flow(nodes: Value, edges: Value) -> sprisk_contracts::PipelineVersion {
+    parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "nodes": nodes, "edges": edges, "created_at": "2026-10-23T10:00:00Z",
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+fn edges_of(edges: &[sprisk_contracts::Edge]) -> Vec<String> {
+    let mut all: Vec<String> = edges
+        .iter()
+        .map(|e| format!("{} -> {}", e.from.as_str(), e.to.as_str()))
+        .collect();
+    all.sort();
+    all
+}
+
+#[test]
+fn the_test_rows_are_scored_as_the_model_s_train_rows_were_prepared_with_its_words() {
+    let model = json!({ "id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
+                        "params": { "target": "y", "task": "classification" } });
+    let pipeline = flow(
+        json!([
+            { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {} },
+            { "id": "text", "operator": "sprisk.clean.vectorize_text@1.0.0",
+              "params": { "columns": ["title"] } },
+            model,
+        ]),
+        json!([
+            { "from": "split.train", "to": "text.train" },
+            { "from": "split.test", "to": "text.test" },
+            { "from": "text.train", "to": "model.train" },
+            { "from": "text.train_words", "to": "model.words" },
+        ]),
+    );
+
+    let (nodes, edges) = with_test_scoring(&pipeline).unwrap();
+
+    let score = nodes
+        .iter()
+        .find(|n| n.id.as_str() == "score_test")
+        .unwrap();
+    assert_eq!(score.operator.as_str(), "sprisk.ml.evaluate@2.0.0");
+    assert_eq!(
+        serde_json::to_value(&score.params).unwrap(),
+        json!({ "target": "y", "task": "classification" })
+    );
+    let added: Vec<String> = edges_of(&edges)
+        .into_iter()
+        .filter(|e| e.contains("score_test"))
+        .collect();
+    assert_eq!(
+        added,
+        [
+            "model.model -> score_test.model",
+            "text.test -> score_test.test",
+            "text.test_words -> score_test.words",
+        ]
+    );
+}
+
+#[test]
+fn a_flow_already_scored_on_its_test_rows_is_not_scored_again() {
+    let pipeline = flow(
+        json!([
+            { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {} },
+            { "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
+              "params": { "target": "y", "task": "classification" } },
+            { "id": "score_test", "operator": "sprisk.ml.evaluate@2.0.0", "params": {} },
+        ]),
+        json!([{ "from": "split.train", "to": "model.train" }]),
+    );
+    let err = with_test_scoring(&pipeline).unwrap_err();
+    assert!(err.to_string().contains("score_test"), "{err}");
 }

@@ -409,12 +409,12 @@ export type WalkStopReason =
   | "budget_exhausted"
   | "error";
 /**
- * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. stop: ended the walk.
+ * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. stop: ended the walk.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkAction".
  */
-export type WalkAction = "build" | "run" | "apply" | "compare" | "stop";
+export type WalkAction = "build" | "run" | "apply" | "compare" | "score" | "stop";
 /**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *

@@ -1083,6 +1083,7 @@ class WalkAction(StrEnum):
     run = "run"
     apply = "apply"
     compare = "compare"
+    score = "score"
     stop = "stop"
 
 

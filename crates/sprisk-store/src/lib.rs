@@ -528,15 +528,20 @@ impl SqliteStore {
             .collect()
     }
 
-    /// Stores `run` with the walk step that names it, in one transaction, so a server that
-    /// stops between them leaves neither a run no step names nor a step naming no run.
+    /// Stores `run` with the walk step that names it, and the version `made` for it if any, in
+    /// one transaction, so a server that stops between them leaves neither a run no step names
+    /// nor a step naming no run, nor a version the walk does not know it made.
     pub async fn record_walk_run(
         &self,
         walk: &Walk,
         step: &WalkStep,
         run: &Run,
+        made: Option<&PipelineVersion>,
     ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await?;
+        if let Some(made) = made {
+            insert_version(&mut *tx, made).await?;
+        }
         insert_run(&mut *tx, run).await?;
         insert_walk_step(&mut tx, step).await?;
         update_walk(&mut tx, walk).await?;
