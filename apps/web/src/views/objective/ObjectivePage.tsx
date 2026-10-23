@@ -11,6 +11,7 @@ import { Tag } from "../../components/ui/Tag.tsx";
 import { SendIcon } from "../Icons.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { stepTitle } from "../../flow/stages.ts";
+import { StartWalk } from "./StartWalk.tsx";
 
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
 const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -253,6 +254,7 @@ export function ObjectivePage() {
                 )}
               </div>
               <h2 className="objective-sentence">{currentQuestion.objective.value}</h2>
+              <StartWalk key={currentQuestion.id} question={currentQuestion} />
             </div>
 
             {/* Ledger Table */}
