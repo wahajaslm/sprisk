@@ -1009,7 +1009,7 @@ fn a_step_that_makes_words_feeds_them_to_the_model_and_its_evaluation() {
         ],
     );
     let step = parse(
-        &json!({ "id": "text", "operator": "sprisk.clean.vectorize_text@1.0.0",
+        &json!({ "id": "text", "operator": "sprisk.clean.vectorize_text@1.1.0",
                  "params": { "columns": ["title"] } })
         .to_string(),
     )
@@ -1034,7 +1034,7 @@ fn a_step_that_makes_words_feeds_them_to_the_model_and_its_evaluation() {
 fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some() {
     let words = |id: &str| -> Node {
         parse(
-            &json!({ "id": id, "operator": "sprisk.clean.vectorize_text@1.0.0",
+            &json!({ "id": id, "operator": "sprisk.clean.vectorize_text@1.1.0",
                      "params": { "columns": ["title"] } })
             .to_string(),
         )
@@ -1046,7 +1046,7 @@ fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some(
     let pipeline = flow(
         &[
             ("split", "validation.random_split"),
-            ("old", "clean.vectorize_text"),
+            ("old", "clean.vectorize_text@1.1.0"),
             ("rf", "ml.random_forest@3.0.0"),
         ],
         &[
@@ -1064,7 +1064,7 @@ fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some(
     let scored = flow(
         &[
             ("split", "validation.random_split"),
-            ("old", "clean.vectorize_text"),
+            ("old", "clean.vectorize_text@1.1.0"),
             ("rf", "ml.random_forest@3.0.0"),
             ("eval", "ml.evaluate@2.0.0"),
         ],
@@ -2664,7 +2664,7 @@ fn worded_flow(words: Option<&str>) -> PipelineVersion {
         &[
             ("load", "io.file_source"),
             ("split", "validation.random_split"),
-            ("text", "clean.vectorize_text"),
+            ("text", "clean.vectorize_text@1.1.0"),
             ("model", "ml.linear_model@3.0.0"),
             ("eval", "ml.evaluate@2.0.0"),
         ],
@@ -2688,7 +2688,7 @@ fn a_comparison_refits_the_words_the_model_reads_and_only_those() {
         .collect();
     assert!(!prepares.is_empty());
     for prepare in prepares {
-        assert_eq!(prepare[0]["operator"], "sprisk.clean.vectorize_text@1.0.0");
+        assert_eq!(prepare[0]["operator"], "sprisk.clean.vectorize_text@1.1.0");
     }
 
     // Folds would join words the flow's model never reads, or score test words as train.

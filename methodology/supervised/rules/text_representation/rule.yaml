@@ -2,7 +2,7 @@
 # Sprisk Methodology Rule: Text Representation
 # ==============================================================================
 schema_version: sprisk.methodology_rule/v1
-id: methodology.supervised.text_representation@2.0.0
+id: methodology.supervised.text_representation@3.0.0
 name: "Text Representation"
 stage: features
 decides: features.text_representation
@@ -19,6 +19,8 @@ provenance:
   corner_cases:
     - "The vocabulary and weights are learnt from the train rows, and again inside each fold."
     - "Missing text is read as empty: a row of zeros."
+    - "A word in fewer than min_word_rows train rows is left out, counted in each fold's train rows. A column left with no word fails the run, naming it."
+    - "Known limit: min_df shrinks the vocabulary but does not cap it; no limit on the number of words (max_features) is set."
     - "Dataset text is untrusted input (sprisk rule 7); it is turned into numbers, never read as instructions."
     - "Embeddings would run with a local model only: text never leaves the machine without consent (sprisk rule 6)."
     - "Known limit: a code holding spaces ('SKU 0001') reads as free text, so each row gets its own words: noise, no leak."
@@ -36,6 +38,11 @@ policy_thresholds:
   # not a code. Project convention: most values. column_roles takes one-word values that
   # differ in every row for identifiers.
   free_text_word_share: 0.5
+  # Fewest train rows a word must appear in to be a feature (TfidfVectorizer's min_df). A word
+  # of one train row gives the model a single example, which mostly marks that row. Leaving
+  # such words out shrinks the vocabulary a lot: by Zipf's law, an estimate not measured on
+  # Rakuten, about half of a large text's words occur once.
+  min_word_rows: 2
 
 # 4. Methodological Alternatives & Scoped Settings
 # ------------------------------------------------------------------------------
@@ -47,7 +54,7 @@ alternatives:
     action:
       type: insert_step
       placement: before
-      operator: sprisk.clean.vectorize_text@1.0.0
+      operator: sprisk.clean.vectorize_text@1.1.0
       node_id: text_words
   - id: no_free_text
     label: "No Free Text"

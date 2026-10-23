@@ -6,7 +6,7 @@ from rule_harness import alternative, column, decide, manifest
 from sprisk_workers.errors import RuleError
 
 RULE = "supervised/text_representation"
-SETTINGS = {"high_cardinality_threshold": 15, "free_text_word_share": 0.5}
+SETTINGS = {"high_cardinality_threshold": 15, "free_text_word_share": 0.5, "min_word_rows": 2}
 
 
 def run(profile: dict[str, object]) -> dict[str, Any]:
@@ -22,8 +22,10 @@ def test_free_text_becomes_words_learnt_from_the_train_rows() -> None:
         }
     )
     assert d["recommended_alternative_id"] == "vectorize_words"
+    # A word in one train row only marks that row, so it is left out.
     assert alternative(d, "vectorize_words")["params"] == {
-        "columns": ["description", "designation"]
+        "columns": ["description", "designation"],
+        "min_df": 2,
     }
     assert alternative(d, "no_free_text")["applicability"] == "not_applicable"
     assert {

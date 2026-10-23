@@ -50,7 +50,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.clean.select_columns@1.0.0",
         "sprisk.clean.spectral_gating@1.0.0",
         "sprisk.clean.strip_html@1.0.0",
-        "sprisk.clean.vectorize_text@1.0.0",
+        "sprisk.clean.vectorize_text@1.1.0",
         "sprisk.clustering.dbscan@1.0.0",
         "sprisk.clustering.gmm@1.0.0",
         "sprisk.clustering.kmeans@1.0.0",

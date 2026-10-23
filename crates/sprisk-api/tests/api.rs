@@ -6221,7 +6221,7 @@ async fn word_features_run_from_load_to_evaluate_and_are_refit_in_each_fold() {
     flow["nodes"].as_array_mut().unwrap().extend([
         json!({"id": "split", "operator": "sprisk.validation.random_split@1.0.0",
                "params": {"test_fraction": 0.25, "seed": 42, "stratify": "prdtypecode"}}),
-        json!({"id": "words", "operator": "sprisk.clean.vectorize_text@1.0.0",
+        json!({"id": "words", "operator": "sprisk.clean.vectorize_text@1.1.0",
                "params": {"columns": ["designation", "description"]}}),
         json!({"id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
                "params": {"target": "prdtypecode", "task": "classification", "exclude": ids}}),

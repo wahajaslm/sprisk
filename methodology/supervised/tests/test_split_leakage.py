@@ -413,7 +413,7 @@ def test_every_core_step_that_fits_on_train_is_a_fitting_transform() -> None:
     assert fitting <= FITTING_TRANSFORMS, sorted(fitting - FITTING_TRANSFORMS)
 
 
-VECTORIZE = "sprisk.clean.vectorize_text@1.0.0"
+VECTORIZE = "sprisk.clean.vectorize_text@1.1.0"
 
 
 def worded(words_from: str, scored_with: str = "words.test_words") -> PipelineVersion:

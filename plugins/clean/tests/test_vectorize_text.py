@@ -62,6 +62,30 @@ def test_word_pairs_are_words_too_when_asked_for() -> None:
     assert "title:red shoe" in words(out, "train_words").columns
 
 
+def test_a_word_in_fewer_train_rows_than_min_df_is_left_out() -> None:
+    # "blue" and "hat" are each in one train row; test rows full of "blue" do not count.
+    blues = pl.DataFrame({"title": ["blue"] * 5, "body": [""] * 5, "price": [0] * 5})
+    out = vectorize_text(TRAIN, blues, columns=["title"], min_df=2)
+    assert words(out, "train_words").columns == ("title:red", "title:shoe")
+
+
+def test_a_column_with_no_word_in_min_df_train_rows_is_named() -> None:
+    with pytest.raises(ValueError, match="body has no word in at least 3 train rows"):
+        vectorize_text(TRAIN, TEST, columns=["body"], min_df=3)
+
+
+def test_a_min_df_above_the_train_rows_is_named() -> None:
+    with pytest.raises(ValueError, match="min_df 9 is above the 4 train rows"):
+        vectorize_text(TRAIN, TEST, columns=["title"], min_df=9)
+
+
+@pytest.mark.parametrize("min_df", [1.0, 2.0])
+def test_a_min_df_that_is_not_a_whole_count_is_refused(min_df: float) -> None:
+    # JSON Schema takes 1.0 for an integer; scikit-learn would read it as a share of rows.
+    with pytest.raises(ValueError, match="min_df must be a whole count of rows"):
+        vectorize_text(TRAIN, TEST, columns=["title"], min_df=min_df)  # type: ignore[arg-type]
+
+
 def test_only_text_columns_can_be_vectorized() -> None:
     with pytest.raises(ValueError, match="price is not text"):
         vectorize_text(TRAIN, TEST, columns=["price"])
@@ -98,7 +122,7 @@ def test_the_shortest_word_run_cannot_exceed_the_longest() -> None:
 
 
 def test_plain_code_gives_the_same_tables_and_words() -> None:
-    settings = {"columns": ["title", "body"], "ngram_range": [1, 2]}
+    settings = {"columns": ["title", "body"], "ngram_range": [1, 2], "min_df": 2}
     namespace: dict[str, object] = {"rows": TRAIN, "held_out": TEST}
     exec(
         as_code(
@@ -108,7 +132,7 @@ def test_plain_code_gives_the_same_tables_and_words() -> None:
         ),
         namespace,
     )
-    step = vectorize_text(TRAIN, TEST, columns=["title", "body"], ngram_range=[1, 2])
+    step = vectorize_text(TRAIN, TEST, columns=["title", "body"], ngram_range=[1, 2], min_df=2)
     assert namespace["a"].equals(step["train"])  # type: ignore[attr-defined]
     assert namespace["b"].equals(step["test"])  # type: ignore[attr-defined]
     for name, port in (("a_words", "train_words"), ("b_words", "test_words")):
@@ -117,7 +141,7 @@ def test_plain_code_gives_the_same_tables_and_words() -> None:
 
 
 def test_the_worker_stores_the_words_and_reads_them_back(tmp_path: Path) -> None:
-    step = load_operators(Path(__file__).parents[2])["sprisk.clean.vectorize_text@1.0.0"]
+    step = load_operators(Path(__file__).parents[2])["sprisk.clean.vectorize_text@1.1.0"]
     paths = {}
     for port, rows in (("train", TRAIN), ("test", TEST)):
         paths[port] = tmp_path / f"{port}.parquet"

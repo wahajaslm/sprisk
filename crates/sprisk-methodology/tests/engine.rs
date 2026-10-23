@@ -491,7 +491,7 @@ fn the_test_rows_are_scored_as_the_model_s_train_rows_were_prepared_with_its_wor
     let pipeline = flow(
         json!([
             { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {} },
-            { "id": "text", "operator": "sprisk.clean.vectorize_text@1.0.0",
+            { "id": "text", "operator": "sprisk.clean.vectorize_text@1.1.0",
               "params": { "columns": ["title"] } },
             model,
         ]),
