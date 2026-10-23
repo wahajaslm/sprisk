@@ -1,5 +1,5 @@
 # ADR-0063: Methods need evidence, operators produce it
-Status: Proposed
+Status: Accepted
 Date: 2026-10-23
 Arch doc sections: §4 (domain model), §8 (methodology), §9 (runs), §14 (layout). Builds on ADR-0042, ADR-0055, ADR-0057, ADR-0059 and ADR-0060. Narrows ADR-0062 and [investigation-model.md](../design/investigation-model.md). Tested in the spike `~/sprisk-spike` (13 tests) and its preview.
 
