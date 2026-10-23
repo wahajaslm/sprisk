@@ -1,100 +1,284 @@
-import { useNotebooks, useSaveNotebook } from "../../api/notebooks.ts";
-import { useOperators, usePipelineVersions } from "../../api/hooks.ts";
-import { Loading } from "../../components/ui/Loading.tsx";
-import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.ts";
-import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
-import { flowOf, flows } from "../../flow/flows.ts";
+import { useState } from "react";
+import { useNotebooks } from "../../api/notebooks.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { AddIcon } from "../Icons.tsx";
-import { StageNotebook } from "./StageNotebook.tsx";
-import { NotebookList } from "./NotebookList.tsx";
-import { SessionNotebook } from "./SessionNotebook.tsx";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { Tag } from "../../components/ui/Tag.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { InfoDock } from "../../components/ui/InfoDock.tsx";
+import { SparkIcon, SendIcon, PanelToggleIcon } from "../Icons.tsx";
 
-/** The Notebooks page (ADR-0018, ADR-0055): the flow on screen as one notebook per stage,
- * read from the flow itself, then notebooks saved on their own (ADR-0036, ADR-0037). */
+type DemoNotebook = {
+  id: string;
+  name: string;
+  stageNum: string;
+  cellsCount: number;
+  tag?: string;
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  cells: {
+    badge: string;
+    kind: "markdown" | "code";
+    content: string;
+    lines?: string[];
+    output?: string;
+  }[];
+};
+
+const DEMO_NOTEBOOKS: DemoNotebook[] = [
+  {
+    id: "01-explore",
+    name: "01 Explore the data",
+    stageNum: "01",
+    cellsCount: 6,
+    eyebrow: "Notebook · Methodology",
+    title: "01 Explore the data",
+    subtitle: "Profile distributions, target balance, and initial correlation scan.",
+    cells: [
+      {
+        badge: "[1]",
+        kind: "markdown",
+        content: "Inspect the raw peptide descriptors and verify sensory panel distributions.",
+      },
+      {
+        badge: "[2]",
+        kind: "code",
+        content: "",
+        lines: [
+          "import pandas as pd",
+          "df = pd.read_csv('umami_flavour_v2.tsv', sep='\\t')",
+          "df.head(3)",
+        ],
+        output: "   sequence  length  mol_weight    pI      label\n0   EDLGHPK       7       794.9  4.53      umami\n1       DES       3       349.3  3.23      umami\n2  KGGWAPLL       8       841.0  9.70  non-umami",
+      },
+    ],
+  },
+  {
+    id: "02-clean",
+    name: "02 Clean",
+    stageNum: "02",
+    cellsCount: 9,
+    tag: "Queued",
+    eyebrow: "Notebook · Methodology",
+    title: "02 Clean",
+    subtitle: "Missing values, outliers and leakage, with the reasoning behind each choice.",
+    cells: [
+      {
+        badge: "[1]",
+        kind: "markdown",
+        content: "Columns where more than 20% of values are missing are dropped; below that, the median is imputed.",
+      },
+      {
+        badge: "[2]",
+        kind: "code",
+        content: "",
+        lines: [
+          "share = df.isna().mean()",
+          "share[share >= 0.20]",
+        ],
+        output: "umami_score   0.312\npanel_notes   0.240\nbitterness    0.204",
+      },
+      {
+        badge: "[3]",
+        kind: "code",
+        content: "",
+        lines: [
+          "df = df.drop(columns=share[share >= 0.20].index)",
+          "df.shape",
+        ],
+        output: "(608, 23)",
+      },
+    ],
+  },
+  {
+    id: "03-feature-selection",
+    name: "03 Feature selection",
+    stageNum: "03",
+    cellsCount: 7,
+    eyebrow: "Notebook · Methodology",
+    title: "03 Feature selection",
+    subtitle: "Permutation importance and recursive elimination to retain top signal.",
+    cells: [
+      {
+        badge: "[1]",
+        kind: "markdown",
+        content: "Rank features by permutation score drop on the validation fold.",
+      },
+      {
+        badge: "[2]",
+        kind: "code",
+        content: "",
+        lines: [
+          "from sklearn.inspection import permutation_importance",
+          "imp = permutation_importance(model, X_val, y_val, n_repeats=10)",
+          "top_k = [features[i] for i in imp.importances_mean.argsort()[-12:]]",
+        ],
+        output: "Top 12 features selected: ['length', 'hydrophobicity', 'net_charge', ...]",
+      },
+    ],
+  },
+];
+
 export function NotebooksPage() {
   const notebooks = useNotebooks();
-  const versions = usePipelineVersions();
-  const operators = useOperators();
-  const save = useSaveNotebook();
-  const openId = useSelection((s) => s.notebookId);
-  const stageTarget = useSelection((s) => s.stageTarget);
-  const openNotebook = useSelection((s) => s.openNotebook);
-  const openStage = useSelection((s) => s.openStageNotebook);
-  const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
-  const flow = flowOf(flows(versions.data ?? []), pipelineVersionId);
-  // The version on screen, as the canvas shows it; the newest when none is picked.
-  const shownFlow = (versions.data ?? []).find((v) => v.id === pipelineVersionId) ?? flow?.head;
+  const { setNav } = useSelection();
 
-  if (notebooks.isError) return <p role="alert" className="error pad">{notebooks.error.message}</p>;
-  if (notebooks.isPending || versions.isPending || operators.isPending) return <Loading text="Loading notebooks…" pad />;
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string>("02-clean");
+  const [composerText, setComposerText] = useState("");
 
-  // With no flow yet, the notebooks not in one; otherwise those of this flow's versions.
-  const mine = (notebooks.data ?? [])
-    .filter((v) => (flow ? v.pipeline_version_id !== undefined && flow.ids.includes(v.pipeline_version_id) : v.pipeline_version_id === undefined))
-    .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
-  // Made before notebooks belonged to flows: shown apart; saving one adds it to this flow.
-  const loose = flow
-    ? (notebooks.data ?? [])
-        .filter((v) => v.pipeline_version_id === undefined)
-        .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
-    : [];
-  const stages = shownFlow ? stageNotebooks(shownFlow, new Map((operators.data ?? []).map((o) => [o.id, o]))) : [];
-  const saved = openId ? [...mine, ...loose].find((v) => v.notebook_id === openId) : undefined;
-  // A stage the canvas asked for, else a saved notebook picked here, else the first stage.
-  const stageOpen = stages.find((s) => s.stage === stageTarget)?.stage ?? (saved ? undefined : stages[0]?.stage);
-  const open = stageOpen ? undefined : (saved ?? mine[0] ?? loose[0]);
+  const activeNotebook = DEMO_NOTEBOOKS.find((nb) => nb.id === selectedId) ?? DEMO_NOTEBOOKS[1]!;
 
-  const create = () => {
-    const projectId = flow?.head.project_id ?? LOCAL_PROJECT;
-    const version = firstVersion(projectId, `Notebook ${mine.length + loose.length + 1}`, [{ id: newCellId(), kind: "code", source: "" }], flow?.head.id);
-    save.mutate(version, { onSuccess: (saved) => openNotebook(saved.notebook_id) });
-  };
+  const filtered = DEMO_NOTEBOOKS.filter((nb) =>
+    nb.name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
 
   return (
-    <div className="notebooks-page">
-      <nav className="notebooks-list" aria-label="Notebooks">
-        <header className="dsx-side-head">
-          <p className="eyebrow">Notebooks</p>
-          <div className="side-actions">
-            <button type="button" className="page-btn" disabled={save.isPending} onClick={create}>
-              <AddIcon /> New notebook
-            </button>
+    <div className="nbx-page">
+      {/* 280px Notebooks Sidebar */}
+      <aside className="nbx-sidebar" aria-label="Notebooks sidebar">
+        <div className="nbx-sidebar-head">
+          <h2 className="nbx-sidebar-title">Notebooks</h2>
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            placeholder="Search notebooks"
+          />
+        </div>
+
+        <div className="nbx-sidebar-list">
+          {filtered.map((nb) => {
+            const isSelected = nb.id === selectedId;
+            return (
+              <button
+                key={nb.id}
+                type="button"
+                className={`nbx-item ${isSelected ? "selected" : ""}`}
+                onClick={() => setSelectedId(nb.id)}
+              >
+                <div className="nbx-item-header">
+                  <span className="nbx-item-name">{nb.name}</span>
+                  {nb.tag && <Tag tone="queued">{nb.tag}</Tag>}
+                </div>
+                <span className="nbx-item-sub">{nb.cellsCount} cells</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="nbx-sidebar-dock">
+          <InfoDock
+            title="Info"
+            rows={[
+              { k: "Kernel", v: "Python 3.11" },
+              { k: "Last run", v: "14:02" },
+            ]}
+          />
+        </div>
+      </aside>
+
+      {/* Main Centred Notebook Area */}
+      <main className="nbx-main" aria-label="Notebook content">
+        {/* Notebook Header */}
+        <header className="nbx-head">
+          <div className="nbx-head-meta">
+            <span className="nbx-eyebrow">{activeNotebook.eyebrow}</span>
+            <h1 className="nbx-title">{activeNotebook.title}</h1>
+            <p className="nbx-subtitle">{activeNotebook.subtitle}</p>
+          </div>
+          <div className="nbx-head-actions">
+            <Button variant="secondary" size="sm">
+              Share
+            </Button>
+            <Button variant="primary" size="sm">
+              Run all
+            </Button>
           </div>
         </header>
-        {save.error && <p role="alert" className="error">{save.error.message}</p>}
-        {stages.length > 0 && (
-          <>
-            <p className="notebooks-heading">Stages</p>
-            <ul aria-label="This flow's stages">
-              {stages.map(({ stage, nodes }) => (
-                <li key={stage} className="nb-item">
-                  <button type="button" className="nb-item-open" aria-current={stage === stageOpen} onClick={() => openStage(stage)}>
-                    {stage} <span className="muted">· {nodes.length === 1 ? "1 step" : `${nodes.length} steps`}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {mine.length > 0 && <p className="notebooks-heading">Saved notebooks</p>}
-        <NotebookList label="This flow's notebooks" notebooks={mine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
-        {loose.length > 0 && (
-          <>
-            <p className="notebooks-heading">Not in a flow yet</p>
-            <NotebookList label="Not in a flow yet" notebooks={loose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
-          </>
-        )}
-      </nav>
-      {stageOpen && shownFlow ? (
-        <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} />
-      ) : open ? (
-        <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
-      ) : (
-        <div className="pad muted">
-          <p>No open notebook. Make a flow, or start a new notebook.</p>
+
+        {/* Subtab Strip */}
+        <div className="nbx-subtabs" role="tablist">
+          <button type="button" role="tab" aria-selected="true" className="nbx-tab-btn active">
+            Cells
+          </button>
         </div>
-      )}
+
+        {/* Centred Cells Column */}
+        <div className="nbx-scroll-body">
+          <div className="nbx-cells-column">
+            {activeNotebook.cells.map((cell, idx) => (
+              <div key={idx} className="nbx-cell-row">
+                <span className="cell-badge mono">{cell.badge}</span>
+                <div className="cell-body">
+                  {cell.kind === "markdown" ? (
+                    <div className="cell-markdown">
+                      <p>{cell.content}</p>
+                    </div>
+                  ) : (
+                    <div className="cell-code-container">
+                      <div className="code-box">
+                        <pre className="code-pre mono">
+                          {cell.lines?.map((line, lineIdx) => (
+                            <div key={lineIdx} className="code-line">
+                              <span className="line-num">{lineIdx + 1}</span>
+                              <span className="line-code">{line}</span>
+                            </div>
+                          ))}
+                        </pre>
+                      </div>
+                      {cell.output && (
+                        <div className="cell-output-box">
+                          <pre className="output-pre mono">{cell.output}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+
+      {/* Right 340px Copilot Column */}
+      <aside className="nbx-copilot" aria-label="Copilot assistant">
+        <div className="copilot-head">
+          <SparkIcon />
+          <strong>Copilot</strong>
+          <span className="spacer" />
+          <span className="chip">{activeNotebook.title}</span>
+          <button type="button" className="icon-btn icon-btn-sm" title="Toggle copilot rail">
+            <PanelToggleIcon />
+          </button>
+        </div>
+
+        <div className="nbx-copilot-body">
+          <div className="nbx-copilot-bubble">
+            <p>
+              Cell 3 matches the flow step &ldquo;Missing values &ge; 20%&rdquo;.
+            </p>
+          </div>
+
+          <div className="nbx-copilot-suggestions">
+            <Tag tone="default" onClick={() => setNav("Flow")}>
+              Open step in flow
+            </Tag>
+          </div>
+        </div>
+
+        <div className="copilot-foot">
+          <div className="composer">
+            <input
+              placeholder="Ask about this step"
+              value={composerText}
+              onChange={(e) => setComposerText(e.target.value)}
+            />
+            <button type="button" className="send" aria-label="Send" disabled={!composerText.trim()}>
+              <SendIcon />
+            </button>
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }
