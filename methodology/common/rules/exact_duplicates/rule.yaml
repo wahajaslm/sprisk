@@ -4,6 +4,7 @@ name: "Exact duplicates"
 stage: data
 decides: data.exact_duplicates
 status: active
+question: "Should rows that copy an earlier row be dropped before the split?"
 applies_to: [sprisk.validation.random_split]
 reads: [input.rows, input.duplicate_rows]
 
@@ -28,6 +29,7 @@ alternatives:
   - id: drop
     label: "Drop exact duplicates before the split"
     description: "Keep the first copy of each row, in a step added before the split."
+    when: "some rows copy an earlier row, at most a {ask_above_share} share of rows"
     rationale: "So no row is in train and test at once."
     action:
       type: insert_step
@@ -37,6 +39,7 @@ alternatives:
   - id: keep
     label: "Keep every row"
     description: "Leave the rows as they are."
+    when: "no row repeats, or over a {ask_above_share} share do (asks first)"
     rationale: "No row repeats an earlier one, or the repeats are real observations."
     action:
       type: pass_through

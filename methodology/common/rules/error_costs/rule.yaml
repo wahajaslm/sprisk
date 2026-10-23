@@ -4,6 +4,7 @@ name: "Cost of each error"
 stage: question
 decides: question.error_costs
 status: active
+question: "What does a miss cost compared with a false alarm?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [step.task, question.costs.positive, question.costs.false_negative, question.costs.false_positive, target.distinct]
 
@@ -24,12 +25,14 @@ alternatives:
   - id: stated
     label: "Costs stated"
     description: "The question states what a miss and a false alarm cost."
+    when: "the person states different costs for a miss and a false alarm"
     rationale: "Stated costs let the threshold minimise expected cost."
     action:
       type: pass_through
   - id: equal
     label: "Costs stated as equal"
     description: "The question states that a miss and a false alarm cost the same."
+    when: "the person states a miss and a false alarm cost the same"
     rationale: "Equal costs are a choice the person makes, not a default sprisk assumes."
     action:
       type: pass_through

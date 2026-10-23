@@ -7,6 +7,7 @@ name: "Skewed Numbers"
 stage: features
 decides: features.skew_transform
 status: active
+question: "Should skewed numbers be transformed before a linear model?"
 # Only linear models: a tree splits on order, which a power transform keeps, so it gains
 # nothing. Distance-based models are clustering steps, which have no train and test rows.
 applies_to: [sprisk.ml.linear_model]
@@ -35,6 +36,7 @@ alternatives:
   - id: yeo_johnson
     label: "Yeo-Johnson Transform"
     description: "Power transform of the skewed numbers, fit on the train rows, in a step added before the model."
+    when: a number column, not 0/1, is skewed past {skewness_threshold}
     rationale: "A long tail pulls a linear model's fit; Yeo-Johnson reduces its skew and handles zero and negative values."
     action:
       type: insert_step
@@ -44,6 +46,7 @@ alternatives:
   - id: no_transform
     label: "No Transform"
     description: "Leave the numbers as they are."
+    when: no number column, other than 0/1, is skewed past {skewness_threshold}
     rationale: "No number the model reads has a long tail."
     action:
       type: pass_through

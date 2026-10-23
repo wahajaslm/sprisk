@@ -7,6 +7,7 @@ name: "Text Representation"
 stage: features
 decides: features.text_representation
 status: active
+question: "Which text columns are free text, to be turned into words before the model?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [column.*.data_type, column.*.distinct, column.*.word_share]
 
@@ -50,6 +51,7 @@ alternatives:
   - id: vectorize_words
     label: "TF-IDF on Words"
     description: "Each free-text column becomes word features, weighted by how rare a word is, learnt from the train rows, in a step added before the model."
+    when: "a text column has over {high_cardinality_threshold} values, at least a {free_text_word_share} share of several words"
     rationale: "Strong, cheap baseline for topic-like text such as product titles. Single words, the step's default: word pairs multiply the columns, and would be a choice tried on folds. The model reads the words beside the table (ADR-0058)."
     action:
       type: insert_step
@@ -59,12 +61,14 @@ alternatives:
   - id: no_free_text
     label: "No Free Text"
     description: "Leave the columns as they are."
+    when: "no text column has over {high_cardinality_threshold} values that are mostly several words"
     rationale: "No text column reaching the model holds free text: categories go to rare categories and encoding."
     action:
       type: pass_through
   - id: tfidf_chars
     label: "TF-IDF on Character N-grams"
     description: "Counts of short character runs."
+    when: "never yet: no step does this"
     rationale: "Handles typos, short codes and word endings better than whole words. Not available: Vectorize text takes words only, and words against characters would be tried on the same folds."
     action:
       type: insert_step
@@ -73,6 +77,7 @@ alternatives:
   - id: local_embeddings
     label: "Local Sentence Embeddings"
     description: "A local embedding model turns each value into a vector."
+    when: "never yet: no step does this"
     rationale: "Keeps some meaning, which counts most for long text. Not available: no local embedding step yet."
     action:
       type: insert_step

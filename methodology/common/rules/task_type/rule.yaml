@@ -4,6 +4,7 @@ name: "Task type"
 stage: question
 decides: question.task_type
 status: active
+question: "Does the model predict a class or a number?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [question.task, step.task, target.data_type, target.distinct]
 
@@ -28,6 +29,7 @@ alternatives:
   - id: classification
     label: "Classification"
     description: "The model predicts a class."
+    when: "the question says so, or the target has 2 values or at most {max_classes} text values"
     rationale: "Two values, or a few named ones, are classes."
     action:
       type: update_estimator_params
@@ -35,6 +37,7 @@ alternatives:
   - id: regression
     label: "Regression"
     description: "The model predicts a number."
+    when: "the question says so, or the target has over {max_classes} numeric values"
     rationale: "Many numeric values are a quantity."
     action:
       type: update_estimator_params

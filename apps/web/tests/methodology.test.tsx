@@ -29,6 +29,11 @@ const source: MethodologyRuleSource = {
   ],
 };
 
+/** The page opens on the map; these tests read the tree. */
+async function showTree() {
+  await userEvent.click(await screen.findByRole("radio", { name: "Tree" }));
+}
+
 function serve(rules: MethodologyRule[]) {
   server.use(
     http.get("/api/methodology_rules", () => HttpResponse.json(rules)),
@@ -56,6 +61,7 @@ describe("methodology page", () => {
     );
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
     renderWithApi(<MethodologyPage />);
+    await showTree();
 
     expect(await screen.findByLabelText("Flow review")).toHaveTextContent("2 open on this flow. Next: split.method (proposal)");
     const map = screen.getByRole("region", { name: "Methodology map" });
@@ -76,6 +82,7 @@ describe("methodology page", () => {
   it("draws each route as its own node, with the condition that leads to it", async () => {
     serve([features]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
     const map = await screen.findByRole("region", { name: "Methodology map" });
     const route = features.alternatives.find((a) => a.condition)!;
     expect(await within(map).findByText(route.label)).toBeInTheDocument();
@@ -85,6 +92,7 @@ describe("methodology page", () => {
   it("selects the route a person clicks, not its decision, and marks that route beside the map", async () => {
     serve([features]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
     const map = await screen.findByRole("region", { name: "Methodology map" });
     const route = features.alternatives[1]!;
     await userEvent.click(await within(map).findByRole("button", { name: route.label }));
@@ -122,6 +130,7 @@ describe("methodology page", () => {
     const active: MethodologyRule = { ...split, status: "active" };
     serve([features, active]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
     await userEvent.click(await screen.findByRole("radio", { name: "Flow" }));
 
     const flow = screen.getByRole("region", { name: "Methodology flow" });
@@ -136,6 +145,7 @@ describe("methodology page", () => {
     const featuring: MethodologyRule = { ...features, status: "active" };
     serve([featuring, splitting]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
     await userEvent.click(await screen.findByRole("radio", { name: "Flow" }));
 
     const stages = screen.getByRole("navigation", { name: "Stages" });
@@ -147,6 +157,45 @@ describe("methodology page", () => {
     expect(within(flow).queryByRole("button", { name: splitting.name })).not.toBeInTheDocument();
   });
 
+  it("shows each decision as its question, and each route's when with its settings filled in", async () => {
+    const worded: MethodologyRule = {
+      ...split,
+      status: "active",
+      question: "How should the rows be split into train and test?",
+      policy_thresholds: { default_test_fraction: 0.2 },
+      alternatives: split.alternatives.map((a, i) => ({ ...a, when: i === 0 ? "hold out {default_test_fraction} of rows at random" : "never yet: no step does this" })),
+    };
+    serve([worded]);
+    renderWithApi(<MethodologyPage />);
+    await showTree();
+
+    const map = await screen.findByRole("region", { name: "Methodology map" });
+    expect(within(map).getByRole("button", { name: worded.name })).toHaveTextContent(worded.question!);
+    expect(within(map).getByText(/hold out 0.2 of rows at random/)).toBeInTheDocument();
+    const detail = screen.getByRole("region", { name: worded.name });
+    expect(within(detail).getByRole("heading", { level: 1 })).toHaveTextContent(worded.question!);
+
+    await userEvent.click(screen.getByRole("radio", { name: "Flow" }));
+    const flow = screen.getByRole("region", { name: "Methodology flow" });
+    expect(within(flow).getByRole("button", { name: worded.name })).toHaveTextContent(worded.question!);
+    expect(within(flow).getByText(/hold out 0.2 of rows at random/)).toBeInTheDocument();
+  });
+
+  it("opens on the map canvas of the active rules, where a decision or a route is picked by a click", async () => {
+    const splitting: MethodologyRule = { ...split, status: "active", question: "How should the rows be split?" };
+    serve([features, splitting]);
+    renderWithApi(<MethodologyPage />);
+
+    const canvas = await screen.findByRole("region", { name: "Methodology canvas" });
+    expect(within(canvas).getByRole("button", { name: splitting.name })).toHaveTextContent("How should the rows be split?");
+    expect(within(canvas).queryByRole("button", { name: features.name })).not.toBeInTheDocument();
+    const route = splitting.alternatives[1]!;
+    await userEvent.click(within(canvas).getByRole("button", { name: route.label }));
+    expect(within(canvas).getByRole("button", { name: route.label })).toHaveAttribute("aria-pressed", "true");
+    const detail = screen.getByRole("region", { name: splitting.name });
+    expect(within(detail).getAllByRole("listitem").filter((li) => li.getAttribute("aria-current") === "true")).toHaveLength(1);
+  });
+
   it("knows every stage the contract has, so no rule drops off the page", () => {
     expect(STAGES).toEqual(bundle.$defs.MethodologyStage.enum);
   });
@@ -155,6 +204,7 @@ describe("methodology page", () => {
   it("maps the shared stages, then each lane's stages in decision order with the rules from the API under theirs", async () => {
     serve([features, split]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
 
     const map = await screen.findByRole("region", { name: "Methodology map" });
     const stages = (await within(map).findAllByRole("heading")).map((h) => h.textContent);
@@ -165,6 +215,7 @@ describe("methodology page", () => {
   it("shows what the picked rule decides, its source and its alternatives", async () => {
     serve([features, split]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
 
     await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
     const detail = screen.getByRole("region", { name: features.name });
@@ -187,6 +238,7 @@ describe("methodology page", () => {
     };
     serve([active]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
 
     const detail = await screen.findByRole("region", { name: active.name });
     expect(within(detail).getByText("question.time_column", { selector: "code" })).toBeInTheDocument();
@@ -210,6 +262,7 @@ describe("methodology page", () => {
     };
     serve([shortlist]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
 
     const detail = await screen.findByRole("region", { name: shortlist.name });
     expect(within(detail).getByText(/every registered model that fits the task/i)).toBeInTheDocument();
@@ -220,6 +273,7 @@ describe("methodology page", () => {
   it("marks a draft rule and shows its design notes", async () => {
     serve([features]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
 
     await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
     const detail = screen.getByRole("region", { name: features.name });
@@ -230,6 +284,7 @@ describe("methodology page", () => {
   it("shows each file of the rule's code, read only", async () => {
     serve([split]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
 
     await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
     const manifest = await screen.findByRole("textbox", { name: "Code of rule.yaml" });
@@ -243,6 +298,7 @@ describe("methodology page", () => {
   it("says so when a rule's code cannot be read", async () => {
     serve([features]);
     renderWithApi(<MethodologyPage />);
+    await showTree();
 
     await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
@@ -251,7 +307,6 @@ describe("methodology page", () => {
   it("says so when the rules cannot be read", async () => {
     server.use(http.get("/api/methodology_rules", () => HttpResponse.json({ errors: [{ code: "x", message: "boom" }] }, { status: 500 })));
     renderWithApi(<MethodologyPage />);
-
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 });
@@ -270,6 +325,7 @@ describe("pipeline path switch", () => {
       ),
     );
     renderWithApi(<MethodologyPage />);
+    await showTree();
     expect(await screen.findByRole("switch", { name: "Pipeline path" })).toBeDisabled();
 
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });

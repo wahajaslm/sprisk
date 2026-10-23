@@ -4,6 +4,7 @@ name: "Target available, or derived"
 stage: question
 decides: question.target_definition
 status: active
+question: "Which column holds the outcome to predict?"
 applies_to: [sprisk.io.file_source]
 reads: [question.target, question.task]
 
@@ -22,18 +23,21 @@ alternatives:
   - id: column
     label: "Use the named column"
     description: "The question names the column that holds the outcome."
+    when: "the question names a target column"
     rationale: "The plain case: the outcome is recorded."
     action:
       type: pass_through
   - id: no_target
     label: "No target"
     description: "The question explores the data or looks for groups; there is no outcome to predict."
+    when: "the question only explores the data and names no target"
     rationale: "Exploration, clustering and anomaly work need no label. Inventing one would break rule 8."
     action:
       type: pass_through
   - id: derived
     label: "Build the label"
     description: "Build the outcome from a rule, then check it against a sample a person labels."
+    when: "never yet: no step builds a label from a rule"
     rationale: "A built label is a measurement and needs its own check. No step builds one yet."
     action:
       type: emit_methodology_limitation

@@ -45,9 +45,56 @@ const routeHeight = (reason: RouteReason) => 24 + Math.min(WHEN_LINES, Math.ceil
 
 export function routeReason(rule: MethodologyRule, route: MethodologyRule["alternatives"][number], review: MethodologyReviewItem | undefined): RouteReason {
   if (review?.recommended_alternative_id === route.id) return { kind: "because", text: review.reason };
+  if (route.when) return { kind: "when", text: withSettings(route.when, rule.policy_thresholds) };
   const when = routeWhen(rule, route.id);
   return when ? { kind: "when", text: when } : { kind: "why", text: route.rationale };
 }
+
+/** A rule's words with each `{setting}` replaced by the setting's value, so the words never
+ * disagree with the rule's settings (ADR-0045 amendment). */
+export const withSettings = (text: string, settings: Record<string, unknown> | undefined) =>
+  text.replace(/\{(\w+)\}/g, (whole, name: string) => (settings && name in settings ? String(settings[name]) : whole));
+
+/** What a rule looks at, in plain words, from the facts it declares it reads: the test run
+ * fails a rule that reads anything else, so this cannot drift from its logic. */
+export function lookedAt(rule: MethodologyRule): string[] {
+  const plain = (fact: string) => {
+    if (fact === "rows") return "the number of rows";
+    if (fact.startsWith("question.costs.")) return "the stated error costs";
+    const column = /^(?:input\.)?column\.\*\.(.+)$/.exec(fact);
+    if (column) return `each column's ${words(column[1]!)}`;
+    if (fact.startsWith("input.")) return `the table's ${words(fact.split(".").at(-1)!)}`;
+    const [scope, ...rest] = fact.split(".");
+    const what = words(rest.join(" ").replace("*", "each"));
+    if (scope === "question") return `the ${what}`;
+    if (scope === "target") return `the target's ${words(rest.join("_"))}`;
+    if (scope === "step") return what === "each" ? "the step's settings" : `the step's ${what}`;
+    if (scope === "candidate") return `each candidate's ${words(rest.at(-1)!)}`;
+    if (scope === "cv") return `cross-validation ${what}`;
+    if (scope === "join") return "how the tables' keys match";
+    return what;
+  };
+  return [...new Set((rule.reads ?? []).map(plain))];
+}
+
+/** Measures as people say them; any other name is read with its underscores as spaces. */
+const MEASURE: Record<string, string> = {
+  distinct: "number of distinct values",
+  missing_share: "share of missing values",
+  rarest_share: "rarest class's share",
+  data_type: "type",
+  outlier_share: "share of outliers",
+  iqr: "middle spread (IQR)",
+  kurtosis: "tail heaviness",
+  numeric_share: "share of values that read as numbers",
+  word_share: "share of one-word values",
+  unconverted: "values that do not read as numbers",
+  leading_zero_values: "codes with leading zeros",
+  case_variants: "values differing only in case or spaces",
+  accent_variants: "values differing only in accents",
+  duplicate_rows: "number of repeated rows",
+};
+const words = (name: string) => MEASURE[name] ?? name.replace(/[._]/g, " ");
 
 /** The methodology as a connected tree (ADR-0059), every possibility, left to right. The
  * question and data stages are shared; then the tree forks into one lane per pack (supervised:

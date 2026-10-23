@@ -36,3 +36,12 @@ Arch doc sections: §8, §15.1. Amends ADR-0042.
 ## Notes
 - The manifest contract stays `sprisk.methodology_rule/v1`: manifests live only in the repo's packs and change with it, as with the `action.type` enum.
 - "An active rule needs applies_to, reads and examples, and no notes" is checked by the catalog, not the schema: the generated types cannot express a condition on `status`, and a list's minimum length is not enforced the same way in all three languages.
+
+## Amendments
+- 2026-10-23: **Words for people, beside the logic.** The Methodology page must read as plain questions and reasons; tested examples alone read as machine output ("target distinct = 2 · target rarest share = 0.04"). An active rule now carries display-only text:
+  - `question`: the decision as a person asks it ("How should missing values be filled?").
+  - `when` on each alternative: in a few words, when the rule takes that route ("the column is skewed").
+  - Nothing that decides reads either: `decide()` stays the only logic, and Rust never reads them.
+  - This reopens "keep `condition` as prose", so each sentence stays next to the logic it describes: the catalog refuses an active rule without a `question`, or with an alternative without a `when`, and the Methodology page shows each `when` beside the tested example that picks it, where one exists (a route no step can take yet has none). A `when` and its example that disagree are visible side by side, and the methodology reviewer checks the words against `decide()` whenever either changes.
+  - What a rule looks at is not written: the page names the facts in `reads`, which the test run already enforces.
+  - `condition` stays a draft's design note and is still refused on an active rule.

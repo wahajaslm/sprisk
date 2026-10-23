@@ -7,8 +7,9 @@ import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { type Chapter, chapters, chapterState, ends } from "./flowGraph.ts";
 import { FlowMap } from "./FlowMap.tsx";
+import { MethodologyCanvas } from "./MethodologyCanvas.tsx";
 import { MethodologyMap, STATUS_LABEL } from "./MethodologyMap.tsx";
-import { activation, givenText, isOpen, reviewByRule, routeWhen, stageName } from "./ruleTree.ts";
+import { activation, givenText, isOpen, lookedAt, reviewByRule, routeWhen, stageName, withSettings } from "./ruleTree.ts";
 
 const ignore = () => undefined;
 
@@ -22,7 +23,7 @@ export function MethodologyPage() {
   const [filter, setFilter] = useState("");
   const [path, setPath] = useState(false);
   const [picked, setPicked] = useState<string>();
-  const [view, setView] = useState<"tree" | "flow">("tree");
+  const [view, setView] = useState<"map" | "tree" | "flow">("map");
   const [drafts, setDrafts] = useState(false);
   const [chapterKey, setChapterKey] = useState<string>();
   if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
@@ -30,7 +31,7 @@ export function MethodologyPage() {
   if (rules.data.length === 0) return <p className="muted pad">No methodology rules are loaded.</p>;
 
   const query = filter.trim().toLowerCase();
-  // The flow shows what runs: the active rules, and the drafts only when asked.
+  // The map and the flow show what runs: the active rules, and the drafts only when asked.
   const shown = rules.data.filter((r) => `${r.name} ${r.decides}`.toLowerCase().includes(query) && (view === "tree" || drafts || r.status === "active"));
   const [pickedRule, pickedRoute] = (picked ?? "").split("#");
   const current = shown.find((r) => r.id === pickedRule) ?? shown[0];
@@ -46,14 +47,14 @@ export function MethodologyPage() {
       <div className="mth-canvas">
         <div className="mth-toolbar">
           <div className="mth-views" role="radiogroup" aria-label="View">
-            {(["tree", "flow"] as const).map((v) => (
+            {(["map", "tree", "flow"] as const).map((v) => (
               <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}>
-                {v === "tree" ? "Tree" : "Flow"}
+                {v[0]!.toUpperCase() + v.slice(1)}
               </button>
             ))}
           </div>
           <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          {view === "flow" && (
+          {view !== "tree" && (
             <label className="mth-toggle">
               <input type="checkbox" role="switch" checked={drafts} onChange={(e) => setDrafts(e.target.checked)} /> Show drafts
             </label>
@@ -63,7 +64,9 @@ export function MethodologyPage() {
           </label>
           <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
         </div>
-        {view === "tree" ? (
+        {view === "map" ? (
+          <MethodologyCanvas rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+        ) : view === "tree" ? (
           <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
         ) : chapter ? (
           <>
@@ -130,7 +133,7 @@ function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: Me
     <section className="dsx-detail" aria-label={rule.name}>
       <header className="dsx-title">
         <div>
-          <h1>{rule.name}</h1>
+          <h1>{rule.question ?? rule.name}</h1>
           <p className="muted">
             {stageName(rule.stage)} · decides <code>{rule.decides}</code>
             {activation(rule) && ` · ${activation(rule)}`} · <span className="tech">{rule.id}</span>
@@ -169,6 +172,12 @@ function Overview({ rule, route }: { rule: MethodologyRule; route: string | unde
   const { provenance } = rule;
   return (
     <div className="mth-overview">
+      {lookedAt(rule).length > 0 && (
+        <section>
+          <h2 className="dsx-h">Looks at</h2>
+          <p>{lookedAt(rule).join(", ")}</p>
+        </section>
+      )}
       <section>
         <h2 className="dsx-h">Pitfall it prevents</h2>
         <p>{provenance.pitfall}</p>
@@ -265,7 +274,8 @@ function Overview({ rule, route }: { rule: MethodologyRule; route: string | unde
                   <span className="mth-tag">{a.action.operator ?? a.action.type}</span>
                 </div>
                 <p>{a.description}</p>
-                {routeWhen(rule, a.id) && <p className="muted">When: {routeWhen(rule, a.id)}</p>}
+                {a.when && <p>When {withSettings(a.when, rule.policy_thresholds)}</p>}
+                {routeWhen(rule, a.id) && <p className="muted">{a.when ? "Tested example" : "When"}: {routeWhen(rule, a.id)}</p>}
                 <p className="muted">Why: {a.rationale}</p>
               </PickedItem>
             ))}

@@ -4,6 +4,7 @@ name: "Missing markers"
 stage: data
 decides: data.missing_markers
 status: active
+question: "Which placeholder values stand for missing numbers?"
 applies_to: [sprisk.validation.random_split, sprisk.validation.group_split, sprisk.validation.temporal_split]
 reads: [input.column.*.data_type, input.column.*.numeric_share, input.column.*.unconverted]
 
@@ -34,6 +35,7 @@ alternatives:
   - id: mark
     label: "Mark as missing"
     description: "Placeholder values in mostly numeric text columns become missing, in a step added before the split."
+    when: "a text column of mostly numbers holds a known placeholder"
     rationale: "The values stand for a gap, so missing is their true meaning. Only whole values on the known list are marked."
     action:
       type: insert_step
@@ -43,6 +45,7 @@ alternatives:
   - id: keep
     label: "No markers"
     description: "Leave the values as they are."
+    when: "no text column of mostly numbers holds a known placeholder"
     rationale: "No mostly numeric text column holds a known placeholder."
     action:
       type: pass_through

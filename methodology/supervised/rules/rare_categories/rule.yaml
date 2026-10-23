@@ -7,6 +7,7 @@ name: "Rare Categories"
 stage: features
 decides: features.rare_categories
 status: active
+question: "Should rare categories in text columns be grouped?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [rows, column.*.data_type, column.*.distinct]
 
@@ -41,6 +42,7 @@ alternatives:
   - id: group_rare
     label: "Group Rare Categories"
     description: "Categories under a share of the train rows become \"other\", and only the most frequent stay, in a step added before the model."
+    when: a text column has over {high_cardinality_threshold} categories and is not an identifier
     rationale: "Text with more categories than one-hot takes: grouping keeps at most that many, counting \"other\", so the column can then be one-hot encoded. Counts come from the train rows only."
     action:
       type: insert_step
@@ -50,6 +52,7 @@ alternatives:
   - id: keep_categories
     label: "Keep Categories"
     description: "Leave the categories as they are."
+    when: no text column has over {high_cardinality_threshold} categories, identifiers aside
     rationale: "No text column has more categories than one-hot takes, or only an identifier has."
     action:
       type: pass_through

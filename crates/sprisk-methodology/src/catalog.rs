@@ -176,6 +176,13 @@ impl RuleCatalog {
     }
 }
 
+/// The `{name}`s in a rule's words for people.
+fn placeholders(text: &str) -> impl Iterator<Item = &str> {
+    text.split('{')
+        .skip(1)
+        .filter_map(|part| part.split_once('}').map(|(name, _)| name))
+}
+
 /// An active rule has code and only fields the system uses; a draft has no code and is
 /// never routed (ADR-0045). Returns what is wrong.
 fn check_status(rule: &MethodologyRule, has_module: bool) -> Result<(), String> {
@@ -193,6 +200,26 @@ fn check_status(rule: &MethodologyRule, has_module: bool) -> Result<(), String> 
     }
     if !rule.observes.is_empty() {
         return Err("an active rule declares reads, not observes".into());
+    }
+    // Words for people (ADR-0045 amendment): the decision as a question, and why each route.
+    if rule.question.is_none() {
+        return Err("an active rule asks its decision as a question for people".into());
+    }
+    if let Some(a) = rule.alternatives.iter().find(|a| a.when.is_none()) {
+        return Err(format!(
+            "alternative {} needs a when: in a few words, when the rule takes it",
+            a.id.as_str()
+        ));
+    }
+    // A when names a setting as {name}, so the page shows its value as set.
+    for a in &rule.alternatives {
+        let when = a.when.as_ref().map_or("", |w| w.as_str());
+        if let Some(name) = placeholders(when).find(|n| !rule.policy_thresholds.contains_key(*n)) {
+            return Err(format!(
+                "alternative {}'s when names {{{name}}}, which is not one of the rule's settings",
+                a.id.as_str()
+            ));
+        }
     }
     if let Some(a) = rule.alternatives.iter().find(|a| a.condition.is_some()) {
         return Err(format!(

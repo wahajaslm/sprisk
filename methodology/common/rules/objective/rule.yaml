@@ -4,6 +4,7 @@ name: "Objective and success bar"
 stage: question
 decides: question.objective
 status: active
+question: "What is the goal, and what score is good enough?"
 applies_to: [sprisk.io.file_source]
 reads: [question.objective, question.acceptance_criteria, question.task]
 
@@ -23,12 +24,14 @@ alternatives:
   - id: stated
     label: "Goal and success bar stated"
     description: "The question states its goal and the score that counts as good enough."
+    when: "the question predicts, and a person stated its goal and bar"
     rationale: "Fixing the bar before results keeps the later comparison honest."
     action:
       type: pass_through
   - id: exploration
     label: "Exploration, no bar"
     description: "The question explores the data and predicts nothing, so it has no success bar."
+    when: "the question only explores the data"
     rationale: "A bar is for a prediction; an exploration reports what it found."
     action:
       type: pass_through
