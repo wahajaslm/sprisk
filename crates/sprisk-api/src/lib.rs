@@ -975,6 +975,7 @@ async fn create_question_version(
     let question: QuestionVersion = body(&text)?;
     check_costs(&question)?;
     check_success_bar(&question)?;
+    check_bindings(&question, &state.rules)?;
     if let Some(parent_id) = &question.parent_id {
         let parent =
             state
@@ -1013,6 +1014,30 @@ async fn create_question_version(
     }
     state.store.insert_question_version(&question).await?;
     Ok((StatusCode::CREATED, Json(question)))
+}
+
+/// Each binding names a concept a loaded pack defines, and no concept is bound twice
+/// (ADR-0063).
+fn check_bindings(
+    question: &QuestionVersion,
+    rules: &sprisk_methodology::RuleCatalog,
+) -> Result<(), ApiError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for binding in &question.bindings {
+        let concept = binding.concept.as_str();
+        let why = if !rules.concepts().any(|(id, _)| id == concept) {
+            format!("no pack defines the concept {concept}")
+        } else if !seen.insert(concept) {
+            format!("{concept} is bound twice")
+        } else {
+            continue;
+        };
+        return Err(ApiError::BadRequest {
+            code: "invalid_bindings",
+            message: why,
+        });
+    }
+    Ok(())
 }
 
 /// A success bar is a score its metric can take, in a metric its task is compared by: a

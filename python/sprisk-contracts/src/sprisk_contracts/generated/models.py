@@ -3160,6 +3160,12 @@ class QuestionVersion(StrictModel):
             description="The cross-validated score that counts as good enough, in a metric models are compared by (ADR-0059). Only a person can state it. Absent: not stated; the text acceptance criteria hold everything else."
         ),
     ] = None
+    bindings: Annotated[
+        list[Binding] | None,
+        Field(
+            description="Which column means each concept the packs ask for, in this project (ADR-0063). One binding per concept. Absent: none stated."
+        ),
+    ] = None
     created_at: Timestamp
 
 

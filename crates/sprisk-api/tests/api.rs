@@ -1670,6 +1670,52 @@ async fn a_question_s_costs_must_be_positive_and_belong_to_a_classification() {
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
+/// A binding a person states: `column` of the loaded data means `concept`.
+fn stated(concept: &str, column: &str) -> Value {
+    json!({ "schema_version": "sprisk.binding/v1", "concept": concept,
+            "source": { "column": column }, "set_by": { "assurance": "stated" } })
+}
+
+#[tokio::test]
+async fn a_question_binds_only_concepts_the_packs_define_and_each_once() {
+    let api = api().await;
+    let bound = |bindings: Value| {
+        let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+        q["bindings"] = bindings;
+        q
+    };
+    let unknown = bound(json!([stated("common.item_name", "designation")]));
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(unknown)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "invalid_bindings", "{body}");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no pack defines the concept common.item_name"),
+        "{body}"
+    );
+
+    let twice = bound(json!([
+        stated("common.item_title", "designation"),
+        stated("common.item_title", "description")
+    ]));
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(twice)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("common.item_title is bound twice"),
+        "{body}"
+    );
+
+    let once = bound(json!([stated("common.item_title", "designation")]));
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(once)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["bindings"][0]["source"]["column"], "designation");
+}
+
 #[tokio::test]
 async fn a_question_s_success_bar_must_be_a_score_its_task_can_reach() {
     let api = api().await;

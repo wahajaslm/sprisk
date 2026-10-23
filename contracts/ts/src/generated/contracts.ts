@@ -2422,6 +2422,10 @@ export interface QuestionVersion {
   costs?: CostsFact;
   interpretability?: InterpretabilityFact;
   success_bar?: SuccessBarFact;
+  /**
+   * Which column means each concept the packs ask for, in this project (ADR-0063). One binding per concept. Absent: none stated.
+   */
+  bindings?: Binding[];
   created_at: Timestamp;
 }
 /**
