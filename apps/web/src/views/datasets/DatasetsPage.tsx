@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { useLoadedTables } from "../../api/datasets.ts";
 import { usePipelineVersions } from "../../api/hooks.ts";
-import { flows } from "../../flow/flows.ts";
+import { flowCount, flows } from "../../flow/flows.ts";
 import { flowName } from "../../flow/labels.ts";
 import { shortName } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
@@ -122,12 +122,6 @@ export function DatasetsPage() {
       </main>
     </div>
   );
-}
-
-/** The distinct flows that load the table; a version not listed counts as its own flow. */
-function flowCount(dataset: LoadedTable, versions: PipelineVersion[]): number {
-  const all = flows(versions);
-  return new Set(dataset.used_by.map((u) => all.find((f) => f.ids.includes(u.pipeline_version_id))?.head.id ?? u.pipeline_version_id)).size;
 }
 
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
