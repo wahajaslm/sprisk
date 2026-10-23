@@ -4,17 +4,15 @@ import { Button } from "../components/ui/Button.tsx";
 import { InfoDock } from "../components/ui/InfoDock.tsx";
 import { ListRow } from "../components/ui/ListRow.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
-import { PageHeader } from "../components/ui/PageHeader.tsx";
+import { PageFrame } from "../components/ui/PageFrame.tsx";
 import { SectionLabel } from "../components/ui/SectionLabel.tsx";
 import { Sidebar } from "../components/ui/Sidebar.tsx";
-import { Tabs } from "../components/ui/Tabs.tsx";
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { type NodeInRun, useFlowRuns, useRunNodes } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
 import { flows } from "../flow/flows.ts";
 import { flowName } from "../flow/labels.ts";
 import { EXPERIMENTS_TABS, type ExperimentsTab, useSelection } from "../workbench/selection.ts";
-import { useWorkbench } from "../workbench/workbench.ts";
 import { useStudies } from "../api/studies.ts";
 import { ModelComparisons } from "./ModelComparison.tsx";
 import { Studies } from "./Studies.tsx";
@@ -28,7 +26,6 @@ const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
 /** Every run of the current flow: one run's steps, two runs compared, and the flow's studies. */
 export function Experiments() {
   const { pipelineVersionId, runId, compare, setCompare, setNav, showRun, experimentsTab, setExperimentsTab } = useSelection();
-  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
   const versions = usePipelineVersions();
   const operators = useOperators();
   const all = versions.data ?? [];
@@ -49,21 +46,14 @@ export function Experiments() {
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (!flow) {
     return (
-      <div className="single-panel-layout experiments-page-layout">
-        <main className="center-screen experiments-main">
-          <PageHeader eyebrow="Experiments" title="No flow selected" description="Open a flow to see its runs, compare them and follow its studies." />
-          <div className="experiments-empty-viewport">
-            <div className="experiments-empty-card">
-              <div className="experiments-empty-icon">
-                <ExperimentsIcon size={28} />
-              </div>
-              <Button variant="primary" onClick={() => setNav("Flow")}>
-                Open Flow
-              </Button>
-            </div>
-          </div>
-        </main>
-      </div>
+      <PageFrame header={{ eyebrow: "Experiments", title: "No flow selected", description: "Open a flow to see its runs, compare them and follow its studies." }}>
+        <div className="empty-state">
+          <ExperimentsIcon size={28} />
+          <Button variant="primary" onClick={() => setNav("Flow")}>
+            Open Flow
+          </Button>
+        </div>
+      </PageFrame>
     );
   }
 
@@ -95,82 +85,79 @@ export function Experiments() {
           };
 
   return (
-    <div className={`experiments-page-layout ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
-      <Sidebar
-        title="Runs"
-        meta={String(runs.length)}
-        dock={shown && <RunDock run={shown} label={label(shown)} metrics={nodes[shownAt]} before={runs[shownAt + 1]} beforeMetrics={nodes[shownAt + 1]} beforeLabel={runs[shownAt + 1] && label(runs[shownAt + 1]!)} />}
-      >
-        {runs.length === 0 && <p className="muted pad">No runs yet.</p>}
-        {runs.map((run) => (
-          <ListRow
-            key={run.id}
-            title={`Run ${label(run)}`}
-            meta={`${run.status} · ${when(run.created_at)} · ${whatChanged(run, byId)}`}
-            warn={run.status === "failed"}
-            selected={run.id === shown?.id}
-            onClick={() => showRun(run.pipeline_version_id, run.id)}
-          />
-        ))}
-        {(studies.data ?? []).length > 0 && <SectionLabel>Studies</SectionLabel>}
-        {(studies.data ?? []).map((study) => (
-          <ListRow
-            key={study.id}
-            title={`Study of ${study.node_id}`}
-            meta={`${study.status} · up to ${study.max_trials} trials`}
-            onClick={() => setExperimentsTab("Sweep")}
-          />
-        ))}
-      </Sidebar>
-
-      <main className="center-screen experiments-main">
-        <PageHeader
-          {...header}
-          {...(experimentsTab === "Monitor" && shown
-            ? {
-                actions: (
-                  <Button variant="primary" onClick={() => { showRun(shown.pipeline_version_id, shown.id); setNav("Flow"); }}>
-                    Open in flow
-                  </Button>
-                ),
-              }
-            : {})}
-        />
-        <Tabs label="Experiments" items={EXPERIMENTS_TABS.map((t) => ({ value: t, label: t }))} value={experimentsTab} onChange={(t) => setExperimentsTab(t as ExperimentsTab)}>
-          <div className="exp-scroll">
-            {experimentsTab === "Monitor" && shown && <Monitor run={shown} version={byId.get(shown.pipeline_version_id)} />}
-            {experimentsTab === "Compare" && (
-              <>
-                {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
-                {!studies.isPending && (
-                  <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
-                )}
-                <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
-                {runs.length < 2 ? (
-                  <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
-                ) : (
-                  <Compare
-                    older={runs[olderAt]}
-                    newer={runs[newerAt]}
-                    olderNodes={nodes[olderAt] ?? {}}
-                    newerNodes={nodes[newerAt] ?? {}}
-                    byId={byId}
-                    evaluators={evaluators}
-                    labelOf={label}
-                  />
-                )}
-              </>
-            )}
-            {experimentsTab === "Sweep" && (
-              <>
-                {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
-                {!studies.isPending && <Studies head={flow.head} versions={all} studies={studies.data ?? []} />}
-              </>
-            )}
-          </div>
-        </Tabs>
-      </main>
-    </div>
+    <PageFrame
+      sidebar={
+        <Sidebar
+          title="Runs"
+          meta={String(runs.length)}
+          dock={shown && <RunDock run={shown} label={label(shown)} metrics={nodes[shownAt]} before={runs[shownAt + 1]} beforeMetrics={nodes[shownAt + 1]} beforeLabel={runs[shownAt + 1] && label(runs[shownAt + 1]!)} />}
+        >
+          {runs.length === 0 && <p className="muted pad">No runs yet.</p>}
+          {runs.map((run) => (
+            <ListRow
+              key={run.id}
+              title={`Run ${label(run)}`}
+              meta={`${run.status} · ${when(run.created_at)} · ${whatChanged(run, byId)}`}
+              warn={run.status === "failed"}
+              selected={run.id === shown?.id}
+              onClick={() => showRun(run.pipeline_version_id, run.id)}
+            />
+          ))}
+          {(studies.data ?? []).length > 0 && <SectionLabel>Studies</SectionLabel>}
+          {(studies.data ?? []).map((study) => (
+            <ListRow
+              key={study.id}
+              title={`Study of ${study.node_id}`}
+              meta={`${study.status} · up to ${study.max_trials} trials`}
+              onClick={() => setExperimentsTab("Sweep")}
+            />
+          ))}
+        </Sidebar>
+      }
+      header={{
+        ...header,
+        ...(experimentsTab === "Monitor" && shown
+          ? {
+              actions: (
+                <Button variant="primary" onClick={() => { showRun(shown.pipeline_version_id, shown.id); setNav("Flow"); }}>
+                  Open in flow
+                </Button>
+              ),
+            }
+          : {}),
+      }}
+      tabs={{ label: "Experiments", items: EXPERIMENTS_TABS.map((t) => ({ value: t, label: t })), value: experimentsTab, onChange: (t) => setExperimentsTab(t as ExperimentsTab) }}
+    >
+      {experimentsTab === "Monitor" && shown && <Monitor run={shown} version={byId.get(shown.pipeline_version_id)} />}
+      {experimentsTab === "Compare" && (
+        <>
+          {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
+          {!studies.isPending && (
+            <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
+          )}
+          <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
+          {runs.length < 2 ? (
+            <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
+          ) : (
+            <Compare
+              older={runs[olderAt]}
+              newer={runs[newerAt]}
+              olderNodes={nodes[olderAt] ?? {}}
+              newerNodes={nodes[newerAt] ?? {}}
+              byId={byId}
+              evaluators={evaluators}
+              labelOf={label}
+            />
+          )}
+        </>
+      )}
+      {experimentsTab === "Sweep" && (
+        <>
+          {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
+          {!studies.isPending && <Studies head={flow.head} versions={all} studies={studies.data ?? []} />}
+        </>
+      )}
+    </PageFrame>
   );
 }
 

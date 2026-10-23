@@ -1,13 +1,9 @@
 import type { ColumnProfile, DatasetProfile, LoadedTable } from "@sprisk/contracts";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 
 import { useDatasetProfile } from "../../api/datasets.ts";
-import { shortName } from "../../flow/stages.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { PageHeader } from "../../components/ui/PageHeader.tsx";
-import { Tabs } from "../../components/ui/Tabs.tsx";
-import { useSelection } from "../../workbench/selection.ts";
 import { correlationField, distributions, missingMap } from "./profileFigures.ts";
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
@@ -15,65 +11,44 @@ const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 /** One step that loads the table, named for people. */
 export type Use = { label: string; use: LoadedTable["used_by"][number] };
 
-const TABS = ["Profile", "Lineage"] as const;
-type Tab = (typeof TABS)[number];
-
-/** One table: what it is, who loads it, each column, and three pictures of its values. Its rows
- * stay on the server (ADR-0038): the page shows the profile, never the table. */
-export function DatasetDetail({ dataset, lineage }: { dataset: LoadedTable; lineage: Use[] }) {
+/** Each column and three pictures of the table's values. Its rows stay on the server (ADR-0038):
+ * the page shows the profile, never the table. */
+export function ProfileTab({ dataset }: { dataset: LoadedTable }) {
   const profile = useDatasetProfile(dataset.artifact.id);
-  const showRun = useSelection((s) => s.showRun);
-  const setNav = useSelection((s) => s.setNav);
-  const [tab, setTab] = useState<Tab>("Profile");
-  const open = (use: Use["use"]) => {
-    showRun(use.pipeline_version_id, use.run_id, use.node_id);
-    setNav("Flow");
-  };
-  const first = dataset.used_by[0];
-
   return (
-    <section className="ds-detail" aria-label={dataset.name}>
-      <PageHeader
-        eyebrow={`Dataset · loaded by ${shortName(dataset.operator)}`}
-        title={dataset.name}
-        description={`Used by ${lineage.map((l) => l.label).join(", ") || "no flow"}`}
-        {...(first ? { actions: <Button variant="primary" onClick={() => open(first)}>Open in flow</Button> } : {})}
-      />
-      <Tabs label="Dataset" items={TABS.map((t) => ({ value: t, label: t }))} value={tab} onChange={(t) => setTab(t as Tab)}>
-        {tab === "Lineage" ? (
-          <>
-            {lineage.length === 0 && <p className="muted pad">No flow loads this table yet.</p>}
-            <ul className="row-list" aria-label="Lineage">
-              {lineage.map((l) => (
-                <li key={l.label} className="row-list-item">
-                  <span>{l.label}</span>
-                  <Button size="sm" onClick={() => open(l.use)}>Open</Button>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : (
-          <div className="ds-profile">
-            {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
-            <p className="nv-note ds-note">
-              Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
-              Missing counts empty cells, NaN and infinity.
-            </p>
-            {profile.isError ? (
-              <p role="alert" className="error">{profile.error.message}</p>
-            ) : profile.isPending ? (
-              <Loading text="Profiling the table…" />
-            ) : (
-              <>
-                <Partial profile={profile.data} />
-                <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
-                <Plots profile={profile.data} />
-              </>
-            )}
-          </div>
-        )}
-      </Tabs>
-    </section>
+    <div className="ds-profile">
+      {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
+      <p className="nv-note ds-note">
+        Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
+        Missing counts empty cells, NaN and infinity.
+      </p>
+      {profile.isError ? (
+        <p role="alert" className="error">{profile.error.message}</p>
+      ) : profile.isPending ? (
+        <Loading text="Profiling the table…" />
+      ) : (
+        <>
+          <Partial profile={profile.data} />
+          <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
+          <Plots profile={profile.data} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Each flow and step that loads the table, each with a way to open it. */
+export function LineageTab({ lineage, onOpen }: { lineage: Use[]; onOpen: (use: Use["use"]) => void }) {
+  if (lineage.length === 0) return <p className="muted">No flow loads this table yet.</p>;
+  return (
+    <ul className="row-list" aria-label="Lineage">
+      {lineage.map((l) => (
+        <li key={l.label} className="row-list-item">
+          <span>{l.label}</span>
+          <Button size="sm" onClick={() => onOpen(l.use)}>Open</Button>
+        </li>
+      ))}
+    </ul>
   );
 }
 

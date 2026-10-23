@@ -8,14 +8,13 @@ import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { PageHeader } from "../../components/ui/PageHeader.tsx";
+import { PageFrame } from "../../components/ui/PageFrame.tsx";
 import { SectionLabel } from "../../components/ui/SectionLabel.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { flowCount } from "../../flow/flows.ts";
 import { stepTitle } from "../../flow/stages.ts";
 import { tableSize } from "../datasets/tableSize.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { useWorkbench } from "../../workbench/workbench.ts";
 
 const PLATFORM = ["Packs", "Plugins", "Environments", "Compute", "Data"] as const;
 const ACCESS = ["Members"] as const;
@@ -42,7 +41,7 @@ export function SettingsPage() {
   const operators = useOperators();
   const rules = useMethodologyRules();
   const tables = useLoadedTables();
-  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
+  const setNav = useSelection((s) => s.setNav);
   const [page, setPage] = useState<Page>("Packs");
 
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
@@ -58,39 +57,56 @@ export function SettingsPage() {
   };
   const row = (p: Page) => <ListRow key={p} title={p} meta={meta[p] || "Not in local mode"} selected={p === page} onClick={() => setPage(p)} />;
 
-  return (
-    <div className={`settings-page-layout ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
-      <Sidebar
-        title="Settings"
-        dock={
-          <InfoDock
-            title="Installed"
-            rows={[
-              { k: "Operators", v: String(operators.data.length) },
-              { k: "Rules", v: count(rules, (r) => r.length) },
-              { k: "Datasets", v: count(tables, (t) => t.length) },
-            ]}
-          />
-        }
-      >
-        <SectionLabel>Platform</SectionLabel>
-        {PLATFORM.map(row)}
-        <SectionLabel>Access</SectionLabel>
-        {ACCESS.map(row)}
-      </Sidebar>
+  const header = {
+    Packs: {
+      eyebrow: "Settings · Platform",
+      title: "Packs",
+      description: "Methodology packs: the rules Sprisk checks a flow against.",
+      actions: <Button variant="primary" onClick={() => setNav("Methodology")}>Open methodology</Button>,
+    },
+    Plugins: {
+      eyebrow: "Settings · Platform",
+      title: "Plugins",
+      description: "The operators the registry loaded, by plugin. Each runs in the Python worker.",
+      actions: <Button onClick={() => void operators.refetch()}>Refresh</Button>,
+    },
+    Data: {
+      eyebrow: "Settings · Platform",
+      title: "Data",
+      description: "Tables loaded by a flow's steps. Sprisk reads files in place; it keeps only what steps write.",
+      actions: <Button variant="primary" onClick={() => setNav("Datasets")}>Open datasets</Button>,
+    },
+  }[page as "Packs" | "Plugins" | "Data"] ?? { eyebrow: `Settings · ${ACCESS.includes(page as "Members") ? "Access" : "Platform"}`, title: page, description: NOT_YET[page]?.description ?? "" };
 
-      <main className="center-screen set-main">
-        {page === "Packs" && <Packs />}
-        {page === "Plugins" && <Plugins operators={operators.data} reload={() => void operators.refetch()} />}
-        {page === "Data" && <Data />}
-        {NOT_YET[page] && (
-          <>
-            <PageHeader eyebrow="Settings" title={page} description={NOT_YET[page].description} />
-            <p className="muted pad">{NOT_YET[page].note}</p>
-          </>
-        )}
-      </main>
-    </div>
+  return (
+    <PageFrame
+      sidebar={
+        <Sidebar
+          title="Settings"
+          dock={
+            <InfoDock
+              title="Installed"
+              rows={[
+                { k: "Operators", v: String(operators.data.length) },
+                { k: "Rules", v: count(rules, (r) => r.length) },
+                { k: "Datasets", v: count(tables, (t) => t.length) },
+              ]}
+            />
+          }
+        >
+          <SectionLabel num="01">Platform</SectionLabel>
+          {PLATFORM.map(row)}
+          <SectionLabel num="02">Access</SectionLabel>
+          {ACCESS.map(row)}
+        </Sidebar>
+      }
+      header={header}
+    >
+      {page === "Packs" && <Packs />}
+      {page === "Plugins" && <Plugins operators={operators.data} />}
+      {page === "Data" && <Data />}
+      {NOT_YET[page] && <p className="muted">{NOT_YET[page].note}</p>}
+    </PageFrame>
   );
 }
 
@@ -111,15 +127,8 @@ const plugins = (ops: Operator[]) => [...new Set(ops.map(pluginOf))].sort();
 
 function Packs() {
   const rules = useMethodologyRules();
-  const setNav = useSelection((s) => s.setNav);
   return (
     <>
-      <PageHeader
-        eyebrow="Settings · Platform"
-        title="Packs"
-        description="Methodology packs: the rules Sprisk checks a flow against."
-        actions={<Button variant="primary" onClick={() => setNav("Methodology")}>Open methodology</Button>}
-      />
       {rules.isError && <p role="alert" className="error pad">{rules.error.message}</p>}
       {rules.isPending && <Loading text="Loading packs…" pad />}
       {rules.data && (
@@ -140,17 +149,11 @@ function Packs() {
   );
 }
 
-function Plugins({ operators, reload }: { operators: Operator[]; reload: () => void }) {
+function Plugins({ operators }: { operators: Operator[] }) {
   const [open, setOpen] = useState<string>();
   return (
     <>
-      <PageHeader
-        eyebrow="Settings · Platform"
-        title="Plugins"
-        description="The operators the registry loaded, by plugin. Each runs in the Python worker."
-        actions={<Button onClick={reload}>Refresh</Button>}
-      />
-      <div className="set-scroll">
+      <div>
         {plugins(operators).map((plugin) => (
           <section key={plugin} className="set-group">
             <h2 className="set-group-title">{plugin}</h2>
@@ -197,15 +200,8 @@ function OperatorDetail({ op }: { op: Operator }) {
 function Data() {
   const tables = useLoadedTables();
   const versions = usePipelineVersions();
-  const setNav = useSelection((s) => s.setNav);
   return (
     <>
-      <PageHeader
-        eyebrow="Settings · Platform"
-        title="Data"
-        description="Tables loaded by a flow's steps. Sprisk reads files in place; it keeps only what steps write."
-        actions={<Button variant="primary" onClick={() => setNav("Datasets")}>Open datasets</Button>}
-      />
       {tables.isError && <p role="alert" className="error pad">{tables.error.message}</p>}
       {tables.isPending && <Loading text="Loading data…" pad />}
       {tables.data?.length === 0 && <p className="muted pad">No data loaded yet.</p>}

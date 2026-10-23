@@ -23,7 +23,7 @@ export function Tabs({ label, items, value, onChange, children }: TabsProps) {
           </RadixTabs.Trigger>
         ))}
       </RadixTabs.List>
-      <RadixTabs.Content value={value} className="page-tab-panel">
+      <RadixTabs.Content value={value} className="page-body">
         {children}
       </RadixTabs.Content>
     </RadixTabs.Root>

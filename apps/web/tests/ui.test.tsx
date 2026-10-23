@@ -32,11 +32,12 @@ it("shows the empty text for an empty list, and the content otherwise", () => {
   expect(screen.getByText("a,b")).toBeInTheDocument();
 });
 
-it("renders a row as a button with a title, a note and a state", () => {
-  render(<ListRow title="Run 1" meta="today" state="succeeded" current onClick={() => {}} />);
+it("renders a row as a real button with a title, its facts and a badge", () => {
+  render(<ListRow title="Run 1" meta="today" badge="Running" selected onClick={() => {}} />);
   const row = screen.getByRole("button", { name: /Run 1/ });
+  expect(row.tagName).toBe("BUTTON");
   expect(row).toHaveAttribute("aria-current", "true");
-  expect(row).toHaveTextContent(/today.*succeeded/);
+  expect(row).toHaveTextContent(/today.*Running/);
 });
 
 it("a page header names the page, says what it is for and holds its actions", async () => {

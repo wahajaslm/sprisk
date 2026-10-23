@@ -8,15 +8,13 @@ import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { PageHeader } from "../../components/ui/PageHeader.tsx";
+import { PageFrame } from "../../components/ui/PageFrame.tsx";
 import { SectionLabel } from "../../components/ui/SectionLabel.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
-import { Tabs } from "../../components/ui/Tabs.tsx";
 import { flows } from "../../flow/flows.ts";
 import { flowName } from "../../flow/labels.ts";
 import { tableSize } from "../datasets/tableSize.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { useWorkbench } from "../../workbench/workbench.ts";
 import { currentQuestion, openEntries } from "../objective/ledger.ts";
 
 const TABS = ["Questions", "Sources"] as const;
@@ -33,7 +31,6 @@ export function ReportsPage() {
   const versions = usePipelineVersions();
   const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
   const setNav = useSelection((s) => s.setNav);
-  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
   const [tab, setTab] = useState<Tab>("Questions");
   const [picked, setPicked] = useState("objective");
 
@@ -57,62 +54,59 @@ export function ReportsPage() {
   };
 
   return (
-    <div className={`reports-page-layout ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
-      <Sidebar
-        title="Questions"
-        meta={String(entries.length)}
-        dock={
-          question && (
-            <InfoDock
-              title="Ledger"
-              rows={[
-                { k: "Open", v: String(open), warn: open > 0 },
-                { k: "Assumptions", v: String(question.assumptions.length) },
-                { k: "Criteria", v: String(question.acceptance_criteria.length) },
-              ]}
-            />
-          )
-        }
-      >
-        {!question && <p className="muted pad">No question yet. State one on the Objective page.</p>}
-        {question &&
-          entries.map((e, i) => (
-            <div key={e.key}>
-              {e.kind === "unknown" && startsGroup(i) && <SectionLabel>Before {BLOCKS[e.unknown.blocks]}</SectionLabel>}
-              <ListRow
-                title={e.kind === "objective" ? question.objective.value : e.unknown.question}
-                meta={e.kind === "objective" ? `${question.task.value} · ${open} open` : "Open"}
-                warn={e.kind === "unknown"}
-                selected={e.key === entry?.key}
-                onClick={() => setPicked(e.key)}
+    <PageFrame
+      sidebar={
+        <Sidebar
+          title="Questions"
+          meta={String(entries.length)}
+          dock={
+            question && (
+              <InfoDock
+                title="Ledger"
+                rows={[
+                  { k: "Open", v: String(open), warn: open > 0 },
+                  { k: "Assumptions", v: String(question.assumptions.length) },
+                  { k: "Criteria", v: String(question.acceptance_criteria.length) },
+                ]}
               />
-            </div>
-          ))}
-      </Sidebar>
-
-      <main className="center-screen reports-main">
-        <PageHeader
-          eyebrow="Question ledger"
-          title="What we set out to answer"
-          actions={
-            <>
-              <Button onClick={() => window.print()}>Export report</Button>
-              <Button variant="primary" onClick={() => setNav("Objective")}>
-                Add question
-              </Button>
-            </>
+            )
           }
-        />
-        <Tabs label="Report" items={TABS.map((t) => ({ value: t, label: t }))} value={tab} onChange={(t) => setTab(t as Tab)}>
-          <div className="report-scroll">
-            {tab === "Questions" && question && entry && (
-              <EntryReport entry={entry} question={question} history={questions.data} versions={versions.data ?? []} />
-            )}
-            {tab === "Sources" && <Sources />}
-          </div>
-        </Tabs>
-      </main>
-    </div>
+        >
+          {!question && <p className="muted pad">No question yet. State one on the Objective page.</p>}
+          {question &&
+            entries.map((e, i) => (
+              <div key={e.key}>
+                {e.kind === "unknown" && startsGroup(i) && <SectionLabel>Before {BLOCKS[e.unknown.blocks]}</SectionLabel>}
+                <ListRow
+                  title={e.kind === "objective" ? question.objective.value : e.unknown.question}
+                  meta={e.kind === "objective" ? `${question.task.value} · ${open} open` : "Open"}
+                  warn={e.kind === "unknown"}
+                  selected={e.key === entry?.key}
+                  onClick={() => setPicked(e.key)}
+                />
+              </div>
+            ))}
+        </Sidebar>
+      }
+      header={{
+        eyebrow: "Question ledger",
+        title: "What we set out to answer",
+        actions: (
+          <>
+            <Button onClick={() => window.print()}>Export report</Button>
+            <Button variant="primary" onClick={() => setNav("Objective")}>
+              Add question
+            </Button>
+          </>
+        ),
+      }}
+      tabs={{ label: "Report", items: TABS.map((t) => ({ value: t, label: t })), value: tab, onChange: (t) => setTab(t as Tab) }}
+    >
+      {tab === "Questions" && question && entry && (
+        <EntryReport entry={entry} question={question} history={questions.data} versions={versions.data ?? []} />
+      )}
+      {tab === "Sources" && <Sources />}
+    </PageFrame>
   );
 }
 
