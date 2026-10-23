@@ -100,6 +100,7 @@ export function ReportsPage() {
               }
             />
             <Tabs
+          label="Report"
               items={TABS.map((t) => ({ value: t, label: t }))}
               value={activeTab}
               onChange={(t) => setActiveTab(t as Tab)}

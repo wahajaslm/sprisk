@@ -54,6 +54,7 @@ export function DeployPage() {
           }
         />
         <Tabs
+          label="Model"
           items={TABS.map((t) => ({ value: t, label: t }))}
           value={activeTab}
           onChange={(t) => setActiveTab(t as Tab)}

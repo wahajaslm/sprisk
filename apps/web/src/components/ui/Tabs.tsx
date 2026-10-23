@@ -1,43 +1,25 @@
-import React from "react";
+import * as RadixTabs from "@radix-ui/react-tabs";
+import type { ReactNode } from "react";
 
 export interface TabsProps {
-  items: { value: string; label: React.ReactNode }[];
+  /** Names the tab list for screen readers, e.g. the page it belongs to. */
+  label: string;
+  items: { value: string; label: ReactNode }[];
   value: string;
-  onChange?: (v: string) => void;
+  onChange: (v: string) => void;
 }
 
-export function Tabs({ items, value, onChange }: TabsProps) {
+/** A page's sub-tabs: text tabs with a 1px underline on the active one, in a 48px bar. */
+export function Tabs({ label, items, value, onChange }: TabsProps) {
   return (
-    <div
-      style={{
-        height: "var(--size-tabbar)",
-        display: "flex",
-        alignItems: "stretch",
-        gap: 20,
-        padding: "0 16px",
-        borderBottom: "1px solid var(--border-divider)",
-      }}
-    >
-      {items.map((it) => {
-        const on = it.value === value;
-        return (
-          <div
-            key={it.value}
-            onClick={() => onChange && onChange(it.value)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              fontSize: "var(--fs-13-5)",
-              fontWeight: "var(--fw-medium)",
-              cursor: "pointer",
-              color: on ? "var(--text-primary)" : "var(--ink-5)",
-              boxShadow: on ? "inset 0 -1px 0 var(--ink-1)" : "none",
-            }}
-          >
+    <RadixTabs.Root value={value} onValueChange={onChange}>
+      <RadixTabs.List className="page-tabs" aria-label={label}>
+        {items.map((it) => (
+          <RadixTabs.Trigger key={it.value} value={it.value} className="page-tab">
             {it.label}
-          </div>
-        );
-      })}
-    </div>
+          </RadixTabs.Trigger>
+        ))}
+      </RadixTabs.List>
+    </RadixTabs.Root>
   );
 }
