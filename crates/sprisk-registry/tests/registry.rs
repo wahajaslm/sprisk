@@ -162,7 +162,7 @@ fn malformed_yaml_names_the_file() {
 fn every_core_plugin_manifest_is_valid() {
     let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
     let registry = Registry::load_dir(&plugins).unwrap();
-    assert_eq!(registry.len(), 37);
+    assert_eq!(registry.len(), 38);
     assert!(registry.get("sprisk.ml.linear_model@3.0.0").is_some());
     assert!(registry.get("sprisk.clean.spectral_gating@1.0.0").is_some());
 }

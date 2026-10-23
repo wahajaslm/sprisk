@@ -1,0 +1,16 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.strip_html@1.0.0
+capability_class: transform
+description: Strip HTML from text columns. In values holding markup, tags and comments become spaces, entities ending in ';' their characters (&eacute; is é), script and style content goes, and runs of spaces become one. Other values stay as they are.
+entrypoint: sprisk_clean.strip_html:strip_html
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: data, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [columns]
+  properties:
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Text columns to strip." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }
