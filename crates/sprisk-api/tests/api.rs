@@ -1710,6 +1710,24 @@ async fn a_question_binds_only_concepts_the_packs_define_and_each_once() {
         "{body}"
     );
 
+    // A title is a column of the loaded data; a column a step makes is not offered for it.
+    let mut derived = stated("common.item_title", "item_group");
+    derived["source"]["step"] = json!("near_duplicates");
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/question_versions",
+        Some(bound(json!([derived]))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body["errors"][0]["message"].as_str().unwrap().contains(
+            "common.item_title binds to a column of the loaded data, not one a step makes"
+        ),
+        "{body}"
+    );
+
     let once = bound(json!([stated("common.item_title", "designation")]));
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(once)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");

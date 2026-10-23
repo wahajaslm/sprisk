@@ -29,9 +29,9 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
-    CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, DatasetProfile, DecisionProposal,
-    FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse,
+    AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, BindingSourceKind,
+    CapabilityClass, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, DatasetProfile,
+    DecisionProposal, FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse,
     MethodologyAlternativeApplicability, MethodologyDecision, MethodologyDecisionId,
     MethodologyProposalId, MethodologyReview, MethodologyRule, MethodologyRuleSelection,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
@@ -1041,8 +1041,22 @@ fn check_bindings(
     let mut seen = std::collections::BTreeSet::new();
     for binding in &question.bindings {
         let concept = binding.concept.as_str();
-        let why = if !rules.concepts().any(|(id, _)| id == concept) {
+        let kind = match binding.source.step {
+            Some(_) => BindingSourceKind::Derived,
+            None => BindingSourceKind::Column,
+        };
+        let defined = rules.concepts().find(|(id, _)| *id == concept);
+        let why = if defined.is_none() {
             format!("no pack defines the concept {concept}")
+        } else if defined.is_some_and(|(_, c)| !c.binds_to.contains(&kind)) {
+            match kind {
+                BindingSourceKind::Derived => {
+                    format!("{concept} binds to a column of the loaded data, not one a step makes")
+                }
+                BindingSourceKind::Column => {
+                    format!("{concept} binds to a column a step makes, not one of the loaded data")
+                }
+            }
         } else if !seen.insert(concept) {
             format!("{concept} is bound twice")
         } else {
