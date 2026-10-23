@@ -5,7 +5,7 @@ import { flowName } from "../flow/labels.ts";
 import { hasOutputs, isGateNode } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
-import { PanelToggleIcon, SendIcon, SparkIcon } from "./Icons.tsx";
+import { PanelToggleIcon, SendIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
 import { CopilotMessage } from "../components/ui/CopilotMessage.tsx";
 
@@ -53,10 +53,8 @@ export function Copilot() {
   return (
     <aside className="copilot-card copilot" aria-label="Copilot">
       <div className="copilot-head">
-        <SparkIcon />
         <strong>Copilot</strong>
-        <span className="spacer" />
-        <span className="chip">{contextText}</span>
+        <span className="copilot-context">{contextText}</span>
         <button
           type="button"
           className="copilot-toggle-btn"
@@ -70,12 +68,10 @@ export function Copilot() {
 
       <div className="copilot-body">
         {runId && (
-          <div className="card" style={{ padding: "10px 12px", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", marginBottom: 12, background: "var(--bg-surface)" }}>
-            <div className="card-head" style={{ fontSize: "var(--fs-12-5)", color: "var(--text-label)", marginBottom: 4, fontWeight: "var(--fw-medium)" }}>This run</div>
-            <div className="card-body">
-              <QueryState query={attempts}>{(data) => <RunSummary attempts={data} />}</QueryState>
-            </div>
-          </div>
+          <section className="copilot-run" aria-label="This run">
+            <span className="copilot-run-label">This run</span>
+            <QueryState query={attempts}>{(data) => <RunSummary attempts={data} />}</QueryState>
+          </section>
         )}
         <CopilotMessage role="assistant">
           Copilot is not connected. No AI model is set up, and data never leaves this machine without your

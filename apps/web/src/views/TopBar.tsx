@@ -68,9 +68,9 @@ export function TopBar() {
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
           >
-            {PROJECT}
-            <span className="switcher-sub">
-              / {current ? flowName(current) : versions.isPending ? "loading…" : "no flows yet"}
+            {/* The design's pill names the flow; the project is the only one in local mode. */}
+            <span className="switcher-name" title={PROJECT}>
+              {current ? flowName(current) : versions.isPending ? "loading…" : "No flow yet"}
             </span>
             <Chevron />
           </button>

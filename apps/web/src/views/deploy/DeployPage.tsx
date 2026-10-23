@@ -26,7 +26,7 @@ export function DeployPage() {
   return (
     <PageFrame
       sidebar={
-        <Sidebar title="Models" meta="0">
+        <Sidebar title="Models">
           <p className="muted pad">No models deployed yet.</p>
         </Sidebar>
       }

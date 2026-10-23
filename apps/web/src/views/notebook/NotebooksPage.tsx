@@ -7,10 +7,10 @@ import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.
 import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { flowOf, flows } from "../../flow/flows.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 import { SearchField } from "../../components/ui/SearchField.tsx";
-import { SectionLabel } from "../../components/ui/SectionLabel.tsx";
+import { ListRow } from "../../components/ui/ListRow.tsx";
+import { SideGroup } from "../../components/ui/SideGroup.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { flowName } from "../../flow/labels.ts";
 import { StageNotebook } from "./StageNotebook.tsx";
@@ -69,7 +69,7 @@ export function NotebooksPage() {
     <div className="page-frame">
       <Sidebar
         title="Notebooks"
-        meta={String(stages.length + mine.length + loose.length)}
+        add={{ label: "New notebook", onClick: create, disabled: save.isPending }}
         search={<SearchField value={filter} onChange={setFilter} placeholder="Search notebooks" ariaLabel="Filter notebooks" />}
         dock={
           <InfoDock
@@ -84,32 +84,26 @@ export function NotebooksPage() {
       >
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
         {shownStages.length > 0 && (
-          <>
-            <SectionLabel>Stages</SectionLabel>
-            <ul aria-label="This flow's stages">
+          <SideGroup num={1} label="Stages" meta={shownStages.length}>
+            <div role="list" aria-label="This flow's stages">
               {shownStages.map(({ stage, nodes }) => (
-                <li key={stage} className="nb-item">
-                  <button type="button" className="nb-item-open" aria-current={stage === stageOpen} onClick={() => openStage(stage)}>
-                    {stage} <span className="muted">· {nodes.length === 1 ? "1 step" : `${nodes.length} steps`}</span>
-                  </button>
-                </li>
+                <div key={stage} role="listitem">
+                  <ListRow title={stage} meta={nodes.length === 1 ? "1 step" : `${nodes.length} steps`} selected={stage === stageOpen} onClick={() => openStage(stage)} />
+                </div>
               ))}
-            </ul>
-          </>
+            </div>
+          </SideGroup>
         )}
-        {shownMine.length > 0 && <SectionLabel>Saved notebooks</SectionLabel>}
-        <NotebookList label="This flow's notebooks" notebooks={shownMine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
+        {shownMine.length > 0 && (
+          <SideGroup num={2} label="Saved notebooks" meta={shownMine.length}>
+            <NotebookList label="This flow's notebooks" notebooks={shownMine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
+          </SideGroup>
+        )}
         {shownLoose.length > 0 && (
-          <>
-            <SectionLabel>Not in a flow yet</SectionLabel>
+          <SideGroup num={3} label="Not in a flow yet" meta={shownLoose.length}>
             <NotebookList label="Not in a flow yet" notebooks={shownLoose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
-          </>
+          </SideGroup>
         )}
-        <div className="nb-new">
-          <Button size="sm" disabled={save.isPending} onClick={create}>
-            New notebook
-          </Button>
-        </div>
       </Sidebar>
 
       <section className="center-screen page-pane" aria-label="Notebook">

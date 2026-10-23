@@ -8,7 +8,8 @@ import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { PageFrame } from "../../components/ui/PageFrame.tsx";
 import { SearchField } from "../../components/ui/SearchField.tsx";
-import { SectionLabel } from "../../components/ui/SectionLabel.tsx";
+import { SideGroup } from "../../components/ui/SideGroup.tsx";
+import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { CodeInput } from "../CodeInput.tsx";
 import { useSelection } from "../../workbench/selection.ts";
@@ -63,7 +64,6 @@ export function MethodologyPage() {
       sidebar={
         <Sidebar
           title="Rules"
-          meta={`${shown.length} rules`}
           search={<SearchField value={filter} onChange={setFilter} placeholder="Filter rules" ariaLabel="Filter rules" />}
           dock={
             current && (
@@ -78,11 +78,8 @@ export function MethodologyPage() {
             )
           }
         >
-          {all.map((c) => (
-            <div key={c.key}>
-              <SectionLabel num={c.code} trailing={c.rules.length}>
-                {stageName(c.stage)}
-              </SectionLabel>
+          {all.map((c, i) => (
+            <SideGroup key={c.key} num={i + 1} label={stageName(c.stage)} meta={c.rules.length}>
               {c.rules.map((r) => {
                 const item = reviews.get(r.id);
                 return (
@@ -97,7 +94,7 @@ export function MethodologyPage() {
                   />
                 );
               })}
-            </div>
+            </SideGroup>
           ))}
           {shown.length === 0 && <p className="muted pad">No rule matches.</p>}
         </Sidebar>
@@ -162,16 +159,13 @@ function UsedIn({ rule, versionId, items }: { rule: MethodologyRule; versionId: 
   const mine = items.filter((i) => i.rule === rule.id);
   if (mine.length === 0) return <p className="muted">This rule decides nothing on the selected flow.</p>;
   return (
-    <ul className="row-list" aria-label="Used in">
-      {mine.map((i) => (
-        <li key={`${i.subject_node_id ?? "flow"}-${i.decides}`} className="row-list-item">
-          <span className="row-list-name">{i.subject_node_id ? `Step ${i.subject_node_id}` : "The flow"}</span>
-          <span className={`row-list-meta${isOpen(i.status) ? " warn" : ""}`}>
-            {STATUS_LABEL[i.status]} · {i.reason}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <BodySection title="On the selected flow" note="Each step this rule decides, with its status and why.">
+      <RowList label="Used in">
+        {mine.map((i) => (
+          <RowItem key={`${i.subject_node_id ?? "flow"}-${i.decides}`} name={i.subject_node_id ? `Step ${i.subject_node_id}` : "The flow"} meta={`${STATUS_LABEL[i.status]} · ${i.reason}`} warn={isOpen(i.status)} />
+        ))}
+      </RowList>
+    </BodySection>
   );
 }
 

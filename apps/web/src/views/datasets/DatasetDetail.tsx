@@ -4,6 +4,7 @@ import { lazy, Suspense } from "react";
 import { useDatasetProfile } from "../../api/datasets.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
+import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
 import { correlationField, distributions, missingMap } from "./profileFigures.ts";
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
@@ -41,14 +42,13 @@ export function ProfileTab({ dataset }: { dataset: LoadedTable }) {
 export function LineageTab({ lineage, onOpen }: { lineage: Use[]; onOpen: (use: Use["use"]) => void }) {
   if (lineage.length === 0) return <p className="muted">No flow loads this table yet.</p>;
   return (
-    <ul className="row-list" aria-label="Lineage">
-      {lineage.map((l) => (
-        <li key={l.label} className="row-list-item">
-          <span>{l.label}</span>
-          <Button size="sm" onClick={() => onOpen(l.use)}>Open</Button>
-        </li>
-      ))}
-    </ul>
+    <BodySection title="Loaded by" note="Each flow and step that loads this table.">
+      <RowList label="Lineage">
+        {lineage.map((l) => (
+          <RowItem key={l.label} name={l.label} meta={`run ${l.use.run_id.slice(-6)}`} action={<Button size="sm" onClick={() => onOpen(l.use)}>Open</Button>} />
+        ))}
+      </RowList>
+    </BodySection>
   );
 }
 

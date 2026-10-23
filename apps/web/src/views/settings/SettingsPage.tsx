@@ -9,7 +9,9 @@ import { InfoDock } from "../../components/ui/InfoDock.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { PageFrame } from "../../components/ui/PageFrame.tsx";
-import { SectionLabel } from "../../components/ui/SectionLabel.tsx";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { SideGroup } from "../../components/ui/SideGroup.tsx";
+import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { flowCount } from "../../flow/flows.ts";
 import { stepTitle } from "../../flow/stages.ts";
@@ -43,6 +45,8 @@ export function SettingsPage() {
   const tables = useLoadedTables();
   const setNav = useSelection((s) => s.setNav);
   const [page, setPage] = useState<Page>("Packs");
+  const [search, setSearch] = useState("");
+  const matches = (p: Page) => p.toLowerCase().includes(search.trim().toLowerCase());
 
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
   if (operators.isPending) return <Loading text="Loading settings…" pad />;
@@ -83,6 +87,7 @@ export function SettingsPage() {
       sidebar={
         <Sidebar
           title="Settings"
+          search={<SearchField value={search} onChange={setSearch} placeholder="Search settings" />}
           dock={
             <InfoDock
               title="Installed"
@@ -94,13 +99,16 @@ export function SettingsPage() {
             />
           }
         >
-          <SectionLabel num="01">Platform</SectionLabel>
-          {PLATFORM.map(row)}
-          <SectionLabel num="02">Access</SectionLabel>
-          {ACCESS.map(row)}
+          <SideGroup num={1} label="Platform" meta={PLATFORM.length}>
+            {PLATFORM.filter(matches).map(row)}
+          </SideGroup>
+          <SideGroup num={2} label="Access" meta={ACCESS.length}>
+            {ACCESS.filter(matches).map(row)}
+          </SideGroup>
         </Sidebar>
       }
       header={header}
+      view={page === "Data" ? "Tables" : NOT_YET[page] ? "Overview" : "Installed"}
     >
       {page === "Packs" && <Packs />}
       {page === "Plugins" && <Plugins operators={operators.data} />}
@@ -132,18 +140,15 @@ function Packs() {
       {rules.isError && <p role="alert" className="error pad">{rules.error.message}</p>}
       {rules.isPending && <Loading text="Loading packs…" pad />}
       {rules.data && (
-        <ul className="row-list" aria-label="Packs">
-          {packs(rules.data).map((pack) => {
-            const mine = rules.data.filter((r) => packOf(r.id) === pack);
-            const active = mine.filter((r) => r.status === "active").length;
-            return (
-              <li key={pack} className="row-list-item">
-                <span className="row-list-name">{pack}</span>
-                <span className="row-list-meta">{active} active · {mine.length - active} draft</span>
-              </li>
-            );
-          })}
-        </ul>
+        <BodySection title="Installed" note="Each pack holds the rules for one kind of question.">
+          <RowList label="Packs">
+            {packs(rules.data).map((pack) => {
+              const mine = rules.data.filter((r) => packOf(r.id) === pack);
+              const active = mine.filter((r) => r.status === "active").length;
+              return <RowItem key={pack} name={pack} meta={`${active} active · ${mine.length - active} draft`} />;
+            })}
+          </RowList>
+        </BodySection>
       )}
     </>
   );
@@ -151,28 +156,25 @@ function Packs() {
 
 function Plugins({ operators }: { operators: Operator[] }) {
   const [open, setOpen] = useState<string>();
-  return (
-    <>
-      <div>
-        {plugins(operators).map((plugin) => (
-          <section key={plugin} className="set-group">
-            <h2 className="set-group-title">{plugin}</h2>
-            <ul className="row-list" aria-label={plugin}>
-              {operators.filter((op) => pluginOf(op) === plugin).map((op) => (
-                <li key={op.id}>
-                  <button type="button" className="row-list-item" aria-expanded={open === op.id} onClick={() => setOpen(open === op.id ? undefined : op.id)}>
-                    <span className="row-list-name">{stepTitle(op.id)}</span>
-                    <span className="row-list-meta">{op.capability_class} · {op.inputs.length} in · {op.outputs.length} out</span>
-                  </button>
-                  {open === op.id && <OperatorDetail op={op} />}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-    </>
-  );
+  return plugins(operators).map((plugin) => (
+    <BodySection key={plugin} title={plugin} note={`${operators.filter((op) => pluginOf(op) === plugin).length} operators`}>
+      <RowList label={plugin}>
+        {operators
+          .filter((op) => pluginOf(op) === plugin)
+          .map((op) => (
+            <RowItem
+              key={op.id}
+              name={stepTitle(op.id)}
+              meta={`${op.capability_class} · ${op.inputs.length} in · ${op.outputs.length} out`}
+              open={open === op.id}
+              onToggle={() => setOpen(open === op.id ? undefined : op.id)}
+            >
+              <OperatorDetail op={op} />
+            </RowItem>
+          ))}
+      </RowList>
+    </BodySection>
+  ));
 }
 
 function OperatorDetail({ op }: { op: Operator }) {
@@ -206,19 +208,14 @@ function Data() {
       {tables.isPending && <Loading text="Loading data…" pad />}
       {tables.data?.length === 0 && <p className="muted pad">No data loaded yet.</p>}
       {tables.data && tables.data.length > 0 && (
-        <ul className="row-list" aria-label="Data">
-          {tables.data.map((t) => {
-            const used = flowCount(t, versions.data ?? []);
-            return (
-              <li key={t.artifact.id} className="row-list-item">
-                <span className="row-list-name">{t.name}</span>
-                <span className="row-list-meta">
-                  {tableSize(t)} · used by {used} {used === 1 ? "flow" : "flows"}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        <BodySection title="Tables" note="The latest table each source step loaded.">
+          <RowList label="Data">
+            {tables.data.map((t) => {
+              const used = flowCount(t, versions.data ?? []);
+              return <RowItem key={t.artifact.id} name={t.name} meta={`${tableSize(t)} · used by ${used} ${used === 1 ? "flow" : "flows"}`} />;
+            })}
+          </RowList>
+        </BodySection>
       )}
     </>
   );

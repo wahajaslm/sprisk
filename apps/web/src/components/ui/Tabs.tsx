@@ -29,3 +29,15 @@ export function Tabs({ label, items, value, onChange, children }: TabsProps) {
     </RadixTabs.Root>
   );
 }
+
+/** The tab strip of a page with one view: the design shows its name there too. It is a label,
+ * not a tab, since there is nothing to switch to. */
+export function SingleTab({ name }: { name: string }) {
+  return (
+    <div className="page-tabs">
+      <span className="page-tab" data-state="active">
+        {name}
+      </span>
+    </div>
+  );
+}

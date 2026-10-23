@@ -215,7 +215,7 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     const posts = noNotebooks();
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
     const items = within(await stages()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Load · 2 steps", "Split · 1 step", "Clean · 1 step", "Model · 1 step", "Evaluate · 1 step"]);
+    expect(items).toEqual(["Load2 steps", "Split1 step", "Clean1 step", "Model1 step", "Evaluate1 step"]);
     expect(await screen.findByRole("heading", { name: "Load" })).toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: /^Cell / })).toHaveLength(2);
     expect(posts).toEqual([]);
@@ -245,9 +245,9 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     noNotebooks();
     renderWithApi(<NotebooksPage />);
     const side = await screen.findByRole("complementary", { name: "Notebooks" });
-    expect(within(side).getByRole("heading", { name: "Notebooks" }).parentElement).toHaveTextContent("Notebooks5");
+    expect(within(side).getByRole("button", { name: /Stages/ })).toHaveTextContent("01Stages5");
     await userEvent.type(within(side).getByRole("searchbox", { name: "Filter notebooks" }), "spl");
-    expect(within(await stages()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Split · 1 step"]);
+    expect(within(await stages()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Split1 step"]);
   });
 
   it("heads a stage notebook with its flow, and runs every cell from the header", async () => {

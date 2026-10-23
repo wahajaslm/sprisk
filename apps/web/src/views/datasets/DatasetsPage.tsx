@@ -44,7 +44,6 @@ export function DatasetsPage() {
       sidebar={
         <Sidebar
           title="Datasets"
-          meta={plural(list.length, "table")}
           search={<SearchField value={filter} onChange={setFilter} placeholder="Search datasets" ariaLabel="Filter datasets" />}
           dock={
             current && (

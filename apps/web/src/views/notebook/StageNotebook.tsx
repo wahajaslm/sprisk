@@ -16,6 +16,7 @@ import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
+import { SingleTab } from "../../components/ui/Tabs.tsx";
 import { flowName } from "../../flow/labels.ts";
 import { AddIcon, RedoIcon, TrashIcon, UndoIcon } from "../Icons.tsx";
 import { TabBody, useStep } from "../inspector/step.tsx";
@@ -105,6 +106,7 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
         description="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change."
         actions={<Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>}
       />
+      <SingleTab name="Cells" />
       <div className="nb-toolbar" role="toolbar" aria-label="Notebook actions">
         <button type="button" className="nb-action" onClick={() => edit.insert(active + 1, "code")}>
           <AddIcon /> Code

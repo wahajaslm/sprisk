@@ -85,15 +85,23 @@ describe("experiments", () => {
 });
 
 describe("experiments frame", () => {
-  it("lists the flow's runs in the sidebar, newest first, with status and what changed", async () => {
+  it("lists the flow's runs in the sidebar, newest first, with what changed; a badge only when not done", async () => {
     twoVersions();
     renderWithApi(<Experiments />);
     const side = await screen.findByRole("complementary", { name: "Runs" });
     const rows = await within(side).findAllByRole("button", { name: /^Run #/ });
     expect(rows.map((r) => r.textContent)).toEqual([
-      expect.stringMatching(/Run #2.*succeeded.*split seed 42 → 7/),
-      expect.stringMatching(/Run #1.*succeeded.*first version/),
+      expect.stringMatching(/^Run #2.*split seed 42 → 7$/),
+      expect.stringMatching(/^Run #1.*first version$/),
     ]);
+  });
+
+  it("marks a failed run as an issue in the sidebar", async () => {
+    server.use(http.get("/api/runs", () => HttpResponse.json([{ ...run, status: "failed" }])));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<Experiments />);
+    const side = await screen.findByRole("complementary", { name: "Runs" });
+    expect(await within(side).findByRole("button", { name: /^Run #1/ })).toHaveTextContent(/Issue$/);
   });
 
   it("monitors the chosen run: each step's state, and why a step failed", async () => {

@@ -9,7 +9,9 @@ import { InfoDock } from "../../components/ui/InfoDock.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { PageFrame } from "../../components/ui/PageFrame.tsx";
-import { SectionLabel } from "../../components/ui/SectionLabel.tsx";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { SideGroup } from "../../components/ui/SideGroup.tsx";
+import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { flows } from "../../flow/flows.ts";
 import { flowName } from "../../flow/labels.ts";
@@ -21,6 +23,7 @@ const TABS = ["Questions", "Sources"] as const;
 type Tab = (typeof TABS)[number];
 
 const BLOCKS: Record<Unknown["blocks"], string> = { planning: "planning", execution: "running", release: "release" };
+const BLOCK_ORDER: Unknown["blocks"][] = ["planning", "execution", "release"];
 
 /** One entry of the ledger: the objective itself, or one open unknown. */
 type Entry = { key: string; number: number } & ({ kind: "objective" } | { kind: "unknown"; unknown: Unknown });
@@ -33,6 +36,7 @@ export function ReportsPage() {
   const setNav = useSelection((s) => s.setNav);
   const [tab, setTab] = useState<Tab>("Questions");
   const [picked, setPicked] = useState("objective");
+  const [search, setSearch] = useState("");
 
   if (questions.isError) return <p role="alert" className="error pad">{questions.error.message}</p>;
   if (questions.isPending) return <Loading text="Loading the question ledger…" pad />;
@@ -46,19 +50,14 @@ export function ReportsPage() {
     : [];
   const entry = entries.find((e) => e.key === picked) ?? entries[0];
   const open = question ? openEntries(question) : 0;
-  // A group label starts each run of unknowns that block the same stage.
-  const startsGroup = (i: number) => {
-    const e = entries[i]!;
-    const before = entries[i - 1];
-    return e.kind === "unknown" && (before?.kind !== "unknown" || before.unknown.blocks !== e.unknown.blocks);
-  };
+  const matches = (text: string) => text.toLowerCase().includes(search.trim().toLowerCase());
 
   return (
     <PageFrame
       sidebar={
         <Sidebar
           title="Questions"
-          meta={String(entries.length)}
+          search={<SearchField value={search} onChange={setSearch} placeholder="Search questions" />}
           dock={
             question && (
               <InfoDock
@@ -73,18 +72,20 @@ export function ReportsPage() {
           }
         >
           {!question && <p className="muted pad">No question yet. State one on the Objective page.</p>}
+          {question && (
+            <SideGroup num={1} label="Objective">
+              <ListRow title={question.objective.value} meta={`${question.task.value} · ${open} open`} selected={entry?.key === "objective"} onClick={() => setPicked("objective")} />
+            </SideGroup>
+          )}
           {question &&
-            entries.map((e, i) => (
-              <div key={e.key}>
-                {e.kind === "unknown" && startsGroup(i) && <SectionLabel>Before {BLOCKS[e.unknown.blocks]}</SectionLabel>}
-                <ListRow
-                  title={e.kind === "objective" ? question.objective.value : e.unknown.question}
-                  meta={e.kind === "objective" ? `${question.task.value} · ${open} open` : "Open"}
-                  warn={e.kind === "unknown"}
-                  selected={e.key === entry?.key}
-                  onClick={() => setPicked(e.key)}
-                />
-              </div>
+            BLOCK_ORDER.filter((b) => question.unknowns.some((u) => u.blocks === b)).map((b, i) => (
+              <SideGroup key={b} num={i + 2} label={`Before ${BLOCKS[b]}`} meta={question.unknowns.filter((u) => u.blocks === b).length}>
+                {entries
+                  .filter((e) => e.kind === "unknown" && e.unknown.blocks === b && matches(e.unknown.question))
+                  .map((e) => (
+                    <ListRow key={e.key} title={(e as { unknown: Unknown }).unknown.question} meta="Not answered yet" badge="Open" warn selected={e.key === entry?.key} onClick={() => setPicked(e.key)} />
+                  ))}
+              </SideGroup>
             ))}
         </Sidebar>
       }
@@ -201,14 +202,13 @@ function Sources() {
   if (tables.isPending) return <Loading text="Loading sources…" pad />;
   if (tables.data.length === 0) return <p className="muted pad">No data loaded yet.</p>;
   return (
-    <ul className="row-list" aria-label="Sources">
-      {tables.data.map((t) => (
-        <li key={t.artifact.id} className="row-list-item">
-          <span className="row-list-name">{t.name}</span>
-          <span className="row-list-meta">{tableSize(t)}</span>
-        </li>
-      ))}
-    </ul>
+    <BodySection title="Loaded tables" note="The data the flows read.">
+      <RowList label="Sources">
+        {tables.data.map((t) => (
+          <RowItem key={t.artifact.id} name={t.name} meta={tableSize(t)} />
+        ))}
+      </RowList>
+    </BodySection>
   );
 }
 

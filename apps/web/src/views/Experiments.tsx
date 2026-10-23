@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { PipelineVersion, Run } from "@sprisk/contracts";
 
 import { Button } from "../components/ui/Button.tsx";
@@ -5,7 +6,8 @@ import { InfoDock } from "../components/ui/InfoDock.tsx";
 import { ListRow } from "../components/ui/ListRow.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 import { PageFrame } from "../components/ui/PageFrame.tsx";
-import { SectionLabel } from "../components/ui/SectionLabel.tsx";
+import { SearchField } from "../components/ui/SearchField.tsx";
+import { SideGroup } from "../components/ui/SideGroup.tsx";
 import { Sidebar } from "../components/ui/Sidebar.tsx";
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { type NodeInRun, useFlowRuns, useRunNodes } from "../api/runs.ts";
@@ -41,6 +43,7 @@ export function Experiments() {
     ),
   ].sort();
   const nodes = useRunNodes(runs, evaluators);
+  const [search, setSearch] = useState("");
   const studies = useStudies(flow?.head.id);
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
@@ -89,29 +92,35 @@ export function Experiments() {
       sidebar={
         <Sidebar
           title="Runs"
-          meta={String(runs.length)}
+          search={<SearchField value={search} onChange={setSearch} placeholder="Search runs" />}
           dock={shown && <RunDock run={shown} label={label(shown)} metrics={nodes[shownAt]} before={runs[shownAt + 1]} beforeMetrics={nodes[shownAt + 1]} beforeLabel={runs[shownAt + 1] && label(runs[shownAt + 1]!)} />}
         >
           {runs.length === 0 && <p className="muted pad">No runs yet.</p>}
-          {runs.map((run) => (
-            <ListRow
-              key={run.id}
-              title={`Run ${label(run)}`}
-              meta={`${run.status} · ${when(run.created_at)} · ${whatChanged(run, byId)}`}
-              warn={run.status === "failed"}
-              selected={run.id === shown?.id}
-              onClick={() => showRun(run.pipeline_version_id, run.id)}
-            />
-          ))}
-          {(studies.data ?? []).length > 0 && <SectionLabel>Studies</SectionLabel>}
-          {(studies.data ?? []).map((study) => (
-            <ListRow
-              key={study.id}
-              title={`Study of ${study.node_id}`}
-              meta={`${study.status} · up to ${study.max_trials} trials`}
-              onClick={() => setExperimentsTab("Sweep")}
-            />
-          ))}
+          {runs
+            .filter((run) => `run ${label(run)} ${whatChanged(run, byId)}`.toLowerCase().includes(search.trim().toLowerCase()))
+            .map((run) => (
+              <ListRow
+                key={run.id}
+                title={`Run ${label(run)}`}
+                meta={`${when(run.created_at)} · ${whatChanged(run, byId)}`}
+                {...(run.status === "failed" ? { badge: "Issue", warn: true } : run.status === "running" ? { badge: "Running" } : run.status === "queued" ? { badge: "Queued" } : {})}
+                selected={run.id === shown?.id}
+                onClick={() => showRun(run.pipeline_version_id, run.id)}
+              />
+            ))}
+          {(studies.data ?? []).length > 0 && (
+            <SideGroup num={2} label="Sweeps" meta={studies.data!.length}>
+              {studies.data!.map((study) => (
+                <ListRow
+                  key={study.id}
+                  title={`Study of ${study.node_id}`}
+                  meta={`up to ${study.max_trials} trials`}
+                  {...(study.status === "running" ? { badge: "Running" } : study.status === "failed" ? { badge: "Issue", warn: true } : {})}
+                  onClick={() => setExperimentsTab("Sweep")}
+                />
+              ))}
+            </SideGroup>
+          )}
         </Sidebar>
       }
       header={{

@@ -4,18 +4,19 @@ import { PanelToggleIcon } from "../../views/Icons.tsx";
 
 export interface SidebarProps {
   title: string;
-  meta?: string;
   search?: React.ReactNode;
   children?: React.ReactNode;
+  /** The dashed add button at the foot of the list, e.g. New notebook. */
+  add?: { label: string; onClick: () => void; disabled?: boolean };
   dock?: React.ReactNode;
   width?: number | string;
 }
 
 export function Sidebar({
   title,
-  meta,
   search,
   children,
+  add,
   dock,
   width = "var(--size-sidebar)",
 }: SidebarProps) {
@@ -53,7 +54,6 @@ export function Sidebar({
       <div className="sidebar-header">
         <div className="sidebar-title-row">
           <h2 className="sidebar-title">{title}</h2>
-          {meta && <span className="sidebar-meta">{meta}</span>}
           <div style={{ flex: 1 }} />
           <button
             type="button"
@@ -68,6 +68,13 @@ export function Sidebar({
         {search && <div className="sidebar-search">{search}</div>}
       </div>
       <div className="sidebar-list">{children}</div>
+      {add && (
+        <div className="side-add">
+          <button type="button" className="side-add-btn" disabled={add.disabled} onClick={add.onClick}>
+            <span aria-hidden="true">+</span> {add.label}
+          </button>
+        </div>
+      )}
       {dock && <div className="sidebar-dock">{dock}</div>}
     </aside>
   );
