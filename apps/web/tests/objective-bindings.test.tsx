@@ -45,6 +45,8 @@ describe("Objective page bindings", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save revision" }));
 
     await waitFor(() => expect(sent).toBeDefined());
+    // A revision says which question it revises, so the page can follow it.
+    expect(sent?.parent_id).toBe(question.id);
     expect(sent?.bindings).toEqual([
       {
         schema_version: "sprisk.binding/v1",

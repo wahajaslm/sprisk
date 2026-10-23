@@ -52,6 +52,8 @@ export function ObjectivePage() {
   // Column typed per concept; an empty one leaves the concept unbound.
   const [formBindings, setFormBindings] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
+  // The question being revised; undefined for a new question.
+  const [revising, setRevising] = useState<QuestionVersion>();
 
   const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
   const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
@@ -92,6 +94,7 @@ export function ObjectivePage() {
       setFormFalsePositive("");
       setFormBindings({});
     }
+    setRevising(base);
     setFormError(undefined);
     setIsEditing(true);
   };
@@ -127,7 +130,8 @@ export function ObjectivePage() {
     const newQuestion: QuestionVersion = {
       schema_version: "sprisk.question_version/v1",
       id: `qv_${ulid()}`,
-      investigation_id: question?.investigation_id ?? `inv_${ulid()}`,
+      investigation_id: revising?.investigation_id ?? question?.investigation_id ?? `inv_${ulid()}`,
+      ...(revising ? { parent_id: revising.id } : {}),
       objective: fact(formObjective),
       task: { value: formTask, origin: "explicit" },
       ...(formTarget.trim() ? { target: fact(formTarget) } : {}),
@@ -142,15 +146,7 @@ export function ObjectivePage() {
     };
 
     saveQuestion.mutate(newQuestion, {
-      onSuccess: (saved) => {
-        setIsEditing(false);
-        if (currentPipeline && currentPipeline.question_version_id !== saved.id) {
-          savePipeline.mutate({
-            ...currentPipeline,
-            question_version_id: saved.id,
-          });
-        }
-      },
+      onSuccess: () => setIsEditing(false),
       onError: (err) => {
         setFormError(err.message);
       },
