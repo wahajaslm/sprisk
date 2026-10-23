@@ -6,3 +6,7 @@ concepts:
     kind: text
     description: Short text that names the item a row describes.
     binds_to: [column]
+  common.item_identity:
+    kind: entity_identifier
+    description: Groups rows that describe the same real-world item.
+    binds_to: [column, derived]
