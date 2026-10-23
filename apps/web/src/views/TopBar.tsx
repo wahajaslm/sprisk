@@ -11,7 +11,7 @@ import { ImportNotebook } from "./ImportNotebook.tsx";
 const PROJECT = "Local project";
 
 export function TopBar() {
-  const { nav, setNav, pipelineVersionId, selectPipelineVersion, selectRun } = useSelection();
+  const { nav, setNav, pipelineVersionId, selectPipelineVersion, selectRun, objectiveOpenCount } = useSelection();
   const versions = usePipelineVersions();
   const runs = useRuns(pipelineVersionId);
   const startRun = useStartRun();
@@ -44,84 +44,127 @@ export function TopBar() {
 
   return (
     <header className="topbar" role="banner">
+      {/* Col 1: 56px Logo */}
       <div className="logo-cell">
-        <Logo />
+        <div className="logo-icon-box">
+          <Logo />
+        </div>
       </div>
-      <div className="switcher-wrap">
-        <button
-          type="button"
-          className="switcher"
-          aria-label="Project and flow"
-          aria-haspopup="listbox"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          {PROJECT}
-          <span className="switcher-sub">/ {current ? flowName(current) : versions.isPending ? "loading…" : "no flows yet"}</span>
-          <Chevron />
-        </button>
-        {menuOpen && (
-          <div className="menu" role="listbox" aria-label="Flows">
-            <p className="menu-title">FLOWS</p>
-            {flows(versions.data ?? []).map(({ head, ids }) => (
+
+      {/* Col 2: Title, Project/Flow switcher, Nav tabs */}
+      <div className="topbar-mid">
+        <span className="product-name">Flow Studio</span>
+        <div className="switcher-wrap">
+          <button
+            type="button"
+            className="switcher"
+            aria-label="Project and flow"
+            aria-haspopup="listbox"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {PROJECT}
+            <span className="switcher-sub">
+              / {current ? flowName(current) : versions.isPending ? "loading…" : "no flows yet"}
+            </span>
+            <Chevron />
+          </button>
+          {menuOpen && (
+            <div className="menu" role="listbox" aria-label="Flows">
+              <p className="menu-title">FLOWS</p>
+              {flows(versions.data ?? []).map(({ head, ids }) => (
+                <button
+                  key={head.id}
+                  type="button"
+                  role="option"
+                  aria-selected={pipelineVersionId !== undefined && ids.includes(pipelineVersionId)}
+                  className="menu-item"
+                  onClick={() => {
+                    selectPipelineVersion(head.id);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <span>{flowName(head)}</span>
+                  <span className="menu-meta">
+                    {head.nodes.length} steps · {ids.length === 1 ? "1 version" : `${ids.length} versions`}
+                  </span>
+                </button>
+              ))}
               <button
-                key={head.id}
                 type="button"
-                role="option"
-                aria-selected={pipelineVersionId !== undefined && ids.includes(pipelineVersionId)}
                 className="menu-item"
                 onClick={() => {
-                  selectPipelineVersion(head.id);
+                  setImporting(true);
                   setMenuOpen(false);
                 }}
               >
-                <span>{flowName(head)}</span>
-                <span className="menu-meta">
-                  {head.nodes.length} steps · {ids.length === 1 ? "1 version" : `${ids.length} versions`}
-                </span>
+                Import notebook…
               </button>
-            ))}
+            </div>
+          )}
+          {importing && <ImportNotebook onClose={() => setImporting(false)} />}
+        </div>
+
+        <nav className="nav" aria-label="Main Navigation">
+          {NAV.map((item) => {
+            const active = nav === item;
+            return (
+              <button
+                key={item}
+                type="button"
+                aria-current={active ? "page" : undefined}
+                className={active ? "active" : ""}
+                onClick={() => setNav(item)}
+              >
+                {item}
+                {item === "Objective" && objectiveOpenCount > 0 && (
+                  <span className="tab-badge-open">{objectiveOpenCount}</span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Col 3: Status + Action button */}
+      <div className="topbar-actions">
+        {nav === "Objective" ? (
+          <>
+            <span className="runstate">
+              {objectiveOpenCount > 0 ? `${objectiveOpenCount} open in ledger` : "Ledger complete"}
+            </span>
             <button
               type="button"
-              className="menu-item"
+              className={`run-button ${objectiveOpenCount === 0 ? "primary" : ""}`}
+              disabled={objectiveOpenCount > 0}
+              onClick={() => setNav("Flow")}
+            >
+              Generate pipeline
+            </button>
+          </>
+        ) : (
+          <>
+            {versions.isError && <span role="alert" className="error">{versions.error.message}</span>}
+            {runs.isError && <span role="alert" className="error">{runs.error.message}</span>}
+            {startRun.isError && <span role="alert" className="error">{startRun.error.message}</span>}
+            <span className={`runstate ${latestRun?.status ?? "none"}`}>
+              <span className="dot" aria-hidden="true" />
+              {runState}
+            </span>
+            <button
+              type="button"
+              className="run-button primary"
+              disabled={pipelineVersionId === undefined || startRun.isPending}
               onClick={() => {
-                setImporting(true);
-                setMenuOpen(false);
+                if (pipelineVersionId) startRun.mutate(pipelineVersionId, { onSuccess: (run) => selectRun(run.id) });
               }}
             >
-              Import notebook…
+              <PlayIcon />
+              Run graph
             </button>
-          </div>
+          </>
         )}
-        {importing && <ImportNotebook onClose={() => setImporting(false)} />}
       </div>
-      <span className="divider" aria-hidden="true" />
-      <nav className="nav">
-        {NAV.map((item) => (
-          <button key={item} type="button" aria-current={nav === item ? "page" : undefined} onClick={() => setNav(item)}>
-            {item}
-          </button>
-        ))}
-      </nav>
-      <div className="spacer" />
-      {versions.isError && <span role="alert" className="error">{versions.error.message}</span>}
-      {runs.isError && <span role="alert" className="error">{runs.error.message}</span>}
-      {startRun.isError && <span role="alert" className="error">{startRun.error.message}</span>}
-      <span className={`runstate ${latestRun?.status ?? "none"}`}>
-        <span className="dot" aria-hidden="true" />
-        {runState}
-      </span>
-      <button
-        type="button"
-        className="run-button"
-        disabled={pipelineVersionId === undefined || startRun.isPending}
-        onClick={() => {
-          if (pipelineVersionId) startRun.mutate(pipelineVersionId, { onSuccess: (run) => selectRun(run.id) });
-        }}
-      >
-        <PlayIcon />
-        Run graph
-      </button>
     </header>
   );
 }

@@ -31,7 +31,7 @@ dockview-react (behind an adapter), @xyflow/react, Radix + shadcn patterns, AG G
 - One way to do each thing: one API request function, one hook per resource, one query-state pattern.
 - Before writing a component or hook, search `src/` for one that already does it. Extract on the third copy.
 - Shared pieces live by job: API in `src/api`, flow helpers in `src/flow`, dock and selection in `src/workbench`, panels in `src/views`. No `utils` dumping ground.
-- Studio tokens only (`src/styles/cockpit.css`): VS Code fonts (system UI font, SF Mono / Menlo / Consolas), dark panels, hairline borders, red `#ff5c5c` only for problems. No new colors or fonts without a token.
+- Studio tokens only (`src/styles/cockpit.css`, ADR-0061): Flow Studio design tokens. Fonts: Instrument Sans (UI, tabular nums) and IBM Plex Mono (code/logs) bundled locally. Monochromatic greyscale, hairline borders, red `#ff5c5c` strictly for problems and leakage. No new colors or fonts without a token. Sentence case everywhere, middle dots (`·`) to join facts, real minus (`−`), no emoji.
 - Same names as the contracts and the arch doc for the same concept.
 - Small components with one job. Accessible by default: real buttons, labels, roles, visible focus, keyboard reachable.
 

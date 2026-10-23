@@ -271,3 +271,100 @@ export function RedoIcon() {
     </svg>
   );
 }
+
+export function ObjectiveIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" />
+      <circle cx="8" cy="8" r="3.5" />
+      <circle cx="8" cy="8" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function FlowIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+      <rect x="1.5" y="6.5" width="4" height="4" rx="1" />
+      <rect x="10.5" y="2.5" width="4" height="4" rx="1" />
+      <rect x="10.5" y="10.5" width="4" height="4" rx="1" />
+      <path d="M5.5 8.5h2.5v-4H10.5M8 8.5v4h2.5" />
+    </svg>
+  );
+}
+
+export function DatasetsIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <ellipse cx="8" cy="4" rx="5.5" ry="2.2" />
+      <path d="M2.5 4v8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2V4" />
+      <path d="M2.5 8c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2" />
+    </svg>
+  );
+}
+
+export function NotebooksIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <path d="M3.5 2.5h9v11h-9z" />
+      <path d="M3.5 6h9M3.5 9h9" />
+      <circle cx="1.5" cy="4.5" r="0.8" fill="currentColor" />
+      <circle cx="1.5" cy="8" r="0.8" fill="currentColor" />
+      <circle cx="1.5" cy="11.5" r="0.8" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function MethodologyIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 1.8L14.2 8 8 14.2 1.8 8z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
+  );
+}
+
+export function ExperimentsIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <path d="M6 2h4M7 2v4L3.5 12.5A1.5 1.5 0 0 0 4.8 14.5h6.4a1.5 1.5 0 0 0 1.3-2L9 6V2" />
+      <path d="M4.8 11h6.4" />
+    </svg>
+  );
+}
+
+export function DeployIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4.5 13.5h7a3 3 0 0 0 .5-5.9 4 4 0 0 0-7.8-1 2.5 2.5 0 0 0 .3 6.9z" />
+    </svg>
+  );
+}
+
+export function ReportsIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2.5" y="2" width="11" height="12" rx="1.5" />
+      <path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" />
+    </svg>
+  );
+}
+
+export function SettingsIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="2.5" />
+      <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3" />
+    </svg>
+  );
+}
+
+export function PanelToggleIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="1.75" y="2.5" width="12.5" height="11" rx="1.5" />
+      <path d="M10 2.5v11" />
+      <path d="M5 6.5L6.5 8 5 9.5" />
+    </svg>
+  );
+}

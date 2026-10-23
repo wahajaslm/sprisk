@@ -54,11 +54,7 @@ export function Experiments() {
   return (
     <main className="experiments">
       <PageHeader
-        eyebrow={
-          <>
-            Experiments · <span>{runs.length === 1 ? "1 run" : `${runs.length} runs`}</span>
-          </>
-        }
+        eyebrow={runs.length === 1 ? "1 run" : `${runs.length} runs`}
         title={`${flowName(flow.head)}: every run, with what changed`}
       />
       <div className="exp-scroll">

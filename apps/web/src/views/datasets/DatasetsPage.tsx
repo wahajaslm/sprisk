@@ -10,7 +10,7 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { DatasetDetail } from "./DatasetDetail.tsx";
 
-/** Every table the flows load, and a profile of the one picked (ADR-0038). */
+/** Every table the flows load, and a profile of the one picked (ADR-0038, ADR-0061). */
 export function DatasetsPage() {
   const datasets = useLoadedTables();
   const versions = usePipelineVersions();
@@ -31,7 +31,14 @@ export function DatasetsPage() {
       <aside className="dsx-side" aria-label="Datasets">
         <header className="dsx-side-head">
           <p className="eyebrow">Datasets · {list.length === 1 ? "1 table" : `${list.length} tables`}</p>
-          <input type="search" className="ds-filter" aria-label="Filter datasets" placeholder="Filter datasets" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input
+            type="search"
+            className="ds-filter"
+            aria-label="Filter datasets"
+            placeholder="Filter datasets"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
         </header>
         {list.length === 0 ? (
           <p className="muted pad">No datasets yet. Run a flow that loads a file to see it here.</p>
@@ -39,7 +46,12 @@ export function DatasetsPage() {
           <ul className="dsx-list" aria-label="Dataset list">
             {shown.map((d) => (
               <li key={d.artifact.id}>
-                <button type="button" className={`dsx-item${d === current ? " picked" : ""}`} aria-pressed={d === current} onClick={() => setPicked(d.artifact.id)}>
+                <button
+                  type="button"
+                  className={`dsx-item${d === current ? " picked" : ""}`}
+                  aria-pressed={d === current}
+                  onClick={() => setPicked(d.artifact.id)}
+                >
                   <span className="dsx-item-name">{d.name}</span>
                   <span className="dsx-item-meta">
                     {d.total_rows.toLocaleString()} rows · {d.total_columns} cols

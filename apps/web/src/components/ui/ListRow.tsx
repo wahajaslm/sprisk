@@ -1,42 +1,143 @@
-import type { ReactNode } from "react";
+import React from "react";
 
-/** One clickable row in a sidebar list: an optional mark, a title, a note under it, a state on the right. */
-export function ListRow({
-  title,
-  meta,
-  state,
-  mark,
-  current,
-  pressed,
-  disabled,
-  mono,
-  onClick,
-}: {
+export interface ListRowProps {
   title: string;
   meta?: string;
-  state?: ReactNode;
-  mark?: ReactNode;
+  trailing?: React.ReactNode;
+  status?: "ok" | "queued" | "warn" | "idle";
+  selected?: boolean;
+  warn?: boolean;
+  onClick?: () => void;
+
+  // Compatibility props
+  mono?: boolean;
+  mark?: React.ReactNode;
+  state?: React.ReactNode;
   current?: boolean;
   pressed?: boolean;
   disabled?: boolean;
-  mono?: boolean;
-  onClick: () => void;
-}) {
+}
+
+export function ListRow({
+  title,
+  meta,
+  trailing,
+  status,
+  selected = false,
+  warn = false,
+  onClick,
+  mono = false,
+  mark,
+  state,
+  current,
+  pressed,
+  disabled = false,
+}: ListRowProps) {
+  const [h, setH] = React.useState(false);
+  const isSelected = selected || current || pressed;
+  const two = meta != null;
+
   return (
-    <button
-      type="button"
-      className="list-row"
-      aria-current={current ? "true" : undefined}
-      aria-pressed={pressed}
-      disabled={disabled}
-      onClick={onClick}
+    <div
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-current={isSelected ? "true" : undefined}
+      onClick={disabled ? undefined : onClick}
+      onKeyDown={(e) => {
+        if (!disabled && onClick && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      onMouseEnter={() => !disabled && setH(true)}
+      onMouseLeave={() => !disabled && setH(false)}
+      style={{
+        borderRadius: "var(--radius-sm)",
+        padding: two ? "8px 10px" : "0 10px",
+        height: two ? "auto" : "var(--size-row)",
+        display: "flex",
+        flexDirection: two ? "column" : "row",
+        alignItems: two ? "stretch" : "center",
+        gap: two ? 2 : 10,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.45 : 1,
+        minWidth: 0,
+        background: isSelected ? "var(--bg-selected)" : h ? "var(--bg-hover)" : "transparent",
+      }}
     >
-      {mark}
-      <span className="row-main">
-        <span className={mono ? "row-title mono" : "row-title"}>{title}</span>
-        {meta !== undefined && <span className="row-meta">{meta}</span>}
-      </span>
-      {state}
-    </button>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          minWidth: 0,
+          flex: two ? "none" : 1,
+        }}
+      >
+        {mark && <span style={{ flexShrink: 0 }}>{mark}</span>}
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontFamily: mono ? "var(--font-mono)" : "inherit",
+            fontSize: two ? "var(--fs-14)" : "var(--fs-13-5)",
+            fontWeight: two ? "var(--fw-book)" : 400,
+            color: warn ? "var(--danger)" : isSelected ? "var(--text-strong)" : "var(--text-body)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {title}
+        </span>
+        {!two && state && <span style={{ flexShrink: 0 }}>{state}</span>}
+        {trailing != null && (
+          <span
+            style={{
+              fontSize: "var(--fs-12-5)",
+              color: "var(--text-faint)",
+              fontVariantNumeric: "tabular-nums",
+              flexShrink: 0,
+            }}
+          >
+            {trailing}
+          </span>
+        )}
+        {status && !two && (
+          <span
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: 3,
+              flexShrink: 0,
+              alignSelf: "center",
+              background: {
+                ok: "var(--accent)",
+                queued: "var(--text-primary)",
+                warn: "var(--danger)",
+                idle: "var(--text-disabled)",
+              }[status],
+            }}
+          />
+        )}
+      </div>
+      {two && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <span
+            style={{
+              fontSize: "var(--fs-12-5)",
+              color: "var(--ink-5)",
+              fontVariantNumeric: "tabular-nums",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {meta}
+          </span>
+          {state && <span style={{ flexShrink: 0, fontSize: "var(--fs-12)", color: "var(--ink-4)" }}>{state}</span>}
+        </div>
+      )}
+    </div>
   );
 }

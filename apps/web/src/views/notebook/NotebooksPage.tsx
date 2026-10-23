@@ -10,7 +10,7 @@ import { StageNotebook } from "./StageNotebook.tsx";
 import { NotebookList } from "./NotebookList.tsx";
 import { SessionNotebook } from "./SessionNotebook.tsx";
 
-/** The Notebooks page (ADR-0018, ADR-0055): the flow on screen as one notebook per stage,
+/** The Notebooks page (ADR-0018, ADR-0055, ADR-0061): the flow on screen as one notebook per stage,
  * read from the flow itself, then notebooks saved on their own (ADR-0036, ADR-0037). */
 export function NotebooksPage() {
   const notebooks = useNotebooks();

@@ -13,16 +13,16 @@ export type Group = { id: string; count: number } & Point & Size;
 export const STAGE_PAD_X = 20;
 export const STAGE_HEAD_HEIGHT = 186;
 export const STAGE_FOOTER_HEIGHT = 44;
-export const MIN_STAGE_CARD_WIDTH = 340;
-export const MIN_STAGE_CARD_HEIGHT = 520;
+export const MIN_STAGE_CARD_WIDTH = 320;
+export const MIN_STAGE_CARD_HEIGHT = 480;
 export const GROUP_HEAD = STAGE_HEAD_HEIGHT;
 
 const LAYERED = {
   "elk.algorithm": "layered",
   "elk.direction": "RIGHT",
-  // Compact, so a whole flow fits the panel at a readable size.
-  "elk.layered.spacing.nodeNodeBetweenLayers": "64",
-  "elk.spacing.nodeNode": "24",
+  // Flow Studio design: columns 320px wide, 40px apart.
+  "elk.layered.spacing.nodeNodeBetweenLayers": "40",
+  "elk.spacing.nodeNode": "20",
   "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
 };
 
