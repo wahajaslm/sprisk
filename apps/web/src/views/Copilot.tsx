@@ -3,14 +3,43 @@ import type { Attempt } from "@sprisk/contracts";
 import { useRunAttempts } from "../api/hooks.ts";
 import { hasOutputs, isGateNode } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
-import { SendIcon, SparkIcon } from "./Icons.tsx";
+import { useWorkbench } from "../workbench/workbench.ts";
+import { PanelToggleIcon, SendIcon, SparkIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
 
-/** The Copilot arrives with M2 (AI-created pipeline). Until then the pane says so plainly,
- * and its input is disabled rather than pretending to answer. */
+/** Copilot pane: 340px width folding to a 44px rail (ADR-0061). */
 export function Copilot() {
   const { pipelineVersionId, runId, nodeId } = useSelection();
   const attempts = useRunAttempts(pipelineVersionId, runId);
+  const { copilotOpen, toggleCopilot } = useWorkbench();
+
+  if (!copilotOpen) {
+    return (
+      <aside className="copilot-rail" aria-label="Copilot Rail">
+        <button
+          type="button"
+          className="copilot-toggle-btn"
+          title="Expand Copilot"
+          aria-label="Expand Copilot"
+          onClick={toggleCopilot}
+        >
+          <PanelToggleIcon size={14} />
+        </button>
+        <span
+          className="copilot-rail-label"
+          role="button"
+          tabIndex={0}
+          onClick={toggleCopilot}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") toggleCopilot();
+          }}
+        >
+          Copilot
+        </span>
+      </aside>
+    );
+  }
+
   return (
     <aside className="copilot" aria-label="Copilot">
       <div className="panel-head">
@@ -18,6 +47,15 @@ export function Copilot() {
         <strong>Copilot</strong>
         <span className="spacer" />
         <span className="chip">Context · {nodeId ?? "flow"}</span>
+        <button
+          type="button"
+          className="copilot-toggle-btn"
+          title="Fold Copilot"
+          aria-label="Fold Copilot"
+          onClick={toggleCopilot}
+        >
+          <PanelToggleIcon size={14} />
+        </button>
       </div>
       <div className="copilot-body">
         <p className="bubble">

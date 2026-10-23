@@ -16,9 +16,11 @@ import { useSelection } from "./workbench/selection.ts";
 
 const views = { sidebar: Sidebar, flow: FlowPanel, copilot: Copilot, "step-tab": StepTab, placeholder: Placeholder };
 
-const COMING = {
+const COMING: Record<string, string> = {
   Deploy: "Production and staging models, canary traffic, latency and drift.",
-} as const;
+  Reports: "Evidence ledger, decisions, and reproducibility sign-off.",
+  Settings: "Packs, environments, compute, and workspace preferences.",
+};
 
 export function Cockpit() {
   const nav = useSelection((s) => s.nav);
@@ -27,21 +29,23 @@ export function Cockpit() {
       <TopBar />
       <div className="workspace">
         <ActivityBar />
-        {nav === "Atlas" ? (
-          <QuestionLedger />
-        ) : nav === "Flow" ? (
-          <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} />
-        ) : nav === "Methodology" ? (
-          <MethodologyPage />
-        ) : nav === "Experiments" ? (
-          <Experiments />
-        ) : nav === "Notebooks" ? (
-          <NotebooksPage />
-        ) : nav === "Datasets" ? (
-          <DatasetsPage />
-        ) : (
-          <ComingView title={nav} shows={COMING[nav]} />
-        )}
+        <div className="workspace-main">
+          {nav === "Objective" ? (
+            <QuestionLedger />
+          ) : nav === "Flow" ? (
+            <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} />
+          ) : nav === "Methodology" ? (
+            <MethodologyPage />
+          ) : nav === "Experiments" ? (
+            <Experiments />
+          ) : nav === "Notebooks" ? (
+            <NotebooksPage />
+          ) : nav === "Datasets" ? (
+            <DatasetsPage />
+          ) : (
+            <ComingView title={nav} shows={COMING[nav] ?? "Page in development."} />
+          )}
+        </div>
       </div>
     </div>
   );

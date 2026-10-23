@@ -1,32 +1,67 @@
-import type { ReactNode } from "react";
+import { NAV, type Nav, useSelection } from "../workbench/selection.ts";
+import {
+  ObjectiveIcon,
+  FlowIcon,
+  DatasetsIcon,
+  NotebooksIcon,
+  MethodologyIcon,
+  ExperimentsIcon,
+  DeployIcon,
+  ReportsIcon,
+  SettingsIcon,
+} from "./Icons.tsx";
 
-import { type Activity, useWorkbench } from "../workbench/workbench.ts";
-import { RunsIcon, StepsIcon, ViewsIcon } from "./Icons.tsx";
+const TAB_ICONS: Record<Nav, typeof ObjectiveIcon> = {
+  Objective: ObjectiveIcon,
+  Flow: FlowIcon,
+  Datasets: DatasetsIcon,
+  Notebooks: NotebooksIcon,
+  Methodology: MethodologyIcon,
+  Experiments: ExperimentsIcon,
+  Deploy: DeployIcon,
+  Reports: ReportsIcon,
+  Settings: SettingsIcon,
+};
 
-const ITEMS: { activity: Activity; label: string; icon: ReactNode }[] = [
-  { activity: "steps", label: "Steps", icon: <StepsIcon /> },
-  { activity: "runs", label: "Runs", icon: <RunsIcon /> },
-  { activity: "views", label: "Views and layout", icon: <ViewsIcon /> },
-];
-
-/** VS Code-style activity bar: each icon picks the sidebar; the active one collapses it. */
+/** Flow Studio 56px icon rail: one icon per tab, Settings at the bottom. */
 export function ActivityBar() {
-  const { activity, toggleActivity } = useWorkbench();
+  const { nav, setNav } = useSelection();
+  const mainTabs = NAV.filter((t) => t !== "Settings");
+
   return (
-    <nav className="activity-bar" aria-label="Sidebar">
-      {ITEMS.map((item) => (
+    <nav className="activity-bar" aria-label="Navigation Rail">
+      <div className="activity-top">
+        {mainTabs.map((tab) => {
+          const Icon = TAB_ICONS[tab];
+          const active = nav === tab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              className="activity"
+              aria-label={tab}
+              aria-current={active ? "page" : undefined}
+              title={tab}
+              onClick={() => setNav(tab)}
+            >
+              <Icon size={18} />
+            </button>
+          );
+        })}
+      </div>
+      <div className="spacer" />
+      <div className="activity-bottom">
         <button
-          key={item.activity}
           type="button"
           className="activity"
-          aria-label={item.label}
-          aria-pressed={activity === item.activity}
-          title={item.label}
-          onClick={() => toggleActivity(item.activity)}
+          aria-label="Settings"
+          aria-current={nav === "Settings" ? "page" : undefined}
+          title="Settings"
+          onClick={() => setNav("Settings")}
         >
-          {item.icon}
+          <SettingsIcon size={18} />
         </button>
-      ))}
+      </div>
     </nav>
   );
 }

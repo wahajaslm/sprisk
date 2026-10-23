@@ -47,6 +47,8 @@ export function TopBar() {
       <div className="logo-cell">
         <Logo />
       </div>
+      <span className="product-name">Flow Studio</span>
+      <span className="divider" aria-hidden="true" />
       <div className="switcher-wrap">
         <button
           type="button"

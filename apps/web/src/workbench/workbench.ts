@@ -21,9 +21,11 @@ type Workbench = {
   /** Sidebar content; undefined means the sidebar is collapsed (VS Code behaviour). */
   activity: Activity | undefined;
   editing: boolean;
+  copilotOpen: boolean;
   dock: DockCommands | undefined;
   toggleActivity: (activity: Activity) => void;
   toggleEditing: () => void;
+  toggleCopilot: () => void;
   attachDock: (dock: DockCommands | undefined) => void;
 };
 
@@ -31,6 +33,7 @@ type Workbench = {
 export const useWorkbench = create<Workbench>((set, get) => ({
   activity: "steps",
   editing: false,
+  copilotOpen: true,
   dock: undefined,
   toggleActivity: (activity) => {
     const next = get().activity === activity ? undefined : activity;
@@ -42,5 +45,6 @@ export const useWorkbench = create<Workbench>((set, get) => ({
     set({ editing });
     get().dock?.setEditing(editing);
   },
+  toggleCopilot: () => set({ copilotOpen: !get().copilotOpen }),
   attachDock: (dock) => set({ dock }),
 }));

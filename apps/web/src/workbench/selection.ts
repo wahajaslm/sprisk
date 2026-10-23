@@ -1,6 +1,16 @@
 import { create } from "zustand";
 
-export const NAV = ["Atlas", "Flow", "Methodology", "Datasets", "Notebooks", "Experiments", "Deploy"] as const;
+export const NAV = [
+  "Objective",
+  "Flow",
+  "Datasets",
+  "Notebooks",
+  "Methodology",
+  "Experiments",
+  "Deploy",
+  "Reports",
+  "Settings",
+] as const;
 export type Nav = (typeof NAV)[number];
 
 /** UI context only (arch §2A WorkbenchContext). Never scientific state. */
