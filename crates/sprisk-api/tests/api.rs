@@ -5565,6 +5565,15 @@ async fn the_engine_measures_repeated_titles_once_the_question_names_the_title_c
             .contains("data.repeated_items needs data.near_duplicate_groups"),
         "{detail}"
     );
+    // The step records the patch it applied (ADR-0063).
+    assert_eq!(
+        steps[first_measure]["effects"][0]["kind"], "add_node",
+        "{detail}"
+    );
+    assert_eq!(
+        steps[first_measure]["effects"][0]["params"]["title_column"], "designation",
+        "{detail}"
+    );
 
     // It stays on the rows the split reads, whatever steps are added in front of the split.
     let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();

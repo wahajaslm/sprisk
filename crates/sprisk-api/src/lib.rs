@@ -2592,65 +2592,39 @@ fn materialize_effect(
         })?;
     let effect: GraphEffect = serde_json::from_value(effect.clone())
         .map_err(|error| ApiError::Internal(format!("stored effect is invalid: {error}")))?;
+    let (mut nodes, edges) =
+        sprisk_methodology::patch::apply(base, std::slice::from_ref(&effect), |o| registry.get(o))
+            .map_err(|e| match e {
+                sprisk_methodology::ResolveError::UnknownNode(id) => ApiError::BadRequest {
+                    code: "stale_proposal",
+                    message: format!("node {id} is no longer present"),
+                },
+                sprisk_methodology::ResolveError::Unremovable(_) => ApiError::BadRequest {
+                    code: "cannot_remove_step",
+                    message: e.to_string(),
+                },
+                other => ApiError::BadRequest {
+                    code: "cannot_add_step",
+                    message: other.to_string(),
+                },
+            })?;
+    // The step the decision changed or added carries it, so the review knows it is decided.
+    if let GraphEffect::ReplaceNode { node_id, .. } | GraphEffect::InsertNode { node_id, .. } =
+        &effect
+        && let Some(node) = nodes.iter_mut().find(|n| n.id == *node_id)
+    {
+        node.methodology_decision_id = Some(
+            parse(&json!(decision_id).to_string())
+                .map_err(|error| ApiError::Internal(error.to_string()))?,
+        );
+    }
     let mut value =
         serde_json::to_value(base).map_err(|error| ApiError::Internal(error.to_string()))?;
     value["id"] = json!(pipeline_id);
     value["parent_id"] = json!(base.id);
     value["created_at"] = json!(at);
-    match effect {
-        GraphEffect::RemoveNode { node_id } => {
-            let (nodes, edges) =
-                sprisk_methodology::without_node(base, node_id.as_str()).map_err(|e| {
-                    ApiError::BadRequest {
-                        code: "cannot_remove_step",
-                        message: e.to_string(),
-                    }
-                })?;
-            value["nodes"] = json!(nodes);
-            value["edges"] = json!(edges);
-        }
-        GraphEffect::ReplaceNode {
-            node_id,
-            operator,
-            params,
-        } => {
-            let node = value["nodes"]
-                .as_array_mut()
-                .and_then(|nodes| nodes.iter_mut().find(|node| node["id"] == node_id.as_str()))
-                .ok_or_else(|| ApiError::BadRequest {
-                    code: "stale_proposal",
-                    message: format!("node {} is no longer present", node_id.as_str()),
-                })?;
-            node["operator"] = json!(operator);
-            node["params"] = json!(params);
-            node["methodology_decision_id"] = json!(decision_id);
-        }
-        GraphEffect::InsertNode {
-            node_id,
-            operator,
-            params,
-            before,
-            other,
-        } => {
-            let step = json!({ "id": node_id, "operator": operator, "params": params,
-                               "methodology_decision_id": decision_id });
-            let step =
-                parse(&step.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
-            let (nodes, edges) = sprisk_methodology::with_node_before(
-                base,
-                step,
-                before.as_str(),
-                other.as_ref().map(|o| o.as_str()),
-                |o| registry.get(o),
-            )
-            .map_err(|e| ApiError::BadRequest {
-                code: "cannot_add_step",
-                message: e.to_string(),
-            })?;
-            value["nodes"] = json!(nodes);
-            value["edges"] = json!(edges);
-        }
-    }
+    value["nodes"] = json!(nodes);
+    value["edges"] = json!(edges);
     parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()))
 }
 

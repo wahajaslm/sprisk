@@ -543,6 +543,35 @@
             "before": { "$ref": "#/$defs/NodeId" },
             "other": { "$ref": "#/$defs/PortRef", "description": "A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input." }
           }
+        },
+        {
+          "type": "object",
+          "description": "Adds step node_id beside the flow: each of its inputs reads the output named in inputs, and no step reads it yet, such as an evidence producer (ADR-0063).",
+          "additionalProperties": false,
+          "required": ["kind", "node_id", "operator", "params", "inputs"],
+          "properties": {
+            "kind": { "const": "add_node" },
+            "node_id": { "$ref": "#/$defs/NodeId" },
+            "operator": { "$ref": "#/$defs/OperatorRef" },
+            "params": { "$ref": "#/$defs/Params" },
+            "inputs": {
+              "type": "object",
+              "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+              "additionalProperties": { "$ref": "#/$defs/PortRef" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Feeds input port of step node_id from output from instead of what fed it (ADR-0063).",
+          "additionalProperties": false,
+          "required": ["kind", "node_id", "port", "from"],
+          "properties": {
+            "kind": { "const": "set_input" },
+            "node_id": { "$ref": "#/$defs/NodeId" },
+            "port": { "$ref": "#/$defs/PortName" },
+            "from": { "$ref": "#/$defs/PortRef" }
+          }
         }
       ]
     },

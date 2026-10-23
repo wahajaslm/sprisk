@@ -604,9 +604,11 @@ fn measured_step<'a>(
     match &alternative.effect {
         None => Err("The rule builds no step for it yet.".into()),
         Some(GraphEffect::RemoveNode { .. }) => Ok(None),
-        Some(GraphEffect::InsertNode { .. }) => {
+        Some(GraphEffect::InsertNode { .. } | GraphEffect::AddNode { .. }) => {
             Err("A comparison does not measure an added step yet (ADR-0057).".into())
         }
+        // Rules never rewire a step; only the engine's evidence placement does (ADR-0063).
+        Some(GraphEffect::SetInput { .. }) => Err("A comparison does not rewire steps.".into()),
         Some(GraphEffect::ReplaceNode {
             operator, params, ..
         }) => {

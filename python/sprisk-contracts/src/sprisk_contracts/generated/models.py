@@ -1281,48 +1281,6 @@ class WalkAction(StrEnum):
     stop = "stop"
 
 
-class WalkStep(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.walk_step/v1"]
-    walk_id: WalkId
-    round: Annotated[int, Field(description="Its place in the trail, from 0.", ge=0)]
-    action: WalkAction
-    pipeline_version_id: Annotated[
-        PipelineVersionId | None, Field(description="The version it reviewed. Absent for build.")
-    ] = None
-    rule: Annotated[
-        CheckRef | None, Field(description="The rule it acted for. Absent for build and run.")
-    ] = None
-    decides: Annotated[
-        str | None,
-        Field(
-            description="What the rule decides. Absent for build, run and stop.",
-            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
-        ),
-    ] = None
-    subject_node_id: Annotated[
-        NodeId | None,
-        Field(description="The step the rule decided. Absent for build, run and stop."),
-    ] = None
-    alternative_id: Annotated[
-        str | None,
-        Field(description="The alternative it applied.", pattern="^[a-z][a-z0-9_]{0,62}$"),
-    ] = None
-    methodology_decision_id: Annotated[
-        MethodologyDecisionId | None, Field(description="The decision an apply recorded.")
-    ] = None
-    made_pipeline_version_id: Annotated[
-        PipelineVersionId | None, Field(description="The version a build, apply or measure made.")
-    ] = None
-    run_id: Annotated[RunId | None, Field(description="The run a run step started.")] = None
-    reason: Annotated[
-        str, Field(description="Why, from the review item it acted on.", min_length=1)
-    ]
-    created_at: Timestamp
-
-
 class Handshake(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1936,9 +1894,32 @@ class GraphEffect3(StrictModel):
     ] = None
 
 
-class GraphEffect(RootModel[GraphEffect1 | GraphEffect2 | GraphEffect3]):
+class GraphEffect4(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["add_node"]
+    node_id: NodeId
+    operator: OperatorRef
+    params: Params
+    inputs: dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], PortRef]
+
+
+class GraphEffect5(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Literal["set_input"]
+    node_id: NodeId
+    port: PortName
+    from_: Annotated[PortRef, Field(alias="from")]
+
+
+class GraphEffect(
+    RootModel[GraphEffect1 | GraphEffect2 | GraphEffect3 | GraphEffect4 | GraphEffect5]
+):
     root: Annotated[
-        GraphEffect1 | GraphEffect2 | GraphEffect3,
+        GraphEffect1 | GraphEffect2 | GraphEffect3 | GraphEffect4 | GraphEffect5,
         Field(
             description="Typed mutation previewed and compiled before it can create a pipeline version."
         ),
@@ -2453,6 +2434,54 @@ class WalkStop(StrictModel):
     detail: Annotated[
         str, Field(description="What is open, for a person to read. Never parsed.", min_length=1)
     ]
+
+
+class WalkStep(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.walk_step/v1"]
+    walk_id: WalkId
+    round: Annotated[int, Field(description="Its place in the trail, from 0.", ge=0)]
+    action: WalkAction
+    pipeline_version_id: Annotated[
+        PipelineVersionId | None, Field(description="The version it reviewed. Absent for build.")
+    ] = None
+    rule: Annotated[
+        CheckRef | None, Field(description="The rule it acted for. Absent for build and run.")
+    ] = None
+    decides: Annotated[
+        str | None,
+        Field(
+            description="What the rule decides. Absent for build, run and stop.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ] = None
+    subject_node_id: Annotated[
+        NodeId | None,
+        Field(description="The step the rule decided. Absent for build, run and stop."),
+    ] = None
+    alternative_id: Annotated[
+        str | None,
+        Field(description="The alternative it applied.", pattern="^[a-z][a-z0-9_]{0,62}$"),
+    ] = None
+    methodology_decision_id: Annotated[
+        MethodologyDecisionId | None, Field(description="The decision an apply recorded.")
+    ] = None
+    made_pipeline_version_id: Annotated[
+        PipelineVersionId | None, Field(description="The version a build, apply or measure made.")
+    ] = None
+    effects: Annotated[
+        list[GraphEffect] | None,
+        Field(
+            description="The patch a measure step applied, in order (ADR-0063). Absent for every other action."
+        ),
+    ] = None
+    run_id: Annotated[RunId | None, Field(description="The run a run step started.")] = None
+    reason: Annotated[
+        str, Field(description="Why, from the review item it acted on.", min_length=1)
+    ]
+    created_at: Timestamp
 
 
 class LeaseAttempt(StrictModel):

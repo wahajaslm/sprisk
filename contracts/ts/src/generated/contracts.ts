@@ -279,7 +279,29 @@ export type GraphEffect =
        * A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input.
        */
       other?: string;
+    }
+  | {
+      kind: "add_node";
+      node_id: NodeId;
+      operator: OperatorRef;
+      params: Params;
+      inputs: {
+        [k: string]: PortRef;
+      };
+    }
+  | {
+      kind: "set_input";
+      node_id: NodeId;
+      port: PortName;
+      from: PortRef;
     };
+/**
+ * `<node_id>.<port_name>`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortRef".
+ */
+export type PortRef = string;
 /**
  * Pinned rule: <pack>.<rule>@<semver>.
  *
@@ -302,13 +324,6 @@ export type MethodologyReviewStatus =
  * via the `definition` "NotebookCellId".
  */
 export type NotebookCellId = string;
-/**
- * `<node_id>.<port_name>`.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PortRef".
- */
-export type PortRef = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RunStatus".
@@ -3041,6 +3056,10 @@ export interface WalkStep {
    * The version a build, apply or measure made.
    */
   made_pipeline_version_id?: string;
+  /**
+   * The patch a measure step applied, in order (ADR-0063). Absent for every other action.
+   */
+  effects?: GraphEffect[];
   /**
    * The run a run step started.
    */

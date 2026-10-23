@@ -236,6 +236,11 @@
           "$ref": "#/$defs/PipelineVersionId",
           "description": "The version a build, apply or measure made."
         },
+        "effects": {
+          "type": "array",
+          "description": "The patch a measure step applied, in order (ADR-0063). Absent for every other action.",
+          "items": { "$ref": "#/$defs/GraphEffect" }
+        },
         "run_id": {
           "$ref": "#/$defs/RunId",
           "description": "The run a run step started."

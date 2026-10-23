@@ -9,6 +9,7 @@ pub mod evidence;
 pub mod facts;
 pub mod measure;
 mod methods;
+pub mod patch;
 pub mod review;
 pub mod search;
 pub use catalog::{CatalogError, RuleCatalog, decides, reopened_stage};

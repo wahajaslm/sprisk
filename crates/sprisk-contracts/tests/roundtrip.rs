@@ -8,9 +8,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, EvidenceSet,
-    CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, FigureSet, KeyMatches, LoadedTable,
-    Method, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
+    Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
+    CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet, KeyMatches,
+    LoadedTable, Method, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
     NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,

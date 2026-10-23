@@ -300,7 +300,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         let operators: Vec<Operator> = state.registry.operators().cloned().collect();
         let measuring = measure(&state.rules, &pipeline, &question, &operators)
             .map_err(|e| ApiError::Internal(e.to_string()))?;
-        if !measuring.changes.is_empty() {
+        if !measuring.effects.is_empty() {
             return record_measure(state, walk, round, &pipeline, measuring).await;
         }
         let kinds = produced_kinds(state, &pipeline);
@@ -366,19 +366,23 @@ async fn record_measure(
     head: &PipelineVersion,
     measuring: Measuring,
 ) -> Result<WalkStatus, ApiError> {
+    let (nodes, edges) =
+        sprisk_methodology::patch::apply(head, &measuring.effects, |o| state.registry.get(o))
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
     let made: PipelineVersion = internal(parse(
         &json!({
             "schema_version": "sprisk.pipeline_version/v1",
             "id": format!("plv_{}", ulid::Ulid::new()),
             "project_id": head.project_id, "parent_id": head.id,
             "question_version_id": head.question_version_id,
-            "nodes": measuring.nodes, "edges": measuring.edges,
+            "nodes": nodes, "edges": edges,
             "created_at": format((state.clock)()),
         })
         .to_string(),
     ))?;
     compile(&made, &state.registry).map_err(ApiError::Compile)?;
-    let ids = json!({ "pipeline_version_id": head.id, "made_pipeline_version_id": made.id });
+    let ids = json!({ "pipeline_version_id": head.id, "made_pipeline_version_id": made.id,
+                      "effects": measuring.effects });
     let reason = measuring.changes.join(" ");
     let step = step(
         state,
