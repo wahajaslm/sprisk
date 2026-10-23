@@ -172,8 +172,8 @@ describe("methodology page", () => {
     const map = await screen.findByRole("region", { name: "Methodology map" });
     expect(within(map).getByRole("button", { name: worded.name })).toHaveTextContent(worded.question!);
     expect(within(map).getByText(/hold out 0.2 of rows at random/)).toBeInTheDocument();
-    const detail = screen.getByRole("region", { name: worded.name });
-    expect(within(detail).getByRole("heading", { level: 1 })).toHaveTextContent(worded.question!);
+    // The page's heading asks the picked decision as its question.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(worded.question!);
 
     await userEvent.click(screen.getByRole("radio", { name: "Flow" }));
     const flow = screen.getByRole("region", { name: "Methodology flow" });
@@ -217,9 +217,9 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
-    await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
+    await userEvent.click(await within(await screen.findByRole("region", { name: "Methodology map" })).findByRole("button", { name: /Multicollinearity/ }));
     const detail = screen.getByRole("region", { name: features.name });
-    expect(within(detail).getByRole("heading", { level: 1, name: features.name })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: features.name })).toBeInTheDocument();
     expect(within(detail).getByText(features.decides)).toBeInTheDocument();
     expect(within(detail).getByText(features.provenance.citation)).toBeInTheDocument();
     expect(within(detail).getByText("Pairwise Correlation Pruning")).toBeInTheDocument();
@@ -275,7 +275,7 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
-    await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
+    await userEvent.click(await within(await screen.findByRole("region", { name: "Methodology map" })).findByRole("button", { name: /Multicollinearity/ }));
     const detail = screen.getByRole("region", { name: features.name });
     expect(within(detail).getByText(/Draft: not run yet/)).toBeInTheDocument();
     expect(within(detail).getAllByText(/^When:/).length).toBeGreaterThan(0);
@@ -302,6 +302,48 @@ describe("methodology page", () => {
 
     await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("lists the rules by stage in the sidebar, each with its status on the selected flow", async () => {
+    serve([features, split]);
+    server.use(
+      http.get("/api/pipeline_versions/:id/methodology/review", () =>
+        HttpResponse.json({
+          schema_version: "sprisk.methodology_review/v1",
+          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+          items: [{ rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "proposal", reason: "Keeps class shares.", recommended_alternative_id: split.alternatives[0]!.id }],
+          next: [0],
+        }),
+      ),
+    );
+    useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
+    renderWithApi(<MethodologyPage />);
+    await showTree();
+    const side = await screen.findByRole("complementary", { name: "Rules" });
+    expect(within(side).getByText("Split")).toBeInTheDocument();
+    expect(await within(side).findByRole("button", { name: new RegExp(`${split.name}.*Proposal`) })).toBeInTheDocument();
+    useSelection.setState({ pipelineVersionId: undefined });
+  });
+
+  it("shows the steps a rule decides on the selected flow under Used in", async () => {
+    serve([split]);
+    server.use(
+      http.get("/api/pipeline_versions/:id/methodology/review", () =>
+        HttpResponse.json({
+          schema_version: "sprisk.methodology_review/v1",
+          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+          items: [{ rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "proposal", reason: "Keeps class shares.", recommended_alternative_id: split.alternatives[0]!.id }],
+          next: [0],
+        }),
+      ),
+    );
+    useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
+    renderWithApi(<MethodologyPage />);
+    // The fixture is a draft rule, which only the tree view lists.
+    await showTree();
+    await userEvent.click(await screen.findByRole("tab", { name: "Used in" }));
+    expect(await screen.findByRole("list", { name: "Used in" })).toHaveTextContent(/Step split.*Proposal · Keeps class shares\./);
+    useSelection.setState({ pipelineVersionId: undefined });
   });
 
   it("says so when the rules cannot be read", async () => {

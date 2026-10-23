@@ -309,8 +309,6 @@ p { margin: 0; }
 
 /* ── Layout Panels (Main Sidebar & Center Screen) ────────── */
 .flow-page-layout,
-.notebooks-page-layout,
-.methodology-page-layout,
 .single-panel-layout {
   display: flex;
   width: 100%;
@@ -336,13 +334,9 @@ p { margin: 0; }
 .center-screen,
 .flow-center,
 .dsx-main,
-.notebooks-page > .notebook,
-.notebooks-center,
 .single-center,
 .objective-screen,
-.objective-empty-screen,
-.mth-main-screen,
-.mth-page {
+.objective-empty-screen {
   flex: 1;
   min-width: 0;
   background: var(--bg-canvas);
@@ -376,13 +370,9 @@ p { margin: 0; }
 .cockpit-shell .center-screen,
 .cockpit-shell .flow-center,
 .cockpit-shell .dsx-main,
-.cockpit-shell .notebooks-page > .notebook,
-.cockpit-shell .notebooks-center,
 .cockpit-shell .single-center,
 .cockpit-shell .objective-screen,
-.cockpit-shell .objective-empty-screen,
-.cockpit-shell .mth-main-screen,
-.cockpit-shell .mth-page {
+.cockpit-shell .objective-empty-screen {
   margin: 8px 0 8px 8px;
   border-radius: var(--radius-pane);
   border: 1px solid transparent;
@@ -2049,7 +2039,7 @@ p { margin: 0; }
 .kind-mark.kind-decision { color: var(--kind-decision); }
 .kind-mark.kind-model { color: var(--kind-model); }
 /* Notebook, laid out as VS Code's notebook editor (ADR-0035). */
-.notebooks-page > .notebook { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--gray-1); }
+
 /* One line always: a narrow window scrolls the toolbar, it never wraps its labels. */
 .nb-toolbar > * { flex: none; white-space: nowrap; }
 .nb-toolbar { display: flex; flex: none; align-items: center; gap: var(--space-1); height: 36px; padding: 0 var(--space-3); overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--alpha-04); background: var(--gray-2); font-size: var(--text-sm); }
@@ -2133,7 +2123,6 @@ p { margin: 0; }
 @keyframes nb-spin { to { transform: rotate(360deg); } }
 
 /* Notebooks page: saved notebooks, and the open one on its kernel (ADR-0036). */
-.notebooks-page { flex: 1; min-width: 0; display: flex; min-height: 0; }
 
 .nb-item-row { position: relative; display: flex; align-items: center; margin-bottom: 2px; }
 .nb-item-open { flex: 1; min-width: 0; padding: 5px var(--space-2); border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--ink-4); font-size: var(--text-sm); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: all 0.15s ease; }
@@ -2181,34 +2170,8 @@ p { margin: 0; }
 /* Sidebar metadata card for selected dataset */
 
 .dsx-main { min-width: 0; min-height: 0; overflow: auto; }
-.dsx-detail { max-width: 1200px; display: grid; gap: var(--space-4); padding: var(--space-5) var(--page-x); }
-.dsx-title { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
-.dsx-title h1 { margin: 0; font-size: var(--text-xl); font-weight: 500; color: var(--ink-1); overflow-wrap: anywhere; }
-.dsx-title p { margin: 4px 0 0; }
 
 /* Tabs inside Dataset Detail */
-.dsx-tabs {
-  display: flex;
-  gap: var(--space-2);
-  border-bottom: 1px solid var(--alpha-08);
-  margin-top: var(--space-2);
-}
-.dsx-tab-btn {
-  padding: 8px 16px;
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  color: var(--ink-4);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.dsx-tab-btn:hover { color: var(--ink-1); }
-.dsx-tab-btn.active {
-  color: var(--ink-0);
-  border-bottom-color: var(--ink-3);
-}
 
 .dsx-h { margin: var(--space-2) 0 0; font-size: var(--text-md); font-weight: 600; color: var(--ink-3); }
 
@@ -3438,15 +3401,6 @@ p { margin: 0; }
 *::-webkit-scrollbar-thumb:hover { background: var(--alpha-25); border: 2px solid transparent; background-clip: padding-box; }
 
 /* ── Methodology (ADR-0042): the rule packs as a map, the picked rule beside it ── */
-.mth-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 36%);
-  height: 100%;
-  min-height: 0;
-  background: var(--bg-canvas);
-  position: relative;
-  overflow: hidden;
-}
 .mth-canvas {
   position: relative;
   min-width: 0;
@@ -3458,19 +3412,16 @@ p { margin: 0; }
 .mth-map { position: absolute; inset: 0; }
 .mth-toolbar {
   position: absolute;
-  top: 14px;
-  left: 14px;
-  right: 14px;
+  top: 12px;
+  left: 12px;
+  right: calc(320px + 28px);
   z-index: 10;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 14px;
-  background: rgba(15, 17, 21, 0.85);
-  backdrop-filter: blur(14px);
-  border: 1px solid var(--border-panel);
+  padding: 6px 12px;
+  background: var(--bg-surface);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
 }
 .mth-toolbar .mth-views {
   display: inline-flex;
@@ -3511,72 +3462,16 @@ p { margin: 0; }
   outline: none;
   border-color: var(--ink-2);
 }
-.mth-side {
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  border-left: 1px solid var(--border-panel);
-  background: var(--bg-surface);
-  display: flex;
-  flex-direction: column;
-}
-.mth-side .dsx-detail {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.mth-side .dsx-title h1 {
-  font-size: var(--fs-17);
-  font-weight: 500;
-  color: var(--text-strong);
-  margin: 0 0 6px;
-}
-.mth-side .dsx-tabs {
-  display: flex;
-  gap: 16px;
-  border-bottom: 1px solid var(--border-divider);
-}
-.mth-side .dsx-tab-btn {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 8px 2px;
-  font-size: var(--fs-13);
-  font-weight: 500;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--dur-fast);
-}
-.mth-side .dsx-tab-btn:hover {
-  color: var(--text-primary);
-}
-.mth-side .dsx-tab-btn.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--text-primary);
-}
-.mth-side .dsx-h {
-  font-size: var(--fs-12);
-  font-weight: 600;
-
-  color: var(--text-muted);
-  margin: 0 0 8px;
-}
-.mth-side p {
-  font-size: var(--fs-13-5);
-  line-height: 1.5;
-  color: var(--text-secondary);
-  margin: 0;
-}
-.mth-side .mth-alts li {
-  background: var(--bg-canvas);
-  border: 1px solid var(--border-panel);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-}
-.mth-side .mth-alts li.selected {
-  border-color: var(--ink-1);
-}
+/* The picked rule: a 320px card floating over the map (design), or the Overview tab's body. */
+.mth-card { position: absolute; top: 16px; right: 16px; z-index: 11; width: 320px; max-height: calc(100% - 32px); overflow: auto; padding: 16px; border-radius: var(--radius-lg); background: var(--bg-surface); }
+.mth-detail { display: flex; flex-direction: column; gap: 16px; max-width: 860px; }
+.mth-detail-head h2 { margin: 0 0 6px; font-size: var(--fs-15); font-weight: var(--fw-medium); color: var(--text-primary); }
+.mth-detail-links { display: flex; gap: 6px; margin-top: 10px; }
+.mth-detail .dsx-h { margin: 0 0 8px; font-size: var(--fs-12-5); font-weight: var(--fw-medium); color: var(--text-label); }
+.mth-detail p { margin: 0; font-size: var(--fs-13-5); line-height: var(--lh-body); color: var(--text-secondary); }
+.mth-detail .mth-alts li { padding: 10px 12px; border-radius: var(--radius-sm); }
+.mth-detail .mth-alts li.selected { background: var(--alpha-05); }
+.page-pane.flush .page-body { padding: 0; }
 /* The map's look: rings, dots and white strands, no boxes. */
 .mth-map .react-flow__handle { opacity: 0; pointer-events: none; }
 .mth-root { height: 36px; display: grid; place-items: center start; }
@@ -5162,47 +5057,6 @@ p { margin: 0; }
   background: var(--canvas);
 }
 
-.dsx-title {
-  font-size: var(--fs-30);
-  font-weight: 500;
-  color: var(--ink-0);
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-
-.dsx-tab-btn {
-  background: none;
-  border: none;
-  font-size: var(--fs-13);
-  font-weight: 500;
-  color: var(--ink-4);
-  cursor: pointer;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  position: relative;
-  padding: 0;
-  transition: color 0.15s ease;
-}
-
-.dsx-tab-btn:hover {
-  color: var(--ink-2);
-}
-
-.dsx-tab-btn.active {
-  color: var(--ink-0);
-}
-
-.dsx-tab-btn.active::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--ink-0);
-}
-
 .num-cell {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -5636,49 +5490,6 @@ p { margin: 0; }
 }
 
 /* ── Step 7C: Methodology Page ───────────────────────── */
-.mth-page-layout {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  background: var(--canvas);
-  overflow: hidden;
-}
-
-.mth-sidebar {
-  width: 280px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-right: 1px solid var(--alpha-06);
-  height: 100%;
-  overflow: hidden;
-}
-
-.mth-sidebar-head {
-  padding: 14px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border-bottom: 1px solid var(--alpha-06);
-  flex-shrink: 0;
-}
-
-.mth-sidebar-title {
-  font-size: var(--fs-14);
-  font-weight: 500;
-  color: var(--ink-0);
-  margin: 0;
-}
-
-.mth-sidebar-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 
 .mth-group-section {
   margin-bottom: 6px;
@@ -5786,11 +5597,6 @@ p { margin: 0; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.mth-sidebar-dock {
-  border-top: 1px solid var(--alpha-06);
-  flex-shrink: 0;
 }
 
 .mth-main {

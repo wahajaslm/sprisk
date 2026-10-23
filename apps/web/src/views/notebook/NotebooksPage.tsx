@@ -7,7 +7,6 @@ import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.
 import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { flowOf, flows } from "../../flow/flows.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { useWorkbench } from "../../workbench/workbench.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 import { SearchField } from "../../components/ui/SearchField.tsx";
@@ -25,7 +24,6 @@ export function NotebooksPage() {
   const versions = usePipelineVersions();
   const operators = useOperators();
   const save = useSaveNotebook();
-  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
   const [filter, setFilter] = useState("");
   const openId = useSelection((s) => s.notebookId);
   const stageTarget = useSelection((s) => s.stageTarget);
@@ -68,7 +66,7 @@ export function NotebooksPage() {
   const shownLoose = loose.filter((n) => matches(n.title));
 
   return (
-    <div className={`notebooks-page-layout notebooks-page ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
+    <div className="page-frame">
       <Sidebar
         title="Notebooks"
         meta={String(stages.length + mine.length + loose.length)}
@@ -114,7 +112,7 @@ export function NotebooksPage() {
         </div>
       </Sidebar>
 
-      <div className="center-screen notebooks-center">
+      <section className="center-screen page-pane" aria-label="Notebook">
         {stageOpen && shownFlow ? (
           <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} />
         ) : open ? (
@@ -124,7 +122,7 @@ export function NotebooksPage() {
             <p>No open notebook. Make a flow, or start a new notebook.</p>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

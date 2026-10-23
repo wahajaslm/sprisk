@@ -8,16 +8,20 @@ export interface PageFrameProps {
   sidebar?: ReactNode;
   header: PageHeaderProps;
   tabs?: Omit<TabsProps, "children">;
+  /** Names the pane for screen readers; the header title when absent. */
+  label?: string;
+  /** The body has no padding: a canvas that fills the pane. */
+  flush?: boolean;
   children: ReactNode;
 }
 
 /** The layout every page shares (Flow Studio main screen): a sidebar pane, then a pane with the
  * header, the sub-tabs and the body. */
-export function PageFrame({ sidebar, header, tabs, children }: PageFrameProps) {
+export function PageFrame({ sidebar, header, tabs, label, flush = false, children }: PageFrameProps) {
   return (
     <div className="page-frame">
       {sidebar}
-      <section className="center-screen page-pane" aria-label={header.title}>
+      <section className={`center-screen page-pane${flush ? " flush" : ""}`} aria-label={label ?? header.title}>
         <PageHeader {...header} />
         {tabs ? <Tabs {...tabs}>{children}</Tabs> : <div className="page-body">{children}</div>}
       </section>
