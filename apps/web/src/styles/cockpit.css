@@ -1841,9 +1841,10 @@ p { margin: 0; }
 .nb-kernel { display: inline-flex; align-items: center; gap: var(--space-2); height: 24px; padding: 0 var(--space-2); border-radius: 4px; color: var(--soft); font-size: var(--text-sm); }
 .nb-kernel-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nb-ok); }
 /* Room to scroll the last cell up, as VS Code allows. */
-/* The design's cell column: 640px of content after a 36px gutter, centred. */
+/* Cells use the pane's width up to 1200px: the design's 640px column was too narrow for code
+   and tables (user, 2026-10-23). */
 .nb-scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--sp-16) var(--sp-24) 40vh; }
-.nb-scroll > * { max-width: calc(640px + 36px); margin-inline: auto; }
+.nb-scroll > * { max-width: 1200px; margin-inline: auto; }
 .nb-message { margin: var(--space-2) 0 var(--space-2) 36px; }
 .nb-note { color: var(--faint); font-size: var(--text-xs); }
 .nb-cell { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); padding: var(--space-1) 0; outline: none; }
