@@ -11,7 +11,7 @@ import { ImportNotebook } from "./ImportNotebook.tsx";
 const PROJECT = "Local project";
 
 export function TopBar() {
-  const { nav, setNav, pipelineVersionId, selectPipelineVersion, selectRun } = useSelection();
+  const { nav, setNav, pipelineVersionId, selectPipelineVersion, selectRun, objectiveOpenCount } = useSelection();
   const versions = usePipelineVersions();
   const runs = useRuns(pipelineVersionId);
   const startRun = useStartRun();
@@ -102,28 +102,49 @@ export function TopBar() {
         {NAV.map((item) => (
           <button key={item} type="button" aria-current={nav === item ? "page" : undefined} onClick={() => setNav(item)}>
             {item}
+            {item === "Objective" && objectiveOpenCount > 0 && (
+              <span className="tab-badge-open">{objectiveOpenCount}</span>
+            )}
           </button>
         ))}
       </nav>
       <div className="spacer" />
-      {versions.isError && <span role="alert" className="error">{versions.error.message}</span>}
-      {runs.isError && <span role="alert" className="error">{runs.error.message}</span>}
-      {startRun.isError && <span role="alert" className="error">{startRun.error.message}</span>}
-      <span className={`runstate ${latestRun?.status ?? "none"}`}>
-        <span className="dot" aria-hidden="true" />
-        {runState}
-      </span>
-      <button
-        type="button"
-        className="run-button"
-        disabled={pipelineVersionId === undefined || startRun.isPending}
-        onClick={() => {
-          if (pipelineVersionId) startRun.mutate(pipelineVersionId, { onSuccess: (run) => selectRun(run.id) });
-        }}
-      >
-        <PlayIcon />
-        Run graph
-      </button>
+      {nav === "Objective" ? (
+        <>
+          <span className="runstate">
+            {objectiveOpenCount > 0 ? `${objectiveOpenCount} open in ledger` : "Ledger complete"}
+          </span>
+          <button
+            type="button"
+            className={`run-button ${objectiveOpenCount === 0 ? "primary" : ""}`}
+            disabled={objectiveOpenCount > 0}
+            onClick={() => setNav("Flow")}
+          >
+            Generate pipeline
+          </button>
+        </>
+      ) : (
+        <>
+          {versions.isError && <span role="alert" className="error">{versions.error.message}</span>}
+          {runs.isError && <span role="alert" className="error">{runs.error.message}</span>}
+          {startRun.isError && <span role="alert" className="error">{startRun.error.message}</span>}
+          <span className={`runstate ${latestRun?.status ?? "none"}`}>
+            <span className="dot" aria-hidden="true" />
+            {runState}
+          </span>
+          <button
+            type="button"
+            className="run-button"
+            disabled={pipelineVersionId === undefined || startRun.isPending}
+            onClick={() => {
+              if (pipelineVersionId) startRun.mutate(pipelineVersionId, { onSuccess: (run) => selectRun(run.id) });
+            }}
+          >
+            <PlayIcon />
+            Run graph
+          </button>
+        </>
+      )}
     </header>
   );
 }

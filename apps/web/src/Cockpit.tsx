@@ -9,7 +9,7 @@ import { NotebooksPage } from "./views/notebook/NotebooksPage.tsx";
 import { Sidebar } from "./views/Sidebar.tsx";
 import { StepTab } from "./views/StepTab.tsx";
 import { TopBar } from "./views/TopBar.tsx";
-import { QuestionLedger } from "./views/QuestionLedger.tsx";
+import { ObjectivePage } from "./views/objective/ObjectivePage.tsx";
 import { MethodologyPage } from "./views/methodology/MethodologyPage.tsx";
 import { Dock } from "./workbench/DockAdapter.tsx";
 import { useSelection } from "./workbench/selection.ts";
@@ -31,7 +31,7 @@ export function Cockpit() {
         <ActivityBar />
         <div className="workspace-main">
           {nav === "Objective" ? (
-            <QuestionLedger />
+            <ObjectivePage />
           ) : nav === "Flow" ? (
             <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} />
           ) : nav === "Methodology" ? (
