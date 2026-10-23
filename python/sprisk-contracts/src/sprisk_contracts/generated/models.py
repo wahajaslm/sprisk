@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal
-from pydantic import ConfigDict, Field, RootModel
+from pydantic import ConfigDict, Field, RootModel, StringConstraints
 from sprisk_contracts.base import StrictModel
 from enum import StrEnum
 
@@ -322,6 +322,176 @@ class Error(StrictModel):
     )
     code: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*$")]
     message: Annotated[str, Field(min_length=1)]
+
+
+class MethodRef(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="methodology.<pack>.<method>@<semver>",
+            pattern="^methodology\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+        ),
+    ]
+
+
+class DecisionKey(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="<area>.<decision>, the key other methods read a decision by.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ]
+
+
+class ConceptId(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="<pack>.<concept>, a meaning defined in a pack's concepts.yaml.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ]
+
+
+class EvidenceKind(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="<area>.<evidence>, a measured fact one operator produces.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ]
+
+
+class MethodNeeds(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    concepts: list[ConceptId]
+    evidence: list[EvidenceKind]
+    decisions: list[DecisionKey]
+
+
+class VerifyItem(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+
+
+class MethodBind(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    concept: ConceptId
+    evidence: EvidenceKind
+    column: Annotated[
+        str,
+        Field(description="A column the producer writes, never a dataset column.", min_length=1),
+    ]
+
+
+class MethodVerification(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    needs: EvidenceKind
+    promise: Annotated[
+        str, Field(description="What holds when it passes, for people.", min_length=1)
+    ]
+    settings: Annotated[
+        Params | None, Field(description="Values verify_<name>() reads. Absent: none.")
+    ] = None
+
+
+class ConceptKind(StrEnum):
+    label = "label"
+    text = "text"
+    entity_identifier = "entity_identifier"
+
+
+class BindingSourceKind(StrEnum):
+    column = "column"
+    derived = "derived"
+
+
+class BindingSource(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    column: Annotated[str, Field(min_length=1)]
+    step: Annotated[
+        NodeId | None,
+        Field(description="The step that adds the column. Absent: a column of the loaded data."),
+    ] = None
+
+
+class OperatorRole(StrEnum):
+    source = "source"
+    split = "split"
+    model = "model"
+
+
+class Side(StrEnum):
+    input = "input"
+    output = "output"
+
+
+class OperatorAttach(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    role: OperatorRole
+    side: Side
+
+
+class OperatorScope(StrEnum):
+    all = "all"
+    train = "train"
+
+
+class EvidenceFieldType(StrEnum):
+    integer = "integer"
+    number = "number"
+    boolean = "boolean"
+    string = "string"
+    string_list = "string_list"
+
+
+class MethodReplace(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    role: OperatorRole
+    operator: OperatorRef
+    settings: Annotated[
+        Params | None, Field(description="Params that do not depend on the project. Absent: none.")
+    ] = None
+    concepts: Annotated[
+        dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], ConceptId]
+        | None,
+        Field(
+            description="Params a project's binding fills: param name to concept. A param the operator already maps to a concept is not listed here. Absent: none."
+        ),
+    ] = None
+
+
+class BindingStated(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    assurance: Literal["stated"]
+
+
+class Assurance(StrEnum):
+    confirmed = "confirmed"
+    rule = "rule"
+
+
+class BindingByMethod(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    assurance: Assurance
+    method: MethodRef
 
 
 class ProfileItem(RootModel[str]):
@@ -1551,6 +1721,54 @@ class Artifact(StrictModel):
     created_at: Timestamp
 
 
+class MethodAppliesWhen(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    task: list[TaskType]
+
+
+class MethodAction(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    bind: MethodBind | None = None
+    replace: MethodReplace | None = None
+
+
+class Concept(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: ConceptKind
+    description: Annotated[str, Field(min_length=1)]
+    binds_to: list[BindingSourceKind]
+
+
+class EvidenceProduced(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    default: Annotated[
+        bool | None,
+        Field(
+            description="The producer the engine adds when several operators produce this kind. Absent: false."
+        ),
+    ] = None
+    fields: dict[
+        Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], EvidenceFieldType
+    ]
+
+
+class BindingSetBy(RootModel[BindingStated | BindingByMethod]):
+    root: Annotated[
+        BindingStated | BindingByMethod,
+        Field(
+            description="Who set the binding, tagged by assurance: a person stated it, or a method's option made it, confirmed by a person or set unasked by the method (rule)."
+        ),
+    ]
+
+
 class RuleObservation(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2404,6 +2622,38 @@ class CodeSplit(StrictModel):
     notes: list[SplitNote]
 
 
+class MethodOption(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    label: Annotated[str, Field(min_length=1)]
+    action: MethodAction | None = None
+    verify: Annotated[
+        list[VerifyItem], Field(description="The verifications this option promises, by name.")
+    ]
+
+
+class ConceptSet(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.concept_set/v1"]
+    concepts: dict[
+        Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")], Concept
+    ]
+
+
+class Binding(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.binding/v1"]
+    concept: ConceptId
+    source: BindingSource
+    set_by: BindingSetBy
+
+
 class RuleDecision(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2582,6 +2832,37 @@ class Operator(StrictModel):
         bool | None,
         Field(
             description="True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
+        ),
+    ] = None
+    role: Annotated[
+        OperatorRole | None,
+        Field(
+            description="The job the step does, for methods that replace a step by role (ADR-0063). Absent: no method places it by role."
+        ),
+    ] = None
+    attach: Annotated[
+        OperatorAttach | None,
+        Field(description="Set on an evidence producer: where the engine adds it (ADR-0063)."),
+    ] = None
+    scope: Annotated[
+        OperatorScope | None,
+        Field(description="Which rows the step reads. Absent: whatever its inputs carry."),
+    ] = None
+    concepts: Annotated[
+        dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], ConceptId]
+        | None,
+        Field(
+            description="Params a project's binding fills: param name to concept (ADR-0063). Absent: none."
+        ),
+    ] = None
+    produces: Annotated[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")],
+            EvidenceProduced,
+        ]
+        | None,
+        Field(
+            description="The evidence the step measures, by kind, with its fields (ADR-0063). Absent: none."
         ),
     ] = None
     inputs: list[InputPort]
@@ -2765,6 +3046,39 @@ class DatasetProfile(StrictModel):
     ] = None
     columns: list[ColumnProfile]
     correlation: Correlation
+
+
+class Method(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.method/v1"]
+    id: MethodRef
+    decides: DecisionKey
+    activity: Annotated[
+        str,
+        Field(
+            description="The group this decision is shown in: one stage card on the canvas, one notebook section.",
+            min_length=1,
+        ),
+    ]
+    question: Annotated[
+        str, Field(description="The decision as a question for people.", min_length=1)
+    ]
+    applies_when: MethodAppliesWhen | None = None
+    needs: MethodNeeds
+    options: list[MethodOption]
+    verifications: Annotated[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], MethodVerification
+        ],
+        Field(
+            description="Promises an option can make, by name. An option lists the ones it makes in verify."
+        ),
+    ]
+    source: Annotated[
+        str, Field(description="The published standard the method follows.", min_length=1)
+    ]
 
 
 class RuleAnswer(RootModel[RuleDecided | RuleRefused]):

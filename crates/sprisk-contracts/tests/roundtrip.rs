@@ -8,14 +8,15 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, CreateStudy, CreateWalk,
-    DatasetProfile, DecisionProposal, FigureSet, KeyMatches, LoadedTable, MethodologyCheck,
-    MethodologyDecision, MethodologyReview, MethodologyRule, MethodologyRuleSource, ModelSelection,
-    NotebookCode, NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
-    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
-    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
-    RuleAnswer, RuleDecision, RuleObservation, RuleRequest, Run, SelectionDecision, Study,
-    StudyDetail, TablePage, Trial, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
+    Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
+    CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, FigureSet, KeyMatches, LoadedTable,
+    Method, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
+    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
+    NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
+    NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
+    PipelineVersion, Problem, QuestionVersion, RuleAnswer, RuleDecision, RuleObservation,
+    RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial, Walk, WalkDetail,
+    WalkStep, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -63,10 +64,12 @@ const ENTITIES: &[&str] = &[
     "artifact",
     "attempt",
     "attempt_output",
+    "binding",
     "code_display",
     "code_interface",
     "code_split",
     "code_split_request",
+    "concept_set",
     "create_run",
     "create_study",
     "create_walk",
@@ -75,6 +78,7 @@ const ENTITIES: &[&str] = &[
     "figure_set",
     "key_matches",
     "loaded_table",
+    "method",
     "methodology_check",
     "methodology_decision",
     "methodology_review",
@@ -386,4 +390,19 @@ fn walk_detail() {
 #[test]
 fn walk_step() {
     check::<WalkStep>("walk_step");
+}
+
+#[test]
+fn method() {
+    check::<Method>("method");
+}
+
+#[test]
+fn concept_set() {
+    check::<ConceptSet>("concept_set");
+}
+
+#[test]
+fn binding() {
+    check::<Binding>("binding");
 }

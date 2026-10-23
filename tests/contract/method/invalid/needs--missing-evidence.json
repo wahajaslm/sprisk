@@ -1,0 +1,62 @@
+{
+  "schema_version": "sprisk.method/v1",
+  "id": "methodology.core.split_method@1.0.0",
+  "decides": "evaluation.split_method",
+  "activity": "Fair evaluation",
+  "question": "How are rows divided into training and test so the score is fair?",
+  "applies_when": {
+    "task": [
+      "classification",
+      "regression"
+    ]
+  },
+  "needs": {
+    "concepts": [
+      "core.target"
+    ],
+    "decisions": [
+      "data.repeated_items"
+    ]
+  },
+  "options": [
+    {
+      "id": "item_groups",
+      "label": "Keep each item's rows on one side",
+      "action": {
+        "replace": {
+          "role": "split",
+          "operator": "sprisk.validation.group_split@1.0.0",
+          "settings": {
+            "group_column": {
+              "concept": "core.item_identity"
+            },
+            "test_fraction": 0.2,
+            "seed": 42
+          }
+        }
+      },
+      "verify": [
+        "no_group_overlap"
+      ]
+    },
+    {
+      "id": "simple_random",
+      "label": "Random rows",
+      "verify": []
+    }
+  ],
+  "verifications": {
+    "no_group_overlap": {
+      "needs": "evaluation.group_overlap",
+      "promise": "No item has rows in both train and test."
+    },
+    "class_shares_kept": {
+      "needs": "evaluation.class_shares",
+      "promise": "Each class has about the same share of rows in train and test.",
+      "settings": {
+        "max_gap": 0.05
+      }
+    }
+  },
+  "source": "scikit-learn User Guide §3.1: GroupShuffleSplit."
+}

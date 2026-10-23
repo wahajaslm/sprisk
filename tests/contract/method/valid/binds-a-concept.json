@@ -1,0 +1,37 @@
+{
+  "schema_version": "sprisk.method/v1",
+  "id": "methodology.core.repeated_items@1.0.0",
+  "decides": "data.repeated_items",
+  "activity": "Repeated observations",
+  "question": "Does the same item appear in more than one row?",
+  "needs": {
+    "concepts": [
+      "core.item_title"
+    ],
+    "evidence": [
+      "data.near_duplicate_groups"
+    ],
+    "decisions": []
+  },
+  "options": [
+    {
+      "id": "group_by_title",
+      "label": "Treat rows with matching titles as one item",
+      "action": {
+        "bind": {
+          "concept": "core.item_identity",
+          "evidence": "data.near_duplicate_groups",
+          "column": "item_group"
+        }
+      },
+      "verify": []
+    },
+    {
+      "id": "independent_rows",
+      "label": "Treat every row as its own item",
+      "verify": []
+    }
+  ],
+  "verifications": {},
+  "source": "Kapoor & Narayanan (2023), Patterns 4(9)."
+}

@@ -1,0 +1,1 @@
+{ "schema_version": "sprisk.concept_set/v1", "concepts": { "core.target": { "kind": "answer", "description": "d", "binds_to": ["column"] } } }

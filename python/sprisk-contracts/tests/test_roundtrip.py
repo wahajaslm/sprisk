@@ -13,10 +13,12 @@ from sprisk_contracts import (
     Artifact,
     Attempt,
     AttemptOutput,
+    Binding,
     CodeDisplay,
     CodeInterface,
     CodeSplit,
     CodeSplitRequest,
+    ConceptSet,
     CreateRun,
     CreateStudy,
     CreateWalk,
@@ -25,6 +27,7 @@ from sprisk_contracts import (
     FigureSet,
     KeyMatches,
     LoadedTable,
+    Method,
     MethodologyCheck,
     MethodologyDecision,
     MethodologyReview,
@@ -117,6 +120,9 @@ ENTITIES: list[tuple[type[BaseModel], str]] = [
     (NotebookExecutionEvent, "notebook_execution_event"),
     (NotebookVariables, "notebook_variables"),
     (NotebookKernelRequest, "notebook_kernel_request"),
+    (Method, "method"),
+    (ConceptSet, "concept_set"),
+    (Binding, "binding"),
 ]
 
 

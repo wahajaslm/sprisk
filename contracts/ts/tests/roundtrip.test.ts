@@ -59,6 +59,9 @@ const entities: [keyof Entities, string][] = [
   ["Walk", "walk"],
   ["WalkDetail", "walk_detail"],
   ["WalkStep", "walk_step"],
+  ["Method", "method"],
+  ["ConceptSet", "concept_set"],
+  ["Binding", "binding"],
 ];
 
 it("every fixture dir has an entity", () => {

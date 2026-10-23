@@ -49,6 +49,30 @@
           "type": "boolean",
           "description": "True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
         },
+        "role": {
+          "$ref": "#/$defs/OperatorRole",
+          "description": "The job the step does, for methods that replace a step by role (ADR-0063). Absent: no method places it by role."
+        },
+        "attach": {
+          "$ref": "#/$defs/OperatorAttach",
+          "description": "Set on an evidence producer: where the engine adds it (ADR-0063)."
+        },
+        "scope": {
+          "$ref": "#/$defs/OperatorScope",
+          "description": "Which rows the step reads. Absent: whatever its inputs carry."
+        },
+        "concepts": {
+          "type": "object",
+          "description": "Params a project's binding fills: param name to concept (ADR-0063). Absent: none.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+          "additionalProperties": { "$ref": "#/$defs/ConceptId" }
+        },
+        "produces": {
+          "type": "object",
+          "description": "The evidence the step measures, by kind, with its fields (ADR-0063). Absent: none.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+          "additionalProperties": { "$ref": "#/$defs/EvidenceProduced" }
+        },
         "inputs": {
           "type": "array",
           "items": {

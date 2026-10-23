@@ -59,6 +59,9 @@ export interface Entities {
   WalkDetail: C.WalkDetail;
   WalkStep: C.WalkStep;
   Trial: C.Trial;
+  Method: C.Method;
+  ConceptSet: C.ConceptSet;
+  Binding: C.Binding;
 }
 
 export class ContractError extends Error {}

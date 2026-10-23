@@ -130,6 +130,81 @@ export type RunId = string;
  */
 export type WorkerId = string;
 /**
+ * methodology.<pack>.<method>@<semver>
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodRef".
+ */
+export type MethodRef = string;
+/**
+ * <area>.<decision>, the key other methods read a decision by.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DecisionKey".
+ */
+export type DecisionKey = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TaskType".
+ */
+export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
+/**
+ * <pack>.<concept>, a meaning defined in a pack's concepts.yaml.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ConceptId".
+ */
+export type ConceptId = string;
+/**
+ * <area>.<evidence>, a measured fact one operator produces.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceKind".
+ */
+export type EvidenceKind = string;
+/**
+ * The one job a step does in a flow, so methods place and replace steps by role, not by input names.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorRole".
+ */
+export type OperatorRole = "source" | "split" | "model";
+/**
+ * label: what a model predicts; an all-rows step may never read it. text: free text. entity_identifier: groups rows of one real-world thing.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ConceptKind".
+ */
+export type ConceptKind = "label" | "text" | "entity_identifier";
+/**
+ * column: a column of the loaded data. derived: a column a step adds.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingSourceKind".
+ */
+export type BindingSourceKind = "column" | "derived";
+/**
+ * Who set the binding, tagged by assurance: a person stated it, or a method's option made it, confirmed by a person or set unasked by the method (rule).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingSetBy".
+ */
+export type BindingSetBy = BindingStated | BindingByMethod;
+/**
+ * all: reads every row, before the split, so it may never read a label concept. train: reads train rows only.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorScope".
+ */
+export type OperatorScope = "all" | "train";
+/**
+ * string_list: short values shown to people, such as the ids of overlapping groups.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceFieldType".
+ */
+export type EvidenceFieldType = "integer" | "number" | "boolean" | "string" | "string_list";
+/**
  * methodology.<pack>.<rule>@<semver>
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -280,11 +355,6 @@ export type CapabilityClass =
   | "decision_evaluator"
   | "sink"
   | "custom_code";
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "TaskType".
- */
-export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
 /**
  * What a port carries. A table is Parquet; a matrix is rows by named number columns, stored sparse (SciPy CSR in .npz, ADR-0058): row i is row i of the table it was made from.
  *
@@ -1154,6 +1224,218 @@ export interface Params {
   [k: string]: unknown;
 }
 /**
+ * A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Method".
+ */
+export interface Method {
+  schema_version: "sprisk.method/v1";
+  id: MethodRef;
+  decides: DecisionKey;
+  /**
+   * The group this decision is shown in: one stage card on the canvas, one notebook section.
+   */
+  activity: string;
+  /**
+   * The decision as a question for people.
+   */
+  question: string;
+  applies_when?: MethodAppliesWhen;
+  needs: MethodNeeds;
+  options: MethodOption[];
+  /**
+   * Promises an option can make, by name. An option lists the ones it makes in verify.
+   */
+  verifications: {
+    [k: string]: MethodVerification;
+  };
+  /**
+   * The published standard the method follows.
+   */
+  source: string;
+}
+/**
+ * When the method applies. Absent: always.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodAppliesWhen".
+ */
+export interface MethodAppliesWhen {
+  task: TaskType[];
+}
+/**
+ * Everything decide() may read. It reads nothing else.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodNeeds".
+ */
+export interface MethodNeeds {
+  concepts: ConceptId[];
+  evidence: EvidenceKind[];
+  decisions: DecisionKey[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodOption".
+ */
+export interface MethodOption {
+  id: string;
+  label: string;
+  action?: MethodAction;
+  /**
+   * The verifications this option promises, by name.
+   */
+  verify: string[];
+}
+/**
+ * What the option changes. Absent: nothing.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodAction".
+ */
+export interface MethodAction {
+  bind?: MethodBind;
+  replace?: MethodReplace;
+}
+/**
+ * Binds a concept to a column that the producer of an evidence kind adds.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodBind".
+ */
+export interface MethodBind {
+  concept: ConceptId;
+  evidence: EvidenceKind;
+  /**
+   * A column the producer writes, never a dataset column.
+   */
+  column: string;
+}
+/**
+ * Replaces the step with this role by a step running operator.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodReplace".
+ */
+export interface MethodReplace {
+  role: OperatorRole;
+  operator: OperatorRef;
+  settings?: Params1;
+  /**
+   * Params a project's binding fills: param name to concept. A param the operator already maps to a concept is not listed here. Absent: none.
+   */
+  concepts?: {
+    [k: string]: ConceptId;
+  };
+}
+/**
+ * Params that do not depend on the project. Absent: none.
+ */
+export interface Params1 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodVerification".
+ */
+export interface MethodVerification {
+  needs: EvidenceKind;
+  /**
+   * What holds when it passes, for people.
+   */
+  promise: string;
+  settings?: Params2;
+}
+/**
+ * Values verify_<name>() reads. Absent: none.
+ */
+export interface Params2 {
+  [k: string]: unknown;
+}
+/**
+ * A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ConceptSet".
+ */
+export interface ConceptSet {
+  schema_version: "sprisk.concept_set/v1";
+  concepts: {
+    [k: string]: Concept;
+  };
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Concept".
+ */
+export interface Concept {
+  kind: ConceptKind;
+  description: string;
+  binds_to: BindingSourceKind[];
+}
+/**
+ * Which column means a concept in one project (ADR-0063). Column names live only here.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Binding".
+ */
+export interface Binding {
+  schema_version: "sprisk.binding/v1";
+  concept: ConceptId;
+  source: BindingSource;
+  set_by: BindingSetBy;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingSource".
+ */
+export interface BindingSource {
+  column: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  step?: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingStated".
+ */
+export interface BindingStated {
+  assurance: "stated";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingByMethod".
+ */
+export interface BindingByMethod {
+  assurance: "confirmed" | "rule";
+  method: MethodRef;
+}
+/**
+ * Where the engine adds an evidence producer: on the rows going into (input) or coming out of (output) the step with this role.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorAttach".
+ */
+export interface OperatorAttach {
+  role: OperatorRole;
+  side: "input" | "output";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceProduced".
+ */
+export interface EvidenceProduced {
+  /**
+   * The producer the engine adds when several operators produce this kind. Absent: false.
+   */
+  default?: boolean;
+  fields: {
+    [k: string]: EvidenceFieldType;
+  };
+}
+/**
  * What a rule's decide() reads (ADR-0042): confirmed question facts and measured profile values, never raw rows, plus its settings. Sent by Rust to the Python rule runner.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1228,13 +1510,13 @@ export interface RuleDecision {
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params1;
+      params?: Params3;
     },
     ...{
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params1;
+      params?: Params3;
     }[]
   ];
   evidence: MethodologyEvidence[];
@@ -1242,7 +1524,7 @@ export interface RuleDecision {
 /**
  * Concrete params for the manifest action's operator; present when applicable.
  */
-export interface Params1 {
+export interface Params3 {
   [k: string]: unknown;
 }
 /**
@@ -1963,6 +2245,27 @@ export interface Operator {
    * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows.
    */
   fits_on_train?: boolean;
+  /**
+   * The one job a step does in a flow, so methods place and replace steps by role, not by input names.
+   */
+  role?: "source" | "split" | "model";
+  attach?: OperatorAttach1;
+  /**
+   * Which rows the step reads. Absent: whatever its inputs carry.
+   */
+  scope?: "all" | "train";
+  /**
+   * Params a project's binding fills: param name to concept (ADR-0063). Absent: none.
+   */
+  concepts?: {
+    [k: string]: ConceptId;
+  };
+  /**
+   * The evidence the step measures, by kind, with its fields (ADR-0063). Absent: none.
+   */
+  produces?: {
+    [k: string]: EvidenceProduced;
+  };
   inputs: InputPort[];
   outputs: Port[];
   /**
@@ -2012,6 +2315,13 @@ export interface OperatorModel {
 export interface SearchSetting {
   name: string;
   values: unknown[];
+}
+/**
+ * Set on an evidence producer: where the engine adds it (ADR-0063).
+ */
+export interface OperatorAttach1 {
+  role: OperatorRole;
+  side: "input" | "output";
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2563,7 +2873,7 @@ export interface Trial {
    * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
    */
   operator: string;
-  settings: Params2;
+  settings: Params4;
   state: TrialState;
   /**
    * Its attempts, oldest first.
@@ -2577,7 +2887,7 @@ export interface Trial {
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  */
-export interface Params2 {
+export interface Params4 {
   [k: string]: unknown;
 }
 /**
