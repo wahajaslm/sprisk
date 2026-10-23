@@ -62,6 +62,10 @@ export function useSelectModel() {
 export const useMethodologyRules = () =>
   useQuery({ queryKey: ["methodology_rules"], queryFn: () => getList("MethodologyRule", "/methodology_rules"), staleTime: Infinity });
 
+/** The meanings a question can bind to a column (ADR-0063); they change only with the packs. */
+export const useConcepts = () =>
+  useQuery({ queryKey: ["concepts"], queryFn: () => getOne("ConceptSet", "/concepts"), staleTime: Infinity });
+
 export const useMethodologyRuleSource = (ruleRef: string) =>
   useQuery({
     queryKey: ["methodology_rule_source", ruleRef],

@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
-import type { Fact, QuestionVersion, TaskType, Unknown } from "@sprisk/contracts";
+import type { Binding, Fact, QuestionVersion, TaskType, Unknown } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
 import { useLoadedTables } from "../../api/datasets.ts";
+import { useConcepts } from "../../api/methodology.ts";
 import { usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
 import { useQuestionVersions, useSaveQuestionVersion } from "../../api/questions.ts";
 import { useSelection } from "../../workbench/selection.ts";
@@ -17,12 +18,19 @@ import { StartWalk } from "./StartWalk.tsx";
 
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
 const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
+const stated = (concept: string, column: string): Binding => ({
+  schema_version: "sprisk.binding/v1",
+  concept,
+  source: { column: column.trim() },
+  set_by: { assurance: "stated" },
+});
 
 export function ObjectivePage() {
   const { pipelineVersionId, selectPipelineVersion, setNav } = useSelection();
   const questionsQuery = useQuestionVersions();
   const pipelinesQuery = usePipelineVersions();
   const tablesQuery = useLoadedTables();
+  const conceptsQuery = useConcepts();
   const saveQuestion = useSaveQuestionVersion();
   const savePipeline = useSavePipelineVersion();
 
@@ -41,6 +49,8 @@ export function ObjectivePage() {
   const [formPositive, setFormPositive] = useState("");
   const [formFalseNegative, setFormFalseNegative] = useState("");
   const [formFalsePositive, setFormFalsePositive] = useState("");
+  // Column typed per concept; an empty one leaves the concept unbound.
+  const [formBindings, setFormBindings] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
 
   const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
@@ -67,6 +77,7 @@ export function ObjectivePage() {
       setFormPositive(base.costs?.value.positive ?? "");
       setFormFalseNegative(base.costs?.value.false_negative?.toString() ?? "");
       setFormFalsePositive(base.costs?.value.false_positive?.toString() ?? "");
+      setFormBindings(Object.fromEntries((base.bindings ?? []).map((b) => [b.concept, b.source.column])));
     } else {
       setFormObjective("");
       setFormTask("classification");
@@ -79,6 +90,7 @@ export function ObjectivePage() {
       setFormPositive("");
       setFormFalseNegative("");
       setFormFalsePositive("");
+      setFormBindings({});
     }
     setFormError(undefined);
     setIsEditing(true);
@@ -108,6 +120,10 @@ export function ObjectivePage() {
       };
     }
 
+    const bindings = Object.entries(formBindings)
+      .filter(([, column]) => column.trim())
+      .map(([concept, column]) => stated(concept, column));
+
     const newQuestion: QuestionVersion = {
       schema_version: "sprisk.question_version/v1",
       id: `qv_${ulid()}`,
@@ -121,6 +137,7 @@ export function ObjectivePage() {
       unknowns: lines(formUnknowns).map((u): Unknown => ({ question: u, blocks: "execution" })),
       acceptance_criteria: lines(formCriteria).map(fact),
       ...(costs ? { costs } : {}),
+      ...(bindings.length ? { bindings } : {}),
       created_at: timestamp(),
     };
 
@@ -615,6 +632,35 @@ export function ObjectivePage() {
                     placeholder="e.g. Average precision beats the dummy baseline on temporal validation."
                   />
                 </div>
+
+                {conceptsQuery.data && (
+                  <div className="ds-form-card">
+                    <div className="ds-form-card-head">
+                      <span className="ds-form-card-title">Columns the methods read</span>
+                      <span className="ds-form-card-desc">
+                        Name the column that holds each meaning, if one does. Leave it empty if none does.
+                      </span>
+                    </div>
+                    {Object.entries(conceptsQuery.data.concepts)
+                      .filter(([, concept]) => concept.binds_to.includes("column"))
+                      .map(([id, concept]) => (
+                        <div className="ds-form-field" key={id}>
+                          <label className="ds-form-label" htmlFor={`obj-field-concept-${id}`}>
+                            <span>{concept.description}</span>
+                            <span className="ds-form-label-sub mono">{id}</span>
+                          </label>
+                          <input
+                            id={`obj-field-concept-${id}`}
+                            type="text"
+                            className="ds-input mono"
+                            value={formBindings[id] ?? ""}
+                            onChange={(e) => setFormBindings({ ...formBindings, [id]: e.target.value })}
+                            placeholder="Column name"
+                          />
+                        </div>
+                      ))}
+                  </div>
+                )}
 
                 {/* Misclassification Costs Card */}
                 <div className="ds-form-card">
