@@ -137,7 +137,7 @@ def test_plain_code_gives_the_same_tables_and_words() -> None:
     assert namespace["b"].equals(step["test"])  # type: ignore[attr-defined]
     for name, port in (("a_words", "train_words"), ("b_words", "test_words")):
         made = namespace[name]
-        assert (made != words(step, port).values).nnz == 0  # type: ignore[operator]
+        assert (made != words(step, port).values).nnz == 0
 
 
 def test_the_worker_stores_the_words_and_reads_them_back(tmp_path: Path) -> None:

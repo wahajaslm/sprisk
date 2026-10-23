@@ -22,7 +22,7 @@ def words(rows: pl.DataFrame) -> tuple[Any, tuple[str, ...]]:
     return sparse.csr_matrix(np.column_stack([1 - shoe, shoe])), NAMES
 
 
-CLF = {"target": "y", "task": "classification"}
+CLF: dict[str, Any] = {"target": "y", "task": "classification"}
 
 
 @pytest.mark.parametrize("model", [linear_model, random_forest])
