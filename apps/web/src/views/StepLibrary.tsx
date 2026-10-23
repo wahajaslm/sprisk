@@ -8,14 +8,16 @@ import { stepOf } from "../flow/ports.ts";
 import { kindOf, newestVersions, STAGES, stageOf, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
 import { flows } from "../flow/flows.ts";
 import { useSelection } from "../workbench/selection.ts";
-import { useWorkbench } from "../workbench/workbench.ts";
-import { Chevron, KindIcon, PanelToggleIcon } from "./Icons.tsx";
+import { KindIcon } from "./Icons.tsx";
 import { SearchField } from "../components/ui/SearchField.tsx";
 import { Segmented } from "../components/ui/Segmented.tsx";
-import { Tag } from "../components/ui/Tag.tsx";
+import { ListRow } from "../components/ui/ListRow.tsx";
+import { SideGroup } from "../components/ui/SideGroup.tsx";
+import { Sidebar } from "../components/ui/Sidebar.tsx";
+import { pluginOf, plugins } from "../flow/plugins.ts";
 import { InfoDock } from "../components/ui/InfoDock.tsx";
 
-type SidebarTab = "Pipeline" | "Operators";
+type SidebarTab = "Pipeline" | "Operators" | "Plugins";
 
 export function StepLibrary() {
   const versionsQuery = usePipelineVersions();
@@ -25,7 +27,6 @@ export function StepLibrary() {
   const latest = useMemo(() => latestByNode(attempts.data ?? []), [attempts.data]);
   const checks = useRunChecks(attempts.data ?? []);
   const concerns = concernsByNode(checks);
-  const { sidebarOpen, toggleSidebar } = useWorkbench();
 
   const allVersions = useMemo(() => versionsQuery.data ?? [], [versionsQuery.data]);
   const activeFlow = useMemo(() => {
@@ -83,7 +84,7 @@ export function StepLibrary() {
         num: String(idx + 1).padStart(2, "0"),
         nodes: inStage,
       };
-    }).filter((g) => g.nodes.length > 0 || !needle);
+    }).filter((g) => g.nodes.length > 0);
   }, [activeVersion, opMap, needle]);
 
   // Selected node info
@@ -96,196 +97,84 @@ export function StepLibrary() {
     return new Set(readers).size;
   }, [selectedNode, activeVersion]);
 
-  if (!sidebarOpen) {
-    return (
-      <div className="sidebar-rail" aria-label="Pipeline rail">
-        <button
-          type="button"
-          className="sidebar-toggle-btn"
-          title="Expand Pipeline sidebar"
-          aria-label="Expand Pipeline sidebar"
-          onClick={toggleSidebar}
-        >
-          <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
-        </button>
-        <span
-          className="sidebar-rail-label"
-          role="button"
-          tabIndex={0}
-          onClick={toggleSidebar}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") toggleSidebar();
-          }}
-        >
-          Pipeline
-        </span>
-      </div>
-    );
-  }
-
   return (
-    <div className="library">
-      {/* Header */}
-      <div className="sidebar-header">
-        <div className="sidebar-title-row">
-          <h2 className="sidebar-title">Pipeline</h2>
-          <div style={{ flex: 1 }} />
-          <button
-            type="button"
-            className="sidebar-toggle-btn"
-            title="Collapse Pipeline sidebar"
-            aria-label="Collapse Pipeline sidebar"
-            onClick={toggleSidebar}
-          >
-            <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
-          </button>
-        </div>
-
+    <Sidebar
+      title="Pipeline"
+      modes={
         <Segmented<SidebarTab>
           value={tab}
           onChange={setUserTab}
           options={[
             { value: "Pipeline", label: "Pipeline" },
             { value: "Operators", label: "Operators" },
+            { value: "Plugins", label: "Plugins" },
           ]}
         />
-        <div className="sidebar-search">
-          <SearchField
-            value={query}
-            onChange={setQuery}
-            placeholder="Search steps"
-            ariaLabel="Search steps"
-          />
-        </div>
-      </div>
-
-      {/* List content */}
-      <div className="sidebar-list">
-        {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
-        {checks.status === "error" && <p role="alert" className="error pad">{checks.message}</p>}
-        {tab === "Pipeline" ? (
-          pipelineStages.length === 0 ? (
-            <p className="muted pad" style={{ fontSize: "var(--fs-12)" }}>
-              No pipeline steps found.
-            </p>
-          ) : (
-            pipelineStages.map(({ stage, num, nodes }) => {
-              const open = !folded.has(stage);
-              return (
-                <section key={stage} aria-label={stage} className="stage-group">
-                  <h3 className="stage-heading">
-                    <button type="button" aria-expanded={open} onClick={() => toggle(stage)}>
-                      <span className="stage-chevron">
-                        <Chevron />
-                      </span>
-                      <span className="mono" style={{ color: "var(--text-disabled)", fontSize: "11px" }}>
-                        {num}
-                      </span>
-                      <span style={{ flex: 1 }}>{stage}</span>
-                      <span className="mono" style={{ color: "var(--text-disabled)", fontSize: "11px" }}>
-                        {nodes.length}
-                      </span>
-                    </button>
-                  </h3>
-                  {open &&
-                    nodes.map((node) => {
-                      const op = opMap.get(node.operator);
-                      const kind: NodeKind = op ? kindOf(op) : "recipe";
-                      const isSelected = node.id === nodeId;
-                      const issues = concerns.get(node.id) ?? 0;
-                      const attempt = latest.get(node.id);
-                      return (
-                        <div
-                          key={node.id}
-                          className={`step-item ${isSelected ? "selected" : ""}`}
-                          onClick={() => selectNode(node.id)}
-                          role="button"
-                          tabIndex={0}
-                          aria-current={isSelected ? "true" : undefined}
-                        >
-                          <span className={`step-icon kind-${kind}`}>
-                            <KindIcon kind={kind} size={12} />
-                          </span>
-                          <span className="step-item-name">{stepTitle(node.operator)}</span>
-                          <StepState issues={issues} state={attempt?.state} />
-                        </div>
-                      );
-                    })}
-                </section>
-              );
-            })
-          )
+      }
+      search={<SearchField value={query} onChange={setQuery} placeholder="Search steps" ariaLabel="Search steps" />}
+      dock={
+        <InfoDock
+          rows={[
+            { k: "Type", v: selectedNode && opMap.get(selectedNode.operator) ? kindOf(opMap.get(selectedNode.operator)!) : "—" },
+            { k: "Status", v: selectedNode ? statusText(latest.get(selectedNode.id)?.state) : "—" },
+            { k: "Downstream", v: selectedNode ? `${downstreamCount} ${downstreamCount === 1 ? "step" : "steps"}` : "—" },
+          ]}
+        />
+      }
+    >
+      {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
+      {checks.status === "error" && <p role="alert" className="error pad">{checks.message}</p>}
+      {tab === "Pipeline" &&
+        (pipelineStages.length === 0 ? (
+          <p className="muted pad">No pipeline steps found.</p>
         ) : (
-          STAGES.map((stage) => {
-            const inStage = newestVersions(operators).filter(
-              (op) =>
-                stageOf(op) === stage &&
-                (needle === "" || `${op.id} ${stepTitle(op.id)}`.toLowerCase().includes(needle)),
-            );
-            if (inStage.length === 0) return null;
-            const open = !folded.has(stage);
-            return (
-              <section key={stage} aria-label={stage} className="stage-group">
-                <h3 className="stage-heading">
-                  <button type="button" aria-expanded={open} onClick={() => toggle(stage)}>
-                    <span className="stage-chevron">
-                      <Chevron />
-                    </span>
-                    <span style={{ flex: 1 }}>{stage}</span>
-                    <span className="mono" style={{ color: "var(--text-disabled)", fontSize: "11px" }}>
-                      {inStage.length}
-                    </span>
-                  </button>
-                </h3>
-                {open &&
-                  inStage.map((op) => (
-                    <div
-                      key={op.id}
-                      className="step-item"
-                      title={op.description ? `${op.description}\n${op.id}` : op.id}
-                    >
-                      <span className={`step-icon kind-${kindOf(op)}`}>
-                        <KindIcon kind={kindOf(op)} size={12} />
-                      </span>
-                      <span className="step-item-name">{stepTitle(op.id)}</span>
-                      <span className="step-item-meta">{op.capability_class}</span>
-                    </div>
-                  ))}
-              </section>
-            );
-          })
-        )}
-      </div>
-
-      {/* Info Dock */}
-      <InfoDock
-        rows={[
-          {
-            k: "Type",
-            v: selectedNode && opMap.get(selectedNode.operator) ? kindOf(opMap.get(selectedNode.operator)!) : "—",
-          },
-          {
-            k: "Status",
-            v: selectedNode ? statusText(latest.get(selectedNode.id)?.state) : "—",
-          },
-          {
-            k: "Downstream",
-            v: selectedNode ? `${downstreamCount} ${downstreamCount === 1 ? "step" : "steps"}` : "—",
-          },
-        ]}
-      />
-    </div>
+          pipelineStages.map(({ stage, nodes }, i) => (
+            <SideGroup key={stage} num={i + 1} label={stage} meta={`${nodes.filter((n) => isDone(latest.get(n.id)?.state)).length} / ${nodes.length}`}>
+              {nodes.map((node) => {
+                const op = opMap.get(node.operator);
+                const kind: NodeKind = op ? kindOf(op) : "recipe";
+                return (
+                  <ListRow
+                    key={node.id}
+                    title={stepTitle(node.operator)}
+                    icon={<KindIcon kind={kind} size={12} />}
+                    selected={node.id === nodeId}
+                    onClick={() => selectNode(node.id)}
+                    {...badgeOf(concerns.get(node.id) ?? 0, latest.get(node.id)?.state)}
+                  />
+                );
+              })}
+            </SideGroup>
+          ))
+        ))}
+      {tab === "Operators" &&
+        STAGES.map((stage) => newestVersions(operators).filter((op) => stageOf(op) === stage && (needle === "" || `${op.id} ${stepTitle(op.id)}`.toLowerCase().includes(needle))))
+          .map((inStage, i) => ({ stage: STAGES[i]!, inStage }))
+          .filter(({ inStage }) => inStage.length > 0)
+          .map(({ stage, inStage }, i) => (
+            <SideGroup key={stage} num={i + 1} label={stage} meta={inStage.length}>
+              {inStage.map((op) => (
+                <ListRow key={op.id} title={stepTitle(op.id)} meta={op.capability_class} icon={<KindIcon kind={kindOf(op)} size={12} />} hint={op.description ? `${op.description}\n${op.id}` : op.id} />
+              ))}
+            </SideGroup>
+          ))}
+      {tab === "Plugins" &&
+        plugins(operators)
+          .filter((name) => needle === "" || name.includes(needle))
+          .map((name) => <ListRow key={name} title={name} meta={`${operators.filter((op) => pluginOf(op) === name).length} operators`} />)}
+    </Sidebar>
   );
 }
 
-const statusText = (state: string | undefined) => (state ? statusOf(state).text : "Not run");
-
-const TONE: Record<string, "ok" | "danger" | "queued"> = { done: "ok", bad: "danger", live: "queued", idle: "queued" };
-
-/** A step's latest attempt in the selected run, or its check concerns when any did not pass. */
-function StepState({ issues, state }: { issues: number; state: string | undefined }) {
-  if (issues > 0) return <Tag tone="danger">{checkCount(issues)}</Tag>;
-  if (!state) return <Tag tone="neutral">{statusText(state)}</Tag>;
-  const status = statusOf(state);
-  return <Tag tone={TONE[status.tone] ?? "queued"}>{status.text}</Tag>;
+/** A badge only where the design shows one: a step that needs a look, or one still to run. */
+function badgeOf(issues: number, state: string | undefined): { badge?: string; warn?: boolean } {
+  if (issues > 0) return { badge: checkCount(issues), warn: true };
+  if (state === "failed" || state === "timed_out") return { badge: "Issue", warn: true };
+  if (state === "running" || state === "leased" || state === "uploading") return { badge: "Running" };
+  if (state === "queued" || state === "created" || state === "validated") return { badge: "Queued" };
+  return {};
 }
+
+const isDone = (state: string | undefined) => state === "succeeded" || state === "cache_hit";
+
+const statusText = (state: string | undefined) => (state ? statusOf(state).text : "Not run");

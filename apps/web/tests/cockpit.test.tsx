@@ -157,21 +157,22 @@ describe("step library", () => {
     expect(within(explore).getByTitle(/sprisk.code.python@1.10.0/)).toBeInTheDocument();
   });
 
-  it("tags each of the flow's steps with its latest attempt in the run, never a made-up state", async () => {
+  it("badges only the steps that need a look, from the run's latest attempts, never a made-up state", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(attempts.map((a) => (a.node_id === "impute" ? { ...a, state: "failed" } : a)))));
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
     renderWithApi(<StepLibrary />);
 
-    const split = (await screen.findByText("Random split")).closest(".step-item")!;
-    expect(await within(split as HTMLElement).findByText("succeeded")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Impute.*Issue$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Random split$/ })).toBeInTheDocument();
     expect(screen.queryByText("Queued")).toBeNull();
   });
 
-  it("tags a step that never ran as not run", async () => {
-    useSelection.setState({ pipelineVersionId: PV, runId: undefined, nodeId: undefined });
+  it("says a picked step that never ran is not run, in the Info dock", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: undefined, nodeId: "split" });
     renderWithApi(<StepLibrary />);
 
-    const split = (await screen.findByText("Random split")).closest(".step-item")!;
-    expect(within(split as HTMLElement).getByText("Not run")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Random split$/ })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Info" })).getByText("Not run")).toBeInTheDocument();
   });
 
   it("counts the steps that read the selected step", async () => {
@@ -189,8 +190,7 @@ describe("step library", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
     renderWithApi(<StepLibrary />);
 
-    const split = (await screen.findByText("Random split")).closest(".step-item")!;
-    expect(await within(split as HTMLElement).findByText("1 check")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Random split.*1 check$/ })).toBeInTheDocument();
   });
 
   it("shows why the run's attempts cannot be read, instead of tagging steps not run", async () => {
@@ -209,10 +209,12 @@ describe("step library", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/Unreadable methodology checks|JSON/);
   });
 
-  it("has no Plugins tab, since there is nothing to list in it", async () => {
+  it("lists the plugins the registered operators come from", async () => {
     renderWithApi(<StepLibrary />);
     await screen.findByRole("region", { name: "Clean" });
-    expect(screen.queryByText("Plugins")).toBeNull();
+    await userEvent.click(screen.getByRole("tab", { name: "Plugins" }));
+    // ml holds the linear model and its evaluator.
+    expect(screen.getByText("ml").parentElement).toHaveTextContent("ml2 operators");
   });
 
   it("filters steps by search", async () => {

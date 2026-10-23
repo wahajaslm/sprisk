@@ -14,6 +14,7 @@ import { SideGroup } from "../../components/ui/SideGroup.tsx";
 import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { flowCount } from "../../flow/flows.ts";
+import { pluginOf, plugins } from "../../flow/plugins.ts";
 import { stepTitle } from "../../flow/stages.ts";
 import { tableSize } from "../datasets/tableSize.ts";
 import { useSelection } from "../../workbench/selection.ts";
@@ -128,9 +129,6 @@ function count<T>(query: { isError: boolean; isPending: boolean; data: T | undef
 const packOf = (ruleId: string) => ruleId.split(".")[1] ?? ruleId;
 const packs = (rules: { id: string; status: string }[]) => [...new Set(rules.map((r) => packOf(r.id)))].sort();
 
-/** Operator ids are `sprisk.<plugin>.<operator>@<version>`. */
-const pluginOf = (op: Operator) => op.id.split(".")[1] ?? op.id;
-const plugins = (ops: Operator[]) => [...new Set(ops.map(pluginOf))].sort();
 
 function Packs() {
   const rules = useMethodologyRules();

@@ -4,6 +4,8 @@ import { PanelToggleIcon } from "../../views/Icons.tsx";
 
 export interface SidebarProps {
   title: string;
+  /** A segmented switch between what the list shows, e.g. Pipeline · Operators · Plugins. */
+  modes?: React.ReactNode;
   search?: React.ReactNode;
   children?: React.ReactNode;
   /** The dashed add button at the foot of the list, e.g. New notebook. */
@@ -14,6 +16,7 @@ export interface SidebarProps {
 
 export function Sidebar({
   title,
+  modes,
   search,
   children,
   add,
@@ -65,6 +68,7 @@ export function Sidebar({
             <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
           </button>
         </div>
+        {modes}
         {search && <div className="sidebar-search">{search}</div>}
       </div>
       <div className="sidebar-list">{children}</div>

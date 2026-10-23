@@ -1,8 +1,10 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { FlowInspector } from "../src/views/flow/FlowInspector.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
+import { useWorkbench } from "../src/workbench/workbench.ts";
 import { PV, RUN } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 
@@ -24,5 +26,21 @@ describe("FlowInspector", () => {
 
     expect(await screen.findByText("No methodology check concerns this step.")).toBeInTheDocument();
     for (const fake of FAKE) expect(screen.queryByText(fake)).not.toBeInTheDocument();
+  });
+
+  it("is a dock: it registers its tab commands, and folds to its tab bar and back", async () => {
+    useWorkbench.setState({ inspectorCollapsed: false, inspectorMaximized: false });
+    renderWithApi(<FlowInspector />);
+    await waitFor(() => expect(useWorkbench.getState().dock).toBeDefined());
+
+    await userEvent.click(screen.getByRole("button", { name: "Collapse panel" }));
+    expect(screen.getByRole("region", { name: "Flow Inspector" })).toHaveClass("collapsed");
+    await userEvent.click(screen.getByRole("button", { name: "Expand panel" }));
+    expect(screen.getByRole("region", { name: "Flow Inspector" })).not.toHaveClass("collapsed");
+  });
+
+  it("can float its tabs out of the panel", async () => {
+    renderWithApi(<FlowInspector />);
+    expect(await screen.findByRole("button", { name: "Float panel" })).toBeInTheDocument();
   });
 });

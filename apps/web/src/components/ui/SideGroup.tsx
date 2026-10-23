@@ -13,7 +13,7 @@ export interface SideGroupProps {
 export function SideGroup({ num, label, meta, children }: SideGroupProps) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="side-group">
+    <section className="side-group" aria-label={label}>
       <button type="button" className="side-label" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="side-label-num">{String(num).padStart(2, "0")}</span>
         <span className="side-label-name">{label}</span>
@@ -23,6 +23,6 @@ export function SideGroup({ num, label, meta, children }: SideGroupProps) {
         </svg>
       </button>
       {open && <div className="side-group-rows">{children}</div>}
-    </div>
+    </section>
   );
 }

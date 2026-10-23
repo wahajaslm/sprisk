@@ -50,7 +50,7 @@ import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
 import { useNotebooks } from "../api/notebooks.ts";
-import { KindIcon, KindMark, NotebookIcon, PlayIcon, RestartIcon, StopIcon, TrashIcon } from "./Icons.tsx";
+import { KindIcon, NotebookIcon, PlayIcon, RedoIcon, RestartIcon, StopIcon, TrashIcon, UndoIcon } from "./Icons.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 import { useEscape } from "../hooks/useEscape.ts";
 import { stageGroups } from "../notebook/stageNotebooks.ts";
@@ -930,9 +930,6 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
         />
         <DetailSwitch />
       </Panel>
-      <Panel position="bottom-right" className="canvas-legend">
-        <Legend />
-      </Panel>
     </ReactFlow>
   );
 }
@@ -954,37 +951,25 @@ function ZoomControl({
   const { zoom } = useViewport();
   return (
     <div className="flow-zoom-bar zoom" role="group" aria-label="Zoom controls">
-      <button
-        type="button"
-        className="flow-zoom-text-btn fit"
-        title="Undo (Ctrl+Z / ⌘Z)"
-        disabled={!canUndo}
-        onClick={undo}
-      >
-        Undo
+      <button type="button" className="flow-zoom-btn" aria-label="Undo" title="Undo (Ctrl+Z / ⌘Z)" disabled={!canUndo} onClick={undo}>
+        <UndoIcon />
       </button>
-      <button
-        type="button"
-        className="flow-zoom-text-btn fit"
-        title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)"
-        disabled={!canRedo}
-        onClick={redo}
-      >
-        Redo
+      <button type="button" className="flow-zoom-btn" aria-label="Redo" title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)" disabled={!canRedo} onClick={redo}>
+        <RedoIcon />
       </button>
-      <span className="flow-zoom-dot" aria-hidden="true">·</span>
+      <span className="zoom-sep" aria-hidden="true" />
       <button type="button" className="flow-zoom-btn" aria-label="Zoom out" onClick={() => void zoomOut()}>
         −
       </button>
-      <span className="flow-zoom-label mono">{Math.round(zoom * 100)}%</span>
+      <span className="zoom-label">{Math.round(zoom * 100)}%</span>
       <button type="button" className="flow-zoom-btn" aria-label="Zoom in" onClick={() => void zoomIn()}>
         +
       </button>
-      <span className="flow-zoom-dot" aria-hidden="true">·</span>
+      <span className="zoom-sep" aria-hidden="true" />
       <button type="button" className="flow-zoom-text-btn fit" onClick={() => void fitView(FIT)}>
         Fit
       </button>
-      <span className="flow-zoom-dot" aria-hidden="true">·</span>
+      <span className="zoom-sep" aria-hidden="true" />
       <button
         type="button"
         className="flow-zoom-text-btn fit"
@@ -1011,26 +996,6 @@ function DetailSwitch() {
         <button key={l} type="button" role="radio" aria-checked={level === l} onClick={() => setLevel(l)}>
           {DETAIL_LABEL[l]}
         </button>
-      ))}
-    </div>
-  );
-}
-
-const LEGEND: [NodeKind, string][] = [
-  ["source", "Data"],
-  ["recipe", "Step"],
-  ["decision", "Decision"],
-  ["model", "Model"],
-];
-
-function Legend() {
-  return (
-    <div className="legend">
-      {LEGEND.map(([kind, label]) => (
-        <span key={kind}>
-          <KindMark kind={kind} />
-          {label}
-        </span>
       ))}
     </div>
   );

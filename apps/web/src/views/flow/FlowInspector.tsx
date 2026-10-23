@@ -1,105 +1,38 @@
-import { useState } from "react";
-import { INSPECTOR_TABS, type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
-import { useStep, TabBody } from "../inspector/step.tsx";
-import { ViewInstance } from "../../workbench/instance.tsx";
+import { type PointerEvent, useState } from "react";
 
+import { InspectorDock } from "../../workbench/InspectorDock.tsx";
+import { useWorkbench } from "../../workbench/workbench.ts";
+
+const MIN_HEIGHT = 120;
+const MAX_HEIGHT = 620;
+
+/** The Flow page's bottom panel: a dock of the selected step's tabs, 300px tall by default,
+ * dragged taller or shorter by its top edge, folded to its tab bar or filling the centre. */
 export function FlowInspector() {
-  const [activeTab, setActiveTab] = useState<InspectorTab>("checks");
-  const [collapsed, setCollapsed] = useState(false);
-  const [maximized, setMaximized] = useState(false);
+  const collapsed = useWorkbench((s) => s.inspectorCollapsed);
+  const maximized = useWorkbench((s) => s.inspectorMaximized);
+  const [height, setHeight] = useState(300);
 
-  const step = useStep();
-  const { nodeId } = step;
+  const startResize = (start: PointerEvent<HTMLDivElement>) => {
+    const fromY = start.clientY;
+    const fromHeight = height;
+    const move = (e: globalThis.PointerEvent) => setHeight(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, fromHeight + fromY - e.clientY)));
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
 
   return (
-    <div
-      className={`flow-inspector ${collapsed ? "collapsed" : ""} ${maximized ? "maximized" : ""}`}
+    <section
+      className={`flow-inspector${collapsed ? " collapsed" : ""}${maximized ? " maximized" : ""}`}
+      style={collapsed || maximized ? undefined : { height }}
       aria-label="Flow Inspector"
     >
-      {/* Header bar */}
-      <div className="flow-inspector-header">
-        <div className="flow-inspector-tabs" role="tablist" aria-label="Inspector tabs">
-          {INSPECTOR_TABS.map((tab) => {
-            const isActive = activeTab === tab;
-            return (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                className={`flow-inspector-tab-btn ${isActive ? "active" : ""}`}
-                onClick={() => {
-                  setActiveTab(tab);
-                  if (collapsed) setCollapsed(false);
-                }}
-              >
-                {TAB_LABEL[tab]}
-                {tab === "checks" && step.concernCount > 0 && (
-                  <span className="flow-tab-badge alert">⚠ {step.concernCount}</span>
-                )}
-                {tab === "console" && step.problems > 0 && (
-                  <span className="flow-tab-badge alert">⚠ {step.problems}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flow-inspector-actions">
-          <button
-            type="button"
-            className="flow-inspector-btn"
-            title={maximized ? "Restore" : "Maximize"}
-            aria-label={maximized ? "Restore panel" : "Maximize panel"}
-            onClick={() => {
-              setMaximized((m) => !m);
-              if (collapsed) setCollapsed(false);
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              {maximized ? (
-                <path d="M4 1v3H1m11-3h3v3m0 8v3h-3m-8 0H1v-3" />
-              ) : (
-                <path d="M1 5V1h4m6 0h4v4m0 6v4h-4m-6 0H1v-4" />
-              )}
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="flow-inspector-btn"
-            title={collapsed ? "Expand" : "Collapse"}
-            aria-label={collapsed ? "Expand panel" : "Collapse panel"}
-            onClick={() => setCollapsed((c) => !c)}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              style={{ transform: collapsed ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
-            >
-              <path d="M3 6l5 5 5-5" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* Body */}
-      {!collapsed && (
-        <div className="flow-inspector-body">
-          <ViewInstance pin={undefined} setPin={undefined} tab={activeTab}>
-            {nodeId ? (
-              <TabBody tab={activeTab} step={step} />
-            ) : (
-              <div className="flow-inspector-empty">
-                <p className="muted">Select a step in the flow to inspect its {TAB_LABEL[activeTab].toLowerCase()}.</p>
-              </div>
-            )}
-          </ViewInstance>
-        </div>
-      )}
-    </div>
+      {!collapsed && !maximized && <div className="flow-inspector-resize" onPointerDown={startResize} title="Drag to resize" aria-hidden="true" />}
+      <InspectorDock />
+    </section>
   );
 }

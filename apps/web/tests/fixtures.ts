@@ -24,7 +24,7 @@ function op(id: string, capability_class: Operator["capability_class"], inputs: 
 
 /** A dock that records commands; the real one needs a browser layout engine. */
 export function fakeDock(overrides: Partial<DockCommands> = {}): DockCommands {
-  return { openTab: vi.fn(), showTab: vi.fn(), resetLayout: vi.fn(), setEditing: vi.fn(), setSidebarVisible: vi.fn(), ...overrides };
+  return { openTab: vi.fn(), showTab: vi.fn(), resetLayout: vi.fn(), ...overrides };
 }
 
 export const operators: Operator[] = [
