@@ -15,7 +15,7 @@ Arch doc sections: §4 (domain model), §8 (methodology), §9 (runs), §14 (layo
 
 **Two kinds of folder.**
 - A method folder holds `method.yaml` (what it needs, its options, what each option promises) and `method.py` (`decide()` and one `verify_<name>()` per promise).
-- An operator folder holds `operator.yaml` (inputs, outputs, settings, the evidence it produces) and `operator.py` (`run()`).
+- An operator folder holds its `manifest.yaml` (inputs, outputs, settings, the evidence it produces) and its Python `run()`, as plugins do today.
 - Each pack has one `concepts.yaml`: the meanings its methods and operators can ask for.
 - Words: method, option, operator, step, evidence, verification, concept, binding, activity.
 
@@ -26,13 +26,13 @@ Arch doc sections: §4 (domain model), §8 (methodology), §9 (runs), §14 (layo
 - A method reads another method's decision by its `decides` key. A cycle is refused when packs load.
 
 **Concepts and bindings replace column names.**
-- Methods and operators never name a dataset column. A setting names a concept (`group: {concept: core.item_identity}`).
+- Methods and operators never name a dataset column. A setting names a concept: an option maps a param to one (`concepts: {group_column: core.item_identity}`), or an operator maps its own params.
 - A binding says which source means a concept in one project: a column, or a column made by a step. It records its assurance (stated, confirmed, rule) and who set it.
 - An option may create a binding; a person confirms it when the method asks.
 - The `question.*_column` facts become bindings.
 
 **Options act through typed patches.**
-- An option's action binds a concept, replaces the step with a role, inserts before it, or sets settings.
+- An option's action binds a concept, or replaces the step with a role and sets its settings. Inserting before a step is added when a method needs it.
 - Every change is a patch of `insert_node`, `replace_node`, `remove_node` and `set_input`, checked whole (ports exist, no cycle). A refused patch changes nothing.
 - An operator manifest names its `role` (source, split, model) and, for a producer, where it `attach`es. Placement follows the manifest, not input names.
 - A diagnostic that reads all rows may not read a concept of kind label. It is refused when packs load.
@@ -85,4 +85,4 @@ Each slice is done when the Rakuten-shaped walk test gets further on the synthet
 ## Arch doc edits
 - §4: add `Binding` and evidence records. `MethodologyDecision` records the option, its promises and bindings.
 - §8: methods need evidence, operators produce it. Concepts and bindings. Promises per option.
-- §14: `methodology/<pack>/methods/<name>/`, `methodology/<pack>/concepts.yaml`, `operator.yaml` beside `operator.py`.
+- §14: `methodology/<pack>/methods/<name>/`, `methodology/<pack>/concepts.yaml`, `manifest.yaml` gains `role`, `attach`, `scope`, `concepts` and `produces`.
