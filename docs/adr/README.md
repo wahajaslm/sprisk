@@ -64,6 +64,7 @@
 | [0060](0060-the-engine-walks-the-map.md) | The engine walks the methodology map from a question and data | Accepted |
 | [0061](0061-adopt-the-flow-studio-design-system.md) | Adopt the Flow Studio design system | Accepted |
 | [0062](0062-decision-centered-methodology-and-edit-aware-verification.md) | Decision-centered methodology and edit-aware verification | Proposed |
+| [0063](0063-methods-need-evidence-operators-produce-it.md) | Methods need evidence, operators produce it | Proposed |
 
 ## Open questions (arch doc §17)
 
