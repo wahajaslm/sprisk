@@ -47,24 +47,16 @@ export function StepLibrary() {
   const [userTab, setUserTab] = useState<SidebarTab | undefined>(undefined);
   const tab: SidebarTab = userTab ?? (hasPipelineSelected ? "Pipeline" : "Operators");
   const [query, setQuery] = useState("");
-  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
 
   const operators = useMemo(() => operatorsQuery.data ?? [], [operatorsQuery.data]);
   const opMap = useMemo(() => new Map<string, Operator>(operators.map((o) => [o.id, o])), [operators]);
 
   const needle = query.trim().toLowerCase();
 
-  const toggle = (stage: string) =>
-    setFolded((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(stage)) next.add(stage);
-      return next;
-    });
-
   // Pipeline steps grouped by stage
   const pipelineStages = useMemo(() => {
     const nodes = activeVersion?.nodes ?? [];
-    return STAGES.map((stage, idx) => {
+    return STAGES.map((stage) => {
       const inStage = nodes
         .filter((node) => {
           const op = opMap.get(node.operator);
@@ -81,7 +73,6 @@ export function StepLibrary() {
 
       return {
         stage,
-        num: String(idx + 1).padStart(2, "0"),
         nodes: inStage,
       };
     }).filter((g) => g.nodes.length > 0);

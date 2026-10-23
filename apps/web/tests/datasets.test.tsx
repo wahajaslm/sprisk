@@ -142,6 +142,16 @@ describe("datasets", () => {
     expect(await screen.findByText("No flow loads this table yet.")).toBeInTheDocument();
   });
 
+  it("draws each column's missing share and lists the columns missing most, red from 20%", async () => {
+    const gappy = { ...profile, columns: [{ ...profile.columns[0]!, missing: 30 }, profile.columns[1]!, { ...profile.columns[2]!, missing: 6 }] };
+    serve(undefined, () => HttpResponse.json(gappy));
+    const worst = await screen.findByRole("list", { name: "Columns missing most" });
+    const rows = within(worst).getAllByRole("listitem");
+    expect(rows.map((r) => r.textContent)).toEqual(["sepal_length25%", "petal_width5%", "species0%"]);
+    expect(rows[0]).toHaveClass("warn");
+    expect(rows[1]).not.toHaveClass("warn");
+  });
+
   it("marks a column's missing share red only from 20%", async () => {
     const gappy = { ...profile, columns: [{ ...profile.columns[0]!, missing: 30 }, profile.columns[1]!, { ...profile.columns[2]!, missing: 6 }] };
     serve(undefined, () => HttpResponse.json(gappy));

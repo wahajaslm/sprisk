@@ -99,10 +99,10 @@ export function SettingsPage() {
             />
           }
         >
-          <SideGroup num={1} label="Platform" meta={PLATFORM.length}>
+          <SideGroup num={1} label="Platform" meta={PLATFORM.filter(matches).length}>
             {PLATFORM.filter(matches).map(row)}
           </SideGroup>
-          <SideGroup num={2} label="Access" meta={ACCESS.length}>
+          <SideGroup num={2} label="Access" meta={ACCESS.filter(matches).length}>
             {ACCESS.filter(matches).map(row)}
           </SideGroup>
         </Sidebar>

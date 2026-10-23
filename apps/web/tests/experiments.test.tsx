@@ -96,6 +96,21 @@ describe("experiments frame", () => {
     ]);
   });
 
+  it("filters the runs by what changed, and counts what it shows", async () => {
+    twoVersions();
+    renderWithApi(<Experiments />);
+    const side = await screen.findByRole("complementary", { name: "Runs" });
+    await within(side).findAllByRole("button", { name: /^Run #/ });
+    await userEvent.type(within(side).getByRole("searchbox", { name: "Search runs" }), "seed");
+    expect(within(side).getAllByRole("button", { name: /^Run #/ }).map((r) => r.textContent)).toEqual([expect.stringMatching(/^Run #2/)]);
+  });
+
+  it("says how many of the run's steps are done", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<Experiments />);
+    expect(await screen.findByText(`${pipeline.nodes.length} of ${pipeline.nodes.length} steps`)).toBeInTheDocument();
+  });
+
   it("marks a failed run as an issue in the sidebar", async () => {
     server.use(http.get("/api/runs", () => HttpResponse.json([{ ...run, status: "failed" }])));
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });

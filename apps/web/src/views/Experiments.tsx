@@ -97,6 +97,7 @@ export function Experiments() {
           search={<SearchField value={search} onChange={setSearch} placeholder="Search runs" />}
           dock={shown && <RunDock run={shown} label={label(shown)} metrics={nodes[shownAt]} before={runs[shownAt + 1]} beforeMetrics={nodes[shownAt + 1]} beforeLabel={runs[shownAt + 1] && label(runs[shownAt + 1]!)} />}
         >
+          <SideGroup num={1} label="Runs" meta={runs.length}>
           {runs.length === 0 && <p className="muted pad">No runs yet.</p>}
           {runs
             .filter((run) => `run ${label(run)} ${whatChanged(run, byId)}`.toLowerCase().includes(search.trim().toLowerCase()))
@@ -110,6 +111,7 @@ export function Experiments() {
                 onClick={() => showRun(run.pipeline_version_id, run.id)}
               />
             ))}
+          </SideGroup>
           {(studies.data ?? []).length > 0 && (
             <SideGroup num={2} label="Sweeps" meta={studies.data!.length}>
               {studies.data!.map((study) => (

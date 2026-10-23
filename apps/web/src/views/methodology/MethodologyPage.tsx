@@ -2,6 +2,7 @@ import type { MethodologyReviewItem, MethodologyRule } from "@sprisk/contracts";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { useMethodologyReview, useMethodologyRules, useMethodologyRuleSource } from "../../api/methodology.ts";
+import { ApiError } from "../../api/client.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
@@ -146,7 +147,7 @@ export function MethodologyPage() {
             <label className="mth-toggle" title={versionId ? "Light the selected flow's path through the tree" : "Select a flow first"}>
               <input type="checkbox" role="switch" checked={path && versionId !== undefined} disabled={!versionId} onChange={(e) => setPath(e.target.checked)} /> Pipeline path
             </label>
-            <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
+            <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error ?? undefined} />
           </div>
         </div>
       )}
@@ -198,10 +199,11 @@ function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; r
 }
 
 /** What the selected flow's review says: how many decisions are open, and what to do next. */
-function ReviewSummary({ versionId, items, next, error }: { versionId: string | undefined; items: MethodologyReviewItem[] | undefined; next: number[] | undefined; error: string | undefined }) {
+function ReviewSummary({ versionId, items, next, error }: { versionId: string | undefined; items: MethodologyReviewItem[] | undefined; next: number[] | undefined; error: Error | undefined }) {
   if (!versionId) return <span className="muted">Select a flow to see its status on each decision.</span>;
-  if (error?.startsWith("question_required")) return <span className="muted">Link a question to this flow to review it.</span>;
-  if (error) return <span role="alert" className="error">{error}</span>;
+  // A flow with no question is a state to fix, not a failure.
+  if (error instanceof ApiError && error.errors.some((e) => e.code === "question_required")) return <span className="muted">Link a question to this flow to review it.</span>;
+  if (error) return <span role="alert" className="error">{error.message}</span>;
   if (!items || !next) return <Loading text="Reviewing the flow…" />;
   const open = items.filter((i) => isOpen(i.status)).length;
   const first = next[0] === undefined ? undefined : items[next[0]];

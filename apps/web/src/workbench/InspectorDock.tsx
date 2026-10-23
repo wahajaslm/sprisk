@@ -91,7 +91,7 @@ function GroupActions({ group, containerApi }: IDockviewHeaderActionsProps) {
             </svg>
           </button>
           <button type="button" className="flow-inspector-btn" aria-label={inspectorCollapsed ? "Expand panel" : "Collapse panel"} title={inspectorCollapsed ? "Expand" : "Collapse"} onClick={toggleInspectorCollapsed}>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ transform: inspectorCollapsed ? "rotate(180deg)" : "none" }}>
+            <svg className="flow-inspector-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6l5 5 5-5" />
             </svg>
           </button>

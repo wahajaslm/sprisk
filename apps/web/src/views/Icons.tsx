@@ -56,11 +56,6 @@ export function KindIcon({ kind, size = 16 }: { kind: NodeKind; size?: number })
   }
 }
 
-/** Small kind marker used in the step library and legend: a square, rotated for decisions. */
-export function KindMark({ kind }: { kind: NodeKind }) {
-  return <span className={`kind-mark kind-${kind}`} aria-hidden="true" />;
-}
-
 export function Logo() {
   return (
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
@@ -109,14 +104,6 @@ export function SearchIcon() {
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <circle cx="7" cy="7" r="5" />
       <path d="M11 11l3.5 3.5" />
-    </svg>
-  );
-}
-
-export function SparkIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-      <path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3M3.4 3.4l2.1 2.1M10.5 10.5l2.1 2.1M3.4 12.6l2.1-2.1M10.5 5.5l2.1-2.1" />
     </svg>
   );
 }

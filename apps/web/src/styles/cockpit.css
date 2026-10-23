@@ -310,7 +310,6 @@ p { margin: 0; }
 }
 
 /* ── Layout Panels (Main Sidebar & Center Screen) ────────── */
-.flow-page-layout,
 .single-panel-layout {
   display: flex;
   width: 100%;
@@ -321,8 +320,7 @@ p { margin: 0; }
   background: transparent;
 }
 
-.main-sidebar,
-.flow-sidebar {
+.main-sidebar {
   width: var(--size-sidebar);
   flex-shrink: 0;
   background: var(--bg-surface);
@@ -360,7 +358,6 @@ p { margin: 0; }
 }
 
 .cockpit-shell .main-sidebar,
-.cockpit-shell .flow-sidebar,
 .cockpit-shell .sidebar-rail {
   margin: 0;
   border-radius: 0;
@@ -443,14 +440,6 @@ p { margin: 0; }
   color: var(--text-primary);
 }
 
-.sidebar-rail-wrap,
-.flow-page-layout.folded-sidebar .flow-sidebar {
-  width: 44px !important;
-  min-width: 44px !important;
-  max-width: 44px !important;
-  flex: none;
-}
-
 /* ── Flow Canvas Viewport & Flow Inspector ──────────────── */
 .flow-canvas-viewport {
   flex: 1;
@@ -497,31 +486,6 @@ p { margin: 0; }
 .flow-tab-badge.alert {
   background: var(--danger-wash);
   color: var(--danger);
-}
-
-.flow-inspector-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.flow-inspector-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--dur-fast);
-}
-
-.flow-inspector-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
 }
 
 .flow-inspector-empty {
@@ -849,15 +813,6 @@ p { margin: 0; }
 .copilot-run { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--alpha-06); font-size: var(--fs-13); color: var(--text-secondary); }
 .copilot-run-label { font-size: var(--fs-12-5); color: var(--text-label); }
 
-.copilot-head .chip {
-  font-size: var(--fs-12);
-  color: var(--text-label);
-  padding: 2px 8px;
-  background: var(--alpha-05);
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-}
-
 .copilot-body {
   flex: 1;
   overflow-y: auto;
@@ -955,17 +910,6 @@ p { margin: 0; }
   min-height: 0;
 }
 
-.step-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--alpha-06);
-  flex-shrink: 0;
-}
-
 /* ── Dock: Studio regions, no tab bars ───────────────── */
 .dock-tab { display: flex; align-items: center; gap: var(--space-2); height: 100%; padding: 0 var(--space-2); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
 .tab-actions { height: 100%; display: flex; align-items: center; gap: 2px; padding: 0 var(--space-2); }
@@ -1043,14 +987,6 @@ p { margin: 0; }
 .status-failed, .status-cancelled { color: var(--alert); }
 
 /* ── Step library ────────────────────────────────────── */
-.library {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-surface);
-  min-height: 0;
-  overflow: hidden;
-}
 
 /* Kind tiles: tint per Studio KIND table */
 .icon-tile { width: 32px; height: 32px; border-radius: 0; flex-shrink: 0; display: grid; place-items: center; }
@@ -3307,7 +3243,7 @@ p { margin: 0; }
 .mth-card { position: absolute; top: 16px; right: 16px; z-index: 11; width: 320px; max-height: calc(100% - 32px); overflow: auto; padding: 16px; border-radius: var(--radius-lg); background: var(--bg-surface); }
 .mth-detail { display: flex; flex-direction: column; gap: 16px; max-width: 860px; }
 .mth-detail-head h2 { margin: 0 0 6px; font-size: var(--fs-15); font-weight: var(--fw-medium); color: var(--text-primary); }
-.mth-detail-links { display: flex; gap: 6px; margin-top: 10px; }
+
 .mth-detail .dsx-h { margin: 0 0 8px; font-size: var(--fs-12-5); font-weight: var(--fw-medium); color: var(--text-label); }
 .mth-detail p { margin: 0; font-size: var(--fs-13-5); line-height: var(--lh-body); color: var(--text-secondary); }
 .mth-detail .mth-alts li { padding: 10px 12px; border-radius: var(--radius-sm); }
@@ -4654,42 +4590,6 @@ p { margin: 0; }
 }
 
 /* ── Step 6: Flow Page Elements ──────────────────────── */
-.flow-sidebar {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.flow-sidebar-head {
-  padding: 14px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border-bottom: 1px solid var(--alpha-06);
-  flex-shrink: 0;
-}
-
-.flow-sidebar-title {
-  font-size: var(--fs-14);
-  font-weight: 500;
-  color: var(--ink-0);
-  margin: 0;
-}
-
-.flow-sidebar-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 0;
-}
-
-.flow-sidebar-empty {
-  padding: 16px;
-  font-size: var(--fs-12-5);
-  color: var(--ink-4);
-  margin: 0;
-}
 
 .flow-stage-section {
   margin-bottom: 4px;
@@ -4731,16 +4631,6 @@ p { margin: 0; }
   font-size: var(--fs-12);
   font-family: var(--font-mono);
   color: var(--ink-4);
-}
-
-.flow-stage-chevron {
-  display: inline-flex;
-  color: var(--ink-4);
-  transition: transform 0.15s ease;
-}
-
-.flow-stage-chevron.open {
-  transform: rotate(90deg);
 }
 
 .flow-stage-step-list {
@@ -4798,11 +4688,6 @@ p { margin: 0; }
 .flow-step-row.selected .flow-step-name {
   color: var(--ink-0);
   font-weight: 500;
-}
-
-.flow-sidebar-dock {
-  border-top: 1px solid var(--alpha-06);
-  flex-shrink: 0;
 }
 
 .flow-plugins-list {
@@ -7899,8 +7784,6 @@ p { margin: 0; }
 
 .ds-profile { display: grid; align-content: start; gap: var(--sp-16); max-width: 1200px; min-width: 0; }
 
-.nb-new { padding: var(--sp-8) var(--sp-10); }
-
 /* ── Body sections and row lists (design: a 15px title and a note, then rows of a name over its facts) ── */
 .body-section { display: flex; flex-direction: column; max-width: 820px; margin-bottom: 28px; }
 .body-section-title { margin: 0; font-size: var(--fs-15); font-weight: var(--fw-medium); color: var(--text-primary); }
@@ -7987,7 +7870,8 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .flow-inspector .dv-tabs-and-actions-container { padding: 0 8px 0 12px; border-bottom: 1px solid var(--alpha-10); }
 .flow-inspector .dv-tab { padding: 0 8px; font-weight: var(--fw-medium); }
 .flow-inspector .dv-active-tab { box-shadow: inset 0 -1px 0 var(--text-primary); }
-.flow-inspector .dv-default-tab-action, .flow-inspector .dv-tab .dv-default-tab-action { display: none; }
+.flow-inspector .dv-default-tab-action { opacity: 0; }
+.flow-inspector .dv-tab:hover .dv-default-tab-action, .flow-inspector .dv-tab:focus-within .dv-default-tab-action, .flow-inspector .dv-active-tab .dv-default-tab-action { opacity: 1; }
 .flow-inspector-actions { display: flex; align-items: center; gap: 2px; height: 100%; padding-left: 12px; }
 .flow-inspector-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; }
 .flow-inspector-btn:hover { background: var(--alpha-06); color: var(--text-primary); }
@@ -8030,3 +7914,4 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .mth-alts.compact li { border: 0; background: transparent; }
 .mth-alts.compact li.selected { background: var(--alpha-05); }
 .mth-eyebrow { font-family: var(--font-sans); }
+.flow-inspector.collapsed .flow-inspector-chevron { transform: rotate(180deg); }

@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { FlowInspector } from "../src/views/flow/FlowInspector.tsx";
+import { clampHeight, FlowInspector } from "../src/views/flow/FlowInspector.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { useWorkbench } from "../src/workbench/workbench.ts";
 import { PV, RUN } from "./fixtures.ts";
@@ -42,5 +42,11 @@ describe("FlowInspector", () => {
   it("can float its tabs out of the panel", async () => {
     renderWithApi(<FlowInspector />);
     expect(await screen.findByRole("button", { name: "Float panel" })).toBeInTheDocument();
+  });
+
+  it("keeps a dragged height between 120 and 620 pixels", () => {
+    expect(clampHeight(40)).toBe(120);
+    expect(clampHeight(300)).toBe(300);
+    expect(clampHeight(900)).toBe(620);
   });
 });

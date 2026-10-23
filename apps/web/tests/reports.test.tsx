@@ -85,6 +85,15 @@ describe("the question ledger report", () => {
     expect(await screen.findByText("No question yet. State one on the Objective page.")).toBeInTheDocument();
   });
 
+  it("searches the ledger and hides a group with nothing left in it", async () => {
+    ledger();
+    renderWithApi(<ReportsPage />);
+    const side = await screen.findByRole("complementary", { name: "Questions" });
+    await userEvent.type(within(side).getByRole("searchbox", { name: "Search questions" }), "orders");
+    expect(within(side).getByRole("button", { name: /Predict which orders/ })).toBeInTheDocument();
+    expect(within(side).queryByText("Before release")).toBeNull();
+  });
+
   it("shows why the questions cannot be read", async () => {
     server.use(http.get("/api/question_versions", () => HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })));
     renderWithApi(<ReportsPage />);

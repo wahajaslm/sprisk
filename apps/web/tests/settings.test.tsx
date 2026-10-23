@@ -84,6 +84,16 @@ describe("settings", () => {
     expect(within(screen.getByRole("region", { name: "Info" })).getByText("Rules").nextSibling).toHaveTextContent("Could not read");
   });
 
+  it("searches the pages and counts what is left in each group", async () => {
+    installed();
+    renderWithApi(<SettingsPage />);
+    const side = await screen.findByRole("complementary", { name: "Settings" });
+    await userEvent.type(within(side).getByRole("searchbox", { name: "Search settings" }), "da");
+    expect(within(side).getByRole("button", { name: /^01Platform1/ })).toBeInTheDocument();
+    expect(within(side).getByRole("button", { name: /^Data/ })).toBeInTheDocument();
+    expect(within(side).queryByRole("button", { name: /^Packs/ })).toBeNull();
+  });
+
   it("shows why the operators cannot be read", async () => {
     server.use(http.get("/api/operators", () => HttpResponse.json({ errors: [{ code: "internal", message: "registry down" }] }, { status: 500 })));
     renderWithApi(<SettingsPage />);
