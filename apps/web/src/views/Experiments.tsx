@@ -136,38 +136,39 @@ export function Experiments() {
               }
             : {})}
         />
-        <Tabs label="Experiments" items={EXPERIMENTS_TABS.map((t) => ({ value: t, label: t }))} value={experimentsTab} onChange={(t) => setExperimentsTab(t as ExperimentsTab)} />
-        <div className="exp-scroll">
-          {experimentsTab === "Monitor" && shown && <Monitor run={shown} version={byId.get(shown.pipeline_version_id)} />}
-          {experimentsTab === "Compare" && (
-            <>
-              {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
-              {!studies.isPending && (
-                <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
-              )}
-              <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
-              {runs.length < 2 ? (
-                <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
-              ) : (
-                <Compare
-                  older={runs[olderAt]}
-                  newer={runs[newerAt]}
-                  olderNodes={nodes[olderAt] ?? {}}
-                  newerNodes={nodes[newerAt] ?? {}}
-                  byId={byId}
-                  evaluators={evaluators}
-                  labelOf={label}
-                />
-              )}
-            </>
-          )}
-          {experimentsTab === "Sweep" && (
-            <>
-              {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
-              {!studies.isPending && <Studies head={flow.head} versions={all} studies={studies.data ?? []} />}
-            </>
-          )}
-        </div>
+        <Tabs label="Experiments" items={EXPERIMENTS_TABS.map((t) => ({ value: t, label: t }))} value={experimentsTab} onChange={(t) => setExperimentsTab(t as ExperimentsTab)}>
+          <div className="exp-scroll">
+            {experimentsTab === "Monitor" && shown && <Monitor run={shown} version={byId.get(shown.pipeline_version_id)} />}
+            {experimentsTab === "Compare" && (
+              <>
+                {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
+                {!studies.isPending && (
+                  <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
+                )}
+                <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
+                {runs.length < 2 ? (
+                  <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
+                ) : (
+                  <Compare
+                    older={runs[olderAt]}
+                    newer={runs[newerAt]}
+                    olderNodes={nodes[olderAt] ?? {}}
+                    newerNodes={nodes[newerAt] ?? {}}
+                    byId={byId}
+                    evaluators={evaluators}
+                    labelOf={label}
+                  />
+                )}
+              </>
+            )}
+            {experimentsTab === "Sweep" && (
+              <>
+                {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
+                {!studies.isPending && <Studies head={flow.head} versions={all} studies={studies.data ?? []} />}
+              </>
+            )}
+          </div>
+        </Tabs>
       </main>
     </div>
   );

@@ -26,5 +26,8 @@ export function flows(all: PipelineVersion[]): Flow[] {
 /** The distinct flows that load the table; a version not listed counts as its own flow. */
 export function flowCount(dataset: LoadedTable, versions: PipelineVersion[]): number {
   const all = flows(versions);
-  return new Set(dataset.used_by.map((u) => all.find((f) => f.ids.includes(u.pipeline_version_id))?.head.id ?? u.pipeline_version_id)).size;
+  return new Set(dataset.used_by.map((u) => flowOfVersion(all, u.pipeline_version_id)?.head.id ?? u.pipeline_version_id)).size;
 }
+
+/** The flow holding this version, if it is listed. */
+export const flowOfVersion = (all: Flow[], versionId: string): Flow | undefined => all.find((f) => f.ids.includes(versionId));

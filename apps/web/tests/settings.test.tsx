@@ -73,6 +73,17 @@ describe("settings", () => {
     expect(screen.queryByText("Live")).toBeNull();
   });
 
+  it("says a count could not be read instead of showing 0", async () => {
+    server.use(
+      http.get("/api/methodology_rules", () => HttpResponse.json({ errors: [{ code: "internal", message: "rules down" }] }, { status: 500 })),
+      http.get("/api/loaded_tables", () => HttpResponse.json([tableJson])),
+    );
+    renderWithApi(<SettingsPage />);
+    const side = await screen.findByRole("complementary", { name: "Settings" });
+    expect(await within(side).findByRole("button", { name: /^Packs/ })).toHaveTextContent("Could not read");
+    expect(within(screen.getByRole("region", { name: "Installed" })).getByText("Rules").nextSibling).toHaveTextContent("Could not read");
+  });
+
   it("shows why the operators cannot be read", async () => {
     server.use(http.get("/api/operators", () => HttpResponse.json({ errors: [{ code: "internal", message: "registry down" }] }, { status: 500 })));
     renderWithApi(<SettingsPage />);

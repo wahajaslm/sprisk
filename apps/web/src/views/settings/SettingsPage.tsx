@@ -13,6 +13,7 @@ import { SectionLabel } from "../../components/ui/SectionLabel.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { flowCount } from "../../flow/flows.ts";
 import { stepTitle } from "../../flow/stages.ts";
+import { tableSize } from "../datasets/tableSize.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { useWorkbench } from "../../workbench/workbench.ts";
 
@@ -48,11 +49,11 @@ export function SettingsPage() {
   if (operators.isPending) return <Loading text="Loading settings…" pad />;
 
   const meta: Record<Page, string> = {
-    Packs: String(packs(rules.data ?? []).length),
+    Packs: count(rules, (r) => packs(r).length),
     Plugins: String(plugins(operators.data).length),
     Environments: "",
     Compute: "",
-    Data: String(tables.data?.length ?? 0),
+    Data: count(tables, (t) => t.length),
     Members: "",
   };
   const row = (p: Page) => <ListRow key={p} title={p} meta={meta[p] || "Not in local mode"} selected={p === page} onClick={() => setPage(p)} />;
@@ -66,8 +67,8 @@ export function SettingsPage() {
             title="Installed"
             rows={[
               { k: "Operators", v: String(operators.data.length) },
-              { k: "Rules", v: String(rules.data?.length ?? 0) },
-              { k: "Datasets", v: String(tables.data?.length ?? 0) },
+              { k: "Rules", v: count(rules, (r) => r.length) },
+              { k: "Datasets", v: count(tables, (t) => t.length) },
             ]}
           />
         }
@@ -93,6 +94,13 @@ export function SettingsPage() {
   );
 }
 
+/** A count from a read, or why there is none: never a 0 that only means "not read". */
+function count<T>(query: { isError: boolean; isPending: boolean; data: T | undefined }, of: (data: T) => number): string {
+  if (query.isError) return "Could not read";
+  if (query.isPending || query.data === undefined) return "…";
+  return String(of(query.data));
+}
+
 /** Rule ids are `methodology.<pack>.<rule>@<version>`. */
 const packOf = (ruleId: string) => ruleId.split(".")[1] ?? ruleId;
 const packs = (rules: { id: string; status: string }[]) => [...new Set(rules.map((r) => packOf(r.id)))].sort();
@@ -115,14 +123,14 @@ function Packs() {
       {rules.isError && <p role="alert" className="error pad">{rules.error.message}</p>}
       {rules.isPending && <Loading text="Loading packs…" pad />}
       {rules.data && (
-        <ul className="set-rows" aria-label="Packs">
+        <ul className="row-list" aria-label="Packs">
           {packs(rules.data).map((pack) => {
             const mine = rules.data.filter((r) => packOf(r.id) === pack);
             const active = mine.filter((r) => r.status === "active").length;
             return (
-              <li key={pack} className="set-row">
-                <span className="set-row-name">{pack}</span>
-                <span className="set-row-meta">{active} active · {mine.length - active} draft</span>
+              <li key={pack} className="row-list-item">
+                <span className="row-list-name">{pack}</span>
+                <span className="row-list-meta">{active} active · {mine.length - active} draft</span>
               </li>
             );
           })}
@@ -140,18 +148,18 @@ function Plugins({ operators, reload }: { operators: Operator[]; reload: () => v
         eyebrow="Settings · Platform"
         title="Plugins"
         description="The operators the registry loaded, by plugin. Each runs in the Python worker."
-        actions={<Button onClick={reload}>Reload registry</Button>}
+        actions={<Button onClick={reload}>Refresh</Button>}
       />
       <div className="set-scroll">
         {plugins(operators).map((plugin) => (
           <section key={plugin} className="set-group">
             <h2 className="set-group-title">{plugin}</h2>
-            <ul className="set-rows" aria-label={plugin}>
+            <ul className="row-list" aria-label={plugin}>
               {operators.filter((op) => pluginOf(op) === plugin).map((op) => (
                 <li key={op.id}>
-                  <button type="button" className="set-row" aria-expanded={open === op.id} onClick={() => setOpen(open === op.id ? undefined : op.id)}>
-                    <span className="set-row-name">{stepTitle(op.id)}</span>
-                    <span className="set-row-meta">{op.capability_class} · {op.inputs.length} in · {op.outputs.length} out</span>
+                  <button type="button" className="row-list-item" aria-expanded={open === op.id} onClick={() => setOpen(open === op.id ? undefined : op.id)}>
+                    <span className="row-list-name">{stepTitle(op.id)}</span>
+                    <span className="row-list-meta">{op.capability_class} · {op.inputs.length} in · {op.outputs.length} out</span>
                   </button>
                   {open === op.id && <OperatorDetail op={op} />}
                 </li>
@@ -202,14 +210,14 @@ function Data() {
       {tables.isPending && <Loading text="Loading data…" pad />}
       {tables.data?.length === 0 && <p className="muted pad">No data loaded yet.</p>}
       {tables.data && tables.data.length > 0 && (
-        <ul className="set-rows" aria-label="Data">
+        <ul className="row-list" aria-label="Data">
           {tables.data.map((t) => {
             const used = flowCount(t, versions.data ?? []);
             return (
-              <li key={t.artifact.id} className="set-row">
-                <span className="set-row-name">{t.name}</span>
-                <span className="set-row-meta">
-                  {t.total_rows.toLocaleString()} rows · {t.total_columns} columns · used by {used} {used === 1 ? "flow" : "flows"}
+              <li key={t.artifact.id} className="row-list-item">
+                <span className="row-list-name">{t.name}</span>
+                <span className="row-list-meta">
+                  {tableSize(t)} · used by {used} {used === 1 ? "flow" : "flows"}
                 </span>
               </li>
             );

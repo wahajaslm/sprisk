@@ -80,6 +80,11 @@ describe("the question ledger report", () => {
     expect(sources).toHaveTextContent("442 rows · 11 columns");
   });
 
+  it("points to the Objective page when there is no question yet", async () => {
+    renderWithApi(<ReportsPage />);
+    expect(await screen.findByText("No question yet. State one on the Objective page.")).toBeInTheDocument();
+  });
+
   it("shows why the questions cannot be read", async () => {
     server.use(http.get("/api/question_versions", () => HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })));
     renderWithApi(<ReportsPage />);

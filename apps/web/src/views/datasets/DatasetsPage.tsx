@@ -3,7 +3,8 @@ import { useState } from "react";
 
 import { useLoadedTables } from "../../api/datasets.ts";
 import { usePipelineVersions } from "../../api/hooks.ts";
-import { flowCount, flows } from "../../flow/flows.ts";
+import { flowCount, flowOfVersion, flows } from "../../flow/flows.ts";
+import { tableSize } from "./tableSize.ts";
 import { flowName } from "../../flow/labels.ts";
 import { shortName } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
@@ -51,13 +52,9 @@ export function DatasetsPage() {
         ) : (
           <div role="list" aria-label="Dataset list">
             {shown.map((d) => (
-              <ListRow
-                key={d.artifact.id}
-                title={d.name}
-                meta={`${d.total_rows.toLocaleString()} rows · ${d.total_columns} cols · ${shortName(d.operator)}`}
-                selected={d === current}
-                onClick={() => setPicked(d.artifact.id)}
-              />
+              <div key={d.artifact.id} role="listitem">
+                <ListRow title={d.name} meta={`${tableSize(d)} · ${shortName(d.operator)}`} selected={d === current} onClick={() => setPicked(d.artifact.id)} />
+              </div>
             ))}
           </div>
         )}
@@ -76,7 +73,7 @@ const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}
 function uses(dataset: LoadedTable, versions: PipelineVersion[]): Use[] {
   const all = flows(versions);
   const named = dataset.used_by.map((use) => {
-    const flow = all.find((f) => f.ids.includes(use.pipeline_version_id));
+    const flow = flowOfVersion(all, use.pipeline_version_id);
     return { label: flow ? `${flowName(flow.head)} · ${use.node_id}` : use.node_id, use };
   });
   return named.filter((n, i) => named.findIndex((m) => m.label === n.label) === i);

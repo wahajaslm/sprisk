@@ -7,12 +7,15 @@ export interface TabsProps {
   items: { value: string; label: ReactNode }[];
   value: string;
   onChange: (v: string) => void;
+  /** What the selected tab shows: its tab panel. */
+  children: ReactNode;
 }
 
-/** A page's sub-tabs: text tabs with a 1px underline on the active one, in a 48px bar. */
-export function Tabs({ label, items, value, onChange }: TabsProps) {
+/** A page's sub-tabs: text tabs with a 1px underline on the active one, in a 48px bar, over the
+ * selected tab's panel. */
+export function Tabs({ label, items, value, onChange, children }: TabsProps) {
   return (
-    <RadixTabs.Root value={value} onValueChange={onChange}>
+    <RadixTabs.Root value={value} onValueChange={onChange} className="page-tabs-root">
       <RadixTabs.List className="page-tabs" aria-label={label}>
         {items.map((it) => (
           <RadixTabs.Trigger key={it.value} value={it.value} className="page-tab">
@@ -20,6 +23,9 @@ export function Tabs({ label, items, value, onChange }: TabsProps) {
           </RadixTabs.Trigger>
         ))}
       </RadixTabs.List>
+      <RadixTabs.Content value={value} className="page-tab-panel">
+        {children}
+      </RadixTabs.Content>
     </RadixTabs.Root>
   );
 }

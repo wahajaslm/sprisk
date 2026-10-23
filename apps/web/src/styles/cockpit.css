@@ -8370,6 +8370,8 @@ p { margin: 0; }
 .page-tab { display: flex; align-items: center; padding: 0; border: 0; background: transparent; font-size: var(--fs-13-5); font-weight: var(--fw-medium); color: var(--text-label); cursor: pointer; }
 .page-tab:hover { color: var(--text-primary); }
 .page-tab[data-state="active"] { color: var(--text-primary); box-shadow: inset 0 -1px 0 var(--text-primary); }
+.page-tabs-root { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.page-tab-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; outline: none; }
 .page-tab:focus-visible { outline: 1px solid var(--border-control-hover); outline-offset: 2px; }
 
 /* ── Experiments: Monitor tab ── */
@@ -8399,20 +8401,11 @@ p { margin: 0; }
 .report-history { list-style: none; padding: 0; }
 .report-history li { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: var(--sp-12); padding: 7px 0; border-bottom: 1px solid var(--alpha-05); }
 .report-links { display: flex; flex-wrap: wrap; gap: var(--sp-6); }
-.report-sources { list-style: none; margin: 0; padding: 18px 28px; max-width: 860px; }
-.report-sources li { display: flex; justify-content: space-between; gap: var(--sp-12); padding: 10px 0; border-bottom: 1px solid var(--alpha-05); font-size: var(--fs-13-5); color: var(--text-primary); }
 
 /* ── Settings: rows of installed things ── */
 .set-scroll { flex: 1; min-height: 0; overflow: auto; }
 .set-group { padding: 18px 28px 0; }
 .set-group-title { margin: 0 0 var(--sp-6); font-size: var(--fs-12-5); font-weight: var(--fw-medium); color: var(--text-label); }
-.set-rows { list-style: none; margin: 0; padding: 0 28px; max-width: 860px; }
-.set-group .set-rows { padding: 0; }
-.set-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); width: 100%; min-height: 52px; padding: 0; border: 0; border-bottom: 1px solid var(--alpha-05); background: transparent; text-align: left; font: inherit; color: inherit; }
-button.set-row { cursor: pointer; }
-button.set-row:hover .set-row-name, button.set-row[aria-expanded="true"] .set-row-name { color: var(--text-strong); }
-.set-row-name { font-size: var(--fs-14); color: var(--text-primary); }
-.set-row-meta { font-size: var(--fs-12-5); color: var(--text-label); font-variant-numeric: tabular-nums; }
 .set-detail { display: flex; flex-direction: column; gap: var(--sp-10); padding: var(--sp-12) 0 var(--sp-16); font-size: var(--fs-13); color: var(--text-body); }
 .set-detail p { margin: 0; color: var(--text-secondary); }
 .set-detail dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: var(--sp-6) var(--sp-16); margin: 0; }
@@ -8423,7 +8416,14 @@ button.set-row:hover .set-row-name, button.set-row[aria-expanded="true"] .set-ro
 /* ── Datasets: detail, profile and lineage ── */
 .ds-detail { display: flex; flex-direction: column; min-height: 0; }
 .ds-profile { display: grid; gap: var(--sp-16); max-width: 1200px; padding: 20px 28px 40px; }
-.ds-lineage { list-style: none; margin: 0; padding: 12px 28px; max-width: 860px; }
-.ds-lineage li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); min-height: 52px; border-bottom: 1px solid var(--alpha-05); font-size: var(--fs-14); color: var(--text-primary); }
 
 .nb-new { padding: var(--sp-8) var(--sp-10); }
+
+/* ── Row list: one name and its facts per 52px row (Settings, Lineage, Sources) ── */
+.row-list { list-style: none; margin: 0; padding: 12px 28px; max-width: 860px; }
+.set-group .row-list { padding: 0; }
+.row-list-item { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); width: 100%; min-height: 52px; padding: 0; border: 0; border-bottom: 1px solid var(--alpha-05); background: transparent; text-align: left; font: inherit; font-size: var(--fs-14); color: var(--text-primary); }
+button.row-list-item { cursor: pointer; }
+button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="true"] .row-list-name { color: var(--text-strong); }
+.row-list-name { color: var(--text-primary); }
+.row-list-meta { font-size: var(--fs-12-5); color: var(--text-label); font-variant-numeric: tabular-nums; }

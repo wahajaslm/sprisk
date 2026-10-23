@@ -14,6 +14,7 @@ import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { Tabs } from "../../components/ui/Tabs.tsx";
 import { flows } from "../../flow/flows.ts";
 import { flowName } from "../../flow/labels.ts";
+import { tableSize } from "../datasets/tableSize.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { useWorkbench } from "../../workbench/workbench.ts";
 import { currentQuestion, openEntries } from "../objective/ledger.ts";
@@ -102,13 +103,14 @@ export function ReportsPage() {
             </>
           }
         />
-        <Tabs label="Report" items={TABS.map((t) => ({ value: t, label: t }))} value={tab} onChange={(t) => setTab(t as Tab)} />
-        <div className="report-scroll">
-          {tab === "Questions" && question && entry && (
-            <EntryReport entry={entry} question={question} history={questions.data} versions={versions.data ?? []} />
-          )}
-          {tab === "Sources" && <Sources />}
-        </div>
+        <Tabs label="Report" items={TABS.map((t) => ({ value: t, label: t }))} value={tab} onChange={(t) => setTab(t as Tab)}>
+          <div className="report-scroll">
+            {tab === "Questions" && question && entry && (
+              <EntryReport entry={entry} question={question} history={questions.data} versions={versions.data ?? []} />
+            )}
+            {tab === "Sources" && <Sources />}
+          </div>
+        </Tabs>
       </main>
     </div>
   );
@@ -205,13 +207,11 @@ function Sources() {
   if (tables.isPending) return <Loading text="Loading sources…" pad />;
   if (tables.data.length === 0) return <p className="muted pad">No data loaded yet.</p>;
   return (
-    <ul className="report-sources" aria-label="Sources">
+    <ul className="row-list" aria-label="Sources">
       {tables.data.map((t) => (
-        <li key={t.artifact.id}>
-          <span>{t.name}</span>
-          <span className="muted">
-            {t.total_rows.toLocaleString()} rows · {t.total_columns} columns
-          </span>
+        <li key={t.artifact.id} className="row-list-item">
+          <span className="row-list-name">{t.name}</span>
+          <span className="row-list-meta">{tableSize(t)}</span>
         </li>
       ))}
     </ul>

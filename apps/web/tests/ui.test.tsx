@@ -53,11 +53,18 @@ it("page tabs are real tabs: the selected one is marked, and arrow keys move bet
   const { useState } = await import("react");
   function Page() {
     const [tab, setTab] = useState("card");
-    return <Tabs label="Model" value={tab} onChange={setTab} items={[{ value: "card", label: "Card" }, { value: "explain", label: "Explain" }]} />;
+    return (
+      <Tabs label="Model" value={tab} onChange={setTab} items={[{ value: "card", label: "Card" }, { value: "explain", label: "Explain" }]}>
+        <p>Showing {tab}</p>
+      </Tabs>
+    );
   }
   render(<Page />);
   expect(screen.getByRole("tablist", { name: "Model" })).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "Card" })).toHaveAttribute("aria-selected", "true");
+  const panel = screen.getByRole("tabpanel");
+  expect(panel).toHaveTextContent("Showing card");
+  expect(screen.getByRole("tab", { name: "Card" })).toHaveAttribute("aria-controls", panel.id);
 
   await userEvent.click(screen.getByRole("tab", { name: "Explain" }));
   expect(screen.getByRole("tab", { name: "Explain" })).toHaveAttribute("aria-selected", "true");

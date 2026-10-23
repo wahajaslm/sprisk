@@ -68,7 +68,7 @@ describe("datasets", () => {
     const list = await screen.findByRole("list", { name: "Dataset list" });
     const item = within(list).getByRole("button", { name: /^iris\.csv/ });
     expect(item).toHaveTextContent("120 rows");
-    expect(item).toHaveTextContent("3 cols");
+    expect(item).toHaveTextContent("3 columns");
     expect(within(await screen.findByRole("region", { name: "iris.csv" })).getByText(/iris\.csv · load/)).toBeInTheDocument();
     expect(within(list).getByRole("button", { name: /^penguins\.csv/ })).toHaveTextContent("344 rows");
   });
@@ -134,6 +134,12 @@ describe("datasets", () => {
     expect(lineage).toHaveTextContent(/iris\.csv.*load/);
     await userEvent.click(within(lineage).getByRole("button", { name: "Open" }));
     expect(useSelection.getState()).toMatchObject({ nav: "Flow", pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+  });
+
+  it("says so when no flow loads the table any more", async () => {
+    serve(() => HttpResponse.json([{ ...iris, used_by: [] }]));
+    await userEvent.click(await screen.findByRole("tab", { name: "Lineage" }));
+    expect(await screen.findByText("No flow loads this table yet.")).toBeInTheDocument();
   });
 
   it("marks a column's missing share red only from 20%", async () => {

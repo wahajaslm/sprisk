@@ -39,36 +39,40 @@ export function DatasetDetail({ dataset, lineage }: { dataset: LoadedTable; line
         description={`Used by ${lineage.map((l) => l.label).join(", ") || "no flow"}`}
         {...(first ? { actions: <Button variant="primary" onClick={() => open(first)}>Open in flow</Button> } : {})}
       />
-      <Tabs label="Dataset" items={TABS.map((t) => ({ value: t, label: t }))} value={tab} onChange={(t) => setTab(t as Tab)} />
-      {tab === "Lineage" ? (
-        <ul className="ds-lineage" aria-label="Lineage">
-          {lineage.map((l) => (
-            <li key={l.label}>
-              <span>{l.label}</span>
-              <Button size="sm" onClick={() => open(l.use)}>Open</Button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="ds-profile">
-          {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
-          <p className="nv-note ds-note">
-            Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
-            Missing counts empty cells, NaN and infinity.
-          </p>
-          {profile.isError ? (
-            <p role="alert" className="error">{profile.error.message}</p>
-          ) : profile.isPending ? (
-            <Loading text="Profiling the table…" />
-          ) : (
-            <>
-              <Partial profile={profile.data} />
-              <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
-              <Plots profile={profile.data} />
-            </>
-          )}
-        </div>
-      )}
+      <Tabs label="Dataset" items={TABS.map((t) => ({ value: t, label: t }))} value={tab} onChange={(t) => setTab(t as Tab)}>
+        {tab === "Lineage" ? (
+          <>
+            {lineage.length === 0 && <p className="muted pad">No flow loads this table yet.</p>}
+            <ul className="row-list" aria-label="Lineage">
+              {lineage.map((l) => (
+                <li key={l.label} className="row-list-item">
+                  <span>{l.label}</span>
+                  <Button size="sm" onClick={() => open(l.use)}>Open</Button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <div className="ds-profile">
+            {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
+            <p className="nv-note ds-note">
+              Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
+              Missing counts empty cells, NaN and infinity.
+            </p>
+            {profile.isError ? (
+              <p role="alert" className="error">{profile.error.message}</p>
+            ) : profile.isPending ? (
+              <Loading text="Profiling the table…" />
+            ) : (
+              <>
+                <Partial profile={profile.data} />
+                <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
+                <Plots profile={profile.data} />
+              </>
+            )}
+          </div>
+        )}
+      </Tabs>
     </section>
   );
 }

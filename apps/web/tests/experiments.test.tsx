@@ -111,6 +111,13 @@ describe("experiments frame", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("split failed: worker exited");
   });
 
+  it("says why the chosen run's steps cannot be read", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json({ errors: [{ code: "internal", message: "store locked" }] }, { status: 500 })));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<Experiments />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("store locked");
+  });
+
   it("shows the chosen run's headline metric and its change from the run before", async () => {
     twoVersions();
     renderWithApi(<Experiments />);
