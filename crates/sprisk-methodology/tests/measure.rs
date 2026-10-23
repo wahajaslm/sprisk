@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use sprisk_contracts::{Operator, PipelineVersion, QuestionVersion, parse};
-use sprisk_methodology::{ResolveError, RuleCatalog, measure::measure};
+use sprisk_methodology::{RuleCatalog, measure::measure};
 use sprisk_registry::Registry;
 
 fn fixture() -> PathBuf {
@@ -176,7 +176,7 @@ fn a_producer_whose_concept_is_unbound_is_not_added_and_says_what_to_state() {
     assert!(measured.changes.is_empty());
     assert_eq!(measured.nodes.len(), 2);
     assert_eq!(
-        measured.unbound,
+        measured.left_out,
         [
             "data.repeated_items needs common.item_title (Short text that names the item a row describes.): state which column holds it, if one does."
         ]
@@ -184,12 +184,62 @@ fn a_producer_whose_concept_is_unbound_is_not_added_and_says_what_to_state() {
 }
 
 #[test]
-fn a_flow_with_no_step_of_the_attach_role_is_refused() {
+fn a_producer_with_no_step_of_its_attach_role_is_left_out_with_a_note() {
     let ops = operators();
     let nodes = json!([{ "id": "load", "operator": LOAD, "params": { "path": "standin.csv", "format": "csv" } }]);
-    let refused = measure(&catalog(&ops), &flow(nodes, json!([])), &titled(), &ops).unwrap_err();
-    assert!(
-        matches!(refused, ResolveError::NotInsertable(ref why) if why.contains("no step has the role split")),
-        "{refused}"
+    let measured = measure(&catalog(&ops), &flow(nodes, json!([])), &titled(), &ops).unwrap();
+
+    assert!(measured.changes.is_empty());
+    assert_eq!(measured.nodes.len(), 1);
+    assert_eq!(
+        measured.left_out,
+        ["data.repeated_items needs data.near_duplicate_groups, but no step has the role split."]
+    );
+}
+
+#[test]
+fn a_producer_with_two_steps_of_its_attach_role_is_left_out_with_a_note() {
+    let ops = operators();
+    let nodes = json!([
+        { "id": "load", "operator": LOAD, "params": { "path": "standin.csv", "format": "csv" } },
+        { "id": "split", "operator": SPLIT, "params": { "test_fraction": 0.2, "seed": 42 } },
+        { "id": "split_2", "operator": SPLIT, "params": { "test_fraction": 0.2, "seed": 42 } },
+    ]);
+    let edges = json!([
+        { "from": "load.data", "to": "split.data" },
+        { "from": "load.data", "to": "split_2.data" },
+    ]);
+    let measured = measure(&catalog(&ops), &flow(nodes, edges), &titled(), &ops).unwrap();
+
+    assert!(measured.changes.is_empty());
+    assert_eq!(
+        measured.left_out,
+        [
+            "data.repeated_items needs data.near_duplicate_groups, but several steps have the role split."
+        ]
+    );
+}
+
+#[test]
+fn a_rebound_concept_resets_the_producer_s_column() {
+    let ops = operators();
+    let (nodes, edges) = load_split();
+    let first = measure(&catalog(&ops), &flow(nodes, edges), &titled(), &ops).unwrap();
+    let placed = flow(json!(first.nodes), json!(first.edges));
+    let retitled = question(
+        json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_title",
+        "source": { "column": "titre" }, "set_by": { "assurance": "stated" } }]),
+    );
+
+    let again = measure(&catalog(&ops), &placed, &retitled, &ops).unwrap();
+    let step = again
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "near_duplicates")
+        .unwrap();
+    assert_eq!(step.params.get("title_column"), Some(&json!("titre")));
+    assert_eq!(
+        again.changes,
+        ["Sets near_duplicates's columns from the question's bindings."]
     );
 }

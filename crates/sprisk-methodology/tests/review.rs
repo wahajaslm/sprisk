@@ -11,12 +11,11 @@ use sprisk_methodology::review::{
 };
 use sprisk_registry::Registry;
 
+mod repo;
+use repo::repo_catalog;
+
 fn catalog() -> RuleCatalog {
-    RuleCatalog::load_dir(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology"),
-        [],
-    )
-    .unwrap()
+    repo_catalog()
 }
 
 fn flow(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> PipelineVersion {

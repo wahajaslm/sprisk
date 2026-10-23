@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::Path;
-
 use serde_json::{Value, json};
 use sprisk_contracts::{MethodologyReview, QuestionVersion, WalkStopReason, parse};
 use sprisk_methodology::RuleCatalog;
@@ -9,12 +7,11 @@ use sprisk_methodology::engine::{
     Action, HeadRun, Start, next_action, start, unconfirmed_reads, with_test_scoring,
 };
 
+mod repo;
+use repo::repo_catalog;
+
 fn catalog() -> RuleCatalog {
-    RuleCatalog::load_dir(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology"),
-        [],
-    )
-    .unwrap()
+    repo_catalog()
 }
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";

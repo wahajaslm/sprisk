@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use sprisk_contracts::Operator;
 use sprisk_methodology::{CatalogError, RuleCatalog};
@@ -12,11 +12,8 @@ use sprisk_registry::Registry;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
-fn repo(path: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(path)
-}
+mod repo;
+use repo::{repo, repo_catalog};
 
 /// A copy of the split-decision fixture, with a copy of the registered near-duplicates
 /// producer to break one file in.
@@ -103,9 +100,7 @@ fn methods_load_beside_the_old_rules() {
 
 #[test]
 fn every_pack_in_the_repo_still_loads_with_the_registered_operators() {
-    let plugins = Registry::load_dir(&repo("plugins")).unwrap();
-    let catalog = RuleCatalog::load_dir(&repo("methodology"), plugins.operators()).unwrap();
-    assert!(catalog.rules().count() > 0);
+    assert!(repo_catalog().rules().count() > 0);
 }
 
 #[test]
@@ -489,4 +484,16 @@ fn a_producer_with_no_evidence_output_is_refused() {
     assert!(
         refused(pack.path()).contains("produces evidence, so it needs an output named evidence")
     );
+}
+
+#[test]
+fn a_producer_with_no_attach_is_refused() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        NEAR_DUPLICATES,
+        "attach: { role: split, side: input }\n",
+        "",
+    );
+    assert!(refused(pack.path()).contains("produces evidence, so it needs an attach"));
 }

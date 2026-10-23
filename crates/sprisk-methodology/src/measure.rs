@@ -6,10 +6,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    Edge, Method, Node, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion, parse,
+    Edge, Method, Node, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion, TaskType,
+    parse,
 };
 
 use crate::compare::edge;
+use crate::decision::free_id;
 use crate::{CatalogError, ResolveError, RuleCatalog, methods};
 
 /// The flow with every needed producer in place.
@@ -19,8 +21,9 @@ pub struct Measuring {
     pub edges: Vec<Edge>,
     /// What changed, one sentence each. Empty: the flow already measures what is needed.
     pub changes: Vec<String>,
-    /// Producers left out because the question binds no column to a concept they read.
-    pub unbound: Vec<String>,
+    /// Producers left out, and why: a concept they read is unbound, or the flow has no one
+    /// step where they attach.
+    pub left_out: Vec<String>,
 }
 
 /// Places the producers of the evidence that the methods fitting `question` need.
@@ -36,27 +39,25 @@ pub fn measure(
         nodes: pipeline.nodes.clone(),
         edges: pipeline.edges.clone(),
         changes: Vec::new(),
-        unbound: Vec::new(),
+        left_out: Vec::new(),
     };
-    let task = question.task.value;
-    let fits = |m: &&Method| {
-        m.applies_when
-            .as_ref()
-            .is_none_or(|w| w.task.contains(&task))
-    };
-    for method in catalog.methods().filter(fits) {
+    for method in fitting(catalog, question.task.value) {
         for kind in &method.needs.evidence {
             let producer = methods::producer(kind.as_str(), &by_id)
                 .map_err(|p| ResolveError::Rules(CatalogError::Evidence(p)))?;
             let need = format!("{} needs {}", method.decides.as_str(), kind.as_str());
             match bound_params(producer, question) {
-                Ok(params) => measuring.place(producer, params, &by_id, &need)?,
+                Ok(params) => {
+                    if let Some(why) = measuring.place(producer, params, &by_id, &need)? {
+                        measuring.left_out.push(format!("{need}, but {why}."));
+                    }
+                }
                 Err(concept) => {
                     let description = catalog
                         .concepts()
                         .find(|(id, _)| *id == concept)
                         .map_or("", |(_, c)| c.description.as_str());
-                    measuring.unbound.push(format!(
+                    measuring.left_out.push(format!(
                         "{} needs {concept} ({description}): state which column holds it, if one does.",
                         method.decides.as_str()
                     ));
@@ -65,6 +66,15 @@ pub fn measure(
         }
     }
     Ok(measuring)
+}
+
+/// The methods that apply to a question of `task`, in decision order.
+pub fn fitting(catalog: &RuleCatalog, task: TaskType) -> impl Iterator<Item = &Method> {
+    catalog.methods().filter(move |m| {
+        m.applies_when
+            .as_ref()
+            .is_none_or(|w| w.task.contains(&task))
+    })
 }
 
 /// The producer's concept params, each the column the question binds to its concept; the
@@ -83,21 +93,27 @@ fn bound_params(producer: &Operator, question: &QuestionVersion) -> Result<Value
 }
 
 impl Measuring {
+    /// Puts `producer` where it attaches, or moves it back there. Some(why) when the flow
+    /// has no one place for it: the producer is left out and the walk goes on.
     fn place(
         &mut self,
         producer: &Operator,
         params: Value,
         operators: &BTreeMap<String, &Operator>,
         need: &str,
-    ) -> Result<(), ResolveError> {
-        let refuse = |why: String| ResolveError::NotInsertable(why);
+    ) -> Result<Option<String>, ResolveError> {
         let id = producer.id.as_str();
-        let attach = producer
-            .attach
-            .as_ref()
-            .ok_or_else(|| refuse(format!("{id} produces evidence but has no attach")))?;
+        let attach = producer.attach.as_ref().ok_or_else(|| {
+            ResolveError::NotInsertable(format!("{id} produces evidence but has no attach"))
+        })?;
+        // Slice 4 adds producers that read a step's outputs, with the verifications needing them.
+        if attach.side == OperatorAttachSide::Output {
+            return Ok(Some(format!(
+                "{id} reads a step's outputs, which the engine does not place yet"
+            )));
+        }
         let role = attach.role;
-        let anchors: Vec<String> = self
+        let anchors: Vec<&Node> = self
             .nodes
             .iter()
             .filter(|n| {
@@ -105,34 +121,32 @@ impl Measuring {
                     .get(n.operator.as_str())
                     .is_some_and(|o| o.role == Some(role))
             })
-            .map(|n| n.id.to_string())
             .collect();
         // ADR-0063: placement by role assumes one step per role.
         let anchor = match anchors.as_slice() {
-            [one] => one.clone(),
-            [] => return Err(refuse(format!("no step has the role {role}"))),
-            _ => return Err(refuse(format!("several steps have the role {role}"))),
+            [one] => one.id.to_string(),
+            [] => return Ok(Some(format!("no step has the role {role}"))),
+            _ => return Ok(Some(format!("several steps have the role {role}"))),
         };
-        let (side, mut wanted) = (attach.side, BTreeSet::new());
+        let mut wanted = BTreeSet::new();
         for port in producer.inputs.iter().map(|p| p.name.as_str()) {
-            let from = match side {
-                OperatorAttachSide::Input => self
-                    .edges
-                    .iter()
-                    .find(|e| e.to.step_and_port() == (anchor.as_str(), port))
-                    .map(|e| e.from.to_string())
-                    .ok_or_else(|| refuse(format!("{anchor} reads nothing on {port}")))?,
-                OperatorAttachSide::Output => format!("{anchor}.{port}"),
+            let Some(from) = self
+                .edges
+                .iter()
+                .find(|e| e.to.step_and_port() == (anchor.as_str(), port))
+            else {
+                return Ok(Some(format!("{anchor} reads nothing on {port}")));
             };
-            wanted.insert((from, port.to_owned()));
+            wanted.insert((from.from.to_string(), port.to_owned()));
         }
-        let rows = match side {
-            OperatorAttachSide::Input => "reads",
-            OperatorAttachSide::Output => "writes",
-        };
 
         let Some(at) = self.nodes.iter().position(|n| n.operator == producer.id) else {
-            let step = self.free_id(id);
+            let name = id
+                .split('@')
+                .next()
+                .and_then(|n| n.rsplit('.').next())
+                .unwrap_or(id);
+            let step = free_id(&self.nodes, name);
             self.nodes.push(parse(
                 &json!({ "id": step, "operator": id, "params": params }).to_string(),
             )?);
@@ -140,8 +154,8 @@ impl Measuring {
                 self.edges.push(edge(from, &format!("{step}.{port}"))?);
             }
             self.changes
-                .push(format!("Adds {step} on the rows {anchor} {rows}: {need}."));
-            return Ok(());
+                .push(format!("Adds {step} on the rows {anchor} reads: {need}."));
+            return Ok(None);
         };
         let step = self.nodes[at].id.to_string();
         let reads: BTreeSet<(String, String)> = self
@@ -156,7 +170,7 @@ impl Measuring {
                 self.edges.push(edge(from, &format!("{step}.{port}"))?);
             }
             self.changes
-                .push(format!("Moves {step} onto the rows {anchor} {rows} now."));
+                .push(format!("Moves {step} onto the rows {anchor} reads now."));
         }
         if serde_json::to_value(&self.nodes[at].params)? != params {
             self.nodes[at].params = parse(&params.to_string())?;
@@ -164,27 +178,6 @@ impl Measuring {
                 "Sets {step}'s columns from the question's bindings."
             ));
         }
-        Ok(())
-    }
-
-    /// The operator's name, as `near_duplicates` for `sprisk.profile.near_duplicates@1.0.0`,
-    /// with a number added when a step already has that id.
-    fn free_id(&self, operator: &str) -> String {
-        let name = operator
-            .split('@')
-            .next()
-            .and_then(|n| n.rsplit('.').next())
-            .unwrap_or(operator);
-        let taken = |id: &str| self.nodes.iter().any(|n| n.id.as_str() == id);
-        (1..)
-            .map(|i| {
-                if i == 1 {
-                    name.to_owned()
-                } else {
-                    format!("{name}_{i}")
-                }
-            })
-            .find(|id| !taken(id))
-            .unwrap_or_else(|| name.to_owned())
+        Ok(None)
     }
 }

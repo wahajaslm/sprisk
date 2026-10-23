@@ -16,7 +16,7 @@ use sprisk_methodology::engine::{
     with_test_scoring,
 };
 use sprisk_methodology::evidence::{self, EVIDENCE_PORT};
-use sprisk_methodology::measure::{Measuring, measure};
+use sprisk_methodology::measure::{Measuring, fitting, measure};
 
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
@@ -309,7 +309,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             let reason = format!("Runs the flow to measure {}.", kinds.join(", "));
             return run(state, walk, round, &head, deadline, &reason).await;
         }
-        notes = measuring.unbound;
+        notes = measuring.left_out;
         notes.extend(measured(state, &steps, &head, &pipeline, &question).await?);
     }
     let noted = |detail: String| {
@@ -445,12 +445,7 @@ async fn measured(
             ApiError::Internal(format!("evidence of step {}: {e}", node.id.as_str()))
         })?;
         evidence::check(operator, &value).map_err(|e| ApiError::Internal(e.to_string()))?;
-        let task = question.task.value;
-        for method in state.rules.methods().filter(|m| {
-            m.applies_when
-                .as_ref()
-                .is_none_or(|w| w.task.contains(&task))
-        }) {
+        for method in fitting(&state.rules, question.task.value) {
             for kind in method
                 .needs
                 .evidence

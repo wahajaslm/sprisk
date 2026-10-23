@@ -109,6 +109,10 @@ fn check_operator(operator: &Operator, provided: &Provided) -> Result<(), Catalo
             "produces evidence, so it needs an output named {EVIDENCE_PORT}"
         )));
     }
+    // The engine adds a producer only where its manifest says it attaches.
+    if !operator.produces.is_empty() && operator.attach.is_none() {
+        return Err(refuse("produces evidence, so it needs an attach".into()));
+    }
     for (param, concept) in &operator.concepts {
         let found = known_concept(concept.as_str(), provided).map_err(refuse)?;
         if param_schema(operator, param.as_str()).is_none() {

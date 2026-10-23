@@ -1,13 +1,12 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use sprisk_methodology::{CatalogError, RuleCatalog};
 
-fn repo_methodology() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology")
-}
+mod repo;
+use repo::repo_catalog;
 
 fn rule_yaml(id: &str, decides: &str) -> String {
     format!(
@@ -77,7 +76,7 @@ fn refused(manifest: &str) -> String {
 
 #[test]
 fn every_rule_in_the_repo_loads_with_its_manifest_as_source() {
-    let catalog = RuleCatalog::load_dir(&repo_methodology(), []).unwrap();
+    let catalog = repo_catalog();
     assert_eq!(catalog.rules().count(), 65);
 
     let source = catalog
@@ -118,7 +117,7 @@ fn a_python_module_beside_the_manifest_is_served_as_source() {
 
 #[test]
 fn a_step_is_routed_to_the_active_rule_that_applies_to_its_operator() {
-    let catalog = RuleCatalog::load_dir(&repo_methodology(), []).unwrap();
+    let catalog = repo_catalog();
     let rule = catalog
         .rules_for_operator("sprisk.clean.scale@1.0.0")
         .next()
@@ -325,7 +324,7 @@ fn an_invalid_manifest_is_refused_with_its_path() {
 
 #[test]
 fn an_unknown_rule_has_no_source() {
-    let catalog = RuleCatalog::load_dir(&repo_methodology(), []).unwrap();
+    let catalog = repo_catalog();
     assert!(matches!(
         catalog.source("methodology.pack.none@1.0.0"),
         Err(CatalogError::UnknownRule(_))
