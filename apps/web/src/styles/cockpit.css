@@ -1209,6 +1209,12 @@ p { margin: 0; }
 .ledger-editor header { justify-content: space-between; }.ledger-editor footer { justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--alpha-04); background: var(--gray-2); }
 .ledger-editor label { display: grid; gap: var(--space-1); color: var(--muted); font-size: var(--text-sm); }
 .ledger-editor input, .ledger-editor select, .ledger-editor textarea { width: 100%; padding: var(--space-2); border: 1px solid var(--alpha-06); border-radius: 4px; background: var(--gray-0); color: var(--ink); font: var(--text-sm) var(--sans); }
+/* Form fields on Flow Studio pages (Objective, Start walk). Focus brightens the border (design system). */
+.ds-input { width: 100%; min-height: var(--size-input); padding: 7px 10px; border: 1px solid var(--border-input); border-radius: var(--radius-sm); background: var(--gray-0); color: var(--text-body); font: var(--fs-13) var(--sans); transition: border-color var(--dur-fast); }
+.ds-input:hover { border-color: var(--alpha-14); }
+.ds-input:focus { outline: none; border-color: var(--alpha-25); }
+.ds-input::placeholder { color: var(--ink-7); }
+textarea.ds-input { resize: vertical; line-height: 1.5; }
 .ledger-editor textarea { min-height: 64px; resize: vertical; }.ledger-editor > label:first-of-type textarea { min-height: 84px; }
 .ledger-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 @media (max-width: 900px) { .ledger-body { grid-template-columns: 1fr; }.ledger-fields { grid-template-columns: 1fr; } }
