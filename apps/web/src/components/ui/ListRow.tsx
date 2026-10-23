@@ -1,60 +1,131 @@
-import type { ReactNode } from "react";
-import { StatusDot, type StatusDotKind } from "./StatusDot.tsx";
+import React from "react";
 
-export type ListRowProps = {
+export interface ListRowProps {
   title: string;
   meta?: string;
-  trailing?: ReactNode;
-  state?: ReactNode;
-  status?: StatusDotKind | string;
-  mark?: ReactNode;
+  trailing?: React.ReactNode;
+  status?: "ok" | "queued" | "warn" | "idle";
   selected?: boolean;
+  warn?: boolean;
+  onClick?: () => void;
+
+  // Compatibility props
+  mono?: boolean;
+  mark?: React.ReactNode;
+  state?: React.ReactNode;
   current?: boolean;
   pressed?: boolean;
-  warn?: boolean;
   disabled?: boolean;
-  mono?: boolean;
-  onClick: () => void;
-  className?: string;
-};
+}
 
-/** Flow Studio ListRow: 1-line or 2-line clickable row. Hover 5% white, selected 8% white, 6px radius, no border. */
 export function ListRow({
   title,
   meta,
   trailing,
-  state,
   status,
-  mark,
   selected = false,
+  warn = false,
+  onClick,
+  mono = false,
+  mark,
+  state,
   current,
   pressed,
-  warn = false,
   disabled = false,
-  mono = false,
-  onClick,
-  className = "",
 }: ListRowProps) {
+  const [h, setH] = React.useState(false);
   const isSelected = selected || current || pressed;
-  const isTwoLine = meta !== undefined;
-
-  const rightSide = trailing ?? state ?? (status ? <StatusDot status={status as StatusDotKind} /> : null);
+  const two = meta != null;
 
   return (
-    <button
-      type="button"
-      className={`list-row ${isTwoLine ? "two-line" : "one-line"} ${isSelected ? "selected" : ""} ${warn ? "warn" : ""} ${className}`.trim()}
-      aria-current={isSelected ? "true" : undefined}
-      aria-pressed={pressed}
-      disabled={disabled}
-      onClick={onClick}
+    <div
+      onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => !disabled && setH(true)}
+      onMouseLeave={() => !disabled && setH(false)}
+      style={{
+        borderRadius: "var(--radius-sm)",
+        padding: two ? "8px 10px" : "0 10px",
+        height: two ? "auto" : "var(--size-row)",
+        display: "flex",
+        flexDirection: two ? "column" : "row",
+        alignItems: two ? "stretch" : "center",
+        gap: two ? 2 : 10,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.45 : 1,
+        minWidth: 0,
+        background: isSelected ? "var(--bg-selected)" : h ? "var(--bg-hover)" : "transparent",
+      }}
     >
-      {mark}
-      <span className="row-main">
-        <span className={`row-title ${mono ? "mono" : ""}`.trim()}>{title}</span>
-        {isTwoLine && <span className="row-meta">{meta}</span>}
-      </span>
-      {rightSide && <span className="row-trailing">{rightSide}</span>}
-    </button>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          minWidth: 0,
+          flex: two ? "none" : 1,
+        }}
+      >
+        {mark && <span style={{ flexShrink: 0 }}>{mark}</span>}
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontFamily: mono ? "var(--font-mono)" : "inherit",
+            fontSize: two ? "var(--fs-14)" : "var(--fs-13-5)",
+            fontWeight: two ? "var(--fw-book)" : 400,
+            color: warn ? "var(--danger)" : isSelected ? "var(--text-strong)" : "var(--text-body)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {title}
+        </span>
+        {state && <span style={{ flexShrink: 0 }}>{state}</span>}
+        {trailing != null && (
+          <span
+            style={{
+              fontSize: "var(--fs-12-5)",
+              color: "var(--text-faint)",
+              fontVariantNumeric: "tabular-nums",
+              flexShrink: 0,
+            }}
+          >
+            {trailing}
+          </span>
+        )}
+        {status && !two && (
+          <span
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: 3,
+              flexShrink: 0,
+              alignSelf: "center",
+              background: {
+                ok: "var(--accent)",
+                queued: "var(--text-primary)",
+                warn: "var(--danger)",
+                idle: "var(--text-disabled)",
+              }[status],
+            }}
+          />
+        )}
+      </div>
+      {two && (
+        <span
+          style={{
+            fontSize: "var(--fs-12-5)",
+            color: "var(--ink-5)",
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {meta}
+        </span>
+      )}
+    </div>
   );
 }

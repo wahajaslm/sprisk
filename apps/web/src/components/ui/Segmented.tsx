@@ -1,39 +1,44 @@
-import type { ReactNode } from "react";
+import React from "react";
 
-export type SegmentedOption<T extends string = string> = {
+export interface SegmentedProps<T extends string = string> {
+  options: { value: T; label: React.ReactNode }[];
   value: T;
-  label: ReactNode;
-};
+  onChange?: (v: T) => void;
+}
 
-export type SegmentedProps<T extends string = string> = {
-  options: SegmentedOption<T>[];
-  value: T;
-  onChange: (value: T) => void;
-  className?: string;
-};
-
-/** Flow Studio Segmented: 2–3 option view switcher on a 4% fill track. */
-export function Segmented<T extends string = string>({
-  options,
-  value,
-  onChange,
-  className = "",
-}: SegmentedProps<T>) {
+export function Segmented<T extends string = string>({ options, value, onChange }: SegmentedProps<T>) {
   return (
-    <div className={`segmented ${className}`.trim()} role="tablist">
-      {options.map((opt) => {
-        const active = opt.value === value;
+    <div
+      style={{
+        display: "inline-flex",
+        gap: 2,
+        padding: 3,
+        borderRadius: "var(--radius-md)",
+        background: "var(--bg-subtle)",
+      }}
+    >
+      {options.map((o) => {
+        const on = o.value === value;
         return (
-          <button
-            key={opt.value}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            className={`segmented-item ${active ? "active" : ""}`}
-            onClick={() => onChange(opt.value)}
+          <div
+            key={o.value}
+            onClick={() => onChange && onChange(o.value)}
+            style={{
+              height: 24,
+              padding: "0 10px",
+              borderRadius: "var(--radius-sm)",
+              display: "flex",
+              alignItems: "center",
+              cursor: "pointer",
+              fontSize: "var(--fs-13)",
+              fontWeight: "var(--fw-medium)",
+              whiteSpace: "nowrap",
+              background: on ? "var(--alpha-09)" : "transparent",
+              color: on ? "var(--text-primary)" : "var(--ink-4)",
+            }}
           >
-            {opt.label}
-          </button>
+            {o.label}
+          </div>
         );
       })}
     </div>

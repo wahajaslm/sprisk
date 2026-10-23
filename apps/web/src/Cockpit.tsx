@@ -1,29 +1,17 @@
-import { Copilot } from "./views/Copilot.tsx";
-import { DatasetsPage } from "./views/datasets/DatasetsPage.tsx";
-import { Experiments } from "./views/Experiments.tsx";
-import { StepTabLabel } from "./views/inspector/step.tsx";
-import { ComingView, Placeholder } from "./views/Placeholder.tsx";
-import { ActivityBar } from "./views/ActivityBar.tsx";
-import { FlowPanel } from "./views/FlowPanel.tsx";
-import { NotebooksPage } from "./views/notebook/NotebooksPage.tsx";
-import { Sidebar } from "./views/Sidebar.tsx";
-import { StepTab } from "./views/StepTab.tsx";
-import { TopBar } from "./views/TopBar.tsx";
-import { ObjectivePage } from "./views/objective/ObjectivePage.tsx";
-import { MethodologyPage } from "./views/methodology/MethodologyPage.tsx";
-import { Dock } from "./workbench/DockAdapter.tsx";
-import { useSelection } from "./workbench/selection.ts";
-
-import { ReportsPage } from "./views/reports/ReportsPage.tsx";
-import { DeployPage } from "./views/deploy/DeployPage.tsx";
-import { SettingsPage } from "./views/settings/SettingsPage.tsx";
-
 import { useState, useEffect } from "react";
+import { TopBar } from "./views/TopBar.tsx";
+import { ActivityBar } from "./views/ActivityBar.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
-
-const views = { sidebar: Sidebar, flow: FlowPanel, copilot: Copilot, "step-tab": StepTab, placeholder: Placeholder };
-
-const COMING: Record<string, string> = {};
+import { ObjectivePage } from "./views/objective/ObjectivePage.tsx";
+import { FlowPage } from "./views/flow/FlowPage.tsx";
+import { DatasetsPage } from "./views/datasets/DatasetsPage.tsx";
+import { NotebooksPage } from "./views/notebook/NotebooksPage.tsx";
+import { MethodologyPage } from "./views/methodology/MethodologyPage.tsx";
+import { Experiments } from "./views/Experiments.tsx";
+import { DeployPage } from "./views/deploy/DeployPage.tsx";
+import { ReportsPage } from "./views/reports/ReportsPage.tsx";
+import { SettingsPage } from "./views/settings/SettingsPage.tsx";
+import { useSelection } from "./workbench/selection.ts";
 
 export function Cockpit() {
   const nav = useSelection((s) => s.nav);
@@ -50,7 +38,7 @@ export function Cockpit() {
           {nav === "Objective" ? (
             <ObjectivePage />
           ) : nav === "Flow" ? (
-            <Dock views={views} tabLabels={{ "step-tab": StepTabLabel }} />
+            <FlowPage />
           ) : nav === "Methodology" ? (
             <MethodologyPage />
           ) : nav === "Experiments" ? (
@@ -66,7 +54,7 @@ export function Cockpit() {
           ) : nav === "Settings" ? (
             <SettingsPage />
           ) : (
-            <ComingView title={nav} shows={COMING[nav] ?? "Page in development."} />
+            <ObjectivePage />
           )}
         </div>
       </div>

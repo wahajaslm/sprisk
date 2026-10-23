@@ -1,23 +1,38 @@
-import type { ReactNode } from "react";
+import React from "react";
 
-export type TagTone = "default" | "danger" | "queued" | "ok";
-
-export type TagProps = {
-  children: ReactNode;
-  tone?: TagTone;
+export interface TagProps {
+  children?: React.ReactNode;
   onClick?: () => void;
-  className?: string;
-};
+  tone?: "neutral" | "danger" | "default" | "queued" | "ok";
+}
 
-/** Flow Studio Tag: soft-filled chip for Copilot suggestions and inline labels, no outline. */
-export function Tag({ children, tone = "default", onClick, className = "" }: TagProps) {
-  const cls = ["tag", `tag-${tone}`, onClick ? "clickable" : "", className].filter(Boolean).join(" ");
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} className={cls}>
-        {children}
-      </button>
-    );
-  }
-  return <span className={cls}>{children}</span>;
+export function Tag({ children, onClick, tone = "neutral" }: TagProps) {
+  const [h, setH] = React.useState(false);
+  const isDanger = tone === "danger";
+  const c = isDanger
+    ? { background: "var(--danger-wash)", color: "var(--danger)" }
+    : {
+        background: h && onClick ? "var(--alpha-09)" : "var(--alpha-05)",
+        color: h && onClick ? "var(--text-primary)" : "var(--ink-4)",
+      };
+
+  return (
+    <span
+      onClick={onClick}
+      onMouseEnter={() => setH(true)}
+      onMouseLeave={() => setH(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "3px 8px",
+        borderRadius: "var(--radius-sm)",
+        fontSize: "var(--fs-12)",
+        cursor: onClick ? "pointer" : "default",
+        transition: "all var(--dur-fast)",
+        ...c,
+      }}
+    >
+      {children}
+    </span>
+  );
 }

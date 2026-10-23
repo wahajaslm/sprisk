@@ -1,35 +1,36 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import React from "react";
 
-export type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  icon: ReactNode;
+export interface IconButtonProps {
   label: string;
-  size?: "md" | "sm";
+  children?: React.ReactNode;
+  onClick?: () => void;
   active?: boolean;
-};
+}
 
-/** Flow Studio IconButton: accessible button with visible focus and hover states. */
-export function IconButton({
-  icon,
-  label,
-  size = "md",
-  active = false,
-  disabled = false,
-  className = "",
-  type = "button",
-  title,
-  ...rest
-}: IconButtonProps) {
-  const cls = ["icon-btn", `icon-btn-${size}`, active ? "active" : "", className].filter(Boolean).join(" ");
+export function IconButton({ label, children, onClick, active = false }: IconButtonProps) {
+  const [h, setH] = React.useState(false);
   return (
     <button
-      type={type}
+      title={label}
       aria-label={label}
-      title={title ?? label}
-      disabled={disabled}
-      className={cls}
-      {...rest}
+      onClick={onClick}
+      onMouseEnter={() => setH(true)}
+      onMouseLeave={() => setH(false)}
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: "var(--radius-sm)",
+        border: 0,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        background: h || active ? "var(--bg-hover)" : "transparent",
+        color: h || active ? "var(--text-primary)" : "var(--ink-5)",
+        transition: "all var(--dur-fast)",
+      }}
     >
-      {icon}
+      {children}
     </button>
   );
 }

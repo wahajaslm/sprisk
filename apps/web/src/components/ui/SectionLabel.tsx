@@ -1,55 +1,58 @@
-import type { ReactNode } from "react";
-import { Chevron } from "../../views/Icons.tsx";
+import React from "react";
 
-export type SectionLabelProps = {
-  children: ReactNode;
+export interface SectionLabelProps {
+  children?: React.ReactNode;
+  trailing?: React.ReactNode;
   collapsible?: boolean;
   open?: boolean;
   onToggle?: () => void;
-  trailing?: ReactNode;
-  count?: number | string;
-  stepNumber?: string;
-  className?: string;
-};
+}
 
-/** Flow Studio SectionLabel: 12.5px group heading above ListRows, collapsible. */
 export function SectionLabel({
   children,
+  trailing,
   collapsible = false,
   open = true,
   onToggle,
-  trailing,
-  count,
-  stepNumber,
-  className = "",
 }: SectionLabelProps) {
-  const content = (
-    <>
+  return (
+    <div
+      onClick={collapsible ? onToggle : undefined}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "0 10px 4px",
+        fontSize: "var(--fs-12-5)",
+        color: "var(--ink-6)",
+        cursor: collapsible ? "pointer" : "default",
+        userSelect: "none",
+      }}
+    >
+      <span>{children}</span>
       {collapsible && (
-        <span className={`section-label-chevron ${open ? "open" : ""}`} aria-hidden="true">
-          <Chevron />
+        <svg
+          width="9"
+          height="9"
+          viewBox="0 0 10 10"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+          style={{
+            transform: open ? "none" : "rotate(-90deg)",
+            transition: "transform var(--dur-fast)",
+          }}
+        >
+          <path d="M2.5 3.75L5 6.25l2.5-2.5" />
+        </svg>
+      )}
+      <span style={{ flex: 1 }} />
+      {trailing != null && (
+        <span style={{ fontSize: "var(--fs-12)", fontVariantNumeric: "tabular-nums" }}>
+          {trailing}
         </span>
       )}
-      {stepNumber && <span className="section-label-num">{stepNumber}</span>}
-      <span className="section-label-title">{children}</span>
-      {count !== undefined && <span className="section-label-count">{count}</span>}
-      <span className="spacer" />
-      {trailing && <span className="section-label-trailing">{trailing}</span>}
-    </>
+    </div>
   );
-
-  if (collapsible) {
-    return (
-      <button
-        type="button"
-        className={`section-label collapsible ${className}`.trim()}
-        aria-expanded={open}
-        onClick={onToggle}
-      >
-        {content}
-      </button>
-    );
-  }
-
-  return <div className={`section-label ${className}`.trim()}>{content}</div>;
 }

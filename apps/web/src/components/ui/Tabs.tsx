@@ -1,41 +1,41 @@
-import type { ReactNode } from "react";
+import React from "react";
 
-export type TabItem<T extends string = string> = {
-  value: T;
-  label: ReactNode;
-  badge?: ReactNode;
-};
+export interface TabsProps {
+  items: { value: string; label: React.ReactNode }[];
+  value: string;
+  onChange?: (v: string) => void;
+}
 
-export type TabsProps<T extends string = string> = {
-  items: TabItem<T>[];
-  value: T;
-  onChange: (value: T) => void;
-  className?: string;
-};
-
-/** Flow Studio Tabs: text tabs with 1px bottom underline on the active item, inside a 48px bar. */
-export function Tabs<T extends string = string>({
-  items,
-  value,
-  onChange,
-  className = "",
-}: TabsProps<T>) {
+export function Tabs({ items, value, onChange }: TabsProps) {
   return (
-    <div className={`tab-strip ${className}`.trim()} role="tablist">
-      {items.map((item) => {
-        const active = item.value === value;
+    <div
+      style={{
+        height: "var(--size-tabbar)",
+        display: "flex",
+        alignItems: "stretch",
+        gap: 20,
+        padding: "0 16px",
+        borderBottom: "1px solid var(--border-divider)",
+      }}
+    >
+      {items.map((it) => {
+        const on = it.value === value;
         return (
-          <button
-            key={item.value}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            className={`tab-strip-item ${active ? "active" : ""}`}
-            onClick={() => onChange(item.value)}
+          <div
+            key={it.value}
+            onClick={() => onChange && onChange(it.value)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              fontSize: "var(--fs-13-5)",
+              fontWeight: "var(--fw-medium)",
+              cursor: "pointer",
+              color: on ? "var(--text-primary)" : "var(--ink-5)",
+              boxShadow: on ? "inset 0 -1px 0 var(--ink-1)" : "none",
+            }}
           >
-            <span>{item.label}</span>
-            {item.badge && <span className="tab-strip-badge">{item.badge}</span>}
-          </button>
+            {it.label}
+          </div>
         );
       })}
     </div>

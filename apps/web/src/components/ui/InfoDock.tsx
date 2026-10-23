@@ -1,51 +1,111 @@
-import type { ReactNode } from "react";
-import { Chevron } from "../../views/Icons.tsx";
+import React from "react";
 
-export type InfoDockRow = {
-  k: string;
-  v: ReactNode;
-  warn?: boolean;
-};
-
-export type InfoDockProps = {
+export interface InfoDockProps {
   title?: string;
   subtitle?: string;
-  rows?: InfoDockRow[];
+  rows?: { k: string; v: React.ReactNode; warn?: boolean }[];
   open?: boolean;
   onToggle?: () => void;
-  className?: string;
-};
+}
 
-/** Flow Studio InfoDock: bottom-of-sidebar dock for selection metadata (rows, quality, version, metrics). */
 export function InfoDock({
   title = "Info",
   subtitle,
   rows = [],
   open = true,
   onToggle,
-  className = "",
 }: InfoDockProps) {
+  const [isOpen, setIsOpen] = React.useState(open);
+  const handleToggle = () => {
+    if (onToggle) onToggle();
+    else setIsOpen((prev) => !prev);
+  };
+  const activeOpen = onToggle ? open : isOpen;
+
   return (
-    <div className={`info-dock ${className}`.trim()}>
-      <button
-        type="button"
-        className="info-dock-head"
-        aria-expanded={open}
-        onClick={onToggle}
+    <div style={{ borderTop: "1px solid var(--border-panel)", display: "flex", flexDirection: "column" }}>
+      <div
+        onClick={handleToggle}
+        style={{
+          height: 40,
+          padding: "0 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          cursor: "pointer",
+          userSelect: "none",
+        }}
       >
-        <span className="info-dock-title">{title}</span>
-        {subtitle && <span className="info-dock-subtitle">{subtitle}</span>}
-        <span className="spacer" />
-        <span className={`info-dock-chevron ${open ? "open" : ""}`} aria-hidden="true">
-          <Chevron />
-        </span>
-      </button>
-      {open && rows.length > 0 && (
-        <div className="info-dock-body">
-          {rows.map((r, i) => (
-            <div key={`${r.k}-${i}`} className="info-dock-row">
-              <span className="info-dock-key">{r.k}</span>
-              <span className={`info-dock-val ${r.warn ? "warn" : ""}`}>{r.v}</span>
+        <span style={{ fontSize: "var(--fs-13-5)", fontWeight: "var(--fw-medium)" }}>{title}</span>
+        {subtitle && (
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontSize: "var(--fs-12-5)",
+              color: "var(--ink-6)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {subtitle}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          stroke="var(--text-muted)"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+          style={{
+            transform: activeOpen ? "none" : "rotate(180deg)",
+            transition: "transform var(--dur-fast)",
+          }}
+        >
+          <path d="M2.5 6.25L5 3.75l2.5 2.5" />
+        </svg>
+      </div>
+
+      {activeOpen && (
+        <div style={{ padding: "0 16px 14px", maxHeight: 240, overflow: "auto" }}>
+          {rows.map((r) => (
+            <div
+              key={r.k}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                gap: 12,
+                padding: "6px 0",
+                borderBottom: "1px solid var(--alpha-04)",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "var(--fs-12-5)",
+                  color: "var(--text-label)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {r.k}
+              </span>
+              <span
+                style={{
+                  fontSize: "var(--fs-13)",
+                  color: r.warn ? "var(--danger)" : "var(--text-body)",
+                  fontVariantNumeric: "tabular-nums",
+                  textAlign: "right",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {r.v}
+              </span>
             </div>
           ))}
         </div>

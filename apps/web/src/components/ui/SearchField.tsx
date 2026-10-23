@@ -1,43 +1,51 @@
-import type { ChangeEvent } from "react";
-import { SearchIcon } from "../../views/Icons.tsx";
+import React from "react";
 
-export type SearchFieldProps = {
-  value: string;
-  onChange: (value: string) => void;
+export interface SearchFieldProps {
+  value?: string;
+  onChange?: (v: string) => void;
   placeholder?: string;
-  className?: string;
-  autoFocus?: boolean;
-};
+}
 
-/** Flow Studio SearchField: thin-outlined search input that sits under a sidebar title. */
-export function SearchField({
-  value,
-  onChange,
-  placeholder = "Search…",
-  className = "",
-  autoFocus = false,
-}: SearchFieldProps) {
+export function SearchField({ value = "", onChange, placeholder = "Search" }: SearchFieldProps) {
   return (
-    <div className={`search-field ${className}`.trim()}>
-      <SearchIcon />
+    <label
+      style={{
+        height: "var(--size-input)",
+        borderRadius: "var(--radius-sm)",
+        border: "1px solid var(--border-input)",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "0 12px",
+        cursor: "text",
+      }}
+    >
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="var(--text-muted)"
+        strokeWidth="1.4"
+      >
+        <circle cx="7" cy="7" r="5" />
+        <path d="M11 11l3.5 3.5" />
+      </svg>
       <input
-        type="text"
         value={value}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+        onChange={(e) => onChange && onChange(e.target.value)}
         placeholder={placeholder}
-        autoFocus={autoFocus}
-        aria-label={placeholder}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          background: "transparent",
+          border: 0,
+          outline: "none",
+          color: "var(--text-primary)",
+          fontFamily: "var(--font-sans)",
+          fontSize: "var(--fs-13-5)",
+        }}
       />
-      {value && (
-        <button
-          type="button"
-          className="search-clear"
-          aria-label="Clear search"
-          onClick={() => onChange("")}
-        >
-          ×
-        </button>
-      )}
-    </div>
+    </label>
   );
 }

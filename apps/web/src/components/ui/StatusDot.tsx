@@ -1,26 +1,28 @@
-export type StatusDotKind = "ok" | "queued" | "warn" | "idle" | "running" | "failed" | "succeeded";
+import React from "react";
 
-export type StatusDotProps = {
-  status?: StatusDotKind;
-  className?: string;
-  size?: number;
+const COLORS = {
+  ok: "var(--accent)",
+  queued: "var(--text-primary)",
+  warn: "var(--danger)",
+  idle: "var(--text-disabled)",
 };
 
-/** Flow Studio StatusDot: 5–6px run-status dot placed after a row label or node icon. */
-export function StatusDot({ status = "idle", className = "", size = 6 }: StatusDotProps) {
-  const norm =
-    status === "succeeded"
-      ? "ok"
-      : status === "running"
-        ? "queued"
-        : status === "failed"
-          ? "warn"
-          : status;
+export interface StatusDotProps {
+  status?: "ok" | "queued" | "warn" | "idle";
+  size?: number;
+}
+
+export function StatusDot({ status = "idle", size = 6 }: StatusDotProps) {
   return (
     <span
-      className={`status-dot status-dot-${norm} ${className}`.trim()}
-      style={{ width: size, height: size }}
-      aria-hidden="true"
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        borderRadius: size,
+        background: COLORS[status],
+        flexShrink: 0,
+      }}
     />
   );
 }
