@@ -30,15 +30,16 @@ use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
-    CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
-    GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyAlternativeApplicability,
-    MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, MethodologyReview,
-    MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
-    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
-    NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
-    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem,
-    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study, StudyDetail,
-    StudyId, StudyStatus, TaskType, Trial, parse,
+    CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, DatasetProfile, DecisionProposal,
+    FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse,
+    MethodologyAlternativeApplicability, MethodologyDecision, MethodologyDecisionId,
+    MethodologyProposalId, MethodologyReview, MethodologyRule, MethodologyRuleSelection,
+    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
+    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookSettings,
+    NotebookSettingsRequest, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
+    OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
+    QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study, StudyDetail, StudyId,
+    StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -126,6 +127,7 @@ pub fn router(state: AppState) -> Router {
         .route("/studies/{id}", get(get_study))
         .route("/methodology_decisions", get(list_methodology_decisions))
         .route("/methodology_decisions/{id}", get(get_methodology_decision))
+        .route("/concepts", get(list_concepts))
         .route("/methodology_rules", get(list_methodology_rules))
         .route(
             "/methodology_rules/{id}/source",
@@ -530,6 +532,20 @@ fn limit(query: &Query) -> Result<u32, ApiError> {
 
 fn optional_id<T: std::str::FromStr>(query: &Query, key: &str) -> Result<Option<T>, ApiError> {
     query.get(key).map(|raw| id(raw)).transpose()
+}
+
+/// The concepts the loaded packs define, which a question's bindings name (ADR-0063).
+async fn list_concepts(State(state): State<AppState>) -> Result<Json<ConceptSet>, ApiError> {
+    let concepts: serde_json::Map<String, serde_json::Value> = state
+        .rules
+        .concepts()
+        .map(|(id, concept)| Ok((id.to_owned(), serde_json::to_value(concept)?)))
+        .collect::<Result<_, serde_json::Error>>()
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let set = json!({ "schema_version": "sprisk.concept_set/v1", "concepts": concepts });
+    parse(&set.to_string())
+        .map(Json)
+        .map_err(|e| ApiError::Internal(e.to_string()))
 }
 
 async fn list_methodology_rules(State(state): State<AppState>) -> Json<Vec<MethodologyRule>> {

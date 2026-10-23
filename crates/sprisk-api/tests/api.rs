@@ -2417,6 +2417,18 @@ async fn choosing_a_shortlisted_model_without_comparing_needs_a_reason() {
 }
 
 #[tokio::test]
+async fn concepts_are_listed_from_the_packs_for_a_person_to_bind() {
+    let api = api().await;
+    let (status, set) = call(&api.app, "GET", "/concepts", None).await;
+    assert_eq!(status, StatusCode::OK, "{set}");
+    assert_eq!(set["schema_version"], "sprisk.concept_set/v1");
+    assert_eq!(
+        set["concepts"]["common.item_title"]["kind"], "text",
+        "{set}"
+    );
+}
+
+#[tokio::test]
 async fn methodology_rules_are_listed_from_the_rule_packs() {
     let api = api().await;
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
