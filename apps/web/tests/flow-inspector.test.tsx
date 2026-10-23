@@ -22,7 +22,7 @@ describe("FlowInspector", () => {
     useSelection.setState({ nodeId: "model" });
     renderWithApi(<FlowInspector />);
 
-    expect(await screen.findByText(/No methodology (run for this flow yet|check concerns this step)\./)).toBeInTheDocument();
+    expect(await screen.findByText("No methodology check concerns this step.")).toBeInTheDocument();
     for (const fake of FAKE) expect(screen.queryByText(fake)).not.toBeInTheDocument();
   });
 });
