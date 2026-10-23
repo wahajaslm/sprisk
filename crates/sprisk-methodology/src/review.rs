@@ -15,10 +15,11 @@ use crate::{
 /// What the split rule decides. A rule that measures train rows needs it decided first.
 pub const SPLIT_DECISION: &str = "split.method";
 
-/// Decisions that shape the columns of the table a split reads, in order: a join adds the
-/// other table's, then identifiers are left out. Rules measuring that table wait for them, so
-/// they see its final columns (ADR-0059): duplicate rows, say, differ by an identifier.
-pub const TABLE_SHAPE: [&str; 2] = ["data.join_sources", "data.column_roles"];
+/// Decisions that shape the table a split reads, in order: a join adds the other table's
+/// columns, identifiers are left out, then markup is stripped from the text left. Rules
+/// measuring that table wait for them, so they see it final (ADR-0059): duplicate rows, say,
+/// differ by an identifier, and "Caf&eacute;" and "Café" are one spelling.
+pub const TABLE_SHAPE: [&str; 3] = ["data.join_sources", "data.column_roles", "data.html_text"];
 
 /// Order of the decisions that shape a model's input columns:
 /// - words first, so no rule takes free text for categories (ADR-0058);
@@ -112,7 +113,7 @@ pub fn plan<'a>(
 /// the split or a step strictly upstream of `later`'s. A rule reading cross-validation
 /// results also waits for the rules of its own step that do not (ADR-0059): they may change
 /// what was compared. A rule measuring the table a step reads waits for the rules of that step
-/// that shape its columns (`TABLE_SHAPE`), and the rules shaping a model's inputs go in
+/// that shape it (`TABLE_SHAPE`), and the rules shaping a model's inputs go in
 /// `INPUT_SHAPE` order.
 pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planned) -> bool {
     let same_step = matches!((later.subject, earlier.subject), (Some(l), Some(e)) if l.id == e.id);

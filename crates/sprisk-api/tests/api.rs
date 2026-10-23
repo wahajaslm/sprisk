@@ -2371,7 +2371,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 64);
+    assert_eq!(rules.len(), 65);
     assert!(
         rules
             .iter()
@@ -4733,6 +4733,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("data.join_sources", "settled"),
         ("data.column_roles", "needs_run"),
         // They wait: column roles may still change the table they measure.
+        ("data.html_text", "waiting"),
         ("question.unit_of_prediction", "waiting"),
         ("data.exact_duplicates", "waiting"),
         ("data.missing_markers", "waiting"),
@@ -5213,18 +5214,19 @@ const PRODUCT_WORDS: [&str; 27] = [
 ];
 
 /// A synthetic stand-in shaped like Rakuten's listings joined to their codes (ADR-0060): a
-/// nameless id column, a title, an often empty description, product and image ids, and the
-/// product type. Titles and descriptions carry a word of their class, never the code. Rows are
+/// nameless id column, a title, an often empty description, some of it HTML, product and image
+/// ids, and the product type. Titles and descriptions carry a word of their class, never the code. Rows are
 /// shuffled with a fixed seed before ids are given, so no id tells the class. No challenge row
 /// is used: its data is confidential.
 fn rakuten_like_listings() -> String {
     let mut rows = Vec::new();
     for (rank, (code, word)) in PRODUCT_TYPES.iter().zip(PRODUCT_WORDS).enumerate() {
         for n in 0..(40 - rank as u32) {
-            let description = if n % 3 == 0 {
-                String::new()
-            } else {
-                format!("{word} neuf taille {}", n % 5)
+            // Scraped descriptions keep their markup, as Rakuten's do.
+            let description = match n % 3 {
+                0 => String::new(),
+                1 => format!("{word} <b>neuf</b> &eacute;tat {}<br />", n % 5),
+                _ => format!("{word} neuf taille {}", n % 5),
             };
             rows.push((format!("{word} modele {n}"), description, *code));
         }
@@ -5330,6 +5332,8 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
+            "apply data.html_text strip",
+            "run",
             "apply features.text_representation vectorize_words",
             "run",
             "stop"
@@ -5347,7 +5351,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     let steps = detail["steps"].as_array().unwrap();
     let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
-        *head, steps[5]["made_pipeline_version_id"],
+        *head, steps[7]["made_pipeline_version_id"],
         "the head is the version the last apply made"
     );
     let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
@@ -5367,6 +5371,23 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     assert!(
         edges.contains(&"text_words.train_words -> model.words".to_owned()),
         "{edges:?}"
+    );
+    // Only the description holds markup; it is stripped on all rows, in front of the split.
+    assert!(
+        edges.contains(&"html_text.data -> split.data".to_owned()),
+        "{edges:?}"
+    );
+    let strip = flow["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "html_text")
+        .unwrap();
+    assert_eq!(strip["operator"], "sprisk.clean.strip_html@1.0.0");
+    assert_eq!(
+        strip["params"]["columns"],
+        json!(["description"]),
+        "{strip}"
     );
 
     // Same key: the same walk, nothing started.
@@ -5805,6 +5826,8 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "apply data.join_sources join_on_key",
             "run",
             "apply data.column_roles drop_identifiers",
+            "run",
+            "apply data.html_text strip",
             "run",
             "apply features.text_representation vectorize_words",
             "run",

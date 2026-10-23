@@ -52,6 +52,7 @@ What the methodology decides, where, and how (ADR-0059). One row per decision. E
 | Outliers | 1, else 3 | Impossible values (domain range, asked) → missing. Real extremes: clip for linear and distance models, nothing for trees, robust scaling instead when many | Box plot per column | active | Tukey 1977; ref-v3 2.4 |
 | Constant columns | 1 | One distinct value on train rows → drop | — | draft (`select_columns` reads one table, so it cannot be added before a model) | scikit-learn `VarianceThreshold` |
 | Text spelling | 1, else 3 | Trim and lowercase before the split (structure, nothing fitted). Accent-only variants and the target's labels ask: 'año' and 'ano' differ | Top variants per value | active (`data.text_spelling`, common pack) | OpenRefine clustering |
+| HTML in text | 1 | A text column with any value holding an HTML tag or entity (`<br />`, `&eacute;`) gets Strip HTML before the split (structure, nothing fitted): tags become spaces, entities their characters. The target, unit and time columns are left as they are | Share of values with HTML per column | active (`data.html_text`, common pack) | Manning et al. 2008, §2.1.1 |
 
 ## Features (Clean steps, ADR-0056; "model" = the answer depends on the model family)
 | Decision | Level | Decided by | Evidence chart | Rule | Source |
