@@ -16,6 +16,7 @@ sprisk-artifacts = { path = "../sprisk-artifacts" }
 sprisk-contracts = { path = "../sprisk-contracts" }
 sprisk-core = { path = "../sprisk-core" }
 sprisk-graph = { path = "../sprisk-graph" }
+sprisk-registry = { path = "../sprisk-registry" }
 sprisk-store = { path = "../sprisk-store" }
 thiserror = "2.0.21"
 tokio = { version = "1.53.3", features = ["io-util", "process", "time"] }
@@ -28,7 +29,6 @@ url = "2.5.8"
 workspace = true
 
 [dev-dependencies]
-sprisk-registry = { path = "../sprisk-registry" }
 tempfile = "3.27.0"
 tokio = { version = "1.53.3", features = ["macros", "rt"] }
 url = "2.5.8"

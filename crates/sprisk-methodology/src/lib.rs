@@ -5,7 +5,6 @@ mod catalog;
 mod compare;
 mod decision;
 pub mod engine;
-pub mod evidence;
 pub mod facts;
 pub mod measure;
 mod methods;

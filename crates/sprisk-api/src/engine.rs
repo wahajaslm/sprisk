@@ -15,8 +15,8 @@ use sprisk_methodology::engine::{
     Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, Start, next_action, start,
     with_test_scoring,
 };
-use sprisk_methodology::evidence::{self, EVIDENCE_PORT};
 use sprisk_methodology::measure::{Measuring, fitting, measure};
+use sprisk_registry::evidence::EVIDENCE_PORT;
 
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
@@ -448,7 +448,6 @@ async fn measured(
         let value: Value = serde_json::from_slice(&bytes).map_err(|e| {
             ApiError::Internal(format!("evidence of step {}: {e}", node.id.as_str()))
         })?;
-        evidence::check(operator, &value).map_err(|e| ApiError::Internal(e.to_string()))?;
         for method in fitting(&state.rules, question.task.value) {
             for kind in method
                 .needs

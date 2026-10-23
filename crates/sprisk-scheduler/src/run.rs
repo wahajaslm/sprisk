@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -12,6 +12,7 @@ use sprisk_contracts::{
     PipelineVersion, PortKind, RunId, RunStatus, Verdict, WorkerMessage, parse,
 };
 use sprisk_graph::{Input, Plan, Step};
+use sprisk_registry::evidence::{self, EVIDENCE_PORT};
 use sprisk_store::{SqliteStore, StoreError};
 
 use crate::cache::{cache_key, cacheable};
@@ -651,6 +652,12 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 let reason = format!("{} is outside {}", staged.display(), staging.display());
                 return self.reject(id, &reason).await;
             }
+            if m.port.as_str() == EVIDENCE_PORT
+                && !step.operator.produces.is_empty()
+                && let Err(reason) = checked_evidence(&step.operator, &staged, m.size_bytes)
+            {
+                return self.reject(id, &reason).await;
+            }
             let committed = match self.artifacts.commit(&staged, &m.content_hash).await {
                 Ok(committed) => committed,
                 Err(e) => return self.reject(id, &e.to_string()).await,
@@ -917,4 +924,21 @@ fn is_split(step: &Step) -> bool {
 /// The reserved node id of `split`'s row check.
 fn split_check_node(split: &Step) -> String {
     format!("{}{}", sprisk_graph::RESERVED_NODE_PREFIX, split.node_id)
+}
+
+/// Evidence is a few numbers per kind; a larger file is not evidence.
+const MAX_EVIDENCE_BYTES: u64 = 1 << 20;
+
+/// Refuses what a producer wrote to its evidence output when it breaks its manifest
+/// (ADR-0063), before it is saved, so no reader ever meets bad evidence.
+fn checked_evidence(operator: &Operator, staged: &Path, size: u64) -> Result<(), String> {
+    if size > MAX_EVIDENCE_BYTES {
+        return Err(format!(
+            "its evidence is {size} bytes, more than {MAX_EVIDENCE_BYTES}"
+        ));
+    }
+    let bytes = std::fs::read(staged).map_err(|e| format!("cannot read its evidence: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|e| format!("its evidence is not JSON: {e}"))?;
+    evidence::check(operator, &value).map_err(|e| e.to_string())
 }

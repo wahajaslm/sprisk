@@ -11,7 +11,7 @@ use sprisk_contracts::{
 };
 
 use crate::catalog::{CatalogError, parse_yaml};
-use crate::evidence::EVIDENCE_PORT;
+use sprisk_registry::evidence::EVIDENCE_PORT;
 
 pub(crate) const METHOD: &str = "method.yaml";
 const METHOD_MODULE: &str = "method.py";

@@ -2,7 +2,7 @@
 //! `produces`, with exactly the declared fields, each of its declared type.
 
 use serde_json::Value;
-use sprisk_contracts::{EvidenceFieldType, Operator};
+use sprisk_contracts::{EvidenceFieldType, EvidenceSet, Operator, parse};
 
 /// The output where an evidence producer writes what it measured, by kind.
 pub const EVIDENCE_PORT: &str = "evidence";
@@ -20,10 +20,10 @@ pub fn check(operator: &Operator, measured: &Value) -> Result<(), EvidenceError>
         operator: operator.id.to_string(),
         problem,
     };
+    parse::<EvidenceSet>(&measured.to_string())
+        .map_err(|e| refuse(format!("its evidence is not an EvidenceSet: {e}")))?;
     let Some(kinds) = measured.as_object() else {
-        return Err(refuse(
-            "its evidence is not an object of evidence kinds".into(),
-        ));
+        return Err(refuse("its evidence is not an object".into()));
     };
     if let Some(extra) = kinds
         .keys()

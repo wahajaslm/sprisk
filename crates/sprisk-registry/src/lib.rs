@@ -12,6 +12,8 @@ use sprisk_contracts::{
 };
 use walkdir::WalkDir;
 
+pub mod evidence;
+
 const MANIFEST: &str = "manifest.yaml";
 
 #[derive(Debug, thiserror::Error)]

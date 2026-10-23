@@ -6,8 +6,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use sprisk_contracts::Operator;
-use sprisk_methodology::evidence;
-use sprisk_registry::Registry;
+use sprisk_registry::{Registry, evidence};
 
 fn near_duplicates() -> Operator {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
@@ -72,5 +71,5 @@ fn a_field_of_another_type_is_refused() {
 
 #[test]
 fn evidence_that_is_not_an_object_is_refused() {
-    assert!(refused(&json!([1, 2])).contains("not an object of evidence kinds"));
+    assert!(refused(&json!([1, 2])).contains("its evidence is not an EvidenceSet"));
 }
