@@ -2382,8 +2382,14 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
         .iter()
         .find(|r| r["id"] == "methodology.supervised.data_split@1.0.0")
         .unwrap();
-    assert_eq!(split["question"], "How should the rows be split into train and test?");
-    assert_eq!(split["alternatives"][0]["when"], "a time column is confirmed");
+    assert_eq!(
+        split["question"],
+        "How should the rows be split into train and test?"
+    );
+    assert_eq!(
+        split["alternatives"][0]["when"],
+        "a time column is confirmed"
+    );
 }
 
 #[tokio::test]
