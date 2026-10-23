@@ -1452,6 +1452,82 @@
         }
       }
     },
+    "RuleRequest": {
+      "title": "RuleRequest",
+      "description": "Rust to the rule session (`python -m sprisk_workers.rule`), one JSON line per decision (ADR-0059): the rule module Rust picked from the loaded catalog, and its observation. One session serves a whole review.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "module",
+        "observation"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "sprisk.rule_request/v1"
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the rule's rule.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the rule process on the same machine, never stored."
+        },
+        "observation": {
+          "$ref": "#/$defs/RuleObservation"
+        }
+      }
+    },
+    "RuleAnswer": {
+      "title": "RuleAnswer",
+      "description": "The rule session's one JSON line per RuleRequest, tagged by `answer`: the rule's decision, or why the rule refused its observation. Any other failure ends the session.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RuleDecided"
+        },
+        {
+          "$ref": "#/$defs/RuleRefused"
+        }
+      ]
+    },
+    "RuleDecided": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "decision"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "decided"
+          ]
+        },
+        "decision": {
+          "$ref": "#/$defs/RuleDecision"
+        }
+      }
+    },
+    "RuleRefused": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "error"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "refused"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The rule's own error (a broken observation, a module with no decide). It may name local paths, so it goes to the log, not to a client."
+        }
+      }
+    },
     "MethodologyRuleRef": {
       "type": "string",
       "description": "methodology.<pack>.<rule>@<semver>",

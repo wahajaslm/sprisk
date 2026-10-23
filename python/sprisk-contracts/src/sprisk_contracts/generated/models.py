@@ -357,6 +357,20 @@ class Alternative(StrictModel):
     ] = None
 
 
+class RuleRefused(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["refused"]
+    error: Annotated[
+        str,
+        Field(
+            description="The rule's own error (a broken observation, a module with no decide). It may name local paths, so it goes to the log, not to a client.",
+            min_length=1,
+        ),
+    ]
+
+
 class MethodologyRuleRef(RootModel[str]):
     root: Annotated[
         str,
@@ -1561,6 +1575,21 @@ class RuleObservation(StrictModel):
     ]
 
 
+class RuleRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.rule_request/v1"]
+    module: Annotated[
+        str,
+        Field(
+            description="Path of the rule's rule.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the rule process on the same machine, never stored.",
+            min_length=1,
+        ),
+    ]
+    observation: RuleObservation
+
+
 class Action(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2391,6 +2420,14 @@ class RuleDecision(StrictModel):
     evidence: list[MethodologyEvidence]
 
 
+class RuleDecided(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["decided"]
+    decision: RuleDecision
+
+
 class MethodologyRule(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2714,6 +2751,16 @@ class DatasetProfile(StrictModel):
     ] = None
     columns: list[ColumnProfile]
     correlation: Correlation
+
+
+class RuleAnswer(RootModel[RuleDecided | RuleRefused]):
+    root: Annotated[
+        RuleDecided | RuleRefused,
+        Field(
+            description="The rule session's one JSON line per RuleRequest, tagged by `answer`: the rule's decision, or why the rule refused its observation. Any other failure ends the session.",
+            title="RuleAnswer",
+        ),
+    ]
 
 
 class AppliedMethodologyDecision(StrictModel):

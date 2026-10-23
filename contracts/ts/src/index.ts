@@ -36,6 +36,8 @@ export interface Entities {
   MethodologyRule: C.MethodologyRule;
   MethodologyRuleSource: C.MethodologyRuleSource;
   RuleObservation: C.RuleObservation;
+  RuleRequest: C.RuleRequest;
+  RuleAnswer: C.RuleAnswer;
   RuleDecision: C.RuleDecision;
   FigureSet: C.FigureSet;
   LoadedTable: C.LoadedTable;

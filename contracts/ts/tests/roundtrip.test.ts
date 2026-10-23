@@ -29,6 +29,8 @@ const entities: [keyof Entities, string][] = [
   ["MethodologyRule", "methodology_rule"],
   ["MethodologyRuleSource", "methodology_rule_source"],
   ["RuleObservation", "rule_observation"],
+  ["RuleRequest", "rule_request"],
+  ["RuleAnswer", "rule_answer"],
   ["RuleDecision", "rule_decision"],
   ["FigureSet", "figure_set"],
   ["LoadedTable", "loaded_table"],

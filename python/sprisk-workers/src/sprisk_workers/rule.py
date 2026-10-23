@@ -1,20 +1,21 @@
-"""Run one methodology rule's decide() (ADR-0042).
+"""Run methodology rules' decide() (ADR-0042), one session per review (ADR-0059).
 
-Run as `python -m sprisk_workers.rule <path/to/rule.py>` with a RuleObservation on stdin;
-prints the RuleDecision. Rust picks the module from the loaded rule catalog.
+Run as `python -m sprisk_workers.rule`: one RuleRequest per line on stdin, one RuleAnswer per
+line on stdout, until stdin closes. Rust picks each module from the loaded rule catalog.
 """
 
 import importlib.util
 import json
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from pydantic import ValidationError
 
-from sprisk_contracts import RuleDecision, RuleObservation
-from sprisk_contracts.generated.models import Fact
+from sprisk_contracts import RuleAnswer, RuleDecision, RuleObservation, RuleRequest
+from sprisk_contracts.generated.models import Fact, RuleDecided, RuleRefused
 from sprisk_contracts.generated.models import Profile as ProfileValues
 from sprisk_workers.errors import RuleError
 
@@ -238,11 +239,7 @@ def load_decide(module_path: Path) -> Decide:
     return decide  # type: ignore[no-any-return]
 
 
-def run_rule(module_path: Path, observation_json: str) -> str:
-    try:
-        observation = RuleObservation.model_validate_json(observation_json)
-    except ValidationError as e:
-        raise RuleError(f"invalid rule observation: {e}") from e
+def run_rule(module_path: Path, observation: RuleObservation) -> RuleDecision:
     # The module is rule-pack code: its output is checked again, like any input.
     decision = RuleDecision.model_validate_json(
         load_decide(module_path)(observation).model_dump_json()
@@ -251,14 +248,36 @@ def run_rule(module_path: Path, observation_json: str) -> str:
         raise RuleError(
             f"rule {observation.rule.root} returned a decision for {decision.rule.root}"
         )
-    return decision.model_dump_json(exclude_none=True)
+    return decision
+
+
+def answer(request: RuleRequest) -> RuleAnswer:
+    """The decision, or the rule's own refusal; any other failure is a bug and ends the session."""
+    try:
+        decision = run_rule(Path(request.module), request.observation)
+    except RuleError as e:
+        return RuleAnswer(RuleRefused(answer="refused", error=str(e)))
+    return RuleAnswer(RuleDecided(answer="decided", decision=decision))
+
+
+def serve(requests: TextIO, answers: TextIO) -> None:
+    """One answer line per request line, until the requests end."""
+    for line in requests:
+        try:
+            request = RuleRequest.model_validate_json(line)
+        except ValidationError as e:
+            raise RuleError(f"invalid rule request: {e}") from e
+        answers.write(answer(request).model_dump_json(exclude_none=True) + "\n")
+        answers.flush()
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit("usage: python -m sprisk_workers.rule <path/to/rule.py>")
+    # Answers go to a copy of stdout; stdout itself becomes stderr, so a rule that prints
+    # (Python or C) can never write a line Rust takes for an answer.
+    answers = os.fdopen(os.dup(sys.stdout.fileno()), "w")
+    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
     try:
-        sys.stdout.write(run_rule(Path(sys.argv[1]), sys.stdin.read()))
+        serve(sys.stdin, answers)
     except RuleError as e:
         sys.exit(str(e))
 
