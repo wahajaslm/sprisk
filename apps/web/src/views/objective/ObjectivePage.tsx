@@ -12,6 +12,7 @@ import { SendIcon } from "../Icons.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { stepTitle } from "../../flow/stages.ts";
 import { timestamp } from "../../flow/edit.ts";
+import { currentQuestion } from "./ledger.ts";
 import { StartWalk } from "./StartWalk.tsx";
 
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
@@ -51,12 +52,7 @@ export function ObjectivePage() {
     [pipelines, pipelineVersionId],
   );
 
-  const currentQuestion = useMemo(() => {
-    if (currentPipeline?.question_version_id) {
-      return questions.find((q) => q.id === currentPipeline.question_version_id);
-    }
-    return questions[0];
-  }, [questions, currentPipeline]);
+  const question = useMemo(() => currentQuestion(questions, currentPipeline), [questions, currentPipeline]);
 
   const openEditor = (base?: QuestionVersion) => {
     if (base) {
@@ -115,7 +111,7 @@ export function ObjectivePage() {
     const newQuestion: QuestionVersion = {
       schema_version: "sprisk.question_version/v1",
       id: `qv_${ulid()}`,
-      investigation_id: currentQuestion?.investigation_id ?? `inv_${ulid()}`,
+      investigation_id: question?.investigation_id ?? `inv_${ulid()}`,
       objective: fact(formObjective),
       task: { value: formTask, origin: "explicit" },
       ...(formTarget.trim() ? { target: fact(formTarget) } : {}),
@@ -229,7 +225,7 @@ export function ObjectivePage() {
             </button>
           </div>
           <div className="subtabs-right" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Button variant="secondary" size="sm" onClick={() => openEditor(currentQuestion)}>
+            <Button variant="secondary" size="sm" onClick={() => openEditor(question)}>
               Revise question
             </Button>
             <Button variant="primary" size="sm" onClick={() => openEditor()}>
@@ -238,27 +234,27 @@ export function ObjectivePage() {
           </div>
         </div>
 
-        {activeTab === "ledger" && currentQuestion ? (
+        {activeTab === "ledger" && question ? (
           <div className="objective-scroll-body">
             {/* Headline Box */}
             <div className="objective-headline-box">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="objective-version-meta">
-                  Question Revision · {currentQuestion.id.slice(-8)}
-                  {currentPipeline?.question_version_id === currentQuestion.id && (
+                  Question Revision · {question.id.slice(-8)}
+                  {currentPipeline?.question_version_id === question.id && (
                     <span style={{ marginLeft: 8 }}>
                       <Tag tone="default">Active in current flow</Tag>
                     </span>
                   )}
                 </span>
-                {currentPipeline && currentPipeline.question_version_id !== currentQuestion.id && (
-                  <Button variant="secondary" size="sm" onClick={() => linkToPipeline(currentQuestion.id)}>
+                {currentPipeline && currentPipeline.question_version_id !== question.id && (
+                  <Button variant="secondary" size="sm" onClick={() => linkToPipeline(question.id)}>
                     Link to current flow
                   </Button>
                 )}
               </div>
-              <h2 className="objective-sentence">{currentQuestion.objective.value}</h2>
-              <StartWalk key={currentQuestion.id} question={currentQuestion} />
+              <h2 className="objective-sentence">{question.objective.value}</h2>
+              <StartWalk key={question.id} question={question} />
             </div>
 
             {/* Ledger Table */}
@@ -277,70 +273,70 @@ export function ObjectivePage() {
                   <tr>
                     <td className="entry-key">Task</td>
                     <td className="entry-value">
-                      <span className="mono">{currentQuestion.task.value}</span>
+                      <span className="mono">{question.task.value}</span>
                     </td>
-                    <td className="entry-src">{currentQuestion.task.origin}</td>
+                    <td className="entry-src">{question.task.origin}</td>
                     <td className="entry-st">
                       <span className="status-badge badge-set">Set</span>
                     </td>
                   </tr>
 
                   {/* Target */}
-                  <tr className={!currentQuestion.target ? "row-open" : ""}>
+                  <tr className={!question.target ? "row-open" : ""}>
                     <td className="entry-key">Target</td>
                     <td className="entry-value">
-                      {currentQuestion.target ? (
-                        <span className="mono">{currentQuestion.target.value}</span>
+                      {question.target ? (
+                        <span className="mono">{question.target.value}</span>
                       ) : (
                         <span className="val-open-title">Target variable not specified</span>
                       )}
                     </td>
-                    <td className="entry-src">{currentQuestion.target?.origin ?? "—"}</td>
+                    <td className="entry-src">{question.target?.origin ?? "—"}</td>
                     <td className="entry-st">
-                      <span className={`status-badge ${currentQuestion.target ? "badge-set" : "badge-open"}`}>
-                        {currentQuestion.target ? "Set" : "Open"}
+                      <span className={`status-badge ${question.target ? "badge-set" : "badge-open"}`}>
+                        {question.target ? "Set" : "Open"}
                       </span>
                     </td>
                   </tr>
 
                   {/* Unit of analysis */}
-                  <tr className={!currentQuestion.unit_of_analysis ? "row-open" : ""}>
+                  <tr className={!question.unit_of_analysis ? "row-open" : ""}>
                     <td className="entry-key">Unit of Analysis</td>
                     <td className="entry-value">
-                      {currentQuestion.unit_of_analysis ? (
-                        <span className="mono">{currentQuestion.unit_of_analysis.value}</span>
+                      {question.unit_of_analysis ? (
+                        <span className="mono">{question.unit_of_analysis.value}</span>
                       ) : (
                         <span className="val-open-title">Unit not specified</span>
                       )}
                     </td>
-                    <td className="entry-src">{currentQuestion.unit_of_analysis?.origin ?? "—"}</td>
+                    <td className="entry-src">{question.unit_of_analysis?.origin ?? "—"}</td>
                     <td className="entry-st">
-                      <span className={`status-badge ${currentQuestion.unit_of_analysis ? "badge-set" : "badge-open"}`}>
-                        {currentQuestion.unit_of_analysis ? "Set" : "Open"}
+                      <span className={`status-badge ${question.unit_of_analysis ? "badge-set" : "badge-open"}`}>
+                        {question.unit_of_analysis ? "Set" : "Open"}
                       </span>
                     </td>
                   </tr>
 
                   {/* Prediction horizon */}
-                  <tr className={!currentQuestion.prediction_horizon ? "row-open" : ""}>
+                  <tr className={!question.prediction_horizon ? "row-open" : ""}>
                     <td className="entry-key">Horizon</td>
                     <td className="entry-value">
-                      {currentQuestion.prediction_horizon ? (
-                        <span className="mono">{currentQuestion.prediction_horizon.value}</span>
+                      {question.prediction_horizon ? (
+                        <span className="mono">{question.prediction_horizon.value}</span>
                       ) : (
                         <span className="val-open-title">Horizon not specified</span>
                       )}
                     </td>
-                    <td className="entry-src">{currentQuestion.prediction_horizon?.origin ?? "—"}</td>
+                    <td className="entry-src">{question.prediction_horizon?.origin ?? "—"}</td>
                     <td className="entry-st">
-                      <span className={`status-badge ${currentQuestion.prediction_horizon ? "badge-set" : "badge-open"}`}>
-                        {currentQuestion.prediction_horizon ? "Set" : "Open"}
+                      <span className={`status-badge ${question.prediction_horizon ? "badge-set" : "badge-open"}`}>
+                        {question.prediction_horizon ? "Set" : "Open"}
                       </span>
                     </td>
                   </tr>
 
                   {/* Assumptions */}
-                  {currentQuestion.assumptions.map((a, i) => (
+                  {question.assumptions.map((a, i) => (
                     <tr key={`assumption-${i}`}>
                       <td className="entry-key">{i === 0 ? "Assumption" : ""}</td>
                       <td className="entry-value">{a.value}</td>
@@ -352,7 +348,7 @@ export function ObjectivePage() {
                   ))}
 
                   {/* Unknowns */}
-                  {currentQuestion.unknowns.map((u, i) => (
+                  {question.unknowns.map((u, i) => (
                     <tr key={`unknown-${i}`} className="row-open">
                       <td className="entry-key">{i === 0 ? "Unknown" : ""}</td>
                       <td className="entry-value">
@@ -366,7 +362,7 @@ export function ObjectivePage() {
                   ))}
 
                   {/* Acceptance Criteria */}
-                  {currentQuestion.acceptance_criteria.map((c, i) => (
+                  {question.acceptance_criteria.map((c, i) => (
                     <tr key={`criteria-${i}`}>
                       <td className="entry-key">{i === 0 ? "Criteria" : ""}</td>
                       <td className="entry-value">{c.value}</td>
@@ -378,15 +374,15 @@ export function ObjectivePage() {
                   ))}
 
                   {/* Costs */}
-                  {currentQuestion.costs && (
+                  {question.costs && (
                     <tr>
                       <td className="entry-key">Costs</td>
                       <td className="entry-value">
-                        Positive class: <code>{currentQuestion.costs.value.positive}</code> · False negative:{" "}
-                        {currentQuestion.costs.value.false_negative} · False positive:{" "}
-                        {currentQuestion.costs.value.false_positive}
+                        Positive class: <code>{question.costs.value.positive}</code> · False negative:{" "}
+                        {question.costs.value.false_negative} · False positive:{" "}
+                        {question.costs.value.false_positive}
                       </td>
-                      <td className="entry-src">{currentQuestion.costs.origin}</td>
+                      <td className="entry-src">{question.costs.origin}</td>
                       <td className="entry-st">
                         <span className="status-badge badge-set">Set</span>
                       </td>

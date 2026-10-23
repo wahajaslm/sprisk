@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 
 import { usePipelineVersions, useRuns, useStartRun } from "../api/hooks.ts";
 import { flows } from "../flow/flows.ts";
+import { useQuestionVersions } from "../api/questions.ts";
 import { flowName } from "../flow/labels.ts";
+import { currentQuestion, openEntries } from "./objective/ledger.ts";
 import { NAV, useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { Chevron, Logo, PlayIcon } from "./Icons.tsx";
@@ -12,7 +14,8 @@ import { ImportNotebook } from "./ImportNotebook.tsx";
 const PROJECT = "Local project";
 
 export function TopBar() {
-  const { nav, setNav, pipelineVersionId, selectPipelineVersion, selectRun, objectiveOpenCount } = useSelection();
+  const { nav, setNav, pipelineVersionId, selectPipelineVersion, selectRun } = useSelection();
+  const questions = useQuestionVersions();
   const versions = usePipelineVersions();
   const runs = useRuns(pipelineVersionId);
   const startRun = useStartRun();
@@ -34,6 +37,8 @@ export function TopBar() {
 
   const { shellMode, setShellMode } = useWorkbench();
   const current = versions.data?.find((v) => v.id === pipelineVersionId);
+  const question = currentQuestion(questions.data ?? [], current);
+  const openCount = question ? openEntries(question) : 0;
   const runState = startRun.isPending
     ? "Starting run…"
     : latestRun === undefined
@@ -119,9 +124,7 @@ export function TopBar() {
                 onClick={() => setNav(item)}
               >
                 {item}
-                {item === "Objective" && objectiveOpenCount > 0 && (
-                  <span className="tab-badge-open">{objectiveOpenCount}</span>
-                )}
+                {item === "Objective" && openCount > 0 && <span className="tab-badge-open">{openCount}</span>}
               </button>
             );
           })}
@@ -150,19 +153,9 @@ export function TopBar() {
         </div>
 
         {nav === "Objective" ? (
-          <>
-            <span className="runstate">
-              {objectiveOpenCount > 0 ? `${objectiveOpenCount} open in ledger` : "Ledger complete"}
-            </span>
-            <button
-              type="button"
-              className={`run-button ${objectiveOpenCount === 0 ? "primary" : ""}`}
-              disabled={objectiveOpenCount > 0}
-              onClick={() => setNav("Flow")}
-            >
-              Generate pipeline
-            </button>
-          </>
+          <span className="runstate">
+            {question === undefined ? "No question yet" : openCount > 0 ? `${openCount} open in ledger` : "Ledger complete"}
+          </span>
         ) : (
           <>
             {versions.isError && <span role="alert" className="error">{versions.error.message}</span>}
