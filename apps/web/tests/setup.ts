@@ -63,7 +63,7 @@ vi.mock("../src/views/MonacoCode.tsx", () => ({
 
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 beforeEach(() => {
-  useSelection.setState({ nav: "Flow", pipelineVersionId: undefined, runId: undefined, nodeId: undefined, notebookId: undefined, compare: [] });
+  useSelection.setState({ nav: "Flow", pipelineVersionId: undefined, runId: undefined, nodeId: undefined, notebookId: undefined, compare: [], experimentsTab: "Monitor" });
   useOutputs.setState({ byNotebook: {} });
   useCollapsed.setState({ byNotebook: {} });
   useWorkbench.setState({ activity: "steps", editing: false, dock: undefined });

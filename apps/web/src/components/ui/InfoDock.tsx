@@ -23,7 +23,7 @@ export function InfoDock({
   const activeOpen = onToggle ? open : isOpen;
 
   return (
-    <div className="info-dock">
+    <section className="info-dock" aria-label={title}>
       <button
         type="button"
         className="info-dock-head"
@@ -50,6 +50,6 @@ export function InfoDock({
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }

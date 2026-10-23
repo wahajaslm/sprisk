@@ -17,7 +17,7 @@ export function DeployPage() {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("Card");
   const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
-  const setNav = useSelection((s) => s.setNav);
+  const openExperiments = useSelection((s) => s.openExperiments);
 
   // Per ADR-0061 & Gap Catalog: No backend model serving registry exists yet.
   // We render the Flow Studio layout with the true empty state rather than hardcoding fake models.
@@ -69,7 +69,7 @@ export function DeployPage() {
             <p className="deploy-empty-sub">
               Promote an evaluated model from Experiments to configure live inference endpoints, feature drift tracking (PSI), and latency monitoring.
             </p>
-            <Button variant="primary" onClick={() => setNav("Experiments")}>
+            <Button variant="primary" onClick={() => openExperiments("Compare")}>
               Go to Experiments
             </Button>
           </div>

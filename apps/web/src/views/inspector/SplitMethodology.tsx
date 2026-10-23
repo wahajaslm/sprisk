@@ -18,7 +18,7 @@ export function SplitMethodology({ pipeline, nodeId, rule }: {
   const resolve = isSplit ? resolveSplit : resolveGeneral;
   const apply = useApplyMethodology();
   const selectPipeline = useSelection((state) => state.selectPipelineVersion);
-  const setNav = useSelection((state) => state.setNav);
+  const openExperiments = useSelection((state) => state.openExperiments);
   const [selected, setSelected] = useState<string>();
   const [reason, setReason] = useState("");
   const proposal = resolve.data;
@@ -71,7 +71,7 @@ export function SplitMethodology({ pipeline, nodeId, rule }: {
           ? <>Change the settings of <code>{chosen.effect.node_id}</code>.</>
           : <>Replace <code>{chosen.effect.node_id}</code> with <code>{chosen.effect.operator}</code>.</>}</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>}</div>}
       {chosen && proposal.recommended_alternative_id !== chosen.id && <label className="method-reason">{proposal.shortlist ? "Reason for choosing without comparing" : "Reason for choosing another method"}<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>}
-      <div className="settings-actions"><button type="button" className="page-btn" onClick={() => resolve.reset()}>Refresh</button><span className="spacer" />{proposal.shortlist && <button type="button" className="page-btn" onClick={() => setNav("Experiments")}>See the comparison</button>}<button type="button" className="run-code" disabled={!chosen || apply.isPending || (proposal.recommended_alternative_id !== chosen?.id && !reason.trim())} onClick={() => chosen && apply.mutate({ proposalId: proposal.id, alternativeId: chosen.id, reason }, { onSuccess: (result) => selectPipeline(result.pipeline.id) })}>{apply.isPending ? "Applying…" : "Apply to new flow version"}</button></div>
+      <div className="settings-actions"><button type="button" className="page-btn" onClick={() => resolve.reset()}>Refresh</button><span className="spacer" />{proposal.shortlist && <button type="button" className="page-btn" onClick={() => openExperiments("Compare")}>See the comparison</button>}<button type="button" className="run-code" disabled={!chosen || apply.isPending || (proposal.recommended_alternative_id !== chosen?.id && !reason.trim())} onClick={() => chosen && apply.mutate({ proposalId: proposal.id, alternativeId: chosen.id, reason }, { onSuccess: (result) => selectPipeline(result.pipeline.id) })}>{apply.isPending ? "Applying…" : "Apply to new flow version"}</button></div>
     </>}
     {(resolve.isError || apply.isError) && <p role="alert" className="error">{resolve.error?.message ?? apply.error?.message}</p>}
   </section>;

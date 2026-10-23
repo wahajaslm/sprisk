@@ -489,7 +489,7 @@ describe("inspector", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
     await userEvent.click(await screen.findByRole("tab", { name: "History" }));
     await userEvent.click(await screen.findByRole("button", { name: "Compare run #1 with the shown run" }));
-    expect(useSelection.getState()).toMatchObject({ nav: "Experiments", compare: [older.id, RUN] });
+    expect(useSelection.getState()).toMatchObject({ nav: "Experiments", experimentsTab: "Compare", compare: [older.id, RUN] });
   });
 
   it("the tab line holds only the tabs: no step name, state or settings", async () => {

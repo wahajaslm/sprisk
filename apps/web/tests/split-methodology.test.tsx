@@ -161,6 +161,6 @@ describe("model shortlist", () => {
     expect(await screen.findByText(/Sprisk cross-validates the shortlisted models on its own/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Compare shortlisted models" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "See the comparison" }));
-    expect(useSelection.getState().nav).toBe("Experiments");
+    expect(useSelection.getState()).toMatchObject({ nav: "Experiments", experimentsTab: "Compare" });
   });
 });

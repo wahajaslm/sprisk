@@ -13,6 +13,9 @@ export const NAV = [
 ] as const;
 export type Nav = (typeof NAV)[number];
 
+export const EXPERIMENTS_TABS = ["Monitor", "Compare", "Sweep"] as const;
+export type ExperimentsTab = (typeof EXPERIMENTS_TABS)[number];
+
 /** UI context only (arch §2A WorkbenchContext). Never scientific state. */
 type Selection = {
   nav: Nav;
@@ -22,7 +25,11 @@ type Selection = {
   /** The notebook open on the Notebooks page (ADR-0036). */
   notebookId: string | undefined;
   stageTarget: string | undefined;
+  /** The Experiments tab on screen, so another page can open the right one. */
+  experimentsTab: ExperimentsTab;
   setNav: (nav: Nav) => void;
+  setExperimentsTab: (tab: ExperimentsTab) => void;
+  openExperiments: (tab: ExperimentsTab) => void;
   openNotebook: (id: string) => void;
   openStageNotebook: (stage: string) => void;
   selectPipelineVersion: (id: string) => void;
@@ -41,16 +48,22 @@ function navFromHash(): Nav | undefined {
   return NAV.find((n) => n.toLowerCase() === named);
 }
 
-export const useSelection = create<Selection>((set) => ({
+export const useSelection = create<Selection>((set, get) => ({
   nav: navFromHash() ?? "Flow",
   pipelineVersionId: undefined,
   runId: undefined,
   nodeId: undefined,
   notebookId: undefined,
   stageTarget: undefined,
+  experimentsTab: "Monitor",
   setNav: (nav) => {
     if (navFromHash() !== nav) window.location.hash = nav;
     set({ nav });
+  },
+  setExperimentsTab: (experimentsTab) => set({ experimentsTab }),
+  openExperiments: (experimentsTab) => {
+    get().setNav("Experiments");
+    set({ experimentsTab });
   },
   openNotebook: (id) => set({ notebookId: id, stageTarget: undefined, nav: "Notebooks" }),
   openStageNotebook: (stage) => set({ stageTarget: stage, notebookId: undefined, nav: "Notebooks" }),

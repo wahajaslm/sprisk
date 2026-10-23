@@ -49,7 +49,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="main-sidebar" style={{ width }}>
+    <aside className="main-sidebar" style={{ width }} aria-label={title}>
       <div className="sidebar-header">
         <div className="sidebar-title-row">
           <h2 className="sidebar-title">{title}</h2>

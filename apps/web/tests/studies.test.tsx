@@ -131,7 +131,7 @@ function studied(status: string, runStatus: string, forestState: string, decisio
       );
     }),
   );
-  useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+  useSelection.setState({ pipelineVersionId: PV, runId: RUN, experimentsTab: "Sweep" });
   renderWithApi(<Experiments />);
   return { applied, created };
 }
