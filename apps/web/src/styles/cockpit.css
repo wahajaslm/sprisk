@@ -679,15 +679,6 @@ p { margin: 0; }
   font-size: var(--fs-13);
 }
 
-.alt-card.selected {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
-.alt-card.selected .alt-radio-dot {
-  border-color: #ffffff;
-}
-
 /* ── Activity bar (52px Flow Studio Rail) ─────────────── */
 .activity-bar {
   grid-column: 1;
@@ -1841,17 +1832,10 @@ p { margin: 0; }
 .model-comparison { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--line); background: var(--panel); }
 
 /* Investigation Atlas: immutable question revisions that give methodology its context. */
-.ledger { height: 100%; min-height: 0; overflow: auto; background: var(--canvas); }
 /* The one page header (PageHeader). */
 .page-head { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: end; gap: var(--space-5); padding: var(--space-5) var(--page-x); border-bottom: 1px solid var(--line); background: var(--canvas); }
-.page-head h1, .ledger-editor h2 { margin: 0; font-size: var(--text-xl); font-weight: 500; color: var(--ink); text-wrap: balance; }
+.page-head h1 { margin: 0; font-size: var(--text-xl); font-weight: 500; color: var(--ink); text-wrap: balance; }
 .page-head p.muted { margin-top: var(--space-1); }
-.ledger-body { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.4fr); gap: var(--space-6); padding: var(--space-6); }
-.ledger-body h2 { margin: 0 0 var(--space-3); font-size: var(--text-lg); font-weight: 400; }
-.ledger-list { display: grid; gap: var(--space-3); }
-.ledger-entry { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--line); background: var(--panel); }
-.ledger-entry.current { border-color: var(--line-strong); background: var(--raised); }
-.ledger-entry header, .ledger-editor header, .ledger-editor footer, .ledger-actions { display: flex; align-items: center; gap: var(--space-2); }
 .method-choice { margin: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .method-choice > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .method-choice h3 { margin: 2px 0 6px; }
@@ -1867,19 +1851,7 @@ p { margin: 0; }
 .method-preview p { margin: 6px 0; }
 .method-preview pre { overflow: auto; margin: 0; font-size: 14px; }
 .method-reason { display: grid; gap: 5px; margin-top: 10px; }
-.ledger-entry h3 { margin: 0; font-size: var(--text-md); font-weight: 500; }
-.ledger-entry dl { display: grid; grid-template-columns: 90px 1fr; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-sm); }
-.ledger-entry dt { color: var(--faint); }.ledger-entry dd { margin: 0; color: var(--soft); }
 .ledger-tag { margin-left: auto; color: var(--kind-decision); font-size: var(--text-xs); }
-.ledger-unknown { color: var(--kind-decision); font-size: var(--text-sm); }
-.ledger-empty { display: grid; justify-items: start; gap: var(--space-3); padding: var(--space-5); border: 1px dashed var(--line-strong); }
-.ledger-editor { width: min(760px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: auto; display: grid; gap: var(--space-4); padding: var(--space-5); border: 1px solid var(--alpha-08); border-radius: 4px; background: var(--gray-2); box-shadow: 0 24px 80px var(--black-alpha-85); }
-.ledger-editor header { justify-content: space-between; }.ledger-editor footer { justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--alpha-04); background: var(--gray-2); }
-.ledger-editor label { display: grid; gap: var(--space-1); color: var(--muted); font-size: var(--text-sm); }
-.ledger-editor input, .ledger-editor select, .ledger-editor textarea { width: 100%; padding: var(--space-2); border: 1px solid var(--alpha-06); border-radius: 4px; background: var(--gray-0); color: var(--ink); font: var(--text-sm) var(--sans); }
-.ledger-editor textarea { min-height: 64px; resize: vertical; }.ledger-editor > label:first-of-type textarea { min-height: 84px; }
-.ledger-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-@media (max-width: 900px) { .ledger-body { grid-template-columns: 1fr; }.ledger-fields { grid-template-columns: 1fr; } }
 
 /* Datasets (ADR-0038): the tables flows load, then one table's profile. */
 .datasets { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; background: var(--canvas); overflow: hidden; }
@@ -3932,14 +3904,6 @@ p { margin: 0; }
   font-weight: var(--fw-regular);
   line-height: var(--lh-tight);
   border: 0;
-}
-.tag.clickable {
-  cursor: pointer;
-  transition: all var(--dur-fast);
-}
-.tag.clickable:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
 }
 .tag-danger {
   background: var(--danger-wash);

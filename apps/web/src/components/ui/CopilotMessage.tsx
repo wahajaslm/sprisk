@@ -3,14 +3,9 @@ import React from "react";
 export interface CopilotMessageProps {
   role?: "user" | "assistant";
   children?: React.ReactNode;
-  card?: {
-    title: string;
-    rows: { k: string; v: string; warn?: boolean }[];
-    foot?: string;
-  };
 }
 
-export function CopilotMessage({ role = "assistant", children, card }: CopilotMessageProps) {
+export function CopilotMessage({ role = "assistant", children }: CopilotMessageProps) {
   const user = role === "user";
   return (
     <div
@@ -36,59 +31,6 @@ export function CopilotMessage({ role = "assistant", children, card }: CopilotMe
           }}
         >
           {children}
-        </div>
-      )}
-      {card && (
-        <div
-          style={{
-            alignSelf: "stretch",
-            borderTop: "1px solid var(--border-input)",
-            borderBottom: "1px solid var(--border-input)",
-          }}
-        >
-          <div
-            style={{
-              padding: "10px 0 6px",
-              fontSize: "var(--fs-13-5)",
-              fontWeight: "var(--fw-medium)",
-            }}
-          >
-            {card.title}
-          </div>
-          {card.rows.map((r) => (
-            <div
-              key={r.k}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                padding: "5px 0",
-                fontSize: "var(--fs-13)",
-              }}
-            >
-              <span style={{ color: "var(--text-muted)" }}>{r.k}</span>
-              <span
-                style={{
-                  color: r.warn ? "var(--danger)" : "var(--text-primary)",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {r.v}
-              </span>
-            </div>
-          ))}
-          {card.foot && (
-            <div
-              style={{
-                padding: "8px 0",
-                borderTop: "1px solid var(--border-divider)",
-                fontSize: "var(--fs-12-5)",
-                color: "var(--text-label)",
-              }}
-            >
-              {card.foot}
-            </div>
-          )}
         </div>
       )}
     </div>
