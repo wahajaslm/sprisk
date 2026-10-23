@@ -52,12 +52,15 @@ function serve(datasets: () => Response = () => HttpResponse.json([iris, penguin
 afterEach(() => server.events.removeAllListeners());
 
 describe("datasets", () => {
-  it("counts the flows that use a table, and says 0 when none of them is listed", async () => {
-    const orphan: LoadedTable = { ...iris, used_by: [{ pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXY99", run_id: RUN, node_id: "load" }] };
-    serve(() => HttpResponse.json([orphan]));
+  it("counts the distinct flows that use a table, and 0 when none does", async () => {
+    const twice: LoadedTable = { ...iris, used_by: [iris.used_by[0]!, { ...iris.used_by[0]!, node_id: "data" }] };
+    serve(() => HttpResponse.json([twice]));
+    expect(await screen.findByText("1 flow")).toBeInTheDocument();
+  });
 
+  it("says 0 flows for a table no flow uses", async () => {
+    serve(() => HttpResponse.json([{ ...iris, used_by: [] }]));
     expect(await screen.findByText("0 flows")).toBeInTheDocument();
-    expect(screen.queryByText("1 flows")).toBeNull();
   });
 
   it("lists each table the flows load, with its rows, columns and the steps that load it", async () => {

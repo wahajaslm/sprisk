@@ -109,7 +109,7 @@ export function DatasetsPage() {
                 rows={[
                   { k: "Rows", v: current.total_rows.toLocaleString() },
                   { k: "Columns", v: String(current.total_columns) },
-                  { k: "Used by", v: `${usedBy(current).length} ${usedBy(current).length === 1 ? "flow" : "flows"}` },
+                  { k: "Used by", v: plural(flowCount(current, versions.data ?? []), "flow") },
                 ]}
               />
             )}
@@ -123,6 +123,14 @@ export function DatasetsPage() {
     </div>
   );
 }
+
+/** The distinct flows that load the table; a version not listed counts as its own flow. */
+function flowCount(dataset: LoadedTable, versions: PipelineVersion[]): number {
+  const all = flows(versions);
+  return new Set(dataset.used_by.map((u) => all.find((f) => f.ids.includes(u.pipeline_version_id))?.head.id ?? u.pipeline_version_id)).size;
+}
+
+const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
 
 /** "iris.csv · load" for each flow and step that loads the table, once each. */
 function uses(dataset: LoadedTable, versions: PipelineVersion[]): string[] {
