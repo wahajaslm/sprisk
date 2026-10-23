@@ -39,7 +39,16 @@ export function ListRow({
 
   return (
     <div
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-current={isSelected ? "true" : undefined}
       onClick={disabled ? undefined : onClick}
+      onKeyDown={(e) => {
+        if (!disabled && onClick && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       onMouseEnter={() => !disabled && setH(true)}
       onMouseLeave={() => !disabled && setH(false)}
       style={{
@@ -81,7 +90,7 @@ export function ListRow({
         >
           {title}
         </span>
-        {state && <span style={{ flexShrink: 0 }}>{state}</span>}
+        {!two && state && <span style={{ flexShrink: 0 }}>{state}</span>}
         {trailing != null && (
           <span
             style={{
@@ -113,18 +122,21 @@ export function ListRow({
         )}
       </div>
       {two && (
-        <span
-          style={{
-            fontSize: "var(--fs-12-5)",
-            color: "var(--ink-5)",
-            fontVariantNumeric: "tabular-nums",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {meta}
-        </span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <span
+            style={{
+              fontSize: "var(--fs-12-5)",
+              color: "var(--ink-5)",
+              fontVariantNumeric: "tabular-nums",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {meta}
+          </span>
+          {state && <span style={{ flexShrink: 0, fontSize: "var(--fs-12)", color: "var(--ink-4)" }}>{state}</span>}
+        </div>
       )}
     </div>
   );

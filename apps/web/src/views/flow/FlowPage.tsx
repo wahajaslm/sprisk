@@ -442,55 +442,6 @@ print(f"dropped {len(drop)} columns")`}</code>
           </div>
         </section>
       </main>
-
-      {/* Right 340px Copilot */}
-      <aside className="flw-copilot" aria-label="Copilot assistant">
-        <div className="copilot-head">
-          <SparkIcon />
-          <strong>Copilot</strong>
-          <span className="spacer" />
-          <span className="chip">Missing values ≥ 20%</span>
-          <button type="button" className="icon-btn icon-btn-sm" title="Toggle copilot rail">
-            <PanelToggleIcon />
-          </button>
-        </div>
-
-        <div className="flw-copilot-body">
-          <div className="flw-chat-bubble flw-user-bubble">
-            <p>Why drop instead of impute?</p>
-          </div>
-
-          <div className="flw-chat-bubble flw-copilot-bubble">
-            <p>
-              Above 20% the imputed share starts to dominate these columns. Dropping costs 0.4
-              points of accuracy; imputing adds noise to 41 cells.
-            </p>
-          </div>
-
-          <div className="flw-copilot-suggestions">
-            <Tag tone="default">Compare with 30%</Tag>
-            <Tag tone="default">Show affected rows</Tag>
-          </div>
-        </div>
-
-        <div className="copilot-foot">
-          <div className="composer">
-            <input
-              placeholder="Ask about this step"
-              value={composerText}
-              onChange={(e) => setComposerText(e.target.value)}
-            />
-            <button
-              type="button"
-              className="send"
-              aria-label="Send"
-              disabled={!composerText.trim()}
-            >
-              <SendIcon />
-            </button>
-          </div>
-        </div>
-      </aside>
     </div>
   );
 }

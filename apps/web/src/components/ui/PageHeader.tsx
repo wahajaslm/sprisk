@@ -34,6 +34,8 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
           </span>
         )}
         <span
+          role="heading"
+          aria-level={1}
           style={{
             fontSize: "var(--fs-30)",
             fontWeight: 400,

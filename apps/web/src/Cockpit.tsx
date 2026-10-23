@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { TopBar } from "./views/TopBar.tsx";
 import { ActivityBar } from "./views/ActivityBar.tsx";
+import { Copilot } from "./views/Copilot.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
 import { ObjectivePage } from "./views/objective/ObjectivePage.tsx";
 import { FlowPage } from "./views/flow/FlowPage.tsx";
@@ -12,9 +13,11 @@ import { DeployPage } from "./views/deploy/DeployPage.tsx";
 import { ReportsPage } from "./views/reports/ReportsPage.tsx";
 import { SettingsPage } from "./views/settings/SettingsPage.tsx";
 import { useSelection } from "./workbench/selection.ts";
+import { useWorkbench } from "./workbench/workbench.ts";
 
 export function Cockpit() {
   const nav = useSelection((s) => s.nav);
+  const copilotOpen = useWorkbench((s) => s.copilotOpen);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
@@ -32,9 +35,9 @@ export function Cockpit() {
     <div className="cockpit">
       <TopBar />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <div className="workspace">
+      <div className={`cockpit-shell ${copilotOpen ? "with-copilot" : "folded-copilot"}`}>
         <ActivityBar />
-        <div className="workspace-main">
+        <main className="cockpit-main">
           {nav === "Objective" ? (
             <ObjectivePage />
           ) : nav === "Flow" ? (
@@ -56,7 +59,8 @@ export function Cockpit() {
           ) : (
             <ObjectivePage />
           )}
-        </div>
+        </main>
+        <Copilot />
       </div>
     </div>
   );

@@ -239,46 +239,6 @@ export function NotebooksPage() {
           </div>
         </div>
       </main>
-
-      {/* Right 340px Copilot Column */}
-      <aside className="nbx-copilot" aria-label="Copilot assistant">
-        <div className="copilot-head">
-          <SparkIcon />
-          <strong>Copilot</strong>
-          <span className="spacer" />
-          <span className="chip">{activeNotebook.title}</span>
-          <button type="button" className="icon-btn icon-btn-sm" title="Toggle copilot rail">
-            <PanelToggleIcon />
-          </button>
-        </div>
-
-        <div className="nbx-copilot-body">
-          <div className="nbx-copilot-bubble">
-            <p>
-              Cell 3 matches the flow step &ldquo;Missing values &ge; 20%&rdquo;.
-            </p>
-          </div>
-
-          <div className="nbx-copilot-suggestions">
-            <Tag tone="default" onClick={() => setNav("Flow")}>
-              Open step in flow
-            </Tag>
-          </div>
-        </div>
-
-        <div className="copilot-foot">
-          <div className="composer">
-            <input
-              placeholder="Ask about this step"
-              value={composerText}
-              onChange={(e) => setComposerText(e.target.value)}
-            />
-            <button type="button" className="send" aria-label="Send" disabled={!composerText.trim()}>
-              <SendIcon />
-            </button>
-          </div>
-        </div>
-      </aside>
     </div>
   );
 }

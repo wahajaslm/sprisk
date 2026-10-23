@@ -38,12 +38,13 @@ export function ActivityBar() {
             <button
               key={tab}
               type="button"
-              className="activity"
+              className={`activity-btn ${active ? "active" : ""}`}
               aria-label={tab}
               aria-current={active ? "page" : undefined}
               title={tab}
               onClick={() => setNav(tab)}
             >
+              <span className="activity-bar-indicator" />
               <Icon size={18} />
             </button>
           );
@@ -53,12 +54,13 @@ export function ActivityBar() {
       <div className="activity-bottom">
         <button
           type="button"
-          className="activity"
+          className={`activity-btn ${nav === "Settings" ? "active" : ""}`}
           aria-label="Settings"
           aria-current={nav === "Settings" ? "page" : undefined}
           title="Settings"
           onClick={() => setNav("Settings")}
         >
+          <span className="activity-bar-indicator" />
           <SettingsIcon size={18} />
         </button>
       </div>

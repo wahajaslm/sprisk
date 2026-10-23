@@ -238,97 +238,167 @@ p { margin: 0; }
 .cockpit {
   display: grid;
   grid-template-rows: var(--size-tabbar) minmax(0, 1fr);
-  height: 100%;
+  height: 100vh;
+  width: 100vw;
   background: var(--bg-app);
-}
-
-.workspace {
-  margin: 0 8px 8px 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-panel);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  min-height: 0;
-  height: calc(100% - 8px);
-}
-
-.workspace-main {
+  color: var(--text-primary);
   min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+
+.cockpit-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+  padding: 0 8px 8px 0;
+  background: var(--bg-canvas);
+  border-top: 1px solid var(--border-panel);
   min-height: 0;
+  height: 100%;
+  transition: grid-template-columns var(--dur-panel) var(--ease-standard);
+}
+
+.cockpit-shell.with-copilot {
+  grid-template-columns: 56px minmax(0, 1fr) min(340px, 36%);
+}
+
+.cockpit-shell.folded-copilot {
+  grid-template-columns: 56px minmax(0, 1fr) 44px;
+}
+
+.cockpit-main {
+  grid-column: 2;
+  grid-row: 1;
+  margin-top: 8px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-panel);
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100%;
 }
 
 /* ── Activity bar (56px Flow Studio Rail) ─────────────── */
 .activity-bar {
+  grid-column: 1;
+  grid-row: 1;
   width: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--space-2) 0;
-  background: var(--bg-surface);
-  border-right: 1px solid var(--border-panel);
+  gap: 4px;
+  padding: 8px 0;
+  background: var(--bg-app);
+  min-height: 0;
+  border: 0;
 }
 
 .activity-top, .activity-bottom {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  gap: 4px;
   width: 100%;
 }
 
-.activity {
+.activity-btn {
   position: relative;
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
   border: 0;
-  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   transition: color var(--dur-fast), background var(--dur-fast);
 }
 
-.activity:hover {
+.activity-btn:hover {
   color: var(--text-primary);
   background: var(--bg-hover);
 }
 
-.activity[aria-current="page"] {
-  color: var(--text-strong);
-  background: var(--bg-selected);
+.activity-btn[aria-current="page"],
+.activity-btn.active {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.activity-bar-indicator {
+  position: absolute;
+  left: -6px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.activity-btn[aria-current="page"] .activity-bar-indicator,
+.activity-btn.active .activity-bar-indicator {
+  background: var(--text-primary);
 }
 
 /* ── Top bar (48px Flow Studio Header) ─────────────────── */
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-3);
   min-width: 0;
   height: var(--size-tabbar);
-  padding-right: var(--space-4);
   background: var(--bg-app);
-  border-bottom: 1px solid var(--border-divider);
+  border-bottom: 0;
 }
 
 .logo-cell {
   width: 56px;
   height: var(--size-tabbar);
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  border-right: 1px solid var(--border-panel);
-  color: var(--text-primary);
+}
+
+.logo-icon-box {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-icon-box svg {
+  color: var(--bg-app);
+}
+
+.topbar-mid {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 14px;
+  min-width: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  white-space: nowrap;
 }
 
 .product-name {
-  font-size: var(--fs-15);
+  font-size: 14px;
   font-weight: var(--fw-semibold);
   letter-spacing: -0.01em;
   color: var(--text-primary);
@@ -502,28 +572,79 @@ p { margin: 0; }
 }
 
 /* ── Copilot 340px folding to 44px rail ──────────────── */
-.copilot {
-  width: var(--size-copilot);
-  height: 100%;
-  display: grid;
-  grid-template-rows: 44px minmax(0, 1fr) auto;
+.copilot-card {
+  grid-column: 3;
+  grid-row: 1;
+  margin-top: 8px;
   background: var(--bg-surface);
-  border-left: 1px solid var(--border-panel);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-panel);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.copilot {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  transition: width var(--dur-panel) var(--ease-standard);
+}
+
+.copilot-head {
+  height: 42px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-panel);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.copilot-head strong {
+  font-size: var(--fs-13-5);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+}
+
+.copilot-head .chip {
+  font-size: var(--fs-12);
+  color: var(--text-label);
+  padding: 2px 8px;
+  background: var(--alpha-05);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.copilot-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.copilot-foot {
+  border-top: 1px solid var(--border-panel);
+  background: var(--bg-surface);
+  padding: 12px 14px;
+  flex-shrink: 0;
 }
 
 .copilot-rail {
-  width: var(--size-copilot-rail);
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 10px 0;
   gap: 12px;
-  background: var(--bg-surface);
-  border-left: 1px solid var(--border-panel);
   min-height: 0;
   user-select: none;
 }

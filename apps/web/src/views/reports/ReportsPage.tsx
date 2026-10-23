@@ -275,45 +275,6 @@ export function ReportsPage() {
           </div>
         </div>
       </main>
-
-      {/* Right 340px Copilot Column */}
-      <aside className="rep-copilot" aria-label="Copilot assistant">
-        <div className="copilot-head">
-          <SparkIcon />
-          <strong>Copilot</strong>
-          <span className="spacer" />
-          <span className="chip">What we set out to answer</span>
-          <button type="button" className="icon-btn icon-btn-sm" title="Toggle copilot rail">
-            <PanelToggleIcon />
-          </button>
-        </div>
-
-        <div className="rep-copilot-body">
-          <div className="rep-copilot-bubble">
-            <p>
-              This answer links to 3 pieces of evidence. I will flag it if run 17 changes any of them.
-            </p>
-          </div>
-
-          <div className="rep-copilot-suggestions">
-            <Tag tone="default">Draft answer</Tag>
-            <Tag tone="default">Link evidence</Tag>
-          </div>
-        </div>
-
-        <div className="copilot-foot">
-          <div className="composer">
-            <input
-              placeholder="Ask about this step"
-              value={composerText}
-              onChange={(e) => setComposerText(e.target.value)}
-            />
-            <button type="button" className="send" aria-label="Send" disabled={!composerText.trim()}>
-              <SendIcon />
-            </button>
-          </div>
-        </div>
-      </aside>
     </div>
   );
 }
