@@ -109,7 +109,7 @@ export function DatasetsPage() {
                 rows={[
                   { k: "Rows", v: current.total_rows.toLocaleString() },
                   { k: "Columns", v: String(current.total_columns) },
-                  { k: "Used by", v: `${usedBy(current).length || 1} flows` },
+                  { k: "Used by", v: `${usedBy(current).length} ${usedBy(current).length === 1 ? "flow" : "flows"}` },
                 ]}
               />
             )}
