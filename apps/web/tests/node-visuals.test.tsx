@@ -124,6 +124,38 @@ describe("in-node analysis visualizations", () => {
     expect(await screen.findByText("0.15×")).toBeInTheDocument();
   });
 
+  it("shows no made-up threshold or attenuated share for spectral gating", async () => {
+    server.use(
+      http.get(`/api/attempts/${ATT2}/outputs`, () => HttpResponse.json([{ port: "train", artifact: mockArtifact(ART2, ATT2) }])),
+      http.get(`/api/artifacts/${ART2}/rows`, () =>
+        HttpResponse.json({
+          offset: 0,
+          total_rows: 1,
+          total_columns: 1,
+          columns: [{ name: "signal", data_type: "Float64" }],
+          rows: [{ values: ["0.02"], missing: [] }],
+        }),
+      ),
+    );
+
+    renderWithApi(
+      <NodeVisual
+        attemptId={ATT2}
+        operator="sprisk.clean.spectral_gating@1.0.0"
+        capability="transform"
+        params={{ attenuation_factor: 0.15, signal_column: "signal", snr_column: "snr" }}
+        pipelineVersionId="pv_1"
+        nodeId="spectral_gate"
+        metricsPort={undefined}
+      />,
+    );
+
+    expect(await screen.findByText("default")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText("-6 dB")).toBeNull();
+    expect(screen.queryByText("50%")).toBeNull();
+  });
+
   it("renders ranked permutation feature importance impact bars", async () => {
     server.use(
       http.get(`/api/attempts/${ATT3}/outputs`, () =>
@@ -238,7 +270,7 @@ describe("in-node analysis visualizations", () => {
     expect(await screen.findByText("0.78")).toBeInTheDocument();
   });
 
-  it("renders outlier clipping quantile thresholds", async () => {
+  it("renders outlier clipping at its k × IQR fences", async () => {
     server.use(
       http.get(`/api/attempts/${ATT5}/outputs`, () => HttpResponse.json([])),
     );
@@ -248,14 +280,15 @@ describe("in-node analysis visualizations", () => {
         attemptId={ATT5}
         operator="sprisk.clean.clip_outliers@1.0.0"
         capability="transform"
-        params={{ lower_quantile: 0.02, upper_quantile: 0.98, columns: ["audio_amp", "snr"] }}
+        params={{ k: 1.5, columns: ["audio_amp", "snr"] }}
         pipelineVersionId="pv_1"
         nodeId="clip_node"
         metricsPort={undefined}
       />,
     );
 
-    expect(await screen.findByText("P2–P98")).toBeInTheDocument();
+    expect(await screen.findByText("1.5 × IQR")).toBeInTheDocument();
+    expect(screen.queryByText(/^P\d+–P\d+$/)).toBeNull();
     expect(await screen.findByText("2 cols clipped")).toBeInTheDocument();
   });
 
