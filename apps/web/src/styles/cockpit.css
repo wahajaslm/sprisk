@@ -7398,3 +7398,166 @@ p { margin: 0; }
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   STEP 9: COMMAND PALETTE (Global ⌘K)
+   ══════════════════════════════════════════════════════════════════ */
+.cmd-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--black-alpha-60);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+}
+
+.cmd-modal {
+  width: 580px;
+  max-width: 90vw;
+  background: var(--gray-6);
+  border: 1px solid var(--alpha-12);
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 48px var(--black-alpha-75);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cmd-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--alpha-06);
+  color: var(--ink-3);
+}
+
+.cmd-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: var(--fs-14);
+  font-family: var(--sans);
+  color: var(--ink-0);
+}
+
+.cmd-input::placeholder {
+  color: var(--ink-5);
+}
+
+.cmd-kbd {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--alpha-06);
+  border: 1px solid var(--alpha-08);
+  color: var(--ink-4);
+  font: 450 11px/1.2 var(--mono);
+  text-transform: lowercase;
+}
+
+.cmd-list {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cmd-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: var(--fs-13);
+  color: var(--ink-4);
+}
+
+.cmd-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.cmd-group-label {
+  padding: 8px 16px 4px;
+  font-size: var(--fs-11);
+  font-weight: 500;
+  color: var(--ink-5);
+}
+
+.cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.cmd-row:hover {
+  background: var(--alpha-04);
+}
+
+.cmd-row.selected {
+  background: var(--alpha-08);
+}
+
+.cmd-row-title {
+  font-size: var(--fs-13);
+  color: var(--ink-1);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmd-row.selected .cmd-row-title {
+  color: var(--ink-0);
+  font-weight: 500;
+}
+
+.cmd-row-meta {
+  font-size: var(--fs-12);
+  color: var(--ink-4);
+  font-family: var(--mono);
+  margin-left: auto;
+}
+
+.cmd-row-badge {
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--alpha-06);
+  border: 1px solid var(--alpha-08);
+  color: var(--ink-3);
+  font: 450 11px/1.2 var(--mono);
+}
+
+.cmd-enter-glyph {
+  font-size: var(--fs-13);
+  color: var(--ink-4);
+  margin-left: auto;
+}
+
+.cmd-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--alpha-06);
+  font-size: var(--fs-11-5);
+  color: var(--ink-4);
+  background: var(--alpha-02);
+}
+
+.cmd-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cmd-hint-key {
+  font-family: var(--mono);
+  color: var(--ink-3);
+}
+

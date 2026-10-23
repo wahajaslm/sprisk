@@ -1,17 +1,45 @@
 import type Plotly from "plotly.js-dist-min";
 
-/** Python's layout with Studio colours, so a figure sits in the dark theme (cockpit.css).
- * Axes make room for their titles and tick labels, so long names are never cut off. */
+/** Flow Studio monochromatic chart palette.
+ * Primary: light #f2f2f2 (--ink-0)
+ * Secondary: grey #5a5a5a (--ink-4)
+ * Tertiary: mid-grey #8a8a8a (--ink-3)
+ * Alert / Threshold: #ff5c5c (--danger)
+ */
+export const FLOW_CHART_COLORS = {
+  primary: "#f2f2f2",
+  secondary: "#5a5a5a",
+  tertiary: "#8a8a8a",
+  threshold: "#ff5c5c",
+};
+
+/** Flow Studio layout styling for Plotly charts in dark monochromatic theme. */
 export function themed(layout: Partial<Plotly.Layout>, color: (token: string) => string): Partial<Plotly.Layout> {
-  const axis = { gridcolor: color("--line"), zerolinecolor: color("--line"), linecolor: color("--line"), automargin: true };
+  const gridColor = color("--alpha-06") || "rgba(255, 255, 255, 0.06)";
+  const lineCol = color("--alpha-08") || "rgba(255, 255, 255, 0.08)";
+  const fontColor = color("--ink-3") || "#8a8a8a";
+  const fontFamily = color("--sans") || "Instrument Sans, -apple-system, sans-serif";
+
+  const primaryCol = color("--ink-0") || FLOW_CHART_COLORS.primary;
+  const secondaryCol = color("--ink-4") || FLOW_CHART_COLORS.secondary;
+  const tertiaryCol = color("--ink-3") || FLOW_CHART_COLORS.tertiary;
+  const dangerCol = color("--danger") || FLOW_CHART_COLORS.threshold;
+
+  const axis = {
+    gridcolor: gridColor,
+    zerolinecolor: lineCol,
+    linecolor: lineCol,
+    automargin: true,
+    tickfont: { color: fontColor, family: fontFamily, size: 11 },
+    titlefont: { color: fontColor, family: fontFamily, size: 12 },
+  };
+
   return {
     ...layout,
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
-    font: { color: color("--soft"), family: color("--sans"), size: 12 },
-    colorway: [color("--soft"), color("--dim"), color("--muted"), color("--alert")],
-    // Python's axis titles and settings stay; only the colours and margins change. Subplots
-    // have their own axes (xaxis2, yaxis3, …), themed the same.
+    font: { color: fontColor, family: fontFamily, size: 12 },
+    colorway: [primaryCol, secondaryCol, tertiaryCol, dangerCol],
     ...Object.fromEntries(
       Object.entries(layout)
         .filter(([key]) => /^[xy]axis\d+$/.test(key))
@@ -23,10 +51,26 @@ export function themed(layout: Partial<Plotly.Layout>, color: (token: string) =>
   };
 }
 
+/** 1px dashed red threshold line shape helper for Plotly layouts */
+export function thresholdLine(y: number, colorVal = FLOW_CHART_COLORS.threshold): Partial<Plotly.Shape> {
+  return {
+    type: "line",
+    xref: "paper",
+    x0: 0,
+    x1: 1,
+    y0: y,
+    y1: y,
+    line: {
+      color: colorVal,
+      width: 1,
+      dash: "dash",
+    },
+  };
+}
+
 type Figure = { data: Plotly.Data[]; layout: Partial<Plotly.Layout> };
 
-/** A themed figure cut down for a canvas card: just the marks and the grid. Words, legends
- * and colour bars cannot be read at that size; the Inspector shows them. */
+/** A themed figure cut down for a canvas card: just marks and grid. */
 export function thumbnail({ data, layout }: Figure): Figure {
   const { title: _title, width: _width, height: _height, ...rest } = layout;
   const bare = { showticklabels: false, automargin: false, title: { text: "" } };
