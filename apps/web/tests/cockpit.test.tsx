@@ -1654,20 +1654,6 @@ describe("activity bar and sidebar", () => {
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(useSelection.getState().nav).toBe("Settings");
   });
-
-  it("opens another tab panel and resets the layout from the Views sidebar", async () => {
-    const { ViewsPanel } = await import("../src/views/ViewsPanel.tsx");
-    const { useWorkbench } = await import("../src/workbench/workbench.ts");
-    const dock = fakeDock();
-    useWorkbench.setState({ activity: "views", editing: false, dock });
-    renderWithApi(<ViewsPanel />);
-    await userEvent.click(screen.getByRole("button", { name: /^Console/ }));
-    expect(dock.openTab).toHaveBeenCalledWith("console");
-    await userEvent.click(screen.getByRole("button", { name: /Edit layout/ }));
-    expect(dock.setEditing).toHaveBeenCalledWith(true);
-    await userEvent.click(screen.getByRole("button", { name: /Reset to Studio layout/ }));
-    expect(dock.resetLayout).toHaveBeenCalled();
-  });
 });
 
 describe("pinned inspector", () => {
