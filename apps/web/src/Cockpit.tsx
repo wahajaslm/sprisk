@@ -14,13 +14,13 @@ import { MethodologyPage } from "./views/methodology/MethodologyPage.tsx";
 import { Dock } from "./workbench/DockAdapter.tsx";
 import { useSelection } from "./workbench/selection.ts";
 
+import { ReportsPage } from "./views/reports/ReportsPage.tsx";
+import { DeployPage } from "./views/deploy/DeployPage.tsx";
+import { SettingsPage } from "./views/settings/SettingsPage.tsx";
+
 const views = { sidebar: Sidebar, flow: FlowPanel, copilot: Copilot, "step-tab": StepTab, placeholder: Placeholder };
 
-const COMING: Record<string, string> = {
-  Deploy: "Production and staging models, canary traffic, latency and drift.",
-  Reports: "Evidence ledger, decisions, and reproducibility sign-off.",
-  Settings: "Packs, environments, compute, and workspace preferences.",
-};
+const COMING: Record<string, string> = {};
 
 export function Cockpit() {
   const nav = useSelection((s) => s.nav);
@@ -42,6 +42,12 @@ export function Cockpit() {
             <NotebooksPage />
           ) : nav === "Datasets" ? (
             <DatasetsPage />
+          ) : nav === "Deploy" ? (
+            <DeployPage />
+          ) : nav === "Reports" ? (
+            <ReportsPage />
+          ) : nav === "Settings" ? (
+            <SettingsPage />
           ) : (
             <ComingView title={nav} shows={COMING[nav] ?? "Page in development."} />
           )}
