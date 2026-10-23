@@ -26,7 +26,7 @@ import { createPortal } from "react-dom";
 import { create } from "zustand";
 
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun, useStartRun } from "../api/hooks.ts";
-import { type RunChecks, useRunChecks } from "../api/checks.ts";
+import { concernsByNode, useRunChecks } from "../api/checks.ts";
 import { hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
@@ -1014,16 +1014,6 @@ function DetailSwitch() {
       ))}
     </div>
   );
-}
-
-function concernsByNode(run: RunChecks): Map<string, number> {
-  const counts = new Map<string, number>();
-  if (run.status !== "ready") return counts;
-  for (const check of run.checks) {
-    if (check.verdict === "pass") continue;
-    for (const node of check.cited_nodes) counts.set(node, (counts.get(node) ?? 0) + 1);
-  }
-  return counts;
 }
 
 const LEGEND: [NodeKind, string][] = [

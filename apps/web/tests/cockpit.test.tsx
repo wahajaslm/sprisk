@@ -1,5 +1,5 @@
 import type { Attempt } from "@sprisk/contracts";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -155,6 +155,38 @@ describe("step library", () => {
     const explore = await screen.findByRole("region", { name: "Explore" });
     expect(within(explore).getAllByText("Python")).toHaveLength(1);
     expect(within(explore).getByTitle(/sprisk.code.python@1.10.0/)).toBeInTheDocument();
+  });
+
+  it("tags each of the flow's steps with its latest attempt in the run, never a made-up state", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    const split = (await screen.findByText("Random split")).closest(".step-item")!;
+    expect(await within(split as HTMLElement).findByText("succeeded")).toBeInTheDocument();
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+
+  it("tags a step that never ran as not run", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: undefined, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    const split = (await screen.findByText("Random split")).closest(".step-item")!;
+    expect(within(split as HTMLElement).getByText("Not run")).toBeInTheDocument();
+  });
+
+  it("counts the steps that read the selected step", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByText("2 steps")).toBeInTheDocument();
+    act(() => useSelection.setState({ nodeId: "score" }));
+    expect(await screen.findByText("0 steps")).toBeInTheDocument();
+  });
+
+  it("has no Plugins tab, since there is nothing to list in it", async () => {
+    renderWithApi(<StepLibrary />);
+    await screen.findByRole("region", { name: "Clean" });
+    expect(screen.queryByText("Plugins")).toBeNull();
   });
 
   it("filters steps by search", async () => {

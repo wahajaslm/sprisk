@@ -37,3 +37,14 @@ export function useRunChecks(attempts: Attempt[]): RunChecks {
     return { status: "error", message: `Unreadable methodology checks: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
+/** How many checks that did not pass cite each step. */
+export function concernsByNode(run: RunChecks): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (run.status !== "ready") return counts;
+  for (const check of run.checks) {
+    if (check.verdict === "pass") continue;
+    for (const node of check.cited_nodes) counts.set(node, (counts.get(node) ?? 0) + 1);
+  }
+  return counts;
+}

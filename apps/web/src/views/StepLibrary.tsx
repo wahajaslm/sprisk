@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import type { Operator } from "@sprisk/contracts";
 
-import { useOperators, usePipelineVersions } from "../api/hooks.ts";
+import { concernsByNode, useRunChecks } from "../api/checks.ts";
+import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
+import { latestByNode, statusOf } from "../flow/latest.ts";
 import { kindOf, newestVersions, STAGES, stageOf, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
 import { flows } from "../flow/flows.ts";
 import { useSelection } from "../workbench/selection.ts";
@@ -12,12 +14,15 @@ import { Segmented } from "../components/ui/Segmented.tsx";
 import { Tag } from "../components/ui/Tag.tsx";
 import { InfoDock } from "../components/ui/InfoDock.tsx";
 
-type SidebarTab = "Pipeline" | "Operators" | "Plugins";
+type SidebarTab = "Pipeline" | "Operators";
 
 export function StepLibrary() {
   const versionsQuery = usePipelineVersions();
   const operatorsQuery = useOperators();
-  const { pipelineVersionId, nodeId, selectNode } = useSelection();
+  const { pipelineVersionId, runId, nodeId, selectNode } = useSelection();
+  const attempts = useRunAttempts(pipelineVersionId, runId);
+  const latest = useMemo(() => latestByNode(attempts.data ?? []), [attempts.data]);
+  const concerns = concernsByNode(useRunChecks(attempts.data ?? []));
   const { sidebarOpen, toggleSidebar } = useWorkbench();
 
   const allVersions = useMemo(() => versionsQuery.data ?? [], [versionsQuery.data]);
@@ -80,13 +85,13 @@ export function StepLibrary() {
   }, [activeVersion, opMap, needle]);
 
   // Selected node info
-  const selectedNode = useMemo(() => {
-    return activeVersion?.nodes.find((n) => n.id === nodeId) ?? activeVersion?.nodes[0];
-  }, [activeVersion, nodeId]);
+  const selectedNode = activeVersion?.nodes.find((n) => n.id === nodeId);
 
+  // The distinct steps that read any output of the selected step.
   const downstreamCount = useMemo(() => {
     if (!selectedNode || !activeVersion) return 0;
-    return activeVersion.edges.filter((e) => e.from.startsWith(selectedNode.id)).length;
+    const readers = activeVersion.edges.filter((e) => e.from.split(".")[0] === selectedNode.id).map((e) => e.to.split(".")[0]);
+    return new Set(readers).size;
   }, [selectedNode, activeVersion]);
 
   if (!sidebarOpen) {
@@ -140,7 +145,6 @@ export function StepLibrary() {
           options={[
             { value: "Pipeline", label: "Pipeline" },
             { value: "Operators", label: "Operators" },
-            { value: "Plugins", label: "Plugins" },
           ]}
         />
         <div className="sidebar-search">
@@ -184,7 +188,8 @@ export function StepLibrary() {
                       const op = opMap.get(node.operator);
                       const kind: NodeKind = op ? kindOf(op) : "recipe";
                       const isSelected = node.id === nodeId;
-                      const isIssue = node.id.includes("leak") || node.id.includes("gate");
+                      const issues = concerns.get(node.id) ?? 0;
+                      const attempt = latest.get(node.id);
                       return (
                         <div
                           key={node.id}
@@ -198,11 +203,7 @@ export function StepLibrary() {
                             <KindIcon kind={kind} size={12} />
                           </span>
                           <span className="step-item-name">{stepTitle(node.operator)}</span>
-                          {isIssue ? (
-                            <Tag tone="danger">Issue</Tag>
-                          ) : (
-                            <Tag tone="queued">Queued</Tag>
-                          )}
+                          <StepState issues={issues} state={attempt?.state} />
                         </div>
                       );
                     })}
@@ -258,20 +259,29 @@ export function StepLibrary() {
         rows={[
           {
             k: "Type",
-            v: selectedNode && opMap.get(selectedNode.operator)
-              ? kindOf(opMap.get(selectedNode.operator)!).toUpperCase()
-              : "Decision",
+            v: selectedNode && opMap.get(selectedNode.operator) ? kindOf(opMap.get(selectedNode.operator)!) : "—",
           },
           {
             k: "Status",
-            v: "Queued",
+            v: selectedNode ? statusText(latest.get(selectedNode.id)?.state) : "—",
           },
           {
             k: "Downstream",
-            v: `${downstreamCount || 3} steps`,
+            v: selectedNode ? `${downstreamCount} ${downstreamCount === 1 ? "step" : "steps"}` : "—",
           },
         ]}
       />
     </div>
   );
+}
+
+const statusText = (state: string | undefined) => (state ? statusOf(state).text : "Not run");
+
+const TONE: Record<string, "ok" | "danger" | "queued"> = { done: "ok", bad: "danger", live: "queued", idle: "queued" };
+
+/** A step's latest attempt in the selected run, or its check concerns when any did not pass. */
+function StepState({ issues, state }: { issues: number; state: string | undefined }) {
+  if (issues > 0) return <Tag tone="danger">{issues === 1 ? "1 check" : `${issues} checks`}</Tag>;
+  if (!state) return <Tag tone="neutral">Not run</Tag>;
+  return <Tag tone={TONE[statusOf(state).tone] ?? "queued"}>{statusOf(state).text}</Tag>;
 }
