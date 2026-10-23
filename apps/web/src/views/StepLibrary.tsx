@@ -22,7 +22,8 @@ export function StepLibrary() {
   const { pipelineVersionId, runId, nodeId, selectNode } = useSelection();
   const attempts = useRunAttempts(pipelineVersionId, runId);
   const latest = useMemo(() => latestByNode(attempts.data ?? []), [attempts.data]);
-  const concerns = concernsByNode(useRunChecks(attempts.data ?? []));
+  const checks = useRunChecks(attempts.data ?? []);
+  const concerns = concernsByNode(checks);
   const { sidebarOpen, toggleSidebar } = useWorkbench();
 
   const allVersions = useMemo(() => versionsQuery.data ?? [], [versionsQuery.data]);
@@ -159,6 +160,8 @@ export function StepLibrary() {
 
       {/* List content */}
       <div className="sidebar-list">
+        {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
+        {checks.status === "error" && <p role="alert" className="error pad">{checks.message}</p>}
         {tab === "Pipeline" ? (
           pipelineStages.length === 0 ? (
             <p className="muted pad" style={{ fontSize: "var(--fs-12)" }}>

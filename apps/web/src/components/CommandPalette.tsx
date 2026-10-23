@@ -31,6 +31,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const operators = useOperators();
   const tables = useLoadedTables();
   const flow = pipelines.data?.find((p) => p.id === pipelineVersionId);
+  const failed = [pipelines, operators, tables].find((q) => q.isError);
 
   const ALL_ITEMS: PaletteItem[] = useMemo(
     () => [
@@ -248,6 +249,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
         {/* Results List */}
         <div className="cmd-list" role="listbox">
+          {failed && <p role="alert" className="error cmd-empty">{failed.error?.message}</p>}
           {categories.length === 0 ? (
             <div className="cmd-empty">No results for &ldquo;{query}&rdquo;</div>
           ) : (

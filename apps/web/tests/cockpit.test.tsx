@@ -183,6 +183,32 @@ describe("step library", () => {
     expect(await screen.findByText("0 steps")).toBeInTheDocument();
   });
 
+  it("tags a step that a methodology check did not pass", async () => {
+    const failing = JSON.parse(checksJson).map((c: { verdict: string }) => ({ ...c, verdict: "fail" }));
+    server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify(failing))));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    const split = (await screen.findByText("Random split")).closest(".step-item")!;
+    expect(await within(split as HTMLElement).findByText("1 check")).toBeInTheDocument();
+  });
+
+  it("shows why the run's attempts cannot be read, instead of tagging steps not run", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+  });
+
+  it("shows why the checks cannot be read, instead of tagging steps clean", async () => {
+    server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text("not json")));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Unreadable methodology checks|JSON/);
+  });
+
   it("has no Plugins tab, since there is nothing to list in it", async () => {
     renderWithApi(<StepLibrary />);
     await screen.findByRole("region", { name: "Clean" });

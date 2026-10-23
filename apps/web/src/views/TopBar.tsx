@@ -153,9 +153,13 @@ export function TopBar() {
         </div>
 
         {nav === "Objective" ? (
+          questions.isError ? (
+            <span role="alert" className="error">{questions.error.message}</span>
+          ) : (
           <span className="runstate">
             {question === undefined ? "No question yet" : openCount > 0 ? `${openCount} open in ledger` : "Ledger complete"}
           </span>
+          )
         ) : (
           <>
             {versions.isError && <span role="alert" className="error">{versions.error.message}</span>}

@@ -42,4 +42,11 @@ describe("CommandPalette", () => {
 
     expect(useSelection.getState()).toMatchObject({ nav: "Flow", nodeId: "model" });
   });
+
+  it("shows why a list cannot be read, instead of quietly leaving it out", async () => {
+    server.use(http.get("/api/loaded_tables", () => HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })));
+    open();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+  });
 });

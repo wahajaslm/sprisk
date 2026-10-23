@@ -41,4 +41,12 @@ describe("top bar on the Objective page", () => {
     expect(screen.queryByText("Ledger complete")).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate pipeline" })).toBeNull();
   });
+
+  it("shows why the questions cannot be read, instead of saying there are none", async () => {
+    server.use(http.get("/api/question_versions", () => HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })));
+    renderWithApi(<TopBar />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+    expect(screen.queryByText("No question yet")).toBeNull();
+  });
 });
