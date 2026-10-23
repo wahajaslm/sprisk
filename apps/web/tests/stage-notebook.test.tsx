@@ -172,7 +172,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     }));
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
     await userEvent.click(await screen.findByRole("button", { name: "Delete cell 2" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Run All" })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Run all" })).toBeDisabled());
   });
 
   it("refuses to delete a step another step reads, naming it", async () => {

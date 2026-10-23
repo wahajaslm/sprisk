@@ -18,7 +18,7 @@ type Queued = { id: string; code: string };
 const EMPTY: Record<string, Ran> = {};
 
 /** A notebook on a live kernel, laid out as VS Code's notebook editor (ADR-0035, ADR-0036).
- * Cells share the kernel's state and run in the order the person chooses. Save and Run All
+ * Cells share the kernel's state and run in the order the person chooses. Save and Run all
  * rebuild its steps in `flow`; code edited on the flow comes back into its cells (ADR-0037). */
 export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow: PipelineVersion | undefined }) {
   const notebookId = saved.notebook_id;
@@ -245,7 +245,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
         </button>
         <span className="nb-divider" />
         <button type="button" className="nb-action" onClick={runAll}>
-          <RunAllIcon /> Run All
+          <RunAllIcon /> Run all
         </button>
         <button type="button" className="nb-action" onClick={interrupt}>
           Interrupt

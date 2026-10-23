@@ -325,8 +325,7 @@ p { margin: 0; }
 }
 
 .main-sidebar,
-.flow-sidebar,
-.notebooks-list {
+.flow-sidebar {
   width: var(--size-sidebar);
   flex-shrink: 0;
   background: var(--bg-surface);
@@ -381,7 +380,6 @@ p { margin: 0; }
 
 .cockpit-shell .main-sidebar,
 .cockpit-shell .flow-sidebar,
-.cockpit-shell .notebooks-list,
 .cockpit-shell .deploy-sidebar,
 .cockpit-shell .reports-sidebar,
 .cockpit-shell .sidebar-rail {
@@ -475,7 +473,6 @@ p { margin: 0; }
 
 .sidebar-rail-wrap,
 .flow-page-layout.folded-sidebar .flow-sidebar,
-.notebooks-page-layout.folded-sidebar .notebooks-list,
 .deploy-page-layout.folded-sidebar .main-sidebar,
 .reports-page-layout.folded-sidebar .main-sidebar,
 .deploy-page-layout.folded-sidebar .deploy-sidebar,
@@ -2150,10 +2147,12 @@ p { margin: 0; }
 .nb-kernel { display: inline-flex; align-items: center; gap: var(--space-2); height: 24px; padding: 0 var(--space-2); border-radius: 4px; color: var(--soft); font-size: var(--text-sm); }
 .nb-kernel-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nb-ok); }
 /* Room to scroll the last cell up, as VS Code allows. */
-.nb-scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--space-2) var(--space-6) 40vh var(--space-2); }
-.nb-message { margin: var(--space-2) 0 var(--space-2) 44px; }
+/* The design's cell column: 640px of content after a 36px gutter, centred. */
+.nb-scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--sp-16) var(--sp-24) 40vh; }
+.nb-scroll > * { max-width: calc(640px + 36px); margin-inline: auto; }
+.nb-message { margin: var(--space-2) 0 var(--space-2) 36px; }
 .nb-note { color: var(--faint); font-size: var(--text-xs); }
-.nb-cell { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); padding: var(--space-1) 0; outline: none; }
+.nb-cell { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); padding: var(--space-1) 0; outline: none; }
 /* The focus indicator, as VS Code's: a bar at the left of each part of the selected cell.
    Clicking it folds that part; the wide button around the thin line is the click target. */
 .nb-part { position: relative; }
@@ -2165,8 +2164,7 @@ p { margin: 0; }
 .nb-fold svg { transition: transform 0.1s; }
 .nb-fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
 /* The output's chevron sits in the gutter beside it; hidden with opacity so Tab still reaches it. */
-.nb-fold-output { position: absolute; left: -33px; top: var(--space-1); opacity: 0; }
-.nb-cell:hover .nb-fold-output, .nb-cell.active .nb-fold-output, .nb-fold-output:focus-visible { opacity: 1; }
+
 .nb-folded { display: flex; align-items: center; gap: var(--space-2); height: 26px; margin: 0; padding: 0 var(--space-3); border: 1px solid var(--line-soft); border-radius: 4px; font: var(--text-sm) var(--mono); color: var(--faint); }
 .nb-folded-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .nb-output-folded { border: 0; padding: 0 var(--space-1); font-family: inherit; font-size: var(--text-xs); }
@@ -2200,10 +2198,7 @@ p { margin: 0; }
 .nb-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: 3px; background: transparent; color: var(--soft); cursor: pointer; }
 .nb-icon:hover, .nb-icon.on { background: var(--node-hover); color: var(--ink); }
 .code-input.fit { flex: none; min-height: 0; border: 0; background: transparent; }
-.nb-function { margin-top: var(--space-1); border: 1px solid var(--line-soft); border-radius: 4px; overflow: hidden; }
-.nb-function .code-editor { height: auto; gap: 0; }
-.nb-function .code-actions { padding: var(--space-1) var(--space-2); }
-.nb-function .code-input { flex: none; height: 320px; border: 0; border-top: 1px solid var(--line-soft); }
+
 .nb-output { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding: var(--space-2) var(--space-1) var(--space-1); }
 .nb-output > * { max-width: 100%; }
 .nb-output .figure, .nb-output .plotly-figure, .nb-output .vega-figure { width: 100%; max-width: 760px; }
@@ -2211,10 +2206,9 @@ p { margin: 0; }
 .nb-text { margin: 0; color: var(--soft); }
 .nb-text.stderr { width: 100%; padding: var(--space-1) var(--space-2); background: var(--alert-wash); }
 .nb-error { width: 100%; margin: 0; padding: var(--space-2) var(--space-3); background: var(--alert-wash); color: var(--alert); }
-.nb-table { width: 100%; margin: 0; overflow: auto; }
-.nb-table figcaption { margin-bottom: var(--space-1); font-size: var(--text-xs); color: var(--faint); }
+
 /* Hover between two cells to add one there, as VS Code's insertion toolbar. */
-.nb-insert { position: relative; display: flex; align-items: center; justify-content: center; gap: var(--space-2); height: 20px; margin-left: 44px; }
+.nb-insert { position: relative; display: flex; align-items: center; justify-content: center; gap: var(--space-2); height: 20px; margin-left: 36px; }
 .nb-insert::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid transparent; }
 .nb-insert:hover::before { border-top-color: var(--line); }
 .nb-insert button { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); height: 22px; padding: 0 var(--space-2); border: 1px solid var(--line-strong); border-radius: 4px; background: var(--raised); color: var(--soft); font-size: var(--text-xs); opacity: 0; cursor: pointer; }
@@ -2225,9 +2219,7 @@ p { margin: 0; }
 
 /* Notebooks page: saved notebooks, and the open one on its kernel (ADR-0036). */
 .notebooks-page { flex: 1; min-width: 0; display: flex; min-height: 0; }
-.notebooks-list { flex: none; width: var(--side-width); display: flex; flex-direction: column; gap: var(--space-1); padding: 0 var(--space-2) var(--space-3); border-right: 1px solid var(--alpha-04); background: var(--gray-2); overflow: auto; }
-.notebooks-list ul { margin: 0; padding: 0; list-style: none; }
-.notebooks-heading { margin: var(--space-3) var(--space-2) var(--space-1); font: 500 var(--text-sm)/1.3 var(--sans); color: var(--muted); }
+
 .nb-item-row { position: relative; display: flex; align-items: center; margin-bottom: 2px; }
 .nb-item-open { flex: 1; min-width: 0; padding: 5px var(--space-2); border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--ink-4); font-size: var(--text-sm); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: all 0.15s ease; }
 .nb-item-row:hover .nb-item-open { background: var(--alpha-04); color: var(--ink-1); }
@@ -8433,3 +8425,5 @@ button.set-row:hover .set-row-name, button.set-row[aria-expanded="true"] .set-ro
 .ds-profile { display: grid; gap: var(--sp-16); max-width: 1200px; padding: 20px 28px 40px; }
 .ds-lineage { list-style: none; margin: 0; padding: 12px 28px; max-width: 860px; }
 .ds-lineage li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); min-height: 52px; border-bottom: 1px solid var(--alpha-05); font-size: var(--fs-14); color: var(--text-primary); }
+
+.nb-new { padding: var(--sp-8) var(--sp-10); }

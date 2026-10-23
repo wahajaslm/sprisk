@@ -14,7 +14,10 @@ import { codeRequest, isReadyMade, stageCells, stageNodes } from "../../notebook
 import { stepNames } from "../../notebook/stageNotebooks.ts";
 import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
-import { AddIcon, RedoIcon, RunAllIcon, TrashIcon, UndoIcon } from "../Icons.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { PageHeader } from "../../components/ui/PageHeader.tsx";
+import { flowName } from "../../flow/labels.ts";
+import { AddIcon, RedoIcon, TrashIcon, UndoIcon } from "../Icons.tsx";
 import { TabBody, useStep } from "../inspector/step.tsx";
 import { OutputItems } from "./CellOutputs.tsx";
 import { codeCellIds, NotebookCells, notebookKeys } from "./NotebookCells.tsx";
@@ -96,6 +99,12 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
 
   return (
     <div className="notebook" aria-label="Notebook">
+      <PageHeader
+        eyebrow={`Notebook · ${flowName(pipeline)} · flow ${busy || runs.running ? "running" : "idle"}`}
+        title={stage}
+        description="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change."
+        actions={<Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>}
+      />
       <div className="nb-toolbar" role="toolbar" aria-label="Notebook actions">
         <button type="button" className="nb-action" onClick={() => edit.insert(active + 1, "code")}>
           <AddIcon /> Code
@@ -113,10 +122,6 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
         <button type="button" className="nb-action" disabled={!edit.canRedo} onClick={edit.redo} aria-label="Redo" title="Redo cell action (⇧Z / ⌘⇧Z / ⌘Y)">
           <RedoIcon />
         </button>
-        <span className="nb-divider" />
-        <button type="button" className="nb-action" disabled={busy} onClick={runAll}>
-          <RunAllIcon /> Run All
-        </button>
         <button type="button" className="nb-action" aria-label="Collapse All Outputs" title="Collapse All Outputs" onClick={() => foldOutputs(foldKey, codeCellIds(cells), true)}>
           Collapse
         </button>
@@ -125,12 +130,6 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
         </button>
       </div>
       <div className="nb-scroll" onKeyDown={onKeyDown}>
-        <div className="nb-title-row">
-          <h2 className="nb-title">{stage}</h2>
-          <span className="nb-kernel" title="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change.">
-            <span className={`nb-kernel-dot${busy || runs.running ? " busy" : ""}`} /> Flow · {busy || runs.running ? "running" : "idle"}
-          </span>
-        </div>
         {(problem ?? attempts.error?.message) && <p role="alert" className="error nb-message">{problem ?? attempts.error?.message}</p>}
         {notes.map((note, i) => (
           <p key={i} className="nb-message nb-note">{note}</p>

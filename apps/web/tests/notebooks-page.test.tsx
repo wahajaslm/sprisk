@@ -241,6 +241,23 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     expect(await within(load).findByRole("alert")).toHaveTextContent("sprisk.io.gone@9.0.0 is not installed");
   });
 
+  it("counts the notebooks and filters them by name", async () => {
+    noNotebooks();
+    renderWithApi(<NotebooksPage />);
+    const side = await screen.findByRole("complementary", { name: "Notebooks" });
+    expect(within(side).getByRole("heading", { name: "Notebooks" }).parentElement).toHaveTextContent("Notebooks5");
+    await userEvent.type(within(side).getByRole("searchbox", { name: "Filter notebooks" }), "spl");
+    expect(within(await stages()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Split · 1 step"]);
+  });
+
+  it("heads a stage notebook with its flow, and runs every cell from the header", async () => {
+    noNotebooks();
+    renderWithApi(<NotebooksPage />);
+    expect(await screen.findByRole("heading", { level: 1, name: "Load" })).toBeInTheDocument();
+    expect(screen.getByText(/^Notebook · iris\.csv/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run all" })).toBeEnabled();
+  });
+
   it("opens the stage the canvas asked for", async () => {
     noNotebooks();
     useSelection.setState({ stageTarget: "Model" });

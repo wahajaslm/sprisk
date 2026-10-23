@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { useNotebooks, useSaveNotebook } from "../../api/notebooks.ts";
 import { useOperators, usePipelineVersions } from "../../api/hooks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
@@ -6,7 +8,12 @@ import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { flowOf, flows } from "../../flow/flows.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { useWorkbench } from "../../workbench/workbench.ts";
-import { AddIcon, PanelToggleIcon } from "../Icons.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { InfoDock } from "../../components/ui/InfoDock.tsx";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { SectionLabel } from "../../components/ui/SectionLabel.tsx";
+import { Sidebar } from "../../components/ui/Sidebar.tsx";
+import { flowName } from "../../flow/labels.ts";
 import { StageNotebook } from "./StageNotebook.tsx";
 import { NotebookList } from "./NotebookList.tsx";
 import { SessionNotebook } from "./SessionNotebook.tsx";
@@ -18,7 +25,8 @@ export function NotebooksPage() {
   const versions = usePipelineVersions();
   const operators = useOperators();
   const save = useSaveNotebook();
-  const { sidebarOpen, toggleSidebar } = useWorkbench();
+  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
+  const [filter, setFilter] = useState("");
   const openId = useSelection((s) => s.notebookId);
   const stageTarget = useSelection((s) => s.stageTarget);
   const openNotebook = useSelection((s) => s.openNotebook);
@@ -53,56 +61,35 @@ export function NotebooksPage() {
     save.mutate(version, { onSuccess: (saved) => openNotebook(saved.notebook_id) });
   };
 
+  const needle = filter.trim().toLowerCase();
+  const matches = (name: string) => name.toLowerCase().includes(needle);
+  const shownStages = stages.filter((s) => matches(s.stage));
+  const shownMine = mine.filter((n) => matches(n.title));
+  const shownLoose = loose.filter((n) => matches(n.title));
+
   return (
     <div className={`notebooks-page-layout notebooks-page ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
-      <nav className={`main-sidebar notebooks-list ${sidebarOpen ? "" : "sidebar-rail-wrap"}`} aria-label="Notebooks">
-        {!sidebarOpen ? (
-          <div className="sidebar-rail" aria-label="Notebooks rail">
-            <button
-              type="button"
-              className="sidebar-toggle-btn"
-              title="Expand Notebooks sidebar"
-              aria-label="Expand Notebooks sidebar"
-              onClick={toggleSidebar}
-            >
-              <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
-            </button>
-            <span
-              className="sidebar-rail-label"
-              role="button"
-              tabIndex={0}
-              onClick={toggleSidebar}
-            >
-              Notebooks
-            </span>
-          </div>
-        ) : (
-          <>
-            <div className="sidebar-header">
-              <div className="sidebar-title-row">
-                <h2 className="sidebar-title">Notebooks</h2>
-                <div style={{ flex: 1 }} />
-                <button type="button" className="page-btn" disabled={save.isPending} onClick={create}>
-                  <AddIcon /> New notebook
-                </button>
-                <button
-                  type="button"
-                  className="sidebar-toggle-btn"
-                  title="Collapse Notebooks sidebar"
-                  aria-label="Collapse Notebooks sidebar"
-                  onClick={toggleSidebar}
-                >
-                  <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
-                </button>
-              </div>
-            </div>
-
+      <Sidebar
+        title="Notebooks"
+        meta={String(stages.length + mine.length + loose.length)}
+        search={<SearchField value={filter} onChange={setFilter} placeholder="Search notebooks" ariaLabel="Filter notebooks" />}
+        dock={
+          <InfoDock
+            title="Flow"
+            rows={[
+              { k: "Flow", v: shownFlow ? flowName(shownFlow) : "None yet" },
+              { k: "Stages", v: String(stages.length) },
+              { k: "Saved", v: String(mine.length + loose.length) },
+            ]}
+          />
+        }
+      >
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
-        {stages.length > 0 && (
+        {shownStages.length > 0 && (
           <>
-            <p className="notebooks-heading">Stages</p>
+            <SectionLabel>Stages</SectionLabel>
             <ul aria-label="This flow's stages">
-              {stages.map(({ stage, nodes }) => (
+              {shownStages.map(({ stage, nodes }) => (
                 <li key={stage} className="nb-item">
                   <button type="button" className="nb-item-open" aria-current={stage === stageOpen} onClick={() => openStage(stage)}>
                     {stage} <span className="muted">· {nodes.length === 1 ? "1 step" : `${nodes.length} steps`}</span>
@@ -112,17 +99,20 @@ export function NotebooksPage() {
             </ul>
           </>
         )}
-        {mine.length > 0 && <p className="notebooks-heading">Saved notebooks</p>}
-        <NotebookList label="This flow's notebooks" notebooks={mine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
-        {loose.length > 0 && (
+        {shownMine.length > 0 && <SectionLabel>Saved notebooks</SectionLabel>}
+        <NotebookList label="This flow's notebooks" notebooks={shownMine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
+        {shownLoose.length > 0 && (
           <>
-            <p className="notebooks-heading">Not in a flow yet</p>
-            <NotebookList label="Not in a flow yet" notebooks={loose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
+            <SectionLabel>Not in a flow yet</SectionLabel>
+            <NotebookList label="Not in a flow yet" notebooks={shownLoose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
           </>
         )}
-          </>
-        )}
-      </nav>
+        <div className="nb-new">
+          <Button size="sm" disabled={save.isPending} onClick={create}>
+            New notebook
+          </Button>
+        </div>
+      </Sidebar>
 
       <div className="center-screen notebooks-center">
         {stageOpen && shownFlow ? (
