@@ -82,7 +82,9 @@ The rules are separated from the nodes they shape in the files, in the data pass
 
 - A value-only edit (`200` to `500`) is read back as a setting. The rules still apply.
 - Any other edit makes the node `sprisk.code.python`. No rule lists that operator.
-- Checks are lost too. The scheduler runs the split check only on nodes whose operator is a split (`crates/sprisk-scheduler/src/run.rs`, `check_splits`). An edited split is skipped. This is a verification coverage failure, not only a display problem.
+- The edit also drops the node's `methodology_decision_id` (`asCodeSteps`, `apps/web/src/notebook/stageCells.ts`), so the decision behind the step is lost.
+- Checks are chosen by operator. The scheduler runs the split check only on nodes whose operator is a split (`crates/sprisk-scheduler/src/run.rs`, `check_splits`).
+- A split cell is protected: the API refuses to turn it into code (`split_is_not_code`). Any other ready-made step loses its rules and checks without warning. This is a verification coverage failure, not only a display problem.
 
 ### 3.4 Developers cannot find the rules for a node
 
@@ -182,10 +184,15 @@ Methodology is a first-class, versioned execution concern. It is not metadata at
 | P2 | Operator-to-rule reverse index | Discoverability without moving rules |
 | P3 | Web Start action for the merged walk engine | Automated methodology from the app |
 
-## 8. ADRs needed
+## 8. ADRs
 
-1. Methodology ownership and the operator-to-rule index.
-2. Decision-to-node projection: the resolved methodology view, notebook export, and in-cell settings and choice.
-3. Edit-aware verification: check obligations by outputs and structure, and the three edit states.
+1. [ADR-0062](../adr/0062-decision-centered-methodology-and-edit-aware-verification.md), proposed: covers three items in one ADR.
+   - Rules found by decision, with an operator-to-rule index.
+   - Per-alternative assumptions and checks.
+   - Edit-aware verification and the resolved methodology view.
+   It replaces the three edit states in §6.2 with four separate facts: linked, modified, stale, and a result per obligation.
+2. Still to write: in-cell settings and choice (§3.7).
 
 P0 items need no ADR: the bug fix and showing data that already exists.
+
+A second review (2026-10-23) set aside a larger redesign. It proposed scientific procedures, methods, scientific tasks and a capability registry. Most of it already exists as rules, alternatives, `MethodologyDecision` and the engine. ADR-0062 keeps three of its ideas and lists the rest as rejected.
