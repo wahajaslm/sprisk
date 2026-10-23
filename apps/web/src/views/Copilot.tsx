@@ -99,6 +99,14 @@ export function Copilot() {
       </div>
 
       <div className="copilot-body">
+        {runId && (
+          <div className="card" style={{ padding: "10px 12px", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", marginBottom: 12, background: "var(--bg-surface)" }}>
+            <div className="card-head" style={{ fontSize: "var(--fs-12-5)", color: "var(--text-label)", marginBottom: 4, fontWeight: "var(--fw-medium)" }}>This run</div>
+            <div className="card-body">
+              <QueryState query={attempts}>{(data) => <RunSummary attempts={data} />}</QueryState>
+            </div>
+          </div>
+        )}
         {chatMessages.length === 0 ? (
           <>
             {nav === "Objective" ? (
@@ -189,13 +197,6 @@ export function Copilot() {
             </CopilotMessage>
           ))
         )}
-
-        {runId && (
-          <div style={{ marginTop: "auto", paddingTop: 10, borderTop: "1px solid var(--border-panel)" }}>
-            <span style={{ fontSize: "var(--fs-12)", color: "var(--text-label)" }}>Current Run Status</span>
-            <QueryState query={attempts}>{(data) => <RunSummary attempts={data} />}</QueryState>
-          </div>
-        )}
       </div>
 
       <div className="copilot-foot">
@@ -231,7 +232,7 @@ function RunSummary({ attempts }: { attempts: Attempt[] }) {
   const cached = steps.filter((a) => a.state === "cache_hit").length;
   return (
     <p className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--text-secondary)", marginTop: 4 }}>
-      {done} of {steps.length} steps completed{cached > 0 ? ` · ${cached} cached` : ""}
+      {done} of {steps.length} step attempts done{cached > 0 ? ` · ${cached} cached` : ""}
     </p>
   );
 }

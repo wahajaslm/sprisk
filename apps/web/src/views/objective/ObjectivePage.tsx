@@ -1,223 +1,197 @@
-import { useEffect, useState } from "react";
-import type { Fact, QuestionVersion, TaskType } from "@sprisk/contracts";
+import { useState, useMemo } from "react";
+import type { Fact, QuestionVersion, TaskType, Unknown } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
 import { useLoadedTables } from "../../api/datasets.ts";
-import { usePipelineVersions } from "../../api/hooks.ts";
+import { usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
 import { useQuestionVersions, useSaveQuestionVersion } from "../../api/questions.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Tag } from "../../components/ui/Tag.tsx";
-import { DatasetsIcon, SendIcon, SparkIcon } from "../Icons.tsx";
+import { SendIcon } from "../Icons.tsx";
+import { Loading } from "../../components/ui/Loading.tsx";
+import { stepTitle } from "../../flow/stages.ts";
 
-type LedgerItem = {
-  k: string;
-  v: string;
-  src: string;
-  st: "Set" | "Open";
-  uses: number;
-  open?: boolean;
-  opts?: { t: string; val: string }[];
-};
+const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
+const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
 
 export function ObjectivePage() {
-  const { setNav, selectPipelineVersion, setObjectiveOpenCount } = useSelection();
-  const questions = useQuestionVersions();
+  const { pipelineVersionId, selectPipelineVersion, setNav } = useSelection();
+  const questionsQuery = useQuestionVersions();
+  const pipelinesQuery = usePipelineVersions();
+  const tablesQuery = useLoadedTables();
   const saveQuestion = useSaveQuestionVersion();
-  const tables = useLoadedTables();
-  const pipelines = usePipelineVersions();
+  const savePipeline = useSavePipelineVersion();
 
   const [activeTab, setActiveTab] = useState<"ledger" | "history">("ledger");
-  const [goalText, setGoalText] = useState("we want to predict the sales for the next 6 months");
-  const [selectedFile, setSelectedFile] = useState<string>("store_sales_2021_2026.csv");
-  const [hasStarted, setHasStarted] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
 
-  // Dynamic ledger state with 3 questions initially open (matches objective-2.png)
-  const [targetAnswer, setTargetAnswer] = useState<string | null>(null);
-  const [levelAnswer, setLevelAnswer] = useState<string | null>(null);
-  const [scoringAnswer, setScoringAnswer] = useState<string | null>(null);
+  // Form states for creating / editing questions
+  const [formObjective, setFormObjective] = useState("");
+  const [formTask, setFormTask] = useState<TaskType>("classification");
+  const [formTarget, setFormTarget] = useState("");
+  const [formUnit, setFormUnit] = useState("");
+  const [formHorizon, setFormHorizon] = useState("");
+  const [formAssumptions, setFormAssumptions] = useState("");
+  const [formUnknowns, setFormUnknowns] = useState("");
+  const [formCriteria, setFormCriteria] = useState("");
+  const [formPositive, setFormPositive] = useState("");
+  const [formFalseNegative, setFormFalseNegative] = useState("");
+  const [formFalsePositive, setFormFalsePositive] = useState("");
+  const [formError, setFormError] = useState<string>();
 
-  const openCount = [targetAnswer, levelAnswer, scoringAnswer].filter((a) => a === null).length;
+  const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
+  const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
+  const tables = useMemo(() => tablesQuery.data ?? [], [tablesQuery.data]);
 
-  useEffect(() => {
-    setObjectiveOpenCount(openCount);
-  }, [openCount, setObjectiveOpenCount]);
+  const currentPipeline = useMemo(
+    () => pipelines.find((p) => p.id === pipelineVersionId),
+    [pipelines, pipelineVersionId],
+  );
 
-  const handleStart = () => {
-    if (!goalText.trim()) return;
-    setHasStarted(true);
+  const currentQuestion = useMemo(() => {
+    if (currentPipeline?.question_version_id) {
+      return questions.find((q) => q.id === currentPipeline.question_version_id);
+    }
+    return questions[0];
+  }, [questions, currentPipeline]);
+
+  const openEditor = (base?: QuestionVersion) => {
+    if (base) {
+      setFormObjective(base.objective.value);
+      setFormTask(base.task.value);
+      setFormTarget(base.target?.value ?? "");
+      setFormUnit(base.unit_of_analysis?.value ?? "");
+      setFormHorizon(base.prediction_horizon?.value ?? "");
+      setFormAssumptions(base.assumptions.map((a) => a.value).join("\n"));
+      setFormUnknowns(base.unknowns.map((u) => u.question).join("\n"));
+      setFormCriteria(base.acceptance_criteria.map((c) => c.value).join("\n"));
+      setFormPositive(base.costs?.value.positive ?? "");
+      setFormFalseNegative(base.costs?.value.false_negative?.toString() ?? "");
+      setFormFalsePositive(base.costs?.value.false_positive?.toString() ?? "");
+    } else {
+      setFormObjective("");
+      setFormTask("classification");
+      setFormTarget("");
+      setFormUnit("");
+      setFormHorizon("");
+      setFormAssumptions("");
+      setFormUnknowns("");
+      setFormCriteria("");
+      setFormPositive("");
+      setFormFalseNegative("");
+      setFormFalsePositive("");
+    }
+    setFormError(undefined);
+    setIsEditing(true);
   };
 
-  const handleReset = () => {
-    setTargetAnswer(null);
-    setLevelAnswer(null);
-    setScoringAnswer(null);
-  };
+  const handleSave = () => {
+    if (!formObjective.trim()) {
+      setFormError("Please enter the investigation objective.");
+      return;
+    }
 
-  const handleGeneratePipeline = () => {
-    if (openCount > 0) return;
-    // Create question version
-    const newId = `qv_${ulid()}`;
-    const questionObj: QuestionVersion = {
+    // Validate costs
+    let costs: QuestionVersion["costs"] | undefined;
+    const pos = formPositive.trim();
+    const fnStr = formFalseNegative.trim();
+    const fpStr = formFalsePositive.trim();
+    if (pos || fnStr || fpStr) {
+      const fn = Number(fnStr);
+      const fp = Number(fpStr);
+      if (!pos || !fnStr || !fpStr || !Number.isFinite(fn) || fn <= 0 || !Number.isFinite(fp) || fp <= 0) {
+        setFormError("Enter the positive class and both costs, as positive numbers, or none of them.");
+        return;
+      }
+      costs = {
+        value: { positive: pos, false_negative: fn, false_positive: fp },
+        origin: "explicit",
+      };
+    }
+
+    const newQuestion: QuestionVersion = {
       schema_version: "sprisk.question_version/v1",
-      id: newId,
-      investigation_id: `inv_${ulid()}`,
-      objective: { value: goalText, origin: "explicit" },
-      task: { value: "classification" as TaskType, origin: "inferred" },
-      target: { value: targetAnswer ?? "units", origin: "explicit" },
-      assumptions: [],
-      unknowns: [],
-      acceptance_criteria: [],
+      id: `qv_${ulid()}`,
+      investigation_id: currentQuestion?.investigation_id ?? `inv_${ulid()}`,
+      objective: fact(formObjective),
+      task: { value: formTask, origin: "explicit" },
+      ...(formTarget.trim() ? { target: fact(formTarget) } : {}),
+      ...(formUnit.trim() ? { unit_of_analysis: fact(formUnit) } : {}),
+      ...(formHorizon.trim() ? { prediction_horizon: fact(formHorizon) } : {}),
+      assumptions: lines(formAssumptions).map(fact),
+      unknowns: lines(formUnknowns).map((u): Unknown => ({ question: u, blocks: "execution" })),
+      acceptance_criteria: lines(formCriteria).map(fact),
+      ...(costs ? { costs } : {}),
       created_at: new Date().toISOString(),
     };
-    saveQuestion.mutate(questionObj, {
-      onSuccess: () => {
-        // If pipelines exist, pick newest
-        const firstPipe = pipelines.data?.[0];
-        if (firstPipe) selectPipelineVersion(firstPipe.id);
-        setNav("Flow");
+
+    saveQuestion.mutate(newQuestion, {
+      onSuccess: (saved) => {
+        setIsEditing(false);
+        if (currentPipeline && currentPipeline.question_version_id !== saved.id) {
+          savePipeline.mutate({
+            ...currentPipeline,
+            question_version_id: saved.id,
+          });
+        }
+      },
+      onError: (err) => {
+        setFormError(err.message);
       },
     });
   };
 
-  const ledger: LedgerItem[] = [
-    {
-      k: "Task",
-      v: "Forecast, multi-step",
-      src: 'Your message: "predict ... next 6 months"',
-      st: "Set",
-      uses: 0,
-    },
-    {
-      k: "Target",
-      v: targetAnswer ? targetAnswer : "Units or revenue?",
-      src: targetAnswer ? "You chose" : "Open question",
-      st: targetAnswer ? "Set" : "Open",
-      uses: 2,
-      open: !targetAnswer,
-      opts: [
-        { t: "Units sold", val: "units" },
-        { t: "Revenue", val: "revenue" },
-      ],
-    },
-    {
-      k: "Horizon",
-      v: "6 months · Oct 2026 − Mar 2027",
-      src: "Your message + last date in data",
-      st: "Set",
-      uses: 3,
-    },
-    {
-      k: "Granularity",
-      v: "Monthly",
-      src: 'Inferred from "months" · data is daily',
-      st: "Set",
-      uses: 1,
-    },
-    {
-      k: "Level",
-      v: levelAnswer ? levelAnswer : "Total, per store or per SKU?",
-      src: levelAnswer ? "You chose" : "Open question",
-      st: levelAnswer ? "Set" : "Open",
-      uses: 2,
-      open: !levelAnswer,
-      opts: [
-        { t: "All stores combined", val: "All stores combined" },
-        { t: "Per store", val: "Per store · 42 series" },
-        { t: "Per store and SKU", val: "Per store and SKU · 1,512 series" },
-      ],
-    },
-    {
-      k: "Scoring",
-      v: scoringAnswer ? scoringAnswer : "Depends on what it is for",
-      src: scoringAnswer ? "From use: stock planning, running short costs more" : "Open question",
-      st: scoringAnswer ? "Set" : "Open",
-      uses: 1,
-      open: !scoringAnswer,
-      opts: [
-        { t: "Stock planning", val: "Pinball loss at P50 and P90" },
-        { t: "Budgeting", val: "MAPE on revenue" },
-        { t: "Both", val: "Weighted quantile loss" },
-      ],
-    },
-    {
-      k: "Validation",
-      v: "Rolling-origin backtest · 4 folds",
-      src: "Methodology default for this horizon",
-      st: "Set",
-      uses: 2,
-    },
-    {
-      k: "Known ahead",
-      v: "Holidays, promo calendar",
-      src: "Data · both have future rows",
-      st: "Set",
-      uses: 1,
-    },
-    {
-      k: "Left out",
-      v: "price",
-      src: "Not known 6 months ahead · leakage rule",
-      st: "Set",
-      uses: 1,
-    },
-  ];
+  const linkToPipeline = (questionId: string) => {
+    if (!currentPipeline) return;
+    savePipeline.mutate({
+      ...currentPipeline,
+      question_version_id: questionId,
+    });
+  };
 
-  const facts = [
-    { k: "File", v: `${selectedFile} · v1` },
-    { k: "Rows", v: "1,512,400 · 8 columns" },
-    { k: "Time", v: "date · daily · Jan 2021 − Sep 2026" },
-    { k: "Series", v: "42 stores × 36 SKUs" },
-    { k: "Gaps", v: "14 store-days · store 17 closed Mar 2024" },
-    { k: "Seasonality", v: "Weekly and yearly · December peak" },
-    { k: "Trend", v: "Units +4% a year" },
-  ];
+  if (questionsQuery.isPending) {
+    return <Loading text="Loading questions ledger…" pad />;
+  }
 
-  const history = [
-    { v: "v5", t: "Settle scoring to pinball loss", who: "You · just now" },
-    { v: "v4", t: "Set level to per store", who: "You · 1m ago" },
-    { v: "v3", t: "Set target to units", who: "You · 2m ago" },
-    { v: "v2", t: "Generated ledger with 3 open questions", who: "Copilot · 3m ago" },
-    { v: "v1", t: "Initial intake from message and dataset", who: "System · 4m ago" },
-  ];
-
-  if (!hasStarted) {
+  // Empty state when no question versions exist at the backend yet
+  if (questions.length === 0 && !isEditing) {
     return (
       <main className="objective-empty-screen">
         <div className="objective-empty-card">
           <h1 className="objective-empty-title">What do you want to find out?</h1>
           <p className="objective-empty-sub">
-            Attach your data and describe the goal in your own words. Studio profiles the data, writes the objective
-            ledger, and designs the pipeline from it.
+            Describe the investigation goal in your own words. Sprisk records the question as an immutable revision
+            that guides methodology decisions and flow design.
           </p>
 
           <div className="objective-input-box">
-            <div className="objective-file-chip">
-              <code>{selectedFile}</code>
-              <button type="button" onClick={() => setSelectedFile("")} aria-label="Remove file">
-                ×
-              </button>
-            </div>
+            {tables.length > 0 && (
+              <div className="objective-file-chip">
+                <code>{tables[0]!.name}</code>
+                <span>({tables[0]!.total_rows.toLocaleString()} rows)</span>
+              </div>
+            )}
             <textarea
               className="objective-textarea"
-              value={goalText}
-              onChange={(e) => setGoalText(e.target.value)}
-              placeholder="e.g. we want to predict the sales for the next 6 months"
+              value={formObjective}
+              onChange={(e) => setFormObjective(e.target.value)}
+              placeholder="e.g. Predict which customers will churn within the next 90 days."
               rows={3}
             />
             <div className="objective-input-foot">
               <div className="objective-input-actions">
-                <button type="button" className="icon-btn icon-btn-sm" title="Attach file">
-                  <DatasetsIcon size={14} />
-                </button>
-                <Tag>Auto</Tag>
+                <Tag tone="default">Objective</Tag>
               </div>
               <button
                 type="button"
                 className="objective-send-btn"
-                disabled={!goalText.trim()}
-                onClick={handleStart}
-                title="Start objective analysis"
+                disabled={!formObjective.trim()}
+                onClick={() => {
+                  openEditor();
+                  setFormObjective(formObjective);
+                }}
+                title="Continue to question specification"
               >
                 <SendIcon />
               </button>
@@ -231,7 +205,7 @@ export function ObjectivePage() {
   return (
     <div className="objective-screen">
       <div className="objective-center">
-        {/* Sub-strip tabs */}
+        {/* Subtabs strip */}
         <div className="objective-subtabs">
           <div className="subtabs-left">
             <button
@@ -246,227 +220,447 @@ export function ObjectivePage() {
               className={`subtab-btn ${activeTab === "history" ? "active" : ""}`}
               onClick={() => setActiveTab("history")}
             >
-              History
+              Revisions ({questions.length})
             </button>
           </div>
-          <div className="subtabs-right">
-            {openCount > 0 ? (
-              <span className="ledger-open-count">{openCount} open</span>
-            ) : (
-              <span className="ledger-complete-count">Complete</span>
-            )}
+          <div className="subtabs-right" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Button variant="secondary" size="sm" onClick={() => openEditor(currentQuestion)}>
+              Revise question
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => openEditor()}>
+              New question
+            </Button>
           </div>
         </div>
 
-        {activeTab === "ledger" ? (
+        {activeTab === "ledger" && currentQuestion ? (
           <div className="objective-scroll-body">
+            {/* Headline Box */}
             <div className="objective-headline-box">
-              <span className="objective-version-meta">Objective · v{openCount === 0 ? "5" : "2"}</span>
-              <h2 className="objective-sentence">
-                Forecast monthly{" "}
-                <span className={`sentence-slot ${!targetAnswer || !levelAnswer ? "slot-open" : ""}`}>
-                  {targetAnswer ?? "which sales"} {levelAnswer ?? "at what level"}
-                </span>{" "}
-                for October 2026 to March 2027, scored{" "}
-                <span className={`sentence-slot ${!scoringAnswer ? "slot-open" : ""}`}>
-                  {scoringAnswer ?? "for what use"}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="objective-version-meta">
+                  Question Revision · {currentQuestion.id.slice(-8)}
+                  {currentPipeline?.question_version_id === currentQuestion.id && (
+                    <span style={{ marginLeft: 8 }}>
+                      <Tag tone="default">Active in current flow</Tag>
+                    </span>
+                  )}
                 </span>
-                .
-              </h2>
+                {currentPipeline && currentPipeline.question_version_id !== currentQuestion.id && (
+                  <Button variant="secondary" size="sm" onClick={() => linkToPipeline(currentQuestion.id)}>
+                    Link to current flow
+                  </Button>
+                )}
+              </div>
+              <h2 className="objective-sentence">{currentQuestion.objective.value}</h2>
             </div>
 
-            {/* Ledger table */}
+            {/* Ledger Table */}
             <div className="ledger-table-wrap">
               <table className="ledger-table">
                 <thead>
                   <tr>
-                    <th style={{ width: 120 }}>Entry</th>
+                    <th style={{ width: 140 }}>Entry</th>
                     <th>Value</th>
-                    <th style={{ width: "25%" }}>Source</th>
+                    <th style={{ width: "25%" }}>Origin</th>
                     <th style={{ width: 70 }}>Status</th>
-                    <th style={{ width: 50, textAlign: "right" }}>Steps</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ledger.map((row) => (
-                    <tr key={row.k} className={row.st === "Open" ? "row-open" : ""}>
-                      <td className="entry-key">{row.k}</td>
-                      <td className="entry-value">
-                        <div className="value-col">
-                          <span className={row.st === "Open" ? "val-open-title" : ""}>{row.v}</span>
-                          {row.open && row.opts && (
-                            <div className="answer-chips">
-                              {row.opts.map((opt) => (
-                                <button
-                                  key={opt.t}
-                                  type="button"
-                                  className="answer-chip-btn"
-                                  onClick={() => {
-                                    if (row.k === "Target") setTargetAnswer(opt.val);
-                                    if (row.k === "Level") setLevelAnswer(opt.val);
-                                    if (row.k === "Scoring") setScoringAnswer(opt.val);
-                                  }}
-                                >
-                                  {opt.t}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="entry-src">{row.src}</td>
+                  {/* Task */}
+                  <tr>
+                    <td className="entry-key">Task</td>
+                    <td className="entry-value">
+                      <span className="mono">{currentQuestion.task.value}</span>
+                    </td>
+                    <td className="entry-src">{currentQuestion.task.origin}</td>
+                    <td className="entry-st">
+                      <span className="status-badge badge-set">Set</span>
+                    </td>
+                  </tr>
+
+                  {/* Target */}
+                  <tr className={!currentQuestion.target ? "row-open" : ""}>
+                    <td className="entry-key">Target</td>
+                    <td className="entry-value">
+                      {currentQuestion.target ? (
+                        <span className="mono">{currentQuestion.target.value}</span>
+                      ) : (
+                        <span className="val-open-title">Target variable not specified</span>
+                      )}
+                    </td>
+                    <td className="entry-src">{currentQuestion.target?.origin ?? "—"}</td>
+                    <td className="entry-st">
+                      <span className={`status-badge ${currentQuestion.target ? "badge-set" : "badge-open"}`}>
+                        {currentQuestion.target ? "Set" : "Open"}
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Unit of analysis */}
+                  <tr className={!currentQuestion.unit_of_analysis ? "row-open" : ""}>
+                    <td className="entry-key">Unit of Analysis</td>
+                    <td className="entry-value">
+                      {currentQuestion.unit_of_analysis ? (
+                        <span className="mono">{currentQuestion.unit_of_analysis.value}</span>
+                      ) : (
+                        <span className="val-open-title">Unit not specified</span>
+                      )}
+                    </td>
+                    <td className="entry-src">{currentQuestion.unit_of_analysis?.origin ?? "—"}</td>
+                    <td className="entry-st">
+                      <span className={`status-badge ${currentQuestion.unit_of_analysis ? "badge-set" : "badge-open"}`}>
+                        {currentQuestion.unit_of_analysis ? "Set" : "Open"}
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Prediction horizon */}
+                  <tr className={!currentQuestion.prediction_horizon ? "row-open" : ""}>
+                    <td className="entry-key">Horizon</td>
+                    <td className="entry-value">
+                      {currentQuestion.prediction_horizon ? (
+                        <span className="mono">{currentQuestion.prediction_horizon.value}</span>
+                      ) : (
+                        <span className="val-open-title">Horizon not specified</span>
+                      )}
+                    </td>
+                    <td className="entry-src">{currentQuestion.prediction_horizon?.origin ?? "—"}</td>
+                    <td className="entry-st">
+                      <span className={`status-badge ${currentQuestion.prediction_horizon ? "badge-set" : "badge-open"}`}>
+                        {currentQuestion.prediction_horizon ? "Set" : "Open"}
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Assumptions */}
+                  {currentQuestion.assumptions.map((a, i) => (
+                    <tr key={`assumption-${i}`}>
+                      <td className="entry-key">{i === 0 ? "Assumption" : ""}</td>
+                      <td className="entry-value">{a.value}</td>
+                      <td className="entry-src">{a.origin}</td>
                       <td className="entry-st">
-                        <span className={`status-badge ${row.st === "Open" ? "badge-open" : "badge-set"}`}>
-                          {row.st}
-                        </span>
+                        <span className="status-badge badge-set">Set</span>
                       </td>
-                      <td className="entry-steps">{row.uses}</td>
                     </tr>
                   ))}
+
+                  {/* Unknowns */}
+                  {currentQuestion.unknowns.map((u, i) => (
+                    <tr key={`unknown-${i}`} className="row-open">
+                      <td className="entry-key">{i === 0 ? "Unknown" : ""}</td>
+                      <td className="entry-value">
+                        <span className="val-open-title">{u.question}</span>
+                      </td>
+                      <td className="entry-src">blocks {u.blocks}</td>
+                      <td className="entry-st">
+                        <span className="status-badge badge-open">Open</span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Acceptance Criteria */}
+                  {currentQuestion.acceptance_criteria.map((c, i) => (
+                    <tr key={`criteria-${i}`}>
+                      <td className="entry-key">{i === 0 ? "Criteria" : ""}</td>
+                      <td className="entry-value">{c.value}</td>
+                      <td className="entry-src">{c.origin}</td>
+                      <td className="entry-st">
+                        <span className="status-badge badge-set">Set</span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Costs */}
+                  {currentQuestion.costs && (
+                    <tr>
+                      <td className="entry-key">Costs</td>
+                      <td className="entry-value">
+                        Positive class: <code>{currentQuestion.costs.value.positive}</code> · False negative:{" "}
+                        {currentQuestion.costs.value.false_negative} · False positive:{" "}
+                        {currentQuestion.costs.value.false_positive}
+                      </td>
+                      <td className="entry-src">{currentQuestion.costs.origin}</td>
+                      <td className="entry-st">
+                        <span className="status-badge badge-set">Set</span>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
 
-            <div className="ledger-actions-row">
-              <Button variant="secondary" size="sm">
-                Add constraint
-              </Button>
-              <Button variant="secondary" size="sm" onClick={handleReset}>
-                Change answers
-              </Button>
-            </div>
-
-            {/* From the data */}
+            {/* From the data: Real loaded tables */}
             <div className="from-data-section">
               <h3 className="from-data-head">From the data</h3>
-              <div className="from-data-grid">
-                {facts.map((f) => (
-                  <div key={f.k} className="from-data-row">
-                    <span className="from-data-k">{f.k}</span>
-                    <span className="from-data-v">{f.v}</span>
-                  </div>
-                ))}
-              </div>
+              {tables.length === 0 ? (
+                <p className="muted pad" style={{ fontSize: "var(--fs-13)" }}>
+                  No datasets loaded yet. Add a loader step to the flow to profile real data.
+                </p>
+              ) : (
+                <div className="from-data-grid">
+                  {tables.map((t) => (
+                    <div key={t.artifact.id} className="from-data-row">
+                      <span className="from-data-k">{t.name}</span>
+                      <span className="from-data-v">
+                        {t.total_rows.toLocaleString()} rows · {t.total_columns} columns · {stepTitle(t.operator)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-        ) : (
+        ) : activeTab === "history" ? (
           <div className="objective-history-body">
             <div className="history-list">
-              {history.map((h) => (
-                <div key={h.v} className="history-item">
-                  <span className="history-ver mono">{h.v}</span>
-                  <span className="history-desc">{h.t}</span>
-                  <span className="history-who">{h.who}</span>
+              {questions.map((q) => {
+                const isCurrent = currentPipeline?.question_version_id === q.id;
+                const d = new Date(q.created_at);
+                const when = `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+                return (
+                  <div key={q.id} className="history-item" style={{ alignItems: "flex-start", gap: 16 }}>
+                    <span className="history-ver mono">{q.id.slice(-8)}</span>
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <strong style={{ fontSize: "var(--fs-13-5)", color: "var(--text-primary)" }}>
+                        {q.objective.value}
+                      </strong>
+                      <span className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--text-secondary)" }}>
+                        Task: {q.task.value} · Target: {q.target?.value ?? "None"} · {q.assumptions.length} assumptions · {q.unknowns.length} unknowns
+                      </span>
+                    </div>
+                    <span className="history-who mono">{when}</span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {isCurrent ? (
+                        <Tag tone="default">Linked</Tag>
+                      ) : currentPipeline ? (
+                        <Button variant="secondary" size="sm" onClick={() => linkToPipeline(q.id)}>
+                          Link
+                        </Button>
+                      ) : null}
+                      <Button variant="secondary" size="sm" onClick={() => openEditor(q)}>
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Modal / Overlay Editor */}
+        {isEditing && (
+          <div
+            role="dialog"
+            aria-label="New question"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0, 0, 0, 0.6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: 24,
+            }}
+          >
+            <div
+              style={{
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-panel)",
+                borderRadius: 8,
+                maxWidth: 640,
+                width: "100%",
+                maxHeight: "90vh",
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                padding: 24,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h2 style={{ fontSize: "var(--fs-18)", margin: 0, color: "var(--text-primary)" }}>
+                  Question Revision
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 18 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {formError && (
+                <p role="alert" className="error" style={{ margin: 0 }}>
+                  {formError}
+                </p>
+              )}
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
+                <strong>Objective</strong>
+                <textarea
+                  className="ds-input"
+                  rows={2}
+                  value={formObjective}
+                  onChange={(e) => setFormObjective(e.target.value)}
+                  placeholder="e.g. Predict which orders will be returned within 30 days."
+                />
+              </label>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
+                  <strong>Task</strong>
+                  <select
+                    className="ds-input"
+                    value={formTask}
+                    onChange={(e) => setFormTask(e.target.value as TaskType)}
+                  >
+                    <option value="classification">Classification</option>
+                    <option value="regression">Regression</option>
+                    <option value="clustering">Clustering</option>
+                    <option value="anomaly_detection">Anomaly Detection</option>
+                    <option value="ranking">Ranking</option>
+                  </select>
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
+                  <strong>Target Variable</strong>
+                  <input
+                    type="text"
+                    className="ds-input"
+                    value={formTarget}
+                    onChange={(e) => setFormTarget(e.target.value)}
+                    placeholder="e.g. returned_within_30d"
+                  />
+                </label>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
+                  <strong>Unit of Analysis</strong>
+                  <input
+                    type="text"
+                    className="ds-input"
+                    value={formUnit}
+                    onChange={(e) => setFormUnit(e.target.value)}
+                    placeholder="e.g. order"
+                  />
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
+                  <strong>Prediction Horizon</strong>
+                  <input
+                    type="text"
+                    className="ds-input"
+                    value={formHorizon}
+                    onChange={(e) => setFormHorizon(e.target.value)}
+                    placeholder="e.g. P30D"
+                  />
+                </label>
+              </div>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
+                <strong>Assumptions (one per line)</strong>
+                <textarea
+                  className="ds-input"
+                  rows={2}
+                  value={formAssumptions}
+                  onChange={(e) => setFormAssumptions(e.target.value)}
+                  placeholder="e.g. Return labels are complete after 30 days."
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
+                <strong>Unknowns (one per line)</strong>
+                <textarea
+                  className="ds-input"
+                  rows={2}
+                  value={formUnknowns}
+                  onChange={(e) => setFormUnknowns(e.target.value)}
+                  placeholder="e.g. Are exchanges counted as returns?"
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
+                <strong>Acceptance Criteria (one per line)</strong>
+                <textarea
+                  className="ds-input"
+                  rows={2}
+                  value={formCriteria}
+                  onChange={(e) => setFormCriteria(e.target.value)}
+                  placeholder="e.g. Average precision beats the dummy baseline on temporal validation."
+                />
+              </label>
+
+              <fieldset
+                aria-label="Misclassification costs"
+                style={{
+                  border: "1px solid var(--border-panel)",
+                  borderRadius: 6,
+                  padding: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <legend style={{ fontSize: "var(--fs-12)", fontWeight: 500, padding: "0 6px" }}>
+                  Misclassification Costs
+                </legend>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-12)" }}>
+                    <span>Positive class</span>
+                    <input
+                      type="text"
+                      className="ds-input"
+                      aria-label="Positive class"
+                      value={formPositive}
+                      onChange={(e) => setFormPositive(e.target.value)}
+                      placeholder="e.g. bad"
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-12)" }}>
+                    <span>False-negative cost</span>
+                    <input
+                      type="text"
+                      className="ds-input"
+                      aria-label="False-negative cost"
+                      value={formFalseNegative}
+                      onChange={(e) => setFormFalseNegative(e.target.value)}
+                      placeholder="e.g. 5"
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-12)" }}>
+                    <span>False-positive cost</span>
+                    <input
+                      type="text"
+                      className="ds-input"
+                      aria-label="False-positive cost"
+                      value={formFalsePositive}
+                      onChange={(e) => setFormFalsePositive(e.target.value)}
+                      placeholder="e.g. 1"
+                    />
+                  </label>
                 </div>
-              ))}
+              </fieldset>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                <Button variant="secondary" onClick={() => setIsEditing(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleSave}>
+                  Save revision
+                </Button>
+              </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* Right Column: Profiling & Copilot intake */}
-      <aside className="objective-copilot">
-        <div className="copilot-head">
-          <SparkIcon />
-          <strong>Copilot</strong>
-          <span className="spacer" />
-          <span className="chip">{openCount > 0 ? `Objective · ${openCount} open` : "Objective · complete"}</span>
-        </div>
-
-        <div className="objective-copilot-body">
-          <div className="file-profiled-card">
-            <DatasetsIcon size={16} />
-            <div className="file-profiled-meta">
-              <span className="file-name">{selectedFile}</span>
-              <span className="file-sub">62.4 MB · CSV</span>
-            </div>
-          </div>
-
-          <div className="profiling-checklist">
-            <span className="checklist-title">Profiled in the background:</span>
-            <ul className="checklist-items">
-              <li>✓ Reading file · 1,512,400 rows · 8 columns</li>
-              <li>✓ Inferring types · date · 2 ids · 3 numeric · 2 flags</li>
-              <li>✓ Finding the time column · date · daily</li>
-              <li>✓ Finding series · 42 stores × 36 SKUs</li>
-              <li>✓ Checking gaps · 14 store-days missing · store 17</li>
-              <li>✓ Testing seasonality · weekly · yearly · December peak</li>
-              <li>✓ Saving profile to dataset v1</li>
-            </ul>
-          </div>
-
-          <div className="copilot-dialogue">
-            <div className="msg-user">
-              <p>{goalText}</p>
-            </div>
-            <div className="msg-copilot">
-              <p>
-                I've written this into the ledger as a 6-month monthly forecast, October 2026 to March 2027. Your message
-                and the data settle most of it. {openCount > 0 ? `${openCount} things they don't settle:` : "All open questions are answered."}
-              </p>
-            </div>
-
-            {openCount > 0 && !targetAnswer && (
-              <div className="copilot-decision-card">
-                <span className="decision-prompt">Which sales?</span>
-                <span className="decision-note">Both can be computed from the file.</span>
-                <div className="decision-btn-row">
-                  <button
-                    type="button"
-                    className="decision-opt-btn"
-                    onClick={() => setTargetAnswer("units")}
-                  >
-                    <strong>Units sold</strong>
-                    <span>units column</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="decision-opt-btn"
-                    onClick={() => setTargetAnswer("revenue")}
-                  >
-                    <strong>Revenue</strong>
-                    <span>units × price</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {openCount > 0 && targetAnswer && !levelAnswer && (
-              <div className="copilot-decision-card">
-                <span className="decision-prompt">At what level?</span>
-                <span className="decision-note">Sets how many series are forecast.</span>
-                <div className="decision-btn-row">
-                  <button
-                    type="button"
-                    className="decision-opt-btn"
-                    onClick={() => setLevelAnswer("Per store · 42 series")}
-                  >
-                    <strong>Per store</strong>
-                    <span>42 series</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="decision-opt-btn"
-                    onClick={() => setLevelAnswer("All stores combined")}
-                  >
-                    <strong>All stores</strong>
-                    <span>1 combined</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="copilot-foot">
-          <div className="composer">
-            <input placeholder="Ask Copilot or change the objective" />
-            <button type="button" className="send" aria-label="Send">
-              <SendIcon />
-            </button>
-          </div>
-        </div>
-      </aside>
     </div>
   );
 }

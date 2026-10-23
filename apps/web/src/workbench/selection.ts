@@ -45,7 +45,7 @@ export const useSelection = create<Selection>((set) => ({
   nodeId: undefined,
   notebookId: undefined,
   stageTarget: undefined,
-  objectiveOpenCount: 3,
+  objectiveOpenCount: 0,
   setNav: (nav) => set({ nav }),
   openNotebook: (id) => set({ notebookId: id, stageTarget: undefined, nav: "Notebooks" }),
   openStageNotebook: (stage) => set({ stageTarget: stage, notebookId: undefined, nav: "Notebooks" }),

@@ -50,13 +50,13 @@ describe("top bar", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
-  it("puts the project and flow switcher first, then the views including Atlas, then Run graph", async () => {
+  it("puts the project and flow switcher first, then the views including Objective, then Run graph", async () => {
     renderWithApi(<TopBar />);
     const bar = screen.getByRole("banner");
     const switcher = await within(bar).findByRole("button", { name: "Project and flow" });
     const nav = within(bar).getByRole("navigation");
     const tabs = within(nav).getAllByRole("button").map((b) => b.textContent);
-    expect(tabs).toEqual(["Atlas", "Flow", "Methodology", "Datasets", "Notebooks", "Experiments", "Deploy"]);
+    expect(tabs).toEqual(["Objective", "Flow", "Datasets", "Notebooks", "Methodology", "Experiments", "Deploy", "Reports", "Settings"]);
     expect(switcher.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(bar).getByRole("button", { name: /Run graph/ })).toBeInTheDocument();
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
@@ -1566,24 +1566,13 @@ describe("copilot", () => {
 });
 
 describe("activity bar and sidebar", () => {
-  it("switches the sidebar and collapses it when the active icon is clicked again", async () => {
+  it("navigates tabs from the icon rail and bottom Settings icon", async () => {
     const { ActivityBar } = await import("../src/views/ActivityBar.tsx");
-    const { Sidebar } = await import("../src/views/Sidebar.tsx");
-    const { useWorkbench } = await import("../src/workbench/workbench.ts");
-    const setSidebarVisible = vi.fn();
-    useWorkbench.setState({ activity: "steps", editing: false, dock: fakeDock({ setSidebarVisible }) });
-    useSelection.setState({ pipelineVersionId: PV });
-    renderWithApi(
-      <>
-        <ActivityBar />
-        <Sidebar />
-      </>,
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Runs" }));
-    expect(await screen.findByText(RUN.slice(-8))).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Runs" }));
-    expect(useWorkbench.getState().activity).toBeUndefined();
-    expect(setSidebarVisible).toHaveBeenLastCalledWith(false);
+    renderWithApi(<ActivityBar />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    expect(useSelection.getState().nav).toBe("Datasets");
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(useSelection.getState().nav).toBe("Settings");
   });
 
   it("opens another tab panel and resets the layout from the Views sidebar", async () => {

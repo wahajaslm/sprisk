@@ -202,11 +202,11 @@
   --alert-wash: var(--danger-wash);
   --nb-focus: var(--ink-1);
   --nb-ok: var(--ink-3);
-  --kind-source: var(--ink-3);
-  --kind-recipe: var(--ink-3);
-  --kind-view: var(--ink-3);
-  --kind-decision: var(--ink-3);
-  --kind-model: var(--ink-3);
+  --kind-source: #6cb6ff;
+  --kind-recipe: #56d4c4;
+  --kind-view: #b99cff;
+  --kind-decision: #e8b04c;
+  --kind-model: #7ed08a;
 
   --shadow-menu: 0 12px 32px var(--black-alpha-50);
   --ease-standard: cubic-bezier(.2,0,0,1);
@@ -4106,173 +4106,7 @@ p { margin: 0; }
   color: var(--ink-4);
 }
 
-/* ── Objective Copilot Column ────────────────────────── */
-.objective-copilot {
-  width: 360px;
-  flex-shrink: 0;
-  border-left: 1px solid var(--alpha-06);
-  background: var(--gray-1);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
 
-.objective-copilot-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.file-profiled-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: var(--gray-2);
-  border: 1px solid var(--alpha-06);
-  border-radius: 6px;
-}
-
-.file-profiled-meta {
-  display: flex;
-  flex-direction: column;
-}
-
-.file-name {
-  font-size: var(--fs-12-5);
-  font-family: var(--font-mono);
-  color: var(--ink-1);
-}
-
-.file-sub {
-  font-size: var(--fs-11);
-  color: var(--ink-4);
-}
-
-.profiling-checklist {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 4px 0;
-}
-
-.checklist-title {
-  font-size: var(--fs-12);
-  font-weight: 500;
-  color: var(--ink-3);
-}
-
-.checklist-items {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-11-5);
-  color: var(--ink-4);
-}
-
-.checklist-items li {
-  line-height: 1.4;
-}
-
-.copilot-dialogue {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 4px;
-}
-
-.msg-user {
-  align-self: flex-end;
-  background: var(--gray-2);
-  border: 1px solid var(--alpha-06);
-  border-radius: 12px 12px 2px 12px;
-  padding: 9px 12px;
-  max-width: 90%;
-}
-
-.msg-user p {
-  margin: 0;
-  font-size: var(--fs-13);
-  color: var(--ink-1);
-  line-height: 1.45;
-}
-
-.msg-copilot {
-  align-self: flex-start;
-  padding: 2px 0;
-}
-
-.msg-copilot p {
-  margin: 0;
-  font-size: var(--fs-13);
-  color: var(--ink-2);
-  line-height: 1.5;
-}
-
-.copilot-decision-card {
-  background: var(--gray-2);
-  border: 1px solid var(--alpha-08);
-  border-radius: 6px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.decision-prompt {
-  font-size: var(--fs-13);
-  font-weight: 500;
-  color: var(--ink-1);
-}
-
-.decision-note {
-  font-size: var(--fs-11-5);
-  color: var(--ink-4);
-}
-
-.decision-btn-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.decision-opt-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
-  background: var(--gray-1);
-  border: 1px solid var(--alpha-08);
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s ease;
-}
-
-.decision-opt-btn:hover {
-  background: var(--gray-3);
-  border-color: var(--alpha-16);
-}
-
-.decision-opt-btn strong {
-  font-size: var(--fs-12);
-  font-weight: 500;
-  color: var(--ink-0);
-}
-
-.decision-opt-btn span {
-  font-size: var(--fs-11);
-  color: var(--ink-4);
-}
 
 /* ── Step 6: Flow Page Elements ──────────────────────── */
 .flow-sidebar {
@@ -6271,41 +6105,6 @@ p { margin: 0; }
   color: var(--danger);
 }
 
-.exp-copilot {
-  width: 340px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-left: 1px solid var(--alpha-06);
-  height: 100%;
-}
-
-.exp-copilot-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.exp-copilot-bubble {
-  background: var(--gray-2);
-  border: 1px solid var(--alpha-06);
-  border-radius: 8px;
-  padding: 12px 14px;
-  font-size: var(--fs-13);
-  color: var(--ink-1);
-  line-height: 1.5;
-}
-
-.exp-copilot-suggestions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 /* ══════════════════════════════════════════════════════════════════
    STEP 8: REPORTS VIEW (Evidence Ledger)
    ══════════════════════════════════════════════════════════════════ */
@@ -7483,41 +7282,6 @@ p { margin: 0; }
 .set-feat-desc {
   font-size: var(--fs-12);
   color: var(--ink-3);
-}
-
-.set-copilot {
-  width: 340px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-left: 1px solid var(--alpha-06);
-  height: 100%;
-}
-
-.set-copilot-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.set-copilot-bubble {
-  background: var(--gray-2);
-  border: 1px solid var(--alpha-06);
-  border-radius: 8px;
-  padding: 12px 14px;
-  font-size: var(--fs-13);
-  color: var(--ink-1);
-  line-height: 1.5;
-}
-
-.set-copilot-suggestions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 /* ══════════════════════════════════════════════════════════════════

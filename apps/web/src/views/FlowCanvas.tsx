@@ -1000,7 +1000,26 @@ function ZoomControl({
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const { zoom } = useViewport();
   return (
-    <div className="flow-zoom-bar" role="group" aria-label="Zoom controls">
+    <div className="flow-zoom-bar zoom" role="group" aria-label="Zoom controls">
+      <button
+        type="button"
+        className="flow-zoom-text-btn fit"
+        title="Undo (Ctrl+Z / ⌘Z)"
+        disabled={!canUndo}
+        onClick={undo}
+      >
+        Undo
+      </button>
+      <button
+        type="button"
+        className="flow-zoom-text-btn fit"
+        title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)"
+        disabled={!canRedo}
+        onClick={redo}
+      >
+        Redo
+      </button>
+      <span className="flow-zoom-dot" aria-hidden="true">·</span>
       <button type="button" className="flow-zoom-btn" aria-label="Zoom out" onClick={() => void zoomOut()}>
         −
       </button>
@@ -1009,20 +1028,20 @@ function ZoomControl({
         +
       </button>
       <span className="flow-zoom-dot" aria-hidden="true">·</span>
-      <button type="button" className="flow-zoom-text-btn" onClick={() => void fitView(FIT)}>
+      <button type="button" className="flow-zoom-text-btn fit" onClick={() => void fitView(FIT)}>
         Fit
       </button>
       <span className="flow-zoom-dot" aria-hidden="true">·</span>
       <button
         type="button"
-        className="flow-zoom-text-btn"
-        title="Trace column through pipeline"
+        className="flow-zoom-text-btn fit"
+        title="Put every step back where the layout places it, then fit"
         onClick={() => {
           tidy();
           requestAnimationFrame(() => void fitView(FIT));
         }}
       >
-        Trace column
+        Tidy
       </button>
     </div>
   );
