@@ -1869,9 +1869,7 @@ p { margin: 0; }
 .nb-run:hover:not(:disabled) { background: var(--node-hover); color: var(--ink); }
 .nb-count { min-height: 16px; font: var(--text-xs) var(--mono); color: var(--ghost); }
 .nb-main { position: relative; min-width: 0; }
-.nb-editor { border: 1px solid var(--line-soft); border-radius: 4px; overflow: hidden; }
-.nb-cell.active .nb-editor { border-color: var(--line-strong); }
-.nb-cell .nb-editor:focus-within { border-color: var(--nb-focus); }
+.nb-editor { overflow: hidden; }
 .nb-status { display: flex; align-items: center; gap: var(--space-2); height: 22px; padding: 0 var(--space-1); font-size: var(--text-xs); color: var(--faint); }
 /* A ready-made step's cell in a stage notebook (ADR-0055): its form in place of code. */
 .nb-step { padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: 4px; background: var(--raised); }
@@ -1891,7 +1889,8 @@ p { margin: 0; }
 .nb-cell:hover .nb-cell-toolbar, .nb-cell.active .nb-cell-toolbar, .nb-cell-toolbar:focus-within { opacity: 1; }
 .nb-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: 3px; background: transparent; color: var(--soft); cursor: pointer; }
 .nb-icon:hover, .nb-icon.on { background: var(--node-hover); color: var(--ink); }
-.code-input.fit { flex: none; min-height: 0; border: 0; background: transparent; }
+/* A notebook cell's editor looks like the Code tab's: same frame and ground, sized to its code. */
+.code-input.fit { flex: none; min-height: 0; }
 
 .nb-output { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding: var(--space-2) var(--space-1) var(--space-1); }
 .nb-output > * { max-width: 100%; }
