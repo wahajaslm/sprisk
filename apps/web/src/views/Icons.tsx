@@ -63,10 +63,8 @@ export function KindMark({ kind }: { kind: NodeKind }) {
 
 export function Logo() {
   return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-      <circle cx="11" cy="11" r="9" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="11" cy="11" r="4.5" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="11" cy="11" r="1.4" fill="currentColor" />
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path d="M3 4.5h10M3 8h6.5M3 11.5h3.5" />
     </svg>
   );
 }

@@ -50,7 +50,7 @@ describe("top bar", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
-  it("puts the project and flow switcher first, then the views including Objective, then Run graph", async () => {
+  it("puts the project and flow switcher first, then the views including Objective, then Run flow", async () => {
     renderWithApi(<TopBar />);
     const bar = screen.getByRole("banner");
     const switcher = await within(bar).findByRole("button", { name: "Project and flow" });
@@ -58,7 +58,7 @@ describe("top bar", () => {
     const tabs = within(nav).getAllByRole("button").map((b) => b.textContent);
     expect(tabs).toEqual(["Objective", "Flow", "Datasets", "Notebooks", "Methodology", "Experiments", "Deploy", "Reports", "Settings"]);
     expect(switcher.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(bar).getByRole("button", { name: /Run graph/ })).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: /Run flow/ })).toBeInTheDocument();
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
   });
 
@@ -99,8 +99,8 @@ describe("top bar", () => {
     );
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
-    await userEvent.click(screen.getByRole("button", { name: /Run graph/ }));
-    // Run graph runs from the start: nothing reused.
+    await userEvent.click(screen.getByRole("button", { name: /Run flow/ }));
+    // Run flow runs from the start: nothing reused.
     await waitFor(() => expect(posted).toEqual({ pipeline_version_id: PV }));
   });
 
@@ -112,7 +112,7 @@ describe("top bar", () => {
     );
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
-    await userEvent.click(screen.getByRole("button", { name: /Run graph/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Run flow/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("path_outside_data_roots");
   });
 });

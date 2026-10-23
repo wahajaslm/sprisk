@@ -6,8 +6,7 @@ import { useQuestionVersions } from "../api/questions.ts";
 import { flowName } from "../flow/labels.ts";
 import { currentQuestion, openEntries } from "./objective/ledger.ts";
 import { NAV, useSelection } from "../workbench/selection.ts";
-import { useWorkbench } from "../workbench/workbench.ts";
-import { Chevron, Logo, PlayIcon } from "./Icons.tsx";
+import { Chevron, Logo } from "./Icons.tsx";
 import { ImportNotebook } from "./ImportNotebook.tsx";
 
 /** Local mode has one project (the CLI's LOCAL_PROJECT). */
@@ -35,7 +34,6 @@ export function TopBar() {
     if (latestRunId && runId === undefined) selectRun(latestRunId);
   }, [latestRunId, runId, selectRun]);
 
-  const { shellMode, setShellMode } = useWorkbench();
   const current = versions.data?.find((v) => v.id === pipelineVersionId);
   const question = currentQuestion(questions.data ?? [], current);
   const openCount = question ? openEntries(question) : 0;
@@ -51,7 +49,7 @@ export function TopBar() {
 
   return (
     <header className="topbar" role="banner">
-      {/* Col 1: 56px Logo */}
+      {/* Col 1: logo, above the 56px rail */}
       <div className="logo-cell">
         <div className="logo-icon-box">
           <Logo />
@@ -78,7 +76,7 @@ export function TopBar() {
           </button>
           {menuOpen && (
             <div className="menu" role="listbox" aria-label="Flows">
-              <p className="menu-title">FLOWS</p>
+              <p className="menu-title">Flows</p>
               {flows(versions.data ?? []).map(({ head, ids }) => (
                 <button
                   key={head.id}
@@ -131,27 +129,8 @@ export function TopBar() {
         </nav>
       </div>
 
-      {/* Col 3: Shell mode toggle + Status + Action button */}
+      {/* Col 3: status and the page's primary action */}
       <div className="topbar-actions">
-        <div className="shell-mode-toggle" role="group" aria-label="App shell mode">
-          <button
-            type="button"
-            className={`shell-mode-btn ${shellMode === "joined" ? "active" : ""}`}
-            onClick={() => setShellMode("joined")}
-            title="Joined shell"
-          >
-            Joined
-          </button>
-          <button
-            type="button"
-            className={`shell-mode-btn ${shellMode === "docked" ? "active" : ""}`}
-            onClick={() => setShellMode("docked")}
-            title="Docked shell"
-          >
-            Docked
-          </button>
-        </div>
-
         {nav === "Objective" ? (
           questions.isError ? (
             <span role="alert" className="error">{questions.error.message}</span>
@@ -166,7 +145,6 @@ export function TopBar() {
             {runs.isError && <span role="alert" className="error">{runs.error.message}</span>}
             {startRun.isError && <span role="alert" className="error">{startRun.error.message}</span>}
             <span className={`runstate ${latestRun?.status ?? "none"}`}>
-              <span className="dot" aria-hidden="true" />
               {runState}
             </span>
             <button
@@ -177,8 +155,7 @@ export function TopBar() {
                 if (pipelineVersionId) startRun.mutate(pipelineVersionId, { onSuccess: (run) => selectRun(run.id) });
               }}
             >
-              <PlayIcon />
-              Run graph
+              Run flow
             </button>
           </>
         )}
