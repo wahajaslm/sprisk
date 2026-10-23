@@ -202,6 +202,11 @@ pub async fn serve_on(
             kernels.shut_idle().await;
         }
     });
+    // Walks a stopped server left walking go on from their stored heads (ADR-0060).
+    let resumed = sprisk_api::resume_walks(&state).await?;
+    if resumed > 0 {
+        eprintln!("resumed {resumed} walks");
+    }
     axum::serve(listener, sprisk_api::router(state)).await?;
     Ok(())
 }

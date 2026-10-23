@@ -19,7 +19,7 @@ from sklearn.preprocessing import FunctionTransformer
 from .costs import costed, resolved, scorer
 from .evaluate import confusion_figure, predicted_figure
 from .importance import importance_figure, permutation
-from .models import model_input
+from .models import fold_input
 
 # The metrics each task may be compared by, without costs: the task's own, or one a person
 # stated with the success bar (ADR-0059).
@@ -161,7 +161,7 @@ def cross_validate(
     model = Pipeline(
         [
             *[(f"prepare_{i}", step) for i, step in enumerate(prepare)],
-            ("input", FunctionTransformer(model_input, kw_args={"features": features})),
+            ("input", FunctionTransformer(fold_input, kw_args={"features": features})),
             ("model", candidate(**settings)),
         ]
     )

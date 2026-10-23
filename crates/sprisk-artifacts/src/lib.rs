@@ -182,6 +182,24 @@ pub fn content_hash(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
+/// The `sha256:<hex>` hash of the file at `path`, read in chunks so a large file never sits
+/// in memory: a walk records its sources' hashes and checks them each round (ADR-0060).
+pub async fn file_hash(path: &Path) -> Result<String, StoreError> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(io_err("open", path))?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; CHUNK];
+    loop {
+        let n = file.read(&mut buf).await.map_err(io_err("read", path))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
+}
+
 /// Returns the hex part of `sha256:<hex>`.
 pub(crate) fn parse_hash(hash: &str) -> Result<&str, StoreError> {
     match hash.strip_prefix("sha256:") {

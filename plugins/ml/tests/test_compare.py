@@ -12,6 +12,7 @@ import pytest
 from scipy import stats
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 
+from sprisk_clean.vectorize_text import vectorize_text
 from sprisk_contracts import SelectionDecision
 from sprisk_ml.compare import cross_validate, select_model
 from sprisk_ml.models import (
@@ -20,6 +21,7 @@ from sprisk_ml.models import (
     random_forest_estimator,
 )
 from sprisk_workers.manifests import load_operators
+from sprisk_workers.plain import FoldStep
 
 
 def rows(n: int, seed: int, signal: bool = True) -> pl.DataFrame:
@@ -595,8 +597,8 @@ def test_the_worker_runs_a_comparison_from_the_manifests(tmp_path: Path) -> None
     rows(200, seed=3).write_parquet(train)
     cross_validated = {}
     for name, ref in [
-        (BASE, "sprisk.ml.dummy_baseline@2.0.0"),
-        ("ml_lm", "sprisk.ml.linear_model@2.0.0"),
+        (BASE, "sprisk.ml.dummy_baseline@3.0.0"),
+        ("ml_lm", "sprisk.ml.linear_model@3.0.0"),
     ]:
         out = tmp_path / name
         out.mkdir()
@@ -762,3 +764,42 @@ def test_importance_keeps_a_column_the_model_reads_through_a_made_feature() -> N
         [Rescale()],
     )
     assert result["importance"]["feature"].to_list()[0] == "x"
+
+
+def worded(n: int, seed: int) -> pl.DataFrame:
+    """The class shows only in the title's words; x is noise."""
+    rng = np.random.default_rng(seed)
+    shoe = rng.random(n) > 0.5
+    return pl.DataFrame(
+        {
+            "title": np.where(shoe, "red shoe", "warm hat"),
+            "x": rng.normal(size=n),
+            "y": np.where(shoe, "yes", "no"),
+        }
+    )
+
+
+def test_words_are_made_in_each_fold_from_its_own_rows_and_reach_the_model() -> None:
+    seen: list[int] = []
+
+    def vectorize(train: pl.DataFrame, test: pl.DataFrame, columns: list[str]) -> dict[str, Any]:
+        seen.append(train.height)
+        return vectorize_text(train, test, columns)
+
+    result = cross_validate(
+        worded(100, seed=4),
+        linear_model_estimator,
+        {"target": "y", "task": "classification"},
+        5,
+        0,
+        "balanced_accuracy",
+        1,
+        [FoldStep(vectorize, {"columns": ["title"]})],
+    )
+
+    train_rows = result["scores"]["train_rows"].to_list()
+    # Fit on each fold's rows, then words for those rows and the held-out ones.
+    assert sorted(set(seen)) == sorted(set(train_rows))
+    assert result["scores"]["score"].min() == 1.0
+    importance = result["importance"]
+    assert importance["feature"].to_list()[0] == "title"

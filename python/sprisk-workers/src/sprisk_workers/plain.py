@@ -52,7 +52,10 @@ NONE: Mapping[str, CheckedFunction] = MappingProxyType({})
 class FoldStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """A preparation step that fits on train (`fits_on_train`) as a scikit-learn transformer,
     so cross-validation refits it per fold with the step's own code (ADR-0050). Fitting keeps
-    the rows it is fit on; transforming runs the step with those rows as train."""
+    the rows it is fit on; transforming runs the step with those rows as train.
+
+    A step that makes words (ADR-0058) passes on `(table, words)`, its test table and test
+    words; steps after it transform the table and carry the words along unchanged."""
 
     def __init__(self, step: Callable[..., Any], settings: Mapping[str, Any]) -> None:
         self.step = step
@@ -63,7 +66,18 @@ class FoldStep(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         return self
 
     def transform(self, x: Any) -> Any:
-        return self.step(train=self.train_, test=x, **self.settings)["test"]
+        train, _ = _table_and_words(self.train_)
+        test, words = _table_and_words(x)
+        out = self.step(train=train, test=test, **self.settings)
+        if "test_words" in out:
+            if words is not None:
+                raise ValueError("only one step may make words for a model")
+            return out["test"], out["test_words"]
+        return out["test"] if words is None else (out["test"], words)
+
+
+def _table_and_words(x: Any) -> tuple[Any, Any]:
+    return x if isinstance(x, tuple) else (x, None)
 
 
 def adapt(
@@ -288,9 +302,10 @@ def _read(path: Path, kind: str) -> Any:
         return pl.read_parquet(path)
     if kind == "matrix":
         try:
-            return read_matrix(path)
+            matrix = read_matrix(path)
         except ValueError as e:
             raise OperatorError("invalid_input", f"matrix {path.name}: {e}") from e
+        return matrix.values, matrix.columns
     if kind == "model":
         try:
             return skops.io.load(path, trusted=TRUSTED_MODEL_TYPES)
@@ -324,10 +339,8 @@ def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
         path.write_text(json.dumps({"items": [_figure(port, f) for f in figures]}))
         return Output(port, path, JSON)
     if kind == "matrix":
-        if not isinstance(value, Matrix):
-            raise _wrong(port, "a Matrix (a SciPy sparse matrix and its column names)", value)
         path = out_dir / f"{port}.npz"
-        write_matrix(value, path)
+        write_matrix(_matrix(port, value), path)
         return Output(port, path, MATRIX)
     if kind == "table" and _is_pandas_frame(value):
         path = out_dir / f"{port}.parquet"
@@ -351,6 +364,17 @@ def _write(port: str, value: Any, kind: str, out_dir: Path) -> Output:
     except TypeError as e:
         raise _wrong(port, "JSON (dicts, lists, numbers, text)", value) from e
     return Output(port, path, JSON)
+
+
+def _matrix(port: str, value: Any) -> Matrix:
+    """A step returns a matrix as a plain pair, so it never imports sprisk (ADR-0022)."""
+    if not isinstance(value, tuple) or len(value) != 2:
+        raise _wrong(port, "(a SciPy sparse matrix, its column names)", value)
+    values, names = value
+    try:
+        return Matrix(values, tuple(names))
+    except (TypeError, ValueError) as e:
+        raise OperatorError("bad_output", f"output {port}: {e}") from e
 
 
 def _wrong(port: str, expected: str, value: Any) -> OperatorError:

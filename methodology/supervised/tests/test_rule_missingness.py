@@ -150,3 +150,84 @@ def test_a_column_that_may_be_the_target_asks_before_any_fill() -> None:
     for id in ("impute_mean", "impute_median"):
         assert alternative(d, id)["applicability"] == "needs_fact", id
     assert d["recommended_alternative_id"] == "drop_rows"
+
+
+MODEL = {"step.task": ("classification", "explicit")}
+
+
+def test_gaps_reaching_a_model_are_filled_in_a_step_added_before_it() -> None:
+    d = run(
+        {
+            **column("income", missing_share=0.1, skewness=2.4),
+            **column("city", "String", missing_share=0.2, distinct=10),
+            **column("age", missing_share=0.0),
+        },
+        MODEL,
+    )
+    assert d["recommended_alternative_id"] == "fill_before_model"
+    assert alternative(d, "fill_before_model")["params"] == {
+        "columns": ["city", "income"],
+        "method": "median",
+        "text_fill": {"city": "missing"},
+    }
+    for fill_step_only in ("drop_rows", "impute_median", "impute_mean"):
+        assert alternative(d, fill_step_only)["applicability"] == "not_applicable"
+
+
+def test_a_model_whose_columns_have_no_gaps_needs_no_fill() -> None:
+    d = run({**column("income", missing_share=0.0), **column("age", missing_share=0.0)}, MODEL)
+    assert d["recommended_alternative_id"] == "no_gaps"
+    assert alternative(d, "fill_before_model")["applicability"] == "not_applicable"
+
+
+def test_gaps_no_step_can_fill_are_a_limit_the_walk_reports() -> None:
+    # A date's gaps become gaps in its parts, which date parts makes before this rule decides.
+    d = run(
+        {**column("member", "Boolean", missing_share=0.3), **column("age", missing_share=0.0)},
+        MODEL,
+    )
+    assert d["recommended_alternative_id"] == "gaps_left"
+    assert "member" in alternative(d, "gaps_left")["reason"]
+
+
+def test_a_mostly_empty_column_is_not_filled_before_a_model() -> None:
+    d = run(
+        {**column("fax", missing_share=0.9), **column("age", missing_share=0.1)},
+        MODEL,
+    )
+    assert d["recommended_alternative_id"] == "fill_before_model"
+    assert alternative(d, "fill_before_model")["params"]["columns"] == ["age"]
+    left = alternative(d, "gaps_left")
+    assert left["applicability"] == "applicable"
+    assert "fax is at least 60% empty" in left["reason"]
+
+
+def test_what_can_be_filled_is_and_what_cannot_is_named() -> None:
+    d = run(
+        {**column("member", "Boolean", missing_share=0.3), **column("age", missing_share=0.1)},
+        MODEL,
+    )
+    assert d["recommended_alternative_id"] == "fill_before_model"
+    assert "member" in alternative(d, "fill_before_model")["reason"]
+    assert alternative(d, "gaps_left")["applicability"] == "applicable"
+
+
+def test_symmetric_numbers_reaching_a_model_take_the_mean_and_free_text_empty_text() -> None:
+    d = run(
+        {
+            **column("age", missing_share=0.1, skewness=0.2),
+            **column("notes", "String", missing_share=0.4, distinct=900),
+        },
+        MODEL,
+    )
+    assert alternative(d, "fill_before_model")["params"] == {
+        "columns": ["age", "notes"],
+        "method": "mean",
+        "text_fill": {"notes": ""},
+    }
+
+
+def test_a_fill_step_is_not_decided_as_a_model() -> None:
+    d = run(column("income", missing_share=0.1, skewness=2.4))
+    for model_only in ("fill_before_model", "no_gaps", "gaps_left"):
+        assert alternative(d, model_only)["applicability"] == "not_applicable"

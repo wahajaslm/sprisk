@@ -1,11 +1,11 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.dummy_baseline@2.0.0
+id: sprisk.ml.dummy_baseline@3.0.0
 capability_class: estimator
 model: { tasks: [classification, regression], estimator: "sprisk_ml.models:dummy_baseline_estimator", complexity: 0 }
 description: Majority class or mean predictor. The floor every model must beat.
 entrypoint: sprisk_ml.models:dummy_baseline
 notebook_code: sprisk_ml.models:dummy_baseline_as_code
-inputs: [{ name: train, kind: table }]
+inputs: [{ name: train, kind: table }, { name: words, kind: matrix, optional: true, description: "Word features of the train rows (Vectorize text), fit beside the table's numbers (ADR-0058)." }]
 outputs: [{ name: model, kind: model }]
 params_schema:
   type: object

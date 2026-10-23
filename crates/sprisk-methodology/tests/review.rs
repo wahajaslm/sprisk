@@ -7,7 +7,7 @@ use sprisk_contracts::TaskType;
 use sprisk_contracts::{DecisionProposal, MethodologyRule, PipelineVersion, parse};
 use sprisk_methodology::RuleCatalog;
 use sprisk_methodology::review::{
-    Outcome, Planned, comes_after, fits_task, is_open, item, next, plan, waits_on,
+    Outcome, Planned, comes_after, decided_for, fits_task, is_open, item, next, plan, waits_on,
 };
 use sprisk_registry::Registry;
 
@@ -99,12 +99,15 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("question.error_costs".to_owned(), at("model")),
             ("question.task_type".to_owned(), at("model")),
             ("cleaning.outlier_strategy".to_owned(), None),
-            ("features.date_parts".to_owned(), at("model")),
             ("features.scaling_strategy".to_owned(), at("model")),
-            // Rare categories are grouped first, so encoding sees the grouped columns.
-            ("features.rare_categories".to_owned(), at("model")),
-            ("features.encoding_strategy".to_owned(), at("model")),
             ("features.skew_transform".to_owned(), at("model")),
+            // The steps shaping a model's inputs, in INPUT_SHAPE order: words, date parts,
+            // rare categories (which keep a gap), gaps filled, then encoding, which refuses gaps.
+            ("features.text_representation".to_owned(), at("model")),
+            ("features.date_parts".to_owned(), at("model")),
+            ("features.rare_categories".to_owned(), at("model")),
+            ("cleaning.missingness_strategy".to_owned(), at("model")),
+            ("features.encoding_strategy".to_owned(), at("model")),
             ("modeling.interpretability_requirement".to_owned(), None),
             ("modeling.estimator_selection".to_owned(), at("model")),
             ("evaluation.decision_threshold".to_owned(), at("model")),
@@ -550,4 +553,22 @@ fn rules_measuring_the_split_s_table_come_after_the_rules_that_shape_its_columns
     assert!(comes_after(&pipeline, roles, join));
     assert!(!comes_after(&pipeline, join, roles));
     assert!(!comes_after(&pipeline, roles, duplicates));
+}
+
+#[test]
+fn a_step_upstream_settles_a_subject_only_with_a_decision_made_for_that_subject() {
+    let decision = |subject: &str| -> sprisk_contracts::MethodologyDecision {
+        let mut d: Value = serde_json::from_str(include_str!(
+            "../../../tests/contract/methodology_decision/valid/applied.json"
+        ))
+        .unwrap();
+        d["subject_node_id"] = json!(subject);
+        parse(&d.to_string()).unwrap()
+    };
+    // The Impute a rule added for the model settles it; a person's own Impute, decided for
+    // itself, leaves the model's other gaps open.
+    assert!(decided_for("model", "gaps", &decision("model")));
+    assert!(!decided_for("model", "fill", &decision("fill")));
+    // A step's own decision settles it, whatever subject it was made for.
+    assert!(decided_for("gaps", "gaps", &decision("model")));
 }

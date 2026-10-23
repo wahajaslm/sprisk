@@ -24,6 +24,8 @@ TRAIN_PORT = "train"
 # A code step may split rows in a way this check cannot see.
 CODE_OPERATOR = "sprisk.code.python"
 # Transforms that learn from their `train` input and apply to `train` and `test` (ADR-0018).
+TRAIN_OUTPUTS = frozenset({"train", "train_words"})
+WORDS_PORT = "words"
 FITTING_TRANSFORMS = frozenset(
     {
         "sprisk.clean.impute",
@@ -34,6 +36,7 @@ FITTING_TRANSFORMS = frozenset(
         "sprisk.clean.power_transform",
         "sprisk.clean.clip_outliers",
         "sprisk.clean.spectral_gating",
+        "sprisk.clean.vectorize_text",
     }
 )
 
@@ -138,6 +141,12 @@ def split_leakage(
         )
         return _result(pipeline, check_id, now, Verdict.not_assessed, rationale, evaluators)
 
+    for evaluator in evaluators:
+        problem = _words_problem(evaluator, graph)
+        if problem:
+            rationale, cited = problem
+            return _result(pipeline, check_id, now, Verdict.fail, rationale, cited)
+
     candidates: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for evaluator in evaluators:
         table, model = _input_sources(evaluator, op_of[evaluator], graph)
@@ -168,7 +177,7 @@ def split_leakage(
 
 
 def unversioned(ref: str) -> str:
-    """An operator ref without its version: `sprisk.ml.evaluate@1.0.0` -> `sprisk.ml.evaluate`."""
+    """An operator ref without its version: `sprisk.ml.evaluate@2.0.0` -> `sprisk.ml.evaluate`."""
     return ref.split("@")[0]
 
 
@@ -195,13 +204,15 @@ def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> Por
         consumer, in_port = edge.to.root.split(".")
         graph.add_edge(edge.from_.root, consumer)
         graph.edges[edge.from_.root, consumer].setdefault("ports", set()).add(in_port)
-    # A fitting transform's train output carries only its train input; its test output
-    # depends on both. Without this, every model after a transform looks fit on test rows.
+    # A fitting transform's train outputs (its train table, and its train words) carry only
+    # its train input; its test outputs depend on both. Without this, every model after a
+    # transform looks fit on test rows.
     for node, op in op_of.items():
         if unversioned(op.id.root) in FITTING_TRANSFORMS:
             source = _source_of(graph, node, TRAIN_PORT)
-            graph.remove_edge(node, f"{node}.{TRAIN_PORT}")
-            graph.add_edge(source, f"{node}.{TRAIN_PORT}")
+            for name in TRAIN_OUTPUTS & {p.name.root for p in op.outputs}:
+                graph.remove_edge(node, f"{node}.{name}")
+                graph.add_edge(source, f"{node}.{name}")
     return graph
 
 
@@ -266,6 +277,28 @@ def _fit_problem(
     )
 
 
+def _words_problem(evaluator: str, graph: PortGraph) -> tuple[str, list[str]] | None:
+    """An evaluator's words must be the test words of the step the model's train words came
+    from (ADR-0058). Train words share the test words' columns, so nothing else catches it."""
+    scored_with = _source_or_none(graph, evaluator, WORDS_PORT)
+    if scored_with is None:
+        return None
+    model = _source_of(graph, evaluator, "model").split(".")[0]
+    fit_on = _source_or_none(graph, model, WORDS_PORT) or ""
+    maker = fit_on.removesuffix(".train_words")
+    if fit_on != maker and scored_with == f"{maker}.test_words":
+        return None
+    rationale = (
+        f"{evaluator} scores {model} with {scored_with}, but only the test words of the step "
+        f"its train words came from ({fit_on or 'none'}) may score it."
+    )
+    return rationale, sorted({evaluator, model, scored_with.split(".")[0]})
+
+
+def _source_or_none(graph: PortGraph, node: str, port: str) -> str | None:
+    return next((str(s) for s in graph.predecessors(node) if _feeds(graph, s, node, port)), None)
+
+
 def _source_of(graph: PortGraph, node: str, port: str) -> str:
     """The upstream output port feeding `node.port`."""
     for src in graph.predecessors(node):
@@ -283,7 +316,7 @@ def _input_sources(evaluator: str, op: Operator, graph: PortGraph) -> tuple[str,
         upstream = [
             src for src in graph.predecessors(evaluator) if _feeds(graph, src, evaluator, name)
         ]
-        if not upstream:
+        if not upstream and not port.optional:
             unconnected.append(f"{evaluator}.{name}")
         sources[port.kind] += upstream
     if unconnected:

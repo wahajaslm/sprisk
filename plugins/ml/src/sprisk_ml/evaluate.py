@@ -9,19 +9,21 @@ from sklearn.frozen import FrozenEstimator
 from sklearn.model_selection import FixedThresholdClassifier
 
 from .costs import expected_cost, resolved
+from .models import Words, scoring_input
 
 
-def evaluate(model: Any, test: pl.DataFrame, target: str, task: str) -> dict[str, Any]:
-    """Score a fitted model on the test table, and draw how it went. It never sees training rows.
-    A model that decides by costs (ADR-0053) also reports its cut-off and expected cost."""
+def evaluate(
+    model: Any, test: pl.DataFrame, target: str, task: str, words: Words | None = None
+) -> dict[str, Any]:
+    """Score a fitted model on the test table, with the test words beside it when the model was
+    fit on words (ADR-0058), and draw how it went. It never sees training rows. A model that
+    decides by costs (ADR-0053) also reports its cut-off and expected cost."""
     if is_classifier(model) != (task == "classification"):
         raise ValueError(f"model is not a {task} model")
     if test[target].null_count():
         raise ValueError(f"{target} has {test[target].null_count()} missing values in test")
-    # The model selects exactly the columns it was fit on.
-    features = list(model.feature_names_in_)
     y_true = test[target].to_numpy()
-    y_pred = model.predict(test.select(features))
+    y_pred = model.predict(scoring_input(model, test, words))
     result: dict[str, Any] = {
         "n_rows": test.height,
         "estimator": type(_estimator(model)).__name__,

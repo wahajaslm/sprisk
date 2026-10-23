@@ -16,7 +16,7 @@ from sprisk_contracts import Operator
 from sprisk_workers.errors import ManifestError, OperatorError
 from sprisk_workers.matrix import Matrix
 from sprisk_workers.output import JSON, MATRIX, PARQUET, SKOPS
-from sprisk_workers.plain import CheckedFunction, adapt
+from sprisk_workers.plain import CheckedFunction, FoldStep, adapt
 
 
 def operator(inputs: str, outputs: str, params: str = "{}") -> Operator:
@@ -573,11 +573,12 @@ def test_a_matrix_round_trips_with_its_column_names(tmp_path: Path) -> None:
     words = operator("[{ name: data, kind: table }]", "[{ name: words, kind: matrix }]")
     read = operator("[{ name: words, kind: matrix }]", "[{ name: metrics, kind: metrics }]")
 
-    def make(data: pl.DataFrame) -> Matrix:
-        return Matrix(sparse.csr_array([[0.0, 1.5], [2.0, 0.0]]), ("red", "blue"))
+    def make(data: pl.DataFrame) -> Any:
+        return sparse.csr_matrix([[0.0, 1.5], [2.0, 0.0]]), ["red", "blue"]
 
-    def use(words: Matrix) -> dict[str, Any]:
-        return {"columns": list(words.columns), "dense": words.values.toarray().tolist()}
+    def use(words: Any) -> dict[str, Any]:
+        values, names = words
+        return {"columns": list(names), "dense": values.toarray().tolist()}
 
     [out] = adapt(make, words)(
         {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1, 2]}))}, staging(tmp_path)
@@ -602,7 +603,7 @@ def test_a_matrix_port_refuses_anything_else(tmp_path: Path) -> None:
     def make(data: pl.DataFrame) -> Any:
         return sparse.csr_array([[1.0]])
 
-    with pytest.raises(OperatorError, match="output words: expected a Matrix"):
+    with pytest.raises(OperatorError, match="output words: expected \\(a SciPy sparse matrix"):
         adapt(make, words)(
             {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
         )
@@ -686,3 +687,46 @@ def test_a_required_input_left_unconnected_fails_the_step(tmp_path: Path) -> Non
 
     with pytest.raises(OperatorError, match="input data is not connected"):
         adapt(op, ONE_TABLE)({"factor": 1}, {}, staging(tmp_path))
+
+
+def test_a_matrix_pair_the_matrix_refuses_is_a_bad_output(tmp_path: Path) -> None:
+    words = operator("[{ name: data, kind: table }]", "[{ name: words, kind: matrix }]")
+
+    def make(data: pl.DataFrame) -> Any:
+        return sparse.csr_array([[1.0, 2.0]]), ["red"]
+
+    with pytest.raises(OperatorError, match="output words: matrix has 2 columns but 1 name"):
+        adapt(make, words)(
+            {}, {"data": parquet(tmp_path, pl.DataFrame({"x": [1]}))}, staging(tmp_path)
+        )
+
+
+def _words_step(train: pl.DataFrame, test: pl.DataFrame, column: str) -> dict[str, Any]:
+    names = ["red"]
+    made = {
+        port: (sparse.csr_array(rows.select(column).to_numpy().astype(float)), names)
+        for port, rows in (("train_words", train), ("test_words", test))
+    }
+    return {"train": train.drop(column), "test": test.drop(column), **made}
+
+
+def _double(train: pl.DataFrame, test: pl.DataFrame) -> dict[str, pl.DataFrame]:
+    return {"train": train * 2, "test": test * 2}
+
+
+def test_a_fold_step_that_makes_words_passes_them_on_beside_the_table() -> None:
+    rows = pl.DataFrame({"n": [1, 2], "x": [3, 4]})
+    words_step, double = FoldStep(_words_step, {"column": "n"}), FoldStep(_double, {})
+
+    table, words = double.fit(words_step.fit_transform(rows)).transform(words_step.transform(rows))
+
+    assert table.to_dict(as_series=False) == {"x": [6, 8]}
+    assert words[0].toarray().tolist() == [[1.0], [2.0]]
+    assert list(words[1]) == ["red"]
+
+
+def test_a_second_fold_step_that_makes_words_is_refused() -> None:
+    rows = pl.DataFrame({"n": [1, 2], "x": [3, 4]})
+    first = FoldStep(_words_step, {"column": "n"}).fit_transform(rows)
+    with pytest.raises(ValueError, match="only one step may make words"):
+        FoldStep(_words_step, {"column": "x"}).fit(first).transform(first)

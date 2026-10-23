@@ -9,6 +9,7 @@ import pytest
 import skops.io
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from scipy import sparse
 
 from sprisk_ml.models import (
     dummy_baseline,
@@ -132,3 +133,20 @@ def test_costs_naming_no_class_fail_with_a_clear_error_in_the_code(
     settings = {"target": "y", "task": "classification", "costs": costs}
     with pytest.raises(ValueError, match="'absent' is not one of the classes of y"):
         fitted_by_code(settings, clf_numbers, write)
+
+
+@pytest.mark.parametrize(("step", "write"), WRITERS)
+@pytest.mark.parametrize("extra", [{}, {"costs": COSTS}], ids=str)
+def test_the_code_with_words_predicts_as_the_step_does(
+    clf_numbers: pl.DataFrame, step: Any, write: Any, extra: dict[str, Any]
+) -> None:
+    # In a notebook the words are the matrix the vectorizer returned (ADR-0058).
+    shoe = (clf_numbers["y"] == "hi").cast(pl.Float64).to_numpy()
+    words = sparse.csr_matrix(np.column_stack([shoe, 1 - shoe]))
+    settings = {"target": "y", "task": "classification", **extra}
+    namespace: dict[str, Any] = {"rows": clf_numbers, "rows_words": words}
+    exec(write(settings, {"train": "rows", "words": "rows_words"}, {"model": "m"}), namespace)
+
+    fitted = step(clf_numbers, **settings, words=(words, ["title:shoe", "title:hat"]))
+    x = sparse.hstack([sparse.csr_array(clf_numbers.select("x", "c").to_numpy()), words])
+    assert np.array_equal(namespace["m"].predict(x), fitted.predict(x))

@@ -487,6 +487,10 @@ fn named_preparations<'r>(
                     && o.effects == sprisk_contracts::Effects::Pure
                     && o.network == sprisk_contracts::NetworkAccess::None
                     && !properties(o).any(|(_, v)| v.get("x-sprisk-local-path").is_some())
+                    // A fold passes on tables, and words beside them (ADR-0058).
+                    && o.outputs
+                        .iter()
+                        .all(|p| matches!(p.kind, PortKind::Table | PortKind::Matrix))
             };
             let Some((found, digest)) = registry.resolve(operator).filter(|(o, _)| foldable(o))
             else {

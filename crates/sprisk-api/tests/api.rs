@@ -9,7 +9,9 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sprisk_api::{AppState, KernelLimits, Kernels, KeyMatcher, Profiler, Splitter, router};
+use sprisk_api::{
+    AppState, KernelLimits, Kernels, KeyMatcher, Profiler, Splitter, resume_walks, router,
+};
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{OperatorSource, parse};
 use sprisk_registry::Registry;
@@ -26,6 +28,7 @@ struct Api {
     csv: PathBuf,
     kernels: Kernels,
     store: Arc<SqliteStore>,
+    state: AppState,
 }
 
 const KERNEL_LIMITS: KernelLimits = KernelLimits {
@@ -166,10 +169,11 @@ async fn api_with_clock(
     };
     Api {
         _dir: dir,
-        app: router(state),
+        app: router(state.clone()),
         csv,
         kernels,
         store,
+        state,
     }
 }
 
@@ -623,6 +627,66 @@ async fn a_step_is_written_as_plain_python_with_its_settings_and_names() {
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
 
+/// A model's optional words (ADR-0058) may be left out of its cell, or named; its cell reads
+/// back as its settings either way. A port the model does not have is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_model_cell_is_written_and_read_with_or_without_its_words() {
+    let api = api().await;
+    let model = "/operators/sprisk.ml.linear_model@3.0.0";
+    let settings = json!({"target": "y", "task": "classification"});
+    let outputs = json!({"model": "model"});
+    for inputs in [
+        json!({"train": "rows"}),
+        json!({"train": "rows", "words": "rows_words"}),
+    ] {
+        let write = json!({"settings": settings, "inputs": inputs, "outputs": outputs});
+        let (status, body) = call(
+            &api.app,
+            "POST",
+            &format!("{model}/notebook_code"),
+            Some(write),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let code = body["code"].clone();
+        assert_eq!(
+            code.as_str().unwrap().contains("rows_words,"),
+            inputs.get("words").is_some(),
+            "{code}"
+        );
+        let read =
+            json!({"settings": settings, "inputs": inputs, "outputs": outputs, "code": code});
+        let (status, body) = call(
+            &api.app,
+            "POST",
+            &format!("{model}/notebook_settings"),
+            Some(read),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["reads_as"], "settings", "{body}");
+    }
+
+    // A port the model does not have, or words without the train rows it needs.
+    for inputs in [
+        json!({"train": "rows", "pictures": "p"}),
+        json!({"words": "rows_words"}),
+    ] {
+        let read = json!({
+            "settings": settings,
+            "inputs": inputs,
+            "outputs": outputs,
+            "code": "model = 1\n"
+        });
+        let uri = format!("{model}/notebook_settings");
+        let (_, body) = call(&api.app, "POST", &uri, Some(read)).await;
+        assert_eq!(
+            body["errors"][0]["code"], "invalid_ports",
+            "{inputs}: {body}"
+        );
+    }
+}
+
 /// An edited ready-made cell (ADR-0055): only values changed reads back as the step's
 /// settings, so it keeps its checks; anything more reads as code.
 #[tokio::test(flavor = "multi_thread")]
@@ -633,7 +697,7 @@ async fn an_edited_cell_reads_back_as_settings_when_only_values_changed() {
     let settings = json!({"target": "y", "task": "classification"});
     let mut request = names.clone();
     request["settings"] = settings.clone();
-    let forest = "/operators/sprisk.ml.random_forest@2.0.0";
+    let forest = "/operators/sprisk.ml.random_forest@3.0.0";
     let (_, written) = call(
         &api.app,
         "POST",
@@ -686,7 +750,7 @@ async fn an_edited_cell_reads_back_as_settings_when_only_values_changed() {
 #[tokio::test(flavor = "multi_thread")]
 async fn an_edited_cell_is_read_only_for_settings_and_ports_the_step_allows() {
     let api = api().await;
-    let uri = "/operators/sprisk.ml.random_forest@2.0.0/notebook_settings";
+    let uri = "/operators/sprisk.ml.random_forest@3.0.0/notebook_settings";
     let request = json!({
         "settings": {"target": "y", "task": "classification"},
         "inputs": {"train": "train"}, "outputs": {"model": "model"},
@@ -2102,7 +2166,7 @@ async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
 async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
     let api = api().await;
     let forest = json!({
-        "id":"rf", "operator":"sprisk.ml.random_forest@2.0.0",
+        "id":"rf", "operator":"sprisk.ml.random_forest@3.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","seed":0}
     });
     scaling_flow_into(
@@ -2160,7 +2224,7 @@ async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play(
     let nodes = [
         json!({"id":"fill", "operator":"sprisk.clean.impute@1.0.0",
                "params":{"columns":["age"],"method":"zero"}}),
-        json!({"id":"lin", "operator":"sprisk.ml.linear_model@2.0.0",
+        json!({"id":"lin", "operator":"sprisk.ml.linear_model@3.0.0",
                "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}}),
     ];
     let edges = [
@@ -2191,7 +2255,7 @@ async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play(
 /// The scaling flow with a linear model after the scale step, run to the end.
 async fn model_flow(api: &Api) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -2240,7 +2304,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
         .unwrap();
     assert_eq!(
         forest["effect"]["operator"],
-        "sprisk.ml.random_forest@2.0.0"
+        "sprisk.ml.random_forest@3.0.0"
     );
     assert_eq!(forest["effect"]["params"]["features"], json!(["age"]));
 }
@@ -2249,7 +2313,7 @@ async fn a_model_step_gets_a_shortlist_from_the_registered_models() {
 async fn a_model_with_no_features_is_measured_on_every_column_but_its_target() {
     let api = api().await;
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
         "params":{"target":"returned_within_30d","task":"classification"}
     });
     scaling_flow_into(
@@ -2298,7 +2362,7 @@ async fn choosing_a_shortlisted_model_without_comparing_needs_a_reason() {
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@2.0.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@3.0.0");
 }
 
 #[tokio::test]
@@ -2712,7 +2776,7 @@ async fn learnable_model_flow(api: &Api) {
 /// The learnable model flow, its question's success bar stated in `metric`.
 async fn learnable_model_flow_barred(api: &Api, metric: &str) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_barred(
@@ -2893,7 +2957,7 @@ async fn a_model_step_with_costs_is_compared_by_expected_cost_and_each_candidate
     let api = api().await;
     let costs = json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 });
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","costs":costs}
     });
     scaling_flow_into(
@@ -2943,7 +3007,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     flow["nodes"].as_array_mut().unwrap().extend([
         json!({ "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
                 "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
                 "params":{"target":"returned_within_30d","features":["age"],"task":"classification","n_estimators":10} }),
     ]);
     flow["edges"] = json!([
@@ -2984,7 +3048,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@2.0.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@3.0.0");
     assert_eq!(
         model["params"]["costs"],
         json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 })
@@ -3014,7 +3078,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
 async fn only_a_model_step_that_has_run_has_a_model_selection() {
     let api = api().await;
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -3420,7 +3484,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/impute";
     let (status, proposal) = call(&api.app, "POST", uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["rule"], "methodology.supervised.missingness@3.0.0");
+    assert_eq!(proposal["rule"], "methodology.supervised.missingness@4.0.0");
     assert_eq!(
         proposal["recommended_alternative_id"], "impute_median",
         "{proposal}"
@@ -3488,11 +3552,11 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
     edited["parent_id"] = json!(version);
     let nodes = edited["nodes"].as_array_mut().unwrap();
     nodes.push(
-        json!({ "id": "model", "operator": "sprisk.ml.linear_model@2.0.0",
+        json!({ "id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
                        "params": { "target": "y", "features": ["x"], "task": "classification" } }),
     );
     nodes.push(
-        json!({ "id": "eval", "operator": "sprisk.ml.evaluate@1.0.0",
+        json!({ "id": "eval", "operator": "sprisk.ml.evaluate@2.0.0",
                        "params": { "target": "y", "task": "classification" } }),
     );
     let edges = edited["edges"].as_array_mut().unwrap();
@@ -3814,7 +3878,7 @@ async fn a_study_needs_a_budget_a_guardrail_in_range_and_a_model_step() {
 async fn a_study_whose_trials_cannot_be_scored_ends_failed_with_its_trials() {
     let api = api().await;
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+        "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
     });
     scaling_flow_into(
@@ -3851,7 +3915,7 @@ async fn a_study_whose_trials_cannot_be_scored_ends_failed_with_its_trials() {
 /// The flow's forest grows 10 trees, so studies of it stay quick.
 async fn banded_forest_flow(api: &Api) {
     let model = json!({
-        "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
         "params":{"target":"returned_within_30d","features":["age"],"task":"classification","n_estimators":10}
     });
     scaling_flow_into(
@@ -4227,7 +4291,7 @@ async fn german_credit_flow(api: &Api) {
         "params":{"columns":text}
     }));
     nodes.push(json!({
-        "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
         "params":{"target":"credit_risk","task":"classification","n_estimators":50}
     }));
     flow["edges"] = json!([
@@ -4256,11 +4320,11 @@ async fn the_encoding_rule_adds_the_encode_step_a_model_needs() {
         "params":{"test_fraction":0.25,"seed":42,"stratify":"credit_risk"}
     }));
     nodes.push(json!({
-        "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
         "params":{"target":"credit_risk","task":"classification","n_estimators":50}
     }));
     nodes.push(json!({
-        "id":"score", "operator":"sprisk.ml.evaluate@1.0.0",
+        "id":"score", "operator":"sprisk.ml.evaluate@2.0.0",
         "params":{"target":"credit_risk","task":"classification"}
     }));
     flow["edges"] = json!([
@@ -4510,7 +4574,7 @@ async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule
         .iter()
         .find(|n| n["id"] == "model")
         .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@2.0.0");
+    assert_eq!(model["operator"], "sprisk.ml.random_forest@3.0.0");
     for (setting, value) in tuned["search"]["settings"].as_object().unwrap() {
         assert_eq!(&model["params"][setting], value, "{model}");
     }
@@ -4623,7 +4687,7 @@ async fn forest_flow_with(api: &Api, facts: Value) {
     flow["nodes"].as_array_mut().unwrap().extend([
         json!({ "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
                 "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
                 "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
     ]);
     flow["edges"] = json!([
@@ -4685,15 +4749,16 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("question.class_balance", "waiting"),
         ("question.error_costs", "waiting"),
         ("question.task_type", "waiting"),
-        ("cleaning.missingness_strategy", "no_subject"),
         ("cleaning.outlier_strategy", "no_subject"),
-        // The data rules may change the rows the model is fit on, so its rules wait for them.
-        ("features.date_parts", "waiting"),
         ("features.scaling_strategy", "no_subject"),
-        // Rare categories are grouped before the text is encoded.
-        ("features.rare_categories", "waiting"),
-        ("features.encoding_strategy", "waiting"),
         ("features.skew_transform", "no_subject"),
+        // The data rules may change the rows the model is fit on, so its rules wait for them,
+        // in INPUT_SHAPE order: words, date parts, rare categories, gaps filled, encoding.
+        ("features.text_representation", "waiting"),
+        ("features.date_parts", "waiting"),
+        ("features.rare_categories", "waiting"),
+        ("cleaning.missingness_strategy", "waiting"),
+        ("features.encoding_strategy", "waiting"),
         ("modeling.interpretability_requirement", "settled"),
         ("modeling.estimator_selection", "waiting"),
         ("evaluation.decision_threshold", "settled"),
@@ -5013,7 +5078,7 @@ async fn a_question_needing_high_interpretability_replaces_the_forest_by_a_linea
     );
     let effect = recommended_effect(&proposal);
     assert_eq!(
-        effect["operator"], "sprisk.ml.linear_model@2.0.0",
+        effect["operator"], "sprisk.ml.linear_model@3.0.0",
         "{effect}"
     );
     assert_eq!(
@@ -5223,6 +5288,11 @@ async fn walk_to_end(api: &Api, request: Value) -> Value {
         status == StatusCode::ACCEPTED || status == StatusCode::OK,
         "{status} {walk}"
     );
+    stopped(api, &walk).await
+}
+
+/// The detail of `walk` once it stops, waiting at most five minutes.
+async fn stopped(api: &Api, walk: &Value) -> Value {
     let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
     for _ in 0..6000 {
         let (_, detail) = call(&api.app, "GET", &uri, None).await;
@@ -5267,28 +5337,43 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
-            "apply features.rare_categories group_rare",
-            "run",
-            "apply features.encoding_strategy one_hot_encoding",
+            "apply features.text_representation vectorize_words",
             "run",
             "stop"
         ],
         "{detail}"
     );
-    // No active rule fills the empty descriptions before they are encoded yet, so the last run
-    // fails there, and the walk says so rather than guessing a fill.
+    // The title and the description are free text, so they become words learnt from the
+    // train rows (ADR-0058); empty descriptions give rows of zeros. The run succeeds, and the
+    // walk stops for what only a person can say before models are compared.
     let stop = &detail["walk"]["stop"];
-    assert_eq!(stop["reason"], "run_failed", "{detail}");
+    assert_eq!(stop["reason"], "needs_person", "{detail}");
     let open = stop["detail"].as_str().unwrap();
-    assert!(
-        open.contains("step categories failed: description has missing values"),
-        "{open}"
-    );
     assert!(open.contains("question.hard_constraints"), "{open}");
+    assert!(open.contains("question.task_type"), "{open}");
     let steps = detail["steps"].as_array().unwrap();
+    let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
-        detail["walk"]["head_pipeline_version_id"], steps[7]["made_pipeline_version_id"],
+        *head, steps[5]["made_pipeline_version_id"],
         "the head is the version the last apply made"
+    );
+    let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
+    let (_, flow) = call(&api.app, "GET", &uri, None).await;
+    let edges: Vec<String> = flow["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            format!(
+                "{} -> {}",
+                e["from"].as_str().unwrap(),
+                e["to"].as_str().unwrap()
+            )
+        })
+        .collect();
+    assert!(
+        edges.contains(&"text_words.train_words -> model.words".to_owned()),
+        "{edges:?}"
     );
 
     // Same key: the same walk, nothing started.
@@ -5451,21 +5536,222 @@ async fn a_walk_whose_head_someone_else_changes_stops_as_stale() {
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(edited)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
-    let mut detail = Value::Null;
-    for _ in 0..6000 {
-        (_, detail) = call(&api.app, "GET", &uri, None).await;
-        if detail["walk"]["status"] == "stopped" {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    let detail = stopped(&api, &walk).await;
     assert_eq!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
     assert_eq!(
         trail(&detail),
         ["build", "stop"],
         "nothing applied on a changed head: {detail}"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_walk_whose_source_changes_stops_as_source_changed() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (status, walk) = call(
+        &api.app,
+        "POST",
+        "/walks",
+        Some(walk_request(&[&api.csv], "walk-source-changed")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
+    let hashes = walk["source_hashes"].as_array().unwrap();
+    assert_eq!(hashes.len(), 1, "{walk}");
+    assert!(hashes[0].as_str().unwrap().starts_with("sha256:"), "{walk}");
+    // Someone saves new rows over the file while the walk is going.
+    let mut edited = rakuten_like_listings();
+    edited.push_str("9999,new listing,,1,1,10\n");
+    std::fs::write(&api.csv, edited).unwrap();
+
+    let detail = stopped(&api, &walk).await;
+    assert_eq!(
+        detail["walk"]["stop"]["reason"], "source_changed",
+        "{detail}"
+    );
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("d.csv"), "{why}");
+}
+
+/// A walk still walking, as a stopped server leaves it: built, its head the first flow, and
+/// nothing driving it. Gives the walk and its head.
+async fn walk_left_walking(api: &Api) -> (sprisk_contracts::Walk, String) {
+    let question = api
+        .store
+        .get_question_version(&parse("\"qv_01JABCDEFGHJKMNPQRSTVWXYZ0\"").unwrap())
+        .await
+        .unwrap();
+    let sources = vec![api.csv.display().to_string()];
+    let sprisk_methodology::engine::Start::Flow { nodes, edges } =
+        sprisk_methodology::engine::start(&question, &sources).unwrap()
+    else {
+        panic!("the question states a target");
+    };
+    let head = "plv_01JABCDEFGHJKMNPQRSTVWXYZ7";
+    let mut flow = pipeline(&api.csv);
+    flow["id"] = json!(head);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"] = json!(nodes);
+    flow["edges"] = json!(edges);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let walk = json!({
+        "schema_version": "sprisk.walk/v1", "id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0", "sources": sources,
+        "source_hashes": [sprisk_artifacts::file_hash(&api.csv).await.unwrap()],
+        "max_actions": 40, "max_wall_seconds": 600, "status": "walking",
+        "head_pipeline_version_id": head, "created_at": "2026-10-23T10:00:00Z",
+    });
+    let walk: sprisk_contracts::Walk = parse(&walk.to_string()).unwrap();
+    let request = walk_request(&[&api.csv], "walk-restarted");
+    let request: sprisk_contracts::CreateWalk = parse(&request.to_string()).unwrap();
+    let built = walk_step(
+        &walk,
+        0,
+        "build",
+        json!({ "made_pipeline_version_id": head }),
+    );
+    api.store
+        .insert_walk(&walk, &request, None, &built)
+        .await
+        .unwrap();
+    (walk, head.to_owned())
+}
+
+fn walk_step(
+    walk: &sprisk_contracts::Walk,
+    round: u32,
+    action: &str,
+    extra: Value,
+) -> sprisk_contracts::WalkStep {
+    let mut step = json!({
+        "schema_version": "sprisk.walk_step/v1", "walk_id": walk.id, "round": round,
+        "action": action, "reason": "before the restart", "created_at": "2026-10-23T10:00:00Z",
+    });
+    step.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    parse(&step.to_string()).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restarted_server_finishes_its_walks_without_a_second_run_for_a_round() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (walk, head) = walk_left_walking(&api).await;
+    // The server stopped while round 1's run was still queued.
+    let run_id = "run_01JABCDEFGHJKMNPQRSTVWXYZ7";
+    let queued = json!({
+        "schema_version": "sprisk.run/v1", "id": run_id,
+        "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0", "pipeline_version_id": head,
+        "status": "queued", "created_at": "2026-10-23T10:00:01Z",
+    });
+    let ran = walk_step(
+        &walk,
+        1,
+        "run",
+        json!({ "pipeline_version_id": head, "run_id": run_id }),
+    );
+    api.store
+        .record_walk_run(&walk, &ran, &parse(&queued.to_string()).unwrap(), None)
+        .await
+        .unwrap();
+
+    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
+    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
+
+    // The left run is driven to its end. The first flow's baseline meets raw text and fails,
+    // as in any Rakuten walk; the rules act on what it produced.
+    let (_, run) = call(&api.app, "GET", &format!("/runs/{run_id}"), None).await;
+    assert!(run["finished_at"].is_string(), "{run}");
+    let steps = detail["steps"].as_array().unwrap();
+    let runs_of_round_one = steps.iter().filter(|s| s["round"] == 1).count();
+    assert_eq!(runs_of_round_one, 1, "{detail}");
+    // The walk goes on from the run: the split rule reads what it produced.
+    assert_eq!(steps[2]["action"], "apply", "{detail}");
+    assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restarted_walk_finishes_scoring_its_test_rows_and_ends_on_that_score() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+    let (mut walk, head) = walk_left_walking(&api).await;
+    // The server stopped while round 1 scored the test rows.
+    let head_id: sprisk_contracts::PipelineVersionId = parse(&json!(head).to_string()).unwrap();
+    let base = api.store.get_pipeline_version(&head_id).await.unwrap();
+    let (nodes, edges) = sprisk_methodology::engine::with_test_scoring(&base).unwrap();
+    let scored_id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8";
+    let mut scored = serde_json::to_value(&base).unwrap();
+    scored["id"] = json!(scored_id);
+    scored["parent_id"] = json!(head);
+    scored["nodes"] = json!(nodes);
+    scored["edges"] = json!(edges);
+    let run_id = "run_01JABCDEFGHJKMNPQRSTVWXYZ8";
+    let queued = json!({
+        "schema_version": "sprisk.run/v1", "id": run_id,
+        "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0", "pipeline_version_id": scored_id,
+        "status": "queued", "created_at": "2026-10-23T10:00:01Z",
+    });
+    let made = json!({
+        "pipeline_version_id": head, "made_pipeline_version_id": scored_id, "run_id": run_id,
+    });
+    let step = walk_step(&walk, 1, "score", made);
+    walk.head_pipeline_version_id = Some(parse(&json!(scored_id).to_string()).unwrap());
+    let queued = parse(&queued.to_string()).unwrap();
+    let scored = parse(&scored.to_string()).unwrap();
+    api.store
+        .record_walk_run(&walk, &step, &queued, Some(&scored))
+        .await
+        .unwrap();
+
+    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
+    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
+
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+    assert_eq!(trail(&detail), ["build", "score", "stop"], "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("Test rows, scored once"), "{why}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (walk, head) = walk_left_walking(&api).await;
+    // Round 1 applied the split rule, then the server stopped before it recorded the step.
+    let uri = format!("/pipeline_versions/{head}/methodology/proposals/split/split.method");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({
+        "alternative_id": proposal["recommended_alternative_id"],
+        "idempotency_key": format!("{}-round-1", walk.id.as_str()),
+    });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+
+    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
+    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
+
+    // Not stale: the version its head gained is the one its own round made.
+    let steps = detail["steps"].as_array().unwrap();
+    assert_eq!(steps[1]["action"], "apply", "{detail}");
+    assert_eq!(
+        steps[1]["methodology_decision_id"], applied["decision"]["id"],
+        "{detail}"
+    );
+    assert_ne!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5484,15 +5770,7 @@ async fn a_walk_that_cannot_take_its_next_step_stops_with_the_error() {
     // The source goes before the walk runs the flow, so its run cannot start.
     std::fs::remove_file(&api.csv).unwrap();
 
-    let uri = format!("/walks/{}", walk["id"].as_str().unwrap());
-    let mut detail = Value::Null;
-    for _ in 0..6000 {
-        (_, detail) = call(&api.app, "GET", &uri, None).await;
-        if detail["walk"]["status"] == "stopped" {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    let detail = stopped(&api, &walk).await;
     assert_eq!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
     assert!(why.contains("could not take its next step"), "{why}");
@@ -5535,15 +5813,13 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
-            "apply features.rare_categories group_rare",
-            "run",
-            "apply features.encoding_strategy one_hot_encoding",
+            "apply features.text_representation vectorize_words",
             "run",
             "stop"
         ],
         "{detail}"
     );
-    assert_eq!(detail["walk"]["stop"]["reason"], "run_failed", "{detail}");
+    assert_eq!(detail["walk"]["stop"]["reason"], "needs_person", "{detail}");
 }
 
 /// A small table a model can learn and a featureless baseline cannot: `dose` sets `outcome`,
@@ -5559,10 +5835,9 @@ fn learnable_table() -> String {
     csv
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_winner() {
-    let api = api().await;
-    std::fs::write(&api.csv, learnable_table()).unwrap();
+/// The question a person states for the learnable table, with costs and a bar, so the walk
+/// can compare models.
+async fn learnable_question(api: &Api) {
     let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
     q["objective"]["value"] = json!("Tell which doses get a response.");
     q["target"]["value"] = json!("outcome");
@@ -5578,6 +5853,92 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
     }
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-scored")).await;
+
+    let trail = trail(&detail);
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+    assert_eq!(
+        trail.iter().filter(|s| *s == "score").count(),
+        1,
+        "{detail}"
+    );
+    assert_eq!(&trail[trail.len() - 2..], ["score", "stop"], "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("Test rows, scored once"), "{why}");
+    assert!(why.contains("the success bar of 0.2"), "{why}");
+    assert!(why.contains("expected cost"), "{why}");
+    let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
+    let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
+    assert!(
+        flow["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n["id"] == "score_test"),
+        "{flow}"
+    );
+    // The scored flow is sealed: changing or comparing it would choose by the test rows.
+    let uri = format!("/pipeline_versions/{head}/methodology/proposals/model");
+    let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "test_rows_scored", "{body}");
+    let uri = format!("/pipeline_versions/{head}/model_selection/model");
+    let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(
+        body["errors"][0]["code"], "test_rows_scored",
+        "{status} {body}"
+    );
+}
+
+/// The learnable table with gaps in `batch` on every seventh row: a model refuses gaps. Rows
+/// 60 apart share a dose, and never both lose their batch, so no row copies another.
+fn gappy_table() -> String {
+    learnable_table()
+        .lines()
+        .enumerate()
+        .map(|(line, text)| {
+            const BATCH: usize = 1; // dose,batch,outcome
+            let mut cells: Vec<&str> = text.split(',').collect();
+            if line > 0 && (line - 1) % 7 == 3 {
+                cells[BATCH] = "";
+            }
+            cells.join(",") + "\n"
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engine_fills_gaps_before_the_model_and_walks_on_to_the_comparison() {
+    let api = api().await;
+    std::fs::write(&api.csv, gappy_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-gappy")).await;
+    let trail = trail(&detail);
+    let filled = trail
+        .iter()
+        .position(|s| s == "apply cleaning.missingness_strategy fill_before_model")
+        .unwrap_or_else(|| panic!("the gaps are filled: {detail}"));
+    let compared = trail
+        .iter()
+        .position(|s| s == "compare modeling.estimator_selection")
+        .unwrap_or_else(|| panic!("the filled flow runs, so the shortlist is compared: {detail}"));
+    assert!(filled < compared, "{detail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_winner() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
 
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-learnable")).await;
     let trail = trail(&detail);
@@ -5603,7 +5964,7 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
         .find(|n| n["id"] == "model")
         .unwrap();
     assert_ne!(
-        model["operator"], "sprisk.ml.dummy_baseline@2.0.0",
+        model["operator"], "sprisk.ml.dummy_baseline@3.0.0",
         "a model that beats the baseline: {flow}"
     );
     assert_eq!(
@@ -5671,7 +6032,7 @@ async fn rules_never_see_the_questions_key_columns_as_features() {
     flow["nodes"].as_array_mut().unwrap().extend([
         json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
                 "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
                 "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
     ]);
     flow["edges"] = json!([
@@ -5725,7 +6086,7 @@ async fn a_model_reading_every_column_leaves_out_the_key_columns_when_it_runs() 
     flow["nodes"].as_array_mut().unwrap().extend([
         json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
                 "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@2.0.0",
+        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
                 "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
     ]);
     flow["edges"] = json!([
@@ -5761,7 +6122,7 @@ async fn a_logistic_regression_gets_a_scale_step_before_it() {
     flow["nodes"].as_array_mut().unwrap().extend([
         json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
                 "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
-        json!({ "id":"model", "operator":"sprisk.ml.linear_model@2.0.0",
+        json!({ "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
                 "params":{"target":"returned_within_30d","task":"classification"} }),
     ]);
     flow["edges"] = json!([
@@ -5815,4 +6176,69 @@ async fn a_logistic_regression_gets_a_scale_step_before_it() {
     let version = applied["pipeline"]["id"].as_str().unwrap().to_owned();
     let (run, attempts) = run_version(&api, &version).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+}
+
+/// Rakuten-shaped listings, by hand: Vectorize text turns the title and description into
+/// words, the model fits beside the table, Evaluate and importance read the test words, and
+/// a comparison refits the words in every fold (ADR-0058).
+#[tokio::test(flavor = "multi_thread")]
+async fn word_features_run_from_load_to_evaluate_and_are_refit_in_each_fold() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["target"]["value"] = json!("prdtypecode");
+    let facts = q.as_object_mut().unwrap();
+    for fact in ["time_column", "entity_column", "prediction_horizon"] {
+        facts.remove(fact);
+    }
+    facts.insert(
+        "success_bar".into(),
+        json!({ "value": { "metric": "weighted_f1", "score": 0.5 }, "origin": "explicit" }),
+    );
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let target = json!({"target": "prdtypecode", "task": "classification"});
+    let ids = json!(["unnamed_0", "productid", "imageid"]);
+    let mut flow = pipeline(&api.csv);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"].as_array_mut().unwrap().extend([
+        json!({"id": "split", "operator": "sprisk.validation.random_split@1.0.0",
+               "params": {"test_fraction": 0.25, "seed": 42, "stratify": "prdtypecode"}}),
+        json!({"id": "words", "operator": "sprisk.clean.vectorize_text@1.0.0",
+               "params": {"columns": ["designation", "description"]}}),
+        json!({"id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
+               "params": {"target": "prdtypecode", "task": "classification", "exclude": ids}}),
+        json!({"id": "score", "operator": "sprisk.ml.evaluate@2.0.0", "params": target}),
+        json!({"id": "matters", "operator": "sprisk.ml.feature_importance@2.0.0",
+               "params": {"target": "prdtypecode"}}),
+    ]);
+    flow["edges"] = json!([
+        {"from": "load.data", "to": "split.data"},
+        {"from": "split.train", "to": "words.train"},
+        {"from": "split.test", "to": "words.test"},
+        {"from": "words.train", "to": "model.train"},
+        {"from": "words.train_words", "to": "model.words"},
+        {"from": "model.model", "to": "score.model"},
+        {"from": "words.test", "to": "score.test"},
+        {"from": "words.test_words", "to": "score.words"},
+        {"from": "model.model", "to": "matters.model"},
+        {"from": "words.test", "to": "matters.test"},
+        {"from": "words.test_words", "to": "matters.words"},
+    ]);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let (run, attempts) = run_to_end(&api).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let metrics = output(&api, &attempts, "score", "metrics").await;
+    assert!(metrics["weighted_f1"].as_f64().unwrap() > 0.9, "{metrics}");
+
+    let (status, selection) = select_model(&api, "model").await;
+    assert_eq!(status, StatusCode::CREATED, "{selection}");
+    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let decision = output(&api, &attempts, "select_model", "decision").await;
+    assert!(decision["winner"].is_string(), "{decision}");
+    assert_ne!(decision["winner"], "ml_dummy_baseline", "{decision}");
 }

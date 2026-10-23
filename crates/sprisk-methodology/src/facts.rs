@@ -42,6 +42,8 @@ pub const FACTS: &[&str] = &[
     "column.*.kurtosis",
     "column.*.outlier_share",
     "column.*.iqr",
+    // The share of a text column's train values holding more than one word: free text.
+    "column.*.word_share",
     // The target column of the step's train rows: its type, distinct values, and the share
     // of its rarest value when it has few.
     "target.data_type",

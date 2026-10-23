@@ -36,7 +36,7 @@ alternatives:
     rationale: "A person must be able to follow each prediction. A linear model's coefficients show how it decides, while its features are few enough to read."
     action:
       type: replace_node
-      operator: sprisk.ml.linear_model@2.0.0
+      operator: sprisk.ml.linear_model@3.0.0
 
 verification:
   check_id: none

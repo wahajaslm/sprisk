@@ -14,15 +14,17 @@ NOW = "2026-10-16T10:00:00Z"
 
 SOURCE = "sprisk.io.file_source@1.0.0"
 SPLIT = "sprisk.validation.random_split@1.0.0"
-DUMMY = "sprisk.ml.dummy_baseline@2.0.0"
-LINEAR = "sprisk.ml.linear_model@2.0.0"
-EVAL = "sprisk.ml.evaluate@1.0.0"
+DUMMY = "sprisk.ml.dummy_baseline@3.0.0"
+LINEAR = "sprisk.ml.linear_model@3.0.0"
+EVAL = "sprisk.ml.evaluate@2.0.0"
 
 
 # Test-only operators for pipeline shapes the core packs cannot build yet.
 SCALE = "sprisk.test.scale@1.0.0"
 ENSEMBLE = "sprisk.test.ensemble@1.0.0"
 TWO_TABLE_EVAL = "sprisk.test.two_table_eval@1.0.0"
+WORDS_MODEL = "sprisk.test.words_model@1.0.0"
+WORDS_EVAL = "sprisk.test.words_eval@1.0.0"
 
 
 def fake(
@@ -51,6 +53,18 @@ def operators() -> dict[str, Operator]:
         SCALE: fake(SCALE, "transform", [("data", "table")], [("data", "table")]),
         ENSEMBLE: fake(
             ENSEMBLE, "estimator", [("a", "model"), ("b", "model")], [("model", "model")]
+        ),
+        WORDS_MODEL: fake(
+            WORDS_MODEL,
+            "estimator",
+            [("train", "table"), ("words", "matrix")],
+            [("model", "model")],
+        ),
+        WORDS_EVAL: fake(
+            WORDS_EVAL,
+            "evaluator",
+            [("model", "model"), ("test", "table"), ("words", "matrix")],
+            [("metrics", "metrics")],
         ),
         TWO_TABLE_EVAL: fake(
             TWO_TABLE_EVAL,
@@ -399,6 +413,43 @@ def test_every_core_step_that_fits_on_train_is_a_fitting_transform() -> None:
     assert fitting <= FITTING_TRANSFORMS, sorted(fitting - FITTING_TRANSFORMS)
 
 
+VECTORIZE = "sprisk.clean.vectorize_text@1.0.0"
+
+
+def worded(words_from: str, scored_with: str = "words.test_words") -> PipelineVersion:
+    """load → split → vectorize_text → a model on its train table and `words_from`, scored
+    on the test table and `scored_with`."""
+    return pipeline(
+        {
+            "load": SOURCE,
+            "split": SPLIT,
+            "words": VECTORIZE,
+            "model": WORDS_MODEL,
+            "eval": WORDS_EVAL,
+        },
+        [
+            ("load.data", "split.data"),
+            ("split.train", "words.train"),
+            ("split.test", "words.test"),
+            ("words.train", "model.train"),
+            (words_from, "model.words"),
+            ("model.model", "eval.model"),
+            ("words.test", "eval.test"),
+            (scored_with, "eval.words"),
+        ],
+    )
+
+
+def test_a_model_on_the_train_rows_words_passes() -> None:
+    assert check(worded("words.train_words")).verdict == Verdict.pass_
+
+
+def test_a_model_on_the_test_rows_words_fails() -> None:
+    result = check(worded("words.test_words"))
+    assert result.verdict == Verdict.fail
+    assert "model" in [n.root for n in result.cited_nodes]
+
+
 def test_a_model_scored_on_the_rows_it_learnt_from_without_any_split_fails() -> None:
     p = pipeline(
         {"load": SOURCE, "model": LINEAR, "eval": EVAL},
@@ -423,3 +474,10 @@ def test_without_a_split_step_a_code_step_may_split_so_it_is_not_assessed() -> N
     result = check(p)
     assert result.verdict == Verdict.not_assessed
     assert result.rationale.startswith("No split step")
+
+
+def test_a_model_scored_with_the_train_rows_words_fails() -> None:
+    result = check(worded("words.train_words", scored_with="words.train_words"))
+    assert result.verdict == Verdict.fail
+    assert result.rationale.startswith("eval scores model with words.train_words")
+    assert [n.root for n in result.cited_nodes] == ["eval", "model", "words"]

@@ -204,7 +204,7 @@ fn a_model_replaced_by_an_unregistered_model_is_an_error_not_a_step_without_sett
     let forest = flow(
         &[
             ("split", "validation.random_split"),
-            ("model", "ml.random_forest@2.0.0"),
+            ("model", "ml.random_forest@3.0.0"),
         ],
         &[("split.train", "model.train")],
     );
@@ -222,7 +222,7 @@ fn a_model_replaced_by_an_unregistered_model_is_an_error_not_a_step_without_sett
     )
     .unwrap_err();
     assert!(
-        err.to_string().contains("sprisk.ml.linear_model@2.0.0"),
+        err.to_string().contains("sprisk.ml.linear_model@3.0.0"),
         "{err}"
     );
 }
@@ -260,7 +260,8 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
                 { "name": "income", "data_type": "Float64", "missing": 50, "distinct": 140,
                   "missing_by_band": [], "skewness": 2.5, "kurtosis": 9.0, "outlier_share": 0.07,
                   "iqr": 12.5 },
-                { "name": "city", "data_type": "String", "missing": 0, "distinct": 12, "missing_by_band": [] },
+                { "name": "city", "data_type": "String", "missing": 0, "distinct": 12, "missing_by_band": [],
+                  "word_share": 0.75 },
                 { "name": "other", "data_type": "Int64", "missing": 0, "distinct": 3, "missing_by_band": [] }
             ],
             "correlation": { "columns": [], "pairs": [] }
@@ -275,6 +276,8 @@ fn profile_facts_cover_only_the_steps_columns_and_omit_what_was_not_measured() {
     assert_eq!(facts["column.income.kurtosis"], 9.0);
     assert_eq!(facts["column.income.iqr"], 12.5);
     assert_eq!(facts["column.city.data_type"], "String");
+    assert_eq!(facts["column.city.word_share"], 0.75);
+    assert!(facts.get("column.income.word_share").is_none());
     assert!(facts.get("column.city.skewness").is_none());
     assert!(facts.keys().all(|k| !k.starts_with("column.other.")));
 }
@@ -410,9 +413,9 @@ fn a_scale_step_upstream_of_a_random_forest_reads_trees() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@2.0.0"),
-            ("base", "ml.dummy_baseline@2.0.0"),
-            ("eval", "ml.evaluate"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("base", "ml.dummy_baseline@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
         ],
         &[
             ("scale.train", "rf.train"),
@@ -431,8 +434,8 @@ fn models_of_several_families_are_all_listed() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@2.0.0"),
-            ("lin", "ml.linear_model@2.0.0"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("lin", "ml.linear_model@3.0.0"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "lin.train")],
     );
@@ -448,7 +451,7 @@ fn a_clustering_step_beside_a_forest_lists_both_families() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@2.0.0"),
+            ("rf", "ml.random_forest@3.0.0"),
             ("km", "clustering.kmeans"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "km.data")],
@@ -465,7 +468,7 @@ fn a_clustering_step_beside_a_forest_lists_both_families() {
 fn a_model_reached_through_other_steps_counts_but_one_upstream_does_not() {
     let pipeline = flow(
         &[
-            ("lin", "ml.linear_model@2.0.0"),
+            ("lin", "ml.linear_model@3.0.0"),
             ("impute", "clean.impute"),
             ("scale", "clean.scale"),
             ("km", "clustering.kmeans"),
@@ -485,7 +488,7 @@ fn models_that_ignore_their_features_read_featureless() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("base", "ml.dummy_baseline@2.0.0"),
+            ("base", "ml.dummy_baseline@3.0.0"),
         ],
         &[("scale.train", "base.train")],
     );
@@ -511,7 +514,7 @@ fn a_model_behind_a_step_that_is_not_preparation_is_hidden() {
         &[
             ("scale", "clean.scale"),
             ("code", "code.python@1.1.0"),
-            ("lin", "ml.linear_model@2.0.0"),
+            ("lin", "ml.linear_model@3.0.0"),
         ],
         &[("scale.train", "code.data"), ("code.data", "lin.train")],
     );
@@ -525,9 +528,9 @@ fn a_hidden_model_beside_a_seen_one_means_some_are_hidden() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@2.0.0"),
+            ("rf", "ml.random_forest@3.0.0"),
             ("code", "code.python@1.1.0"),
-            ("lin", "ml.linear_model@2.0.0"),
+            ("lin", "ml.linear_model@3.0.0"),
         ],
         &[
             ("scale.train", "rf.train"),
@@ -546,7 +549,7 @@ fn a_step_with_no_model_after_it_hides_nothing() {
         &[
             ("scale", "clean.scale"),
             ("summary", "profile.summarize"),
-            ("rf", "ml.random_forest@2.0.0"),
+            ("rf", "ml.random_forest@3.0.0"),
         ],
         &[("scale.train", "summary.data"), ("scale.train", "rf.train")],
     );
@@ -597,7 +600,7 @@ fn a_model_after_a_clustering_step_is_hidden_since_clustering_passes_its_columns
         &[
             ("clip", "clean.clip_outliers"),
             ("db", "clustering.dbscan"),
-            ("lin", "ml.linear_model@2.0.0"),
+            ("lin", "ml.linear_model@3.0.0"),
         ],
         &[("clip.train", "db.data"), ("db.data", "lin.train")],
     );
@@ -612,7 +615,7 @@ fn a_model_reached_both_directly_and_through_a_code_step_counts_once_as_hidden()
         &[
             ("scale", "clean.scale"),
             ("code", "code.python@1.1.0"),
-            ("lin", "ml.linear_model@2.0.0"),
+            ("lin", "ml.linear_model@3.0.0"),
         ],
         &[
             ("scale.train", "lin.train"),
@@ -673,7 +676,7 @@ fn an_observation_carries_flow_facts_beside_the_question_facts() {
         .rule("methodology.supervised.outlier_treatment@2.0.0")
         .unwrap();
     let pipeline = flow(
-        &[("scale", "clean.scale"), ("rf", "ml.random_forest@2.0.0")],
+        &[("scale", "clean.scale"), ("rf", "ml.random_forest@3.0.0")],
         &[("scale.train", "rf.train")],
     );
     let observed = observation(
@@ -712,8 +715,8 @@ fn before_forest() -> PipelineVersion {
         &[
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@2.0.0"),
-            ("eval", "ml.evaluate"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
         ],
         &[
             ("split.train", "scale.train"),
@@ -776,8 +779,8 @@ fn a_step_whose_output_has_no_input_of_the_same_name_cannot_be_removed() {
     let pipeline = flow(
         &[
             ("split", "validation.random_split"),
-            ("rf", "ml.random_forest@2.0.0"),
-            ("eval", "ml.evaluate"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
         ],
         &[("split.train", "rf.train"), ("rf.model", "eval.model")],
     );
@@ -869,7 +872,7 @@ fn leaving_text_out_sets_the_models_exclude_and_keeps_its_other_settings() {
     .unwrap();
     assert_eq!(
         serde_json::to_value(built).unwrap()["alternatives"][0]["effect"],
-        json!({ "kind": "replace_node", "node_id": "rf", "operator": "sprisk.ml.random_forest@2.0.0",
+        json!({ "kind": "replace_node", "node_id": "rf", "operator": "sprisk.ml.random_forest@3.0.0",
                 "params": { "target": "churned", "exclude": ["id", "title"] } })
     );
 }
@@ -964,8 +967,8 @@ fn a_step_added_before_a_model_reads_the_split_and_feeds_the_model_and_its_evalu
         &[
             ("split", "validation.random_split"),
             ("chart", "profile.chart"),
-            ("rf", "ml.random_forest@2.0.0"),
-            ("eval", "ml.evaluate"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
         ],
         &[
             ("split.train", "chart.data"),
@@ -987,6 +990,96 @@ fn a_step_added_before_a_model_reads_the_split_and_feeds_the_model_and_its_evalu
             "split.train -> categories.train",
             "split.train -> chart.data",
         ]
+    );
+}
+
+#[test]
+fn a_step_that_makes_words_feeds_them_to_the_model_and_its_evaluation() {
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
+        ],
+        &[
+            ("split.train", "rf.train"),
+            ("rf.model", "eval.model"),
+            ("split.test", "eval.test"),
+        ],
+    );
+    let step = parse(
+        &json!({ "id": "text", "operator": "sprisk.clean.vectorize_text@1.0.0",
+                 "params": { "columns": ["title"] } })
+        .to_string(),
+    )
+    .unwrap();
+    let (nodes, edges) = inserted(&pipeline, step, "rf").unwrap();
+    assert_eq!(nodes, ["split", "text", "rf", "eval"]);
+    assert_eq!(
+        edges,
+        [
+            "rf.model -> eval.model",
+            "split.test -> text.test",
+            "split.train -> text.train",
+            "text.test -> eval.test",
+            "text.test_words -> eval.words",
+            "text.train -> rf.train",
+            "text.train_words -> rf.words",
+        ]
+    );
+}
+
+#[test]
+fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some() {
+    let words = |id: &str| -> Node {
+        parse(
+            &json!({ "id": id, "operator": "sprisk.clean.vectorize_text@1.0.0",
+                     "params": { "columns": ["title"] } })
+            .to_string(),
+        )
+        .unwrap()
+    };
+    let err = inserted(&before_forest(), words("text"), "scale").unwrap_err();
+    assert!(err.to_string().contains("scale takes no words"), "{err}");
+
+    let pipeline = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("old", "clean.vectorize_text"),
+            ("rf", "ml.random_forest@3.0.0"),
+        ],
+        &[
+            ("split.train", "old.train"),
+            ("split.test", "old.test"),
+            ("old.train", "rf.train"),
+            ("old.train_words", "rf.words"),
+        ],
+    );
+    let err = inserted(&pipeline, words("text"), "rf").unwrap_err();
+    assert!(err.to_string().contains("rf already reads words"), "{err}");
+
+    // An evaluation of the model already scoring with other words would score the new model
+    // with another step's vocabulary.
+    let scored = flow(
+        &[
+            ("split", "validation.random_split"),
+            ("old", "clean.vectorize_text"),
+            ("rf", "ml.random_forest@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
+        ],
+        &[
+            ("split.train", "old.train"),
+            ("split.test", "old.test"),
+            ("split.train", "rf.train"),
+            ("rf.model", "eval.model"),
+            ("split.test", "eval.test"),
+            ("old.test_words", "eval.words"),
+        ],
+    );
+    let err = inserted(&scored, words("text"), "rf").unwrap_err();
+    assert!(
+        err.to_string().contains("eval already reads words"),
+        "{err}"
     );
 }
 
@@ -1025,7 +1118,7 @@ fn only_a_step_that_learns_from_train_rows_can_be_added() {
 fn a_step_is_added_only_where_train_and_test_rows_feed_it() {
     // The model reads loaded rows, not a split's train rows.
     let pipeline = flow(
-        &[("load", "io.file_source"), ("rf", "ml.random_forest@2.0.0")],
+        &[("load", "io.file_source"), ("rf", "ml.random_forest@3.0.0")],
         &[("load.data", "rf.train")],
     );
     let err = inserted(&pipeline, encode_step("categories"), "rf").unwrap_err();
@@ -1079,7 +1172,7 @@ fn a_table_step_is_not_added_where_it_would_change_train_rows_only() {
     let pipeline = flow(
         &[
             ("split", "validation.random_split"),
-            ("rf", "ml.random_forest@2.0.0"),
+            ("rf", "ml.random_forest@3.0.0"),
         ],
         &[("split.train", "rf.train")],
     );
@@ -1156,7 +1249,7 @@ fn every_flow_fact_in_the_catalog_is_one_rust_sends() {
     let pipeline = flow(
         &[
             ("scale", "clean.scale"),
-            ("rf", "ml.random_forest@2.0.0"),
+            ("rf", "ml.random_forest@3.0.0"),
             ("summary", "profile.summarize"),
         ],
         &[("scale.train", "rf.train"), ("scale.train", "summary.data")],
@@ -1240,7 +1333,7 @@ fn model_flow() -> PipelineVersion {
     let mut pipeline = serde_json::to_value(flow(
         &[
             ("split", "validation.random_split"),
-            ("model", "ml.linear_model@2.0.0"),
+            ("model", "ml.linear_model@3.0.0"),
         ],
         &[("split.train", "model.train")],
     ))
@@ -1297,10 +1390,10 @@ fn a_shortlist_proposal_replaces_the_model_step_with_each_candidate() {
     );
     assert!(built.get("recommended_alternative_id").is_none());
     let forest = &built["alternatives"][2];
-    assert_eq!(forest["label"], "sprisk.ml.random_forest@2.0.0");
+    assert_eq!(forest["label"], "sprisk.ml.random_forest@3.0.0");
     assert_eq!(
         forest["effect"]["operator"],
-        "sprisk.ml.random_forest@2.0.0"
+        "sprisk.ml.random_forest@3.0.0"
     );
     assert_eq!(
         forest["effect"]["params"],
@@ -1383,9 +1476,9 @@ fn a_recommend_decision_must_pick_one_it_offers_and_give_no_shortlist() {
 #[test]
 fn two_models_with_one_candidate_id_are_refused() {
     let registry = registry();
-    let linear = registry.get("sprisk.ml.linear_model@2.0.0").unwrap();
+    let linear = registry.get("sprisk.ml.linear_model@3.0.0").unwrap();
     let mut newer = linear.clone();
-    newer.id = parse("\"sprisk.ml.linear_model@2.0.0\"").unwrap();
+    newer.id = parse("\"sprisk.ml.linear_model@3.0.0\"").unwrap();
     let err = candidates(TaskType::Classification, [linear, &newer].into_iter()).unwrap_err();
     assert!(err.to_string().contains("ml_linear_model"), "{err}");
 }
@@ -1395,7 +1488,9 @@ fn is_split(node: &Node) -> bool {
 }
 
 fn keeps_train(node: &Node) -> bool {
-    node.operator.as_str().starts_with("sprisk.clean.scale@")
+    let operator = node.operator.as_str();
+    operator.starts_with("sprisk.clean.scale@")
+        || operator.starts_with("sprisk.clean.vectorize_text@")
 }
 
 #[test]
@@ -1404,7 +1499,7 @@ fn a_steps_train_rows_come_back_through_preparation_to_the_split() {
         &[
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("model", "ml.linear_model@2.0.0"),
+            ("model", "ml.linear_model@3.0.0"),
         ],
         &[
             ("split.train", "scale.train"),
@@ -1424,7 +1519,7 @@ fn a_step_that_may_mix_rows_on_the_way_is_refused() {
         &[
             ("split", "validation.random_split"),
             ("code", "code.python@2.0.0"),
-            ("model", "ml.linear_model@2.0.0"),
+            ("model", "ml.linear_model@3.0.0"),
         ],
         &[
             ("split.train", "code.train"),
@@ -1442,7 +1537,7 @@ fn a_hop_through_a_test_port_is_refused() {
         &[
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("model", "ml.linear_model@2.0.0"),
+            ("model", "ml.linear_model@3.0.0"),
         ],
         &[("split.test", "scale.train"), ("scale.test", "model.train")],
     );
@@ -1456,8 +1551,8 @@ fn evaluated_flow() -> PipelineVersion {
             ("load", "io.file_source"),
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
-            ("model", "ml.linear_model@2.0.0"),
-            ("eval", "ml.evaluate"),
+            ("model", "ml.linear_model@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
         ],
         &[
             ("load.data", "split.data"),
@@ -1589,7 +1684,7 @@ fn a_comparison_cross_validates_each_candidate_on_the_splits_train_rows() {
         json!({
             "id": "cv_ml_linear_model", "operator": "sprisk.ml.cross_validate@4.0.0",
             "params": {
-                "candidate": "sprisk.ml.linear_model@2.0.0",
+                "candidate": "sprisk.ml.linear_model@3.0.0",
                 "candidate_params": { "target": "churned", "features": ["age", "plan"], "task": "classification" },
                 "folds": 5, "repeats": 10, "seed": 0, "metric": "balanced_accuracy",
                 "prepare": [{ "operator": "sprisk.clean.scale@1.0.0", "params": {} }]
@@ -1746,7 +1841,7 @@ fn a_comparison_refuses_folds_it_cannot_make_faithfully() {
     }
 }
 
-const MISSINGNESS: &str = "methodology.supervised.missingness@3.0.0";
+const MISSINGNESS: &str = "methodology.supervised.missingness@4.0.0";
 
 /// A recommend proposal for `step` of `pipeline`, built by hand: `alternatives` as the API
 /// stores them, effects included.
@@ -1882,7 +1977,7 @@ fn a_preparation_comparison_scores_each_way_of_doing_the_step_with_the_flows_mod
     };
     // The model is the flow's, unchanged; only the step's place in `prepare` differs.
     for id in ["cv_no_scaling", "cv_robust_scaling", "cv_standard_scaling"] {
-        assert_eq!(cv(id)["candidate"], "sprisk.ml.linear_model@2.0.0", "{id}");
+        assert_eq!(cv(id)["candidate"], "sprisk.ml.linear_model@3.0.0", "{id}");
         assert_eq!(
             cv(id)["candidate_params"],
             json!({ "target": "churned", "features": ["age", "plan"], "task": "classification" })
@@ -2125,7 +2220,7 @@ fn a_preparation_comparison_needs_a_recommendation() {
 fn a_step_that_prepares_two_models_is_compared_for_neither() {
     let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
     pipeline["nodes"].as_array_mut().unwrap().push(json!({
-        "id": "forest", "operator": "sprisk.ml.random_forest@2.0.0",
+        "id": "forest", "operator": "sprisk.ml.random_forest@3.0.0",
         "params": { "target": "churned", "features": ["age"], "task": "classification" }
     }));
     pipeline["edges"]
@@ -2219,7 +2314,7 @@ fn forest_flow(params: Value) -> PipelineVersion {
             "schema_version": "sprisk.pipeline_version/v1",
             "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
             "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
-            "nodes": [{ "id": "model", "operator": "sprisk.ml.random_forest@2.0.0", "params": params }],
+            "nodes": [{ "id": "model", "operator": "sprisk.ml.random_forest@3.0.0", "params": params }],
             "edges": [],
             "created_at": "2026-10-15T10:00:00Z"
         })
@@ -2301,7 +2396,7 @@ fn updating_estimator_params_keeps_the_model_and_sets_or_drops_only_the_declared
     assert_eq!(
         built["alternatives"][0]["effect"],
         json!({ "kind": "replace_node", "node_id": "model",
-                "operator": "sprisk.ml.random_forest@2.0.0", "params": set })
+                "operator": "sprisk.ml.random_forest@3.0.0", "params": set })
     );
     assert_eq!(built["alternatives"][1]["effect"]["params"], kept);
 }
@@ -2346,7 +2441,7 @@ fn result_facts_describe_the_step_s_own_model_in_its_model_selection() {
             "cv.looks": 2,
         })
     );
-    let winner = result_facts(&selection(), "sprisk.ml.linear_model@2.0.0", 2).unwrap();
+    let winner = result_facts(&selection(), "sprisk.ml.linear_model@3.0.0", 2).unwrap();
     assert_eq!(winner["cv.selected"], json!("yes"));
     for name in [
         "cv.metric",
@@ -2374,7 +2469,7 @@ fn a_comparison_of_preparation_gives_no_model_results() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/contract/selection_decision/valid/reference-stands.json");
     let preparation = parse(&std::fs::read_to_string(path).unwrap()).unwrap();
-    let err = result_facts(&preparation, "sprisk.ml.linear_model@2.0.0", 1).unwrap_err();
+    let err = result_facts(&preparation, "sprisk.ml.linear_model@3.0.0", 1).unwrap_err();
     assert!(err.to_string().contains("preparing"), "{err}");
 }
 
@@ -2516,7 +2611,7 @@ fn a_model_step_knows_which_columns_scale_steps_before_it_cover() {
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
             ("scale_more", "clean.scale"),
-            ("lin", "ml.linear_model@2.0.0"),
+            ("lin", "ml.linear_model@3.0.0"),
         ],
         &[
             ("split.train", "scale.train"),
@@ -2541,7 +2636,7 @@ fn a_model_step_knows_which_columns_scale_steps_before_it_cover() {
     let plain = flow(
         &[
             ("split", "validation.random_split"),
-            ("lin", "ml.linear_model@2.0.0"),
+            ("lin", "ml.linear_model@3.0.0"),
         ],
         &[("split.train", "lin.train")],
     );
@@ -2549,4 +2644,59 @@ fn a_model_step_knows_which_columns_scale_steps_before_it_cover() {
         facts_of(&plain, "lin")["flow.scaled_columns"]["value"],
         "none"
     );
+}
+
+/// load → split → Vectorize text → model, the model's words fed from `words`, if any.
+fn worded_flow(words: Option<&str>) -> PipelineVersion {
+    let mut edges = vec![
+        ("load.data", "split.data"),
+        ("split.train", "text.train"),
+        ("split.test", "text.test"),
+        ("text.train", "model.train"),
+        ("model.model", "eval.model"),
+        ("text.test", "eval.test"),
+    ];
+    if let Some(from) = words {
+        edges.push((from, "model.words"));
+    }
+    let mut pipeline = serde_json::to_value(flow(
+        &[
+            ("load", "io.file_source"),
+            ("split", "validation.random_split"),
+            ("text", "clean.vectorize_text"),
+            ("model", "ml.linear_model@3.0.0"),
+            ("eval", "ml.evaluate@2.0.0"),
+        ],
+        &edges,
+    ))
+    .unwrap();
+    pipeline["nodes"][2]["params"] = json!({ "columns": ["title"] });
+    pipeline["nodes"][3]["params"] = json!({ "target": "churned", "task": "classification" });
+    parse(&pipeline.to_string()).unwrap()
+}
+
+#[test]
+fn a_comparison_refits_the_words_the_model_reads_and_only_those() {
+    let shortlist = json!(["ml_dummy_baseline", "ml_linear_model"]);
+    let read = worded_flow(Some("text.train_words"));
+    let built = compare(&read, &shortlisted(&read, shortlist.clone())).unwrap();
+    let prepares: Vec<&Value> = built
+        .nodes
+        .iter()
+        .filter_map(|n| n.params.get("prepare"))
+        .collect();
+    assert!(!prepares.is_empty());
+    for prepare in prepares {
+        assert_eq!(prepare[0]["operator"], "sprisk.clean.vectorize_text@1.0.0");
+    }
+
+    // Folds would join words the flow's model never reads, or score test words as train.
+    for words in [None, Some("text.test_words")] {
+        let flow = worded_flow(words);
+        let err = compare(&flow, &shortlisted(&flow, shortlist.clone())).unwrap_err();
+        assert!(
+            err.to_string().contains("train_words of text"),
+            "{words:?}: {err}"
+        );
+    }
 }

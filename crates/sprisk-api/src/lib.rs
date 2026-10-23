@@ -12,8 +12,10 @@ mod profile;
 mod rules;
 mod split;
 pub use bounded::ProcessError;
+pub use engine::resume_walks;
 pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use notebook_code::CodeWriter;
+use profile::Profiles;
 pub use profile::{KeyMatcher, Profiler};
 pub use rules::RuleRunner;
 pub use split::{SplitError, Splitter};
@@ -923,6 +925,7 @@ async fn read_notebook_settings(
 }
 
 /// Refuses port names other than the step's own, so the code is written for the step it is.
+/// An optional input left unconnected (ADR-0058) may be left out.
 fn check_ports<'a>(
     operator: &Operator,
     inputs: impl Iterator<Item = &'a String>,
@@ -930,8 +933,16 @@ fn check_ports<'a>(
 ) -> Result<(), ApiError> {
     use std::collections::BTreeSet;
     let want_in: BTreeSet<&str> = operator.inputs.iter().map(|p| p.name.as_str()).collect();
+    let required: BTreeSet<&str> = operator
+        .inputs
+        .iter()
+        .filter(|p| p.optional != Some(true))
+        .map(|p| p.name.as_str())
+        .collect();
     let want_out: BTreeSet<&str> = operator.outputs.iter().map(|p| p.name.as_str()).collect();
-    if inputs.map(String::as_str).collect::<BTreeSet<_>>() == want_in
+    let given: BTreeSet<&str> = inputs.map(String::as_str).collect();
+    if given.is_subset(&want_in)
+        && required.is_subset(&given)
         && outputs.map(String::as_str).collect::<BTreeSet<_>>() == want_out
     {
         return Ok(());
@@ -1142,16 +1153,19 @@ async fn review_methodology(
         .collect();
     let applied = state.store.methodology_decisions(&applied).await?;
     let decided = |node: &sprisk_contracts::Node, rule: &MethodologyRule| {
-        review::carries_decision(&pipeline, node.id.as_str(), |step| {
+        let subject = node.id.as_str();
+        review::carries_decision(&pipeline, subject, |step| {
             applied.iter().any(|d| {
                 step.methodology_decision_id.as_ref() == Some(&d.id)
                     && d.rule.as_str() == rule.id.as_str()
+                    && review::decided_for(subject, step.id.as_str(), d)
             })
         })
     };
 
     let mut items = Vec::with_capacity(planned.len());
     let mut open = Vec::with_capacity(planned.len());
+    let mut profiles = Profiles::default();
     for (at, planned_rule) in planned.iter().enumerate() {
         let outcome = if let Some(on) = review::waits_on(&pipeline, &planned, at, &open) {
             Outcome::Waiting { on: on.to_owned() }
@@ -1161,7 +1175,16 @@ async fn review_methodology(
         {
             Outcome::NotApplicable(why)
         } else if let Some(node) = planned_rule.subject {
-            match decide(&state, &pipeline, &question, node, planned_rule.rule).await {
+            match decide(
+                &state,
+                &pipeline,
+                &question,
+                node,
+                planned_rule.rule,
+                &mut profiles,
+            )
+            .await
+            {
                 Ok(proposal) => Outcome::Proposed {
                     decided: decided(node, planned_rule.rule),
                     proposal: Box::new(proposal),
@@ -1318,6 +1341,7 @@ async fn propose(
                 .into(),
         });
     }
+    refuse_scored(&pipeline)?;
     let question = state.store.get_question_version(question_id).await?;
     let node = pipeline
         .nodes
@@ -1337,7 +1361,15 @@ async fn propose(
                 node.operator.as_str()
             ))
         })?;
-    let proposal = decide(state, &pipeline, &question, node, rule).await?;
+    let proposal = decide(
+        state,
+        &pipeline,
+        &question,
+        node,
+        rule,
+        &mut Profiles::default(),
+    )
+    .await?;
     state.store.insert_methodology_proposal(&proposal).await?;
     Ok((StatusCode::CREATED, Json(proposal)))
 }
@@ -1350,18 +1382,19 @@ async fn decide(
     question: &QuestionVersion,
     node: &sprisk_contracts::Node,
     rule: &MethodologyRule,
+    profiles: &mut Profiles,
 ) -> Result<DecisionProposal, ApiError> {
     let node_id = node.id.as_str();
     let rule_ref = rule.id.to_string();
     let rule_ref = rule_ref.as_str();
     let reads = || rule.reads.iter().map(|r| r.as_str());
     let mut profile = if sprisk_methodology::facts::needs_train_rows(reads()) {
-        train_profile_facts(state, pipeline, question, node).await?
+        train_profile_facts(state, pipeline, question, node, profiles).await?
     } else {
         Default::default()
     };
     if sprisk_methodology::facts::needs_input_rows(reads()) {
-        profile.extend(input_profile_facts(state, pipeline, node).await?);
+        profile.extend(input_profile_facts(state, pipeline, node, profiles).await?);
     }
     if sprisk_methodology::facts::needs_results(reads()) {
         profile.extend(result_profile_facts(state, pipeline, node).await?);
@@ -1486,6 +1519,7 @@ async fn train_profile_facts(
     pipeline: &PipelineVersion,
     question: &QuestionVersion,
     node: &sprisk_contracts::Node,
+    profiles: &mut Profiles,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
     let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
@@ -1514,7 +1548,13 @@ async fn train_profile_facts(
                 "run the flow first: this rule measures the train rows {source} gives step {step}"
             ))
         })?;
-    let profile = state.profiler.profile(&local_table(&artifact)?).await?;
+    let profile = profiles
+        .of(
+            &state.profiler,
+            artifact.content_hash.as_str(),
+            &local_table(&artifact)?,
+        )
+        .await?;
     // Unset: every column but the target and the key columns, as the model reads them.
     let keys = sprisk_methodology::key_columns(question, pipeline);
     let excluded: Vec<String> = match node.params.get("exclude") {
@@ -1652,11 +1692,18 @@ async fn input_profile_facts(
     state: &AppState,
     pipeline: &PipelineVersion,
     node: &sprisk_contracts::Node,
+    profiles: &mut Profiles,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
     let edge = sprisk_methodology::one_table_into(pipeline, step).map_err(not_applicable)?;
     let artifact = latest_table(state, pipeline, edge.from.step_and_port(), step).await?;
-    let profile = state.profiler.profile(&local_table(&artifact)?).await?;
+    let profile = profiles
+        .of(
+            &state.profiler,
+            artifact.content_hash.as_str(),
+            &local_table(&artifact)?,
+        )
+        .await?;
     Ok(sprisk_methodology::input_facts(&profile))
 }
 
@@ -2076,6 +2123,23 @@ pub(crate) struct Claimed {
 
 /// The model selection of step `node_id`: its proposal, comparison and run, each made once
 /// if missing.
+/// A version whose model was scored on the test rows is sealed (ADR-0060): changing or
+/// comparing it after that score would choose by the test rows.
+fn refuse_scored(pipeline: &PipelineVersion) -> Result<(), ApiError> {
+    let scored = sprisk_methodology::engine::SCORE_NODE;
+    if pipeline.nodes.iter().any(|n| n.id.as_str() == scored) {
+        return Err(ApiError::BadRequest {
+            code: "test_rows_scored",
+            message: format!(
+                "version {} scored its test rows (step {scored}); change the version it was made \
+                 from, and know that its test rows were already looked at",
+                pipeline.id.as_str()
+            ),
+        });
+    }
+    Ok(())
+}
+
 async fn claim_selection(state: &AppState, raw: &str, node_id: &str) -> Result<Claimed, ApiError> {
     let pipeline_id: PipelineVersionId = id(raw)?;
     let step: sprisk_contracts::NodeId = id(node_id)?;
@@ -2085,6 +2149,7 @@ async fn claim_selection(state: &AppState, raw: &str, node_id: &str) -> Result<C
         Some((comparison, run)) => (comparison, run, false),
         None => {
             let pipeline = state.store.get_pipeline_version(&pipeline_id).await?;
+            refuse_scored(&pipeline)?;
             let decides = pipeline
                 .nodes
                 .iter()

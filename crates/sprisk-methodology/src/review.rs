@@ -3,9 +3,9 @@
 
 use serde_json::json;
 use sprisk_contracts::{
-    DecisionProposal, GraphEffect, MethodologyAlternativeApplicability, MethodologyReviewItem,
-    MethodologyReviewStatus, MethodologyRule, MethodologyRuleStatus, MethodologyStage, Node,
-    Operator, PipelineVersion, RuleActionType, TaskType, parse,
+    DecisionProposal, GraphEffect, MethodologyAlternativeApplicability, MethodologyDecision,
+    MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule, MethodologyRuleStatus,
+    MethodologyStage, Node, Operator, PipelineVersion, RuleActionType, TaskType, parse,
 };
 
 use crate::{
@@ -20,10 +20,19 @@ pub const SPLIT_DECISION: &str = "split.method";
 /// they see its final columns (ADR-0059): duplicate rows, say, differ by an identifier.
 pub const TABLE_SHAPE: [&str; 2] = ["data.join_sources", "data.column_roles"];
 
-/// Decisions on a model step that shape its input columns, in order: rare categories are
-/// grouped, then the text is encoded or left out. Encoding first would leave out columns that
-/// grouping makes small enough to encode.
-pub const INPUT_SHAPE: [&str; 2] = ["features.rare_categories", "features.encoding_strategy"];
+/// Order of the decisions that shape a model's input columns:
+/// - words first, so no rule takes free text for categories (ADR-0058);
+/// - date parts, whose gaps become gaps in numbers that can be filled;
+/// - rare categories, which keep a gap as its own category;
+/// - gaps filled, since encoding refuses gaps;
+/// - encoding last: first, it would leave out columns grouping makes small enough to encode.
+pub const INPUT_SHAPE: [&str; 5] = [
+    "features.text_representation",
+    "features.date_parts",
+    "features.rare_categories",
+    "cleaning.missingness_strategy",
+    "features.encoding_strategy",
+];
 
 /// One rule and the step it decides; `subject` is `None` when the flow has no such step.
 pub struct Planned<'a> {
@@ -341,6 +350,14 @@ pub fn fits_task<'a>(
     operators.any(|o| {
         decides(rule, o.id.as_str()) && o.model.as_ref().is_none_or(|m| m.tasks.contains(&task))
     })
+}
+
+/// Whether `decision`, carried by `step`, settles `subject`: the step's own decision does,
+/// and an upstream step's only when it was made for `subject`. A rule that adds a step records
+/// its decision there, for the subject; a person's own step decided for itself says nothing
+/// about what else reaches the subject.
+pub fn decided_for(subject: &str, step: &str, decision: &MethodologyDecision) -> bool {
+    step == subject || decision.subject_node_id.as_str() == subject
 }
 
 /// Whether `subject`, or a step it reads from, carries a decision `by_rule` made. A rule that
