@@ -26,7 +26,7 @@ import { createPortal } from "react-dom";
 import { create } from "zustand";
 
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun, useStartRun } from "../api/hooks.ts";
-import { concernsByNode, useRunChecks } from "../api/checks.ts";
+import { checkCount, concernsByNode, useRunChecks } from "../api/checks.ts";
 import { hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
@@ -259,7 +259,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
         <span className="dot" aria-hidden="true" />
         {status.text}
         {data.concerns > 0 && (
-          <span className="card-concern">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>
+          <span className="card-concern">⚠ {checkCount(data.concerns)}</span>
         )}
       </span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
@@ -375,7 +375,7 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         </span>
         {/* Only what needs attention gets words; a finished step is just its dot. */}
         {(status.tone === "bad" || status.tone === "live") && <span className={`round-state tone-${status.tone}`}>{status.text}</span>}
-        {data.concerns > 0 && <span className="round-state tone-bad">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>}
+        {data.concerns > 0 && <span className="round-state tone-bad">⚠ {checkCount(data.concerns)}</span>}
       </span>
       <span className={`compact-hover-actions${isLive ? " has-live" : ""}`}>
         <span

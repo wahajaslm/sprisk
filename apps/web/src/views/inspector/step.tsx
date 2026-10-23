@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { useRunChecks } from "../../api/checks.ts";
+import { concernsByNode, useRunChecks } from "../../api/checks.ts";
 import { useCodeDisplay, useCodeInterface, useConsole } from "../../api/code.ts";
 import { useNodeHistory } from "../../api/history.ts";
 import { useOperators, useOutputs, usePipelineVersions, useRunAttempts, useSaveAndRun, useTablePage } from "../../api/hooks.ts";
@@ -15,7 +15,7 @@ import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
 import { FiguresTab } from "./FiguresTab.tsx";
 import { ViewControls } from "./ViewControls.tsx";
-import { ChecksTab, concerns } from "./ChecksTab.tsx";
+import { ChecksTab } from "./ChecksTab.tsx";
 import { namedPorts } from "../../flow/notebook.ts";
 import { PassOn } from "./CodeData.tsx";
 import { ConsoleTab, consoleProblems } from "./ConsoleTab.tsx";
@@ -93,7 +93,7 @@ export function useStep() {
     explore,
     previous: shownAt >= 0 ? history.slice(shownAt + 1).find((h) => h.metrics)?.metrics : undefined,
     metric: HEADLINE.find((m) => history.some((h) => h.metrics?.[m] !== undefined)),
-    concernCount: nodeId ? concerns(checks, nodeId) : 0,
+    concernCount: nodeId ? (concernsByNode(checks).get(nodeId) ?? 0) : 0,
     visuals: isCode ? visualCount(display) : done ? figurePorts.length : 0,
     printed,
     problems: consoleProblems(printed, mine),

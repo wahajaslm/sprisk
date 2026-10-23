@@ -70,7 +70,3 @@ function DecisionLine({ id, rule }: { id: string; rule: MethodologyRule | undefi
     </>
   );
 }
-
-/** Checks citing this step that did not pass; shown as a badge on the tab. */
-export const concerns = (run: RunChecks, nodeId: string) =>
-  run.status === "ready" ? run.checks.filter((c) => c.verdict !== "pass" && c.cited_nodes.includes(nodeId)).length : 0;

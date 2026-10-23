@@ -48,3 +48,6 @@ export function concernsByNode(run: RunChecks): Map<string, number> {
   }
   return counts;
 }
+
+/** "1 check" or "N checks", for a count of checks that did not pass. */
+export const checkCount = (n: number) => (n === 1 ? "1 check" : `${n} checks`);

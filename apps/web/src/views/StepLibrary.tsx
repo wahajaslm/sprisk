@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import type { Operator } from "@sprisk/contracts";
 
-import { concernsByNode, useRunChecks } from "../api/checks.ts";
+import { checkCount, concernsByNode, useRunChecks } from "../api/checks.ts";
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { latestByNode, statusOf } from "../flow/latest.ts";
+import { stepOf } from "../flow/ports.ts";
 import { kindOf, newestVersions, STAGES, stageOf, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
 import { flows } from "../flow/flows.ts";
 import { useSelection } from "../workbench/selection.ts";
@@ -91,7 +92,7 @@ export function StepLibrary() {
   // The distinct steps that read any output of the selected step.
   const downstreamCount = useMemo(() => {
     if (!selectedNode || !activeVersion) return 0;
-    const readers = activeVersion.edges.filter((e) => e.from.split(".")[0] === selectedNode.id).map((e) => e.to.split(".")[0]);
+    const readers = activeVersion.edges.filter((e) => stepOf(e.from) === selectedNode.id).map((e) => stepOf(e.to));
     return new Set(readers).size;
   }, [selectedNode, activeVersion]);
 
@@ -284,7 +285,8 @@ const TONE: Record<string, "ok" | "danger" | "queued"> = { done: "ok", bad: "dan
 
 /** A step's latest attempt in the selected run, or its check concerns when any did not pass. */
 function StepState({ issues, state }: { issues: number; state: string | undefined }) {
-  if (issues > 0) return <Tag tone="danger">{issues === 1 ? "1 check" : `${issues} checks`}</Tag>;
-  if (!state) return <Tag tone="neutral">Not run</Tag>;
-  return <Tag tone={TONE[statusOf(state).tone] ?? "queued"}>{statusOf(state).text}</Tag>;
+  if (issues > 0) return <Tag tone="danger">{checkCount(issues)}</Tag>;
+  if (!state) return <Tag tone="neutral">{statusText(state)}</Tag>;
+  const status = statusOf(state);
+  return <Tag tone={TONE[status.tone] ?? "queued"}>{status.text}</Tag>;
 }
