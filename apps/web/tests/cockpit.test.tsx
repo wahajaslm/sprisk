@@ -248,15 +248,17 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
-  it("sizes a compact card for the title and subject it shows (ADR-0055)", async () => {
+  it("gives every compact card the Flow Studio size, whatever its title (ADR-0061)", async () => {
     const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const { NODE_SIZE } = await import("../src/workbench/detail.ts");
     const byRef = new Map(operators.map((o) => [o.id, o]));
     const width = (title: string) => {
       const titled = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "split" ? { ...n, title } : n)) };
       return flowGraph(titled, byRef, new Map(), undefined, "compact", new Map(), new Map()).nodes.find((n) => n.id === "split")!.width!;
     };
-    // The id "split" is short; a long kind of step still fits on its card.
-    expect(width("Stratified train/test split by class")).toBeGreaterThan(width("Split") + 200);
+    // A long title is cut short on the card, so the canvas keeps one grid of equal steps.
+    expect(width("Stratified train/test split by class")).toBe(NODE_SIZE.compact.width);
+    expect(width("Split")).toBe(NODE_SIZE.compact.width);
   });
 
   it("links steps of one stage top to bottom, and stages side to side", async () => {
@@ -318,12 +320,12 @@ describe("flow canvas", () => {
         data: {},
       },
     ];
+    const { STAGE_FOOTER_HEIGHT, STAGE_PAD_X } = await import("../src/flow/layout.ts");
     const encapsulated = encapsulateStages(testNodes);
     const stage = encapsulated.find((n) => n.id === "stage:Split#split")!;
-    // Right = 350 + 200 = 550; + STAGE_PAD_X (20) = 570
-    // Bottom = 550 + 80 = 630; + STAGE_FOOTER_HEIGHT (44) + 24 = 698
-    expect(stage.width).toBe(570);
-    expect(stage.height).toBe(698);
+    // The child's right edge (350 + 200) and bottom edge (550 + 80), plus the stage's padding.
+    expect(stage.width).toBe(350 + 200 + STAGE_PAD_X);
+    expect(stage.height).toBe(550 + 80 + STAGE_FOOTER_HEIGHT + 24);
   });
 
   it("right-click on a step opens its actions", async () => {
@@ -1476,11 +1478,12 @@ describe("node detail switch", () => {
     expect(screen.getByRole("radio", { name: "Detail" })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("a remembered Summary choice opens as Detail", async () => {
+  it("a remembered choice other than Detail opens as Compact, the Flow Studio default", async () => {
     const { readLevel } = await import("../src/workbench/detail.ts");
-    expect(readLevel("summary")).toBe("detail");
+    expect(readLevel("detail")).toBe("detail");
     expect(readLevel("compact")).toBe("compact");
-    expect(readLevel(42)).toBe("detail");
+    expect(readLevel("summary")).toBe("compact");
+    expect(readLevel(42)).toBe("compact");
   });
 
   it("draws the train / test balance of a split in Detail", async () => {

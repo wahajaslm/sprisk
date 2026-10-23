@@ -1,42 +1,30 @@
 import { lazy, Suspense } from "react";
 import { StepLibrary } from "../StepLibrary.tsx";
+import { FlowInspector } from "./FlowInspector.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
+import { useWorkbench } from "../../workbench/workbench.ts";
 
 const FlowCanvas = lazy(() => import("../FlowCanvas.tsx").then((m) => ({ default: m.FlowCanvas })));
 
-/** The Flow page: StepLibrary sidebar + interactive FlowCanvas graph (ADR-0061). */
+/** The Flow page: StepLibrary sidebar + interactive FlowCanvas graph + bottom Inspector drawer (ADR-0061). */
 export function FlowPage() {
+  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
+
   return (
-    <div className="flow-page-layout" style={{ display: "flex", width: "100%", height: "100%", minHeight: 0, overflow: "hidden" }}>
+    <div className={`flow-page-layout ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
       <aside
-        style={{
-          width: "var(--size-sidebar)",
-          background: "var(--bg-surface)",
-          borderRight: "1px solid var(--border-panel)",
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          overflow: "hidden",
-        }}
+        className={`main-sidebar flow-sidebar ${sidebarOpen ? "" : "sidebar-rail-wrap"}`}
         aria-label="Step library"
       >
         <StepLibrary />
       </aside>
-      <main
-        style={{
-          flex: 1,
-          minWidth: 0,
-          height: "100%",
-          position: "relative",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-        aria-label="Flow canvas and step details"
-      >
-        <Suspense fallback={<Loading text="Loading flow…" pad />}>
-          <FlowCanvas />
-        </Suspense>
+      <main className="center-screen flow-center" aria-label="Flow canvas and step details">
+        <div className="flow-canvas-viewport">
+          <Suspense fallback={<Loading text="Loading flow…" pad />}>
+            <FlowCanvas />
+          </Suspense>
+        </div>
+        <FlowInspector />
       </main>
     </div>
   );

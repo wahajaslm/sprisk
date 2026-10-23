@@ -1,4 +1,6 @@
 import React from "react";
+import { useWorkbench } from "../../workbench/workbench.ts";
+import { PanelToggleIcon } from "../../views/Icons.tsx";
 
 export interface SidebarProps {
   title: string;
@@ -17,64 +19,56 @@ export function Sidebar({
   dock,
   width = "var(--size-sidebar)",
 }: SidebarProps) {
-  return (
-    <div
-      style={{
-        width,
-        background: "var(--bg-surface)",
-        borderRight: "1px solid var(--border-panel)",
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-        height: "100%",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          padding: "18px 16px 12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
+  const { sidebarOpen, toggleSidebar } = useWorkbench();
+
+  if (!sidebarOpen) {
+    return (
+      <aside className="main-sidebar sidebar-rail" aria-label={`${title} Rail`}>
+        <button
+          type="button"
+          className="sidebar-toggle-btn"
+          title={`Expand ${title} sidebar`}
+          aria-label={`Expand ${title} sidebar`}
+          onClick={toggleSidebar}
+        >
+          <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
+        </button>
+        <span
+          className="sidebar-rail-label"
+          role="button"
+          tabIndex={0}
+          onClick={toggleSidebar}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") toggleSidebar();
           }}
         >
-          <span style={{ fontSize: "var(--fs-15)", fontWeight: "var(--fw-medium)" }}>
-            {title}
-          </span>
-          {meta && (
-            <span
-              style={{
-                fontSize: "var(--fs-12-5)",
-                color: "var(--text-label)",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {meta}
-            </span>
-          )}
+          {title}
+        </span>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="main-sidebar" style={{ width }}>
+      <div className="sidebar-header">
+        <div className="sidebar-title-row">
+          <h2 className="sidebar-title">{title}</h2>
+          {meta && <span className="sidebar-meta">{meta}</span>}
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="sidebar-toggle-btn"
+            title={`Collapse ${title} sidebar`}
+            aria-label={`Collapse ${title} sidebar`}
+            onClick={toggleSidebar}
+          >
+            <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
+          </button>
         </div>
-        {search}
+        {search && <div className="sidebar-search">{search}</div>}
       </div>
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: "0 8px 12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-        }}
-      >
-        {children}
-      </div>
-      {dock}
-    </div>
+      <div className="sidebar-list">{children}</div>
+      {dock && <div className="sidebar-dock">{dock}</div>}
+    </aside>
   );
 }

@@ -37,7 +37,7 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
       <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
         <span>Source files</span>
         <textarea
-          className="ds-input"
+          className="ds-textarea"
           rows={2}
           value={sourceText}
           onChange={(e) => setSourceText(e.target.value)}

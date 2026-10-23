@@ -359,12 +359,33 @@ export function SettingsIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-export function PanelToggleIcon({ size = 14 }: { size?: number }) {
+export function PanelToggleIcon({
+  size = 14,
+  style,
+  className,
+}: {
+  size?: number;
+  style?: React.CSSProperties;
+  className?: string;
+}) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={style}
+      className={className}
+    >
       <rect x="1.75" y="2.5" width="12.5" height="11" rx="1.5" />
       <path d="M10 2.5v11" />
       <path d="M5 6.5L6.5 8 5 9.5" />
     </svg>
   );
 }
+

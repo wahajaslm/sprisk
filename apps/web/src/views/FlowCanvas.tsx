@@ -121,58 +121,12 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
       role="region"
       aria-label={`Stage ${data.name}`}
     >
-      <div className="stage-card-header stage-head" title={`Stage: ${data.name} (${data.count} steps) — Click to select, drag to move stage`}>
+      <div className="stage-card-header stage-head" title={`Stage: ${data.name} (${data.count} steps)`}>
         <div className="stage-title-row">
           <h3 className="stage-head stage-name">
             {data.name}
           </h3>
-        </div>
-        <p className="stage-description">{stageDescription(data.name)}</p>
-      </div>
-
-      <div className="stage-card-body" aria-hidden="true" />
-
-      <div className="stage-card-footer">
-        <div className="stage-minimal-actions">
-          <button
-            type="button"
-            className="stage-icon-btn notebook"
-            title={`Open notebook for stage ${data.name}`}
-            onClick={handleOpenNotebook}
-            aria-label={`Open notebook for stage ${data.name}`}
-          >
-            <NotebookIcon />
-          </button>
-          {isLive ? (
-            <button
-              type="button"
-              className="stage-icon-btn stop"
-              title={`Stop stage ${data.name}`}
-              onClick={handleRunAll}
-              aria-label={`Stop stage ${data.name}`}
-            >
-              <StopIcon />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="stage-icon-btn run"
-              title={`Run stage ${data.name}`}
-              onClick={handleRunAll}
-              aria-label={`Run stage ${data.name}`}
-            >
-              <PlayIcon />
-            </button>
-          )}
-          <button
-            type="button"
-            className="stage-icon-btn restart"
-            title={`Restart stage ${data.name}`}
-            onClick={handleRunAll}
-            aria-label={`Restart stage ${data.name}`}
-          >
-            <RestartIcon />
-          </button>
+          <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
         </div>
       </div>
     </div>
@@ -479,13 +433,9 @@ const edgeTypes = { flow: FlowEdge };
 
 const LABEL_MAX = 300;
 
-/** A compact node is the circle plus its label, no wider; Detail cards have one size. The label
- * width is estimated from its length (12.5px title, 11px subject) and wraps past LABEL_MAX. */
-function sizeOf(level: DetailLevel, node: PipelineVersion["nodes"][number]) {
-  if (level !== "compact") return NODE_SIZE[level];
-  const { title, subject } = stepLabel(node);
-  const label = Math.min(LABEL_MAX, Math.ceil(Math.max(title.length * 10.5, subject.length * 9.2)));
-  return { width: Math.round(34 + 14 + label + 8), height: Math.round(NODE_SIZE.compact.height) };
+/** A compact node has standardized 184x52 card size matching Flow Studio spec; Detail cards have 248x176 size. */
+function sizeOf(level: DetailLevel, _node: PipelineVersion["nodes"][number]) {
+  return NODE_SIZE[level];
 }
 
 /** React Flow nodes and edges for a flow, at the positions the layout chose. */
@@ -979,6 +929,9 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
           canRedo={redoStack.length > 0}
         />
         <DetailSwitch />
+      </Panel>
+      <Panel position="bottom-right" className="canvas-legend">
+        <Legend />
       </Panel>
     </ReactFlow>
   );

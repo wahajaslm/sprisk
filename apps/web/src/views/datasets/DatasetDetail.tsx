@@ -24,6 +24,21 @@ export function DatasetDetail({ dataset, usedBy }: { dataset: LoadedTable; usedB
           <h1>{dataset.name}</h1>
           <p className="muted">Loaded by {shortName(dataset.operator)} · Used by {usedBy.join(", ") || "—"}</p>
         </div>
+        <div className="dsx-actions">
+          {first && (
+            <button
+              type="button"
+              className="page-btn ds-open-btn"
+              aria-label={`Open ${dataset.name} in Flow`}
+              onClick={() => {
+                showRun(first.pipeline_version_id, first.run_id, first.node_id);
+                setNav("Flow");
+              }}
+            >
+              Open in flow
+            </button>
+          )}
+        </div>
       </header>
       <div className="dsx-tabs" role="tablist" aria-label="Dataset view tabs">
         <button

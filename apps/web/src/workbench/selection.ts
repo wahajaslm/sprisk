@@ -39,7 +39,7 @@ type Selection = {
 };
 
 export const useSelection = create<Selection>((set) => ({
-  nav: "Objective",
+  nav: "Flow",
   pipelineVersionId: undefined,
   runId: undefined,
   nodeId: undefined,

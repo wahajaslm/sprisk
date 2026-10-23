@@ -6,18 +6,18 @@ export type DetailLevel = (typeof DETAIL_LEVELS)[number];
 
 /** Node size on the canvas for each level of detail. */
 export const NODE_SIZE: Record<DetailLevel, { width: number; height: number }> = {
-  compact: { width: 200, height: 44 },
+  compact: { width: 184, height: 52 },
   detail: { width: 248, height: 176 },
 };
 
-/** Stored preferences are untrusted; anything else (e.g. the removed "summary") opens as Detail. */
-export const readLevel = (value: unknown): DetailLevel => (value === "compact" ? "compact" : "detail");
+/** Stored preferences are untrusted; anything else opens as Compact. */
+export const readLevel = (value: unknown): DetailLevel => (value === "detail" ? "detail" : "compact");
 
 type CanvasDetail = { level: DetailLevel; setLevel: (level: DetailLevel) => void };
 
 /** How much each canvas node shows. A viewing preference, never provenance (rule 9). */
 export const useCanvasDetail = create<CanvasDetail>()(
-  persist((set) => ({ level: "detail", setLevel: (level) => set({ level }) }), {
+  persist((set) => ({ level: "compact", setLevel: (level) => set({ level }) }), {
     name: "sprisk.canvas-detail",
     storage: createJSONStorage(() => localStorage),
     merge: (stored, current) => ({

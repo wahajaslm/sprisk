@@ -8,37 +8,20 @@ export interface SegmentedProps<T extends string = string> {
 
 export function Segmented<T extends string = string>({ options, value, onChange }: SegmentedProps<T>) {
   return (
-    <div
-      style={{
-        display: "inline-flex",
-        gap: 2,
-        padding: 3,
-        borderRadius: "var(--radius-md)",
-        background: "var(--bg-subtle)",
-      }}
-    >
+    <div className="segmented" role="tablist">
       {options.map((o) => {
         const on = o.value === value;
         return (
-          <div
+          <button
             key={o.value}
+            type="button"
+            role="tab"
+            aria-selected={on}
             onClick={() => onChange && onChange(o.value)}
-            style={{
-              height: 24,
-              padding: "0 10px",
-              borderRadius: "var(--radius-sm)",
-              display: "flex",
-              alignItems: "center",
-              cursor: "pointer",
-              fontSize: "var(--fs-13)",
-              fontWeight: "var(--fw-medium)",
-              whiteSpace: "nowrap",
-              background: on ? "var(--alpha-09)" : "transparent",
-              color: on ? "var(--text-primary)" : "var(--ink-4)",
-            }}
+            className={`segmented-item ${on ? "active" : ""}`}
           >
             {o.label}
-          </div>
+          </button>
         );
       })}
     </div>

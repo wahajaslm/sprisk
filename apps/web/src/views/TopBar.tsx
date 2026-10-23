@@ -4,6 +4,7 @@ import { usePipelineVersions, useRuns, useStartRun } from "../api/hooks.ts";
 import { flows } from "../flow/flows.ts";
 import { flowName } from "../flow/labels.ts";
 import { NAV, useSelection } from "../workbench/selection.ts";
+import { useWorkbench } from "../workbench/workbench.ts";
 import { Chevron, Logo, PlayIcon } from "./Icons.tsx";
 import { ImportNotebook } from "./ImportNotebook.tsx";
 
@@ -31,6 +32,7 @@ export function TopBar() {
     if (latestRunId && runId === undefined) selectRun(latestRunId);
   }, [latestRunId, runId, selectRun]);
 
+  const { shellMode, setShellMode } = useWorkbench();
   const current = versions.data?.find((v) => v.id === pipelineVersionId);
   const runState = startRun.isPending
     ? "Starting run…"
@@ -126,8 +128,27 @@ export function TopBar() {
         </nav>
       </div>
 
-      {/* Col 3: Status + Action button */}
+      {/* Col 3: Shell mode toggle + Status + Action button */}
       <div className="topbar-actions">
+        <div className="shell-mode-toggle" role="group" aria-label="App shell mode">
+          <button
+            type="button"
+            className={`shell-mode-btn ${shellMode === "joined" ? "active" : ""}`}
+            onClick={() => setShellMode("joined")}
+            title="Joined shell"
+          >
+            Joined
+          </button>
+          <button
+            type="button"
+            className={`shell-mode-btn ${shellMode === "docked" ? "active" : ""}`}
+            onClick={() => setShellMode("docked")}
+            title="Docked shell"
+          >
+            Docked
+          </button>
+        </div>
+
         {nav === "Objective" ? (
           <>
             <span className="runstate">
