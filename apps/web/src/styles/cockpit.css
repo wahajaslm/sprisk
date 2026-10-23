@@ -326,7 +326,6 @@ p { margin: 0; }
 
 .main-sidebar,
 .flow-sidebar,
-.dsx-side,
 .notebooks-list {
   width: var(--size-sidebar);
   flex-shrink: 0;
@@ -382,7 +381,6 @@ p { margin: 0; }
 
 .cockpit-shell .main-sidebar,
 .cockpit-shell .flow-sidebar,
-.cockpit-shell .dsx-side,
 .cockpit-shell .notebooks-list,
 .cockpit-shell .deploy-sidebar,
 .cockpit-shell .reports-sidebar,
@@ -477,7 +475,6 @@ p { margin: 0; }
 
 .sidebar-rail-wrap,
 .flow-page-layout.folded-sidebar .flow-sidebar,
-.datasets-page-layout.folded-sidebar .dsx-side,
 .notebooks-page-layout.folded-sidebar .notebooks-list,
 .deploy-page-layout.folded-sidebar .main-sidebar,
 .reports-page-layout.folded-sidebar .main-sidebar,
@@ -2269,53 +2266,12 @@ p { margin: 0; }
 .tab-visuals .code-output.grid .result-tile:not(.plot) { max-height: none; }
 
 /* Datasets: names in a sidebar, one table's details beside it. */
-.dsx { display: grid; grid-template-columns: var(--side-width) minmax(0, 1fr); height: 100%; min-height: 0; background: var(--canvas); overflow: hidden; }
-.dsx-side { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--alpha-04); background: var(--gray-2); }
+
 /* Every side list's head (Datasets, Notebooks): as compact as the Flow step library's. */
-.dsx-side-head { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-2); margin-bottom: var(--space-1); border-bottom: 1px solid var(--line); }
-.dsx-side-head .eyebrow { margin: 0; padding: 0 2px; }
+
 .side-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.notebooks-list > .dsx-side-head { margin: 0 calc(-1 * var(--space-2)) var(--space-1); }
-.dsx-side-head .ds-filter { width: 100%; }
-.dsx-list { list-style: none; margin: 0; padding: 0 var(--space-2) var(--space-3); overflow: auto; display: grid; gap: 2px; max-height: 35vh; }
-.dsx-item { width: 100%; display: grid; gap: 1px; padding: var(--space-1) var(--space-2); border: 1px solid transparent; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; transition: all 0.15s ease; }
-.dsx-item:hover { background: var(--alpha-04); }
-.dsx-item.picked { background: var(--alpha-07); border-color: var(--alpha-06); }
-.dsx-item.picked .dsx-item-name { color: var(--white); }
-.dsx-item-name { font: var(--text-sm) var(--sans); color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dsx-item-meta { font-size: var(--text-xs); color: var(--ink-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Sidebar metadata card for selected dataset */
-.dsx-side-meta-panel {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-3);
-  border-top: 1px solid var(--alpha-05);
-  background: var(--black-alpha-25);
-  margin-top: auto;
-  overflow: auto;
-}
-.dsx-side-meta-head { display: grid; gap: 2px; }
-.dsx-side-meta-title { font: 500 var(--text-sm) var(--sans); color: var(--ink-1); overflow-wrap: anywhere; }
-.dsx-side-meta-op { font-size: var(--text-xs); color: var(--ink-4); }
-.dsx-side-meta-list {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-}
-.dsx-side-meta-list > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  border-bottom: 1px solid var(--alpha-03);
-  padding-bottom: 4px;
-}
-.dsx-side-meta-list dt { color: var(--ink-4); }
-.dsx-side-meta-list dd { margin: 0; text-align: right; color: var(--ink-1); font-family: var(--mono); word-break: break-all; }
-.ds-open-btn { width: 100%; justify-content: center; margin-top: 2px; }
 
 .dsx-main { min-width: 0; min-height: 0; overflow: auto; }
 .dsx-detail { max-width: 1200px; display: grid; gap: var(--space-4); padding: var(--space-5) var(--page-x); }
@@ -2347,13 +2303,9 @@ p { margin: 0; }
   border-bottom-color: var(--ink-3);
 }
 
-.dsx-tab-pane { display: grid; gap: var(--space-4); }
-.dsx-tab-pane[data-active="false"] { display: none; }
-
 .dsx-h { margin: var(--space-2) 0 0; font-size: var(--text-md); font-weight: 600; color: var(--ink-3); }
-.dsx-detail .ds-plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: var(--space-4); }
-.dsx-detail .ds-columns { width: 100%; }
-@media (max-width: 900px) { .dsx { grid-template-columns: 1fr; } }
+.ds-detail .ds-plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: var(--space-4); }
+.ds-detail .ds-columns { width: 100%; }
 
 /* ── Methodology Map & Scientific Governance ────────────── */
 
@@ -5360,103 +5312,6 @@ p { margin: 0; }
 }
 
 /* ── Step 7A: Datasets Page ──────────────────────────── */
-.dsx-page {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  background: var(--canvas);
-  overflow: hidden;
-}
-
-.dsx-sidebar {
-  width: 280px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-right: 1px solid var(--alpha-06);
-  height: 100%;
-  overflow: hidden;
-}
-
-.dsx-sidebar-head {
-  padding: 14px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border-bottom: 1px solid var(--alpha-06);
-  flex-shrink: 0;
-}
-
-.dsx-sidebar-title {
-  font-size: var(--fs-14);
-  font-weight: 500;
-  color: var(--ink-0);
-  margin: 0;
-}
-
-.dsx-sidebar-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.dsx-dataset-item {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 8px 12px;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.12s ease;
-}
-
-.dsx-dataset-item:hover {
-  background: var(--alpha-04);
-}
-
-.dsx-dataset-item.selected {
-  background: var(--gray-2);
-  border-color: var(--alpha-08);
-}
-
-.dsx-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.dsx-item-name {
-  font-size: var(--fs-13);
-  font-weight: 500;
-  color: var(--ink-1);
-  font-family: var(--font-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dsx-dataset-item.selected .dsx-item-name {
-  color: var(--ink-0);
-}
-
-.dsx-item-sub {
-  font-size: var(--fs-12);
-  color: var(--ink-4);
-}
-
-.dsx-sidebar-dock {
-  border-top: 1px solid var(--alpha-06);
-  flex-shrink: 0;
-}
 
 .dsx-main {
   flex: 1;
@@ -5468,57 +5323,12 @@ p { margin: 0; }
   background: var(--canvas);
 }
 
-.dsx-detail-head {
-  padding: 24px 32px 18px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 24px;
-  border-bottom: 1px solid var(--alpha-06);
-  flex-shrink: 0;
-}
-
-.dsx-head-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.dsx-eyebrow {
-  font-size: var(--fs-12);
-  font-family: var(--font-mono);
-  color: var(--ink-4);
-}
-
 .dsx-title {
   font-size: var(--fs-30);
   font-weight: 500;
   color: var(--ink-0);
   margin: 0;
   letter-spacing: -0.02em;
-}
-
-.dsx-subtitle {
-  font-size: var(--fs-13-5);
-  color: var(--ink-3);
-  margin: 0;
-  line-height: 1.45;
-}
-
-.dsx-head-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.dsx-subtabs {
-  height: 40px;
-  border-bottom: 1px solid var(--alpha-06);
-  display: flex;
-  gap: 20px;
-  padding: 0 32px;
-  background: var(--gray-1);
-  flex-shrink: 0;
 }
 
 .dsx-tab-btn {
@@ -5554,46 +5364,6 @@ p { margin: 0; }
   background: var(--ink-0);
 }
 
-.dsx-tab-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 32px;
-}
-
-.dsx-table-wrap {
-  width: 100%;
-  border: 1px solid var(--alpha-06);
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--gray-1);
-}
-
-.dsx-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs-13-5);
-}
-
-.dsx-table th {
-  text-align: left;
-  padding: 9px 14px;
-  font-size: var(--fs-12);
-  font-weight: 500;
-  color: var(--ink-4);
-  background: var(--gray-2);
-  border-bottom: 1px solid var(--alpha-06);
-}
-
-.dsx-table td {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--alpha-04);
-  color: var(--ink-2);
-}
-
-.dsx-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
 .num-cell {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -5603,55 +5373,6 @@ p { margin: 0; }
 .val-aberrant {
   color: var(--danger);
   font-weight: 500;
-}
-
-.dsx-copilot {
-  width: 340px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-left: 1px solid var(--alpha-06);
-  height: 100%;
-}
-
-.dsx-copilot-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.dsx-copilot-bubble {
-  background: var(--gray-2);
-  border: 1px solid var(--alpha-06);
-  border-radius: 8px;
-  padding: 12px 14px;
-  font-size: var(--fs-13);
-  color: var(--ink-1);
-  line-height: 1.5;
-}
-
-.dsx-copilot-bubble code {
-  font-family: var(--font-mono);
-  color: var(--ink-0);
-  background: var(--alpha-04);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.dsx-copilot-suggestions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.dsx-profile-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 14px;
 }
 
 .profile-metric-card {
@@ -5673,22 +5394,6 @@ p { margin: 0; }
   font-size: var(--fs-17);
   font-weight: 500;
   color: var(--ink-0);
-}
-
-.dsx-versions-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dsx-version-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
-  background: var(--gray-1);
-  border: 1px solid var(--alpha-06);
-  border-radius: 6px;
 }
 
 .version-badge {
@@ -8722,3 +8427,9 @@ button.set-row:hover .set-row-name, button.set-row[aria-expanded="true"] .set-ro
 .set-detail dt { color: var(--text-label); }
 .set-detail dd { margin: 0; overflow-wrap: anywhere; }
 .set-schema { margin: 0; padding: var(--sp-12); max-height: 360px; overflow: auto; border-radius: var(--radius-md); background: var(--alpha-03); font: var(--fs-12) var(--font-mono); color: var(--text-secondary); }
+
+/* ── Datasets: detail, profile and lineage ── */
+.ds-detail { display: flex; flex-direction: column; min-height: 0; }
+.ds-profile { display: grid; gap: var(--sp-16); max-width: 1200px; padding: 20px 28px 40px; }
+.ds-lineage { list-style: none; margin: 0; padding: 12px 28px; max-width: 860px; }
+.ds-lineage li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); min-height: 52px; border-bottom: 1px solid var(--alpha-05); font-size: var(--fs-14); color: var(--text-primary); }

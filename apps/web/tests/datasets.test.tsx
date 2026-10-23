@@ -122,8 +122,27 @@ describe("datasets", () => {
 
   it("opens the step that loads it in the flow", async () => {
     serve();
-    await userEvent.click(await screen.findByRole("button", { name: "Open iris.csv in Flow" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Open in flow" }));
     expect(useSelection.getState()).toMatchObject({ nav: "Flow", pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+  });
+
+  it("has a Profile tab and a Lineage tab that lists each step loading the table", async () => {
+    serve();
+    expect(await screen.findByRole("tab", { name: "Profile" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("tab", { name: "Lineage" }));
+    const lineage = await screen.findByRole("list", { name: "Lineage" });
+    expect(lineage).toHaveTextContent(/iris\.csv.*load/);
+    await userEvent.click(within(lineage).getByRole("button", { name: "Open" }));
+    expect(useSelection.getState()).toMatchObject({ nav: "Flow", pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+  });
+
+  it("marks a column's missing share red only from 20%", async () => {
+    const gappy = { ...profile, columns: [{ ...profile.columns[0]!, missing: 30 }, profile.columns[1]!, { ...profile.columns[2]!, missing: 6 }] };
+    serve(undefined, () => HttpResponse.json(gappy));
+    const columns = await screen.findByRole("table", { name: "Columns of iris.csv" });
+    const bar = (name: string) => within(within(columns).getByRole("row", { name: new RegExp(name) })).getByTestId("missing");
+    expect(bar("sepal_length")).toHaveClass("warn");
+    expect(bar("petal_width")).not.toHaveClass("warn");
   });
 
   it("says when no flow has loaded a table yet", async () => {
