@@ -179,8 +179,8 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
   );
 }
 
-/** An edge into or out of the selected step is drawn brighter. */
-type FlowEdgeData = { active: boolean };
+/** An edge into or out of the selected step is drawn brighter; failed gate is dashed red. */
+type FlowEdgeData = { active: boolean; failed?: boolean };
 
 function StepNode(props: NodeProps<Node<StepData>>) {
   return props.data.level === "compact" ? <CompactNode {...props} /> : <CardNode {...props} />;
@@ -351,8 +351,8 @@ function metricsPortOf(op: Operator): { metricsPort?: string } {
   return port === undefined ? {} : { metricsPort: String(port) };
 }
 
-/** Width of the round icon in Compact (.round-icon). */
-const ROUND_ICON = 44;
+/** Width of the round icon in Compact (.round-icon) - 34px disc node glyph. */
+const ROUND_ICON = 34;
 
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
@@ -468,7 +468,7 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
 
 function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<Edge<FlowEdgeData>>) {
   const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
-  return <BaseEdge id={id} path={path} className={`flow-edge${data?.active ? " active" : ""}`} />;
+  return <BaseEdge id={id} path={path} className={`flow-edge${data?.active ? " active" : ""}${data?.failed ? " failed" : ""}`} />;
 }
 
 /** Fit the flow to the panel with a thin margin, so steps stay readable. */
@@ -485,7 +485,7 @@ function sizeOf(level: DetailLevel, node: PipelineVersion["nodes"][number]) {
   if (level !== "compact") return NODE_SIZE[level];
   const { title, subject } = stepLabel(node);
   const label = Math.min(LABEL_MAX, Math.ceil(Math.max(title.length * 10.5, subject.length * 9.2)));
-  return { width: Math.round(44 + 14 + label + 8), height: Math.round(NODE_SIZE.compact.height) };
+  return { width: Math.round(34 + 14 + label + 8), height: Math.round(NODE_SIZE.compact.height) };
 }
 
 /** React Flow nodes and edges for a flow, at the positions the layout chose. */
@@ -579,6 +579,7 @@ export function flowGraph(
     const source = stepOf(e.from);
     const target = stepOf(e.to);
     const sameStage = groupOf.has(source) && groupOf.get(source) === groupOf.get(target);
+    const isFailed = (concerns.get(target) ?? 0) > 0 || latest.get(target)?.state === "failed";
     return {
       id: `${e.from}->${e.to}`,
       type: "flow",
@@ -586,7 +587,10 @@ export function flowGraph(
       target,
       sourceHandle: sameStage ? "down" : "out",
       targetHandle: sameStage ? "top" : "in",
-      data: { active: selectedId !== undefined && (source === selectedId || target === selectedId) },
+      data: {
+        active: selectedId !== undefined && (source === selectedId || target === selectedId),
+        failed: isFailed,
+      },
     };
   });
   return { nodes, edges };
@@ -965,7 +969,7 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
     >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.18)" />
+      <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(255,255,255,0.07)" />
       <Panel position="bottom-left" className="canvas-controls">
         <ZoomControl
           tidy={tidy}
@@ -975,9 +979,6 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
           canRedo={redoStack.length > 0}
         />
         <DetailSwitch />
-      </Panel>
-      <Panel position="bottom-right">
-        <Legend />
       </Panel>
     </ReactFlow>
   );
@@ -999,46 +1000,29 @@ function ZoomControl({
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const { zoom } = useViewport();
   return (
-    <div className="zoom" role="group" aria-label="Zoom and History">
-      <button
-        type="button"
-        className="fit"
-        title="Undo (Ctrl+Z / ⌘Z)"
-        disabled={!canUndo}
-        onClick={undo}
-      >
-        Undo
-      </button>
-      <button
-        type="button"
-        className="fit"
-        title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)"
-        disabled={!canRedo}
-        onClick={redo}
-      >
-        Redo
-      </button>
-      <button type="button" aria-label="Zoom out" onClick={() => void zoomOut()}>
+    <div className="flow-zoom-bar" role="group" aria-label="Zoom controls">
+      <button type="button" className="flow-zoom-btn" aria-label="Zoom out" onClick={() => void zoomOut()}>
         −
       </button>
-      <span className="zoom-label">{Math.round(zoom * 100)}%</span>
-      <button type="button" aria-label="Zoom in" onClick={() => void zoomIn()}>
+      <span className="flow-zoom-label mono">{Math.round(zoom * 100)}%</span>
+      <button type="button" className="flow-zoom-btn" aria-label="Zoom in" onClick={() => void zoomIn()}>
         +
       </button>
-      <button type="button" className="fit" onClick={() => void fitView(FIT)}>
+      <span className="flow-zoom-dot" aria-hidden="true">·</span>
+      <button type="button" className="flow-zoom-text-btn" onClick={() => void fitView(FIT)}>
         Fit
       </button>
+      <span className="flow-zoom-dot" aria-hidden="true">·</span>
       <button
         type="button"
-        className="fit"
-        title="Put every step back where the layout places it, then fit"
+        className="flow-zoom-text-btn"
+        title="Trace column through pipeline"
         onClick={() => {
           tidy();
-          // After the moved steps are drawn, so the fit sees their new places.
           requestAnimationFrame(() => void fitView(FIT));
         }}
       >
-        Tidy
+        Trace column
       </button>
     </div>
   );
