@@ -1,15 +1,15 @@
 # Meanings a method or operator can ask for. A project binds each one to a real column.
 schema_version: sprisk.concept_set/v1
 concepts:
-  core.target:
+  common.target:
     kind: label
     description: The value the model learns to predict.
     binds_to: [column]
-  core.item_title:
+  common.item_title:
     kind: text
     description: Short text that names the item a row describes.
     binds_to: [column]
-  core.item_identity:
+  common.item_identity:
     kind: entity_identifier
     description: Groups rows that describe the same real-world item.
     binds_to: [column, derived]

@@ -4,14 +4,14 @@ decides: data.repeated_items
 activity: Repeated observations
 question: Does the same item appear in more than one row?
 needs:
-  concepts: [core.item_title]
+  concepts: [common.item_title]
   evidence: [data.near_duplicate_groups]
   decisions: []
 options:
   - id: group_by_title
     label: Treat rows with matching titles as one item
     action:
-      bind: { concept: core.item_identity, evidence: data.near_duplicate_groups, column: item_group }
+      bind: { concept: common.item_identity, evidence: data.near_duplicate_groups, column: item_group }
     verify: []
   - id: independent_rows
     label: Treat every row as its own item

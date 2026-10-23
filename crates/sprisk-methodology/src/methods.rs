@@ -80,7 +80,7 @@ pub(crate) fn check(
         check_operator(operator, provided)?;
     }
     for kind in produced_kinds(provided) {
-        producer(&kind, provided).map_err(CatalogError::Evidence)?;
+        producer(&kind, &provided.operators).map_err(CatalogError::Evidence)?;
     }
     let decided: BTreeSet<String> = methods
         .iter()
@@ -140,10 +140,11 @@ fn check_method(
         known_concept(concept.as_str(), provided)?;
     }
     for kind in &method.needs.evidence {
-        producer(kind.as_str(), provided).map_err(|p| format!("needs {p}"))?;
+        producer(kind.as_str(), &provided.operators).map_err(|p| format!("needs {p}"))?;
     }
     for verification in method.verifications.values() {
-        producer(verification.needs.as_str(), provided).map_err(|p| format!("verifies {p}"))?;
+        producer(verification.needs.as_str(), &provided.operators)
+            .map_err(|p| format!("verifies {p}"))?;
     }
     if let Some(read) = method
         .needs
@@ -253,9 +254,11 @@ fn produced_kinds(provided: &Provided) -> BTreeSet<String> {
 }
 
 /// The one operator the engine adds to produce `kind`: its only producer, or the default.
-fn producer<'a>(kind: &str, provided: &Provided<'a>) -> Result<&'a Operator, String> {
-    let all: Vec<(&Operator, bool)> = provided
-        .operators
+pub(crate) fn producer<'a>(
+    kind: &str,
+    operators: &BTreeMap<String, &'a Operator>,
+) -> Result<&'a Operator, String> {
+    let all: Vec<(&Operator, bool)> = operators
         .values()
         .filter_map(|op| {
             let (_, made) = op.produces.iter().find(|(k, _)| k.as_str() == kind)?;

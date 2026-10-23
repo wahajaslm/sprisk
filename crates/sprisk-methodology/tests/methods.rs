@@ -2,9 +2,11 @@
 //! (ADR-0063 slice 2). The fixture is the split decision ported from the spike.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use sprisk_contracts::Operator;
 use sprisk_methodology::{CatalogError, RuleCatalog};
 use sprisk_registry::Registry;
 use tempfile::TempDir;
@@ -16,7 +18,8 @@ fn repo(path: &str) -> PathBuf {
         .join(path)
 }
 
-/// A copy of the split-decision fixture, to break one file in.
+/// A copy of the split-decision fixture, with a copy of the registered near-duplicates
+/// producer to break one file in.
 fn split_decision() -> TempDir {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/split_decision");
     let to = tempfile::tempdir().unwrap();
@@ -29,6 +32,8 @@ fn split_decision() -> TempDir {
             fs::copy(entry.path(), &target).unwrap();
         }
     }
+    let producer = fs::read_to_string(repo(PLUGIN_NEAR_DUPLICATES)).unwrap();
+    write(to.path(), NEAR_DUPLICATES, &producer);
     to
 }
 
@@ -46,14 +51,15 @@ fn write(root: &Path, file: &str, text: &str) {
     fs::write(path, text).unwrap();
 }
 
-/// The fixture's methods, with the registered plugins and the fixture's evidence producers.
+/// The fixture's methods, with the registered plugins; an operator in the copy's
+/// `operators/` takes the place of the plugin with its id.
 fn load(root: &Path) -> Result<RuleCatalog, CatalogError> {
     let plugins = Registry::load_dir(&repo("plugins")).unwrap();
-    let producers = Registry::load_dir(&root.join("operators")).unwrap();
-    RuleCatalog::load_dir(
-        &root.join("methodology"),
-        plugins.operators().chain(producers.operators()),
-    )
+    let copies = Registry::load_dir(&root.join("operators")).unwrap();
+    let mut operators: BTreeMap<String, &Operator> =
+        plugins.operators().map(|o| (o.id.to_string(), o)).collect();
+    operators.extend(copies.operators().map(|o| (o.id.to_string(), o)));
+    RuleCatalog::load_dir(&root.join("methodology"), operators.into_values())
 }
 
 fn refused(root: &Path) -> String {
@@ -63,6 +69,7 @@ fn refused(root: &Path) -> String {
 const SPLIT: &str = "methodology/core/methods/split_method/method.yaml";
 const REPEATED: &str = "methodology/core/methods/repeated_items/method.yaml";
 const NEAR_DUPLICATES: &str = "operators/near_duplicates/manifest.yaml";
+const PLUGIN_NEAR_DUPLICATES: &str = "plugins/profile/operators/near_duplicates/manifest.yaml";
 
 #[test]
 fn the_split_decision_loads_in_decision_order() {
@@ -107,10 +114,10 @@ fn a_method_needing_an_unknown_concept_is_refused() {
     edit(
         pack.path(),
         SPLIT,
-        "concepts: [core.target]",
-        "concepts: [core.answer]",
+        "concepts: [common.target]",
+        "concepts: [common.answer]",
     );
-    assert!(refused(pack.path()).contains("unknown concept core.answer"));
+    assert!(refused(pack.path()).contains("unknown concept common.answer"));
 }
 
 #[test]
@@ -119,10 +126,10 @@ fn an_option_filling_a_param_with_an_unknown_concept_is_refused() {
     edit(
         pack.path(),
         SPLIT,
-        "group_column: core.item_identity",
-        "group_column: core.item_key",
+        "group_column: common.item_identity",
+        "group_column: common.item_key",
     );
-    assert!(refused(pack.path()).contains("unknown concept core.item_key"));
+    assert!(refused(pack.path()).contains("unknown concept common.item_key"));
 }
 
 #[test]
@@ -131,10 +138,10 @@ fn an_option_binding_an_unknown_concept_is_refused() {
     edit(
         pack.path(),
         REPEATED,
-        "concept: core.item_identity",
-        "concept: core.item_key",
+        "concept: common.item_identity",
+        "concept: common.item_key",
     );
-    assert!(refused(pack.path()).contains("unknown concept core.item_key"));
+    assert!(refused(pack.path()).contains("unknown concept common.item_key"));
 }
 
 #[test]
@@ -155,10 +162,10 @@ fn an_operator_reading_an_unknown_concept_is_refused() {
     edit(
         pack.path(),
         NEAR_DUPLICATES,
-        "core.item_title",
-        "core.title",
+        "common.item_title",
+        "common.title",
     );
-    assert!(refused(pack.path()).contains("unknown concept core.title"));
+    assert!(refused(pack.path()).contains("unknown concept common.title"));
 }
 
 #[test]
@@ -205,7 +212,7 @@ fn several_producers_with_one_default_load() {
 fn several_producers_with_no_default_are_refused() {
     let pack = split_decision();
     second_producer(pack.path(), "default: false");
-    assert!(refused(pack.path()).contains("data.near_duplicate_groups: produced by sprisk.diagnose.fuzzy_titles@1.0.0, sprisk.diagnose.near_duplicates@1.0.0, and none is the default"));
+    assert!(refused(pack.path()).contains("data.near_duplicate_groups: produced by sprisk.profile.fuzzy_titles@1.0.0, sprisk.profile.near_duplicates@1.0.0, and none is the default"));
 }
 
 #[test]
@@ -218,7 +225,7 @@ fn two_default_producers_are_refused() {
         "    fields:",
         "    default: true\n    fields:",
     );
-    assert!(refused(pack.path()).contains("data.near_duplicate_groups: several defaults: sprisk.diagnose.fuzzy_titles@1.0.0, sprisk.diagnose.near_duplicates@1.0.0"));
+    assert!(refused(pack.path()).contains("data.near_duplicate_groups: several defaults: sprisk.profile.fuzzy_titles@1.0.0, sprisk.profile.near_duplicates@1.0.0"));
 }
 
 #[test]
@@ -303,11 +310,12 @@ fn an_all_rows_diagnostic_reading_a_label_is_refused() {
     edit(
         pack.path(),
         NEAR_DUPLICATES,
-        "core.item_title",
-        "core.target",
+        "common.item_title",
+        "common.target",
     );
     assert!(
-        refused(pack.path()).contains("reads every row, so it may not read the label core.target")
+        refused(pack.path())
+            .contains("reads every row, so it may not read the label common.target")
     );
 }
 
@@ -336,8 +344,8 @@ fn an_option_setting_a_param_the_operator_lacks_is_refused() {
     edit(
         pack.path(),
         SPLIT,
-        "group_column: core.item_identity",
-        "group: core.item_identity",
+        "group_column: common.item_identity",
+        "group: common.item_identity",
     );
     assert!(
         refused(pack.path()).contains("sprisk.validation.group_split@1.0.0 has no param group")
@@ -385,7 +393,7 @@ fn an_operator_mapping_a_concept_to_a_param_it_lacks_is_refused() {
     );
     assert!(
         refused(pack.path())
-            .contains("maps core.item_title to title, which is not one of its params")
+            .contains("maps common.item_title to title, which is not one of its params")
     );
 }
 
@@ -400,7 +408,7 @@ fn an_option_mapping_a_param_its_operator_already_maps_is_refused() {
         .replace("group_split@1.0.0", "own_split@1.0.0")
         .replace(
             "role: split",
-            "role: split\nconcepts: { group_column: core.item_identity }",
+            "role: split\nconcepts: { group_column: common.item_identity }",
         );
     write(pack.path(), "operators/own_split/manifest.yaml", &own);
     edit(pack.path(), SPLIT, "group_split@1.0.0", "own_split@1.0.0");
@@ -436,7 +444,7 @@ fn a_concept_defined_in_two_packs_is_refused() {
     write(
         pack.path(),
         "methodology/other/concepts.yaml",
-        "schema_version: sprisk.concept_set/v1\nconcepts:\n  core.target: { kind: label, description: d, binds_to: [column] }\n",
+        "schema_version: sprisk.concept_set/v1\nconcepts:\n  common.target: { kind: label, description: d, binds_to: [column] }\n",
     );
     assert!(matches!(
         load(pack.path()),

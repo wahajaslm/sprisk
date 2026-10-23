@@ -3,7 +3,7 @@ id: sprisk.verify.class_shares@1.0.0
 capability_class: analyzer
 entrypoint: sprisk_diagnose.class_shares:run
 attach: { role: split, side: output }
-concepts: { target: core.target }
+concepts: { target: common.target }
 produces:
   evaluation.class_shares:
     fields: { largest_gap: number, train_rows: integer, test_rows: integer }

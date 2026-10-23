@@ -3,7 +3,7 @@ id: sprisk.verify.group_overlap@1.0.0
 capability_class: analyzer
 entrypoint: sprisk_diagnose.group_overlap:run
 attach: { role: split, side: output }
-concepts: { group_column: core.item_identity }
+concepts: { group_column: common.item_identity }
 produces:
   evaluation.group_overlap:
     fields: { overlapping_groups: string_list, train_groups: integer, test_groups: integer }

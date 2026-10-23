@@ -5,7 +5,7 @@ activity: Fair evaluation
 question: How are rows divided into training and test so the score is fair?
 applies_when: { task: [classification, regression] }
 needs:
-  concepts: [core.target]
+  concepts: [common.target]
   evidence: []
   decisions: [data.repeated_items]
 options:
@@ -15,7 +15,7 @@ options:
       replace:
         role: split
         operator: sprisk.validation.group_split@1.0.0
-        concepts: { group_column: core.item_identity }
+        concepts: { group_column: common.item_identity }
         settings: { test_fraction: 0.2, seed: 42 }
     verify: [no_group_overlap]
   - id: stratified_random
@@ -24,7 +24,7 @@ options:
       replace:
         role: split
         operator: sprisk.validation.random_split@1.0.0
-        concepts: { stratify: core.target }
+        concepts: { stratify: common.target }
         settings: { test_fraction: 0.2, seed: 42 }
     verify: [class_shares_kept]
   - id: simple_random

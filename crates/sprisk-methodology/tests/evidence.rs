@@ -10,10 +10,10 @@ use sprisk_methodology::evidence;
 use sprisk_registry::Registry;
 
 fn near_duplicates() -> Operator {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/split_decision/operators");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
     let registry = Registry::load_dir(&dir).unwrap();
     registry
-        .get("sprisk.diagnose.near_duplicates@1.0.0")
+        .get("sprisk.profile.near_duplicates@1.0.0")
         .unwrap()
         .clone()
 }
