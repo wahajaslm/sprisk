@@ -78,3 +78,10 @@ def test_a_text_column_whose_name_holds_a_colon_is_one_feature() -> None:
     fitted = linear_model(TABLE, **CLF, words=(words(TABLE)[0], names))
     table = feature_importance(fitted, TABLE, target="y", words=(words(TABLE)[0], names))
     assert set(table["importance"]["feature"]) == {"x", "a:b"}
+
+
+def test_the_baseline_scores_a_table_of_only_the_target_beside_its_words() -> None:
+    # A words-only flow: Vectorize text took every column but the target.
+    fitted = dummy_baseline(TABLE.select("y"), **CLF, words=words(TABLE))
+    scored = evaluate(fitted, TABLE.select("y"), **CLF, words=words(TABLE))["metrics"]
+    assert scored["accuracy"] == 0.5

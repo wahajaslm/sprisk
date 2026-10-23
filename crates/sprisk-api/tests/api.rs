@@ -5904,6 +5904,12 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
     assert!(why.contains("Test rows, scored once"), "{why}");
     assert!(why.contains("the success bar of 0.2"), "{why}");
     assert!(why.contains("expected cost"), "{why}");
+    // The floor on the same rows: what the score is worth.
+    let floor = why
+        .split("the baseline on the same rows: ")
+        .nth(1)
+        .unwrap_or("");
+    assert!(floor.contains("expected cost 0."), "{why}");
     let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
     let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
     assert!(
@@ -6302,4 +6308,26 @@ async fn word_features_run_from_load_to_evaluate_and_are_refit_in_each_fold() {
     let decision = output(&api, &attempts, "select_model", "decision").await;
     assert!(decision["winner"].is_string(), "{decision}");
     assert_ne!(decision["winner"], "ml_dummy_baseline", "{decision}");
+
+    // Scored as a walk scores it: the baseline beside the model, with the same words. Its table
+    // holds only the target and left-out ids, so without the words it could not be scored.
+    let base_id: sprisk_contracts::PipelineVersionId =
+        parse("\"plv_01JABCDEFGHJKMNPQRSTVWXYZ0\"").unwrap();
+    let base = api.store.get_pipeline_version(&base_id).await.unwrap();
+    let (nodes, edges) = sprisk_methodology::engine::with_test_scoring(&base).unwrap();
+    let mut scored = serde_json::to_value(&base).unwrap();
+    scored["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
+    scored["parent_id"] = json!(base_id);
+    scored["nodes"] = json!(nodes);
+    scored["edges"] = json!(edges);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(scored)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (run, attempts) = run_version(&api, "plv_01JABCDEFGHJKMNPQRSTVWXYZ5").await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let model = output(&api, &attempts, "score_test", "metrics").await;
+    let floor = output(&api, &attempts, "score_baseline", "metrics").await;
+    assert!(
+        floor["weighted_f1"].as_f64().unwrap() < model["weighted_f1"].as_f64().unwrap(),
+        "{floor} {model}"
+    );
 }

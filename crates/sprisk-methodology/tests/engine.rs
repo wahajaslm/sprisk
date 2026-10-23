@@ -529,6 +529,60 @@ fn the_test_rows_are_scored_as_the_model_s_train_rows_were_prepared_with_its_wor
 }
 
 #[test]
+fn the_baseline_is_scored_on_the_same_test_rows_beside_the_model() {
+    let model = json!({ "id": "model", "operator": "sprisk.ml.random_forest@3.0.0",
+                        "params": { "target": "y", "task": "classification", "exclude": ["id"],
+                                    "n_estimators": 50,
+                                    "costs": { "positive": "yes", "false_negative": 5.0,
+                                               "false_positive": 1.0 } } });
+    let pipeline = flow(
+        json!([
+            { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {} },
+            { "id": "text", "operator": "sprisk.clean.vectorize_text@1.1.0",
+              "params": { "columns": ["title"] } },
+            model,
+        ]),
+        json!([
+            { "from": "split.train", "to": "text.train" },
+            { "from": "split.test", "to": "text.test" },
+            { "from": "text.train", "to": "model.train" },
+            { "from": "text.train_words", "to": "model.words" },
+        ]),
+    );
+
+    let (nodes, edges) = with_test_scoring(&pipeline).unwrap();
+
+    let node = |id: &str| nodes.iter().find(|n| n.id.as_str() == id).unwrap();
+    let baseline = node("test_baseline");
+    assert_eq!(baseline.operator.as_str(), "sprisk.ml.dummy_baseline@3.0.0");
+    // What the model reads and what its mistakes cost, not how it is fit.
+    assert_eq!(
+        serde_json::to_value(&baseline.params).unwrap(),
+        json!({ "target": "y", "task": "classification", "exclude": ["id"],
+                "costs": { "positive": "yes", "false_negative": 5.0, "false_positive": 1.0 } })
+    );
+    assert_eq!(
+        node("score_baseline").operator.as_str(),
+        "sprisk.ml.evaluate@2.0.0"
+    );
+    let added: Vec<String> = edges_of(&edges)
+        .into_iter()
+        .filter(|e| e.contains("baseline"))
+        .collect();
+    // The same train rows, test rows and words as the model.
+    assert_eq!(
+        added,
+        [
+            "test_baseline.model -> score_baseline.model",
+            "text.test -> score_baseline.test",
+            "text.test_words -> score_baseline.words",
+            "text.train -> test_baseline.train",
+            "text.train_words -> test_baseline.words",
+        ]
+    );
+}
+
+#[test]
 fn a_flow_already_scored_on_its_test_rows_is_not_scored_again() {
     let pipeline = flow(
         json!([
@@ -541,4 +595,21 @@ fn a_flow_already_scored_on_its_test_rows_is_not_scored_again() {
     );
     let err = with_test_scoring(&pipeline).unwrap_err();
     assert!(err.to_string().contains("score_test"), "{err}");
+}
+
+#[test]
+fn a_flow_holding_a_baseline_scoring_step_is_not_scored_again() {
+    for taken in ["test_baseline", "score_baseline"] {
+        let pipeline = flow(
+            json!([
+                { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {} },
+                { "id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
+                  "params": { "target": "y", "task": "classification" } },
+                { "id": taken, "operator": "sprisk.ml.evaluate@2.0.0", "params": {} },
+            ]),
+            json!([{ "from": "split.train", "to": "model.train" }]),
+        );
+        let err = with_test_scoring(&pipeline).unwrap_err();
+        assert!(err.to_string().contains(taken), "{err}");
+    }
 }
