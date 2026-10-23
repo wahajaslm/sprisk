@@ -38,15 +38,33 @@ type Selection = {
   showRun: (pipelineVersionId: string, runId: string, nodeId?: string) => void;
 };
 
+function getInitialNav(): Nav {
+  if (typeof window !== "undefined" && window.location?.hash) {
+    const raw = window.location.hash.replace(/^#\/?/, "");
+    const match = NAV.find((n) => n.toLowerCase() === raw.toLowerCase());
+    if (match) return match;
+  }
+  return "Flow";
+}
+
 export const useSelection = create<Selection>((set) => ({
-  nav: "Objective",
+  nav: getInitialNav(),
   pipelineVersionId: undefined,
   runId: undefined,
   nodeId: undefined,
   notebookId: undefined,
   stageTarget: undefined,
   objectiveOpenCount: 0,
-  setNav: (nav) => set({ nav }),
+  setNav: (nav) => {
+    if (typeof window !== "undefined" && window.location) {
+      try {
+        if (window.location.hash.replace(/^#\/?/, "").toLowerCase() !== nav.toLowerCase()) {
+          window.location.hash = nav;
+        }
+      } catch {}
+    }
+    set({ nav });
+  },
   openNotebook: (id) => set({ notebookId: id, stageTarget: undefined, nav: "Notebooks" }),
   openStageNotebook: (stage) => set({ stageTarget: stage, notebookId: undefined, nav: "Notebooks" }),
   selectPipelineVersion: (id) => set({ pipelineVersionId: id, runId: undefined, nodeId: undefined }),
@@ -57,3 +75,14 @@ export const useSelection = create<Selection>((set) => ({
   compare: [],
   setCompare: (compare) => set({ compare }),
 }));
+
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("hashchange", () => {
+    const raw = window.location.hash.replace(/^#\/?/, "");
+    const match = NAV.find((n) => n.toLowerCase() === raw.toLowerCase());
+    if (match && useSelection.getState().nav !== match) {
+      useSelection.setState({ nav: match });
+    }
+  });
+}
+

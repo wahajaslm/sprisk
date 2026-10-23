@@ -12,6 +12,8 @@ import { Tabs } from "../../components/ui/Tabs.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Tag } from "../../components/ui/Tag.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
+import { useWorkbench } from "../../workbench/workbench.ts";
+import { ReportsIcon } from "../Icons.tsx";
 
 const TABS = ["Ledger", "Criteria", "Assumptions", "Unknowns"] as const;
 type Tab = (typeof TABS)[number];
@@ -19,6 +21,7 @@ type Tab = (typeof TABS)[number];
 export function ReportsPage() {
   const questionsQuery = useQuestionVersions();
   const pipelinesQuery = usePipelineVersions();
+  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string>();
   const [activeTab, setActiveTab] = useState<Tab>("Ledger");
@@ -38,7 +41,7 @@ export function ReportsPage() {
   const selectedQuestion = filtered.find((q) => q.id === selectedId) ?? filtered[0];
 
   return (
-    <div style={{ display: "flex", width: "100%", height: "100%", minHeight: 0, overflow: "hidden" }}>
+    <div className={`reports-page-layout ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
       {/* 280px Design System Sidebar */}
       <Sidebar
         title="Ledger"
@@ -84,7 +87,7 @@ export function ReportsPage() {
       </Sidebar>
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg-canvas)" }}>
+      <main className="center-screen reports-main">
         {selectedQuestion ? (
           <>
             <PageHeader
@@ -156,12 +159,19 @@ export function ReportsPage() {
             </div>
           </>
         ) : (
-          <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8, padding: 24, textAlign: "center" }}>
-            <p style={{ fontSize: "var(--fs-14)", color: "var(--text-secondary)", margin: 0 }}>No questions in the ledger.</p>
-            <span style={{ fontSize: "var(--fs-13)", color: "var(--text-label)" }}>Revisions and audited evidence will appear here as you develop workflows in Objective and Flow.</span>
+          <div className="reports-empty-viewport">
+            <div className="reports-empty-card">
+              <div className="reports-empty-icon">
+                <ReportsIcon size={28} />
+              </div>
+              <h3 className="reports-empty-title">No Questions in the Ledger</h3>
+              <p className="reports-empty-sub">
+                Revisions, acceptance criteria, assumptions, and audited evidence will appear here as you develop workflows in Objective and Flow.
+              </p>
+            </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

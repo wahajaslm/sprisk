@@ -9,8 +9,9 @@ import { SearchField } from "../../components/ui/SearchField.tsx";
 import { Tag } from "../../components/ui/Tag.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
-import { Chevron, KindIcon } from "../Icons.tsx";
+import { Chevron, KindIcon, PanelToggleIcon } from "../Icons.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
+import { useWorkbench } from "../../workbench/workbench.ts";
 
 const TABS = ["Installed", "Details", "Schema"] as const;
 type Tab = (typeof TABS)[number];
@@ -20,11 +21,13 @@ export function SettingsPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>("all-operators");
   const [selectedOperatorId, setSelectedOperatorId] = useState<string>();
   const [activeTab, setActiveTab] = useState<Tab>("Installed");
+  const { sidebarOpen, toggleSidebar } = useWorkbench();
 
   const operatorsQuery = useOperators();
   const pipelinesQuery = usePipelineVersions();
   const tablesQuery = useLoadedTables();
   const rulesQuery = useMethodologyRules();
+
 
   const operators = useMemo(() => operatorsQuery.data ?? [], [operatorsQuery.data]);
   const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
@@ -76,14 +79,18 @@ export function SettingsPage() {
   return (
     <div className="set-page-layout">
       {/* 280px Settings Sidebar */}
-      <aside className="set-sidebar" aria-label="Settings navigation">
-        <div className="set-sidebar-head">
-          <h2 className="set-sidebar-title">Settings</h2>
-          <SearchField
-            value={query}
-            onChange={setQuery}
-            placeholder="Search operators"
-          />
+      <aside className="main-sidebar set-sidebar" aria-label="Settings navigation">
+        <div className="sidebar-header">
+          <div className="sidebar-title-row">
+            <h2 className="sidebar-title">Settings</h2>
+          </div>
+          <div className="sidebar-search">
+            <SearchField
+              value={query}
+              onChange={setQuery}
+              placeholder="Search operators"
+            />
+          </div>
         </div>
 
         <div className="set-sidebar-list">
@@ -180,7 +187,7 @@ export function SettingsPage() {
       </aside>
 
       {/* Main Settings Body */}
-      <main className="set-main" aria-label="Settings configuration">
+      <main className="center-screen set-main" aria-label="Settings configuration">
         {isSystemView ? (
           <div>
             <header className="set-head">

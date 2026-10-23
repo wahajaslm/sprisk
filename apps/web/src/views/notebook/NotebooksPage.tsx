@@ -5,7 +5,8 @@ import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.
 import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { flowOf, flows } from "../../flow/flows.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { AddIcon } from "../Icons.tsx";
+import { useWorkbench } from "../../workbench/workbench.ts";
+import { AddIcon, PanelToggleIcon } from "../Icons.tsx";
 import { StageNotebook } from "./StageNotebook.tsx";
 import { NotebookList } from "./NotebookList.tsx";
 import { SessionNotebook } from "./SessionNotebook.tsx";
@@ -17,6 +18,7 @@ export function NotebooksPage() {
   const versions = usePipelineVersions();
   const operators = useOperators();
   const save = useSaveNotebook();
+  const { sidebarOpen, toggleSidebar } = useWorkbench();
   const openId = useSelection((s) => s.notebookId);
   const stageTarget = useSelection((s) => s.stageTarget);
   const openNotebook = useSelection((s) => s.openNotebook);
@@ -52,16 +54,49 @@ export function NotebooksPage() {
   };
 
   return (
-    <div className="notebooks-page">
-      <nav className="notebooks-list" aria-label="Notebooks">
-        <header className="dsx-side-head">
-          <p className="eyebrow">Notebooks</p>
-          <div className="side-actions">
-            <button type="button" className="page-btn" disabled={save.isPending} onClick={create}>
-              <AddIcon /> New notebook
+    <div className={`notebooks-page-layout notebooks-page ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
+      <nav className={`main-sidebar notebooks-list ${sidebarOpen ? "" : "sidebar-rail-wrap"}`} aria-label="Notebooks">
+        {!sidebarOpen ? (
+          <div className="sidebar-rail" aria-label="Notebooks rail">
+            <button
+              type="button"
+              className="sidebar-toggle-btn"
+              title="Expand Notebooks sidebar"
+              aria-label="Expand Notebooks sidebar"
+              onClick={toggleSidebar}
+            >
+              <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
             </button>
+            <span
+              className="sidebar-rail-label"
+              role="button"
+              tabIndex={0}
+              onClick={toggleSidebar}
+            >
+              Notebooks
+            </span>
           </div>
-        </header>
+        ) : (
+          <>
+            <div className="sidebar-header">
+              <div className="sidebar-title-row">
+                <h2 className="sidebar-title">Notebooks</h2>
+                <div style={{ flex: 1 }} />
+                <button type="button" className="page-btn" disabled={save.isPending} onClick={create}>
+                  <AddIcon /> New notebook
+                </button>
+                <button
+                  type="button"
+                  className="sidebar-toggle-btn"
+                  title="Collapse Notebooks sidebar"
+                  aria-label="Collapse Notebooks sidebar"
+                  onClick={toggleSidebar}
+                >
+                  <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
+                </button>
+              </div>
+            </div>
+
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
         {stages.length > 0 && (
           <>
@@ -85,16 +120,21 @@ export function NotebooksPage() {
             <NotebookList label="Not in a flow yet" notebooks={loose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
           </>
         )}
+          </>
+        )}
       </nav>
-      {stageOpen && shownFlow ? (
-        <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} />
-      ) : open ? (
-        <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
-      ) : (
-        <div className="pad muted">
-          <p>No open notebook. Make a flow, or start a new notebook.</p>
-        </div>
-      )}
+
+      <div className="center-screen notebooks-center">
+        {stageOpen && shownFlow ? (
+          <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} />
+        ) : open ? (
+          <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
+        ) : (
+          <div className="pad muted">
+            <p>No open notebook. Make a flow, or start a new notebook.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

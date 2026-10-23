@@ -25,9 +25,33 @@ export function MethodologyPage() {
   const [view, setView] = useState<"tree" | "flow">("tree");
   const [drafts, setDrafts] = useState(false);
   const [chapterKey, setChapterKey] = useState<string>();
-  if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
-  if (rules.isPending) return <Loading text="Loading methodology rules…" pad />;
-  if (rules.data.length === 0) return <p className="muted pad">No methodology rules are loaded.</p>;
+  if (rules.isError) {
+    return (
+      <div className="single-panel-layout methodology-page-layout">
+        <main className="center-screen mth-main-screen mth-page">
+          <p role="alert" className="error pad">{rules.error.message}</p>
+        </main>
+      </div>
+    );
+  }
+  if (rules.isPending) {
+    return (
+      <div className="single-panel-layout methodology-page-layout">
+        <main className="center-screen mth-main-screen mth-page" style={{ alignItems: "center", justifyContent: "center" }}>
+          <Loading text="Loading methodology rules…" pad />
+        </main>
+      </div>
+    );
+  }
+  if (rules.data.length === 0) {
+    return (
+      <div className="single-panel-layout methodology-page-layout">
+        <main className="center-screen mth-main-screen mth-page">
+          <p className="muted pad">No methodology rules are loaded.</p>
+        </main>
+      </div>
+    );
+  }
 
   const query = filter.trim().toLowerCase();
   // The flow shows what runs: the active rules, and the drafts only when asked.
@@ -42,40 +66,42 @@ export function MethodologyPage() {
   const chapter = all[at];
 
   return (
-    <main className="mth-page">
-      <div className="mth-canvas">
-        <div className="mth-toolbar">
-          <div className="mth-views" role="radiogroup" aria-label="View">
-            {(["tree", "flow"] as const).map((v) => (
-              <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}>
-                {v === "tree" ? "Tree" : "Flow"}
-              </button>
-            ))}
-          </div>
-          <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          {view === "flow" && (
-            <label className="mth-toggle">
-              <input type="checkbox" role="switch" checked={drafts} onChange={(e) => setDrafts(e.target.checked)} /> Show drafts
+    <div className="single-panel-layout methodology-page-layout">
+      <main className="center-screen mth-main-screen mth-page">
+        <div className="mth-canvas">
+          <div className="mth-toolbar">
+            <div className="mth-views" role="radiogroup" aria-label="View">
+              {(["tree", "flow"] as const).map((v) => (
+                <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}>
+                  {v === "tree" ? "Tree" : "Flow"}
+                </button>
+              ))}
+            </div>
+            <input type="search" className="ds-filter" aria-label="Filter rules" placeholder="Filter rules" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            {view === "flow" && (
+              <label className="mth-toggle">
+                <input type="checkbox" role="switch" checked={drafts} onChange={(e) => setDrafts(e.target.checked)} /> Show drafts
+              </label>
+            )}
+            <label className="mth-toggle" title={versionId ? "Light the selected flow's path through the tree" : "Select a flow first"}>
+              <input type="checkbox" role="switch" checked={path && versionId !== undefined} disabled={!versionId} onChange={(e) => setPath(e.target.checked)} /> Pipeline path
             </label>
+            <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
+          </div>
+          {view === "tree" ? (
+            <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+          ) : chapter ? (
+            <>
+              <Stepper all={all} at={at} reviews={reviews} onChoose={setChapterKey} />
+              <FlowMap chapter={chapter} reviews={reviews} path={path && versionId !== undefined} {...ends(all, at)} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
+            </>
+          ) : (
+            <p className="muted pad">No rule matches.</p>
           )}
-          <label className="mth-toggle" title={versionId ? "Light the selected flow's path through the tree" : "Select a flow first"}>
-            <input type="checkbox" role="switch" checked={path && versionId !== undefined} disabled={!versionId} onChange={(e) => setPath(e.target.checked)} /> Pipeline path
-          </label>
-          <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error?.message} />
         </div>
-        {view === "tree" ? (
-          <MethodologyMap rules={shown} reviews={reviews} path={path && versionId !== undefined} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
-        ) : chapter ? (
-          <>
-            <Stepper all={all} at={at} reviews={reviews} onChoose={setChapterKey} />
-            <FlowMap chapter={chapter} reviews={reviews} path={path && versionId !== undefined} {...ends(all, at)} picked={current?.id === pickedRule ? picked : current?.id} onPick={setPicked} />
-          </>
-        ) : (
-          <p className="muted pad">No rule matches.</p>
-        )}
-      </div>
-      <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} route={pickedRoute} />}</aside>
-    </main>
+        <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} route={pickedRoute} />}</aside>
+      </main>
+    </div>
   );
 }
 

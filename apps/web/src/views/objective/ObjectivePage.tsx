@@ -11,6 +11,7 @@ import { Tag } from "../../components/ui/Tag.tsx";
 import { SendIcon } from "../Icons.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { stepTitle } from "../../flow/stages.ts";
+import { timestamp } from "../../flow/edit.ts";
 
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
 const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -123,7 +124,7 @@ export function ObjectivePage() {
       unknowns: lines(formUnknowns).map((u): Unknown => ({ question: u, blocks: "execution" })),
       acceptance_criteria: lines(formCriteria).map(fact),
       ...(costs ? { costs } : {}),
-      created_at: new Date().toISOString(),
+      created_at: timestamp(),
     };
 
     saveQuestion.mutate(newQuestion, {
@@ -157,54 +158,57 @@ export function ObjectivePage() {
   // Empty state when no question versions exist at the backend yet
   if (questions.length === 0 && !isEditing) {
     return (
-      <main className="objective-empty-screen">
-        <div className="objective-empty-card">
-          <h1 className="objective-empty-title">What do you want to find out?</h1>
-          <p className="objective-empty-sub">
-            Describe the investigation goal in your own words. Sprisk records the question as an immutable revision
-            that guides methodology decisions and flow design.
-          </p>
+      <div className="single-panel-layout objective-page-layout">
+        <main className="center-screen objective-empty-screen">
+          <div className="objective-empty-card">
+            <h1 className="objective-empty-title">What do you want to find out?</h1>
+            <p className="objective-empty-sub">
+              Describe the investigation goal in your own words. Sprisk records the question as an immutable revision
+              that guides methodology decisions and flow design.
+            </p>
 
-          <div className="objective-input-box">
-            {tables.length > 0 && (
-              <div className="objective-file-chip">
-                <code>{tables[0]!.name}</code>
-                <span>({tables[0]!.total_rows.toLocaleString()} rows)</span>
+            <div className="objective-input-box">
+              {tables.length > 0 && (
+                <div className="objective-file-chip">
+                  <code>{tables[0]!.name}</code>
+                  <span>({tables[0]!.total_rows.toLocaleString()} rows)</span>
+                </div>
+              )}
+              <textarea
+                className="objective-textarea"
+                value={formObjective}
+                onChange={(e) => setFormObjective(e.target.value)}
+                placeholder="e.g. Predict which customers will churn within the next 90 days."
+                rows={3}
+              />
+              <div className="objective-input-foot">
+                <div className="objective-input-actions">
+                  <Tag tone="default">Objective</Tag>
+                </div>
+                <button
+                  type="button"
+                  className="objective-send-btn"
+                  disabled={!formObjective.trim()}
+                  onClick={() => {
+                    openEditor();
+                    setFormObjective(formObjective);
+                  }}
+                  title="Continue to question specification"
+                >
+                  <SendIcon />
+                </button>
               </div>
-            )}
-            <textarea
-              className="objective-textarea"
-              value={formObjective}
-              onChange={(e) => setFormObjective(e.target.value)}
-              placeholder="e.g. Predict which customers will churn within the next 90 days."
-              rows={3}
-            />
-            <div className="objective-input-foot">
-              <div className="objective-input-actions">
-                <Tag tone="default">Objective</Tag>
-              </div>
-              <button
-                type="button"
-                className="objective-send-btn"
-                disabled={!formObjective.trim()}
-                onClick={() => {
-                  openEditor();
-                  setFormObjective(formObjective);
-                }}
-                title="Continue to question specification"
-              >
-                <SendIcon />
-              </button>
             </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     );
   }
 
   return (
-    <div className="objective-screen">
-      <div className="objective-center">
+    <div className="single-panel-layout objective-page-layout">
+      <main className="center-screen objective-screen">
+        <div className="objective-center">
         {/* Subtabs strip */}
         <div className="objective-subtabs">
           <div className="subtabs-left">
@@ -452,215 +456,236 @@ export function ObjectivePage() {
         {/* Modal / Overlay Editor */}
         {isEditing && (
           <div
+            className="objective-modal-backdrop"
             role="dialog"
-            aria-label="New question"
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: "rgba(0, 0, 0, 0.6)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-              padding: 24,
-            }}
+            aria-modal="true"
+            aria-label="Question Revision"
+            onClick={() => setIsEditing(false)}
           >
             <div
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border-panel)",
-                borderRadius: 8,
-                maxWidth: 640,
-                width: "100%",
-                maxHeight: "90vh",
-                overflowY: "auto",
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-                padding: 24,
-              }}
+              className="objective-modal-card"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h2 style={{ fontSize: "var(--fs-18)", margin: 0, color: "var(--text-primary)" }}>
-                  Question Revision
-                </h2>
+              <div className="objective-modal-header">
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <h2 className="objective-modal-title">Question Revision</h2>
+                  <Tag tone="default">Specification</Tag>
+                </div>
                 <button
                   type="button"
+                  className="objective-modal-close"
                   onClick={() => setIsEditing(false)}
-                  style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 18 }}
+                  title="Close"
+                  aria-label="Close"
                 >
                   ✕
                 </button>
               </div>
 
               {formError && (
-                <p role="alert" className="error" style={{ margin: 0 }}>
-                  {formError}
-                </p>
+                <div className="ds-error-banner" role="alert" style={{ margin: "16px 20px 0" }}>
+                  <span style={{ fontSize: 14 }}>⚠</span>
+                  <div style={{ flex: 1 }}>{formError}</div>
+                </div>
               )}
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-                <strong>Objective</strong>
-                <textarea
-                  className="ds-input"
-                  rows={2}
-                  value={formObjective}
-                  onChange={(e) => setFormObjective(e.target.value)}
-                  placeholder="e.g. Predict which orders will be returned within 30 days."
-                />
-              </label>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-                  <strong>Task</strong>
-                  <select
-                    className="ds-input"
-                    value={formTask}
-                    onChange={(e) => setFormTask(e.target.value as TaskType)}
-                  >
-                    <option value="classification">Classification</option>
-                    <option value="regression">Regression</option>
-                    <option value="clustering">Clustering</option>
-                    <option value="anomaly_detection">Anomaly Detection</option>
-                    <option value="ranking">Ranking</option>
-                  </select>
-                </label>
-
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-                  <strong>Target Variable</strong>
-                  <input
-                    type="text"
-                    className="ds-input"
-                    value={formTarget}
-                    onChange={(e) => setFormTarget(e.target.value)}
-                    placeholder="e.g. returned_within_30d"
-                  />
-                </label>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-                  <strong>Unit of Analysis</strong>
-                  <input
-                    type="text"
-                    className="ds-input"
-                    value={formUnit}
-                    onChange={(e) => setFormUnit(e.target.value)}
-                    placeholder="e.g. order"
-                  />
-                </label>
-
-                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-                  <strong>Prediction Horizon</strong>
-                  <input
-                    type="text"
-                    className="ds-input"
-                    value={formHorizon}
-                    onChange={(e) => setFormHorizon(e.target.value)}
-                    placeholder="e.g. P30D"
-                  />
-                </label>
-              </div>
-
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-                <strong>Assumptions (one per line)</strong>
-                <textarea
-                  className="ds-input"
-                  rows={2}
-                  value={formAssumptions}
-                  onChange={(e) => setFormAssumptions(e.target.value)}
-                  placeholder="e.g. Return labels are complete after 30 days."
-                />
-              </label>
-
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-                <strong>Unknowns (one per line)</strong>
-                <textarea
-                  className="ds-input"
-                  rows={2}
-                  value={formUnknowns}
-                  onChange={(e) => setFormUnknowns(e.target.value)}
-                  placeholder="e.g. Are exchanges counted as returns?"
-                />
-              </label>
-
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
-                <strong>Acceptance Criteria (one per line)</strong>
-                <textarea
-                  className="ds-input"
-                  rows={2}
-                  value={formCriteria}
-                  onChange={(e) => setFormCriteria(e.target.value)}
-                  placeholder="e.g. Average precision beats the dummy baseline on temporal validation."
-                />
-              </label>
-
-              <fieldset
-                aria-label="Misclassification costs"
-                style={{
-                  border: "1px solid var(--border-panel)",
-                  borderRadius: 6,
-                  padding: 12,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
-                <legend style={{ fontSize: "var(--fs-12)", fontWeight: 500, padding: "0 6px" }}>
-                  Misclassification Costs
-                </legend>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-12)" }}>
-                    <span>Positive class</span>
-                    <input
-                      type="text"
-                      className="ds-input"
-                      aria-label="Positive class"
-                      value={formPositive}
-                      onChange={(e) => setFormPositive(e.target.value)}
-                      placeholder="e.g. bad"
-                    />
+              <div className="objective-modal-body">
+                <div className="ds-form-field">
+                  <label className="ds-form-label" htmlFor="obj-field-goal">
+                    <span>Objective</span>
+                    <span className="ds-form-label-sub">Primary research question</span>
                   </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-12)" }}>
-                    <span>False-negative cost</span>
-                    <input
-                      type="text"
-                      className="ds-input"
-                      aria-label="False-negative cost"
-                      value={formFalseNegative}
-                      onChange={(e) => setFormFalseNegative(e.target.value)}
-                      placeholder="e.g. 5"
-                    />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-12)" }}>
-                    <span>False-positive cost</span>
-                    <input
-                      type="text"
-                      className="ds-input"
-                      aria-label="False-positive cost"
-                      value={formFalsePositive}
-                      onChange={(e) => setFormFalsePositive(e.target.value)}
-                      placeholder="e.g. 1"
-                    />
-                  </label>
+                  <textarea
+                    id="obj-field-goal"
+                    className="ds-textarea"
+                    rows={2}
+                    value={formObjective}
+                    onChange={(e) => setFormObjective(e.target.value)}
+                    placeholder="e.g. Predict which orders will be returned within 30 days."
+                  />
                 </div>
-              </fieldset>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div className="ds-form-field">
+                    <label className="ds-form-label" htmlFor="obj-field-task">
+                      <span>Task</span>
+                      <span className="ds-form-label-sub">Modeling type</span>
+                    </label>
+                    <select
+                      id="obj-field-task"
+                      className="ds-select"
+                      value={formTask}
+                      onChange={(e) => setFormTask(e.target.value as TaskType)}
+                    >
+                      <option value="classification">Classification</option>
+                      <option value="regression">Regression</option>
+                      <option value="clustering">Clustering</option>
+                      <option value="anomaly_detection">Anomaly Detection</option>
+                      <option value="ranking">Ranking</option>
+                    </select>
+                  </div>
+
+                  <div className="ds-form-field">
+                    <label className="ds-form-label" htmlFor="obj-field-target">
+                      <span>Target Variable</span>
+                      <span className="ds-form-label-sub">Prediction target</span>
+                    </label>
+                    <input
+                      id="obj-field-target"
+                      type="text"
+                      className="ds-input mono"
+                      value={formTarget}
+                      onChange={(e) => setFormTarget(e.target.value)}
+                      placeholder="e.g. returned_within_30d"
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div className="ds-form-field">
+                    <label className="ds-form-label" htmlFor="obj-field-unit">
+                      <span>Unit of Analysis</span>
+                      <span className="ds-form-label-sub">Row entity</span>
+                    </label>
+                    <input
+                      id="obj-field-unit"
+                      type="text"
+                      className="ds-input"
+                      value={formUnit}
+                      onChange={(e) => setFormUnit(e.target.value)}
+                      placeholder="e.g. order"
+                    />
+                  </div>
+
+                  <div className="ds-form-field">
+                    <label className="ds-form-label" htmlFor="obj-field-horizon">
+                      <span>Prediction Horizon</span>
+                      <span className="ds-form-label-sub">Time scope</span>
+                    </label>
+                    <input
+                      id="obj-field-horizon"
+                      type="text"
+                      className="ds-input mono"
+                      value={formHorizon}
+                      onChange={(e) => setFormHorizon(e.target.value)}
+                      placeholder="e.g. P30D"
+                    />
+                  </div>
+                </div>
+
+                <div className="ds-form-field">
+                  <label className="ds-form-label" htmlFor="obj-field-assumptions">
+                    <span>Assumptions</span>
+                    <span className="ds-form-label-sub">One per line</span>
+                  </label>
+                  <textarea
+                    id="obj-field-assumptions"
+                    className="ds-textarea"
+                    rows={2}
+                    value={formAssumptions}
+                    onChange={(e) => setFormAssumptions(e.target.value)}
+                    placeholder="e.g. Return labels are complete after 30 days."
+                  />
+                </div>
+
+                <div className="ds-form-field">
+                  <label className="ds-form-label" htmlFor="obj-field-unknowns">
+                    <span>Unknowns</span>
+                    <span className="ds-form-label-sub">Questions blocking execution (one per line)</span>
+                  </label>
+                  <textarea
+                    id="obj-field-unknowns"
+                    className="ds-textarea"
+                    rows={2}
+                    value={formUnknowns}
+                    onChange={(e) => setFormUnknowns(e.target.value)}
+                    placeholder="e.g. Are exchanges counted as returns?"
+                  />
+                </div>
+
+                <div className="ds-form-field">
+                  <label className="ds-form-label" htmlFor="obj-field-criteria">
+                    <span>Acceptance Criteria</span>
+                    <span className="ds-form-label-sub">One per line</span>
+                  </label>
+                  <textarea
+                    id="obj-field-criteria"
+                    className="ds-textarea"
+                    rows={2}
+                    value={formCriteria}
+                    onChange={(e) => setFormCriteria(e.target.value)}
+                    placeholder="e.g. Average precision beats the dummy baseline on temporal validation."
+                  />
+                </div>
+
+                {/* Misclassification Costs Card */}
+                <div className="ds-form-card">
+                  <div className="ds-form-card-head">
+                    <span className="ds-form-card-title">Misclassification Costs</span>
+                    <span className="ds-form-card-desc">
+                      Assign asymmetric penalty weights for decisions and error trade-offs
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-cost-pos" style={{ fontSize: "var(--fs-12)" }}>
+                        Positive class
+                      </label>
+                      <input
+                        id="obj-field-cost-pos"
+                        type="text"
+                        className="ds-input mono"
+                        aria-label="Positive class"
+                        value={formPositive}
+                        onChange={(e) => setFormPositive(e.target.value)}
+                        placeholder="e.g. bad"
+                      />
+                    </div>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-cost-fn" style={{ fontSize: "var(--fs-12)" }}>
+                        False-negative cost
+                      </label>
+                      <input
+                        id="obj-field-cost-fn"
+                        type="text"
+                        className="ds-input mono"
+                        aria-label="False-negative cost"
+                        value={formFalseNegative}
+                        onChange={(e) => setFormFalseNegative(e.target.value)}
+                        placeholder="e.g. 5"
+                      />
+                    </div>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-cost-fp" style={{ fontSize: "var(--fs-12)" }}>
+                        False-positive cost
+                      </label>
+                      <input
+                        id="obj-field-cost-fp"
+                        type="text"
+                        className="ds-input mono"
+                        aria-label="False-positive cost"
+                        value={formFalsePositive}
+                        onChange={(e) => setFormFalsePositive(e.target.value)}
+                        placeholder="e.g. 1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="objective-modal-footer">
                 <Button variant="secondary" onClick={() => setIsEditing(false)}>
                   Cancel
                 </Button>
-                <Button variant="primary" onClick={handleSave}>
-                  Save revision
+                <Button variant="primary" disabled={saveQuestion.isPending} onClick={handleSave}>
+                  {saveQuestion.isPending ? "Saving revision…" : "Save revision"}
                 </Button>
               </div>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </main>
+  </div>
   );
 }

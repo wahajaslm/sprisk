@@ -121,58 +121,12 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
       role="region"
       aria-label={`Stage ${data.name}`}
     >
-      <div className="stage-card-header stage-head" title={`Stage: ${data.name} (${data.count} steps) — Click to select, drag to move stage`}>
+      <div className="stage-card-header stage-head" title={`Stage: ${data.name} (${data.count} steps)`}>
         <div className="stage-title-row">
           <h3 className="stage-head stage-name">
             {data.name}
           </h3>
-        </div>
-        <p className="stage-description">{stageDescription(data.name)}</p>
-      </div>
-
-      <div className="stage-card-body" aria-hidden="true" />
-
-      <div className="stage-card-footer">
-        <div className="stage-minimal-actions">
-          <button
-            type="button"
-            className="stage-icon-btn notebook"
-            title={`Open notebook for stage ${data.name}`}
-            onClick={handleOpenNotebook}
-            aria-label={`Open notebook for stage ${data.name}`}
-          >
-            <NotebookIcon />
-          </button>
-          {isLive ? (
-            <button
-              type="button"
-              className="stage-icon-btn stop"
-              title={`Stop stage ${data.name}`}
-              onClick={handleRunAll}
-              aria-label={`Stop stage ${data.name}`}
-            >
-              <StopIcon />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="stage-icon-btn run"
-              title={`Run stage ${data.name}`}
-              onClick={handleRunAll}
-              aria-label={`Run stage ${data.name}`}
-            >
-              <PlayIcon />
-            </button>
-          )}
-          <button
-            type="button"
-            className="stage-icon-btn restart"
-            title={`Restart stage ${data.name}`}
-            onClick={handleRunAll}
-            aria-label={`Restart stage ${data.name}`}
-          >
-            <RestartIcon />
-          </button>
+          <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
         </div>
       </div>
     </div>
@@ -979,6 +933,9 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
           canRedo={redoStack.length > 0}
         />
         <DetailSwitch />
+      </Panel>
+      <Panel position="bottom-right" className="canvas-legend">
+        <Legend />
       </Panel>
     </ReactFlow>
   );

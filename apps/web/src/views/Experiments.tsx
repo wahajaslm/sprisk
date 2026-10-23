@@ -1,6 +1,7 @@
 import type { PipelineVersion, Run } from "@sprisk/contracts";
 
 import { PageHeader } from "../components/ui/PageHeader.tsx";
+import { Button } from "../components/ui/Button.tsx";
 import { useOperators, usePipelineVersions } from "../api/hooks.ts";
 import { type NodeInRun, useFlowRuns, useRunNodes } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
@@ -11,6 +12,7 @@ import { useStudies } from "../api/studies.ts";
 import { ModelComparisons } from "./ModelComparison.tsx";
 import { Studies } from "./Studies.tsx";
 import { formatMetric } from "./NodeFact.tsx";
+import { ExperimentsIcon } from "./Icons.tsx";
 
 /** Runs shown in the table. Each costs a few cached reads per evaluator. */
 const MAX_RUNS = 20;
@@ -18,7 +20,7 @@ const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
 
 /** Every run of the current flow, with what changed and how it scored; two runs compared. */
 export function Experiments() {
-  const { pipelineVersionId, compare, setCompare } = useSelection();
+  const { pipelineVersionId, compare, setCompare, setNav } = useSelection();
   const versions = usePipelineVersions();
   const operators = useOperators();
   const all = versions.data ?? [];
@@ -39,11 +41,28 @@ export function Experiments() {
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (!flow) {
     return (
-      <main className="experiments">
-        <PageHeader eyebrow="Experiments" title="Experiments" description="Open a flow to see its experiments." />
-      </main>
+      <div className="single-panel-layout experiments-page-layout">
+        <main className="center-screen experiments-main experiments">
+          <PageHeader eyebrow="Flow Experiments" title="Experiments & Model Tracking" description="Systematic comparison of pipeline versions, evaluation metrics, and studies." />
+          <div className="experiments-empty-viewport">
+            <div className="experiments-empty-card">
+              <div className="experiments-empty-icon">
+                <ExperimentsIcon size={28} />
+              </div>
+              <h3 className="experiments-empty-title">No Flow Selected</h3>
+              <p className="experiments-empty-sub">
+                Select or open a pipeline flow in Flow Studio to track training runs, compare metric deltas, and analyze model studies.
+              </p>
+              <Button variant="primary" onClick={() => setNav("Flow")}>
+                Open Flow Studio
+              </Button>
+            </div>
+          </div>
+        </main>
+      </div>
     );
   }
+
   const picked = compare.filter((id) => runs.some((r) => r.id === id));
   const pair = (picked.length === 2 ? picked : runs.slice(0, 2).map((r) => r.id)).map((id) => runs.findIndex((r) => r.id === id));
   // Older run first, so changes read "before → after".
@@ -52,36 +71,38 @@ export function Experiments() {
     setCompare(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(-2));
 
   return (
-    <main className="experiments">
-      <PageHeader
-        eyebrow={runs.length === 1 ? "1 run" : `${runs.length} runs`}
-        title={`${flowName(flow.head)}: every run, with what changed`}
-      />
-      <div className="exp-scroll">
-        {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
-        {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
-        {!studies.isPending && (
-          <>
-            <Studies head={flow.head} versions={all} studies={studies.data ?? []} />
-            <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
-          </>
-        )}
-        <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
-      </div>
-      {runs.length < 2 ? (
-        <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
-      ) : (
-        <Compare
-          older={runs[olderAt]}
-          newer={runs[newerAt]}
-          olderNodes={nodes[olderAt] ?? {}}
-          newerNodes={nodes[newerAt] ?? {}}
-          byId={byId}
-          evaluators={evaluators}
-          labelOf={(run) => `#${runs.length - runs.indexOf(run)}`}
+    <div className="single-panel-layout experiments-page-layout">
+      <main className="center-screen experiments-main experiments">
+        <PageHeader
+          eyebrow={runs.length === 1 ? "1 run" : `${runs.length} runs`}
+          title={`${flowName(flow.head)}: every run, with what changed`}
         />
-      )}
-    </main>
+        <div className="exp-scroll">
+          {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
+          {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
+          {!studies.isPending && (
+            <>
+              <Studies head={flow.head} versions={all} studies={studies.data ?? []} />
+              <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
+            </>
+          )}
+          <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
+        </div>
+        {runs.length < 2 ? (
+          <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
+        ) : (
+          <Compare
+            older={runs[olderAt]}
+            newer={runs[newerAt]}
+            olderNodes={nodes[olderAt] ?? {}}
+            newerNodes={nodes[newerAt] ?? {}}
+            byId={byId}
+            evaluators={evaluators}
+            labelOf={(run) => `#${runs.length - runs.indexOf(run)}`}
+          />
+        )}
+      </main>
+    </div>
   );
 }
 

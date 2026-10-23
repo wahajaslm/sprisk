@@ -8,7 +8,11 @@ import { flowName } from "../../flow/labels.ts";
 import { shortName } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useSelection } from "../../workbench/selection.ts";
+import { useWorkbench } from "../../workbench/workbench.ts";
+import { PanelToggleIcon } from "../Icons.tsx";
 import { DatasetDetail } from "./DatasetDetail.tsx";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { InfoDock } from "../../components/ui/InfoDock.tsx";
 
 /** Every table the flows load, and a profile of the one picked (ADR-0038, ADR-0061). */
 export function DatasetsPage() {
@@ -16,6 +20,7 @@ export function DatasetsPage() {
   const versions = usePipelineVersions();
   const showRun = useSelection((s) => s.showRun);
   const setNav = useSelection((s) => s.setNav);
+  const { sidebarOpen, toggleSidebar } = useWorkbench();
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (datasets.isError) return <p role="alert" className="error pad">{datasets.error.message}</p>;
@@ -27,79 +32,95 @@ export function DatasetsPage() {
   const first = current?.used_by[0];
 
   return (
-    <main className="dsx">
-      <aside className="dsx-side" aria-label="Datasets">
-        <header className="dsx-side-head">
-          <p className="eyebrow">Datasets · {list.length === 1 ? "1 table" : `${list.length} tables`}</p>
-          <input
-            type="search"
-            className="ds-filter"
-            aria-label="Filter datasets"
-            placeholder="Filter datasets"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        </header>
-        {list.length === 0 ? (
-          <p className="muted pad">No datasets yet. Run a flow that loads a file to see it here.</p>
+    <div className={`datasets-page-layout dsx ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
+      <aside className={`main-sidebar dsx-side ${sidebarOpen ? "" : "sidebar-rail-wrap"}`} aria-label="Datasets">
+        {!sidebarOpen ? (
+          <div className="sidebar-rail" aria-label="Datasets rail">
+            <button
+              type="button"
+              className="sidebar-toggle-btn"
+              title="Expand Datasets sidebar"
+              aria-label="Expand Datasets sidebar"
+              onClick={toggleSidebar}
+            >
+              <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
+            </button>
+            <span
+              className="sidebar-rail-label"
+              role="button"
+              tabIndex={0}
+              onClick={toggleSidebar}
+            >
+              Datasets
+            </span>
+          </div>
         ) : (
-          <ul className="dsx-list" aria-label="Dataset list">
-            {shown.map((d) => (
-              <li key={d.artifact.id}>
+          <>
+            <div className="sidebar-header">
+              <div className="sidebar-title-row">
+                <h2 className="sidebar-title">Datasets</h2>
+                <span className="sidebar-meta">{list.length === 1 ? "1 table" : `${list.length} tables`}</span>
+                <div style={{ flex: 1 }} />
                 <button
                   type="button"
-                  className={`dsx-item${d === current ? " picked" : ""}`}
-                  aria-pressed={d === current}
-                  onClick={() => setPicked(d.artifact.id)}
+                  className="sidebar-toggle-btn"
+                  title="Collapse Datasets sidebar"
+                  aria-label="Collapse Datasets sidebar"
+                  onClick={toggleSidebar}
                 >
-                  <span className="dsx-item-name">{d.name}</span>
-                  <span className="dsx-item-meta">
-                    {d.total_rows.toLocaleString()} rows · {d.total_columns} cols
-                  </span>
-                  <span className="dsx-item-meta">{shortName(d.operator)}</span>
+                  <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {current && (
-          <div className="dsx-side-meta-panel" aria-label={`Metadata for ${current.name}`}>
-            <div className="dsx-side-meta-head">
-              <span className="dsx-side-meta-title">{current.name}</span>
-              <span className="dsx-side-meta-op">Loaded by {shortName(current.operator)}</span>
+              </div>
+              <div className="sidebar-search">
+                <SearchField
+                  value={filter}
+                  onChange={setFilter}
+                  placeholder="Search datasets"
+                  ariaLabel="Filter datasets"
+                />
+              </div>
             </div>
-            <dl className="dsx-side-meta-list">
-              <div>
-                <dt>Rows</dt>
-                <dd>{current.total_rows.toLocaleString()}</dd>
+            {list.length === 0 ? (
+              <p className="muted pad" style={{ fontSize: "var(--fs-12)" }}>
+                No datasets yet. Run a flow that loads a file to see it here.
+              </p>
+            ) : (
+              <div className="sidebar-list dsx-list" role="list" aria-label="Dataset list">
+                {shown.map((d) => (
+                  <button
+                    key={d.artifact.id}
+                    type="button"
+                    className={`step-item dsx-item ${d === current ? "selected" : ""}`}
+                    aria-pressed={d === current}
+                    onClick={() => setPicked(d.artifact.id)}
+                    style={{ width: "100%", height: "auto", padding: "8px 10px", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}
+                  >
+                    <span className="step-item-name">{d.name}</span>
+                    <span className="step-item-meta">
+                      {d.total_rows.toLocaleString()} rows · {d.total_columns} cols · {shortName(d.operator)}
+                    </span>
+                  </button>
+                ))}
               </div>
-              <div>
-                <dt>Columns</dt>
-                <dd>{current.total_columns}</dd>
-              </div>
-              <div>
-                <dt>Used by</dt>
-                <dd className="dsx-used">{usedBy(current).join(", ") || "—"}</dd>
-              </div>
-            </dl>
-            {first && (
-              <button
-                type="button"
-                className="page-btn ds-open-btn"
-                aria-label={`Open ${current.name} in Flow`}
-                onClick={() => {
-                  showRun(first.pipeline_version_id, first.run_id, first.node_id);
-                  setNav("Flow");
-                }}
-              >
-                Open in Flow
-              </button>
             )}
-          </div>
+            {current && (
+              <InfoDock
+                title="Info"
+                rows={[
+                  { k: "Rows", v: current.total_rows.toLocaleString() },
+                  { k: "Columns", v: String(current.total_columns) },
+                  { k: "Used by", v: `${usedBy(current).length || 1} flows` },
+                ]}
+              />
+            )}
+          </>
         )}
       </aside>
-      <div className="dsx-main">{current && <DatasetDetail key={current.artifact.id} dataset={current} usedBy={usedBy(current)} />}</div>
-    </main>
+
+      <main className="center-screen dsx-main">
+        {current && <DatasetDetail key={current.artifact.id} dataset={current} usedBy={usedBy(current)} />}
+      </main>
+    </div>
   );
 }
 

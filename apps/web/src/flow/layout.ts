@@ -11,18 +11,18 @@ export type Group = { id: string; count: number } & Point & Size;
 
 /** Room above a group's steps for its card header. */
 export const STAGE_PAD_X = 20;
-export const STAGE_HEAD_HEIGHT = 186;
+export const STAGE_HEAD_HEIGHT = 44;
 export const STAGE_FOOTER_HEIGHT = 44;
-export const MIN_STAGE_CARD_WIDTH = 320;
-export const MIN_STAGE_CARD_HEIGHT = 480;
+export const MIN_STAGE_CARD_WIDTH = 216;
+export const MIN_STAGE_CARD_HEIGHT = 110;
 export const GROUP_HEAD = STAGE_HEAD_HEIGHT;
 
 const LAYERED = {
   "elk.algorithm": "layered",
   "elk.direction": "RIGHT",
-  // Flow Studio design: columns 320px wide, 40px apart.
-  "elk.layered.spacing.nodeNodeBetweenLayers": "40",
-  "elk.spacing.nodeNode": "20",
+  // Flow Studio design: columns 216px wide, 36px apart.
+  "elk.layered.spacing.nodeNodeBetweenLayers": "36",
+  "elk.spacing.nodeNode": "14",
   "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
 };
 
@@ -61,7 +61,7 @@ export async function flowPositions(
       ...[...inner].map(([name, g]) => ({
         id: `group:${name}`,
         width: Math.round(Math.max(g.width + STAGE_PAD_X * 2, MIN_STAGE_CARD_WIDTH)),
-        height: Math.round(Math.max(g.height + STAGE_HEAD_HEIGHT + STAGE_FOOTER_HEIGHT + 36, MIN_STAGE_CARD_HEIGHT)),
+        height: Math.round(Math.max(g.height + STAGE_HEAD_HEIGHT + 16, MIN_STAGE_CARD_HEIGHT)),
       })),
     ],
     edges: links.flatMap((l, i) => {
@@ -86,7 +86,7 @@ export async function flowPositions(
   let prevRight = 0;
   const groupPlacedX = new Map<string, number>();
   for (const child of stageGroupsList) {
-    const assignedX = Math.round(Math.max(child.x ?? 0, prevRight > 0 ? prevRight + 64 : (child.x ?? 0)));
+    const assignedX = Math.round(Math.max(child.x ?? 0, prevRight > 0 ? prevRight + 36 : (child.x ?? 0)));
     groupPlacedX.set(child.id, assignedX);
     const g = inner.get(child.id.slice("group:".length));
     const cardWidth = Math.round(child.width ?? Math.max((g?.width ?? 0) + STAGE_PAD_X * 2, MIN_STAGE_CARD_WIDTH));
@@ -104,7 +104,7 @@ export async function flowPositions(
     const g = inner.get(name);
     const steps = g?.at ?? new Map<string, Point>();
     const cardWidth = Math.round(child.width ?? Math.max((g?.width ?? 0) + STAGE_PAD_X * 2, MIN_STAGE_CARD_WIDTH));
-    const cardHeight = Math.round(child.height ?? Math.max(((g?.height ?? 0) + STAGE_HEAD_HEIGHT + STAGE_FOOTER_HEIGHT + 36), MIN_STAGE_CARD_HEIGHT));
+    const cardHeight = Math.round(child.height ?? Math.max((g?.height ?? 0) + STAGE_HEAD_HEIGHT + 16, MIN_STAGE_CARD_HEIGHT));
     for (const [id, p] of steps) {
       nodes.set(id, { x: Math.round(x + STAGE_PAD_X + p.x), y: Math.round(y + STAGE_HEAD_HEIGHT + p.y) });
     }
@@ -127,7 +127,7 @@ export function keepDragged<T extends { id: string; position: Point }>(computed:
   return computed.map((n) => ({ ...n, position: dragged.has(n.id) ? (at.get(n.id) ?? n.position) : n.position }));
 }
 
-const STAGE_GAP = 28;
+const STAGE_GAP = 12;
 
 /** A stage's steps in one column: each below the steps it reads, otherwise in flow order.
  * Compact and predictable, whatever the steps' size. */
