@@ -9,6 +9,7 @@
 | [research/](research/) | Research notes behind decisions, with sources. |
 | [design/](design/sprisk-studio.html) | sprisk Studio UI concept. Reference only, not a contract. |
 | [design/methodology-rules.md](design/methodology-rules.md) | Design of methodology rules and checks (ADR-0040, ADR-0042). |
+| [design/deterministic-investigation-loop.md](design/deterministic-investigation-loop.md) | Proposed implementation spec for scientific rules, experiments, evidence assessment and bounded investigation (ADR-0054). |
 | [backlog.md](backlog.md) | Work deliberately deferred, with source and milestone. |
 
 ## Rules

@@ -18,6 +18,8 @@ Remove an item when it is done; link the commit or ADR.
 ## Methodology
 | Item | Source | Milestone |
 | --- | --- | --- |
+| Deterministic investigation: final-evaluation access ledger and frozen-candidate protocol; first loop stops at a development recommendation | ADR-0054 / deterministic-investigation-loop spec §9 | after INV-01–20 acceptance |
+| Investigation strategies for thresholding, calibration, learning curves, joint preprocessing/model search, continuous search and additional task families | ADR-0054 / deterministic-investigation-loop spec §16 | after the first deterministic loop; each needs operators, checks and fixtures |
 | Remaining Supervised rules: chronology, baseline included, duplicates across split, target proxies, group split, imbalance metric | ADR-0015 | M3 |
 | Exploration pack rules | ADR-0015 | M3 |
 | `split_leakage`: detect selection across pipeline versions that reuse one split (key on split artifact hash) | methodology review | M3 |
