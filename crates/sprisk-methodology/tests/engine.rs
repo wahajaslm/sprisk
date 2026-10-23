@@ -10,7 +10,11 @@ use sprisk_methodology::engine::{
 };
 
 fn catalog() -> RuleCatalog {
-    RuleCatalog::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology")).unwrap()
+    RuleCatalog::load_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology"),
+        [],
+    )
+    .unwrap()
 }
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";

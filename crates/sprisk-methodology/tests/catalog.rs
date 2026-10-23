@@ -70,12 +70,14 @@ fn write_active(root: &Path, folder: &str, manifest: &str) {
 fn refused(manifest: &str) -> String {
     let dir = tempfile::tempdir().unwrap();
     write_active(dir.path(), "a", manifest);
-    RuleCatalog::load_dir(dir.path()).unwrap_err().to_string()
+    RuleCatalog::load_dir(dir.path(), [])
+        .unwrap_err()
+        .to_string()
 }
 
 #[test]
 fn every_rule_in_the_repo_loads_with_its_manifest_as_source() {
-    let catalog = RuleCatalog::load_dir(&repo_methodology()).unwrap();
+    let catalog = RuleCatalog::load_dir(&repo_methodology(), []).unwrap();
     assert_eq!(catalog.rules().count(), 65);
 
     let source = catalog
@@ -103,7 +105,7 @@ fn a_python_module_beside_the_manifest_is_served_as_source() {
         ),
     );
 
-    let catalog = RuleCatalog::load_dir(dir.path()).unwrap();
+    let catalog = RuleCatalog::load_dir(dir.path(), []).unwrap();
     let paths: Vec<_> = catalog
         .source("methodology.pack.a@1.0.0")
         .unwrap()
@@ -116,7 +118,7 @@ fn a_python_module_beside_the_manifest_is_served_as_source() {
 
 #[test]
 fn a_step_is_routed_to_the_active_rule_that_applies_to_its_operator() {
-    let catalog = RuleCatalog::load_dir(&repo_methodology()).unwrap();
+    let catalog = RuleCatalog::load_dir(&repo_methodology(), []).unwrap();
     let rule = catalog
         .rules_for_operator("sprisk.clean.scale@1.0.0")
         .next()
@@ -145,7 +147,9 @@ fn an_active_rule_without_rule_py_is_refused() {
         READS_AND_EXAMPLE,
     );
     fs::write(rule.join("rule.yaml"), manifest).unwrap();
-    let err = RuleCatalog::load_dir(dir.path()).unwrap_err().to_string();
+    let err = RuleCatalog::load_dir(dir.path(), [])
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("rule.py"), "{err}");
 }
 
@@ -158,7 +162,9 @@ fn a_draft_rule_with_code_is_refused() {
         "def decide(o):\n    return None\n",
     )
     .unwrap();
-    let err = RuleCatalog::load_dir(dir.path()).unwrap_err().to_string();
+    let err = RuleCatalog::load_dir(dir.path(), [])
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("draft"), "{err}");
 }
 
@@ -213,7 +219,7 @@ fn a_when_may_name_the_rules_settings_and_nothing_else() {
     };
     let dir = tempfile::tempdir().unwrap();
     write_active(dir.path(), "a", &with("more than {limit} categories"));
-    RuleCatalog::load_dir(dir.path()).unwrap();
+    RuleCatalog::load_dir(dir.path(), []).unwrap();
     let err = refused(&with("more than {limt} categories"));
     assert!(err.contains("limt"), "{err}");
 }
@@ -287,7 +293,7 @@ fn a_step_has_each_active_rule_that_decides_something_about_it_in_workflow_order
             .replace("stage: cleaning", &format!("stage: {stage}"));
         write_active(dir.path(), folder, &manifest);
     }
-    let catalog = RuleCatalog::load_dir(dir.path()).unwrap();
+    let catalog = RuleCatalog::load_dir(dir.path(), []).unwrap();
     let decides: Vec<String> = catalog
         .rules_for_operator("sprisk.clean.scale@1.0.0")
         .map(|rule| rule.decides.to_string())
@@ -301,7 +307,7 @@ fn two_rules_owning_the_same_decision_are_refused() {
     write_rule(dir.path(), "a", "methodology.pack.a@1.0.0", "cleaning.same");
     write_rule(dir.path(), "b", "methodology.pack.b@1.0.0", "cleaning.same");
 
-    let err = RuleCatalog::load_dir(dir.path()).unwrap_err();
+    let err = RuleCatalog::load_dir(dir.path(), []).unwrap_err();
     assert!(
         matches!(err, CatalogError::DuplicateDecision { .. }),
         "{err}"
@@ -313,13 +319,13 @@ fn an_invalid_manifest_is_refused_with_its_path() {
     let dir = tempfile::tempdir().unwrap();
     write_rule(dir.path(), "a", "not-a-rule-id", "cleaning.a");
 
-    let err = RuleCatalog::load_dir(dir.path()).unwrap_err();
+    let err = RuleCatalog::load_dir(dir.path(), []).unwrap_err();
     assert!(err.to_string().contains("pack/rules/a/rule.yaml"), "{err}");
 }
 
 #[test]
 fn an_unknown_rule_has_no_source() {
-    let catalog = RuleCatalog::load_dir(&repo_methodology()).unwrap();
+    let catalog = RuleCatalog::load_dir(&repo_methodology(), []).unwrap();
     assert!(matches!(
         catalog.source("methodology.pack.none@1.0.0"),
         Err(CatalogError::UnknownRule(_))
@@ -332,7 +338,7 @@ fn one_rule_id_in_two_folders_is_refused() {
     write_rule(dir.path(), "a", "methodology.pack.a@1.0.0", "cleaning.a");
     write_rule(dir.path(), "b", "methodology.pack.a@1.0.0", "cleaning.b");
 
-    let err = RuleCatalog::load_dir(dir.path()).unwrap_err();
+    let err = RuleCatalog::load_dir(dir.path(), []).unwrap_err();
     assert!(matches!(err, CatalogError::DuplicateId { .. }), "{err}");
 }
 
@@ -343,7 +349,7 @@ fn a_manifest_that_is_not_yaml_is_refused() {
     fs::create_dir_all(&rule).unwrap();
     fs::write(rule.join("rule.yaml"), "id: [unclosed\n").unwrap();
 
-    let err = RuleCatalog::load_dir(dir.path()).unwrap_err();
+    let err = RuleCatalog::load_dir(dir.path(), []).unwrap_err();
     assert!(matches!(err, CatalogError::Yaml { .. }), "{err}");
 }
 
@@ -369,7 +375,9 @@ fn a_draft_rule_is_never_routed() {
         "status: draft\napplies_to: [sprisk.clean.scale]\n",
     );
     fs::write(&path, manifest).unwrap();
-    let err = RuleCatalog::load_dir(dir.path()).unwrap_err().to_string();
+    let err = RuleCatalog::load_dir(dir.path(), [])
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("applies_to"), "{err}");
 }
 
@@ -400,7 +408,7 @@ fn a_shortlist_rule_loads_with_candidates_from_the_registry() {
     let dir = tempfile::tempdir().unwrap();
     let examples = "[{ given: { candidate.ml_dummy_baseline.family: featureless }, shortlist: [ml_dummy_baseline] }]";
     write_active(dir.path(), "a", &shortlist_yaml("[]", examples));
-    RuleCatalog::load_dir(dir.path()).unwrap();
+    RuleCatalog::load_dir(dir.path(), []).unwrap();
 }
 
 #[test]
@@ -450,7 +458,7 @@ fn reopening(params: &str) -> String {
 fn a_rule_that_reopens_names_a_stage() {
     let dir = tempfile::tempdir().unwrap();
     write_active(dir.path(), "a", &reopening(", params: { stage: features }"));
-    RuleCatalog::load_dir(dir.path()).unwrap();
+    RuleCatalog::load_dir(dir.path(), []).unwrap();
 
     assert!(refused(&reopening("")).contains("reopen"));
     assert!(refused(&reopening(", params: { stage: modelling }")).contains("modelling"));

@@ -1,0 +1,15 @@
+schema_version: sprisk.operator/v1
+id: sprisk.verify.group_overlap@1.0.0
+capability_class: analyzer
+entrypoint: sprisk_diagnose.group_overlap:run
+attach: { role: split, side: output }
+concepts: { group_column: core.item_identity }
+produces:
+  evaluation.group_overlap:
+    fields: { overlapping_groups: string_list, train_groups: integer, test_groups: integer }
+inputs: [{ name: train, kind: table }, { name: test, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+params_schema: { type: object, additionalProperties: false, required: [group_column], properties: { group_column: { type: string, minLength: 1 } } }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 512, gpu: none, timeout_seconds: 60 }

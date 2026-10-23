@@ -6,6 +6,7 @@ mod compare;
 mod decision;
 pub mod engine;
 pub mod facts;
+mod methods;
 pub mod review;
 pub mod search;
 pub use catalog::{CatalogError, RuleCatalog, decides, reopened_stage};

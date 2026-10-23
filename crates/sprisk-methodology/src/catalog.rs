@@ -1,4 +1,5 @@
-//! Rule catalog: loads every `rule.yaml` under the methodology root (ADR-0042).
+//! Rule catalog: loads every `rule.yaml` under the methodology root (ADR-0042), and beside
+//! them every `method.yaml` and pack `concepts.yaml` (ADR-0063).
 //!
 //! Each manifest is validated against the `MethodologyRule` contract, and each rule's
 //! files are read once at load, so the code shown is the code on disk at start.
@@ -6,13 +7,15 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use serde::de::DeserializeOwned;
 use serde_json::json;
 use sprisk_contracts::{
-    ContractError, MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource,
-    MethodologyRuleStatus, MethodologyStage, RuleActionType,
+    Concept, ContractError, Method, MethodologyRule, MethodologyRuleSelection,
+    MethodologyRuleSource, MethodologyRuleStatus, MethodologyStage, Operator, RuleActionType,
 };
 
 use crate::facts;
+use crate::methods::{self, ConceptEntry, MethodEntry, Provided};
 use walkdir::WalkDir;
 
 const MANIFEST: &str = "rule.yaml";
@@ -35,7 +38,7 @@ pub enum CatalogError {
         path: PathBuf,
         source: yaml_serde::Error,
     },
-    #[error("{path}: not a valid methodology rule: {source}")]
+    #[error("{path}: not a valid manifest: {source}")]
     Invalid {
         path: PathBuf,
         source: ContractError,
@@ -54,6 +57,20 @@ pub enum CatalogError {
     },
     #[error("{path}: {problem} (ADR-0045)")]
     Manifest { path: PathBuf, problem: String },
+    #[error("{path}: {problem} (ADR-0063)")]
+    Method { path: PathBuf, problem: String },
+    #[error("operator {operator}: {problem} (ADR-0063)")]
+    Operator { operator: String, problem: String },
+    #[error("evidence {0} (ADR-0063)")]
+    Evidence(String),
+    #[error("decisions read each other in a cycle, through {0} (ADR-0063)")]
+    DecisionCycle(String),
+    #[error("concept {id} defined twice: {first} and {second}")]
+    DuplicateConcept {
+        id: String,
+        first: PathBuf,
+        second: PathBuf,
+    },
     #[error("unknown methodology rule {0}")]
     UnknownRule(String),
     #[error("methodology rule {0} has no rule.py")]
@@ -63,6 +80,9 @@ pub enum CatalogError {
 #[derive(Debug, Default)]
 pub struct RuleCatalog {
     rules: BTreeMap<String, Entry>,
+    /// In decision order: a method comes after the methods whose decisions it reads.
+    methods: Vec<MethodEntry>,
+    concepts: BTreeMap<String, ConceptEntry>,
 }
 
 #[derive(Debug)]
@@ -75,14 +95,27 @@ struct Entry {
 }
 
 impl RuleCatalog {
-    pub fn load_dir(root: &Path) -> Result<Self, CatalogError> {
+    /// Loads every pack under `root`. Methods are checked against `operators`, the registered
+    /// operators: each option names one of them, and each evidence kind has one producer.
+    pub fn load_dir<'a>(
+        root: &Path,
+        operators: impl IntoIterator<Item = &'a Operator>,
+    ) -> Result<Self, CatalogError> {
         let mut catalog = Self::default();
+        let mut methods = Vec::new();
         for entry in WalkDir::new(root).sort_by_file_name() {
             let entry = entry.map_err(|source| CatalogError::Walk {
                 root: root.to_owned(),
                 source,
             })?;
-            if entry.file_type().is_file() && entry.file_name() == MANIFEST {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            if entry.file_name() == methods::METHOD {
+                methods.push(methods::read_method(entry.path())?);
+            } else if entry.file_name() == methods::CONCEPTS {
+                methods::read_concepts(entry.path(), &mut catalog.concepts)?;
+            } else if entry.file_name() == MANIFEST {
                 let path = entry.into_path();
                 let text = read(&path)?;
                 let rule = parse_manifest(&path, &text)?;
@@ -102,8 +135,35 @@ impl RuleCatalog {
                 })?;
             }
         }
-        catalog.refuse_shared_decisions()?;
+        refuse_duplicate_methods(&methods)?;
+        catalog.refuse_shared_decisions(&methods)?;
+        let provided = Provided {
+            concepts: &catalog.concepts,
+            operators: operators
+                .into_iter()
+                .map(|op| (op.id.to_string(), op))
+                .collect(),
+            // A draft rule is never routed, so its decision is never made.
+            rule_decisions: catalog
+                .rules()
+                .filter(|r| r.status == MethodologyRuleStatus::Active)
+                .map(|r| r.decides.to_string())
+                .collect(),
+        };
+        catalog.methods = methods::check(methods, &provided)?;
         Ok(catalog)
+    }
+
+    /// Every method, in decision order.
+    pub fn methods(&self) -> impl Iterator<Item = &Method> {
+        self.methods.iter().map(|e| &e.method)
+    }
+
+    /// Every concept the packs define, by id.
+    pub fn concepts(&self) -> impl Iterator<Item = (&str, &Concept)> {
+        self.concepts
+            .iter()
+            .map(|(id, e)| (id.as_str(), &e.concept))
     }
 
     /// Every rule, ordered by ref.
@@ -159,16 +219,21 @@ impl RuleCatalog {
         Ok(())
     }
 
-    /// One owner per decision (ADR-0042).
-    fn refuse_shared_decisions(&self) -> Result<(), CatalogError> {
+    /// One owner per decision, rule or method (ADR-0042, ADR-0063).
+    fn refuse_shared_decisions(&self, methods: &[MethodEntry]) -> Result<(), CatalogError> {
+        let rules = self
+            .rules()
+            .map(|r| (r.decides.to_string(), r.id.to_string()));
+        let methods = methods
+            .iter()
+            .map(|m| (m.method.decides.to_string(), m.method.id.to_string()));
         let mut owners: BTreeMap<String, String> = BTreeMap::new();
-        for rule in self.rules() {
-            let decides = rule.decides.to_string();
-            if let Some(first) = owners.insert(decides.clone(), rule.id.to_string()) {
+        for (decides, owner) in rules.chain(methods) {
+            if let Some(first) = owners.insert(decides.clone(), owner.clone()) {
                 return Err(CatalogError::DuplicateDecision {
                     decides,
                     first,
-                    second: rule.id.to_string(),
+                    second: owner,
                 });
             }
         }
@@ -291,7 +356,27 @@ fn read(path: &Path) -> Result<String, CatalogError> {
     })
 }
 
-fn parse_manifest(path: &Path, text: &str) -> Result<MethodologyRule, CatalogError> {
+fn refuse_duplicate_methods(methods: &[MethodEntry]) -> Result<(), CatalogError> {
+    let mut paths: BTreeMap<String, &Path> = BTreeMap::new();
+    for entry in methods {
+        let id = entry.method.id.to_string();
+        if let Some(first) = paths.insert(id.clone(), &entry.path) {
+            return Err(CatalogError::DuplicateId {
+                id,
+                first: first.to_owned(),
+                second: entry.path.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Reads a YAML manifest and parses it through its contract.
+pub(crate) fn parse_yaml<T: DeserializeOwned>(path: &Path) -> Result<T, CatalogError> {
+    parse_manifest(path, &read(path)?)
+}
+
+fn parse_manifest<T: DeserializeOwned>(path: &Path, text: &str) -> Result<T, CatalogError> {
     let value: serde_json::Value =
         yaml_serde::from_str(text).map_err(|source| CatalogError::Yaml {
             path: path.to_owned(),

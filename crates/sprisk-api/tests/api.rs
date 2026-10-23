@@ -105,15 +105,20 @@ async fn api_with_clock(
         .get("sprisk.methodology.split_rows@1.0.0")
         .unwrap()
         .clone();
+    let plugins = Registry::load_dir(&root.join("plugins")).unwrap();
     let store = Arc::new(SqliteStore::in_memory().await.unwrap());
     let state = AppState {
         clock,
         store: store.clone(),
         artifacts: Arc::new(ArtifactStore::local(&dir.path().join("store")).unwrap()),
-        registry: Arc::new(Registry::load_dir(&root.join("plugins")).unwrap()),
         rules: Arc::new(
-            sprisk_methodology::RuleCatalog::load_dir(&root.join("methodology")).unwrap(),
+            sprisk_methodology::RuleCatalog::load_dir(
+                &root.join("methodology"),
+                plugins.operators(),
+            )
+            .unwrap(),
         ),
+        registry: Arc::new(plugins),
         gate: Some(gate),
         split_check: Some(split_check),
         worker_command: vec![
