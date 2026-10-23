@@ -6,9 +6,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, MethodologyReviewItem,
-    PipelineVersion, PipelineVersionId, RunId, RunStatus, Walk, WalkAction, WalkDetail, WalkId,
-    WalkStatus, WalkStep, WalkStopReason, parse,
+    AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, MethodologyDecision,
+    MethodologyReviewItem, PipelineVersion, PipelineVersionId, RunId, RunStatus, Walk, WalkAction,
+    WalkDetail, WalkId, WalkStatus, WalkStep, WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::engine::{Action, HeadRun, Start, next_action, start};
@@ -16,7 +16,7 @@ use sprisk_methodology::engine::{Action, HeadRun, Start, next_action, start};
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
     check_local_paths, claim_selection, compile, decision_of, drive_run, id, propose, queued_run,
-    review_methodology,
+    review_methodology, run_plan,
 };
 
 /// What the loop-back rule decides; its `max_looks` caps the walk's comparisons too, so the
@@ -121,6 +121,57 @@ pub(crate) async fn get_walk(
     Ok(Json(WalkDetail { walk, steps }))
 }
 
+/// Takes up the walks a stopped server left walking, each from its stored head (ADR-0060),
+/// in the background. Gives how many.
+pub async fn resume_walks(state: &AppState) -> Result<usize, sprisk_store::StoreError> {
+    let walking = state.store.walking_walks().await?;
+    for walk_id in &walking {
+        let (state, id) = (state.clone(), walk_id.clone());
+        tokio::spawn(async move {
+            match finish_left_run(&state, &id).await {
+                Ok(()) => walk_on(&state, &id).await,
+                Err(error) => stop_on_error(&state, &id, error).await,
+            }
+        });
+    }
+    Ok(walking.len())
+}
+
+/// Drives to its end the run the walk's last step names, when the server stopped while it ran:
+/// a round never judges a run still going, and a new run for the same round would be a second.
+async fn finish_left_run(state: &AppState, walk_id: &WalkId) -> Result<(), ApiError> {
+    let walk = state.store.get_walk(walk_id).await?;
+    let steps = state.store.walk_steps(walk_id).await?;
+    let Some(run_id) = steps
+        .last()
+        .filter(|s| matches!(s.action, WalkAction::Run | WalkAction::Compare))
+        .and_then(|s| s.run_id.clone())
+    else {
+        return Ok(());
+    };
+    let run = state.store.get_run(&run_id).await?;
+    if !matches!(run.status, RunStatus::Queued | RunStatus::Running) {
+        return Ok(());
+    }
+    let pipeline = state
+        .store
+        .get_pipeline_version(&run.pipeline_version_id)
+        .await?;
+    // The same checks as its first start: data roots, and key columns left out (ADR-0056).
+    let plan = run_plan(state, &pipeline).await?;
+    drive_run(
+        state,
+        &run_id,
+        &pipeline,
+        &plan,
+        None,
+        Some(deadline(&walk)?),
+    )
+    .await
+    .map_err(|e| ApiError::Internal(format!("run {}: {e}", run_id.as_str())))?;
+    Ok(())
+}
+
 /// Takes rounds until the walk stops. An error stops it too, with the error as its detail,
 /// so a walk never stays `walking` with nothing driving it.
 async fn walk_on(state: &AppState, walk_id: &WalkId) {
@@ -128,20 +179,29 @@ async fn walk_on(state: &AppState, walk_id: &WalkId) {
         match round(state, walk_id).await {
             Ok(WalkStatus::Walking) => continue,
             Ok(WalkStatus::Stopped) => return,
-            Err(error) => {
-                tracing::error!(walk = walk_id.as_str(), error = %error, "walk stopped");
-                let ended = async {
-                    let walk = state.store.get_walk(walk_id).await?;
-                    let round = state.store.walk_steps(walk_id).await?.len();
-                    let detail = format!("The engine could not take its next step: {error}");
-                    record_stop(state, walk, round, WalkStopReason::Error, &detail).await
-                };
-                if let Err(e) = ended.await {
-                    tracing::error!(walk = walk_id.as_str(), error = %e, "could not record how the walk ended");
-                }
-                return;
-            }
+            Err(error) => return stop_on_error(state, walk_id, error).await,
         }
+    }
+}
+
+async fn stop_on_error(state: &AppState, walk_id: &WalkId, error: ApiError) {
+    // Another server took this round first and drives the walk: it is not this one's to stop.
+    if matches!(
+        error,
+        ApiError::Store(sprisk_store::StoreError::Conflict(_))
+    ) {
+        tracing::warn!(walk = walk_id.as_str(), error = %error, "another driver took the round");
+        return;
+    }
+    tracing::error!(walk = walk_id.as_str(), error = %error, "walk stopped");
+    let ended = async {
+        let walk = state.store.get_walk(walk_id).await?;
+        let round = state.store.walk_steps(walk_id).await?.len();
+        let detail = format!("The engine could not take its next step: {error}");
+        record_stop(state, walk, round, WalkStopReason::Error, &detail).await
+    };
+    if let Err(e) = ended.await {
+        tracing::error!(walk = walk_id.as_str(), error = %e, "could not record how the walk ended");
     }
 }
 
@@ -175,6 +235,24 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         return record_stop(state, walk, round, WalkStopReason::BudgetExhausted, &detail).await;
     }
     if state.store.has_pipeline_child(&head).await? {
+        // The apply of this round may have been saved before its step, as a server stopped.
+        if let Some(decision) = state
+            .store
+            .methodology_decision_by_key(&apply_key(&walk, round))
+            .await?
+        {
+            let proposal = state
+                .store
+                .get_methodology_proposal(&decision.proposal_id)
+                .await?;
+            let why = proposal
+                .alternatives
+                .iter()
+                .find(|a| a.id.as_str() == decision.alternative_id.as_str())
+                .map_or("", |a| a.reason.as_str());
+            let reason = format!("{why} (applied before a restart)");
+            return record_apply(state, walk, round, &decision, reason.trim_start()).await;
+        }
         let detail = format!(
             "Version {} gained a version the walk did not make.",
             head.as_str()
@@ -210,12 +288,11 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             let (_, Json(proposal)) =
                 propose(state, head.as_str(), subject, Some(item.decides.as_str())).await?;
             let applying = Applying {
-                item,
                 proposal: &proposal,
                 alternative,
                 reason: item.reason.as_str(),
             };
-            apply(state, walk, round, &head, applying).await
+            apply(state, walk, round, applying).await
         }
         Action::Compare { item, subject } => {
             compare(state, walk, round, &head, deadline, item, subject).await
@@ -279,7 +356,6 @@ async fn changed_source(walk: &Walk) -> Result<Option<String>, ApiError> {
 
 /// A rule's recommended alternative the walk applies, and the proposal it comes from.
 struct Applying<'a> {
-    item: &'a MethodologyReviewItem,
     proposal: &'a DecisionProposal,
     alternative: &'a str,
     reason: &'a str,
@@ -464,23 +540,20 @@ async fn compare(
         return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
     };
     let applying = Applying {
-        item,
         proposal: &selection.proposal,
         alternative: winner.as_str(),
         reason: decision.reason.as_str(),
     };
-    apply(state, walk, round, head, applying).await
+    apply(state, walk, round, applying).await
 }
 
 /// Applies `alternative` to step `subject` through the same Apply as a person, keyed by the
 /// walk and round, so a repeated round gets the saved decision.
 async fn apply(
     state: &AppState,
-    mut walk: Walk,
+    walk: Walk,
     round: usize,
-    head: &PipelineVersionId,
     Applying {
-        item,
         proposal,
         alternative,
         reason,
@@ -488,7 +561,7 @@ async fn apply(
 ) -> Result<WalkStatus, ApiError> {
     let choice = json!({
         "alternative_id": alternative,
-        "idempotency_key": format!("{}-round-{round}", walk.id.as_str()),
+        "idempotency_key": apply_key(&walk, round),
     });
     let applied = apply_methodology(
         State(state.clone()),
@@ -496,8 +569,8 @@ async fn apply(
         choice.to_string(),
     )
     .await;
-    let (decision, pipeline) = match applied {
-        Ok((_, Json(AppliedMethodologyDecision { decision, pipeline }))) => (decision, pipeline),
+    let decision = match applied {
+        Ok((_, Json(AppliedMethodologyDecision { decision, .. }))) => decision,
         // Someone changed the head while this round reviewed it.
         Err(ApiError::BadRequest {
             code: "stale_proposal",
@@ -507,10 +580,33 @@ async fn apply(
         }
         Err(other) => return Err(other),
     };
+    record_apply(state, walk, round, &decision, reason).await
+}
+
+/// The key of the apply a walk takes in `round`: a replayed apply returns the saved decision.
+fn apply_key(walk: &Walk, round: usize) -> String {
+    format!("{}-round-{round}", walk.id.as_str())
+}
+
+/// Records the apply step of `decision` and moves the walk's head to the version it made.
+async fn record_apply(
+    state: &AppState,
+    mut walk: Walk,
+    round: usize,
+    decision: &MethodologyDecision,
+    reason: &str,
+) -> Result<WalkStatus, ApiError> {
+    let decides = state
+        .rules
+        .rule(decision.rule.as_str())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .decides
+        .clone();
     let made = json!({
-        "pipeline_version_id": head, "rule": item.rule, "decides": item.decides,
-        "subject_node_id": proposal.subject_node_id, "alternative_id": alternative,
-        "methodology_decision_id": decision.id, "made_pipeline_version_id": pipeline.id,
+        "pipeline_version_id": decision.base_pipeline_version_id, "rule": decision.rule,
+        "decides": decides, "subject_node_id": decision.subject_node_id,
+        "alternative_id": decision.alternative_id, "methodology_decision_id": decision.id,
+        "made_pipeline_version_id": decision.pipeline_version_id,
     });
     let step = step(
         state,
@@ -520,13 +616,13 @@ async fn apply(
         reason,
         made,
     )?;
-    walk.head_pipeline_version_id = Some(pipeline.id);
+    walk.head_pipeline_version_id = Some(decision.pipeline_version_id.clone());
     state.store.record_walk_step(&walk, &step).await?;
     Ok(WalkStatus::Walking)
 }
 
-/// Runs the head to its end, or to the walk's deadline. The step is recorded before the run
-/// is driven, so the trail names the run even if the server stops during it.
+/// Runs the head to its end, or to the walk's deadline. The run and its step are stored
+/// together before the run is driven, so a server that stops during it resumes that run.
 async fn run(
     state: &AppState,
     walk: Walk,
@@ -537,10 +633,9 @@ async fn run(
 ) -> Result<WalkStatus, ApiError> {
     let pipeline = state.store.get_pipeline_version(head).await?;
     let (queued, plan) = queued_run(state, &pipeline).await?;
-    state.store.insert_run(&queued).await?;
     let ran = json!({ "pipeline_version_id": head, "run_id": queued.id });
     let step = step(state, walk.id.as_str(), round, WalkAction::Run, reason, ran)?;
-    state.store.record_walk_step(&walk, &step).await?;
+    state.store.record_walk_run(&walk, &step, &queued).await?;
     // drive_run logs a run that stops. The next round reads how the run ended, and its review
     // may still act on what a failed run produced.
     // A step that fails ends the run failed, which the next round judges: its review may still

@@ -517,24 +517,39 @@ impl SqliteStore {
             .collect()
     }
 
+    /// The walks still walking: those a stopped server left, to resume (ADR-0060).
+    pub async fn walking_walks(&self) -> Result<Vec<WalkId>, StoreError> {
+        let ids: Vec<String> =
+            sqlx::query_scalar("SELECT id FROM walks WHERE status = 'walking' ORDER BY id")
+                .fetch_all(&self.pool)
+                .await?;
+        ids.into_iter()
+            .map(|id| id.parse().map_err(|_| StoreError::BadId(id)))
+            .collect()
+    }
+
+    /// Stores `run` with the walk step that names it, in one transaction, so a server that
+    /// stops between them leaves neither a run no step names nor a step naming no run.
+    pub async fn record_walk_run(
+        &self,
+        walk: &Walk,
+        step: &WalkStep,
+        run: &Run,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        insert_run(&mut *tx, run).await?;
+        insert_walk_step(&mut tx, step).await?;
+        update_walk(&mut tx, walk).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Appends `step` to its walk and saves `walk` as it stands after it, in one transaction.
     /// A round already recorded is a conflict, and nothing changes.
     pub async fn record_walk_step(&self, walk: &Walk, step: &WalkStep) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await?;
         insert_walk_step(&mut tx, step).await?;
-        let updated = sqlx::query("UPDATE walks SET status = ?, body = ? WHERE id = ?")
-            .bind(walk.status.to_string())
-            .bind(to_json(walk)?)
-            .bind(walk.id.as_str())
-            .execute(&mut *tx)
-            .await?
-            .rows_affected();
-        if updated != 1 {
-            return Err(StoreError::NotFound {
-                entity: "walk",
-                id: walk.id.to_string(),
-            });
-        }
+        update_walk(&mut tx, walk).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -1308,6 +1323,23 @@ async fn insert_run<'e>(db: impl sqlx::SqliteExecutor<'e>, run: &Run) -> Result<
     .bind(to_json(run)?)
     .execute(db)
     .await?;
+    Ok(())
+}
+
+async fn update_walk(tx: &mut Tx<'_>, walk: &Walk) -> Result<(), StoreError> {
+    let updated = sqlx::query("UPDATE walks SET status = ?, body = ? WHERE id = ?")
+        .bind(walk.status.to_string())
+        .bind(to_json(walk)?)
+        .bind(walk.id.as_str())
+        .execute(&mut **tx)
+        .await?
+        .rows_affected();
+    if updated != 1 {
+        return Err(StoreError::NotFound {
+            entity: "walk",
+            id: walk.id.to_string(),
+        });
+    }
     Ok(())
 }
 

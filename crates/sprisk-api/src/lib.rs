@@ -12,6 +12,7 @@ mod profile;
 mod rules;
 mod split;
 pub use bounded::ProcessError;
+pub use engine::resume_walks;
 pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use notebook_code::CodeWriter;
 use profile::Profiles;

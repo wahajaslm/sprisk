@@ -9,7 +9,9 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sprisk_api::{AppState, KernelLimits, Kernels, KeyMatcher, Profiler, Splitter, router};
+use sprisk_api::{
+    AppState, KernelLimits, Kernels, KeyMatcher, Profiler, Splitter, resume_walks, router,
+};
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{OperatorSource, parse};
 use sprisk_registry::Registry;
@@ -26,6 +28,7 @@ struct Api {
     csv: PathBuf,
     kernels: Kernels,
     store: Arc<SqliteStore>,
+    state: AppState,
 }
 
 const KERNEL_LIMITS: KernelLimits = KernelLimits {
@@ -166,10 +169,11 @@ async fn api_with_clock(
     };
     Api {
         _dir: dir,
-        app: router(state),
+        app: router(state.clone()),
         csv,
         kernels,
         store,
+        state,
     }
 }
 
@@ -5562,6 +5566,142 @@ async fn a_walk_whose_source_changes_stops_as_source_changed() {
     );
     let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
     assert!(why.contains("d.csv"), "{why}");
+}
+
+/// A walk still walking, as a stopped server leaves it: built, its head the first flow, and
+/// nothing driving it. Gives the walk and its head.
+async fn walk_left_walking(api: &Api) -> (sprisk_contracts::Walk, String) {
+    let question = api
+        .store
+        .get_question_version(&parse("\"qv_01JABCDEFGHJKMNPQRSTVWXYZ0\"").unwrap())
+        .await
+        .unwrap();
+    let sources = vec![api.csv.display().to_string()];
+    let sprisk_methodology::engine::Start::Flow { nodes, edges } =
+        sprisk_methodology::engine::start(&question, &sources).unwrap()
+    else {
+        panic!("the question states a target");
+    };
+    let head = "plv_01JABCDEFGHJKMNPQRSTVWXYZ7";
+    let mut flow = pipeline(&api.csv);
+    flow["id"] = json!(head);
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["nodes"] = json!(nodes);
+    flow["edges"] = json!(edges);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let walk = json!({
+        "schema_version": "sprisk.walk/v1", "id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0", "sources": sources,
+        "source_hashes": [sprisk_artifacts::file_hash(&api.csv).await.unwrap()],
+        "max_actions": 40, "max_wall_seconds": 600, "status": "walking",
+        "head_pipeline_version_id": head, "created_at": "2026-10-23T10:00:00Z",
+    });
+    let walk: sprisk_contracts::Walk = parse(&walk.to_string()).unwrap();
+    let request = walk_request(&[&api.csv], "walk-restarted");
+    let request: sprisk_contracts::CreateWalk = parse(&request.to_string()).unwrap();
+    let built = walk_step(
+        &walk,
+        0,
+        "build",
+        json!({ "made_pipeline_version_id": head }),
+    );
+    api.store
+        .insert_walk(&walk, &request, None, &built)
+        .await
+        .unwrap();
+    (walk, head.to_owned())
+}
+
+fn walk_step(
+    walk: &sprisk_contracts::Walk,
+    round: u32,
+    action: &str,
+    extra: Value,
+) -> sprisk_contracts::WalkStep {
+    let mut step = json!({
+        "schema_version": "sprisk.walk_step/v1", "walk_id": walk.id, "round": round,
+        "action": action, "reason": "before the restart", "created_at": "2026-10-23T10:00:00Z",
+    });
+    step.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    parse(&step.to_string()).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restarted_server_finishes_its_walks_without_a_second_run_for_a_round() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (walk, head) = walk_left_walking(&api).await;
+    // The server stopped while round 1's run was still queued.
+    let run_id = "run_01JABCDEFGHJKMNPQRSTVWXYZ7";
+    let queued = json!({
+        "schema_version": "sprisk.run/v1", "id": run_id,
+        "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0", "pipeline_version_id": head,
+        "status": "queued", "created_at": "2026-10-23T10:00:01Z",
+    });
+    let ran = walk_step(
+        &walk,
+        1,
+        "run",
+        json!({ "pipeline_version_id": head, "run_id": run_id }),
+    );
+    api.store
+        .record_walk_run(&walk, &ran, &parse(&queued.to_string()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
+    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
+
+    // The left run is driven to its end. The first flow's baseline meets raw text and fails,
+    // as in any Rakuten walk; the rules act on what it produced.
+    let (_, run) = call(&api.app, "GET", &format!("/runs/{run_id}"), None).await;
+    assert!(run["finished_at"].is_string(), "{run}");
+    let steps = detail["steps"].as_array().unwrap();
+    let runs_of_round_one = steps.iter().filter(|s| s["round"] == 1).count();
+    assert_eq!(runs_of_round_one, 1, "{detail}");
+    // The walk goes on from the run: the split rule reads what it produced.
+    assert_eq!(steps[2]["action"], "apply", "{detail}");
+    assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (walk, head) = walk_left_walking(&api).await;
+    // Round 1 applied the split rule, then the server stopped before it recorded the step.
+    let uri = format!("/pipeline_versions/{head}/methodology/proposals/split/split.method");
+    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let apply = format!(
+        "/methodology_proposals/{}/apply",
+        proposal["id"].as_str().unwrap()
+    );
+    let choice = json!({
+        "alternative_id": proposal["recommended_alternative_id"],
+        "idempotency_key": format!("{}-round-1", walk.id.as_str()),
+    });
+    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
+    assert_eq!(status, StatusCode::CREATED, "{applied}");
+
+    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
+    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
+
+    // Not stale: the version its head gained is the one its own round made.
+    let steps = detail["steps"].as_array().unwrap();
+    assert_eq!(steps[1]["action"], "apply", "{detail}");
+    assert_eq!(
+        steps[1]["methodology_decision_id"], applied["decision"]["id"],
+        "{detail}"
+    );
+    assert_ne!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
