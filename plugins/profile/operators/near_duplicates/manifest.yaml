@@ -1,0 +1,23 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.near_duplicates@1.0.0
+capability_class: analyzer
+description: Groups rows whose titles match once case, accents, spacing and punctuation go, and counts the rows that share a title (ADR-0063).
+entrypoint: sprisk_profile.near_duplicates:near_duplicates
+# Every row, before the split: it reads a title, never the label.
+scope: all
+attach: { role: split, side: input }
+concepts: { title_column: common.item_title }
+produces:
+  data.near_duplicate_groups:
+    fields: { rows: integer, groups: integer, rows_in_groups: integer, largest_group: integer }
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: data, kind: table }, { name: evidence, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [title_column]
+  properties:
+    title_column: { type: string, minLength: 1, x-sprisk-column: true, description: "The column that names the item each row describes." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

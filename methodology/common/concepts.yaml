@@ -1,0 +1,8 @@
+# Meanings the common pack's methods and operators ask for. A project binds each one to a
+# real column; column names never appear in a pack (ADR-0063).
+schema_version: sprisk.concept_set/v1
+concepts:
+  common.item_title:
+    kind: text
+    description: Short text that names the item a row describes.
+    binds_to: [column]
