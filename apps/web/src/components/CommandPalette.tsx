@@ -1,10 +1,13 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useSelection } from "../workbench/selection.ts";
+import { useLoadedTables } from "../api/datasets.ts";
+import { useOperators, usePipelineVersions } from "../api/hooks.ts";
+import { newestVersions, stepLabel, stepTitle } from "../flow/stages.ts";
 import { SearchIcon } from "../views/Icons.tsx";
 
 export type PaletteItem = {
   id: string;
-  category: "Steps" | "Operators" | "Datasets" | "Actions" | "Navigation";
+  category: "Steps" | "Operators" | "Datasets" | "Navigation";
   title: string;
   meta?: string;
   badge?: string;
@@ -22,144 +25,53 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const setNav = useSelection((s) => s.setNav);
 
+  const selectNode = useSelection((s) => s.selectNode);
+  const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
+  const pipelines = usePipelineVersions();
+  const operators = useOperators();
+  const tables = useLoadedTables();
+  const flow = pipelines.data?.find((p) => p.id === pipelineVersionId);
+
   const ALL_ITEMS: PaletteItem[] = useMemo(
     () => [
-      // Steps
-      {
-        id: "step-missing",
-        category: "Steps",
-        title: "Missing values ≥ 20%",
-        meta: "Clean · decision",
-        onSelect: () => {
-          setNav("Flow");
-          onClose();
-        },
-      },
-      {
-        id: "step-outliers",
-        category: "Steps",
-        title: "Outlier filter · 3 IQR",
-        meta: "Clean · transform",
-        onSelect: () => {
-          setNav("Flow");
-          onClose();
-        },
-      },
-      {
-        id: "step-rf",
-        category: "Steps",
-        title: "Train Random Forest",
-        meta: "Model · train",
-        onSelect: () => {
-          setNav("Flow");
-          onClose();
-        },
-      },
-      {
-        id: "step-roc",
-        category: "Steps",
-        title: "ROC evaluation",
-        meta: "Evaluate",
-        onSelect: () => {
-          setNav("Deploy");
-          onClose();
-        },
-      },
-
-      // Operators
-      {
-        id: "op-missing",
-        category: "Operators",
-        title: "Missing values",
-        meta: "Add to canvas",
-        onSelect: () => {
-          setNav("Flow");
-          onClose();
-        },
-      },
-      {
-        id: "op-outlier",
-        category: "Operators",
-        title: "Outlier detection",
-        meta: "Add to canvas",
-        onSelect: () => {
-          setNav("Flow");
-          onClose();
-        },
-      },
-      {
-        id: "op-rf",
-        category: "Operators",
-        title: "Random forest classifier",
-        meta: "Add to canvas",
-        onSelect: () => {
-          setNav("Flow");
-          onClose();
-        },
-      },
-
-      // Datasets
-      {
-        id: "ds-missing",
-        category: "Datasets",
-        title: "missing_report.csv",
-        meta: "42 × 3",
-        onSelect: () => {
-          setNav("Datasets");
-          onClose();
-        },
-      },
-      {
-        id: "ds-umami",
-        category: "Datasets",
-        title: "umami_flavour_v2.parquet",
-        meta: "608 × 28",
-        onSelect: () => {
-          setNav("Datasets");
-          onClose();
-        },
-      },
-      {
-        id: "ds-test",
-        category: "Datasets",
-        title: "unseen_test_122.csv",
-        meta: "122 × 26",
-        onSelect: () => {
-          setNav("Datasets");
-          onClose();
-        },
-      },
-
-      // Actions
-      {
-        id: "act-run-step",
-        category: "Actions",
-        title: "Run from Missing values ≥ 20%",
-        badge: "⌘R",
-        onSelect: () => {
-          setNav("Flow");
-          onClose();
-        },
-      },
-      {
-        id: "act-explain-copilot",
-        category: "Actions",
-        title: "Explain missing values with Copilot",
-        badge: "⌘J",
-        onSelect: () => {
-          onClose();
-        },
-      },
-      {
-        id: "act-gen-pipeline",
-        category: "Actions",
-        title: "Generate pipeline from Objective",
-        badge: "↵",
-        onSelect: () => {
-          setNav("Flow");
-          onClose();
-        },
-      },
+      ...(flow?.nodes ?? []).map((node): PaletteItem => {
+        const { title, subject } = stepLabel(node);
+        return {
+          id: `step-${node.id}`,
+          category: "Steps",
+          title,
+          meta: subject,
+          onSelect: () => {
+            selectNode(node.id);
+            setNav("Flow");
+            onClose();
+          },
+        };
+      }),
+      ...newestVersions(operators.data ?? []).map(
+        (op): PaletteItem => ({
+          id: `op-${op.id}`,
+          category: "Operators",
+          title: stepTitle(op.id),
+          meta: op.id,
+          onSelect: () => {
+            setNav("Flow");
+            onClose();
+          },
+        }),
+      ),
+      ...(tables.data ?? []).map(
+        (table): PaletteItem => ({
+          id: `ds-${table.artifact.id}`,
+          category: "Datasets",
+          title: table.name,
+          meta: `${table.total_rows} × ${table.total_columns}`,
+          onSelect: () => {
+            setNav("Datasets");
+            onClose();
+          },
+        }),
+      ),
 
       // Navigation
       {
@@ -253,7 +165,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         },
       },
     ],
-    [setNav, onClose],
+    [flow, operators.data, tables.data, selectNode, setNav, onClose],
   );
 
   const filteredItems = useMemo(() => {
@@ -270,7 +182,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   // Group filtered items by category preserving visual order
   const categories = useMemo(() => {
     const cats: { name: string; items: PaletteItem[] }[] = [];
-    const catOrder = ["Steps", "Operators", "Datasets", "Actions", "Navigation"];
+    const catOrder = ["Steps", "Operators", "Datasets", "Navigation"];
     for (const cat of catOrder) {
       const items = filteredItems.filter((i) => i.category === cat);
       if (items.length > 0) {
