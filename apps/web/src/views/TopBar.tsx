@@ -56,8 +56,8 @@ export function TopBar() {
         </div>
       </div>
 
-      {/* Col 2: Title, Project/Flow switcher, Nav tabs */}
-      <div className="topbar-mid">
+      {/* Col 2, over the sidebar: product and the project and flow switcher */}
+      <div className="topbar-brand">
         <span className="product-name">Flow Studio</span>
         <div className="switcher-wrap">
           <button
@@ -110,7 +110,10 @@ export function TopBar() {
           {importing && <ImportNotebook onClose={() => setImporting(false)} />}
         </div>
 
-        <nav className="nav" aria-label="Main Navigation">
+      </div>
+
+      {/* Col 3, over the centre pane: the page tabs */}
+      <nav className="nav" aria-label="Main Navigation">
           {NAV.map((item) => {
             const active = nav === item;
             return (
@@ -127,9 +130,8 @@ export function TopBar() {
             );
           })}
         </nav>
-      </div>
 
-      {/* Col 3: status and the page's primary action */}
+      {/* Col 4: status and the page's primary action */}
       <div className="topbar-actions">
         {nav === "Objective" ? (
           questions.isError ? (

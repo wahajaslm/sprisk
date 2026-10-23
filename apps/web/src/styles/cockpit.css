@@ -89,7 +89,6 @@
   --radius-md: 8px;   /* cards, menus, stage panels */
   --radius-lg: 10px;  /* app shell surface */
   --radius-xl: 12px;
-  --radius-pane: 12px; /* the design's r-lg + 2px */
 
   /* Sizes */
   --size-row: 30px;
@@ -260,11 +259,15 @@ p { margin: 0; }
 .spacer { flex: 1; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 
+/* ADR-0061 §3: one continuous app frame, 8px from the window, 10px radius, 7% border. */
 .cockpit {
   display: grid;
   grid-template-rows: var(--size-tabbar) minmax(0, 1fr);
-  height: 100vh;
-  width: 100vw;
+  height: calc(100vh - 16px);
+  width: calc(100vw - 16px);
+  margin: 8px;
+  border: 1px solid var(--alpha-07);
+  border-radius: var(--radius-lg);
   background: var(--bg-app);
   color: var(--text-primary);
   min-width: 0;
@@ -278,7 +281,6 @@ p { margin: 0; }
   gap: 0;
   padding: 0;
   background: var(--bg-app);
-  border-top: 1px solid var(--border-panel);
   min-height: 0;
   height: 100%;
   transition: grid-template-columns var(--dur-panel) var(--ease-standard);
@@ -348,7 +350,7 @@ p { margin: 0; }
   transition: all var(--dur-panel) var(--ease-standard);
 }
 
-/* The design's main screen: a bare rail, then flat panes 8px apart with a 12px radius. */
+/* The design's main screen is joined: rail, sidebar, centre and Copilot touch, split by hairlines. */
 .cockpit-shell .activity-bar {
   margin: 0;
   border: 0;
@@ -360,11 +362,12 @@ p { margin: 0; }
 .cockpit-shell .main-sidebar,
 .cockpit-shell .flow-sidebar,
 .cockpit-shell .sidebar-rail {
-  margin: 8px 0;
-  border-radius: var(--radius-pane);
-  border: 1px solid transparent;
+  margin: 0;
+  border-radius: 0;
+  border: 0;
+  border-right: 1px solid var(--alpha-08);
   box-shadow: none;
-  height: calc(100% - 16px);
+  height: 100%;
 }
 
 .cockpit-shell .center-screen,
@@ -373,20 +376,21 @@ p { margin: 0; }
 .cockpit-shell .single-center,
 .cockpit-shell .objective-screen,
 .cockpit-shell .objective-empty-screen {
-  margin: 8px 0 8px 8px;
-  border-radius: var(--radius-pane);
-  border: 1px solid transparent;
+  margin: 0;
+  border-radius: 0;
+  border: 0;
   box-shadow: none;
-  height: calc(100% - 16px);
+  height: 100%;
 }
 
 .cockpit-shell .copilot-card,
 .cockpit-shell .copilot-rail {
-  margin: 8px;
-  border-radius: var(--radius-pane);
-  border: 1px solid transparent;
+  margin: 0;
+  border-radius: 0;
+  border: 0;
+  border-left: 1px solid var(--alpha-08);
   box-shadow: none;
-  height: calc(100% - 16px);
+  height: 100%;
 }
 
 /* ── Sidebar Rail (Collapsed Left Sidebar) ──────────────── */
@@ -649,15 +653,17 @@ p { margin: 0; }
 
 /* ── Top bar (48px Flow Studio header) ─────────────────── */
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--size-rail) var(--size-sidebar) minmax(0, 1fr) auto;
   align-items: center;
   min-width: 0;
   height: var(--size-tabbar);
   background: var(--bg-app);
-  border-bottom: 1px solid var(--border-panel);
-  gap: 14px;
-  padding: 0 16px 0 0;
+  border-bottom: 1px solid var(--alpha-08);
+  padding: 0;
 }
+.cockpit.folded-sidebar .topbar { grid-template-columns: var(--size-rail) auto minmax(0, 1fr) auto; }
+.topbar .nav { padding: 0 10px; overflow-x: auto; scrollbar-width: none; }
 
 .logo-cell {
   width: var(--size-rail);
@@ -679,15 +685,15 @@ p { margin: 0; }
   color: var(--bg-app);
 }
 
-.topbar-mid {
+/* The top bar's columns line up with the panes below: rail, sidebar, centre, then actions. */
+.topbar-brand {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding-left: 0;
+  gap: 12px;
+  padding-left: 14px;
   min-width: 0;
   overflow: hidden;
   height: 100%;
-  flex: 1;
 }
 
 .topbar-actions {
