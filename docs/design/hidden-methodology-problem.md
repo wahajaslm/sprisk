@@ -106,6 +106,31 @@ The rule sits on the Split node (`applies_to: random_split`), not on Drop duplic
 - So all 8 rules on a random split show the `data_split` proposal instead of their own.
 - The other 7 can be seen only on the Methodology page, which has no Apply.
 
+### 3.7 Users cannot control the decision from the code
+
+- The notebook is where users work, but a rule's logic, evidence, thresholds and override are not in the cell.
+- Reading the logic is not possible. Seeing the reason, changing a threshold, or picking another alternative is possible only in the inspector panel.
+
+| Ability | Today |
+| --- | --- |
+| Read the decision logic | Not possible |
+| See why an alternative was chosen | Inspector panel |
+| Change a threshold | Rule settings, not in the cell |
+| Override the choice | Inspector panel: pick, reason, Apply |
+| Rewrite the logic | Not possible |
+
+Settled direction (2026-10-23): users read, tune and override in the cell. The cell shows the rule's logic summary and evidence, and exposes the rule's settings and the choice as plain lines:
+
+```python
+# Decision: feature scaling (rule feature_scaling, reviewed)
+# Logic: trees -> none; any kurtosis > threshold -> robust; else standard
+# Found: income kurtosis 7.2, age 1.1 -> robust
+threshold = 3      # a rule setting
+choice = "auto"    # or "robust", "standard", "none"; a reason is recorded
+```
+
+Rewriting a rule's logic is out of scope. An edited rule loses its review, its upgrades and the guarantee that the same data gives the same flow. It is revisited only when users ask for it, and then only with a visible "not reviewed" mark.
+
 ## 4. Why it matters
 
 - **Trust:** users cannot check the reasoning.
@@ -151,6 +176,7 @@ Methodology is a first-class, versioned execution concern. It is not metadata at
 | P0 | Fix the rule proposal bug on split steps (§3.6) | Existing decisions are misreported |
 | P0 | Show methodology and verification state on nodes and cells | Makes existing information visible |
 | P1 | Resolve `MethodologyDecision` during notebook generation and export | Keeps the reasoning in exports |
+| P1 | Rule settings and the choice as editable lines in the cell (§3.7) | Users control decisions where they work |
 | P1 | Decouple Gate B applicability from operator ids | Stops silent loss of checks |
 | P2 | Generated, parameter-edited and custom-code states | Makes edit impact clear |
 | P2 | Operator-to-rule reverse index | Discoverability without moving rules |
@@ -159,7 +185,7 @@ Methodology is a first-class, versioned execution concern. It is not metadata at
 ## 8. ADRs needed
 
 1. Methodology ownership and the operator-to-rule index.
-2. Decision-to-node projection: the resolved methodology view and notebook export.
+2. Decision-to-node projection: the resolved methodology view, notebook export, and in-cell settings and choice.
 3. Edit-aware verification: check obligations by outputs and structure, and the three edit states.
 
 P0 items need no ADR: the bug fix and showing data that already exists.
