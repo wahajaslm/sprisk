@@ -5631,7 +5631,7 @@ async fn walk_left_walking(api: &Api) -> (sprisk_contracts::Walk, String) {
         "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0", "sources": sources,
         "source_hashes": [sprisk_artifacts::file_hash(&api.csv).await.unwrap()],
         "max_actions": 40, "max_wall_seconds": 600, "status": "walking",
-        "head_pipeline_version_id": head, "created_at": "2026-10-23T10:00:00Z",
+        "head_pipeline_version_id": head, "created_at": stamp_now(),
     });
     let walk: sprisk_contracts::Walk = parse(&walk.to_string()).unwrap();
     let request = walk_request(&[&api.csv], "walk-restarted");
@@ -5649,6 +5649,14 @@ async fn walk_left_walking(api: &Api) -> (sprisk_contracts::Walk, String) {
     (walk, head.to_owned())
 }
 
+/// Now, to whole seconds: the server's clock is the system clock, so a walk saved with a fixed
+/// time would run out of its wall-clock budget once that time is past.
+fn stamp_now() -> String {
+    jiff::Timestamp::from_second(jiff::Timestamp::now().as_second())
+        .unwrap()
+        .to_string()
+}
+
 fn walk_step(
     walk: &sprisk_contracts::Walk,
     round: u32,
@@ -5657,7 +5665,7 @@ fn walk_step(
 ) -> sprisk_contracts::WalkStep {
     let mut step = json!({
         "schema_version": "sprisk.walk_step/v1", "walk_id": walk.id, "round": round,
-        "action": action, "reason": "before the restart", "created_at": "2026-10-23T10:00:00Z",
+        "action": action, "reason": "before the restart", "created_at": walk.created_at,
     });
     step.as_object_mut()
         .unwrap()
