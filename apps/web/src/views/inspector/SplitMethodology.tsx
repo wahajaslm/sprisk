@@ -67,6 +67,10 @@ export function SplitMethodology({ pipeline, nodeId, rule }: {
         ? <p>Remove <code>{chosen.effect.node_id}</code>. The steps after it read its inputs directly.</p>
         : chosen.effect.kind === "insert_node"
         ? <><p>Add <code>{chosen.effect.node_id}</code> ({chosen.effect.operator}) before <code>{chosen.effect.before}</code>.</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>
+        : chosen.effect.kind === "add_node"
+        ? <><p>Add <code>{chosen.effect.node_id}</code> ({chosen.effect.operator}) beside the flow.</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>
+        : chosen.effect.kind === "set_input"
+        ? <p>Feed <code>{chosen.effect.node_id}.{chosen.effect.port}</code> from <code>{chosen.effect.from}</code>.</p>
         : <><p>{chosen.effect.operator === current?.operator
           ? <>Change the settings of <code>{chosen.effect.node_id}</code>.</>
           : <>Replace <code>{chosen.effect.node_id}</code> with <code>{chosen.effect.operator}</code>.</>}</p><pre>{JSON.stringify(chosen.effect.params, null, 2)}</pre></>}</div>}

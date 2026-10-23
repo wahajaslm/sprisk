@@ -278,6 +278,8 @@ function StepCode({ operator }: { operator: string }) {
 function differences(base: PipelineVersion, effect: NonNullable<DecisionProposal["alternatives"][number]["effect"]>): string {
   if (effect.kind === "remove_node") return `${effect.node_id} removed`;
   if (effect.kind === "insert_node") return `${effect.node_id} added before ${effect.before}`;
+  if (effect.kind === "add_node") return `${effect.node_id} added beside the flow`;
+  if (effect.kind === "set_input") return `${effect.node_id}.${effect.port} reads ${effect.from}`;
   const before = base.nodes.find((n) => n.id === effect.node_id);
   if (!before) return `${effect.node_id} is not in the flow`;
   const after = { ...before, operator: effect.operator, params: effect.params };
