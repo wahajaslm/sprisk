@@ -35,14 +35,23 @@ type Selection = {
   showRun: (pipelineVersionId: string, runId: string, nodeId?: string) => void;
 };
 
+/** The page named in the URL hash (`#Datasets`), so a reload or a shared link opens it. */
+function navFromHash(): Nav | undefined {
+  const named = window.location.hash.replace(/^#\/?/, "").toLowerCase();
+  return NAV.find((n) => n.toLowerCase() === named);
+}
+
 export const useSelection = create<Selection>((set) => ({
-  nav: "Flow",
+  nav: navFromHash() ?? "Flow",
   pipelineVersionId: undefined,
   runId: undefined,
   nodeId: undefined,
   notebookId: undefined,
   stageTarget: undefined,
-  setNav: (nav) => set({ nav }),
+  setNav: (nav) => {
+    if (navFromHash() !== nav) window.location.hash = nav;
+    set({ nav });
+  },
   openNotebook: (id) => set({ notebookId: id, stageTarget: undefined, nav: "Notebooks" }),
   openStageNotebook: (stage) => set({ stageTarget: stage, notebookId: undefined, nav: "Notebooks" }),
   selectPipelineVersion: (id) => set({ pipelineVersionId: id, runId: undefined, nodeId: undefined }),
@@ -52,3 +61,9 @@ export const useSelection = create<Selection>((set) => ({
   compare: [],
   setCompare: (compare) => set({ compare }),
 }));
+
+// Back and forward in the browser change the hash; follow them.
+window.addEventListener("hashchange", () => {
+  const nav = navFromHash();
+  if (nav && useSelection.getState().nav !== nav) useSelection.setState({ nav });
+});

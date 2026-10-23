@@ -10,9 +10,9 @@ export type Point = { x: number; y: number };
 export type Group = { id: string; count: number } & Point & Size;
 
 /** Room above a group's steps for its card header. */
-export const STAGE_PAD_X = 16;
+export const STAGE_PAD_X = 20;
 export const STAGE_HEAD_HEIGHT = 44;
-export const STAGE_FOOTER_HEIGHT = 0;
+export const STAGE_FOOTER_HEIGHT = 44;
 export const MIN_STAGE_CARD_WIDTH = 216;
 export const MIN_STAGE_CARD_HEIGHT = 110;
 export const GROUP_HEAD = STAGE_HEAD_HEIGHT;

@@ -26,9 +26,9 @@ export function MethodologyPage() {
   const [view, setView] = useState<"map" | "tree" | "flow">("map");
   const [drafts, setDrafts] = useState(false);
   const [chapterKey, setChapterKey] = useState<string>();
-  if (rules.isError) return <p role="alert" className="error pad">{rules.error.message}</p>;
-  if (rules.isPending) return <Loading text="Loading methodology rules…" pad />;
-  if (rules.data.length === 0) return <p className="muted pad">No methodology rules are loaded.</p>;
+  if (rules.isError) return <Shell><p role="alert" className="error pad">{rules.error.message}</p></Shell>;
+  if (rules.isPending) return <Shell><Loading text="Loading methodology rules…" pad /></Shell>;
+  if (rules.data.length === 0) return <Shell><p className="muted pad">No methodology rules are loaded.</p></Shell>;
 
   const query = filter.trim().toLowerCase();
   // The map and the flow show what runs: the active rules, and the drafts only when asked.
@@ -43,7 +43,7 @@ export function MethodologyPage() {
   const chapter = all[at];
 
   return (
-    <main className="mth-page">
+    <Shell>
       <div className="mth-canvas">
         <div className="mth-toolbar">
           <div className="mth-views" role="radiogroup" aria-label="View">
@@ -78,7 +78,16 @@ export function MethodologyPage() {
         )}
       </div>
       <aside className="mth-side">{current && <RuleDetail key={current.id} rule={current} review={reviews.get(current.id)} route={pickedRoute} />}</aside>
-    </main>
+    </Shell>
+  );
+}
+
+/** The Flow Studio page shell around the methodology screen. */
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <div className="single-panel-layout methodology-page-layout">
+      <main className="center-screen mth-main-screen mth-page">{children}</main>
+    </div>
   );
 }
 
