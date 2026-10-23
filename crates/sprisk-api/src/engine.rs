@@ -330,7 +330,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
 /// score and ends the walk. No rule reads it.
 async fn score_test_rows(
     state: &AppState,
-    mut walk: Walk,
+    walk: Walk,
     round: usize,
     head: &PipelineVersionId,
     deadline: jiff::Timestamp,
@@ -378,15 +378,53 @@ async fn score_test_rows(
         &reason,
         made,
     )?;
-    walk.head_pipeline_version_id = Some(scored.id.clone());
-    state
+    let mut scoring = walk.clone();
+    scoring.head_pipeline_version_id = Some(scored.id.clone());
+    // A walk saved before sources were hashed cannot say which rows it spends.
+    if walk.source_hashes.is_empty() {
+        state
+            .store
+            .record_walk_run(&scoring, &step, &queued, Some(&scored))
+            .await?;
+    } else if let Some(earlier) = state
         .store
-        .record_walk_run(&walk, &step, &queued, Some(&scored))
-        .await?;
+        .record_walk_score(&scoring, &step, &queued, &scored)
+        .await?
+    {
+        let detail = spent_detail(state, &earlier, settled).await?;
+        return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+    }
     drive_run(state, &queued.id, &scored, &plan, None, Some(deadline))
         .await
         .map_err(|e| ApiError::Internal(format!("run {}: {e}", queued.id.as_str())))?;
     Ok(WalkStatus::Walking)
+}
+
+/// Why a walk whose test rows were already scored stops: a second score would be a second
+/// look at them, and choosing after it would choose by them.
+async fn spent_detail(
+    state: &AppState,
+    earlier: &WalkId,
+    settled: &str,
+) -> Result<String, ApiError> {
+    let walk = state.store.get_walk(earlier).await?;
+    // A scoring run that failed may still have read the test rows: they stay spent.
+    let (did, ended) = match &walk.stop {
+        Some(stop) if stop.reason == WalkStopReason::Complete => {
+            ("scored", format!(" It ended: {}", stop.detail.as_str()))
+        }
+        Some(stop) => (
+            "began scoring",
+            format!(" It ended: {}", stop.detail.as_str()),
+        ),
+        None => ("is scoring", String::new()),
+    };
+    Ok(format!(
+        "{settled} Walk {} {did} the test rows of a file this walk reads, so they are not \
+         scored again: a flow changed after that score would be chosen by it. To check a \
+         changed flow, score it on new rows from another file.{ended}",
+        earlier.as_str()
+    ))
 }
 
 /// Ends the walk on the score of its test rows: complete with the scores, or why not.

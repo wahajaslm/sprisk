@@ -549,6 +549,59 @@ impl SqliteStore {
         Ok(())
     }
 
+    /// As `record_walk_run` for the walk's scoring of its test rows, which also spends each of
+    /// the walk's files, by content hash (ADR-0060). When another walk already spent any of
+    /// them, nothing is stored and that walk is given. A round already recorded is a conflict,
+    /// as for any step.
+    pub async fn record_walk_score(
+        &self,
+        walk: &Walk,
+        step: &WalkStep,
+        run: &Run,
+        scored: &PipelineVersion,
+    ) -> Result<Option<WalkId>, StoreError> {
+        if walk.source_hashes.is_empty() {
+            return Err(StoreError::Conflict(format!(
+                "walk {} has no source hashes, so it cannot spend test rows",
+                walk.id.as_str()
+            )));
+        }
+        let mut hashes: Vec<&str> = walk.source_hashes.iter().map(|h| h.as_str()).collect();
+        hashes.sort_unstable();
+        hashes.dedup();
+        let mut tx = self.pool.begin().await?;
+        // The writes before the check take SQLite's write lock, so no walk claims in between.
+        insert_version(&mut *tx, scored).await?;
+        insert_run(&mut *tx, run).await?;
+        insert_walk_step(&mut tx, step).await?;
+        for hash in &hashes {
+            let earlier: Option<String> =
+                sqlx::query_scalar("SELECT walk_id FROM spent_test_rows WHERE source_hash = ?")
+                    .bind(hash)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            if let Some(earlier) = earlier {
+                tx.rollback().await?;
+                return Ok(Some(
+                    earlier.parse().map_err(|_| StoreError::BadId(earlier))?,
+                ));
+            }
+        }
+        for hash in &hashes {
+            sqlx::query(
+                "INSERT INTO spent_test_rows (source_hash, walk_id, run_id) VALUES (?, ?, ?)",
+            )
+            .bind(hash)
+            .bind(walk.id.as_str())
+            .bind(run.id.as_str())
+            .execute(&mut *tx)
+            .await?;
+        }
+        update_walk(&mut tx, walk).await?;
+        tx.commit().await?;
+        Ok(None)
+    }
+
     /// Appends `step` to its walk and saves `walk` as it stands after it, in one transaction.
     /// A round already recorded is a conflict, and nothing changes.
     pub async fn record_walk_step(&self, walk: &Walk, step: &WalkStep) -> Result<(), StoreError> {

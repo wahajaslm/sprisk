@@ -5914,6 +5914,38 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_walk_on_the_same_files_never_scores_their_test_rows_again() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+    let first = walk_to_end(&api, walk_request(&[&api.csv], "walk-scored")).await;
+    assert_eq!(first["walk"]["stop"]["reason"], "complete", "{first}");
+
+    // The same rows, from a copy at another path: a second score would be a second look.
+    let copy = api.csv.with_file_name("copy.csv");
+    std::fs::copy(&api.csv, &copy).unwrap();
+    let second = walk_to_end(&api, walk_request(&[&copy], "walk-again")).await;
+
+    let trail = trail(&second);
+    assert!(!trail.iter().any(|s| s == "score"), "{second}");
+    assert_eq!(second["walk"]["stop"]["reason"], "limitation", "{second}");
+    let why = second["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains(first["walk"]["id"].as_str().unwrap()), "{why}");
+    assert!(why.contains("Test rows, scored once"), "{why}");
+    // Nothing of the refused scoring is kept: the head is the flow the rules settled.
+    let head = second["walk"]["head_pipeline_version_id"].as_str().unwrap();
+    let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
+    assert!(
+        !flow["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n["id"] == "score_test"),
+        "{flow}"
+    );
+}
+
 /// The learnable table with gaps in `batch` on every seventh row: a model refuses gaps. Rows
 /// 60 apart share a dose, and never both lose their batch, so no row copies another.
 fn gappy_table() -> String {

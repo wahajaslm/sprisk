@@ -1329,3 +1329,120 @@ async fn a_selection_run_that_failed_or_was_cancelled_gives_way_to_a_fresh_one()
         .unwrap();
     assert_eq!(kept.id, fresh.id);
 }
+
+/// Walk `n` stored with its own key and first version, and the score step, run and scored
+/// version of its round 1.
+async fn walk_ready_to_score(
+    store: &SqliteStore,
+    n: u8,
+    files: &[char],
+) -> (
+    sprisk_contracts::Walk,
+    sprisk_contracts::WalkStep,
+    Run,
+    sprisk_contracts::PipelineVersion,
+) {
+    let (_, mut walk, mut request, mut first, mut build) = walk_parts().await;
+    walk.id = format!("wlk_01JABCDEFGHJKMNPQRSTVWXYZ{n}").parse().unwrap();
+    request.idempotency_key = format!("walk-key-{n}").parse().unwrap();
+    first.id = format!("plv_01JABCDEFGHJKMNPQRSTVWXYZ{n}").parse().unwrap();
+    build.walk_id = walk.id.clone();
+    walk.head_pipeline_version_id = Some(first.id.clone());
+    walk.source_hashes = files
+        .iter()
+        .map(|c| {
+            format!("sha256:{}", c.to_string().repeat(64))
+                .parse()
+                .unwrap()
+        })
+        .collect();
+    store
+        .insert_walk(&walk, &request, Some(&first), &build)
+        .await
+        .unwrap();
+    let scored: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        serde_json::json!({"id": format!("plv_01JABCDEFGHJKMNPQRSTVWXYS{n}")}),
+    );
+    let mut run = run_with_id(
+        &format!("run_01JABCDEFGHJKMNPQRSTVWXYZ{n}"),
+        scored.id.as_str(),
+    );
+    run.status = RunStatus::Queued;
+    let step: sprisk_contracts::WalkStep = fixture_with(
+        "walk_step",
+        "score.json",
+        serde_json::json!({
+            "walk_id": walk.id, "round": 1, "pipeline_version_id": first.id,
+            "made_pipeline_version_id": scored.id, "run_id": run.id,
+        }),
+    );
+    (walk, step, run, scored)
+}
+#[tokio::test]
+async fn a_file_s_test_rows_are_spent_by_the_first_walk_that_scores_them() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let question: sprisk_contracts::QuestionVersion = fixture_with(
+        "question_version",
+        "classification-all-fields.json",
+        serde_json::json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    store.insert_question_version(&question).await.unwrap();
+    let (first, step, run, scored) = walk_ready_to_score(&store, 1, &['a', 'b']).await;
+    let mut scoring = first.clone();
+    scoring.head_pipeline_version_id = Some(scored.id.clone());
+    assert_eq!(
+        store
+            .record_walk_score(&scoring, &step, &run, &scored)
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(store.get_walk(&first.id).await.unwrap(), scoring);
+    // The same round again is a round conflict, not spent rows.
+    let err = store
+        .record_walk_score(&scoring, &step, &run, &scored)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+
+    // Any walk reading a spent file, in any order or beside new files, stores none of its
+    // scoring; a walk on new files only scores.
+    for (n, files, spent) in [
+        (2, vec!['b', 'a'], true),
+        (3, vec!['a', 'a'], true),
+        (4, vec!['c', 'b'], true),
+        (5, vec!['c'], false),
+    ] {
+        let (walk, step, run, scored) = walk_ready_to_score(&store, n, &files).await;
+        let got = store
+            .record_walk_score(&walk, &step, &run, &scored)
+            .await
+            .unwrap();
+        assert_eq!(got, spent.then(|| first.id.clone()), "{files:?}");
+        assert_eq!(
+            store.walk_steps(&walk.id).await.unwrap().len(),
+            if spent { 1 } else { 2 },
+            "{files:?}"
+        );
+        assert_eq!(store.get_run(&run.id).await.is_ok(), !spent, "{files:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_walk_without_source_hashes_cannot_spend_test_rows() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let question: sprisk_contracts::QuestionVersion = fixture_with(
+        "question_version",
+        "classification-all-fields.json",
+        serde_json::json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0"}),
+    );
+    store.insert_question_version(&question).await.unwrap();
+    let (walk, step, run, scored) = walk_ready_to_score(&store, 1, &[]).await;
+    let err = store
+        .record_walk_score(&walk, &step, &run, &scored)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+}
