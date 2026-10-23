@@ -314,3 +314,33 @@ def test_a_text_column_says_what_share_holds_more_than_one_word() -> None:
 def test_a_text_column_with_no_values_has_no_word_share() -> None:
     p = profile(pl.DataFrame({"blank": [None, None]}, schema={"blank": pl.String}))
     assert column(p, "blank").word_share is None
+
+
+def test_a_text_column_says_what_share_holds_html_tags_or_entities() -> None:
+    p = profile(
+        pl.DataFrame(
+            {
+                "description": [
+                    "Lot de 2<br />neuf",
+                    "Caf&eacute; moulu",
+                    "<p>Montre</p>",
+                    "AT&T 5 < 7 et 9 > 3",
+                    "&#233;t&#xE9;",
+                    None,
+                ],
+                "n": [1, 2, 3, 4, 5, 6],
+            }
+        )
+    )
+    assert column(p, "description").html_share == pytest.approx(4 / 5)
+    assert column(p, "n").html_share is None
+
+
+def test_a_text_column_with_no_values_has_no_html_share() -> None:
+    p = profile(pl.DataFrame({"blank": [None, None]}, schema={"blank": pl.String}))
+    assert column(p, "blank").html_share is None
+
+
+def test_markup_the_html_strip_step_leaves_is_not_counted() -> None:
+    p = profile(pl.DataFrame({"t": ["Ben&nothing", "10<x cm", "<!-- c -->texte"]}))
+    assert column(p, "t").html_share == pytest.approx(1 / 3)

@@ -59,6 +59,8 @@ pub const FACTS: &[&str] = &[
     "input.column.*.numeric_share",
     // The share of a text column's values holding more than one word: free text, not a code.
     "input.column.*.word_share",
+    // The share of a text column's values holding an HTML tag or entity ("<br />", "&eacute;").
+    "input.column.*.html_share",
     // How many distinct text values merge with another once spaces and case, then accents,
     // are ignored ('Paris' and 'paris '; 'café' and 'cafe').
     "input.column.*.case_variants",

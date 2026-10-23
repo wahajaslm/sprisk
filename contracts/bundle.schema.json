@@ -423,6 +423,12 @@
           "maximum": 1,
           "description": "Of a text column's present values, the share holding more than one word: free text, not a code such as an identifier (ADR-0059). Absent for other columns."
         },
+        "html_share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Of a text column's present values, the share holding an HTML tag (<br />) or entity (&eacute;): markup, not words (ADR-0059). Absent for other columns."
+        },
         "leading_zero_values": {
           "type": "integer",
           "minimum": 0,

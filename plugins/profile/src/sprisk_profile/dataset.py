@@ -30,6 +30,13 @@ MAX_COLUMNS = 200
 MAX_ROWS = 1_000_000
 # Values come from the dataset (untrusted, rule 7) and are shown as text; long ones are cut.
 MAX_LABEL = 60
+# An HTML tag or comment starts with a letter or "!--" after "<" ("<br />", "</p>"), so
+# "5 < 7" is not one; an entity is named or numbered and ends in ";" ("&eacute;", "&#233;"),
+# so "AT&T" is not one. The strip_html step changes exactly the values this matches.
+HTML = (
+    r"<!--(?s:.*?)-->|</?[A-Za-z][A-Za-z0-9-]*(\s[^<>]*)?/?>"
+    r"|&(#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);"
+)
 
 
 def read_table(
@@ -102,6 +109,7 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
         column.update(_conversion(s))
         column.update(_spelling(s))
         column.update(_words(s))
+        column.update(_html(s))
     histogram = _bins(bins, s.name) if numeric else _top_values(s)
     if histogram is not None:
         column["histogram"] = histogram
@@ -192,6 +200,15 @@ def _words(s: pl.Series) -> dict[str, float]:
         return {}
     several = present.str.strip_chars().str.contains(r"\s")
     return {"word_share": float(several.sum()) / present.len()}
+
+
+def _html(s: pl.Series) -> dict[str, float]:
+    """For the HTML text rule: the share of a text column's present values holding an HTML tag
+    or entity, which a word count would take for words ("br", "eacute")."""
+    present = s.drop_nulls()
+    if present.is_empty():
+        return {}
+    return {"html_share": float(present.str.contains(HTML).sum()) / present.len()}
 
 
 def _missing_by_band(s: pl.Series, band_rows: int) -> list[float]:

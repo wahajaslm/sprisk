@@ -2306,6 +2306,14 @@ class ColumnProfile(StrictModel):
             le=1.0,
         ),
     ] = None
+    html_share: Annotated[
+        float | None,
+        Field(
+            description="Of a text column's present values, the share holding an HTML tag (<br />) or entity (&eacute;): markup, not words (ADR-0059). Absent for other columns.",
+            ge=0.0,
+            le=1.0,
+        ),
+    ] = None
     leading_zero_values: Annotated[
         int | None,
         Field(

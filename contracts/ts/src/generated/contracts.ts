@@ -703,6 +703,10 @@ export interface ColumnProfile {
    */
   word_share?: number;
   /**
+   * Of a text column's present values, the share holding an HTML tag (<br />) or entity (&eacute;): markup, not words (ADR-0059). Absent for other columns.
+   */
+  html_share?: number;
+  /**
    * Of a text column's present values, how many read as numbers but start with a zero before a digit, like the code 01234. Absent for other columns.
    */
   leading_zero_values?: number;
