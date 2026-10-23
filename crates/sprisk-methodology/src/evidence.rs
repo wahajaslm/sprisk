@@ -4,6 +4,9 @@
 use serde_json::Value;
 use sprisk_contracts::{EvidenceFieldType, Operator};
 
+/// The output where an evidence producer writes what it measured, by kind.
+pub const EVIDENCE_PORT: &str = "evidence";
+
 #[derive(Debug, thiserror::Error)]
 #[error("{operator}: {problem}")]
 pub struct EvidenceError {

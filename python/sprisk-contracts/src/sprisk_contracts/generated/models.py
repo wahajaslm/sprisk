@@ -1267,6 +1267,7 @@ class WalkAction(StrEnum):
     run = "run"
     apply = "apply"
     compare = "compare"
+    measure = "measure"
     score = "score"
     stop = "stop"
 
@@ -1304,7 +1305,7 @@ class WalkStep(StrictModel):
         MethodologyDecisionId | None, Field(description="The decision an apply recorded.")
     ] = None
     made_pipeline_version_id: Annotated[
-        PipelineVersionId | None, Field(description="The version a build or apply made.")
+        PipelineVersionId | None, Field(description="The version a build, apply or measure made.")
     ] = None
     run_id: Annotated[RunId | None, Field(description="The run a run step started.")] = None
     reason: Annotated[

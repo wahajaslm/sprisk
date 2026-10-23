@@ -11,12 +11,11 @@ use sprisk_contracts::{
 };
 
 use crate::catalog::{CatalogError, parse_yaml};
+use crate::evidence::EVIDENCE_PORT;
 
 pub(crate) const METHOD: &str = "method.yaml";
 const METHOD_MODULE: &str = "method.py";
 pub(crate) const CONCEPTS: &str = "concepts.yaml";
-/// The output where an evidence producer writes what it measured, by kind.
-pub const EVIDENCE_PORT: &str = "evidence";
 
 #[derive(Debug)]
 pub(crate) struct MethodEntry {

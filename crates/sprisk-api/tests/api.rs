@@ -5412,6 +5412,11 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     let open = stop["detail"].as_str().unwrap();
     assert!(open.contains("question.hard_constraints"), "{open}");
     assert!(open.contains("question.task_type"), "{open}");
+    // No column is named as the title, so repeated titles are not measured, and it says so.
+    assert!(
+        open.contains("data.repeated_items needs common.item_title"),
+        "{open}"
+    );
     let steps = detail["steps"].as_array().unwrap();
     let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
@@ -5471,6 +5476,91 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     assert_eq!(
         second["walk"]["stop"]["reason"],
         detail["walk"]["stop"]["reason"]
+    );
+}
+
+/// Rakuten-shaped listings where each title is written twice, the second time in capitals,
+/// as sellers relist one product.
+fn rakuten_like_relistings() -> String {
+    let mut csv = String::from(",designation,description,productid,imageid,prdtypecode\n");
+    let mut row = 0;
+    for (code, word) in PRODUCT_TYPES.iter().zip(PRODUCT_WORDS) {
+        for n in 0..30u32 {
+            let title = format!("{word} modele {}", n / 2);
+            let title = if n % 2 == 0 {
+                title
+            } else {
+                title.to_uppercase()
+            };
+            let description = format!("{word} neuf taille {}", n % 5);
+            csv.push_str(&format!(
+                "{row},{title},{description},{},{},{code}\n",
+                100_000 + row,
+                900_000 + row
+            ));
+            row += 1;
+        }
+    }
+    csv
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engine_measures_repeated_titles_once_the_question_names_the_title_column() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_relistings()).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["objective"]["value"] = json!("Tell each listing's product type from its title.");
+    q["target"]["value"] = json!("prdtypecode");
+    q["bindings"] = json!([stated("common.item_title", "designation")]);
+    let facts = q.as_object_mut().unwrap();
+    for gone in ["time_column", "entity_column", "prediction_horizon"] {
+        facts.remove(gone);
+    }
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-relistings")).await;
+    let trail = trail(&detail);
+    // The producer is added before the first run, so that run measures the titles.
+    let first_measure = trail
+        .iter()
+        .position(|s| s == "measure")
+        .expect("a measure step");
+    assert_eq!(trail[first_measure + 1], "run", "{detail}");
+    let steps = detail["steps"].as_array().unwrap();
+    assert!(
+        steps[first_measure]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("data.repeated_items needs data.near_duplicate_groups"),
+        "{detail}"
+    );
+
+    // It stays on the rows the split reads, whatever steps are added in front of the split.
+    let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
+    let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
+    let source_of = |port: &str| {
+        flow["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["to"] == port)
+            .map(|e| e["from"].clone())
+    };
+    assert_eq!(
+        source_of("near_duplicates.data"),
+        source_of("split.data"),
+        "{flow}"
+    );
+
+    // 15 titles per product type, each written twice: every row shares its title.
+    let open = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(
+        open.contains(
+            "Measured for data.repeated_items: data.near_duplicate_groups: groups 405, \
+             largest_group 2, rows 810, rows_in_groups 810."
+        ),
+        "{open}"
     );
 }
 

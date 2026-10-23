@@ -7,14 +7,16 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 use sprisk_contracts::{
     AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, MethodologyDecision,
-    MethodologyReviewItem, PipelineVersion, PipelineVersionId, RunId, RunStatus, Walk, WalkAction,
-    WalkDetail, WalkId, WalkStatus, WalkStep, WalkStopReason, parse,
+    MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId, QuestionVersion, RunId,
+    RunStatus, Walk, WalkAction, WalkDetail, WalkId, WalkStatus, WalkStep, WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::engine::{
     Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, Start, next_action, start,
     with_test_scoring,
 };
+use sprisk_methodology::evidence::{self, EVIDENCE_PORT};
+use sprisk_methodology::measure::{Measuring, measure};
 
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
@@ -233,7 +235,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         .filter(|s| {
             matches!(
                 s.action,
-                WalkAction::Apply | WalkAction::Run | WalkAction::Compare
+                WalkAction::Apply | WalkAction::Run | WalkAction::Compare | WalkAction::Measure
             )
         })
         .count();
@@ -290,6 +292,33 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     if let Some(changed) = changed_source(&walk).await? {
         return record_stop(state, walk, round, WalkStopReason::SourceChanged, &changed).await;
     }
+    // Before a run or a stop, the steps that measure what methods need are put in place, and
+    // moved back onto their rows when a step was added in front of where they attach.
+    let mut notes = Vec::new();
+    if matches!(action, Action::Run { .. } | Action::Stop { .. }) {
+        let pipeline = state.store.get_pipeline_version(&head).await?;
+        let operators: Vec<Operator> = state.registry.operators().cloned().collect();
+        let measuring = measure(&state.rules, &pipeline, &question, &operators)
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        if !measuring.changes.is_empty() {
+            return record_measure(state, walk, round, &pipeline, measuring).await;
+        }
+        let kinds = produced_kinds(state, &pipeline);
+        if head_run == HeadRun::NotRun && !kinds.is_empty() && matches!(action, Action::Stop { .. })
+        {
+            let reason = format!("Runs the flow to measure {}.", kinds.join(", "));
+            return run(state, walk, round, &head, deadline, &reason).await;
+        }
+        notes = measuring.unbound;
+        notes.extend(measured(state, &steps, &head, &pipeline, &question).await?);
+    }
+    let noted = |detail: String| {
+        [detail]
+            .into_iter()
+            .chain(notes.clone())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
     match action {
         Action::Apply {
             item,
@@ -315,15 +344,139 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             detail,
         } => {
             let failed = failed_steps(state, &steps, &head).await?;
-            let detail = format!("{failed} Still open: {detail}");
+            let detail = noted(format!("{failed} Still open: {detail}"));
             record_stop(state, walk, round, WalkStopReason::RunFailed, &detail).await
         }
         Action::Stop {
             reason: WalkStopReason::Complete,
             detail,
         } => score_test_rows(state, walk, round, &head, deadline, &detail).await,
-        Action::Stop { reason, detail } => record_stop(state, walk, round, reason, &detail).await,
+        Action::Stop { reason, detail } => {
+            record_stop(state, walk, round, reason, &noted(detail)).await
+        }
     }
+}
+
+/// Stores the version with the producers placed, and the measure step that made it, and
+/// moves the walk's head to it.
+async fn record_measure(
+    state: &AppState,
+    mut walk: Walk,
+    round: usize,
+    head: &PipelineVersion,
+    measuring: Measuring,
+) -> Result<WalkStatus, ApiError> {
+    let made: PipelineVersion = internal(parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": format!("plv_{}", ulid::Ulid::new()),
+            "project_id": head.project_id, "parent_id": head.id,
+            "question_version_id": head.question_version_id,
+            "nodes": measuring.nodes, "edges": measuring.edges,
+            "created_at": format((state.clock)()),
+        })
+        .to_string(),
+    ))?;
+    compile(&made, &state.registry).map_err(ApiError::Compile)?;
+    let ids = json!({ "pipeline_version_id": head.id, "made_pipeline_version_id": made.id });
+    let reason = measuring.changes.join(" ");
+    let step = step(
+        state,
+        walk.id.as_str(),
+        round,
+        WalkAction::Measure,
+        &reason,
+        ids,
+    )?;
+    walk.head_pipeline_version_id = Some(made.id.clone());
+    state.store.record_walk_version(&walk, &step, &made).await?;
+    Ok(WalkStatus::Walking)
+}
+
+/// The evidence kinds the steps of `pipeline` produce.
+fn produced_kinds(state: &AppState, pipeline: &PipelineVersion) -> Vec<String> {
+    pipeline
+        .nodes
+        .iter()
+        .filter_map(|n| state.registry.get(n.operator.as_str()))
+        .flat_map(|op| op.produces.keys().map(|k| k.to_string()))
+        .collect()
+}
+
+/// What the producers of `head` measured in the walk's run of it, one sentence per method
+/// that needs it. Methods do not decide on it yet (ADR-0063 slice 4), so it is shown as is.
+async fn measured(
+    state: &AppState,
+    steps: &[WalkStep],
+    head: &PipelineVersionId,
+    pipeline: &PipelineVersion,
+    question: &QuestionVersion,
+) -> Result<Vec<String>, ApiError> {
+    let Some(run_id) = head_run_id(steps, head) else {
+        return Ok(Vec::new());
+    };
+    let attempts = state.store.list_attempts(&run_id).await?;
+    let mut notes = Vec::new();
+    for node in &pipeline.nodes {
+        let Some(operator) = state.registry.get(node.operator.as_str()) else {
+            continue;
+        };
+        if operator.produces.is_empty() {
+            continue;
+        }
+        // A run that failed before this step measured nothing here.
+        let Some(attempt) = attempts.iter().find(|a| {
+            a.node_id == node.id
+                && matches!(a.state, AttemptState::Succeeded | AttemptState::CacheHit)
+        }) else {
+            continue;
+        };
+        let (_, artifact) = state
+            .store
+            .outputs(&attempt.id)
+            .await?
+            .into_iter()
+            .find(|(port, _)| port == EVIDENCE_PORT)
+            .ok_or_else(|| {
+                ApiError::Internal(format!("step {} wrote no evidence", node.id.as_str()))
+            })?;
+        let bytes = state.artifacts.get(artifact.content_hash.as_str()).await?;
+        let value: Value = serde_json::from_slice(&bytes).map_err(|e| {
+            ApiError::Internal(format!("evidence of step {}: {e}", node.id.as_str()))
+        })?;
+        evidence::check(operator, &value).map_err(|e| ApiError::Internal(e.to_string()))?;
+        let task = question.task.value;
+        for method in state.rules.methods().filter(|m| {
+            m.applies_when
+                .as_ref()
+                .is_none_or(|w| w.task.contains(&task))
+        }) {
+            for kind in method
+                .needs
+                .evidence
+                .iter()
+                .filter(|k| value.get(k.as_str()).is_some())
+            {
+                let mut fields: Vec<(&String, &Value)> = value[kind.as_str()]
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                fields.sort_by_key(|(name, _)| name.as_str());
+                let fields: Vec<String> = fields
+                    .iter()
+                    .map(|(name, v)| format!("{name} {v}"))
+                    .collect();
+                notes.push(format!(
+                    "Measured for {}: {}: {}. Its decision is not walked yet.",
+                    method.decides.as_str(),
+                    kind.as_str(),
+                    fields.join(", ")
+                ));
+            }
+        }
+    }
+    Ok(notes)
 }
 
 /// Every rule is settled: the model is scored on the test rows, once (ADR-0060). A version

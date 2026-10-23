@@ -57,7 +57,7 @@ pub fn measure(
                         .find(|(id, _)| *id == concept)
                         .map_or("", |(_, c)| c.description.as_str());
                     measuring.unbound.push(format!(
-                        "{} needs {concept} ({description}): state which column holds it.",
+                        "{} needs {concept} ({description}): state which column holds it, if one does.",
                         method.decides.as_str()
                     ));
                 }

@@ -178,7 +178,7 @@ fn a_producer_whose_concept_is_unbound_is_not_added_and_says_what_to_state() {
     assert_eq!(
         measured.unbound,
         [
-            "data.repeated_items needs common.item_title (Short text that names the item a row describes.): state which column holds it."
+            "data.repeated_items needs common.item_title (Short text that names the item a row describes.): state which column holds it, if one does."
         ]
     );
 }

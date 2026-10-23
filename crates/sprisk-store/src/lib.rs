@@ -602,6 +602,22 @@ impl SqliteStore {
         Ok(None)
     }
 
+    /// Stores the version `made` with the walk step that made it, in one transaction, so a
+    /// server that stops between them leaves no version the walk does not know it made.
+    pub async fn record_walk_version(
+        &self,
+        walk: &Walk,
+        step: &WalkStep,
+        made: &PipelineVersion,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        insert_version(&mut *tx, made).await?;
+        insert_walk_step(&mut tx, step).await?;
+        update_walk(&mut tx, walk).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Appends `step` to its walk and saves `walk` as it stands after it, in one transaction.
     /// A round already recorded is a conflict, and nothing changes.
     pub async fn record_walk_step(&self, walk: &Walk, step: &WalkStep) -> Result<(), StoreError> {
