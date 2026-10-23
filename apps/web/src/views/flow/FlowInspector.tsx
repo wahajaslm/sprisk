@@ -1,23 +1,15 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { INSPECTOR_TABS, type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
 import { useStep, TabBody } from "../inspector/step.tsx";
 import { ViewInstance } from "../../workbench/instance.tsx";
-import { SplitMethodology } from "../inspector/SplitMethodology.tsx";
-import { ChecksTab } from "../inspector/ChecksTab.tsx";
-import { useSelection } from "../../workbench/selection.ts";
 
 export function FlowInspector() {
   const [activeTab, setActiveTab] = useState<InspectorTab>("checks");
   const [collapsed, setCollapsed] = useState(false);
   const [maximized, setMaximized] = useState(false);
-  const [threshold, setThreshold] = useState(20);
-  const [selectedAlt, setSelectedAlt] = useState("drop");
 
   const step = useStep();
-  const { pipeline, node, nodeId } = step;
-
-  const isMethodology = activeTab === "checks";
-  const stepName = node ? node.id : "Missing values ≥ 20%";
+  const { nodeId } = step;
 
   return (
     <div
@@ -98,116 +90,7 @@ export function FlowInspector() {
       {!collapsed && (
         <div className="flow-inspector-body">
           <ViewInstance pin={undefined} setPin={undefined} tab={activeTab}>
-            {isMethodology ? (
-              <div className="methodology-grid-view">
-                {/* Column 1: Rule */}
-                <div className="methodology-col rule-col">
-                  <div className="methodology-section-title">Rule</div>
-                  <div className="methodology-rule-title">Missing data treatment strategy</div>
-                  <div className="methodology-rule-desc">
-                    Chooses drop columns ≥ threshold. Above 20% the imputed share starts to dominate the column.
-                  </div>
-
-                  <div className="methodology-decision-block">
-                    <div className="methodology-section-title">Decision</div>
-                    <div className="methodology-fact-row">
-                      <span className="fact-key">Columns ≥ 20% missing</span>
-                      <span className="fact-val mono">3</span>
-                    </div>
-                    <div className="methodology-fact-row">
-                      <span className="fact-key">Highest share</span>
-                      <span className="fact-val mono">31.2% · umami_score</span>
-                    </div>
-                    <div className="methodology-fact-row">
-                      <span className="fact-key">Imputed cells</span>
-                      <span className="fact-val mono">41</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Column 2: Alternatives */}
-                <div className="methodology-col alts-col">
-                  <div className="methodology-section-title">Alternatives</div>
-                  <div className="methodology-alts-list">
-                    <label className={`alt-card ${selectedAlt === "drop" ? "selected" : ""}`}>
-                      <input
-                        type="radio"
-                        name="methodology-alt"
-                        checked={selectedAlt === "drop"}
-                        onChange={() => setSelectedAlt("drop")}
-                        style={{ display: "none" }}
-                      />
-                      <div className="alt-radio-dot">
-                        {selectedAlt === "drop" && <div className="alt-radio-fill" />}
-                      </div>
-                      <div className="alt-info">
-                        <div className="alt-title-row">
-                          <span className="alt-title">Drop columns ≥ threshold</span>
-                          <span className="alt-tag">Rule's pick</span>
-                        </div>
-                      </div>
-                    </label>
-
-                    <label className={`alt-card ${selectedAlt === "impute" ? "selected" : ""}`}>
-                      <input
-                        type="radio"
-                        name="methodology-alt"
-                        checked={selectedAlt === "impute"}
-                        onChange={() => setSelectedAlt("impute")}
-                        style={{ display: "none" }}
-                      />
-                      <div className="alt-radio-dot">
-                        {selectedAlt === "impute" && <div className="alt-radio-fill" />}
-                      </div>
-                      <div className="alt-info">
-                        <span className="alt-title">Impute median</span>
-                      </div>
-                    </label>
-
-                    <label className={`alt-card ${selectedAlt === "indicator" ? "selected" : ""}`}>
-                      <input
-                        type="radio"
-                        name="methodology-alt"
-                        checked={selectedAlt === "indicator"}
-                        onChange={() => setSelectedAlt("indicator")}
-                        style={{ display: "none" }}
-                      />
-                      <div className="alt-radio-dot">
-                        {selectedAlt === "indicator" && <div className="alt-radio-fill" />}
-                      </div>
-                      <div className="alt-info">
-                        <span className="alt-title">Add missing indicator</span>
-                      </div>
-                    </label>
-                  </div>
-
-                </div>
-
-                {/* Column 3: Adjust */}
-                <div className="methodology-col adjust-col">
-                  <div className="methodology-section-title">Adjust</div>
-                  <div className="adjust-control-group">
-                    <div className="adjust-label-row">
-                      <span className="adjust-label">Drop threshold</span>
-                      <span className="adjust-val mono">{threshold}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={5}
-                      max={60}
-                      step={1}
-                      value={threshold}
-                      onChange={(e) => setThreshold(Number(e.target.value))}
-                      className="adjust-slider"
-                    />
-                  </div>
-
-                  <button type="button" className="rule-details-btn">
-                    Rule details
-                  </button>
-                </div>
-              </div>
-            ) : nodeId ? (
+            {nodeId ? (
               <TabBody tab={activeTab} step={step} />
             ) : (
               <div className="flow-inspector-empty">
