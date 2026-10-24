@@ -1550,6 +1550,7 @@ p { margin: 0; }
 .ds-finding-head { display: flex; gap: var(--space-3); align-items: flex-start; }
 .ds-finding-number { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border: 1px solid var(--alpha-08); border-radius: 50%; font-family: var(--mono); font-size: var(--text-xs); color: var(--soft); }
 .ds-finding-title { margin: 0; font-size: var(--text-lg); font-weight: 500; color: var(--ink); }
+.ds-finding-question { margin: var(--space-1) 0 0; color: var(--soft); }
 .ds-finding-by { margin: var(--space-1) 0 0; font-size: var(--text-xs); color: var(--muted); }
 .ds-finding-charts { display: grid; gap: var(--space-3); }
 .ds-finding-charts .plotly-figure { min-height: 420px; }

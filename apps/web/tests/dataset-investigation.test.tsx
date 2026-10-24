@@ -159,11 +159,8 @@ describe("a dataset's investigation (ADR-0065)", () => {
     await openInvestigation();
     const findings = await screen.findByRole("region", { name: "Findings and decisions" });
     const cards = within(findings).getAllByRole("article");
-    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual([
-      "Does the same item appear in more than one row?",
-      "How are rows divided into training and test so the score is fair?",
-      "Column roles",
-    ]);
+    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual(["Repeated observations", "Fair evaluation", "Column roles"]);
+    expect(within(cards[0]!).getByText("Does the same item appear in more than one row?")).toBeInTheDocument();
     expect(cards[0]).toHaveTextContent("You answered");
     expect(within(cards[0]!).getByText("A person answered: Treat rows with matching titles as one item.")).toBeInTheDocument();
     expect(within(cards[0]!).getByText("Treat rows with matching titles as one item")).toBeInTheDocument();
@@ -175,7 +172,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
   it("draws the chart the evidence's producer drew, large, in its decision", async () => {
     serve();
     await openInvestigation();
-    const card = await screen.findByRole("article", { name: "Does the same item appear in more than one row?" });
+    const card = await screen.findByRole("article", { name: "Repeated observations" });
     expect(await within(card).findByRole("img", { name: "Rows per title group (designation)" })).toBeInTheDocument();
   });
 
@@ -190,7 +187,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
   it("lists what the method measured, field by field", async () => {
     serve(withEvidence);
     await openInvestigation();
-    const card = await screen.findByRole("article", { name: "Does the same item appear in more than one row?" });
+    const card = await screen.findByRole("article", { name: "Repeated observations" });
     const table = within(card).getByRole("table", { name: "Measured" });
     expect(within(table).getByRole("row", { name: "rows in groups 206" })).toBeInTheDocument();
     expect(within(table).getByRole("row", { name: "largest group 6" })).toBeInTheDocument();
@@ -206,7 +203,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
   it("shows a decision that changed nothing, so a finding is not lost", async () => {
     serve({ ...decided, decisions: [...decided.decisions, unchanged] });
     await openInvestigation();
-    const card = await screen.findByRole("article", { name: "Are some classes much rarer than others?" });
+    const card = await screen.findByRole("article", { name: "Class balance" });
     expect(within(card).getByText("Leaves the flow unchanged.")).toBeInTheDocument();
   });
 
@@ -266,17 +263,17 @@ describe("a dataset's investigation (ADR-0065)", () => {
     expect(rows).toHaveLength(2);
     expect(await within(rows[0]!).findByText(/1 decision · needs person/)).toBeInTheDocument();
     expect(await within(rows[1]!).findByText(/2 decisions · complete/)).toBeInTheDocument();
-    expect(await screen.findByRole("article", { name: "Are some classes much rarer than others?" })).toBeInTheDocument();
+    expect(await screen.findByRole("article", { name: "Class balance" })).toBeInTheDocument();
     await userEvent.click(rows[1]!);
-    expect(await screen.findByRole("article", { name: "Does the same item appear in more than one row?" })).toBeInTheDocument();
-    expect(screen.queryByRole("article", { name: "Are some classes much rarer than others?" })).toBeNull();
+    expect(await screen.findByRole("article", { name: "Repeated observations" })).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Class balance" })).toBeNull();
   });
 
   it("leaves the chart out when the run that measured the evidence drew none", async () => {
     serve();
     server.use(http.get(`/api/attempts/${measured.id}/outputs`, () => HttpResponse.json([])));
     await openInvestigation();
-    const card = await screen.findByRole("article", { name: "Does the same item appear in more than one row?" });
+    const card = await screen.findByRole("article", { name: "Repeated observations" });
     await within(card).findByText("A person answered: Treat rows with matching titles as one item.");
     expect(within(card).queryByRole("img")).toBeNull();
     expect(within(card).queryByText(/Edit and run it/)).toBeNull();

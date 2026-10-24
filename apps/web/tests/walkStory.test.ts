@@ -1,4 +1,4 @@
-import type { FlowDecision, WalkStep } from "@sprisk/contracts";
+import type { FlowDecision, MethodologyRule, WalkStep } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
 import { walkStory } from "../src/views/datasets/walkStory.ts";
@@ -29,6 +29,8 @@ const repeated: FlowDecision = {
   evidence: [{ kind: "data.near_duplicate_groups", step: "near_duplicates", fields: { rows: 600, groups: 84 } }],
 };
 
+const columnRoles = { id: "methodology.common.column_roles@1.0.0", name: "Column roles", decides: "data.column_roles", question: "Which columns only name rows and should be left out?" } as MethodologyRule;
+
 function trail(): WalkStep[] {
   round = 0;
   return [
@@ -37,7 +39,7 @@ function trail(): WalkStep[] {
     step("run", "The look."),
     step("decide", "A person answered: Treat rows with matching titles as one item.", { decides: "data.repeated_items", option: "group_by_title", assurance: "confirmed" }),
     step("verify", "Checks what the decisions promise."),
-    step("apply", "id hold a different value in every row: they name rows, so leave them out.", { decides: "data.column_roles", alternative_id: "drop_identifiers" }),
+    step("apply", "id hold a different value in every row: they name rows, so leave them out.", { decides: "data.column_roles", rule: columnRoles.id, alternative_id: "drop_identifiers" }),
     step("run", "Runs again."),
     step("compare", "Compare the shortlist: ml_dummy_baseline, ml_linear_model.", { decides: "modeling.estimator_selection" }),
     step("apply", "ml_linear_model is the simplest of them.", { decides: "modeling.estimator_selection", alternative_id: "ml_linear_model" }),
@@ -47,33 +49,42 @@ function trail(): WalkStep[] {
 }
 
 describe("a walk's trail as a story (ADR-0065)", () => {
-  it("lists every decision in walk order, a method's and a rule's, each once", () => {
-    const story = walkStory(trail(), [repeated]);
-    expect(story.decisions.map((d) => d.title)).toEqual(["Does the same item appear in more than one row?", "Column roles", "Estimator selection"]);
+  it("lists every decision in walk order, a method's and a rule's, each once, under a name, not a question", () => {
+    const story = walkStory(trail(), [repeated], [columnRoles]);
+    expect(story.decisions.map((d) => d.title)).toEqual(["Repeated observations", "Column roles", "Estimator selection"]);
+  });
+
+  it("keeps each decision's question, to explain what it answers", () => {
+    const story = walkStory(trail(), [repeated], [columnRoles]);
+    expect(story.decisions.map((d) => d.question)).toEqual([
+      "Does the same item appear in more than one row?",
+      "Which columns only name rows and should be left out?",
+      undefined,
+    ]);
   });
 
   it("says who decided: a person's answer, a method, or a rule", () => {
-    const story = walkStory(trail(), [{ ...repeated, assurance: "rule", reason: "No two rows share a title." }]);
+    const story = walkStory(trail(), [{ ...repeated, assurance: "rule", reason: "No two rows share a title." }], []);
     expect(story.decisions.map((d) => d.by)).toEqual(["method", "rule", "rule"]);
-    expect(walkStory(trail(), [repeated]).decisions[0]!.by).toBe("person");
+    expect(walkStory(trail(), [repeated], []).decisions[0]!.by).toBe("person");
   });
 
   it("keeps a method's decision record beside its story entry, for its chart, evidence and promises", () => {
-    const story = walkStory(trail(), [repeated]);
+    const story = walkStory(trail(), [repeated], []);
     expect(story.decisions[0]!.decision).toBe(repeated);
     expect(story.decisions[1]!.decision).toBeUndefined();
   });
 
   it("names a rule's choice from its alternative, in words", () => {
-    expect(walkStory(trail(), []).decisions[1]!.choice).toBe("drop identifiers");
+    expect(walkStory(trail(), [], []).decisions[1]!.choice).toBe("drop identifiers");
   });
 
   it("counts runs, questions asked of a person, and whether the test rows were scored", () => {
-    const story = walkStory(trail(), [repeated]);
+    const story = walkStory(trail(), [repeated], []);
     expect(story).toMatchObject({ runs: 2, asked: 1, scored: true });
   });
 
   it("says a walk that stopped before its score did not score", () => {
-    expect(walkStory(trail().slice(0, 6), []).scored).toBe(false);
+    expect(walkStory(trail().slice(0, 6), [], []).scored).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import type { Attempt, FlowDecision, FlowDecisions, LoadedTable, Operator, Pipel
 import { useState } from "react";
 
 import { useOperatorsByRef, useOutputs, useRunAttempts } from "../../api/hooks.ts";
+import { useMethodologyRules } from "../../api/methodology.ts";
 import { useQuestionVersions } from "../../api/questions.ts";
 import { useFlowDecisionsOf, useWalk, useWalkReport } from "../../api/walks.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -87,6 +88,7 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
   const walk = useWalk(investigation.walkId);
   const questions = useQuestionVersions();
   const operators = useOperatorsByRef();
+  const rules = useMethodologyRules();
   const attempts = useRunAttempts(investigation.pipelineVersionId, investigation.runId);
   const stopped = walk.data?.walk;
   const report = useWalkReport(stopped?.stop?.reason === "complete" ? investigation.walkId : undefined);
@@ -98,14 +100,14 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
   };
   if (walk.isError) return <p role="alert" className="error">The walk could not be read: {walk.error.message}</p>;
   if (!walk.data) return <Loading text="Reading the walk…" />;
-  const story = walkStory(walk.data.steps, investigation.decisions);
+  const story = walkStory(walk.data.steps, investigation.decisions, rules.data ?? []);
   const promises = investigation.decisions.flatMap((d) => d.promises.map((p) => ({ ...p, question: d.question })));
   const holding = promises.filter((p) => p.status === "pass").length;
   const looked = investigation.decisions.flatMap((d) =>
     (d.evidence ?? []).flatMap((e) => {
       const operator = operatorOf(e.step);
       const scope = operator && scopeWords(operator);
-      return operator && scope ? [{ key: `${d.decides}:${e.step}`, question: d.question, text: `${operator.title} ${scope}` }] : [];
+      return operator && scope ? [{ key: `${d.decides}:${e.step}`, name: d.activity, question: d.question, text: `${operator.title} ${scope}` }] : [];
     }),
   );
   return (
@@ -165,7 +167,10 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
           <ul className="ds-looked">
             {looked.map((l) => (
               <li key={l.key}>
-                <span className="ds-looked-question">{l.question}</span>
+                <span>
+                  <span className="ds-looked-question">{l.name}</span>
+                  <span className="ds-line muted">{l.question}</span>
+                </span>
                 <span className="muted">{l.text}</span>
               </li>
             ))}
@@ -225,10 +230,8 @@ function Finding({
         <span className="ds-finding-number">{number}</span>
         <div>
           <h3 className="ds-finding-title">{entry.title}</h3>
-          <p className="ds-finding-by">
-            {BY[entry.by]}
-            {decision?.activity ? ` · ${decision.activity}` : ""}
-          </p>
+          {entry.question && <p className="ds-finding-question">{entry.question}</p>}
+          <p className="ds-finding-by">{BY[entry.by]}</p>
         </div>
       </header>
       {charts.length > 0 && (
