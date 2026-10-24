@@ -152,6 +152,15 @@ async fn api_with_clock(
             Duration::from_secs(30),
             2,
         ),
+        method_runner: sprisk_api::MethodRunner::new(
+            vec![
+                python.display().to_string(),
+                "-m".into(),
+                "sprisk_workers.method".into(),
+            ],
+            Duration::from_secs(30),
+            2,
+        ),
         profiler: Profiler::new(
             vec![
                 python.display().to_string(),

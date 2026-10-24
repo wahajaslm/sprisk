@@ -8,6 +8,7 @@ mod engine;
 mod figures;
 mod kernel;
 mod line_session;
+mod method_session;
 mod notebook_code;
 mod profile;
 mod rules;
@@ -15,6 +16,7 @@ mod split;
 pub use bounded::ProcessError;
 pub use engine::resume_walks;
 pub use kernel::{KernelError, KernelLimits, Kernels};
+pub use method_session::{MethodRunner, MethodSession};
 pub use notebook_code::CodeWriter;
 use profile::Profiles;
 pub use profile::{KeyMatcher, Profiler};
@@ -79,6 +81,7 @@ pub struct AppState {
     pub code_writer: CodeWriter,
     /// Runs a methodology rule's Python decide() (ADR-0042).
     pub rule_runner: RuleRunner,
+    pub method_runner: MethodRunner,
     /// One live Python kernel per notebook being explored (ADR-0036).
     pub kernels: Kernels,
 }
