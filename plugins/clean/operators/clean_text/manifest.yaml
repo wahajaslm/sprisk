@@ -14,6 +14,7 @@ params_schema:
     columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Text columns to clean." }
     lowercase: { type: boolean, default: false, description: "Make every letter lowercase." }
     empty_to_null: { type: boolean, default: true, description: "Treat blank text as a missing value." }
+    exclude: { type: array, items: { type: string, minLength: 1 }, uniqueItems: true, description: "Columns to leave as typed, even when columns names them, such as the target." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }
