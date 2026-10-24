@@ -5382,6 +5382,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "run",
             "decide data.repeated_items independent_rows",
             "decide split.method stratified_random",
+            "measure",
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
@@ -5411,7 +5412,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     let steps = detail["steps"].as_array().unwrap();
     let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
-        *head, steps[9]["made_pipeline_version_id"],
+        *head, steps[10]["made_pipeline_version_id"],
         "the head is the version the last apply made"
     );
     let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
@@ -5595,13 +5596,14 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     let detail = walk_to_end(&api, request).await;
     let walked = trail(&detail);
     assert_eq!(
-        walked[..6],
+        walked[..7],
         [
             "build",
             "measure",
             "run",
             "decide data.repeated_items group_by_title",
             "decide split.method item_groups",
+            "measure",
             "run"
         ],
         "{detail}"
@@ -5637,6 +5639,15 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             { "kind": "set_input", "node_id": "split", "port": "data",
               "from": "near_duplicates.data" },
         ])
+    );
+    // The promise's producer reads what the split wrote, whatever code wrote it.
+    assert_eq!(
+        steps[5]["effects"],
+        json!([{ "kind": "add_node", "node_id": "group_overlap",
+                 "operator": "sprisk.validation.group_overlap@1.0.0",
+                 "params": { "group_column": "item_group" },
+                 "inputs": { "test": "split.test", "train": "split.train" } }]),
+        "{detail}"
     );
 
     // The split reads rows that passed through the producer, which stays on the rows it
@@ -6110,6 +6121,7 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "run",
             "decide data.repeated_items independent_rows",
             "decide split.method stratified_random",
+            "measure",
             "run",
             "apply data.join_sources join_on_key",
             "run",

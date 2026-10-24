@@ -1,7 +1,8 @@
-//! The evidence methods need (ADR-0063): the engine adds each kind's producer where its
-//! manifest `attach`es, fills its concept params from the question's bindings, and moves it
-//! back onto those rows when a step is added before the step it attaches to. It says so as
-//! a patch, which the caller applies with `patch::apply`.
+//! The evidence methods need, and the evidence the promises of their decisions need
+//! (ADR-0063): the engine adds each kind's producer where its manifest `attach`es, fills its
+//! concept params from the question's bindings, and moves it back onto those rows when a step
+//! is added before the step it attaches to. It says so as a patch, which the caller applies
+//! with `patch::apply`.
 
 use std::collections::BTreeMap;
 
@@ -12,6 +13,7 @@ use sprisk_contracts::{
 };
 
 use crate::compare::upstream;
+use crate::deciding::Made;
 use crate::decision::free_id;
 use crate::{ResolveError, RuleCatalog, methods, patch};
 
@@ -27,13 +29,15 @@ pub struct Measuring {
     pub left_out: Vec<String>,
 }
 
-/// Places the producers of the evidence that the methods fitting `question` need.
+/// Places the producers of the evidence that the methods fitting `question` need, and that
+/// the promises of the options in `made` need.
 pub fn measure(
     catalog: &RuleCatalog,
     pipeline: &PipelineVersion,
     question: &QuestionVersion,
     bindings: &[Binding],
     operators: &[Operator],
+    made: &[Made],
 ) -> Result<Measuring, ResolveError> {
     let by_id: BTreeMap<String, &Operator> =
         operators.iter().map(|o| (o.id.to_string(), o)).collect();
@@ -46,33 +50,80 @@ pub fn measure(
             left_out: Vec::new(),
         },
     };
-    for method in fitting(catalog, question.task.value) {
-        for kind in &method.needs.evidence {
-            let producer = methods::producer_of(kind.as_str(), &by_id)?;
-            let need = format!("{} needs {}", method.decides.as_str(), kind.as_str());
-            match bound_params(producer, bindings) {
-                Ok(params) => {
-                    if let Some(why) = placing.place(producer, params, &need)? {
-                        placing
-                            .measuring
-                            .left_out
-                            .push(format!("{need}, but {why}."));
-                    }
+    let needed = fitting(catalog, question.task.value).flat_map(|method| {
+        method.needs.evidence.iter().map(move |kind| {
+            (
+                method,
+                kind.as_str().to_owned(),
+                format!("{} needs {}", method.decides.as_str(), kind.as_str()),
+            )
+        })
+    });
+    let promised = promised_evidence(catalog, made)?;
+    for (method, kind, need) in needed.chain(promised) {
+        let producer = methods::producer_of(&kind, &by_id)?;
+        match bound_params(producer, bindings) {
+            Ok(params) => {
+                if let Some(why) = placing.place(producer, params, &need)? {
+                    placing
+                        .measuring
+                        .left_out
+                        .push(format!("{need}, but {why}."));
                 }
-                Err(concept) => {
-                    let description = catalog
-                        .concepts()
-                        .find(|(id, _)| *id == concept)
-                        .map_or("", |(_, c)| c.description.as_str());
-                    placing.measuring.left_out.push(format!(
-                        "{} needs {concept} ({description}): state which column holds it, if one does.",
-                        method.decides.as_str()
-                    ));
-                }
+            }
+            Err(concept) => {
+                let description = catalog
+                    .concepts()
+                    .find(|(id, _)| *id == concept)
+                    .map_or("", |(_, c)| c.description.as_str());
+                placing.measuring.left_out.push(format!(
+                    "{} needs {concept} ({description}): state which column holds it, if one does.",
+                    method.decides.as_str()
+                ));
             }
         }
     }
     Ok(placing.measuring)
+}
+
+/// The evidence the promises of each option in `made` need, with its method and why.
+fn promised_evidence<'c>(
+    catalog: &'c RuleCatalog,
+    made: &[Made],
+) -> Result<Vec<(&'c Method, String, String)>, ResolveError> {
+    let mut found = Vec::new();
+    for decided in made {
+        let Some(method) = catalog
+            .methods()
+            .find(|m| m.decides.as_str() == decided.decides)
+        else {
+            return Err(ResolveError::NotInsertable(format!(
+                "no method decides {}",
+                decided.decides
+            )));
+        };
+        let option = method
+            .options
+            .iter()
+            .find(|o| o.id.as_str() == decided.option)
+            .ok_or_else(|| ResolveError::UndeclaredOption {
+                method: method.id.to_string(),
+                option: decided.option.clone(),
+            })?;
+        for name in &option.verify {
+            // Checked when packs load: an option promises only verifications its method declares.
+            let Some(verification) = method
+                .verifications
+                .iter()
+                .find_map(|(k, v)| (k.as_str() == name.as_str()).then_some(v))
+            else {
+                continue;
+            };
+            let need = format!("{} promises {}", method.decides.as_str(), name.as_str());
+            found.push((method, verification.needs.as_str().to_owned(), need));
+        }
+    }
+    Ok(found)
 }
 
 /// The methods that apply to a question of `task`, in decision order.
@@ -119,12 +170,6 @@ impl Placing<'_> {
         let attach = producer.attach.as_ref().ok_or_else(|| {
             ResolveError::NotInsertable(format!("{id} produces evidence but has no attach"))
         })?;
-        // Slice 4 adds producers that read a step's outputs, with the verifications needing them.
-        if attach.side == OperatorAttachSide::Output {
-            return Ok(Some(format!(
-                "{id} reads a step's outputs, which the engine does not place yet"
-            )));
-        }
         let role = attach.role;
         let anchors: Vec<String> = self
             .flow
@@ -143,9 +188,25 @@ impl Placing<'_> {
             [] => return Ok(Some(format!("no step has the role {role}"))),
             _ => return Ok(Some(format!("several steps have the role {role}"))),
         };
-        // Each input of the producer reads what the anchor reads on the input of that name.
+        let output = attach.side == OperatorAttachSide::Output;
+        // Each input of the producer reads what the anchor reads, or writes, on the port of
+        // that name.
         let mut wanted = BTreeMap::new();
         for port in producer.inputs.iter().map(|p| p.name.as_str()) {
+            if output {
+                let writes = self
+                    .flow
+                    .nodes
+                    .iter()
+                    .find(|n| n.id.as_str() == anchor)
+                    .and_then(|n| self.operators.get(n.operator.as_str()))
+                    .is_some_and(|o| o.outputs.iter().any(|p| p.name.as_str() == port));
+                if !writes {
+                    return Ok(Some(format!("{anchor} writes nothing on {port}")));
+                }
+                wanted.insert(port.to_owned(), format!("{anchor}.{port}"));
+                continue;
+            }
             let Some(feeding) = self
                 .flow
                 .edges
@@ -156,6 +217,7 @@ impl Placing<'_> {
             };
             wanted.insert(port.to_owned(), feeding.from.to_string());
         }
+        let rows = if output { "writes" } else { "reads" };
 
         let Some(placed) = self.flow.nodes.iter().find(|n| n.operator == producer.id) else {
             let name = id
@@ -166,7 +228,7 @@ impl Placing<'_> {
             let step = free_id(&self.flow.nodes, name);
             let added = json!({ "kind": "add_node", "node_id": step, "operator": id,
                                 "params": params, "inputs": wanted });
-            let change = format!("Adds {step} on the rows {anchor} reads: {need}.");
+            let change = format!("Adds {step} on the rows {anchor} {rows}: {need}.");
             return self.add(added, change).map(|()| None);
         };
         let step = placed.id.to_string();
@@ -193,7 +255,7 @@ impl Placing<'_> {
         };
         let reset = serde_json::to_value(&placed.params)? != params;
         for moved in moves {
-            let change = format!("Moves {step} onto the rows {anchor} reads now.");
+            let change = format!("Moves {step} onto the rows {anchor} {rows} now.");
             self.add(moved, change)?;
         }
         if reset {

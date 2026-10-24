@@ -322,6 +322,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             &question,
             &effective.bindings,
             &operators,
+            &made,
         )
         .map_err(resolve_error)?;
         if !measuring.effects.is_empty() {
