@@ -92,8 +92,8 @@ describe("saved tab panels", () => {
 describe("closed tabs can come back", () => {
   it("lists the tabs that are not open, in Inspector order", async () => {
     const { closedTabs } = await import("../src/workbench/inspectorTabs.ts");
-    expect(closedTabs(["data", "history", "console"])).toEqual(["visuals", "inputs", "parameters", "code", "checks", "performance"]);
-    expect(closedTabs([])).toHaveLength(9);
+    expect(closedTabs(["data", "history", "console"])).toEqual(["visuals", "inputs", "parameters", "code", "checks", "files", "performance"]);
+    expect(closedTabs([])).toHaveLength(10);
   });
 });
 

@@ -94,3 +94,12 @@ export const useMethodologyProposal = (id: string | undefined) =>
 
 /** Several proposals at once, e.g. the ones the flow's comparisons compare. */
 export const useMethodologyProposals = (ids: string[]) => useQueries({ queries: ids.map(proposalQuery) });
+
+/** A method's method.yaml and method.py, as the packs loaded them (ADR-0063). They change
+ * only when the API restarts with new packs. */
+export const useMethodFiles = (methodRef: string) =>
+  useQuery({
+    queryKey: ["method_files", methodRef],
+    queryFn: () => getOne("MethodFiles", `/methods/${encodeURIComponent(methodRef)}/files`),
+    staleTime: Infinity,
+  });

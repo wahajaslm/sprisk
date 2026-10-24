@@ -15,6 +15,7 @@ import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
 import { FiguresTab } from "./FiguresTab.tsx";
 import { ViewControls } from "./ViewControls.tsx";
+import { FilesTab } from "./FilesTab.tsx";
 import { MethodologyTab } from "./MethodologyTab.tsx";
 import { namedPorts } from "../../flow/notebook.ts";
 import { PassOn } from "./CodeData.tsx";
@@ -158,6 +159,8 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
       );
     case "checks":
       return pipeline && <MethodologyTab pipeline={pipeline} nodeId={nodeId} checks={step.checks} />;
+    case "files":
+      return pipeline && <FilesTab pipeline={pipeline} nodeId={nodeId} />;
     case "performance":
       return (
         <p className="muted">
