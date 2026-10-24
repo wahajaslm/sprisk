@@ -10,3 +10,11 @@ concepts:
     kind: entity_identifier
     description: Groups rows that describe the same real-world item.
     binds_to: [column, derived]
+  common.target:
+    kind: label
+    description: The value the model learns to predict.
+    binds_to: [column]
+  common.event_time:
+    kind: time
+    description: When the event a row describes happened.
+    binds_to: [column]

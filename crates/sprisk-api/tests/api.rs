@@ -152,6 +152,15 @@ async fn api_with_clock(
             Duration::from_secs(30),
             2,
         ),
+        method_runner: sprisk_api::MethodRunner::new(
+            vec![
+                python.display().to_string(),
+                "-m".into(),
+                "sprisk_workers.method".into(),
+            ],
+            Duration::from_secs(30),
+            2,
+        ),
         profiler: Profiler::new(
             vec![
                 python.display().to_string(),
@@ -1677,6 +1686,51 @@ fn stated(concept: &str, column: &str) -> Value {
 }
 
 #[tokio::test]
+async fn a_question_answers_only_methods_the_packs_load_with_their_options_and_each_once() {
+    let api = api().await;
+    let answered = |answers: Value| {
+        let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+        q["answers"] = answers;
+        q
+    };
+    let refused = |body: &Value, why: &str| {
+        assert_eq!(body["errors"][0]["code"], "invalid_answers", "{body}");
+        assert!(
+            body["errors"][0]["message"].as_str().unwrap().contains(why),
+            "{body}"
+        );
+    };
+    for (answers, why) in [
+        (
+            json!([{ "decides": "data.repeated_rows", "option": "group_by_title" }]),
+            "no method decides data.repeated_rows",
+        ),
+        (
+            json!([{ "decides": "data.repeated_items", "option": "shuffled" }]),
+            "data.repeated_items has no option shuffled",
+        ),
+        (
+            json!([{ "decides": "data.repeated_items", "option": "group_by_title" },
+                   { "decides": "data.repeated_items", "option": "independent_rows" }]),
+            "data.repeated_items is answered twice",
+        ),
+    ] {
+        let (status, body) = call(
+            &api.app,
+            "POST",
+            "/question_versions",
+            Some(answered(answers)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        refused(&body, why);
+    }
+    let fine = answered(json!([{ "decides": "data.repeated_items", "option": "group_by_title" }]));
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(fine)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[tokio::test]
 async fn a_question_binds_only_concepts_the_packs_define_and_each_once() {
     let api = api().await;
     let bound = |bindings: Value| {
@@ -1900,33 +1954,21 @@ async fn a_flow_can_only_link_a_saved_question_revision() {
 #[tokio::test]
 async fn a_step_s_proposal_can_be_asked_for_one_decision() {
     let api = api().await;
-    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    assert_eq!(
-        call(&api.app, "POST", "/question_versions", Some(q))
-            .await
-            .0,
-        StatusCode::CREATED
-    );
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    flow["nodes"].as_array_mut().unwrap().push(json!({
-        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
-        "params":{"test_fraction":0.2,"seed":42,"stratify":"returned_within_30d"}
-    }));
-    flow["edges"] = json!([{"from":"load.data","to":"split.data"}]);
-    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED);
-    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/split";
+    cluster_proposal(&api).await;
+    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/methodology/proposals/cluster";
 
     let (status, proposal) = call(
         &api.app,
         "POST",
-        &format!("{uri}/split.method"),
+        &format!("{uri}/clustering.algorithm_choice"),
         Some(json!({})),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["rule"], "methodology.supervised.data_split@1.0.0");
+    assert_eq!(
+        proposal["rule"],
+        "methodology.unsupervised.clustering_algorithm@1.0.0"
+    );
 
     let (status, body) = call(
         &api.app,
@@ -1937,80 +1979,6 @@ async fn a_step_s_proposal_can_be_asked_for_one_decision() {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
-}
-
-#[tokio::test]
-async fn split_methodology_is_resolved_previewed_and_applied_once() {
-    let api = api().await;
-    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    assert_eq!(
-        call(&api.app, "POST", "/question_versions", Some(q))
-            .await
-            .0,
-        StatusCode::CREATED
-    );
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    flow["nodes"].as_array_mut().unwrap().push(json!({
-        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
-        "params":{"test_fraction":0.2,"seed":42,"stratify":"returned_within_30d"}
-    }));
-    flow["edges"] = json!([{"from":"load.data","to":"split.data"}]);
-    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let (status, proposal) = call(
-        &api.app,
-        "POST",
-        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/split/split/proposals",
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["recommended_alternative_id"], "temporal");
-    // Decided by methodology/supervised/rules/data_split/rule.py, not by Rust.
-    assert_eq!(proposal["rule"], "methodology.supervised.data_split@1.0.0");
-    assert_eq!(proposal["alternatives"].as_array().unwrap().len(), 4);
-
-    let uri = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let request = json!({"alternative_id":"temporal","idempotency_key":"test-apply-temporal"});
-    let (status, applied) = call(&api.app, "POST", &uri, Some(request.clone())).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    assert_eq!(
-        applied["pipeline"]["parent_id"],
-        "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"
-    );
-    assert_eq!(
-        applied["pipeline"]["nodes"][1]["operator"],
-        "sprisk.validation.temporal_split@1.0.0"
-    );
-    assert_eq!(
-        applied["pipeline"]["nodes"][1]["methodology_decision_id"],
-        applied["decision"]["id"]
-    );
-
-    let (status, repeated) = call(&api.app, "POST", &uri, Some(request)).await;
-    assert_eq!(status, StatusCode::OK, "{repeated}");
-    assert_eq!(repeated, applied);
-
-    let decision = format!(
-        "/methodology_decisions/{}",
-        applied["decision"]["id"].as_str().unwrap()
-    );
-    let (status, found) = call(&api.app, "GET", &decision, None).await;
-    assert_eq!(status, StatusCode::OK, "{found}");
-    assert_eq!(found, applied["decision"]);
-
-    let proposed = format!(
-        "/methodology_proposals/{}",
-        proposal["id"].as_str().unwrap()
-    );
-    let (status, found) = call(&api.app, "GET", &proposed, None).await;
-    assert_eq!(status, StatusCode::OK, "{found}");
-    assert_eq!(found, proposal);
 }
 
 #[tokio::test]
@@ -2042,40 +2010,7 @@ async fn an_unknown_methodology_decision_is_not_found() {
 #[tokio::test]
 async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
     let api = api().await;
-    let question = json!({
-        "schema_version": "sprisk.question_version/v1",
-        "id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ8",
-        "investigation_id": "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
-        "objective": { "value": "Customer clustering exploration", "origin": "explicit" },
-        "task": { "value": "exploration", "origin": "confirmed" },
-        "assumptions": [],
-        "unknowns": [],
-        "acceptance_criteria": [],
-        "created_at": "2026-10-15T10:00:00Z"
-    });
-    let (status, _) = call(&api.app, "POST", "/question_versions", Some(question)).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let mut flow = pipeline(&api.csv);
-    flow["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ8");
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ8");
-    flow["nodes"].as_array_mut().unwrap().push(json!({
-        "id": "cluster",
-        "operator": "sprisk.clustering.kmeans@1.0.0",
-        "params": { "n_clusters": 3 }
-    }));
-    flow["edges"] = json!([{ "from": "load.data", "to": "cluster.data" }]);
-    let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    let (status, proposal) = call(
-        &api.app,
-        "POST",
-        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/methodology/proposals/cluster",
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let proposal = cluster_proposal(&api).await;
     assert_eq!(
         proposal["recommended_alternative_id"],
         "kmeans_centroid_clustering"
@@ -2452,24 +2387,20 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 65);
-    assert!(
-        rules
-            .iter()
-            .any(|r| r["id"] == "methodology.supervised.data_split@1.0.0" && r["stage"] == "split")
-    );
+    assert_eq!(rules.len(), 64);
     // The words people read go with each rule (ADR-0045 amendment).
-    let split = rules
+    let clustering = rules
         .iter()
-        .find(|r| r["id"] == "methodology.supervised.data_split@1.0.0")
+        .find(|r| r["id"] == "methodology.unsupervised.clustering_algorithm@1.0.0")
         .unwrap();
+    assert_eq!(clustering["stage"], "models");
     assert_eq!(
-        split["question"],
-        "How should the rows be split into train and test?"
+        clustering["question"],
+        "Which clustering algorithm should group the rows?"
     );
     assert_eq!(
-        split["alternatives"][0]["when"],
-        "a time column is confirmed"
+        clustering["alternatives"][0]["when"],
+        "always, as the baseline while cluster shape is not recorded"
     );
 }
 
@@ -2479,7 +2410,7 @@ async fn a_methodology_rule_source_is_its_files() {
     let (status, source) = call(
         &api.app,
         "GET",
-        "/methodology_rules/methodology.supervised.data_split@1.0.0/source",
+        "/methodology_rules/methodology.unsupervised.clustering_algorithm@1.0.0/source",
         None,
     )
     .await;
@@ -2746,7 +2677,7 @@ async fn a_comparison_is_built_only_by_compare_and_never_edited_by_a_rule() {
     assert_eq!(body["errors"][0]["code"], "comparison_by_compare");
 
     let uri = format!(
-        "/pipeline_versions/{}/methodology/split/split/proposals",
+        "/pipeline_versions/{}/methodology/proposals/split",
         comparison["id"].as_str().unwrap()
     );
     let (status, body) = call(&api.app, "POST", &uri, Some(json!({}))).await;
@@ -3389,22 +3320,42 @@ async fn a_preparation_step_with_nothing_to_compare_says_so() {
     assert_eq!(body["errors"][0]["code"], "nothing_to_compare", "{body}");
 }
 
-/// A split proposal on a flow that loads and splits, as the split test makes it.
-async fn split_proposal(api: &Api) -> Value {
-    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let (status, _) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+/// The clustering rule's proposal on a flow that loads and clusters: four alternatives,
+/// k-means recommended.
+async fn cluster_proposal(api: &Api) -> Value {
+    let question = json!({
+        "schema_version": "sprisk.question_version/v1",
+        "id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ8",
+        "investigation_id": "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "objective": { "value": "Customer clustering exploration", "origin": "explicit" },
+        "task": { "value": "exploration", "origin": "confirmed" },
+        "assumptions": [],
+        "unknowns": [],
+        "acceptance_criteria": [],
+        "created_at": "2026-10-15T10:00:00Z"
+    });
+    let (status, _) = call(&api.app, "POST", "/question_versions", Some(question)).await;
     assert_eq!(status, StatusCode::CREATED);
+
     let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    flow["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ8");
+    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ8");
     flow["nodes"].as_array_mut().unwrap().push(json!({
-        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
-        "params":{"test_fraction":0.2,"seed":42,"stratify":"returned_within_30d"}
+        "id": "cluster",
+        "operator": "sprisk.clustering.kmeans@1.0.0",
+        "params": { "n_clusters": 3 }
     }));
-    flow["edges"] = json!([{"from":"load.data","to":"split.data"}]);
+    flow["edges"] = json!([{ "from": "load.data", "to": "cluster.data" }]);
     let (status, _) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
     assert_eq!(status, StatusCode::CREATED);
-    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/split/split/proposals";
-    let (status, proposal) = call(&api.app, "POST", uri, Some(json!({}))).await;
+
+    let (status, proposal) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/methodology/proposals/cluster",
+        Some(json!({})),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     proposal
 }
@@ -3413,19 +3364,19 @@ async fn split_proposal(api: &Api) -> Value {
 async fn an_apply_key_reused_for_another_choice_conflicts_instead_of_replaying_the_first() {
     // SCI-07: a retry gets the same version; a changed payload under the same key conflicts.
     let api = api().await;
-    let proposal = split_proposal(&api).await;
+    let proposal = cluster_proposal(&api).await;
     let uri = format!(
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
-    let first = json!({ "alternative_id": "temporal", "idempotency_key": "test-reused-key" });
+    let first = json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-reused-key" });
     let (status, applied) = call(&api.app, "POST", &uri, Some(first)).await;
     assert_eq!(status, StatusCode::CREATED, "{applied}");
 
     for changed in [
-        json!({ "alternative_id": "stratified_random", "idempotency_key": "test-reused-key",
-                "reason": "Rows are independent." }),
-        json!({ "alternative_id": "temporal", "idempotency_key": "test-reused-key",
+        json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-reused-key",
+                "reason": "The clusters are not convex." }),
+        json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-reused-key",
                 "reason": "A reason the first request did not give." }),
     ] {
         let (status, body) = call(&api.app, "POST", &uri, Some(changed.clone())).await;
@@ -3446,18 +3397,18 @@ async fn an_apply_key_reused_for_another_choice_conflicts_instead_of_replaying_t
 #[tokio::test]
 async fn two_applies_at_once_with_one_key_and_different_choices_make_one_decision() {
     let api = api().await;
-    let proposal = split_proposal(&api).await;
+    let proposal = cluster_proposal(&api).await;
     let uri = format!(
         "/methodology_proposals/{}/apply",
         proposal["id"].as_str().unwrap()
     );
-    let temporal = json!({ "alternative_id": "temporal", "idempotency_key": "test-raced-key" });
-    let random = json!({ "alternative_id": "stratified_random", "idempotency_key": "test-raced-key",
-                         "reason": "Rows are independent." });
+    let kmeans = json!({ "alternative_id": "kmeans_centroid_clustering", "idempotency_key": "test-raced-key" });
+    let dbscan = json!({ "alternative_id": "dbscan_density_clustering", "idempotency_key": "test-raced-key",
+                         "reason": "The clusters are not convex." });
 
     let ((one, first), (two, second)) = tokio::join!(
-        call(&api.app, "POST", &uri, Some(temporal)),
-        call(&api.app, "POST", &uri, Some(random))
+        call(&api.app, "POST", &uri, Some(kmeans)),
+        call(&api.app, "POST", &uri, Some(dbscan))
     );
 
     // The loser is refused: as a conflicting key, or as stale once the winner's version exists.
@@ -4812,7 +4763,7 @@ fn statuses(review: &Value) -> Vec<(String, String)> {
 }
 
 #[tokio::test]
-async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure_rows_after_it() {
+async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_shaping_them() {
     let api = api().await;
     forest_flow(&api).await;
 
@@ -4833,7 +4784,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("data.missing_markers", "waiting"),
         ("data.text_spelling", "waiting"),
         ("data.type_repair", "waiting"),
-        ("split.method", "settled"),
+        // The split is a method's decision, made in the walk's look (ADR-0063).
         ("question.class_balance", "waiting"),
         ("question.error_costs", "waiting"),
         ("question.task_type", "waiting"),
@@ -4860,7 +4811,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
     assert_eq!(
         review["next"],
         json!([0, 4]),
-        "the split already matches: state the constraint and run the flow next: {review}"
+        "state the constraint and run the flow next: {review}"
     );
 }
 
@@ -4914,10 +4865,7 @@ async fn an_unknown_flow_has_no_review() {
 #[tokio::test]
 async fn a_step_that_carries_the_rule_s_applied_decision_is_settled() {
     let api = api().await;
-    forest_flow(&api).await;
-    let uri = format!("/pipeline_versions/{BASE}/methodology/split/split/proposals");
-    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let proposal = cluster_proposal(&api).await;
     let other = proposal["alternatives"]
         .as_array()
         .unwrap()
@@ -4942,7 +4890,10 @@ async fn a_step_that_carries_the_rule_s_applied_decision_is_settled() {
     let (status, review) = call(&api.app, "GET", &uri, None).await;
     assert_eq!(status, StatusCode::OK, "{review}");
     assert!(
-        statuses(&review).contains(&("split.method".to_owned(), "settled".to_owned())),
+        statuses(&review).contains(&(
+            "clustering.algorithm_choice".to_owned(),
+            "settled".to_owned()
+        )),
         "{review}"
     );
 }
@@ -5351,6 +5302,10 @@ async fn rakuten_like_question(api: &Api) {
         json!("Tell each listing's product type from its title and description.");
     q["target"]["value"] = json!("prdtypecode");
     q["unit_of_analysis"]["value"] = json!("listing");
+    // What needs no data is stated before the walk, on the Objective page (ADR-0063 amendment).
+    q["success_bar"] =
+        json!({ "value": { "metric": "weighted_f1", "score": 0.5 }, "origin": "explicit" });
+    q["interpretability"] = json!({ "value": "low", "origin": "explicit" });
     let facts = q.as_object_mut().unwrap();
     facts.remove("time_column");
     facts.remove("entity_column");
@@ -5400,7 +5355,8 @@ fn trail(detail: &Value) -> Vec<String> {
         .iter()
         .map(|s| {
             let action = s["action"].as_str().unwrap();
-            match (s["decides"].as_str(), s["alternative_id"].as_str()) {
+            let chose = s["alternative_id"].as_str().or(s["option"].as_str());
+            match (s["decides"].as_str(), chose) {
                 (Some(decides), Some(alternative)) => format!("{action} {decides} {alternative}"),
                 (Some(decides), None) => format!("{action} {decides}"),
                 (None, _) => action.to_owned(),
@@ -5416,13 +5372,16 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     rakuten_like_question(&api).await;
 
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0001")).await;
-    // Built from the question and the file. Each rule's change is applied, then the flow is
-    // run again for the rules that measure its rows.
+    // Built from the question and the file. The look runs it once and the methods decide the
+    // split; then each rule's change is applied, and the flow is run again for the rules that
+    // measure its rows.
     assert_eq!(
         trail(&detail),
         [
             "build",
-            "apply split.method stratified_random",
+            "run",
+            "decide data.repeated_items independent_rows",
+            "decide split.method stratified_random",
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
@@ -5440,7 +5399,9 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     let stop = &detail["walk"]["stop"];
     assert_eq!(stop["reason"], "needs_person", "{detail}");
     let open = stop["detail"].as_str().unwrap();
-    assert!(open.contains("question.hard_constraints"), "{open}");
+    // The bar and the constraints were stated up front; the task type is asked only once the
+    // model's train rows show 27 classes, an old rule not yet converted (ADR-0063 slice 6).
+    assert!(!open.contains("question.hard_constraints"), "{open}");
     assert!(open.contains("question.task_type"), "{open}");
     // No column is named as the title, so repeated titles are not measured, and it says so.
     assert!(
@@ -5450,7 +5411,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     let steps = detail["steps"].as_array().unwrap();
     let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
-        *head, steps[7]["made_pipeline_version_id"],
+        *head, steps[9]["made_pipeline_version_id"],
         "the head is the version the last apply made"
     );
     let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
@@ -5509,6 +5470,38 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_person_s_answer_is_taken_even_where_the_method_would_choose_another() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (_, mut q) = call(
+        &api.app,
+        "GET",
+        "/question_versions/qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        None,
+    )
+    .await;
+    q["id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
+    q["parent_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    q["answers"] = json!([{ "decides": "split.method", "option": "simple_random" }]);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut request = walk_request(&[&api.csv], "walk-answered-split");
+    request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
+    request["max_actions"] = json!(4);
+
+    let detail = walk_to_end(&api, request).await;
+    let steps = detail["steps"].as_array().unwrap();
+    let split = steps
+        .iter()
+        .find(|s| s["decides"] == "split.method")
+        .expect("the split is decided");
+    // The method would stratify by class; the person's answer is applied instead.
+    assert_eq!(split["option"], "simple_random", "{detail}");
+    assert_eq!(split["assurance"], "confirmed", "{detail}");
+}
+
 /// Rakuten-shaped listings where each title is written twice, the second time in capitals,
 /// as sellers relist one product.
 fn rakuten_like_relistings() -> String {
@@ -5534,48 +5527,120 @@ fn rakuten_like_relistings() -> String {
     csv
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn the_engine_measures_repeated_titles_once_the_question_names_the_title_column() {
-    let api = api().await;
-    std::fs::write(&api.csv, rakuten_like_relistings()).unwrap();
-    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+/// The relisted stand-in's question: the title column named, and what needs no data stated.
+fn relisting_question(id: &str, parent: Option<&str>) -> Value {
+    let mut q = question(id, parent);
     q["objective"]["value"] = json!("Tell each listing's product type from its title.");
     q["target"]["value"] = json!("prdtypecode");
     q["bindings"] = json!([stated("common.item_title", "designation")]);
+    q["success_bar"] =
+        json!({ "value": { "metric": "weighted_f1", "score": 0.5 }, "origin": "explicit" });
+    q["interpretability"] = json!({ "value": "low", "origin": "explicit" });
     let facts = q.as_object_mut().unwrap();
     for gone in ["time_column", "entity_column", "prediction_horizon"] {
         facts.remove(gone);
     }
+    q
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_splits_by_item() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_relistings()).unwrap();
+    let q = relisting_question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
+    // The look: the producer is placed and the first flow runs once, before any rule acts.
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-relistings")).await;
-    let trail = trail(&detail);
-    // The producer is added before the first run, so that run measures the titles.
-    let first_measure = trail
-        .iter()
-        .position(|s| s == "measure")
-        .expect("a measure step");
-    assert_eq!(trail[first_measure + 1], "run", "{detail}");
+    assert_eq!(
+        trail(&detail),
+        ["build", "measure", "run", "stop"],
+        "{detail}"
+    );
     let steps = detail["steps"].as_array().unwrap();
+    assert_eq!(steps[1]["effects"][0]["kind"], "add_node", "{detail}");
+    assert_eq!(
+        steps[1]["effects"][0]["params"]["title_column"], "designation",
+        "{detail}"
+    );
+    // One list: the only open question is the one the data raised.
+    let stop = &detail["walk"]["stop"];
+    assert_eq!(stop["reason"], "needs_person", "{detail}");
+    let asks = stop["asks"].as_array().unwrap();
+    assert_eq!(asks.len(), 1, "{stop}");
+    assert_eq!(asks[0]["decides"], "data.repeated_items");
+    assert_eq!(asks[0]["method"], "methodology.common.repeated_items@1.0.0");
+    assert_eq!(asks[0]["option"], "group_by_title");
+    assert_eq!(asks[0]["options"].as_array().unwrap().len(), 3, "{stop}");
+    // 15 titles per product type, each written twice: every row shares its title.
     assert!(
-        steps[first_measure]["reason"]
+        asks[0]["question"]
             .as_str()
             .unwrap()
-            .contains("data.repeated_items needs data.near_duplicate_groups"),
-        "{detail}"
-    );
-    // The step records the patch it applied (ADR-0063).
-    assert_eq!(
-        steps[first_measure]["effects"][0]["kind"], "add_node",
-        "{detail}"
-    );
-    assert_eq!(
-        steps[first_measure]["effects"][0]["params"]["title_column"], "designation",
-        "{detail}"
+            .starts_with("810 of 810 rows share a title with another row (405 groups, largest 2)."),
+        "{stop}"
     );
 
-    // It stays on the rows the split reads, whatever steps are added in front of the split.
+    // The person answers on a revised question, and the walk runs on without asking.
+    let mut answered = relisting_question(
+        "qv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+        Some("qv_01JABCDEFGHJKMNPQRSTVWXYZ0"),
+    );
+    answered["answers"] = json!([{ "decides": "data.repeated_items", "option": "group_by_title" }]);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(answered)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut request = walk_request(&[&api.csv], "walk-relistings-answered");
+    request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
+    let detail = walk_to_end(&api, request).await;
+    let walked = trail(&detail);
+    assert_eq!(
+        walked[..6],
+        [
+            "build",
+            "measure",
+            "run",
+            "decide data.repeated_items group_by_title",
+            "decide split.method item_groups",
+            "run"
+        ],
+        "{detail}"
+    );
+    assert!(
+        detail["walk"]["stop"].get("asks").is_none(),
+        "nothing is asked again: {detail}"
+    );
+    assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
+    let steps = detail["steps"].as_array().unwrap();
+    // The answer binds the item to the group column the producer adds, confirmed by a person.
+    assert_eq!(steps[3]["assurance"], "confirmed", "{detail}");
+    assert_eq!(
+        steps[3]["bindings"],
+        json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_identity",
+                 "source": { "column": "item_group", "step": "near_duplicates" },
+                 "set_by": { "assurance": "confirmed",
+                             "method": "methodology.common.repeated_items@1.0.0" } }])
+    );
+    // The split method replaces the split through a patch, and promises what it keeps.
+    assert_eq!(steps[4]["assurance"], "rule", "{detail}");
+    assert_eq!(
+        steps[4]["promises"],
+        json!(["no_group_overlap"]),
+        "{detail}"
+    );
+    assert_eq!(
+        steps[4]["effects"],
+        json!([
+            { "kind": "replace_node", "node_id": "split",
+              "operator": "sprisk.validation.group_split@1.0.0",
+              "params": { "group_column": "item_group", "test_fraction": 0.2, "seed": 42 } },
+            { "kind": "set_input", "node_id": "split", "port": "data",
+              "from": "near_duplicates.data" },
+        ])
+    );
+
+    // The split reads rows that passed through the producer, which stays on the rows it
+    // measured: later rules may add steps between them.
     let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
     let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
     let source_of = |port: &str| {
@@ -5586,21 +5651,22 @@ async fn the_engine_measures_repeated_titles_once_the_question_names_the_title_c
             .find(|e| e["to"] == port)
             .map(|e| e["from"].clone())
     };
-    assert_eq!(
-        source_of("near_duplicates.data"),
-        source_of("split.data"),
-        "{flow}"
-    );
-
-    // 15 titles per product type, each written twice: every row shares its title.
-    let open = detail["walk"]["stop"]["detail"].as_str().unwrap();
-    assert!(
-        open.contains(
-            "Measured for data.repeated_items: data.near_duplicate_groups: groups 405, \
-             largest_group 2, rows 810, rows_in_groups 810."
-        ),
-        "{open}"
-    );
+    let mut upstream = Vec::new();
+    let mut port = "split.data".to_owned();
+    while let Some(from) = source_of(&port) {
+        let step = from.as_str().unwrap().split('.').next().unwrap().to_owned();
+        port = format!("{step}.data");
+        upstream.push(step);
+    }
+    assert!(upstream.contains(&"near_duplicates".to_owned()), "{flow}");
+    assert_eq!(upstream.last().map(String::as_str), Some("load"), "{flow}");
+    let split = flow["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "split")
+        .unwrap();
+    assert_eq!(split["operator"], "sprisk.validation.group_split@1.0.0");
 }
 
 #[tokio::test]
@@ -5660,8 +5726,8 @@ async fn a_walk_stops_when_it_has_taken_its_actions() {
     let detail = walk_to_end(&api, request).await;
     assert_eq!(
         trail(&detail),
-        ["build", "apply split.method stratified_random", "stop"],
-        "{detail}"
+        ["build", "run", "stop"],
+        "the look's run is its one action: {detail}"
     );
     assert_eq!(
         detail["walk"]["stop"]["reason"], "budget_exhausted",
@@ -5745,9 +5811,10 @@ async fn a_walk_whose_head_someone_else_changes_stops_as_stale() {
 
     let detail = stopped(&api, &walk).await;
     assert_eq!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
-    assert_eq!(
-        trail(&detail),
-        ["build", "stop"],
+    // The look's run may start before the edit lands; a run changes no version.
+    let walked = trail(&detail);
+    assert!(
+        walked == ["build", "stop"] || walked == ["build", "run", "stop"],
         "nothing applied on a changed head: {detail}"
     );
 }
@@ -5887,8 +5954,8 @@ async fn a_restarted_server_finishes_its_walks_without_a_second_run_for_a_round(
     let steps = detail["steps"].as_array().unwrap();
     let runs_of_round_one = steps.iter().filter(|s| s["round"] == 1).count();
     assert_eq!(runs_of_round_one, 1, "{detail}");
-    // The walk goes on from the run: the split rule reads what it produced.
-    assert_eq!(steps[2]["action"], "apply", "{detail}");
+    // The walk goes on from the run: the methods decide on what it measured.
+    assert_eq!(steps[2]["action"], "decide", "{detail}");
     assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
 }
 
@@ -5941,8 +6008,25 @@ async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
     let (walk, head) = walk_left_walking(&api).await;
-    // Round 1 applied the split rule, then the server stopped before it recorded the step.
-    let uri = format!("/pipeline_versions/{head}/methodology/proposals/split/split.method");
+    // The head was run, then round 1 applied a rule that reads its rows, and the server
+    // stopped before it recorded the step.
+    let (status, run) = call(
+        &api.app,
+        "POST",
+        "/runs",
+        Some(json!({ "pipeline_version_id": head })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    let run_uri = format!("/runs/{}", run["id"].as_str().unwrap());
+    for _ in 0..400 {
+        let (_, body) = call(&api.app, "GET", &run_uri, None).await;
+        if body["finished_at"].is_string() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let uri = format!("/pipeline_versions/{head}/methodology/proposals/split/data.column_roles");
     let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     let apply = format!(
@@ -6016,13 +6100,16 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
     rakuten_like_question(&api).await;
 
     let detail = walk_to_end(&api, walk_request(&[&x, &y], "walk-rakuten-files")).await;
-    // The first run fails at the split, which finds no target in the listings; the join rule
-    // reads both loads all the same. Then the walk goes on as with one joined file.
+    // The look's run fails at the split, which finds no target in the listings; the methods
+    // decide the split and the join rule reads both loads all the same. Then the walk goes on
+    // as with one joined file.
     assert_eq!(
         trail(&detail),
         [
             "build",
-            "apply split.method stratified_random",
+            "run",
+            "decide data.repeated_items independent_rows",
+            "decide split.method stratified_random",
             "run",
             "apply data.join_sources join_on_key",
             "run",

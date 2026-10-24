@@ -71,6 +71,8 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.profile.distributions@1.0.0",
         "sprisk.profile.near_duplicates@1.0.0",
         "sprisk.profile.summarize@1.0.0",
+        "sprisk.validation.class_shares@1.0.0",
+        "sprisk.validation.group_overlap@1.0.0",
         "sprisk.validation.group_split@1.0.0",
         "sprisk.validation.random_split@1.0.0",
         "sprisk.validation.temporal_split@1.0.0",

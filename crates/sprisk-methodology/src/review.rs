@@ -12,9 +12,6 @@ use crate::{
     ResolveError, RuleCatalog, catalog::decides, compare::upstream, facts, reopened_stage,
 };
 
-/// What the split rule decides. A rule that measures train rows needs it decided first.
-pub const SPLIT_DECISION: &str = "split.method";
-
 /// Decisions that shape the table a split reads, in order: a join adds the other table's
 /// columns, identifiers are left out, then markup is stripped from the text left. Rules
 /// measuring that table wait for them, so they see it final (ADR-0059): duplicate rows, say,
@@ -109,8 +106,9 @@ pub fn plan<'a>(
     Ok(ordered)
 }
 
-/// Whether `later` must wait for `earlier`: it measures train rows, and `earlier` decides
-/// the split or a step strictly upstream of `later`'s. A rule reading cross-validation
+/// Whether `later` must wait for `earlier`: it measures train rows, and `earlier` decides a
+/// step strictly upstream of `later`'s. The split is a method's decision, made in the walk's
+/// look before any rule acts (ADR-0063). A rule reading cross-validation
 /// results also waits for the rules of its own step that do not (ADR-0059): they may change
 /// what was compared. A rule measuring the table a step reads waits for the rules of that step
 /// that shape it (`TABLE_SHAPE`), and the rules shaping a model's inputs go in
@@ -144,9 +142,6 @@ pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planne
     let results = facts::needs_results(reads(later));
     if !results && !facts::needs_train_rows(reads(later)) {
         return false;
-    }
-    if earlier.rule.decides.as_str() == SPLIT_DECISION {
-        return true;
     }
     match (later.subject, earlier.subject) {
         (Some(later_step), Some(earlier_step)) if later_step.id == earlier_step.id => {

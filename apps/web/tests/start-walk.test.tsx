@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import questionJson from "../../../tests/contract/question_version/valid/classification-all-fields.json";
 import walking from "../../../tests/contract/walk/valid/walking.json";
+import asking from "../../../tests/contract/walk/valid/stopped-with-asks.json";
 import trail from "../../../tests/contract/walk_detail/valid/trail.json";
 import { LOCAL_PROJECT } from "../src/notebook/document.ts";
 import { ObjectivePage } from "../src/views/objective/ObjectivePage.tsx";
@@ -14,7 +15,12 @@ import { useSelection } from "../src/workbench/selection.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
-const question = parse("QuestionVersion", questionJson);
+// What no data can give is stated, so a walk may start (ADR-0063 amendment).
+const question = parse("QuestionVersion", {
+  ...questionJson,
+  success_bar: { value: { metric: "weighted_f1", score: 0.8 }, origin: "explicit" },
+  interpretability: { value: "low", origin: "explicit" },
+});
 const WALK = trail.walk.id;
 const started = { ...walking, id: WALK };
 const stillWalking = { walk: started, steps: [] };
@@ -113,6 +119,56 @@ describe("StartWalk", () => {
 
     await waitFor(() => expect(useSelection.getState().nav).toBe("Flow"));
     expect(useSelection.getState().pipelineVersionId).toBe(trail.walk.head_pipeline_version_id);
+  });
+
+  it("cannot start until what no data can give is stated, and says what", () => {
+    const { success_bar: _bar, ...unbarred } = question;
+    renderWithApi(<StartWalk question={unbarred} />);
+
+    expect(screen.getByRole("button", { name: "Start walk" })).toBeDisabled();
+    expect(screen.getByText("State before the walk: the success bar.")).toBeInTheDocument();
+  });
+
+  it("shows every question the look found and answers them in one revision, then walks on", async () => {
+    const asked = { walk: { ...asking, id: WALK }, steps: [] };
+    const next = { ...started, id: "wlk_01JABCDEFGHJKMNPQRSTVWXYZ9" };
+    const walks: Record<string, unknown>[] = [];
+    let revision: Record<string, unknown> | undefined;
+    server.use(
+      http.post("/api/walks", async ({ request }) => {
+        walks.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(walks.length === 1 ? started : next, { status: 201 });
+      }),
+      http.get(`/api/walks/${WALK}`, () => HttpResponse.json(asked)),
+      http.get(`/api/walks/${next.id}`, () => HttpResponse.json({ walk: next, steps: [] })),
+      http.post("/api/question_versions", async ({ request }) => {
+        revision = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(revision, { status: 201 });
+      }),
+    );
+    renderWithApi(<StartWalk question={question} />);
+
+    await startWith("standin.csv");
+
+    const [method, fact] = asking.stop.asks;
+    if (!method || !fact) throw new Error("the fixture asks two questions");
+    expect(await screen.findByText(method.question)).toBeInTheDocument();
+    // The option the method would take is picked; a person may pick another.
+    expect(screen.getByRole("radio", { name: /Treat rows with matching titles as one item/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: "Treat every row as its own item" }));
+    // A fact the question states is answered on the question, not here.
+    expect(screen.getByText(fact.question)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Answer and walk on" }));
+
+    await waitFor(() => expect(walks).toHaveLength(2));
+    expect(revision).toMatchObject({
+      parent_id: question.id,
+      answers: [{ decides: "data.repeated_items", option: "independent_rows" }],
+      success_bar: question.success_bar,
+    });
+    expect(walks[1]).toMatchObject({ question_version_id: revision?.id, sources: ["standin.csv"] });
+    expect(await screen.findByText("Walking")).toBeInTheDocument();
   });
 
   it("is offered on the Objective page for the current question", async () => {

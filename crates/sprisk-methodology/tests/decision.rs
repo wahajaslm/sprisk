@@ -18,12 +18,12 @@ use sprisk_methodology::{
 use sprisk_registry::Registry;
 
 mod repo;
-use repo::repo_catalog;
+use repo::rules_with_example_split;
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
 
 fn catalog() -> RuleCatalog {
-    repo_catalog()
+    rules_with_example_split()
 }
 
 fn question() -> QuestionVersion {

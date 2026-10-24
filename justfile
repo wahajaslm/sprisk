@@ -36,7 +36,7 @@ check:
     uv run mypy python/sprisk-workers/src
     uv run mypy python/sprisk-workers/tests
     uv run mypy plugins
-    uv run mypy methodology --exclude '/rules/'
+    uv run mypy methodology --exclude '/(rules|methods)/'
     # Every rule module is named rule.py, which mypy reads as one module, so each is checked alone.
     for f in methodology/*/rules/*/rule.py; do uv run mypy "$f" || exit 1; done
     uv run pytest -q python plugins methodology

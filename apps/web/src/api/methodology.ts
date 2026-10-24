@@ -8,14 +8,8 @@ import { getList, getOne, postOne } from "./client.ts";
  * runs only when a person asks; it changes nothing in the flow. */
 export function useResolveStep() {
   return useMutation({
-    mutationFn: ({ pipelineId, nodeId, decides, isSplit }: { pipelineId: string; nodeId: string; decides: string; isSplit: boolean }) =>
-      postOne(
-        "DecisionProposal",
-        isSplit
-          ? `/pipeline_versions/${pipelineId}/methodology/split/${nodeId}/proposals`
-          : `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}/${decides}`,
-        {},
-      ),
+    mutationFn: ({ pipelineId, nodeId, decides }: { pipelineId: string; nodeId: string; decides: string }) =>
+      postOne("DecisionProposal", `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}/${decides}`, {}),
   });
 }
 

@@ -4,7 +4,8 @@
 use serde_json::{Value, json};
 use sprisk_contracts::{
     Edge, MethodologyReview, MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule, Node,
-    Origin, PipelineVersion, QuestionVersion, RuleActionType, TaskType, WalkStopReason, parse,
+    Origin, PipelineVersion, QuestionVersion, RuleActionType, TaskType, WalkAsk, WalkStopReason,
+    parse,
 };
 
 use crate::{CatalogError, ResolveError, RuleCatalog, compare::SEED};
@@ -339,6 +340,52 @@ pub fn next_action<'r>(
         reason,
         detail: open.join(" "),
     })
+}
+
+/// What the look asks of a person from `review` (ADR-0063 amendment): each fact a rule needs
+/// stated, each rule that reads a guess, and the success bar, which fixes the metric before
+/// any score is seen (ADR-0059). In review order, the success bar last.
+pub fn look_asks(
+    review: &MethodologyReview,
+    question: &QuestionVersion,
+    rules: &RuleCatalog,
+) -> Result<Vec<WalkAsk>, ResolveError> {
+    let mut asks = Vec::new();
+    for item in review
+        .next
+        .iter()
+        .filter_map(|&at| review.items.get(at as usize))
+    {
+        let text = match item.status {
+            MethodologyReviewStatus::NeedsFact => describe(item),
+            MethodologyReviewStatus::Proposal => {
+                let guesses = unconfirmed_reads(rules.rule(item.rule.as_str())?, question)?;
+                if guesses.is_empty() {
+                    continue;
+                }
+                format!(
+                    "{} It reads {}, still a guess: confirm it first.",
+                    describe(item),
+                    guesses.join(", ")
+                )
+            }
+            _ => continue,
+        };
+        asks.push(parse(
+            &json!({ "decides": item.decides, "question": text }).to_string(),
+        )?);
+    }
+    if question.success_bar.is_none() {
+        asks.push(parse(
+            &json!({
+                "decides": "question.success_bar",
+                "question": "State the success bar: its metric is what models are compared by, \
+                             and it must be fixed before any score is seen.",
+            })
+            .to_string(),
+        )?);
+    }
+    Ok(asks)
 }
 
 /// The question facts `rule` reads that are still a guess (`inferred`). A rule's default is

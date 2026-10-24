@@ -7,21 +7,18 @@ from typing import Any
 
 import pytest
 import yaml
+from method_harness import decide as decide_method
 
 from sprisk_contracts import (
     MethodologyCheck,
     MethodologyDecision,
     PipelineVersion,
     QuestionVersion,
-    RuleDecision,
-    RuleObservation,
 )
-from sprisk_supervised.split_design import ALTERNATIVE_OPERATORS, CHECK, split_design
+from sprisk_supervised.split_design import CHECK, split_design
 from sprisk_supervised.split_leakage import CheckInputError
-from sprisk_workers.rule import load_decide
 
 CONTRACT = Path(__file__).parents[3] / "tests" / "contract"
-RULE_DIR = Path(__file__).parents[1] / "rules" / "data_split"
 NOW = "2026-10-20T10:00:00Z"
 DECISION_ID = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0"
 
@@ -83,22 +80,6 @@ def check(
 
 CONFIRMED_TIME = {"time_column": {"value": "day", "origin": "confirmed"}}
 CONFIRMED_ENTITY = {"entity_column": {"value": "patient", "origin": "confirmed"}}
-
-
-def rule_manifest() -> dict[str, Any]:
-    loaded: dict[str, Any] = yaml.safe_load((RULE_DIR / "rule.yaml").read_text())
-    return loaded
-
-
-def test_shares_the_split_rule_s_identity() -> None:
-    manifest = rule_manifest()
-    assert manifest["id"] == CHECK
-    assert manifest["verification"]["check_id"] == CHECK
-
-
-def test_knows_the_operator_of_every_alternative_the_rule_offers() -> None:
-    actions = {a["id"]: a["action"]["operator"] for a in rule_manifest()["alternatives"]}
-    assert {k: f"{v}@1.0.0" for k, v in ALTERNATIVE_OPERATORS.items()} == actions
 
 
 @pytest.mark.parametrize(
@@ -195,48 +176,42 @@ def test_a_split_changed_after_its_decision_fails_and_says_so() -> None:
     assert result.methodology_decision_id is not None
 
 
-FACT_STATES = [None, "inferred", "confirmed"]
+# The concept each confirmed question fact binds (ADR-0063 amendment).
+FACT_CONCEPTS = {"time_column": "common.event_time", "entity_column": "common.item_identity"}
+METHOD = Path(__file__).parents[1] / "methods" / "split_method" / "method.yaml"
 
 
-@pytest.mark.parametrize("time", FACT_STATES)
-@pytest.mark.parametrize("entity", FACT_STATES)
-def test_every_option_decide_offers_is_never_failed_by_the_gate(
-    time: str | None, entity: str | None
+@pytest.mark.parametrize("time", [None, "confirmed"])
+@pytest.mark.parametrize("entity", [None, "confirmed"])
+@pytest.mark.parametrize("repeated", ["independent_rows", "group_by_title"])
+def test_the_gate_never_fails_the_split_the_method_chooses(
+    time: str | None, entity: str | None, repeated: str
 ) -> None:
     facts: dict[str, Any] = {}
-    observed = {
-        "question.target": ("churned", "confirmed"),
-        "question.task": ("classification", "confirmed"),
-    }
+    columns = {"common.target": "churned"}
     if time:
         facts["time_column"] = {"value": "day", "origin": time}
-        observed["question.time_column"] = ("day", time)
+        columns[FACT_CONCEPTS["time_column"]] = "day"
     if entity:
         facts["entity_column"] = {"value": "patient", "origin": entity}
-        observed["question.entity_column"] = ("patient", entity)
-    offered = decide_split(observed)
-    applicable = [a for a in offered.alternatives if a.applicability.value == "applicable"]
-    assert applicable, "the rule always offers a choice"
-    for option in applicable:
-        operator = f"{ALTERNATIVE_OPERATORS[option.id]}@1.0.0"
-        params = (option.params.model_extra or {}) if option.params else {}
-        result = check((operator, params), question(**facts))
-        assert result.verdict != "fail", f"{option.id}: {result.rationale}"
-
-
-def decide_split(facts: dict[str, tuple[str, str]]) -> RuleDecision:
-    observation = RuleObservation.model_validate_json(
-        json.dumps(
-            {
-                "schema_version": "sprisk.rule_observation/v1",
-                "rule": CHECK,
-                "facts": {k: {"value": v, "origin": o} for k, (v, o) in facts.items()},
-                "profile": {},
-                "settings": {"default_test_fraction": 0.2, "default_seed": 42},
-            }
-        )
+        columns[FACT_CONCEPTS["entity_column"]] = "patient"
+    elif repeated == "group_by_title":
+        # The repeated-items method binds the item to the column the producer adds.
+        columns["common.item_identity"] = "item_group"
+    chosen = decide_method(
+        "supervised/split_method", decisions={"data.repeated_items": repeated}, bound=list(columns)
     )
-    return load_decide(RULE_DIR / "rule.py")(observation)
+    option = next(o for o in method_options() if o["id"] == chosen["option"])
+    replace = option["action"]["replace"]
+    params = dict(replace.get("settings", {}))
+    params.update({p: columns[c] for p, c in replace.get("concepts", {}).items() if c in columns})
+    result = check((replace["operator"], params), question(**facts))
+    assert result.verdict != "fail", f"{option['id']}: {result.rationale}"
+
+
+def method_options() -> list[dict[str, Any]]:
+    options: list[dict[str, Any]] = yaml.safe_load(METHOD.read_text())["options"]
+    return options
 
 
 def test_a_hand_set_split_names_no_decision() -> None:

@@ -14,7 +14,7 @@ use crate::catalog::{CatalogError, parse_yaml};
 use sprisk_registry::evidence::EVIDENCE_PORT;
 
 pub(crate) const METHOD: &str = "method.yaml";
-const METHOD_MODULE: &str = "method.py";
+pub(crate) const METHOD_MODULE: &str = "method.py";
 pub(crate) const CONCEPTS: &str = "concepts.yaml";
 
 #[derive(Debug)]
@@ -287,6 +287,14 @@ pub(crate) fn producer<'a>(
         }
         (_, _) => Err(format!("{kind}: several defaults: {}", ids(&defaults))),
     }
+}
+
+/// `producer`, as the walk's error: a pack that loaded has one for every kind it needs.
+pub(crate) fn producer_of<'a>(
+    kind: &str,
+    operators: &BTreeMap<String, &'a Operator>,
+) -> Result<&'a Operator, crate::ResolveError> {
+    producer(kind, operators).map_err(|p| crate::ResolveError::Rules(CatalogError::Evidence(p)))
 }
 
 fn in_decision_order(methods: Vec<MethodEntry>) -> Result<Vec<MethodEntry>, CatalogError> {

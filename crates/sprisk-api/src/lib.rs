@@ -7,6 +7,8 @@ mod bounded;
 mod engine;
 mod figures;
 mod kernel;
+mod line_session;
+mod method_session;
 mod notebook_code;
 mod profile;
 mod rules;
@@ -14,6 +16,7 @@ mod split;
 pub use bounded::ProcessError;
 pub use engine::resume_walks;
 pub use kernel::{KernelError, KernelLimits, Kernels};
+pub use method_session::{MethodRunner, MethodSession};
 pub use notebook_code::CodeWriter;
 use profile::Profiles;
 pub use profile::{KeyMatcher, Profiler};
@@ -37,13 +40,12 @@ use sprisk_contracts::{
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookSettings,
     NotebookSettingsRequest, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
-    OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
+    OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
     QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study, StudyDetail, StudyId,
     StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
-use sprisk_methodology::review::SPLIT_DECISION;
 use sprisk_registry::Registry;
 use sprisk_scheduler::{ProcessWorkers, Scheduler, Settings};
 use sprisk_store::{SqliteStore, StoreError};
@@ -78,6 +80,7 @@ pub struct AppState {
     pub code_writer: CodeWriter,
     /// Runs a methodology rule's Python decide() (ADR-0042).
     pub rule_runner: RuleRunner,
+    pub method_runner: MethodRunner,
     /// One live Python kernel per notebook being explored (ADR-0036).
     pub kernels: Kernels,
 }
@@ -93,10 +96,6 @@ pub fn router(state: AppState) -> Router {
             post(create_question_version).get(list_question_versions),
         )
         .route("/question_versions/{id}", get(get_question_version))
-        .route(
-            "/pipeline_versions/{id}/methodology/split/{node_id}/proposals",
-            post(propose_split),
-        )
         .route(
             "/pipeline_versions/{id}/methodology/proposals/{node_id}",
             post(propose_node_methodology),
@@ -928,7 +927,7 @@ async fn read_notebook_settings(
             check_settings(operator, &settings)?;
             Ok(Json(NotebookSettings::Settings(settings)))
         }
-        NotebookSettings::Code if is_split(&state.rules, &operator_ref) => {
+        NotebookSettings::Code if is_split(&state.registry, &operator_ref) => {
             Err(ApiError::BadRequest {
                 code: "split_is_not_code",
                 message: format!(
@@ -992,6 +991,7 @@ async fn create_question_version(
     check_costs(&question)?;
     check_success_bar(&question)?;
     check_bindings(&question, &state.rules)?;
+    check_answers(&question, &state.rules)?;
     if let Some(parent_id) = &question.parent_id {
         let parent =
             state
@@ -1064,6 +1064,32 @@ fn check_bindings(
         };
         return Err(ApiError::BadRequest {
             code: "invalid_bindings",
+            message: why,
+        });
+    }
+    Ok(())
+}
+
+/// Each answer names a loaded method's decision and one of its options, and no decision is
+/// answered twice (ADR-0063 amendment).
+fn check_answers(
+    question: &QuestionVersion,
+    rules: &sprisk_methodology::RuleCatalog,
+) -> Result<(), ApiError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for answer in &question.answers {
+        let decides = answer.decides.as_str();
+        let option = answer.option.as_str();
+        let why = match rules.methods().find(|m| m.decides.as_str() == decides) {
+            None => format!("no method decides {decides}"),
+            Some(method) if !method.options.iter().any(|o| o.id.as_str() == option) => {
+                format!("{decides} has no option {option}")
+            }
+            Some(_) if !seen.insert(decides) => format!("{decides} is answered twice"),
+            Some(_) => continue,
+        };
+        return Err(ApiError::BadRequest {
+            code: "invalid_answers",
             message: why,
         });
     }
@@ -1153,13 +1179,6 @@ async fn get_question_version(
     Path(raw): Path<String>,
 ) -> Result<Json<QuestionVersion>, ApiError> {
     Ok(Json(state.store.get_question_version(&id(&raw)?).await?))
-}
-
-async fn propose_split(
-    State(state): State<AppState>,
-    Path((raw, node_id)): Path<(String, String)>,
-) -> Result<(StatusCode, Json<DecisionProposal>), ApiError> {
-    propose(&state, &raw, &node_id, Some(SPLIT_DECISION)).await
 }
 
 async fn propose_node_methodology(
@@ -1304,7 +1323,7 @@ fn before_the_split(
     if !sprisk_methodology::facts::needs_train_rows(rule.reads.iter().map(|r| r.as_str())) {
         return None;
     }
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
     let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let traced = sprisk_methodology::train_rows_source(pipeline, node.id.as_str(), is_split, keeps);
     let step = node.id.as_str();
@@ -1318,11 +1337,11 @@ fn before_the_split(
     })
 }
 
-/// A step the split rule decides, whatever its version.
-fn is_split(rules: &sprisk_methodology::RuleCatalog, operator: &str) -> bool {
-    rules
-        .rules_for_operator(operator)
-        .any(|r| r.decides.as_str() == SPLIT_DECISION)
+/// A step whose operator has the split role (ADR-0063).
+fn is_split(registry: &Registry, operator: &str) -> bool {
+    registry
+        .get(operator)
+        .is_some_and(|o| o.role == Some(OperatorRole::Split))
 }
 
 /// Steps whose manifest says they fit on train and write train and test each from its own
@@ -1580,7 +1599,7 @@ async fn train_profile_facts(
     profiles: &mut Profiles,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
     let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps)
         .map_err(|e| evidence_unavailable(e.to_string()))?;
@@ -2077,7 +2096,7 @@ async fn comparison_version(
         .store
         .get_question_version(&proposal.question_version_id)
         .await?;
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
     let keeps_train = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let operator_of = |operator: &str| state.registry.get(operator);
     // A metric a person stated with the success bar is what models are compared by (ADR-0059).

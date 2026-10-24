@@ -30,6 +30,13 @@ def states(d: dict[str, Any]) -> dict[str, str]:
 GOAL = {**ask(objective="Flag churn", task="classification")}
 
 
+def test_a_stated_success_bar_is_the_bar() -> None:
+    bar = ask(**{"success_bar.metric": "weighted_f1", "success_bar.score": "0.5"})
+    d = decide("common/objective", facts={**GOAL, **bar})
+    assert alternative(d, "stated")["applicability"] == "applicable"
+    assert "weighted_f1 of at least 0.5" in alternative(d, "stated")["reason"]
+
+
 def test_objective_asks_for_a_bar_before_any_run() -> None:
     d = decide("common/objective", facts=GOAL)
     assert states(d) == {"stated": "needs_fact", "exploration": "not_applicable"}

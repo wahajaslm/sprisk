@@ -81,7 +81,7 @@ fn the_split_decision_loads_in_decision_order() {
             "methodology.core.split_method@1.0.0"
         ]
     );
-    assert_eq!(catalog.concepts().count(), 3);
+    assert_eq!(catalog.concepts().count(), 4);
 }
 
 #[test]
@@ -109,8 +109,8 @@ fn a_method_needing_an_unknown_concept_is_refused() {
     edit(
         pack.path(),
         SPLIT,
-        "concepts: [common.target]",
-        "concepts: [common.answer]",
+        "concepts: [common.target,",
+        "concepts: [common.answer,",
     );
     assert!(refused(pack.path()).contains("unknown concept common.answer"));
 }
@@ -343,7 +343,7 @@ fn an_option_setting_a_param_the_operator_lacks_is_refused() {
         "group: common.item_identity",
     );
     assert!(
-        refused(pack.path()).contains("sprisk.validation.group_split@1.0.0 has no param group")
+        refused(pack.path()).contains("sprisk.validation.temporal_split@1.0.0 has no param group")
     );
 }
 

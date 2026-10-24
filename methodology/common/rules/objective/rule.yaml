@@ -6,7 +6,7 @@ decides: question.objective
 status: active
 question: "What is the goal, and what score is good enough?"
 applies_to: [sprisk.io.file_source]
-reads: [question.objective, question.acceptance_criteria, question.task]
+reads: [question.objective, question.acceptance_criteria, question.success_bar.metric, question.success_bar.score, question.task]
 
 provenance:
   standard: "CRISP-DM business understanding (Chapman et al. 2000)"

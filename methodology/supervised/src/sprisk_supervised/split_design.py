@@ -1,6 +1,8 @@
 """Does each split step split the way the question's confirmed facts require? (ADR-0042)
 
-This is the verification half of the data split rule, so it carries that rule's identity.
+It began as the verification half of the data split rule and keeps that rule's check id, so
+stored checks stay comparable. The split is now decided by the split_method method, whose
+promises replace this check when the old rules go (ADR-0063 slice 6).
 It reads settings, not rows: a pass is partial coverage until a run checks the rows.
 """
 
@@ -21,7 +23,7 @@ CHECK = "methodology.supervised.data_split@1.0.0"
 RANDOM = "sprisk.validation.random_split"
 TEMPORAL = "sprisk.validation.temporal_split"
 GROUP = "sprisk.validation.group_split"
-# The operator each alternative of rules/data_split/rule.yaml builds; a test keeps them equal.
+# The operator each alternative of the retired data_split rule built, for the decisions it made.
 ALTERNATIVE_OPERATORS = {
     "temporal": TEMPORAL,
     "entity_group": GROUP,

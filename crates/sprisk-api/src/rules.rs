@@ -2,87 +2,32 @@
 //! (ADR-0059): Python starts once, not once per rule.
 
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::StreamExt;
 use serde_json::json;
 use sprisk_contracts::{RuleAnswer, RuleDecision, RuleObservation, RuleRequest, parse};
-use tokio::io::AsyncWriteExt;
-use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use tokio_util::codec::{FramedRead, LinesCodec};
 
-use crate::bounded::{ProcessError, cleared_command};
-
-const MAX_ANSWER_BYTES: usize = 8 << 20;
-/// Of a session's stderr, what goes to the log; the rest is read and dropped.
-const MAX_LOGGED_ERROR_BYTES: usize = 16 << 10;
+use crate::bounded::ProcessError;
+use crate::line_session::{LineRunner, LineSession};
 
 /// `python -m sprisk_workers.rule`: RuleRequest lines in, one RuleAnswer line each out.
 #[derive(Clone, Debug)]
-pub struct RuleRunner {
-    command: Vec<String>,
-    /// For each decision, starting Python included.
-    timeout: Duration,
-    sessions: Arc<Semaphore>,
-}
+pub struct RuleRunner(LineRunner);
 
 impl RuleRunner {
     pub fn new(command: Vec<String>, timeout: Duration, at_once: usize) -> Self {
-        Self {
-            command,
-            timeout,
-            sessions: Arc::new(Semaphore::new(at_once)),
-        }
+        Self(LineRunner::new(command, timeout, at_once))
     }
 
     /// A session for one review. Its process starts with the first decision and is killed
     /// when the session is dropped.
     pub fn session(&self) -> RuleSession {
-        RuleSession {
-            runner: self.clone(),
-            live: None,
-        }
-    }
-
-    fn start(&self) -> Result<Live, ProcessError> {
-        let slot = self
-            .sessions
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| ProcessError::Busy)?;
-        let mut child = cleared_command(&self.command)?
-            .spawn()
-            .map_err(|e| ProcessError::Failed(e.to_string()))?;
-        let (Some(stdin), Some(stdout), Some(stderr)) =
-            (child.stdin.take(), child.stdout.take(), child.stderr.take())
-        else {
-            return Err(ProcessError::Failed("rule session has no stdio".into()));
-        };
-        tokio::spawn(log_errors(stderr));
-        Ok(Live {
-            stdin,
-            stdout: FramedRead::new(stdout, LinesCodec::new_with_max_length(MAX_ANSWER_BYTES)),
-            _child: child,
-            _slot: slot,
-        })
+        RuleSession(self.0.session())
     }
 }
 
 /// One review's rule process, started on first use.
-pub struct RuleSession {
-    runner: RuleRunner,
-    live: Option<Live>,
-}
-
-struct Live {
-    stdin: ChildStdin,
-    stdout: FramedRead<ChildStdout, LinesCodec>,
-    // Held so the process is killed, and its slot freed, when the session ends.
-    _child: Child,
-    _slot: OwnedSemaphorePermit,
-}
+pub struct RuleSession(LineSession);
 
 impl RuleSession {
     /// The rule's decision. A rule that refuses its observation leaves the process running for
@@ -103,15 +48,13 @@ impl RuleSession {
         .map_err(|e| ProcessError::Failed(format!("rule request: {e}")))?;
         let line = serde_json::to_string(&request)
             .map_err(|e| ProcessError::Failed(format!("rule request: {e}")))?;
-        let live = match &mut self.live {
-            Some(live) => live,
-            None => self.live.insert(self.runner.start()?),
-        };
-        let timeout = self.runner.timeout;
-        let answer = match tokio::time::timeout(timeout, exchange(live, &line)).await {
-            Ok(answer) => answer,
-            Err(_) => Err(ProcessError::Timeout(timeout)),
-        };
+        let answer = self.0.exchange(&line).await.and_then(|answer| {
+            // The parse error may quote the answer, which can hold dataset text: it goes to the log.
+            parse(&answer).map_err(|e| {
+                tracing::error!(error = %e, "invalid rule answer");
+                ProcessError::Failed("invalid rule answer".into())
+            })
+        });
         match answer {
             // A rule printing a forged answer must not answer for another rule.
             Ok(RuleAnswer::Decided(decided)) if decided.decision.rule != observation.rule => {
@@ -120,7 +63,7 @@ impl RuleSession {
                     answered = decided.decision.rule.as_str(),
                     "rule session answered for another rule"
                 );
-                self.live = None;
+                self.0.end();
                 Err(ProcessError::Failed(format!(
                     "rule {} got a decision for another rule",
                     observation.rule.as_str()
@@ -140,54 +83,8 @@ impl RuleSession {
             }
             Err(e) => {
                 tracing::error!(rule = observation.rule.as_str(), error = %e, "rule session ended");
-                self.live = None;
+                self.0.end();
                 Err(e)
-            }
-        }
-    }
-}
-
-async fn exchange(live: &mut Live, line: &str) -> Result<RuleAnswer, ProcessError> {
-    let failed = |e: std::io::Error| ProcessError::Failed(e.to_string());
-    live.stdin
-        .write_all(line.as_bytes())
-        .await
-        .map_err(failed)?;
-    live.stdin.write_all(b"\n").await.map_err(failed)?;
-    live.stdin.flush().await.map_err(failed)?;
-    let answer = match live.stdout.next().await {
-        Some(Ok(answer)) => answer,
-        Some(Err(e)) => return Err(ProcessError::Failed(format!("rule answer: {e}"))),
-        None => return Err(ProcessError::Failed("the rule session exited".into())),
-    };
-    // The parse error may quote the answer, which can hold dataset text: it goes to the log.
-    parse(&answer).map_err(|e| {
-        tracing::error!(error = %e, "invalid rule answer");
-        ProcessError::Failed("invalid rule answer".into())
-    })
-}
-
-/// Logs the start of a session's stderr (Python's errors name local paths and may quote
-/// dataset text, so they stay in the server's log) and drains the rest, so the process never
-/// blocks on a full pipe.
-async fn log_errors(stderr: ChildStderr) {
-    let mut lines = FramedRead::new(
-        stderr,
-        LinesCodec::new_with_max_length(MAX_LOGGED_ERROR_BYTES),
-    );
-    let mut logged = 0;
-    while let Some(line) = lines.next().await {
-        if logged >= MAX_LOGGED_ERROR_BYTES {
-            continue;
-        }
-        match line {
-            Ok(line) => {
-                logged += line.len();
-                tracing::error!(stderr = %line, "rule session");
-            }
-            Err(e) => {
-                logged = MAX_LOGGED_ERROR_BYTES;
-                tracing::error!(error = %e, "rule session stderr");
             }
         }
     }

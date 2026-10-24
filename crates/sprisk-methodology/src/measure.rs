@@ -7,12 +7,13 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion, TaskType,
-    parse,
+    Binding, GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion,
+    TaskType, parse,
 };
 
+use crate::compare::upstream;
 use crate::decision::free_id;
-use crate::{CatalogError, ResolveError, RuleCatalog, methods, patch};
+use crate::{ResolveError, RuleCatalog, methods, patch};
 
 /// The patch that puts every needed producer in place.
 #[derive(Debug)]
@@ -31,6 +32,7 @@ pub fn measure(
     catalog: &RuleCatalog,
     pipeline: &PipelineVersion,
     question: &QuestionVersion,
+    bindings: &[Binding],
     operators: &[Operator],
 ) -> Result<Measuring, ResolveError> {
     let by_id: BTreeMap<String, &Operator> =
@@ -46,10 +48,9 @@ pub fn measure(
     };
     for method in fitting(catalog, question.task.value) {
         for kind in &method.needs.evidence {
-            let producer = methods::producer(kind.as_str(), &by_id)
-                .map_err(|p| ResolveError::Rules(CatalogError::Evidence(p)))?;
+            let producer = methods::producer_of(kind.as_str(), &by_id)?;
             let need = format!("{} needs {}", method.decides.as_str(), kind.as_str());
-            match bound_params(producer, question) {
+            match bound_params(producer, bindings) {
                 Ok(params) => {
                     if let Some(why) = placing.place(producer, params, &need)? {
                         placing
@@ -83,13 +84,12 @@ pub fn fitting(catalog: &RuleCatalog, task: TaskType) -> impl Iterator<Item = &M
     })
 }
 
-/// The producer's concept params, each the column the question binds to its concept; the
+/// The producer's concept params, each the column `bindings` binds to its concept; the
 /// first unbound concept otherwise.
-fn bound_params(producer: &Operator, question: &QuestionVersion) -> Result<Value, String> {
+fn bound_params(producer: &Operator, bindings: &[Binding]) -> Result<Value, String> {
     let mut params = Map::new();
     for (param, concept) in &producer.concepts {
-        let binding = question
-            .bindings
+        let binding = bindings
             .iter()
             .find(|b| b.concept == *concept)
             .ok_or_else(|| concept.to_string())?;
@@ -170,7 +170,13 @@ impl Placing<'_> {
             return self.add(added, change).map(|()| None);
         };
         let step = placed.id.to_string();
-        let moves: Vec<Value> = wanted
+        // The anchor reads rows that passed through the producer: it already sits on them, and
+        // moving it onto what the anchor reads would make a cycle.
+        let feeds_anchor = upstream(&self.flow, &anchor).contains(step.as_str());
+        let moves: Vec<Value> = if feeds_anchor {
+            Vec::new()
+        } else {
+            wanted
             .iter()
             .filter(|(port, from)| {
                 let reads = self
@@ -183,7 +189,8 @@ impl Placing<'_> {
             .map(|(port, from)| {
                 json!({ "kind": "set_input", "node_id": step, "port": port, "from": from })
             })
-            .collect();
+            .collect()
+        };
         let reset = serde_json::to_value(&placed.params)? != params;
         for moved in moves {
             let change = format!("Moves {step} onto the rows {anchor} reads now.");

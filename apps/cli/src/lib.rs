@@ -194,6 +194,15 @@ pub async fn serve_on(
             std::time::Duration::from_secs(30),
             4,
         ),
+        method_runner: sprisk_api::MethodRunner::new(
+            vec![
+                config.python.display().to_string(),
+                "-m".into(),
+                "sprisk_workers.method".into(),
+            ],
+            std::time::Duration::from_secs(30),
+            4,
+        ),
         data_roots,
         kernels: kernels.clone(),
     };

@@ -49,7 +49,6 @@ export function RuleDecision({ pipeline, nodeId, rule }: {
   rule: Pick<MethodologyRule, "name" | "decides" | "question" | "policy_thresholds" | "provenance">;
 }) {
   const current = pipeline.nodes.find((node) => node.id === nodeId);
-  const isSplit = current?.operator.includes("split@") ?? false;
   const linked = pipeline.question_version_id !== undefined;
   const proposal = useResolveStep();
   const apply = useApplyMethodology();
@@ -87,7 +86,7 @@ export function RuleDecision({ pipeline, nodeId, rule }: {
         {!linked ? (
           <p role="alert" className="error">Link a question revision on the Objective page before a rule can decide.</p>
         ) : proposal.isIdle ? (
-          <button type="button" className="page-btn rd-review" onClick={() => proposal.mutate({ pipelineId: pipeline.id, nodeId, decides: rule.decides, isSplit })}>
+          <button type="button" className="page-btn rd-review" onClick={() => proposal.mutate({ pipelineId: pipeline.id, nodeId, decides: rule.decides })}>
             Review choices
           </button>
         ) : proposal.isPending ? (
