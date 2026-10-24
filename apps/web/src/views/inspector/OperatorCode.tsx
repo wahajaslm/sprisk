@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { plainCodeQuery } from "../../api/code.ts";
-import { useOperators, useOperatorSource, useSaveAndRun } from "../../api/hooks.ts";
+import { useOperatorsByRef, useOperatorSource, useSaveAndRun } from "../../api/hooks.ts";
 import { codeRequest, stageCells } from "../../notebook/stageCells.ts";
 import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { useStageSave } from "../notebook/useStageSave.ts";
@@ -33,8 +33,8 @@ type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator };
  * and editing it makes the step that code (ADR-0055). Otherwise its module, which Edit turns
  * into this step's own code in a new version; Revert goes back to the built-in (ADR-0028). */
 export function OperatorCode({ pipeline, nodeId, operator }: Props) {
-  const operators = useOperators();
-  const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
+  const operators = useOperatorsByRef();
+  const byRef = operators.data ?? new Map<string, Operator>();
   const plain = useQuery({ ...plainCodeQuery(operator.id, codeRequest(pipeline, byRef, nodeId)), enabled: operators.data !== undefined });
   if (operators.isError) return <p role="alert" className="error">{operators.error.message}</p>;
   if (plain.isError) return <p role="alert" className="error">{plain.error.message}</p>;

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useSelection } from "../workbench/selection.ts";
 import { useLoadedTables } from "../api/datasets.ts";
-import { useOperators, usePipelineVersions } from "../api/hooks.ts";
+import { useOperatorsByRef, usePipelineVersions } from "../api/hooks.ts";
 import { newestVersions, stepLabel, stepTitle } from "../flow/stages.ts";
 import { SearchIcon } from "../views/Icons.tsx";
 
@@ -28,7 +28,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const selectNode = useSelection((s) => s.selectNode);
   const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
   const pipelines = usePipelineVersions();
-  const operators = useOperators();
+  const operators = useOperatorsByRef();
   const tables = useLoadedTables();
   const flow = pipelines.data?.find((p) => p.id === pipelineVersionId);
   const failed = [pipelines, operators, tables].find((q) => q.isError);
@@ -36,7 +36,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const ALL_ITEMS: PaletteItem[] = useMemo(
     () => [
       ...(flow?.nodes ?? []).map((node): PaletteItem => {
-        const { title, subject } = stepLabel(node, operators.data?.find((o) => o.id === node.operator));
+        const { title, subject } = stepLabel(node, operators.data?.get(node.operator));
         return {
           id: `step-${node.id}`,
           category: "Steps",
@@ -49,7 +49,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           },
         };
       }),
-      ...newestVersions(operators.data ?? []).map(
+      ...newestVersions([...(operators.data?.values() ?? [])]).map(
         (op): PaletteItem => ({
           id: `op-${op.id}`,
           category: "Operators",

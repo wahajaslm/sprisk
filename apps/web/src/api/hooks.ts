@@ -1,4 +1,4 @@
-import type { PipelineVersion, Run } from "@sprisk/contracts";
+import type { Operator, PipelineVersion, Run } from "@sprisk/contracts";
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getList, getOne, getText, postOne } from "./client.ts";
@@ -11,8 +11,15 @@ export const isLive = (run: Run | undefined) => run !== undefined && !FINISHED.h
 export const usePipelineVersions = () =>
   useQuery({ queryKey: ["pipeline_versions"], queryFn: () => getList("PipelineVersion", "/pipeline_versions?limit=50") });
 
-export const useOperators = () =>
-  useQuery({ queryKey: ["operators"], queryFn: () => getList("Operator", "/operators"), staleTime: Infinity });
+const operatorsQuery = { queryKey: ["operators"], queryFn: () => getList("Operator", "/operators"), staleTime: Infinity };
+
+export const useOperators = () => useQuery(operatorsQuery);
+
+// Module-level, so the query keeps one Map until the operators change.
+const byRef = (operators: Operator[]) => new Map(operators.map((o) => [o.id, o]));
+
+/** The operators by ref, from the same cached request as useOperators. */
+export const useOperatorsByRef = () => useQuery({ ...operatorsQuery, select: byRef });
 
 /** A built-in operator's code. It changes only when the API restarts with new plugins. */
 export const operatorSourceQuery = (operatorRef: string) => ({
