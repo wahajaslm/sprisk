@@ -1,11 +1,12 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FlowCanvas } from "../src/views/FlowCanvas.tsx";
+import { useCanvasDetail } from "../src/workbench/detail.ts";
 import { useSelection } from "../src/workbench/selection.ts";
-import { PV, RUN, run } from "./fixtures.ts";
+import { attempts, PV, RUN, run } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -63,5 +64,26 @@ describe("a step's own actions on the canvas", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Delete profile" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+  });
+});
+
+describe("a compact step on the canvas", () => {
+  beforeEach(() => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    useCanvasDetail.setState({ level: "compact" });
+  });
+
+  it("is two lines, as the design draws it: a failure takes the second line", async () => {
+    server.use(
+      http.get(`/api/runs/${RUN}/attempts`, () =>
+        HttpResponse.json(attempts.map((a) => (a.node_id === "impute" ? { ...a, state: "failed" } : a))),
+      ),
+    );
+    renderWithApi(<FlowCanvas />);
+
+    const impute = await screen.findByRole("button", { name: /^impute,.*failed$/ });
+    const lines = impute.querySelector(".round-text")!.children;
+    expect(lines).toHaveLength(2);
+    expect(within(lines[1] as HTMLElement).getByText("failed")).toBeInTheDocument();
   });
 });

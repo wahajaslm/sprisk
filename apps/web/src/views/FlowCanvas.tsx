@@ -319,6 +319,10 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const status = statusOf(data.state);
   const isLive = status.tone === "live";
   const bad = status.tone === "bad" || data.concerns > 0;
+  const attention = [
+    ...(status.tone === "bad" || isLive ? [status.text] : []),
+    ...(data.concerns > 0 ? [`⚠ ${checkCount(data.concerns)}`] : []),
+  ];
 
   return (
     <button
@@ -340,18 +344,20 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       </span>
       <span className="round-text">
         <span className="node-title">{data.title}</span>
-        <span className="round-sub">
-          {/* Once the step ran, one measured fact about its output, as the design shows. */}
-          {data.attemptId ? (
-            <NodeFact attemptId={data.attemptId} operator={data.operatorRef} metricsPort={data.metricsPort} status={data.subject} />
-          ) : (
-            data.subject
-          )}
-          {data.edited && " · edited"}
-        </span>
-        {/* Only what needs attention gets words; a finished step is just its dot. */}
-        {(status.tone === "bad" || status.tone === "live") && <span className={`round-state tone-${status.tone}`}>{status.text}</span>}
-        {data.concerns > 0 && <span className="round-state tone-bad">⚠ {checkCount(data.concerns)}</span>}
+        {/* Two lines, as the design draws a step. What needs attention takes the second line;
+            otherwise, once the step ran, one measured fact about its output. */}
+        {attention.length > 0 ? (
+          <span className={`round-sub round-state tone-${status.tone === "live" ? "live" : "bad"}`}>{attention.join(" · ")}</span>
+        ) : (
+          <span className="round-sub">
+            {data.attemptId ? (
+              <NodeFact attemptId={data.attemptId} operator={data.operatorRef} metricsPort={data.metricsPort} status={data.subject} />
+            ) : (
+              data.subject
+            )}
+            {data.edited && " · edited"}
+          </span>
+        )}
       </span>
       <span className={`compact-hover-actions${isLive ? " has-live" : ""}`}>
         <StepButtons id={data.id} live={isLive} actions={actions} />
@@ -372,6 +378,9 @@ function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
 
 /** Fit the flow to the panel with a thin margin, so steps stay readable. */
 const FIT = { padding: 0.08, maxZoom: 1 };
+/** The design's main screen opens at 100%, the first stage card 20px in and 16px down; Fit
+ * shows the whole flow on demand. The layout starts at (0, 0). */
+const OPENING_VIEW = { x: 20, y: 16, zoom: 1 };
 
 const nodeTypes = { step: StepNode, stage: StageHead };
 const edgeTypes = { flow: FlowEdge };
@@ -587,7 +596,7 @@ export function encapsulateStages(nodes: Node[]): Node[] {
       const baseW = ((node.data as any)?.baseWidth as number | undefined) ?? node.width ?? MIN_STAGE_CARD_WIDTH;
       const baseH = ((node.data as any)?.baseHeight as number | undefined) ?? node.height ?? MIN_STAGE_CARD_HEIGHT;
       const neededWidth = Math.round(Math.max(baseW, bounds.maxRight + STAGE_PAD_X));
-      const neededHeight = Math.round(Math.max(baseH, bounds.maxBottom + STAGE_FOOTER_HEIGHT + 24));
+      const neededHeight = Math.round(Math.max(baseH, bounds.maxBottom + STAGE_FOOTER_HEIGHT));
       if (node.width !== neededWidth || node.height !== neededHeight) {
         return {
           ...node,
@@ -845,8 +854,7 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
       }}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      fitView
-      fitViewOptions={FIT}
+      defaultViewport={OPENING_VIEW}
       nodesConnectable={false}
       minZoom={0.3}
       maxZoom={2}

@@ -383,9 +383,9 @@ describe("flow canvas", () => {
     const { STAGE_FOOTER_HEIGHT, STAGE_PAD_X } = await import("../src/flow/layout.ts");
     const encapsulated = encapsulateStages(testNodes);
     const stage = encapsulated.find((n) => n.id === "stage:Split#split")!;
-    // The child's right edge (350 + 200) and bottom edge (550 + 80), plus the stage's padding.
+    // The child's right edge (350 + 200) and bottom edge (550 + 80), plus the room below it.
     expect(stage.width).toBe(350 + 200 + STAGE_PAD_X);
-    expect(stage.height).toBe(550 + 80 + STAGE_FOOTER_HEIGHT + 24);
+    expect(stage.height).toBe(550 + 80 + STAGE_FOOTER_HEIGHT);
   });
 
   it("right-click on a step opens its actions", async () => {
