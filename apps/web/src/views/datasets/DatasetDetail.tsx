@@ -2,6 +2,7 @@ import type { ColumnProfile, DatasetProfile, LoadedTable } from "@sprisk/contrac
 import { lazy, Suspense } from "react";
 
 import { useDatasetProfile } from "../../api/datasets.ts";
+import { useTablePage } from "../../api/hooks.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
@@ -9,11 +10,51 @@ import { correlationField, distributions, missingMap } from "./profileFigures.ts
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
+/** Numeric columns a correlation field needs before it is drawn. */
+const MIN_CORRELATED = 3;
+
 /** One step that loads the table, named for people. */
 export type Use = { label: string; use: LoadedTable["used_by"][number] };
 
-/** Each column and three pictures of the table's values. Its rows stay on the server (ADR-0038):
- * the page shows the profile, never the table. */
+/** Rows a preview shows: one page from the server, never the table (ADR-0038 amendment). */
+const PREVIEW_ROWS = 50;
+
+/** The table's first rows, as the design shows them: row numbers, values, numbers on the right,
+ * a missing value as a dash. */
+export function PreviewTab({ dataset }: { dataset: LoadedTable }) {
+  const page = useTablePage(dataset.artifact.id, 0, PREVIEW_ROWS);
+  if (page.isError) return <p role="alert" className="error">The rows could not be read: {page.error.message}</p>;
+  if (page.isPending) return <Loading text="Reading the first rows…" />;
+  const numeric = page.data.columns.map((c) => /^(U?Int|Float|Decimal)/.test(c.data_type));
+  return (
+    <div className="ds-preview">
+      <table aria-label={`First rows of ${dataset.name}`}>
+        <thead>
+          <tr>
+            <th scope="col" className="ds-num">#</th>
+            {page.data.columns.map((c, i) => (
+              <th key={c.name} scope="col" className={numeric[i] ? "ds-num" : undefined}>{c.name}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {page.data.rows.map((row, r) => (
+            <tr key={r}>
+              <td className="ds-num ds-row">{r + 1}</td>
+              {row.values.map((value, col) => (
+                <td key={col} className={numeric[col] ? "ds-num" : undefined}>{row.missing.includes(col) ? "—" : String(value)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="ds-note">{`First ${page.data.rows.length} of ${page.data.total_rows.toLocaleString()} rows. Includes held-out test rows; for looking only.`}</p>
+    </div>
+  );
+}
+
+/** Each column and three pictures of the table's values. A profile request sends no rows
+ * (ADR-0038). */
 export function ProfileTab({ dataset }: { dataset: LoadedTable }) {
   const profile = useDatasetProfile(dataset.artifact.id);
   return (
@@ -64,6 +105,10 @@ function MissingShare({ profile }: { profile: DatasetProfile }) {
   const shares = profile.columns.map((c) => ({ name: c.name, share: rows === 0 ? 0 : c.missing / rows }));
   const most = Math.max(...shares.map((c) => c.share), 0.0001);
   const worst = [...shares].sort((a, b) => b.share - a.share).slice(0, 4);
+  // A chart of zeros draws an empty box; one line says the same.
+  if (shares.every((c) => c.share === 0)) {
+    return <BodySection title="Missing share per column" note="No column has missing values.">{null}</BodySection>;
+  }
   return (
     <BodySection title="Missing share per column" note="Red from 20% empty.">
       <div className="ds-bars" aria-hidden="true">
@@ -143,7 +188,9 @@ function Shape({ column }: { column: ColumnProfile }) {
 function Plots({ profile }: { profile: DatasetProfile }) {
   const css = getComputedStyle(document.documentElement);
   const color = (token: string) => css.getPropertyValue(token).trim();
-  const figures = [missingMap(profile, color), correlationField(profile, color), distributions(profile, color)];
+  // Two numeric columns make a 2 × 2 field that says less than their one number; draw it from three.
+  const correlated = profile.correlation.columns.length >= MIN_CORRELATED;
+  const figures = [missingMap(profile, color), ...(correlated ? [correlationField(profile, color)] : []), distributions(profile, color)];
   return (
     <section className="ds-plots" aria-label="Plots">
       {figures.map((figure) => {

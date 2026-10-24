@@ -7897,3 +7897,12 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .rd-alternative small { font-size: 11.5px; color: #737373; }
 .rd-actions { display: flex; gap: 8px; margin-top: 6px; }
 .rd-source { margin-top: 8px !important; font-size: 11.5px; }
+
+/* A table's first rows on the Datasets page, as the design draws them: plain rows, row numbers,
+   numbers on the right (ADR-0038 amendment). */
+.ds-preview { padding: 18px 24px; overflow-x: auto; }
+.ds-preview table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ds-preview th { padding: 0 12px 10px; border-bottom: 1px solid var(--line-soft); text-align: left; font-weight: 400; color: #959595; white-space: nowrap; }
+.ds-preview td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); color: #e5e5e5; white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 12px; }
+.ds-preview .ds-num { text-align: right; font-variant-numeric: tabular-nums; }
+.ds-preview .ds-row { color: #737373; width: 1%; }

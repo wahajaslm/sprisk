@@ -13,17 +13,17 @@ import { Button } from "../../components/ui/Button.tsx";
 import { PageFrame } from "../../components/ui/PageFrame.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
-import { LineageTab, ProfileTab, type Use } from "./DatasetDetail.tsx";
+import { LineageTab, PreviewTab, ProfileTab, type Use } from "./DatasetDetail.tsx";
 import { SearchField } from "../../components/ui/SearchField.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 
-/** Every table the flows load, and a profile of the one picked (ADR-0038, ADR-0061). */
+/** Every table the flows load, and a preview and profile of the one picked (ADR-0038, ADR-0061). */
 export function DatasetsPage() {
   const datasets = useLoadedTables();
   const versions = usePipelineVersions();
   const showRun = useSelection((s) => s.showRun);
   const setNav = useSelection((s) => s.setNav);
-  const [tab, setTab] = useState<Tab>("Profile");
+  const [tab, setTab] = useState<Tab>("Preview");
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (datasets.isError) return <p role="alert" className="error pad">{datasets.error.message}</p>;
@@ -82,12 +82,18 @@ export function DatasetsPage() {
       }
       {...(current ? { tabs: { label: "Dataset", items: TABS.map((t) => ({ value: t, label: t })), value: tab, onChange: (t: string) => setTab(t as Tab) } } : {})}
     >
-      {current && (tab === "Lineage" ? <LineageTab lineage={lineage} onOpen={open} /> : <ProfileTab key={current.artifact.id} dataset={current} />)}
+      {current && (tab === "Lineage" ? (
+        <LineageTab lineage={lineage} onOpen={open} />
+      ) : tab === "Preview" ? (
+        <PreviewTab key={current.artifact.id} dataset={current} />
+      ) : (
+        <ProfileTab key={current.artifact.id} dataset={current} />
+      ))}
     </PageFrame>
   );
 }
 
-const TABS = ["Profile", "Lineage"] as const;
+const TABS = ["Preview", "Profile", "Lineage"] as const;
 type Tab = (typeof TABS)[number];
 
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;

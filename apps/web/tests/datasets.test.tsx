@@ -49,6 +49,11 @@ function serve(datasets: () => Response = () => HttpResponse.json([iris, penguin
   return asked;
 }
 
+/** The page opens on Preview; profile tests open the Profile tab first. */
+async function openProfile() {
+  await userEvent.click(await screen.findByRole("tab", { name: "Profile" }));
+}
+
 afterEach(() => server.events.removeAllListeners());
 
 describe("datasets", () => {
@@ -83,6 +88,7 @@ describe("datasets", () => {
 
   it("profiles the first dataset: each column's type, missing share and distinct count", async () => {
     serve();
+    await openProfile();
     const columns = await screen.findByRole("table", { name: "Columns of iris.csv" });
     const sepal = within(columns).getByRole("row", { name: /sepal_length/ });
     expect(sepal).toHaveTextContent("Float64");
@@ -91,7 +97,9 @@ describe("datasets", () => {
   });
 
   it("draws where values are missing, how numeric columns correlate, and each column's distribution", async () => {
-    serve();
+    const three = { ...profile, correlation: { ...profile.correlation, columns: ["sepal_length", "petal_width", "petal_length"] } };
+    serve(undefined, () => HttpResponse.json(three));
+    await openProfile();
     expect(await screen.findByRole("img", { name: "Missing values by row band" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Correlation field (Pearson)" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Distributions" })).toBeInTheDocument();
@@ -99,11 +107,13 @@ describe("datasets", () => {
 
   it("says the profile includes held-out rows and is for looking, not for choosing", async () => {
     serve();
+    await openProfile();
     expect(await screen.findByText(/including held-out test rows/)).toHaveTextContent("not to choose features, transforms or models");
   });
 
   it("says when a large table was profiled only in part", async () => {
     serve(undefined, () => HttpResponse.json({ ...profile, total_rows: 5_000_000, profiled_rows: 1_000_000, total_columns: 250 }));
+    await openProfile();
     expect(await screen.findByText(/first 1,000,000 of 5,000,000 rows/)).toBeInTheDocument();
     expect(screen.getByText(/first 3 of 250 columns/)).toBeInTheDocument();
   });
@@ -111,13 +121,50 @@ describe("datasets", () => {
   it("shows another dataset's profile when it is picked", async () => {
     serve();
     await userEvent.click(await screen.findByRole("button", { name: /^penguins\.csv/ }));
+    await openProfile();
     expect(await screen.findByRole("table", { name: "Columns of penguins.csv" })).toBeInTheDocument();
   });
 
-  it("never asks for a table's rows or content: only the list and the profile", async () => {
+  it("asks for one page of rows for the preview, and no rows for the profile (ADR-0038)", async () => {
     const asked = serve();
+    await screen.findByRole("table", { name: "First rows of iris.csv" });
+    await openProfile();
     await screen.findByRole("img", { name: "Distributions" });
-    expect(asked.every((p) => p === "/api/loaded_tables" || p.endsWith("/profile") || p === "/api/pipeline_versions")).toBe(true);
+    const rows = asked.filter((p) => p.endsWith("/rows"));
+    expect(rows).toEqual([`/api/artifacts/${iris.artifact.id}/rows`]);
+    expect(asked.every((p) => p === "/api/loaded_tables" || p.endsWith("/profile") || p.endsWith("/rows") || p === "/api/pipeline_versions")).toBe(true);
+  });
+
+  it("opens on a preview of the first rows, numbers on the right and a missing value as a dash", async () => {
+    let limit: string | null = null;
+    server.use(http.get("/api/artifacts/:id/rows", ({ request }) => {
+      limit = new URL(request.url).searchParams.get("limit");
+      return HttpResponse.json({ offset: 0, total_rows: 120, total_columns: 2,
+        columns: [{ name: "species", data_type: "String" }, { name: "petal_width", data_type: "Float64" }],
+        rows: [{ values: ["setosa", "0.2"], missing: [] }, { values: ["", ""], missing: [1] }] });
+    }));
+    serve();
+    const preview = await screen.findByRole("table", { name: "First rows of iris.csv" });
+    expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
+    expect(limit).toBe("50");
+    expect(within(preview).getByRole("cell", { name: "0.2" })).toHaveClass("ds-num");
+    expect(within(preview).getByRole("cell", { name: "—" })).toBeInTheDocument();
+    expect(screen.getByText(/First 2 of 120 rows/)).toBeInTheDocument();
+  });
+
+  it("says no column has missing values instead of drawing an empty chart", async () => {
+    const full = { ...profile, columns: profile.columns.map((c) => ({ ...c, missing: 0 })) };
+    serve(undefined, () => HttpResponse.json(full));
+    await openProfile();
+    expect(await screen.findByText("No column has missing values.")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Columns missing most" })).not.toBeInTheDocument();
+  });
+
+  it("draws no correlation field for fewer than three numeric columns", async () => {
+    serve();
+    await openProfile();
+    expect(await screen.findByRole("img", { name: "Distributions" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Correlation field (Pearson)" })).not.toBeInTheDocument();
   });
 
   it("opens the step that loads it in the flow", async () => {
@@ -126,9 +173,9 @@ describe("datasets", () => {
     expect(useSelection.getState()).toMatchObject({ nav: "Flow", pipelineVersionId: PV, runId: RUN, nodeId: "load" });
   });
 
-  it("has a Profile tab and a Lineage tab that lists each step loading the table", async () => {
+  it("has Preview, Profile and Lineage tabs; Lineage lists each step loading the table", async () => {
     serve();
-    expect(await screen.findByRole("tab", { name: "Profile" })).toHaveAttribute("aria-selected", "true");
+    expect((await screen.findAllByRole("tab")).map((t) => t.textContent)).toEqual(["Preview", "Profile", "Lineage"]);
     await userEvent.click(screen.getByRole("tab", { name: "Lineage" }));
     const lineage = await screen.findByRole("list", { name: "Lineage" });
     expect(lineage).toHaveTextContent(/iris\.csv.*load/);
@@ -145,6 +192,7 @@ describe("datasets", () => {
   it("draws each column's missing share and lists the columns missing most, red from 20%", async () => {
     const gappy = { ...profile, columns: [{ ...profile.columns[0]!, missing: 30 }, profile.columns[1]!, { ...profile.columns[2]!, missing: 6 }] };
     serve(undefined, () => HttpResponse.json(gappy));
+    await openProfile();
     const worst = await screen.findByRole("list", { name: "Columns missing most" });
     const rows = within(worst).getAllByRole("listitem");
     expect(rows.map((r) => r.textContent)).toEqual(["sepal_length25%", "petal_width5%", "species0%"]);
@@ -155,6 +203,7 @@ describe("datasets", () => {
   it("marks a column's missing share red only from 20%", async () => {
     const gappy = { ...profile, columns: [{ ...profile.columns[0]!, missing: 30 }, profile.columns[1]!, { ...profile.columns[2]!, missing: 6 }] };
     serve(undefined, () => HttpResponse.json(gappy));
+    await openProfile();
     const columns = await screen.findByRole("table", { name: "Columns of iris.csv" });
     const bar = (name: string) => within(within(columns).getByRole("row", { name: new RegExp(name) })).getByTestId("missing");
     expect(bar("sepal_length")).toHaveClass("warn");
@@ -173,6 +222,7 @@ describe("datasets", () => {
 
   it("shows why a profile could not be read", async () => {
     serve(undefined, () => HttpResponse.json({ errors: [{ code: "profile_timeout", message: "took too long" }] }, { status: 422 }));
+    await openProfile();
     expect(await screen.findByRole("alert")).toHaveTextContent("profile_timeout");
   });
 });
