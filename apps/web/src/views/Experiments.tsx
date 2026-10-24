@@ -22,6 +22,7 @@ import { ModelComparisons } from "./ModelComparison.tsx";
 import { Studies } from "./Studies.tsx";
 import { formatMetric } from "./NodeFact.tsx";
 import { ExperimentsIcon } from "./Icons.tsx";
+import { when } from "./when.ts";
 
 /** Runs shown in the table. Each costs a few cached reads per evaluator. */
 const MAX_RUNS = 20;
@@ -442,11 +443,6 @@ function Compare({ older, newer, olderNodes, newerNodes, byId, evaluators, label
       </section>
     </section>
   );
-}
-
-function when(timestamp: string): string {
-  const d = new Date(timestamp);
-  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 /** Why two metrics may not be comparable: different test rows, or too few of them. */

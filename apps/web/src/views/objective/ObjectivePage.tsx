@@ -16,6 +16,7 @@ import { stepTitle } from "../../flow/stages.ts";
 import { nextVersion, timestamp } from "../../flow/edit.ts";
 import { currentQuestion } from "./ledger.ts";
 import { StartWalk } from "./StartWalk.tsx";
+import { when } from "../when.ts";
 
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
 const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -584,8 +585,7 @@ export function ObjectivePage() {
             <div className="history-list">
               {questions.map((q) => {
                 const isCurrent = currentPipeline?.question_version_id === q.id;
-                const d = new Date(q.created_at);
-                const when = `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+                const at = when(q.created_at);
                 return (
                   <div key={q.id} className="history-item" style={{ alignItems: "flex-start", gap: 16 }}>
                     <span className="history-ver mono">{q.id.slice(-8)}</span>
@@ -597,7 +597,7 @@ export function ObjectivePage() {
                         Task: {q.task.value} · Target: {q.target?.value ?? "None"} · {q.assumptions.length} assumptions · {q.unknowns.length} unknowns
                       </span>
                     </div>
-                    <span className="history-who mono">{when}</span>
+                    <span className="history-who mono">{at}</span>
                     <div style={{ display: "flex", gap: 8 }}>
                       {isCurrent ? (
                         <Tag tone="default">Linked</Tag>

@@ -1,7 +1,7 @@
 import type { Attempt, FlowDecision, FlowDecisions, LoadedTable, Operator, PipelineVersion, Report, ReportEvidence, Walk } from "@sprisk/contracts";
 import { useState } from "react";
 
-import { useOperatorsByRef, useRunAttempts } from "../../api/hooks.ts";
+import { useOperatorsByRef, useOutputs, useRunAttempts } from "../../api/hooks.ts";
 import { useQuestionVersions } from "../../api/questions.ts";
 import { useFlowDecisionsOf, useWalk, useWalkReport } from "../../api/walks.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -13,6 +13,7 @@ import { useSelection } from "../../workbench/selection.ts";
 import { FigurePort } from "../inspector/FiguresTab.tsx";
 import { TAKEN } from "../inspector/MethodDecision.tsx";
 import { PromiseList } from "../PromiseList.tsx";
+import { when } from "../when.ts";
 
 /** Flow versions whose decisions are read for one table. */
 const MAX_VERSIONS = 20;
@@ -42,7 +43,7 @@ export function InvestigationTab({ dataset, versions }: { dataset: LoadedTable; 
         <div role="list" aria-label="Investigations" className="ds-investigations">
           {found.map((i) => (
             <div key={i.walkId} role="listitem">
-              <ListRow title={`Walk ${i.walkId.slice(-6)}`} meta={`${i.decisions.length} decisions`} selected={i === current} onClick={() => setPicked(i.walkId)} />
+              <WalkRow investigation={i} selected={i === current} onPick={() => setPicked(i.walkId)} />
             </div>
           ))}
         </div>
@@ -63,7 +64,23 @@ function investigations(dataset: LoadedTable, decided: FlowDecisions[]): Investi
     if (seen && seen.decisions.length >= flow.decisions.length) continue;
     byWalk.set(flow.walk_id, { walkId: flow.walk_id, pipelineVersionId: use.pipeline_version_id, runId: use.run_id, decisions: flow.decisions });
   }
-  return [...byWalk.values()];
+  // Walk ids are ULIDs, so the newest walk sorts first.
+  return [...byWalk.values()].sort((a, b) => b.walkId.localeCompare(a.walkId));
+}
+
+/** One walk in the list: when it started, how many decisions it made, and where it is. */
+function WalkRow({ investigation, selected, onPick }: { investigation: Investigation; selected: boolean; onPick: () => void }) {
+  const walk = useWalk(investigation.walkId).data?.walk;
+  const n = investigation.decisions.length;
+  const decisions = n === 0 ? "no decision yet" : `${n} ${n === 1 ? "decision" : "decisions"}`;
+  return (
+    <ListRow
+      title={walk ? `Walk · ${when(walk.created_at)}` : `Walk ${investigation.walkId.slice(-6)}`}
+      meta={walk ? `${decisions} · ${walkState(walk)}` : decisions}
+      selected={selected}
+      onClick={onPick}
+    />
+  );
 }
 
 function InvestigationView({ dataset, investigation, pipeline }: { dataset: LoadedTable; investigation: Investigation; pipeline: PipelineVersion | undefined }) {
@@ -106,7 +123,7 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
   );
 }
 
-const walkState = (walk: Walk) => (walk.stop ? `Stopped: ${walk.stop.reason.replaceAll("_", " ")}` : "Walking");
+const walkState = (walk: Walk) => (walk.stop ? walk.stop.reason.replaceAll("_", " ") : "walking");
 
 /** One decision as the specification's connected analysis: the chart its producer drew first,
  * then which rows were read, the interpretation, the decision and its promises. */
@@ -141,9 +158,7 @@ function Analysis({
       {charts.length > 0 && (
         <div className="ds-analysis-charts">
           {charts.map((c) => (
-            <figure key={`${c.step}:${c.port}`} className="result-tile plot">
-              <FigurePort attempt={latest.get(c.step)} port={c.port} />
-            </figure>
+            <AnalysisChart key={`${c.step}:${c.port}`} attempt={latest.get(c.step)} port={c.port} />
           ))}
         </div>
       )}
@@ -193,6 +208,19 @@ function Analysis({
         </div>
       )}
     </article>
+  );
+}
+
+/** A producer's chart, when its run drew one. A run from before the producer drew charts
+ * has no such output, and an empty frame would only say so. */
+function AnalysisChart({ attempt, port }: { attempt: Attempt | undefined; port: string }) {
+  const outputs = useOutputs(attempt?.id);
+  if (outputs.isError) return <p role="alert" className="error">The step's outputs could not be read: {outputs.error.message}</p>;
+  if (!outputs.data?.some((o) => o.port === port)) return null;
+  return (
+    <figure className="result-tile plot">
+      <FigurePort attempt={attempt} port={port} />
+    </figure>
   );
 }
 

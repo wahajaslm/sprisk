@@ -182,10 +182,10 @@ describe("a dataset's investigation (ADR-0065)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("The report could not be read");
   });
 
-  it("lists each walk once, on the version with most of its decisions, and opens the one picked", async () => {
+  it("lists each walk once, newest first, with its decisions and state, and opens the one picked", async () => {
     const OLDER = "plv_01JABCDEFGHJKMNPQRSTVWXYZ2";
     const OTHER = "plv_01JABCDEFGHJKMNPQRSTVWXYZ3";
-    const other = "wlk_01JABCDEFGHJKMNPQRSTVWXYZ7";
+    const newer = "wlk_01JABCDEFGHJKMNPQRSTVWXYZ7";
     serve();
     server.use(
       http.get("/api/loaded_tables", () =>
@@ -194,15 +194,28 @@ describe("a dataset's investigation (ADR-0065)", () => {
         ]),
       ),
       http.get(`/api/pipeline_versions/${OLDER}/decisions`, () => HttpResponse.json({ ...decided, pipeline_version_id: OLDER, decisions: decided.decisions.slice(0, 1) })),
-      http.get(`/api/pipeline_versions/${OTHER}/decisions`, () => HttpResponse.json({ ...decided, pipeline_version_id: OTHER, walk_id: other, decisions: [unchanged] })),
-      http.get(`/api/walks/${other}`, () => HttpResponse.json({ walk: { ...walk, id: other, stop: { reason: "needs_person", detail: "One question is open." } }, steps: [] })),
+      http.get(`/api/pipeline_versions/${OTHER}/decisions`, () => HttpResponse.json({ ...decided, pipeline_version_id: OTHER, walk_id: newer, decisions: [unchanged] })),
+      http.get(`/api/walks/${newer}`, () => HttpResponse.json({ walk: { ...walk, id: newer, stop: { reason: "needs_person", detail: "One question is open." } }, steps: [] })),
     );
     await openInvestigation();
     const walks = await screen.findByRole("list", { name: "Investigations" });
     const rows = within(walks).getAllByRole("button");
-    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining("2 decisions"), expect.stringContaining("1 decisions")]);
-    await userEvent.click(rows[1]!);
+    expect(rows).toHaveLength(2);
+    expect(await within(rows[0]!).findByText(/1 decision · needs person/)).toBeInTheDocument();
+    expect(await within(rows[1]!).findByText(/2 decisions · complete/)).toBeInTheDocument();
     expect(await screen.findByRole("article", { name: "Are some classes much rarer than others?" })).toBeInTheDocument();
-    expect(screen.queryByRole("article", { name: "Does the same item appear in more than one row?" })).toBeNull();
+    await userEvent.click(rows[1]!);
+    expect(await screen.findByRole("article", { name: "Does the same item appear in more than one row?" })).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Are some classes much rarer than others?" })).toBeNull();
+  });
+
+  it("leaves the chart out when the run that measured the evidence drew none", async () => {
+    serve();
+    server.use(http.get(`/api/attempts/${measured.id}/outputs`, () => HttpResponse.json([])));
+    await openInvestigation();
+    const card = await screen.findByRole("article", { name: "Does the same item appear in more than one row?" });
+    await within(card).findByText("Duplicate titles (normalized) read every row, before the split.");
+    expect(within(card).queryByRole("img")).toBeNull();
+    expect(within(card).queryByText(/Edit and run it/)).toBeNull();
   });
 });

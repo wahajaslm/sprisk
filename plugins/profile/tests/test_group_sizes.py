@@ -19,3 +19,9 @@ def test_sizes_past_the_last_bar_are_one_bar_so_the_chart_stays_small() -> None:
 
 def test_with_no_repeated_item_only_the_one_record_bar_is_drawn() -> None:
     assert bars([1, 1, 1]) == {"One record": {"1": 3}}
+
+
+def test_repeated_items_take_the_first_colour_and_sizes_stay_in_number_order() -> None:
+    figure = records_per_item(pl.Series([1, 2, 4, MAX_BARS + 1]), "Records per item")
+    assert [trace.name for trace in figure.data] == ["Repeated", "One record"]
+    assert list(figure.layout.xaxis.categoryarray) == ["1", "2", "4", f"{MAX_BARS}+"]

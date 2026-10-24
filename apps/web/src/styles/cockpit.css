@@ -1535,7 +1535,7 @@ p { margin: 0; }
 .ds-context dt { color: var(--muted); }
 .ds-context dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
 .ds-analysis { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); grid-template-areas: "head head" "charts facts" "charts promises" "actions actions"; gap: var(--space-3) var(--space-5); padding: var(--space-4); margin-bottom: var(--space-3); border: 1px solid var(--alpha-05); border-radius: 4px; }
-.ds-analysis:not(:has(.ds-analysis-charts)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "facts" "promises" "actions"; }
+.ds-analysis:not(:has(.ds-analysis-charts figure)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "facts" "promises" "actions"; }
 .ds-analysis-head { grid-area: head; display: grid; gap: var(--space-1); }
 .ds-analysis-charts { grid-area: charts; display: grid; gap: var(--space-3); align-content: start; min-width: 0; }
 .ds-analysis-charts .plotly-figure { min-height: 300px; }
