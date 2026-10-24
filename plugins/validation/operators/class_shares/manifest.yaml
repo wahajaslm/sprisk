@@ -1,22 +1,18 @@
 schema_version: sprisk.operator/v1
-id: sprisk.validation.class_shares@1.0.0
-title: Stratification check
+id: sprisk.validation.class_shares@2.0.0
+title: Class shares at the score
 capability_class: analyzer
-description: Measures how far each class's share of rows differs between train and test, the evidence that a stratified split kept the shares (ADR-0063).
-entrypoint: sprisk_validation.split_evidence:class_shares
-attach: { role: split, side: output }
-concepts: { target: common.target }
-produces:
-  evaluation.class_shares:
-    fields: { largest_gap: number, train_rows: integer, test_rows: integer }
+description: The largest difference in a class's share of rows between train and test, the class, and whether it drifted. It reads the test labels, so only the final score runs it, beside the evaluation (ADR-0064).
+entrypoint: sprisk_validation.score_shares:class_shares
 inputs: [{ name: train, kind: table }, { name: test, kind: table }]
-outputs: [{ name: evidence, kind: report }]
+outputs: [{ name: metrics, kind: metrics }]
 params_schema:
   type: object
   additionalProperties: false
   required: [target]
   properties:
     target: { type: string, minLength: 1, x-sprisk-column: true, description: "The column the model predicts." }
+    max_gap: { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1, description: "The largest share gap that is not drift. Default 0.05, a project convention." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }

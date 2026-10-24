@@ -17,8 +17,8 @@ use sprisk_contracts::{
 use sprisk_core::time::format;
 use sprisk_methodology::deciding::{Effective, Made, Ready, apply_option, bindings, ready};
 use sprisk_methodology::engine::{
-    Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, Start, look_asks, next_action,
-    start, with_test_scoring,
+    Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, SHARES_NODE, Start, look_asks,
+    next_action, start, with_test_scoring,
 };
 use sprisk_methodology::flow_decisions::last_verify;
 use sprisk_methodology::measure::{Measuring, fitting, measure};
@@ -1073,7 +1073,19 @@ async fn finish_scoring(
         ))
     })?;
     let steps = state.store.walk_steps(&walk.id).await?;
+    // A classifier's score compares the class shares of its train and test rows.
+    let scored_flow = state.store.get_pipeline_version(flow).await?;
+    let shares = if scored_flow
+        .nodes
+        .iter()
+        .any(|n| n.id.as_str() == SHARES_NODE)
+    {
+        Some(run_metrics(state, &run_id, SHARES_NODE).await?)
+    } else {
+        None
+    };
     let records = Scored {
+        shares: shares.as_ref(),
         walk: &walk.id,
         question: &question,
         steps: &steps,

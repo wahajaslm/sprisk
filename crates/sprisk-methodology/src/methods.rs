@@ -9,7 +9,7 @@ use petgraph::graph::DiGraph;
 use serde_json::json;
 use sprisk_contracts::{
     Concept, ConceptKind, ConceptSet, Method, MethodFiles, MethodInsert, MethodReplace, Operator,
-    OperatorScope,
+    OperatorAttachSide, OperatorRole, OperatorScope,
 };
 
 use crate::catalog::{CatalogError, parse_yaml, read};
@@ -128,9 +128,25 @@ fn check_operator(operator: &Operator, provided: &Provided) -> Result<(), Catalo
     if !operator.produces.is_empty() && operator.attach.is_none() {
         return Err(refuse("produces evidence, so it needs an attach".into()));
     }
+    // A producer on a split's outputs that reads the test rows is a look at them: it may read
+    // their features, never their labels, except to name a column it drops (ADR-0064).
+    let reads_test_rows = operator
+        .attach
+        .as_ref()
+        .is_some_and(|a| a.role == OperatorRole::Split && a.side == OperatorAttachSide::Output)
+        && operator.inputs.iter().any(|p| p.name.as_str() == "test");
     for (param, concept) in &operator.concepts {
         let found = known_concept(concept.as_str(), provided).map_err(refuse)?;
-        if param_schema(operator, param.as_str()).is_none() {
+        let schema = param_schema(operator, param.as_str());
+        let dropped = schema.and_then(|s| s.get("x-sprisk-excluded")) == Some(&json!(true));
+        if reads_test_rows && found.kind == ConceptKind::Label && !dropped {
+            return Err(refuse(format!(
+                "reads the test rows, so it may not read the label {} ({})",
+                concept.as_str(),
+                param.as_str()
+            )));
+        }
+        if schema.is_none() {
             return Err(refuse(format!(
                 "maps {} to {}, which is not one of its params",
                 concept.as_str(),

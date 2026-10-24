@@ -91,6 +91,9 @@ pub const SCORE_NODE: &str = "score_test";
 /// The featureless baseline fit on the model's train rows, and its score on the same test rows.
 pub const TEST_BASELINE_NODE: &str = "test_baseline";
 pub const SCORE_BASELINE_NODE: &str = "score_baseline";
+/// The step that compares the class shares of the train and test rows. It reads the test
+/// labels, so only the final score has it (ADR-0064).
+pub const SHARES_NODE: &str = "class_shares";
 /// The model settings the baseline shares: what it reads and what its mistakes cost.
 const BASELINE_SETTINGS: [&str; 5] = ["target", "task", "features", "exclude", "costs"];
 
@@ -103,11 +106,15 @@ pub fn with_test_scoring(
     pipeline: &PipelineVersion,
 ) -> Result<(Vec<Node>, Vec<Edge>), ResolveError> {
     let refuse = |why: String| ResolveError::NotInsertable(why);
-    if let Some(taken) = pipeline
-        .nodes
-        .iter()
-        .find(|n| [SCORE_NODE, TEST_BASELINE_NODE, SCORE_BASELINE_NODE].contains(&n.id.as_str()))
-    {
+    if let Some(taken) = pipeline.nodes.iter().find(|n| {
+        [
+            SCORE_NODE,
+            TEST_BASELINE_NODE,
+            SCORE_BASELINE_NODE,
+            SHARES_NODE,
+        ]
+        .contains(&n.id.as_str())
+    }) {
         return Err(refuse(format!(
             "the flow already has a {} step",
             taken.id.as_str()
@@ -165,12 +172,22 @@ pub fn with_test_scoring(
     let baseline = json!({
         "id": TEST_BASELINE_NODE, "operator": "sprisk.ml.dummy_baseline@3.0.0", "params": shared,
     });
-    let mut nodes = pipeline.nodes.clone();
-    for node in [
+    let mut added = vec![
         evaluate(SCORE_NODE),
         baseline,
         evaluate(SCORE_BASELINE_NODE),
-    ] {
+    ];
+    if params("task") == Some(json!("classification")) {
+        added.push(json!({
+            "id": SHARES_NODE, "operator": "sprisk.validation.class_shares@2.0.0",
+            "params": { "target": params("target") },
+        }));
+        edges
+            .push(json!({ "from": format!("{rows}.train"), "to": format!("{SHARES_NODE}.train") }));
+        edges.push(json!({ "from": format!("{rows}.test"), "to": format!("{SHARES_NODE}.test") }));
+    }
+    let mut nodes = pipeline.nodes.clone();
+    for node in added {
         nodes.push(parse(&node.to_string())?);
     }
     let mut all = pipeline.edges.clone();

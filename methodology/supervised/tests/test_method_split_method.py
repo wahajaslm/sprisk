@@ -5,6 +5,7 @@ import importlib.util
 from collections.abc import Mapping
 
 import pytest
+import yaml
 from method_harness import PACKS, decide
 
 METHOD = "supervised/split_method"
@@ -70,13 +71,31 @@ def test_a_side_with_no_groups_is_inconclusive() -> None:
     assert verify("no_group_overlap", evidence)[0] == "inconclusive"
 
 
-def test_class_shares_may_drift_by_one_row_on_a_small_test_side() -> None:
-    settings = {"max_gap": 0.05}
-    big = {"largest_gap": 0.06, "train_rows": 4000, "test_rows": 1000}
-    assert verify("class_shares_kept", big, settings)[0] == "fail"
-    # On 10 test rows one row is 10%: a drift that small is the split's rounding.
-    small = {"largest_gap": 0.08, "train_rows": 40, "test_rows": 10}
-    assert verify("class_shares_kept", small, settings)[0] == "pass"
+def test_a_test_row_with_the_features_of_a_train_row_fails_the_row_promise() -> None:
+    verdict, reason = verify("no_row_in_both", {"in_both": 4, "train_rows": 80, "test_rows": 20})
+    assert verdict == "fail"
+    assert reason.startswith("4 test rows have the same features as a train row")
+    assert verify("no_row_in_both", {"in_both": 0, "train_rows": 80, "test_rows": 20})[0] == "pass"
+
+
+def test_a_test_row_not_later_than_the_train_rows_fails_the_time_promise() -> None:
+    order = {"latest_train": "2024-05-01", "earliest_test": "2024-05-01", "train_rows": 80}
+    tied = {**order, "not_later_test_rows": 2, "test_rows": 20}
+    verdict, reason = verify("test_after_train", tied)
+    assert verdict == "fail"
+    assert "2 test rows are not later than 2024-05-01" in reason
+    later = {**order, "earliest_test": "2024-05-02", "not_later_test_rows": 0, "test_rows": 20}
+    assert verify("test_after_train", later)[0] == "pass"
+
+
+@pytest.mark.parametrize(
+    "option", ["temporal", "item_groups", "stratified_random", "simple_random"]
+)
+def test_every_split_option_promises_something(option: str) -> None:
+    manifest = yaml.safe_load((PACKS / "supervised/methods/split_method/method.yaml").read_text())
+    (chosen,) = [o for o in manifest["options"] if o["id"] == option]
+    assert chosen["verify"], option
+    assert "class_shares_kept" not in manifest["verifications"]
 
 
 def test_a_temporal_split_says_it_leaves_no_gap_at_the_cutoff() -> None:

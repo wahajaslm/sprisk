@@ -1,6 +1,7 @@
 """What a split's outputs show, as evidence for the promises a split method makes (ADR-0063):
-whether any group is on both sides, and how far each class's share moved. Each step has one
-output, so it returns the EvidenceSet itself."""
+whether any group or any row is on both sides, and whether a test row comes before the train
+rows. None reads a test label (ADR-0064). Each step has one output, so it returns the
+EvidenceSet itself."""
 
 from typing import Any
 
@@ -31,24 +32,39 @@ def group_overlap(train: pl.DataFrame, test: pl.DataFrame, group_column: str) ->
     }
 
 
-def class_shares(train: pl.DataFrame, test: pl.DataFrame, target: str) -> dict[str, Any]:
-    """The largest difference in a class's share of rows between train and test. Rows with no
-    label belong to no class, so they are left out of the shares."""
-    shares = []
-    for table, side in ((train, "train"), (test, "test")):
-        labels = _column(table, target, side).drop_nulls()
-        if labels.is_empty():
-            raise ValueError(f"the {side} rows are empty, so no class share can be measured")
-        shares.append(
-            labels.value_counts(normalize=True, name="share").rename(
-                {target: "class", "share": side}
-            )
-        )
-    joined = shares[0].join(shares[1], on="class", how="full", coalesce=True).fill_null(0.0)
-    gap = (joined["train"] - joined["test"]).abs().max()
+def row_overlap(train: pl.DataFrame, test: pl.DataFrame, target: str) -> dict[str, Any]:
+    """How many test rows have a train row with the same features. The worker drops the target
+    before the step runs (its setting is marked excluded); a table that still has it is
+    compared without it."""
+    features = [c for c in test.columns if c != target]
+    if not features:
+        raise ValueError(f"the test rows have no feature columns beside {target} to compare")
+    learned = train.select(features).unique()
+    both = test.select(features).join(learned, on=features, how="semi", nulls_equal=True)
     return {
-        "evaluation.class_shares": {
-            "largest_gap": float(gap),  # type: ignore[arg-type]
+        "evaluation.row_overlap": {
+            "in_both": both.height,
+            "train_rows": train.height,
+            "test_rows": test.height,
+        }
+    }
+
+
+def time_order(train: pl.DataFrame, test: pl.DataFrame, time_column: str) -> dict[str, Any]:
+    """How many test rows are not later than the latest train row. A row with no time has no
+    order, so it is refused rather than counted either way."""
+    for table, side in ((train, "train"), (test, "test")):
+        missing = _column(table, time_column, side).null_count()
+        if missing:
+            raise ValueError(f"{missing} {side} rows have no {time_column}")
+    latest = train[time_column].max()
+    if latest is None or test.is_empty():
+        raise ValueError(f"one side has no {time_column} values to order")
+    return {
+        "evaluation.time_order": {
+            "not_later_test_rows": test.filter(pl.col(time_column) <= latest).height,
+            "latest_train": str(latest),
+            "earliest_test": str(test[time_column].min()),
             "train_rows": train.height,
             "test_rows": test.height,
         }

@@ -357,7 +357,7 @@ fn a_stratified_split_reads_the_target_from_its_binding() {
                  "operator": "sprisk.validation.random_split@1.0.0",
                  "params": { "stratify": "prdtypecode", "test_fraction": 0.2, "seed": 42 } }])
     );
-    assert_eq!(applied.promises, ["class_shares_kept"]);
+    assert_eq!(applied.promises, ["no_row_in_both"]);
 }
 
 #[test]

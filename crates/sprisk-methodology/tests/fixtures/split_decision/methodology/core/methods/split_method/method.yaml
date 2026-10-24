@@ -17,7 +17,7 @@ options:
         operator: sprisk.validation.temporal_split@1.0.0
         concepts: { time_column: common.event_time, group_column: common.item_identity }
         settings: { test_fraction: 0.2 }
-    verify: []
+    verify: [test_after_train]
   - id: item_groups
     label: Keep each item's rows on one side
     action:
@@ -35,7 +35,8 @@ options:
         operator: sprisk.validation.random_split@1.0.0
         concepts: { stratify: common.target }
         settings: { test_fraction: 0.2, seed: 42 }
-    verify: [class_shares_kept]
+    # The class shares read the test labels, so they are reported with the final score.
+    verify: [no_row_in_both]
   - id: simple_random
     label: Random rows
     action:
@@ -43,14 +44,15 @@ options:
         role: split
         operator: sprisk.validation.random_split@1.0.0
         settings: { test_fraction: 0.2, seed: 42 }
-    verify: []
+    verify: [no_row_in_both]
 verifications:
   no_group_overlap:
     needs: evaluation.group_overlap
     promise: No item has rows in both train and test.
-  class_shares_kept:
-    needs: evaluation.class_shares
-    promise: Each class has about the same share of rows in train and test.
-    # Project convention, not a published bar: a few points of drift on a 20% test side.
-    settings: { max_gap: 0.05 }
+  no_row_in_both:
+    needs: evaluation.row_overlap
+    promise: No test row has the same features as a train row.
+  test_after_train:
+    needs: evaluation.time_order
+    promise: Every test row is later than the latest train row.
 source: "Roberts et al. (2017), Ecography 40(8): cross-validation for temporal and grouped data; scikit-learn User Guide §3.1: GroupShuffleSplit, train_test_split(stratify=y)."

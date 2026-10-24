@@ -1381,10 +1381,7 @@ async fn a_completed_walk_s_report_is_kept_with_its_last_step_once() {
         .await
         .unwrap();
 
-    assert_eq!(
-        store.walk_report(&walk.id).await.unwrap(),
-        report.clone()
-    );
+    assert_eq!(store.walk_report(&walk.id).await.unwrap(), report.clone());
     assert_eq!(store.get_walk(&walk.id).await.unwrap(), detail.walk);
     let mut again = report;
     again.id = "rpt_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();

@@ -92,17 +92,38 @@ fn a_measured_promise_is_sent_with_its_evidence_and_settings() {
 
 #[test]
 fn a_promise_s_settings_come_from_its_method() {
-    let catalog = catalog();
+    let copy = tempfile::tempdir().unwrap();
+    for entry in walkdir::WalkDir::new(fixture()) {
+        let entry = entry.unwrap();
+        let to = copy
+            .path()
+            .join(entry.path().strip_prefix(fixture()).unwrap());
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&to).unwrap();
+        } else {
+            std::fs::copy(entry.path(), &to).unwrap();
+        }
+    }
+    let manifest = copy
+        .path()
+        .join("methodology/core/methods/split_method/method.yaml");
+    let text = std::fs::read_to_string(&manifest).unwrap().replacen(
+        "    needs: evaluation.row_overlap\n",
+        "    needs: evaluation.row_overlap\n    settings: { at_most: 0 }\n",
+        1,
+    );
+    std::fs::write(&manifest, text).unwrap();
+    let catalog = RuleCatalog::load_dir(&copy.path().join("methodology"), &operators()).unwrap();
     let measured = BTreeMap::from([(
-        "evaluation.class_shares".to_owned(),
+        "evaluation.row_overlap".to_owned(),
         (
-            "class_shares".to_owned(),
-            json!({ "largest_gap": 0.01, "train_rows": 80, "test_rows": 20 }),
+            "row_overlap".to_owned(),
+            json!({ "in_both": 0, "train_rows": 80, "test_rows": 20 }),
         ),
     )]);
     let found = checking(&catalog, &[split("stratified_random")], &measured).unwrap();
     let request = serde_json::to_value(&found[0].request.as_ref().unwrap().1).unwrap();
-    assert_eq!(request["settings"], json!({ "max_gap": 0.05 }));
+    assert_eq!(request["settings"], json!({ "at_most": 0 }));
 }
 
 #[test]
@@ -122,13 +143,13 @@ fn a_promise_nothing_measured_is_not_evaluated_and_says_which_evidence_is_missin
 }
 
 #[test]
-fn an_option_that_promises_nothing_has_nothing_to_check() {
+fn a_random_split_promises_no_row_in_both_and_never_reads_the_test_labels() {
     let catalog = catalog();
-    assert!(
-        checking(&catalog, &[split("simple_random")], &Measured::new())
-            .unwrap()
-            .is_empty()
-    );
+    for option in ["simple_random", "stratified_random"] {
+        let found = checking(&catalog, &[split(option)], &Measured::new()).unwrap();
+        let names: Vec<&str> = found.iter().map(|c| c.promise.name.as_str()).collect();
+        assert_eq!(names, ["no_row_in_both"], "{option}");
+    }
 }
 
 #[test]
