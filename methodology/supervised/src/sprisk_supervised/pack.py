@@ -45,8 +45,8 @@ def run(
     try:
         results = [
             split_leakage(version, by_ref, f"mck_{ULID()}", now),
-            code_leakage(version, f"mck_{ULID()}", now),
-            *split_design(version, asked, chosen, lambda: f"mck_{ULID()}", now),
+            code_leakage(version, by_ref, f"mck_{ULID()}", now),
+            *split_design(version, by_ref, asked, chosen, lambda: f"mck_{ULID()}", now),
         ]
     except CheckInputError as e:
         raise OperatorError("invalid_check_input", str(e)) from e

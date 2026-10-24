@@ -3,6 +3,7 @@ id: sprisk.validation.temporal_split@1.0.0
 title: Temporal split
 capability_class: transform
 role: split
+folds: time
 description: Split by time. Every train row is strictly earlier than every test row.
 entrypoint: sprisk_validation.temporal_split:temporal_split
 inputs: [{ name: data, kind: table }]

@@ -2,6 +2,8 @@ schema_version: sprisk.operator/v1
 id: sprisk.validation.class_shares@2.0.0
 title: Class shares at the score
 capability_class: analyzer
+role: score_shares
+role_default: true
 description: The largest difference in a class's share of rows between train and test, the class, and whether it drifted. It reads the test labels, so only the final score runs it, beside the evaluation (ADR-0064).
 entrypoint: sprisk_validation.score_shares:class_shares
 inputs: [{ name: train, kind: table }, { name: test, kind: table }]

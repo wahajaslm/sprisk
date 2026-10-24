@@ -10,13 +10,22 @@ use petgraph::visit::Dfs;
 use serde_json::json;
 use sprisk_contracts::{
     BaselineRole, DecisionProposal, Edge, GraphEffect, Guardrail, MethodologyAlternative,
-    MethodologyAlternativeApplicability, MethodologyRule, Node, Operator, PipelineVersion,
-    PipelineVersionId, PortKind, SelectionMetric, StudyStrategy, TaskType, parse,
+    MethodologyAlternativeApplicability, MethodologyRule, Node, Operator, OperatorRole,
+    PipelineVersion, PipelineVersionId, PortKind, SelectionMetric, SplitFolds, StudyStrategy,
+    TaskType, parse,
 };
 
-use crate::ResolveError;
 use crate::decision::train_rows_chain;
 use crate::search;
+use crate::{Defaults, ResolveError};
+use sprisk_registry::Registry;
+
+/// Whether `node` splits rows, by its operator's role (ADR-0064).
+fn is_split(registry: &Registry, node: &Node) -> bool {
+    registry
+        .get(node.operator.as_str())
+        .is_some_and(|o| o.role == Some(OperatorRole::Split))
+}
 
 /// Folds, repeats and seed of every comparison, recorded in each cross-validate step's params:
 /// ten shuffles into five folds, for the corrected repeated k-fold t-test (ADR-0050).
@@ -25,8 +34,6 @@ pub const REPEATS: u64 = 10;
 pub const SEED: u64 = 0;
 /// Inner folds of a study's trial: they only rank settings, so 3 bounds the cost (ADR-0052).
 pub const INNER_FOLDS: u64 = 3;
-const CROSS_VALIDATE: &str = "sprisk.ml.cross_validate@4.0.0";
-const SELECT: &str = "sprisk.ml.select_model@5.0.0";
 /// The select step of every comparison; its `decision` output is the SelectionDecision.
 pub const SELECT_NODE: &str = "select_model";
 
@@ -36,18 +43,20 @@ pub struct Comparison {
     pub edges: Vec<Edge>,
 }
 
-/// The comparison of `proposal`'s shortlist on `base`, its flow. `operator_of` finds each
-/// candidate's operator, so the baseline is the one model with no family.
-pub fn comparison<'a>(
+/// The comparison of `proposal`'s shortlist on `base`, its flow. The registry gives each
+/// candidate's operator, so the baseline is the one model with no family, and the steps the
+/// comparison builds, by role.
+pub fn comparison(
     base: &PipelineVersion,
     proposal: &DecisionProposal,
     scoring: Scoring,
-    is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
-    operator_of: impl Fn(&str) -> Option<&'a Operator>,
+    registry: &Registry,
 ) -> Result<Comparison, ResolveError> {
+    let operator_of = |operator: &str| registry.get(operator);
+    let is_split = |n: &Node| is_split(registry, n);
     let shortlist = shortlist(base, proposal, scoring, is_split, keeps_train, &operator_of)?;
-    build(base, &shortlist, &Study::default())
+    build(base, &shortlist, &Study::default(), registry)
 }
 
 /// What a study asks of a comparison (ADR-0052).
@@ -63,15 +72,16 @@ pub struct StudySearch<'s> {
 /// A study of `proposal`'s shortlist (ADR-0052): a model whose manifest declares a search
 /// gets one trial per setting the strategy lists, tuned on inner folds; any other gets one
 /// trial at the flow's settings. Every trial scores the recall each guardrail names.
-pub fn study_comparison<'a>(
+pub fn study_comparison(
     base: &PipelineVersion,
     proposal: &DecisionProposal,
     scoring: Scoring,
-    is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
-    operator_of: impl Fn(&str) -> Option<&'a Operator>,
+    registry: &Registry,
     asked: &StudySearch,
 ) -> Result<Comparison, ResolveError> {
+    let operator_of = |operator: &str| registry.get(operator);
+    let is_split = |n: &Node| is_split(registry, n);
     let mut shortlist = shortlist(base, proposal, scoring, is_split, keeps_train, &operator_of)?;
     let searches: Vec<_> = shortlist
         .trials
@@ -137,7 +147,7 @@ pub fn study_comparison<'a>(
         study.tuned.insert(candidate.id, json!(group));
     }
     shortlist.trials = trials;
-    build(base, &shortlist, &study)
+    build(base, &shortlist, &study, registry)
 }
 
 /// The shortlist's trials at the flow's settings, and what every comparison of it shares.
@@ -244,15 +254,16 @@ fn shortlist<'p, 'a>(
 /// unchanged, with the step replaced or removed. The rule's recommendation is the reference:
 /// it stands unless another beats it. `rule` is the proposal's manifest, which says where an
 /// alternative without an effect would act.
-pub fn preparation_comparison<'a>(
+pub fn preparation_comparison(
     base: &PipelineVersion,
     proposal: &DecisionProposal,
     rule: &MethodologyRule,
     scoring: Scoring,
-    is_split: impl Fn(&Node) -> bool,
     keeps_train: impl Fn(&Node) -> bool,
-    operator_of: impl Fn(&str) -> Option<&'a Operator>,
+    registry: &Registry,
 ) -> Result<Comparison, ResolveError> {
+    let operator_of = |operator: &str| registry.get(operator);
+    let is_split = |n: &Node| is_split(registry, n);
     let reference = proposal
         .recommended_alternative_id
         .as_ref()
@@ -327,7 +338,7 @@ pub fn preparation_comparison<'a>(
         },
         not_compared,
     };
-    build(base, &shortlist, &Study::default())
+    build(base, &shortlist, &Study::default(), registry)
 }
 
 /// One cross-validate step: `model` refit after `prepare` on each fold; with `inner_folds`,
@@ -366,7 +377,9 @@ fn build(
     base: &PipelineVersion,
     shortlist: &Shortlist,
     study: &Study,
+    registry: &Registry,
 ) -> Result<Comparison, ResolveError> {
+    let defaults = Defaults::of(registry)?;
     let Shortlist {
         split,
         metric,
@@ -376,7 +389,8 @@ fn build(
     } = shortlist;
     let split = *split;
     // Folds must keep what the split keeps apart: time order, or whole groups (ADR-0050).
-    let (fold_by, repeats) = fold_by(step_of(base, split)?)?;
+    let split_step = step_of(base, split)?;
+    let (fold_by, repeats) = fold_by(split_step, registry.get(split_step.operator.as_str()))?;
     let kept = upstream(base, split);
     let mut nodes: Vec<Node> = base
         .nodes
@@ -411,7 +425,8 @@ fn build(
             params.insert("recall_of".into(), json!(study.recall_of));
         }
         nodes.push(parse(
-            &json!({ "id": step, "operator": CROSS_VALIDATE, "params": params }).to_string(),
+            &json!({ "id": step, "operator": defaults.cross_validate, "params": params })
+                .to_string(),
         )?);
         edges.push(edge(&format!("{split}.train"), &format!("{step}.train"))?);
         scores.push(edge(
@@ -442,7 +457,7 @@ fn build(
         select["earlier_looks"] = json!(study.earlier_looks);
     }
     nodes.push(parse(
-        &json!({ "id": SELECT_NODE, "operator": SELECT, "params": select }).to_string(),
+        &json!({ "id": SELECT_NODE, "operator": defaults.select, "params": select }).to_string(),
     )?);
     Ok(Comparison { nodes, edges })
 }
@@ -693,13 +708,13 @@ fn refits_as_flow_runs(step: &Node) -> Result<(), ResolveError> {
     Ok(())
 }
 
-/// How folds must follow `split`, as cross-validate params, and how many repeats that allows:
-/// a time split's folds follow its time column and cannot be reshuffled; a group split's keep
-/// its groups whole; a random split's shuffle rows (ADR-0050).
+/// How folds must follow `split`, as cross-validate params, and how many repeats that allows,
+/// from the folds its manifest declares (ADR-0064): time folds follow its time column and
+/// cannot be reshuffled; group folds keep its groups whole; plain folds shuffle rows (ADR-0050).
 fn fold_by(
     split: &Node,
+    operator: Option<&Operator>,
 ) -> Result<(serde_json::Map<String, serde_json::Value>, u64), ResolveError> {
-    let operator = split.operator.as_str();
     let column = |name: &str| {
         split
             .params
@@ -711,25 +726,27 @@ fn fold_by(
             })
     };
     let mut by = serde_json::Map::new();
-    if operator.starts_with("sprisk.validation.temporal_split@") {
-        if split.params.contains_key("group_column") {
-            return Err(ResolveError::Selection(format!(
-                "split step {} keeps entities apart over time, which time-ordered folds would mix; such a flow cannot be compared yet",
-                split.id.as_str()
-            )));
+    match operator.and_then(|o| o.folds) {
+        Some(SplitFolds::Time) => {
+            if split.params.contains_key("group_column") {
+                return Err(ResolveError::Selection(format!(
+                    "split step {} keeps entities apart over time, which time-ordered folds would mix; such a flow cannot be compared yet",
+                    split.id.as_str()
+                )));
+            }
+            by.insert("time_column".into(), column("time_column")?);
+            Ok((by, 1))
         }
-        by.insert("time_column".into(), column("time_column")?);
-        Ok((by, 1))
-    } else if operator.starts_with("sprisk.validation.group_split@") {
-        by.insert("group_column".into(), column("group_column")?);
-        Ok((by, REPEATS))
-    } else if operator.starts_with("sprisk.validation.random_split@") {
-        Ok((by, REPEATS))
-    } else {
-        Err(ResolveError::Selection(format!(
-            "split step {} ({operator}) has no fold rule; compare knows random, temporal and group splits",
-            split.id.as_str()
-        )))
+        Some(SplitFolds::Group) => {
+            by.insert("group_column".into(), column("group_column")?);
+            Ok((by, REPEATS))
+        }
+        Some(SplitFolds::Plain) => Ok((by, REPEATS)),
+        None => Err(ResolveError::Selection(format!(
+            "split step {} ({}) declares no folds, so models cannot be compared on its train rows",
+            split.id.as_str(),
+            split.operator.as_str()
+        ))),
     }
 }
 

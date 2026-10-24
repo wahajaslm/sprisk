@@ -2,17 +2,23 @@
 
 use serde_json::{Value, json};
 use sprisk_contracts::{MethodologyReview, QuestionVersion, WalkStopReason, parse};
-use sprisk_methodology::RuleCatalog;
 use sprisk_methodology::engine::{
     Action, HeadRun, SHARES_NODE, Start, look_asks, next_action, start, unconfirmed_reads,
     with_test_scoring,
 };
+use sprisk_methodology::{Defaults, RuleCatalog};
 
 mod repo;
 use repo::rules_with_example_split;
 
 fn catalog() -> RuleCatalog {
     rules_with_example_split()
+}
+
+/// The repo's role defaults, as the API reads them from its registry.
+fn defaults() -> Defaults {
+    let plugins = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+    Defaults::of(&sprisk_registry::Registry::load_dir(&plugins).unwrap()).unwrap()
 }
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
@@ -335,7 +341,8 @@ fn the_first_flow_is_a_load_per_source_a_split_and_a_baseline_on_the_target() {
         "/data/x_train.csv".to_owned(),
         "/data/y_train.parquet".to_owned(),
     ];
-    let Start::Flow { nodes, edges } = start(&question(json!({})), &sources).unwrap() else {
+    let Start::Flow { nodes, edges } = start(&question(json!({})), &sources, &defaults()).unwrap()
+    else {
         panic!("expected a flow");
     };
     assert_eq!(
@@ -370,6 +377,7 @@ fn no_stated_target_stops_before_anything_is_built() {
         let started = start(
             &question(json!({ "target": target })),
             &["/d.csv".to_owned()],
+            &defaults(),
         );
         let Start::Stop { reason, detail } = started.unwrap() else {
             panic!("expected a stop");
@@ -383,13 +391,17 @@ fn no_stated_target_stops_before_anything_is_built() {
 fn a_question_with_no_supervised_task_is_not_walked_yet() {
     let undetermined =
         question(json!({ "task": { "value": "undetermined", "origin": "inferred" } }));
-    let Start::Stop { reason, .. } = start(&undetermined, &["/d.csv".to_owned()]).unwrap() else {
+    let Start::Stop { reason, .. } =
+        start(&undetermined, &["/d.csv".to_owned()], &defaults()).unwrap()
+    else {
         panic!("expected a stop");
     };
     assert_eq!(reason, WalkStopReason::NeedsPerson);
 
     let exploration = question(json!({ "task": { "value": "exploration", "origin": "explicit" } }));
-    let Start::Stop { reason, .. } = start(&exploration, &["/d.csv".to_owned()]).unwrap() else {
+    let Start::Stop { reason, .. } =
+        start(&exploration, &["/d.csv".to_owned()], &defaults()).unwrap()
+    else {
         panic!("expected a stop");
     };
     assert_eq!(reason, WalkStopReason::Uncovered);
@@ -397,11 +409,15 @@ fn a_question_with_no_supervised_task_is_not_walked_yet() {
 
 #[test]
 fn a_source_that_is_not_csv_or_parquet_is_refused() {
-    let err = start(&question(json!({})), &["/data/x.xlsx".to_owned()])
-        .err()
-        .unwrap();
+    let err = start(
+        &question(json!({})),
+        &["/data/x.xlsx".to_owned()],
+        &defaults(),
+    )
+    .err()
+    .unwrap();
     assert!(err.to_string().contains("/data/x.xlsx"), "{err}");
-    let err = start(&question(json!({})), &[]).err().unwrap();
+    let err = start(&question(json!({})), &[], &defaults()).err().unwrap();
     assert!(err.to_string().contains("source"), "{err}");
 }
 
@@ -505,7 +521,7 @@ fn the_test_rows_are_scored_as_the_model_s_train_rows_were_prepared_with_its_wor
         ]),
     );
 
-    let (nodes, edges) = with_test_scoring(&pipeline).unwrap();
+    let (nodes, edges) = with_test_scoring(&pipeline, &defaults()).unwrap();
 
     let score = nodes
         .iter()
@@ -544,7 +560,8 @@ fn split_into_model(task: &str) -> sprisk_contracts::PipelineVersion {
 
 #[test]
 fn a_classifier_s_score_measures_the_class_shares_of_its_train_and_test_rows() {
-    let (nodes, edges) = with_test_scoring(&split_into_model("classification")).unwrap();
+    let (nodes, edges) =
+        with_test_scoring(&split_into_model("classification"), &defaults()).unwrap();
 
     let shares = nodes.iter().find(|n| n.id.as_str() == SHARES_NODE).unwrap();
     assert_eq!(
@@ -570,7 +587,7 @@ fn a_classifier_s_score_measures_the_class_shares_of_its_train_and_test_rows() {
 
 #[test]
 fn a_regression_s_score_has_no_class_shares() {
-    let (nodes, _) = with_test_scoring(&split_into_model("regression")).unwrap();
+    let (nodes, _) = with_test_scoring(&split_into_model("regression"), &defaults()).unwrap();
     assert!(nodes.iter().all(|n| n.id.as_str() != SHARES_NODE));
 }
 
@@ -596,7 +613,7 @@ fn the_baseline_is_scored_on_the_same_test_rows_beside_the_model() {
         ]),
     );
 
-    let (nodes, edges) = with_test_scoring(&pipeline).unwrap();
+    let (nodes, edges) = with_test_scoring(&pipeline, &defaults()).unwrap();
 
     let node = |id: &str| nodes.iter().find(|n| n.id.as_str() == id).unwrap();
     let baseline = node("test_baseline");
@@ -639,7 +656,7 @@ fn a_flow_already_scored_on_its_test_rows_is_not_scored_again() {
         ]),
         json!([{ "from": "split.train", "to": "model.train" }]),
     );
-    let err = with_test_scoring(&pipeline).unwrap_err();
+    let err = with_test_scoring(&pipeline, &defaults()).unwrap_err();
     assert!(err.to_string().contains("score_test"), "{err}");
 }
 
@@ -655,7 +672,7 @@ fn a_flow_holding_a_baseline_scoring_step_is_not_scored_again() {
             ]),
             json!([{ "from": "split.train", "to": "model.train" }]),
         );
-        let err = with_test_scoring(&pipeline).unwrap_err();
+        let err = with_test_scoring(&pipeline, &defaults()).unwrap_err();
         assert!(err.to_string().contains(taken), "{err}");
     }
 }

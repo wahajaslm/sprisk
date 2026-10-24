@@ -2,6 +2,8 @@ schema_version: sprisk.operator/v1
 id: sprisk.ml.dummy_baseline@3.0.0
 title: Dummy baseline
 capability_class: estimator
+role: model
+role_default: true
 model: { tasks: [classification, regression], estimator: "sprisk_ml.models:dummy_baseline_estimator", complexity: 0 }
 description: Majority class or mean predictor. The floor every model must beat.
 entrypoint: sprisk_ml.models:dummy_baseline

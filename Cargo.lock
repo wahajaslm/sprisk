@@ -2411,6 +2411,7 @@ dependencies = [
  "tracing",
  "ulid",
  "url",
+ "walkdir",
 ]
 
 [[package]]

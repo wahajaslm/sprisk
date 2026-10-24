@@ -5,6 +5,7 @@ mod catalog;
 mod compare;
 pub mod deciding;
 mod decision;
+mod defaults;
 pub mod engine;
 pub mod facts;
 pub mod flow_decisions;
@@ -24,6 +25,7 @@ pub use decision::{
     observation, one_table_into, profile_facts, proposal, result_facts, target_facts,
     train_rows_source, unread_sources, with_node_before, without_node,
 };
+pub use defaults::Defaults;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ResolveError {
@@ -71,6 +73,8 @@ pub enum ResolveError {
     OverBudget(#[from] search::BudgetError),
     #[error(transparent)]
     Rules(#[from] CatalogError),
+    #[error(transparent)]
+    Registry(#[from] sprisk_registry::RegistryError),
     #[error("could not serialize proposal input: {0}")]
     Json(#[from] serde_json::Error),
 }

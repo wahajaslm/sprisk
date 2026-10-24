@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.drop_missing@1.0.0
 title: Listwise deletion
 capability_class: transform
+role: row_filter
 description: Drop rows with a missing value in any of the named columns. Use for the target, which must never be filled in.
 entrypoint: sprisk_clean.columns:drop_missing
 inputs: [{ name: data, kind: table }]

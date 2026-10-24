@@ -21,6 +21,9 @@ A validation of the ADR-0063 architecture against the project's goals and the Fl
   - a split manifest declares how its folds are made (`folds: plain | stratified | group | time`);
   - the leakage check finds splits by role.
   A test proves it: a new split operator and a new method, added as folders, are used with no edit to `crates/` or the packs' Python.
+  - How (step 3): roles gain `score`, `score_shares`, `cross_validate`, `select` and `row_filter`; `role_default: true` marks the one operator the engine builds a role's step from; a split declares `folds: plain | group | time`. Splits, the baseline (the model role's default) and fitting transforms (`fits_on_train`) are found by manifest in the packs' checks too.
+  - A split operator's code must still come from a trusted core package (the worker imports nothing else), so a split added as a folder reuses trusted code under its own id and folds.
+  - Left for the old rules' conversion: the scale step (`decision.rs`) and the impute step's zero fill (the review's flow facts) are named for old rules' facts, and the code step is still found by its id.
 - **Walks can be found, and end in a report.**
   - `GET /walks?question_version_id=` lists a question's walks, paged.
   - A completed walk writes one immutable `Report`: the question, the answer as a stated claim, and each claim's evidence by id (decisions, promise checks, runs, the test score) plus its limitations. It is built from records, not written by a model.

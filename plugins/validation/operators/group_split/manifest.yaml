@@ -3,6 +3,7 @@ id: sprisk.validation.group_split@1.0.0
 title: Group split
 capability_class: transform
 role: split
+folds: group
 description: Hold out complete entities so the same group never appears in train and test.
 entrypoint: sprisk_validation.group_split:group_split
 inputs: [{ name: data, kind: table }]

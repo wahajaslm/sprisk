@@ -2014,11 +2014,25 @@
     },
     "OperatorRole": {
       "type": "string",
-      "description": "The one job a step does in a flow, so methods place and replace steps by role, not by input names.",
+      "description": "The one job a step does in a flow, so methods place and replace steps by role, and the engine builds a step of a role from its default operator, never by name (ADR-0064). score: scores a model on rows. score_shares: compares the class shares of train and test at the final score. cross_validate: scores a candidate on folds. select: chooses among compared candidates. row_filter: only drops rows.",
       "enum": [
         "source",
         "split",
-        "model"
+        "model",
+        "score",
+        "score_shares",
+        "cross_validate",
+        "select",
+        "row_filter"
+      ]
+    },
+    "SplitFolds": {
+      "type": "string",
+      "description": "How a split's folds are made when models are compared on its train rows (ADR-0064). plain: shuffled rows. group: whole values of the split's group_column. time: in order of the split's time_column, never reshuffled.",
+      "enum": [
+        "plain",
+        "group",
+        "time"
       ]
     },
     "OperatorAttach": {
@@ -3961,6 +3975,14 @@
         "role": {
           "$ref": "#/$defs/OperatorRole",
           "description": "The job the step does, for methods that replace a step by role (ADR-0063). Absent: no method places it by role."
+        },
+        "role_default": {
+          "type": "boolean",
+          "description": "True for the operator the engine uses when it builds a step of this role (ADR-0064). At most one per role. Absent: not a default."
+        },
+        "folds": {
+          "$ref": "#/$defs/SplitFolds",
+          "description": "Set on a split: how its folds are made when models are compared. Absent: a flow with this split cannot be compared."
         },
         "attach": {
           "$ref": "#/$defs/OperatorAttach",

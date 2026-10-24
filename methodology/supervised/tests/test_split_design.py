@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 import yaml
 from method_harness import decide as decide_method
+from repo_operators import repo_operators
 
 from sprisk_contracts import (
     MethodologyCheck,
@@ -19,6 +20,13 @@ from sprisk_supervised.split_design import CHECK, split_design
 from sprisk_supervised.split_leakage import CheckInputError
 
 CONTRACT = Path(__file__).parents[3] / "tests" / "contract"
+OPERATORS = repo_operators()
+# A split added as a folder only, under another name, that folds by time (ADR-0064).
+LATER = "acme.validation.later_split@1.0.0"
+_temporal = OPERATORS["sprisk.validation.temporal_split@1.0.0"]
+OPERATORS[LATER] = _temporal.model_copy(
+    update={"id": _temporal.id.model_copy(update={"root": LATER})}
+)
 NOW = "2026-10-20T10:00:00Z"
 DECISION_ID = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0"
 
@@ -74,7 +82,9 @@ def check(
     decisions: tuple[MethodologyDecision, ...] = (),
     decided: bool = False,
 ) -> MethodologyCheck:
-    (result,) = split_design(pipeline(split, decided), asked, list(decisions), new_ids(), NOW)
+    (result,) = split_design(
+        pipeline(split, decided), OPERATORS, asked, list(decisions), new_ids(), NOW
+    )
     return result
 
 
@@ -105,6 +115,12 @@ def test_the_split_must_follow_the_confirmed_time_or_entity_fact(
     assert result.verdict == verdict
     assert result.cited_nodes[0].root == "split"
     assert result.phase is not None and result.phase.value == "plan"
+
+
+def test_a_split_is_judged_by_the_folds_it_declares_not_its_name() -> None:
+    later = (LATER, TEMPORAL[1])
+    assert check(later, question(**CONFIRMED_TIME)).verdict == "pass"
+    assert check(later, question(**CONFIRMED_ENTITY)).verdict == "fail"
 
 
 @pytest.mark.parametrize("fact", ["time_column", "entity_column"])
@@ -140,7 +156,7 @@ def test_without_a_question_the_split_is_not_assessed() -> None:
 
 def test_a_pipeline_without_a_split_is_not_assessed() -> None:
     no_split = pipeline(RANDOM).model_copy(update={"nodes": []})
-    (result,) = split_design(no_split, question(**CONFIRMED_TIME), [], new_ids(), NOW)
+    (result,) = split_design(no_split, OPERATORS, question(**CONFIRMED_TIME), [], new_ids(), NOW)
     assert result.verdict == "not_assessed"
     assert result.cited_nodes == []
 
@@ -174,6 +190,18 @@ def test_a_split_changed_after_its_decision_fails_and_says_so() -> None:
     assert result.verdict == "fail"
     assert "simple_random" in result.rationale
     assert result.methodology_decision_id is not None
+
+
+def test_a_renamed_split_that_folds_as_its_decision_chose_has_not_drifted() -> None:
+    chose_temporal = decision(alternative_id="temporal")
+    later = (LATER, TEMPORAL[1])
+    result = check(later, question(**CONFIRMED_TIME), (chose_temporal,), decided=True)
+    assert result.verdict == "pass", result.rationale
+
+
+def test_a_step_with_an_unknown_operator_is_bad_input() -> None:
+    with pytest.raises(CheckInputError, match="unknown operator acme.unknown.split@1.0.0"):
+        check(("acme.unknown.split@1.0.0", {}), question(**CONFIRMED_TIME))
 
 
 def test_a_split_a_method_decided_is_judged_on_the_question_alone() -> None:
@@ -233,6 +261,6 @@ def test_each_split_gets_its_own_check() -> None:
     raw = json.loads(pipeline(RANDOM).model_dump_json(by_alias=True))
     raw["nodes"].append({**raw["nodes"][0], "id": "split2"})
     two = PipelineVersion.model_validate_json(json.dumps(raw))
-    results = split_design(two, question(), [], new_ids(), NOW)
+    results = split_design(two, OPERATORS, question(), [], new_ids(), NOW)
     assert [r.cited_nodes[0].root for r in results] == ["split", "split2"]
     assert len({r.id.root for r in results}) == 2

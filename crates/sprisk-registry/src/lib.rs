@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use sprisk_contracts::{
-    ContractError, InputPort, Operator, OperatorSource, OperatorSourceLanguage, PortKind,
+    ContractError, InputPort, Operator, OperatorRole, OperatorSource, OperatorSourceLanguage,
+    PortKind,
 };
 use walkdir::WalkDir;
 
@@ -52,6 +53,16 @@ pub enum RegistryError {
     NoSource { operator: String },
     #[error("operator {operator}: digest is not a content hash: {reason}")]
     BadDigest { operator: String, reason: String },
+    #[error("{path}: {id} is a default but has no role")]
+    DefaultWithoutRole { path: PathBuf, id: String },
+    #[error("{first} and {second} are both the default for the {role} role; a role has one")]
+    TwoDefaults {
+        role: OperatorRole,
+        first: String,
+        second: String,
+    },
+    #[error("no default operator for the {0} role")]
+    NoDefault(OperatorRole),
     #[error("operator {id} defined twice: {first} and {second}")]
     Duplicate {
         id: String,
@@ -126,8 +137,30 @@ impl Registry {
                 second: entry.path,
             });
         }
+        if entry.operator.role_default == Some(true) {
+            let Some(role) = entry.operator.role else {
+                return Err(RegistryError::DefaultWithoutRole {
+                    path: entry.path,
+                    id,
+                });
+            };
+            if let Ok(first) = self.default_for(role) {
+                return Err(RegistryError::TwoDefaults {
+                    role,
+                    first: first.id.to_string(),
+                    second: id,
+                });
+            }
+        }
         self.operators.insert(id, entry);
         Ok(())
+    }
+
+    /// The operator the engine uses when it builds a step of `role` (ADR-0064).
+    pub fn default_for(&self, role: OperatorRole) -> Result<&Operator, RegistryError> {
+        self.operators()
+            .find(|o| o.role == Some(role) && o.role_default == Some(true))
+            .ok_or(RegistryError::NoDefault(role))
     }
 
     /// The operator and its implementation digest, together, so callers cannot get one

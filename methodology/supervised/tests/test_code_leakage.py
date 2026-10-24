@@ -3,6 +3,7 @@ from textwrap import dedent
 from typing import Any
 
 import pytest
+from repo_operators import repo_operators
 
 from sprisk_contracts import MethodologyCheck, PipelineVersion
 from sprisk_contracts.generated.models import Verdict
@@ -12,6 +13,7 @@ from sprisk_supervised.split_leakage import CheckInputError
 CHECK_ID = "mck_01JABCDEFGHJKMNPQRSTVWXYZ0"
 NOW = "2026-10-18T10:00:00Z"
 CODE = "sprisk.code.python@2.0.0"
+OPERATORS = repo_operators()
 
 
 def step(
@@ -32,7 +34,7 @@ def check(*nodes: dict[str, Any], edges: Sequence[tuple[str, str]] = ()) -> Meth
             "created_at": NOW,
         }
     )
-    return code_leakage(pipeline, CHECK_ID, NOW)
+    return code_leakage(pipeline, OPERATORS, CHECK_ID, NOW)
 
 
 def test_flow_without_code_steps_is_not_assessed() -> None:
@@ -285,3 +287,9 @@ def test_tuple_assignment_tags_each_name_from_its_own_value() -> None:
         "m.fit(fit_rows)"
     )
     assert check(step("a", source)).verdict == Verdict.pass_
+
+
+def test_a_step_with_an_unknown_operator_is_bad_input() -> None:
+    unknown = {"id": "x", "operator": "acme.unknown.step@1.0.0", "params": {}}
+    with pytest.raises(CheckInputError, match="unknown operator acme.unknown.step@1.0.0"):
+        check(step("a", "x = 1"), unknown)

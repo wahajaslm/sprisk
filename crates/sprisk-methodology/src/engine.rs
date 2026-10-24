@@ -8,7 +8,7 @@ use sprisk_contracts::{
     parse,
 };
 
-use crate::{CatalogError, ResolveError, RuleCatalog, compare::SEED};
+use crate::{CatalogError, Defaults, ResolveError, RuleCatalog, compare::SEED};
 
 /// The share of rows the first split holds out. The split rule may change it.
 const TEST_FRACTION: f64 = 0.2;
@@ -30,7 +30,11 @@ pub enum Start {
 
 /// The first flow for `question` on `sources`. The first source feeds the split, since it
 /// holds the rows to predict on; any other has no reader, for the join rule to join.
-pub fn start(question: &QuestionVersion, sources: &[String]) -> Result<Start, ResolveError> {
+pub fn start(
+    question: &QuestionVersion,
+    sources: &[String],
+    defaults: &Defaults,
+) -> Result<Start, ResolveError> {
     if sources.is_empty() {
         return Err(ResolveError::NoSource);
     }
@@ -42,7 +46,7 @@ pub fn start(question: &QuestionVersion, sources: &[String]) -> Result<Start, Re
             format!("load_{}", at + 1)
         };
         nodes.push(json!({
-            "id": id, "operator": "sprisk.io.file_source@1.0.0",
+            "id": id, "operator": defaults.source,
             "params": { "path": path, "format": format_of(path)? },
         }));
     }
@@ -70,11 +74,11 @@ pub fn start(question: &QuestionVersion, sources: &[String]) -> Result<Start, Re
         ));
     };
     nodes.push(json!({
-        "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
+        "id": "split", "operator": defaults.split,
         "params": { "test_fraction": TEST_FRACTION, "seed": SEED },
     }));
     nodes.push(json!({
-        "id": MODEL_NODE, "operator": "sprisk.ml.dummy_baseline@3.0.0",
+        "id": MODEL_NODE, "operator": defaults.model,
         "params": { "target": target.value.as_str(), "task": task },
     }));
     let edges = vec![
@@ -104,6 +108,7 @@ const BASELINE_SETTINGS: [&str; 5] = ["target", "task", "features", "exclude", "
 /// Refused when the flow already has it.
 pub fn with_test_scoring(
     pipeline: &PipelineVersion,
+    defaults: &Defaults,
 ) -> Result<(Vec<Node>, Vec<Edge>), ResolveError> {
     let refuse = |why: String| ResolveError::NotInsertable(why);
     if let Some(taken) = pipeline.nodes.iter().find(|n| {
@@ -161,7 +166,7 @@ pub fn with_test_scoring(
     let params = |name: &str| model.params.get(name).cloned();
     let evaluate = |id: &str| {
         json!({
-            "id": id, "operator": "sprisk.ml.evaluate@2.0.0",
+            "id": id, "operator": defaults.score,
             "params": { "target": params("target"), "task": params("task") },
         })
     };
@@ -170,7 +175,7 @@ pub fn with_test_scoring(
         .filter_map(|name| Some(((*name).to_owned(), params(name)?)))
         .collect();
     let baseline = json!({
-        "id": TEST_BASELINE_NODE, "operator": "sprisk.ml.dummy_baseline@3.0.0", "params": shared,
+        "id": TEST_BASELINE_NODE, "operator": defaults.model, "params": shared,
     });
     let mut added = vec![
         evaluate(SCORE_NODE),
@@ -179,7 +184,7 @@ pub fn with_test_scoring(
     ];
     if params("task") == Some(json!("classification")) {
         added.push(json!({
-            "id": SHARES_NODE, "operator": "sprisk.validation.class_shares@2.0.0",
+            "id": SHARES_NODE, "operator": defaults.score_shares,
             "params": { "target": params("target") },
         }));
         edges

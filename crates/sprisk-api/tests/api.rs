@@ -6113,6 +6113,11 @@ async fn a_walk_whose_source_changes_stops_as_source_changed() {
     assert!(why.contains("d.csv"), "{why}");
 }
 
+/// The registry's role defaults, as the engine reads them.
+fn defaults(state: &AppState) -> sprisk_methodology::Defaults {
+    sprisk_methodology::Defaults::of(&state.registry).unwrap()
+}
+
 /// A walk still walking, as a stopped server leaves it: built, its head the first flow, and
 /// nothing driving it. Gives the walk and its head.
 async fn walk_left_walking(api: &Api) -> (sprisk_contracts::Walk, String) {
@@ -6123,7 +6128,7 @@ async fn walk_left_walking(api: &Api) -> (sprisk_contracts::Walk, String) {
         .unwrap();
     let sources = vec![api.csv.display().to_string()];
     let sprisk_methodology::engine::Start::Flow { nodes, edges } =
-        sprisk_methodology::engine::start(&question, &sources).unwrap()
+        sprisk_methodology::engine::start(&question, &sources, &defaults(&api.state)).unwrap()
     else {
         panic!("the question states a target");
     };
@@ -6234,7 +6239,8 @@ async fn a_restarted_walk_finishes_scoring_its_test_rows_and_ends_on_that_score(
     // The server stopped while round 1 scored the test rows.
     let head_id: sprisk_contracts::PipelineVersionId = parse(&json!(head).to_string()).unwrap();
     let base = api.store.get_pipeline_version(&head_id).await.unwrap();
-    let (nodes, edges) = sprisk_methodology::engine::with_test_scoring(&base).unwrap();
+    let (nodes, edges) =
+        sprisk_methodology::engine::with_test_scoring(&base, &defaults(&api.state)).unwrap();
     let scored_id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8";
     let mut scored = serde_json::to_value(&base).unwrap();
     scored["id"] = json!(scored_id);
@@ -6518,6 +6524,145 @@ async fn learnable_question(api: &Api) {
     }
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+/// `from`'s files under `to`, without Python's caches.
+fn copy_tree(from: &Path, to: &Path) {
+    let files = walkdir::WalkDir::new(from)
+        .into_iter()
+        .filter_entry(|e| e.file_name() != "__pycache__");
+    for entry in files {
+        let entry = entry.unwrap();
+        let target = to.join(entry.path().strip_prefix(from).unwrap());
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target).unwrap();
+        } else {
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
+const SHUFFLE_METHOD: &str = r#"schema_version: sprisk.method/v1
+id: methodology.supervised.shuffle_split@1.0.0
+decides: split.method
+activity: Fair evaluation
+question: How are rows divided into training and test so the score is fair?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: [common.target]
+  evidence: []
+  decisions: []
+options:
+  - id: shuffled
+    label: Shuffled rows
+    action:
+      replace:
+        role: split
+        operator: sprisk.validation.shuffle_split@1.0.0
+        settings: { test_fraction: 0.2, seed: 7 }
+    verify: [no_row_in_both]
+verifications:
+  no_row_in_both:
+    needs: evaluation.row_overlap
+    promise: No test row has the same features as a train row.
+source: "scikit-learn User Guide §3.1: ShuffleSplit."
+"#;
+
+const SHUFFLE_MODULE: &str = r#"from typing import Any
+
+
+def decide(ctx: Any) -> Any:
+    return ctx.choose("shuffled", "Rows are shuffled into train and test.")
+
+
+def verify_no_row_in_both(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
+    if evidence["in_both"]:
+        return "fail", f"{evidence['in_both']} test rows repeat a train row."
+    return "pass", "No test row repeats a train row."
+"#;
+
+/// ADR-0064 criterion 6: a split operator and a method added as folders only are used, with
+/// no edit to `crates/` or the packs' Python.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_split_operator_and_a_method_added_as_folders_are_used_with_no_code_edit() {
+    let mut api = api().await;
+    let packs = tempfile::tempdir().unwrap();
+    let (plugins_root, methodology_root) = (
+        packs.path().join("plugins"),
+        packs.path().join("methodology"),
+    );
+    copy_tree(&root().join("plugins"), &plugins_root);
+    copy_tree(&root().join("methodology"), &methodology_root);
+    // A split with its own id and folds, on the core's trusted random split code.
+    let split = std::fs::read_to_string(
+        plugins_root.join("validation/operators/random_split/manifest.yaml"),
+    )
+    .unwrap()
+    .replace(
+        "sprisk.validation.random_split@1.0.0",
+        "sprisk.validation.shuffle_split@1.0.0",
+    )
+    .replace("role_default: true\n", "")
+    .replace("title: Random split", "title: Shuffle split");
+    let folder = plugins_root.join("validation/operators/shuffle_split");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("manifest.yaml"), split).unwrap();
+    // A method in the split method's place.
+    let methods = methodology_root.join("supervised/methods");
+    std::fs::remove_dir_all(methods.join("split_method")).unwrap();
+    std::fs::create_dir_all(methods.join("shuffle_split")).unwrap();
+    std::fs::write(methods.join("shuffle_split/method.yaml"), SHUFFLE_METHOD).unwrap();
+    std::fs::write(methods.join("shuffle_split/method.py"), SHUFFLE_MODULE).unwrap();
+    let plugins = Registry::load_dir(&plugins_root).unwrap();
+    api.state.rules = Arc::new(
+        sprisk_methodology::RuleCatalog::load_dir(&methodology_root, plugins.operators()).unwrap(),
+    );
+    api.state.registry = Arc::new(plugins);
+    let python = api.state.worker_command[0].clone();
+    api.state.worker_command = vec![
+        python,
+        "-m".into(),
+        "sprisk_workers".into(),
+        "--plugins-root".into(),
+        plugins_root.display().to_string(),
+        "--plugins-root".into(),
+        methodology_root.display().to_string(),
+    ];
+    api.app = router(api.state.clone());
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-added-folders")).await;
+
+    let steps = detail["steps"].as_array().unwrap();
+    let split = steps
+        .iter()
+        .find(|s| s["decides"] == "split.method")
+        .unwrap();
+    assert_eq!(
+        split["method"], "methodology.supervised.shuffle_split@1.0.0",
+        "{split}"
+    );
+    // The comparison folds the new split by the folds its manifest declares.
+    assert!(steps.iter().any(|s| s["action"] == "compare"), "{detail}");
+    let checked = steps
+        .iter()
+        .filter(|s| s["action"] == "verify")
+        .flat_map(|s| s["verifications"].as_array().unwrap())
+        .any(|c| c["verification"] == "no_row_in_both" && c["result"] == "pass");
+    assert!(checked, "{detail}");
+    let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
+    let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
+    let used = flow["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "split")
+        .unwrap();
+    assert_eq!(
+        used["operator"], "sprisk.validation.shuffle_split@1.0.0",
+        "{flow}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -7131,7 +7276,8 @@ async fn word_features_run_from_load_to_evaluate_and_are_refit_in_each_fold() {
     let base_id: sprisk_contracts::PipelineVersionId =
         parse("\"plv_01JABCDEFGHJKMNPQRSTVWXYZ0\"").unwrap();
     let base = api.store.get_pipeline_version(&base_id).await.unwrap();
-    let (nodes, edges) = sprisk_methodology::engine::with_test_scoring(&base).unwrap();
+    let (nodes, edges) =
+        sprisk_methodology::engine::with_test_scoring(&base, &defaults(&api.state)).unwrap();
     let mut scored = serde_json::to_value(&base).unwrap();
     scored["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
     scored["parent_id"] = json!(base_id);
