@@ -1,0 +1,26 @@
+{
+  "schema_version": "sprisk.report/v1",
+  "id": "rpt_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "question": "Tell each listing's product type from its title and description.",
+  "answer": {
+    "statement": "The model reaches the success bar on the test rows, scored once (1696 rows): weighted_f1 0.812 against a bar of 0.5; the baseline on the same rows: weighted_f1 0.021.",
+    "evidence": [
+      { "run": "run_01JABCDEFGHJKMNPQRSTVWXYZ0" },
+      { "pipeline_version": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1" },
+      { "decision": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0" }
+    ]
+  },
+  "claims": [
+    {
+      "statement": "split.method: stratified_random. Every row is its own item, and each class keeps its share in train and test.",
+      "evidence": [
+        { "decision": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ1" },
+        { "walk_step": { "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0", "round": 6 } }
+      ]
+    }
+  ],
+  "limitations": ["A predictive score, not a causal effect."],
+  "created_at": "2026-10-24T19:00:00Z"
+}

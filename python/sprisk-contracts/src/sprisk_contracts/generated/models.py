@@ -1174,6 +1174,35 @@ class Unknown(StrictModel):
     ]
 
 
+class ReportId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^rpt_[0-9A-HJKMNP-TV-Z]{26}$")]
+
+
+class Limitation(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class ReportEvidence1(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    decision: MethodologyDecisionId
+
+
+class ReportEvidence2(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    run: RunId
+
+
+class ReportEvidence3(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    pipeline_version: PipelineVersionId
+
+
 class RunStatus(StrEnum):
     queued = "queued"
     running = "running"
@@ -1195,10 +1224,6 @@ class AttemptState(StrEnum):
     timed_out = "timed_out"
     skipped = "skipped"
     cache_hit = "cache_hit"
-
-
-class Limitation(RootModel[str]):
-    root: Annotated[str, Field(min_length=1)]
 
 
 class SelectionMetric(StrEnum):
@@ -2441,6 +2466,14 @@ class TaskFact(StrictModel):
     origin: Origin
 
 
+class WalkStepRef(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    walk_id: WalkId
+    round: Annotated[int, Field(ge=0)]
+
+
 class Run(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3229,6 +3262,22 @@ class SuccessBarFact(StrictModel):
     ]
 
 
+class ReportEvidence4(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    walk_step: WalkStepRef
+
+
+class ReportEvidence(
+    RootModel[ReportEvidence1 | ReportEvidence2 | ReportEvidence3 | ReportEvidence4]
+):
+    root: Annotated[
+        ReportEvidence1 | ReportEvidence2 | ReportEvidence3 | ReportEvidence4,
+        Field(description="One record a claim rests on, by id."),
+    ]
+
+
 class CandidateResult(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3609,6 +3658,19 @@ class QuestionVersion(StrictModel):
     created_at: Timestamp
 
 
+class ReportClaim(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    statement: Annotated[str, Field(min_length=1)]
+    evidence: Annotated[
+        list[ReportEvidence],
+        Field(
+            description="The records the statement rests on. The engine builds every claim on at least one."
+        ),
+    ]
+
+
 class SelectionDecision(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3761,3 +3823,25 @@ class Method(StrictModel):
     source: Annotated[
         str, Field(description="The published standard the method follows.", min_length=1)
     ]
+
+
+class Report(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.report/v1"]
+    id: ReportId
+    walk_id: WalkId
+    question_version_id: QuestionVersionId
+    question: Annotated[
+        str, Field(description="The question's objective, as a person stated it.", min_length=1)
+    ]
+    answer: ReportClaim
+    claims: Annotated[
+        list[ReportClaim],
+        Field(
+            description="One per decision the walk made and per promise it checked, in trail order."
+        ),
+    ]
+    limitations: Annotated[list[Limitation], Field(description="What the answer does not show.")]
+    created_at: Timestamp

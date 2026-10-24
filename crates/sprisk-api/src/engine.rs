@@ -11,8 +11,8 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, Method,
     MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodologyDecision,
     MethodologyDecisionByRule, MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId,
-    QuestionVersionId, RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId, WalkStatus,
-    WalkStep, WalkStopReason, parse,
+    QuestionVersionId, Report, RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId,
+    WalkStatus, WalkStep, WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::deciding::{Effective, Made, Ready, apply_option, bindings, ready};
@@ -26,6 +26,7 @@ use sprisk_methodology::verifying::{Checking, Measured, checked, checking, fresh
 use sprisk_registry::evidence::EVIDENCE_PORT;
 
 use crate::method_session::MethodSession;
+use crate::report::{self, Scored};
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, Query, apply_methodology, body,
     check_local_paths, cite_decision, claim_selection, compile, decision_of, drive_run, id, limit,
@@ -122,6 +123,15 @@ fn check_budget(request: &CreateWalk) -> Result<(), ApiError> {
         });
     }
     Ok(())
+}
+
+/// What a completed walk found. A walk that has not completed has no report.
+pub(crate) async fn get_walk_report(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Json<Report>, ApiError> {
+    let walk_id: WalkId = id(&raw)?;
+    Ok(Json(state.store.walk_report(&walk_id).await?))
 }
 
 /// A question's walks, newest first and paged (ADR-0064), so a person finds them again.
@@ -1052,11 +1062,37 @@ async fn finish_scoring(
             )
         })
         .unwrap_or_default();
-    let detail = format!(
-        "Every rule that fits the question is settled. Test rows, scored once ({n_rows} rows): \
-         {bar}{reported}; the baseline on the same rows: {floor}."
+    let answer = format!(
+        "Test rows, scored once ({n_rows} rows): {bar}{reported}; the baseline on the same rows: {floor}."
     );
-    record_stop(state, walk, round, WalkStopReason::Complete, &detail).await
+    let detail = format!("Every rule that fits the question is settled. {answer}");
+    let flow = scored.made_pipeline_version_id.as_ref().ok_or_else(|| {
+        ApiError::Internal(format!(
+            "the score step of walk {} names no flow",
+            walk.id.as_str()
+        ))
+    })?;
+    let steps = state.store.walk_steps(&walk.id).await?;
+    let records = Scored {
+        walk: &walk.id,
+        question: &question,
+        steps: &steps,
+        answer: &answer,
+        run: &run_id,
+        flow,
+    };
+    let report = report::build(
+        &records,
+        &format!("rpt_{}", ulid::Ulid::new()),
+        &format((state.clock)()),
+    )
+    .map_err(|e| ApiError::Internal(format!("the report of walk {}: {e}", walk.id.as_str())))?;
+    let (walk, step) = stopping(state, walk, round, WalkStopReason::Complete, &detail, &[])?;
+    state
+        .store
+        .record_walk_report(&walk, &step, &report)
+        .await?;
+    Ok(WalkStatus::Stopped)
 }
 
 /// The metrics the score step of `run_id` wrote: its own run's, never another run's.
@@ -1486,12 +1522,26 @@ async fn record_stop(
 /// Ends the walk, with `asks` on its stop when there are any.
 async fn record_stop_with(
     state: &AppState,
-    mut walk: Walk,
+    walk: Walk,
     round: usize,
     reason: WalkStopReason,
     detail: &str,
     asks: &[WalkAsk],
 ) -> Result<WalkStatus, ApiError> {
+    let (walk, step) = stopping(state, walk, round, reason, detail, asks)?;
+    state.store.record_walk_step(&walk, &step).await?;
+    Ok(WalkStatus::Stopped)
+}
+
+/// The walk as it stands once stopped, and its stop step; nothing is stored yet.
+fn stopping(
+    state: &AppState,
+    mut walk: Walk,
+    round: usize,
+    reason: WalkStopReason,
+    detail: &str,
+    asks: &[WalkAsk],
+) -> Result<(Walk, WalkStep), ApiError> {
     let reviewed = match &walk.head_pipeline_version_id {
         Some(head) => json!({ "pipeline_version_id": head }),
         None => json!({}),
@@ -1511,8 +1561,7 @@ async fn record_stop_with(
     }
     walk.stop = Some(internal(parse(&stop.to_string()))?);
     walk.finished_at = Some(step.created_at.clone());
-    state.store.record_walk_step(&walk, &step).await?;
-    Ok(WalkStatus::Stopped)
+    Ok((walk, step))
 }
 
 /// A step of walk `walk_id` with the fields every step has and `extra`, checked through the

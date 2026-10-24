@@ -15,7 +15,7 @@ use sprisk_contracts::{
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
     NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
-    PipelineVersion, Problem, QuestionVersion, RuleAnswer, RuleDecision, RuleObservation,
+    PipelineVersion, Problem, QuestionVersion, Report, RuleAnswer, RuleDecision, RuleObservation,
     RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial, VerificationRequest,
     Walk, WalkDetail, WalkStep, WorkerMessage, parse,
 };
@@ -106,6 +106,7 @@ const ENTITIES: &[&str] = &[
     "pipeline_version",
     "problem",
     "question_version",
+    "report",
     "rule_answer",
     "rule_decision",
     "rule_observation",
@@ -417,6 +418,11 @@ fn create_walk() {
 #[test]
 fn walk_detail() {
     check::<WalkDetail>("walk_detail");
+}
+
+#[test]
+fn report() {
+    check::<Report>("report");
 }
 
 #[test]

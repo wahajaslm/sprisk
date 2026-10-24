@@ -364,6 +364,7 @@ Architecturally represent source triggers, microbatch boundaries, watermark/late
 | TrialAttempt | worker ID, logs, status, resources, error, timestamps |
 | TrialResult | per-fold metrics, predictions ref, artifacts, checks, cost and uncertainty |
 | SelectionDecision | declared objective, guardrails, comparable candidates, reasons, approvals |
+| Report | a completed walk's question, answer and claims, each claim on evidence ids (decisions, runs, versions, walk steps), and limitations; built from records, never by a model (ADR-0064) |
 
 **Metric objective versus business decision:** selection may depend on PR-AUC, recall at contact budget, inference cost, latency, interpretability and operational limits. Define primary selection metric and guardrails before viewing final-holdout results. Cross-study rankings without a compatible protocol must be labeled *not directly comparable*.
 

@@ -8,8 +8,9 @@ use sprisk_contracts::{
     Artifact, ArtifactId, Attempt, AttemptId, AttemptState, CreateStudy, CreateWalk,
     DecisionProposal, InvestigationId, MethodologyDecision, MethodologyDecisionByRule,
     MethodologyDecisionId, MethodologyProposalId, NodeId, NotebookId, NotebookVersion,
-    NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Run,
-    RunId, RunStatus, Study, StudyId, StudyStatus, Timestamp, Walk, WalkId, WalkStep, WorkerId,
+    NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId,
+    Report, Run, RunId, RunStatus, Study, StudyId, StudyStatus, Timestamp, Walk, WalkId, WalkStep,
+    WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -677,6 +678,36 @@ impl SqliteStore {
         update_walk(&mut tx, walk).await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Ends a completed walk: its last step, the walk as it stands after it and its report, in
+    /// one transaction. A walk has one report; a second is a conflict, and nothing changes.
+    pub async fn record_walk_report(
+        &self,
+        walk: &Walk,
+        step: &WalkStep,
+        report: &Report,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        insert_walk_step(&mut tx, step).await?;
+        update_walk(&mut tx, walk).await?;
+        sqlx::query("INSERT INTO reports (id, walk_id, body) VALUES (?, ?, ?)")
+            .bind(report.id.as_str())
+            .bind(report.walk_id.as_str())
+            .bind(to_json(report)?)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// The report of `walk`. A walk that has not completed has none.
+    pub async fn walk_report(&self, walk: &WalkId) -> Result<Report, StoreError> {
+        let body: Option<String> = sqlx::query_scalar("SELECT body FROM reports WHERE walk_id = ?")
+            .bind(walk.as_str())
+            .fetch_optional(&self.pool)
+            .await?;
+        from_json(body, "report", walk.as_str())
     }
 
     /// The version comparing `proposal`'s shortlist (ADR-0046), if one was built.

@@ -6521,6 +6521,97 @@ async fn learnable_question(api: &Api) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_complete_walk_ends_in_a_report_whose_claims_link_to_their_records() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-reported")).await;
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+    let walk = detail["walk"]["id"].as_str().unwrap();
+    let (status, report) = call(&api.app, "GET", &format!("/walks/{walk}/report"), None).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+
+    let (_, question) = call(
+        &api.app,
+        "GET",
+        "/question_versions/qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        None,
+    )
+    .await;
+    assert_eq!(
+        report["question"], question["objective"]["value"],
+        "{report}"
+    );
+    let steps = detail["steps"].as_array().unwrap();
+    let scored = steps.iter().find(|s| s["action"] == "score").unwrap();
+    let answer = &report["answer"];
+    assert!(
+        answer["statement"]
+            .as_str()
+            .unwrap()
+            .contains("Test rows, scored once"),
+        "{answer}"
+    );
+    assert!(
+        answer["evidence"]
+            .as_array()
+            .unwrap()
+            .contains(&json!({ "run": scored["run_id"] })),
+        "{answer}"
+    );
+    let claims = report["claims"].as_array().unwrap();
+    // Each decision in the trail is a claim citing its record, and each record resolves.
+    for step in steps
+        .iter()
+        .filter(|s| s["action"] == "decide" || s["action"] == "apply")
+    {
+        let cited = json!({ "decision": step["methodology_decision_id"] });
+        assert!(
+            claims
+                .iter()
+                .any(|c| c["evidence"].as_array().unwrap().contains(&cited)),
+            "{step} {report}"
+        );
+        let id = step["methodology_decision_id"].as_str().unwrap();
+        let (status, _) = call(
+            &api.app,
+            "GET",
+            &format!("/methodology_decisions/{id}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{id}");
+    }
+    assert!(
+        claims
+            .iter()
+            .all(|c| !c["evidence"].as_array().unwrap().is_empty()),
+        "{report}"
+    );
+    assert!(
+        !report["limitations"].as_array().unwrap().is_empty(),
+        "{report}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_walk_that_did_not_complete_has_no_report() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let mut request = walk_request(&[&api.csv], "walk-unreported");
+    request["max_actions"] = json!(1);
+    let detail = walk_to_end(&api, request).await;
+    assert_ne!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+    let walk = detail["walk"]["id"].as_str().unwrap();
+
+    let (status, body) = call(&api.app, "GET", &format!("/walks/{walk}/report"), None).await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
     let api = api().await;
     std::fs::write(&api.csv, learnable_table()).unwrap();

@@ -1361,6 +1361,43 @@ async fn a_question_s_walks_are_listed_newest_first_and_paged() {
 }
 
 #[tokio::test]
+async fn a_completed_walk_s_report_is_kept_with_its_last_step_once() {
+    let (store, walk, request, first, build) = walk_parts().await;
+    store
+        .insert_walk(&walk, &request, Some(&first), &build)
+        .await
+        .unwrap();
+    let detail: sprisk_contracts::WalkDetail = fixture("walk_detail", "trail.json");
+    let mut last = detail.steps[3].clone();
+    last.round = 1;
+    let report: sprisk_contracts::Report = fixture("report", "complete.json");
+    assert!(matches!(
+        store.walk_report(&walk.id).await,
+        Err(StoreError::NotFound { .. })
+    ));
+
+    store
+        .record_walk_report(&detail.walk, &last, &report)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.walk_report(&walk.id).await.unwrap(),
+        report.clone()
+    );
+    assert_eq!(store.get_walk(&walk.id).await.unwrap(), detail.walk);
+    let mut again = report;
+    again.id = "rpt_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    last.round = 2;
+    let err = store
+        .record_walk_report(&detail.walk, &last, &again)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    assert_eq!(store.walk_steps(&walk.id).await.unwrap().len(), 2);
+}
+
+#[tokio::test]
 async fn a_walk_step_is_kept_once_per_round_with_the_walk_it_leaves() {
     let (store, walk, request, first, build) = walk_parts().await;
     store

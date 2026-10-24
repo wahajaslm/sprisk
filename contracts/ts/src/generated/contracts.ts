@@ -464,6 +464,35 @@ export type Stage = "load" | "split" | "explore" | "clean" | "model" | "evaluate
 export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse" | "weighted_f1";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ReportId".
+ */
+export type ReportId = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkId".
+ */
+export type WalkId = string;
+/**
+ * One record a claim rests on, by id.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ReportEvidence".
+ */
+export type ReportEvidence =
+  | {
+      decision: MethodologyDecisionId;
+    }
+  | {
+      run: RunId;
+    }
+  | {
+      pipeline_version: PipelineVersionId;
+    }
+  | {
+      walk_step: WalkStepRef;
+    };
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "AttemptState".
  */
 export type AttemptState =
@@ -512,11 +541,6 @@ export type StudyStatus = "running" | "completed" | "budget_reached" | "failed";
  * via the `definition` "TrialState".
  */
 export type TrialState = "not_started" | "running" | "succeeded" | "failed" | "cancelled";
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "WalkId".
- */
-export type WalkId = string;
 /**
  * Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule.
  *
@@ -2871,6 +2895,51 @@ export interface CostsFact1 {
    * Costs are never inferred or measured.
    */
   origin: "explicit" | "confirmed";
+}
+/**
+ * What a completed walk found, built from its records, never written by a model (ADR-0064). Immutable; one per completed walk. Its answer is the model's score on the test rows, scored once, against the success bar and the baseline.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Report".
+ */
+export interface Report {
+  schema_version: "sprisk.report/v1";
+  id: ReportId;
+  walk_id: WalkId;
+  question_version_id: QuestionVersionId;
+  /**
+   * The question's objective, as a person stated it.
+   */
+  question: string;
+  answer: ReportClaim;
+  /**
+   * One per decision the walk made and per promise it checked, in trail order.
+   */
+  claims: ReportClaim[];
+  /**
+   * What the answer does not show.
+   */
+  limitations: string[];
+  created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ReportClaim".
+ */
+export interface ReportClaim {
+  statement: string;
+  /**
+   * The records the statement rests on. The engine builds every claim on at least one.
+   */
+  evidence: ReportEvidence[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkStepRef".
+ */
+export interface WalkStepRef {
+  walk_id: WalkId;
+  round: number;
 }
 /**
  * One try of one step (a node in a run). Retries create a new attempt with the next number; old attempts are never replaced (arch doc §9).

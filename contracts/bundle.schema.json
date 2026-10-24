@@ -4703,6 +4703,160 @@
         }
       }
     },
+    "ReportId": {
+      "type": "string",
+      "pattern": "^rpt_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "Report": {
+      "title": "Report",
+      "description": "What a completed walk found, built from its records, never written by a model (ADR-0064). Immutable; one per completed walk. Its answer is the model's score on the test rows, scored once, against the success bar and the baseline.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "walk_id",
+        "question_version_id",
+        "question",
+        "answer",
+        "claims",
+        "limitations",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "enum": [
+            "sprisk.report/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/ReportId"
+        },
+        "walk_id": {
+          "$ref": "#/$defs/WalkId"
+        },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The question's objective, as a person stated it."
+        },
+        "answer": {
+          "$ref": "#/$defs/ReportClaim"
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReportClaim"
+          },
+          "description": "One per decision the walk made and per promise it checked, in trail order."
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "What the answer does not show."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "ReportClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statement",
+        "evidence"
+      ],
+      "properties": {
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReportEvidence"
+          },
+          "description": "The records the statement rests on. The engine builds every claim on at least one."
+        }
+      }
+    },
+    "ReportEvidence": {
+      "description": "One record a claim rests on, by id.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decision"
+          ],
+          "properties": {
+            "decision": {
+              "$ref": "#/$defs/MethodologyDecisionId"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "run"
+          ],
+          "properties": {
+            "run": {
+              "$ref": "#/$defs/RunId"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pipeline_version"
+          ],
+          "properties": {
+            "pipeline_version": {
+              "$ref": "#/$defs/PipelineVersionId"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "walk_step"
+          ],
+          "properties": {
+            "walk_step": {
+              "$ref": "#/$defs/WalkStepRef"
+            }
+          }
+        }
+      ]
+    },
+    "WalkStepRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "walk_id",
+        "round"
+      ],
+      "properties": {
+        "walk_id": {
+          "$ref": "#/$defs/WalkId"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "Run": {
       "title": "Run",
       "description": "One execution of a pipeline version against its inputs (arch doc §4, §9). Status is the transactionally maintained current state; history lives in attempts and audit events.",

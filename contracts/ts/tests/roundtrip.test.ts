@@ -63,6 +63,7 @@ const entities: [keyof Entities, string][] = [
   ["CreateWalk", "create_walk"],
   ["Walk", "walk"],
   ["WalkDetail", "walk_detail"],
+  ["Report", "report"],
   ["WalkStep", "walk_step"],
   ["Method", "method"],
   ["ConceptSet", "concept_set"],

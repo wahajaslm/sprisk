@@ -12,6 +12,7 @@ mod line_session;
 mod method_session;
 mod notebook_code;
 mod profile;
+mod report;
 mod rules;
 mod split;
 pub use bounded::ProcessError;
@@ -166,6 +167,7 @@ pub fn router(state: AppState) -> Router {
         .route("/notebooks/{id}/variables", get(kernel_variables))
         .route("/walks", get(engine::list_walks).post(engine::create_walk))
         .route("/walks/{id}", get(engine::get_walk))
+        .route("/walks/{id}/report", get(engine::get_walk_report))
         .layer(axum::middleware::from_fn(local_host_only))
         .with_state(state)
 }
