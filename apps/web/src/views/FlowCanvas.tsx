@@ -237,8 +237,7 @@ function StepButtons({ id, live, actions }: { id: string; live: boolean; actions
       act();
     },
   });
-  // No route runs from one step: the run reuses every finished step, so only what is not done runs.
-  const runLabel = live ? `${id} is running` : "Run steps not done";
+  const runLabel = live ? `${id} is running` : `Run from ${id}`;
   const deleteTitle = readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : `Delete step ${id}`;
   return (
     <>
@@ -246,11 +245,11 @@ function StepButtons({ id, live, actions }: { id: string; live: boolean; actions
         role="button"
         tabIndex={0}
         className={`node-hover-btn run${live ? " live" : ""}`}
-        title={live ? runLabel : `${runLabel}: finished steps are reused`}
+        title={live ? runLabel : `${runLabel}: it and every step after it run again`}
         aria-label={runLabel}
         aria-disabled={live}
         {...press(() => {
-          if (!live) actions.runUnfinished();
+          if (!live) actions.runFrom(id);
         })}
       >
         <PlayIcon />
