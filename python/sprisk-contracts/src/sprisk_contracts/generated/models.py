@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 from pydantic import ConfigDict, Field, RootModel, StringConstraints
 from sprisk_contracts.base import StrictModel
 from enum import StrEnum
+from typing_extensions import TypeAliasType
 
 
 class Bundle(RootModel[Any]):
@@ -371,6 +372,12 @@ class MethodNeeds(StrictModel):
     concepts: list[ConceptId]
     evidence: list[EvidenceKind]
     decisions: list[DecisionKey]
+
+
+FromEvidenceAdditionalProperty = TypeAliasType(
+    "FromEvidenceAdditionalProperty",
+    Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")],
+)
 
 
 class MethodBind(StrictModel):
@@ -1813,12 +1820,37 @@ class MethodAppliesWhen(StrictModel):
     task: list[TaskType]
 
 
-class MethodAction(StrictModel):
+class MethodInsert(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    bind: MethodBind | None = None
-    replace: MethodReplace | None = None
+    before: OperatorRole
+    operator: OperatorRef
+    node_id: Annotated[
+        str,
+        Field(
+            description="The inserted step's id; a free one with a suffix when the flow already has it.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ]
+    settings: Annotated[
+        Params | None, Field(description="Params that do not depend on the project. Absent: none.")
+    ] = None
+    from_evidence: Annotated[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")],
+            FromEvidenceAdditionalProperty,
+        ]
+        | None,
+        Field(
+            description="Params read from a field of evidence the method needs: param name to <area>.<evidence>.<field>. Absent: none."
+        ),
+    ] = None
+    concepts: Annotated[
+        dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], ConceptId]
+        | None,
+        Field(description="Params a project's binding fills: param name to concept. Absent: none."),
+    ] = None
 
 
 class MethodVerified(StrictModel):
@@ -2812,17 +2844,13 @@ class CodeSplit(StrictModel):
     notes: list[SplitNote]
 
 
-class MethodOption(StrictModel):
+class MethodAction(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    id: MethodOptionId
-    label: Annotated[str, Field(min_length=1)]
-    action: MethodAction | None = None
-    verify: Annotated[
-        list[VerificationName],
-        Field(description="The verifications this option promises, by name."),
-    ]
+    bind: MethodBind | None = None
+    replace: MethodReplace | None = None
+    insert: MethodInsert | None = None
 
 
 class VerificationRequest(StrictModel):
@@ -3391,36 +3419,16 @@ class DatasetProfile(StrictModel):
     correlation: Correlation
 
 
-class Method(StrictModel):
+class MethodOption(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["sprisk.method/v1"]
-    id: MethodRef
-    decides: DecisionKey
-    activity: Annotated[
-        str,
-        Field(
-            description="The group this decision is shown in: one stage card on the canvas, one notebook section.",
-            min_length=1,
-        ),
-    ]
-    question: Annotated[
-        str, Field(description="The decision as a question for people.", min_length=1)
-    ]
-    applies_when: MethodAppliesWhen | None = None
-    needs: MethodNeeds
-    options: list[MethodOption]
-    verifications: Annotated[
-        dict[
-            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], MethodVerification
-        ],
-        Field(
-            description="Promises an option can make, by name. An option lists the ones it makes in verify."
-        ),
-    ]
-    source: Annotated[
-        str, Field(description="The published standard the method follows.", min_length=1)
+    id: MethodOptionId
+    label: Annotated[str, Field(min_length=1)]
+    action: MethodAction | None = None
+    verify: Annotated[
+        list[VerificationName],
+        Field(description="The verifications this option promises, by name."),
     ]
 
 
@@ -3679,3 +3687,36 @@ class WalkDetail(StrictModel):
     )
     walk: Walk
     steps: list[WalkStep]
+
+
+class Method(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.method/v1"]
+    id: MethodRef
+    decides: DecisionKey
+    activity: Annotated[
+        str,
+        Field(
+            description="The group this decision is shown in: one stage card on the canvas, one notebook section.",
+            min_length=1,
+        ),
+    ]
+    question: Annotated[
+        str, Field(description="The decision as a question for people.", min_length=1)
+    ]
+    applies_when: MethodAppliesWhen | None = None
+    needs: MethodNeeds
+    options: list[MethodOption]
+    verifications: Annotated[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], MethodVerification
+        ],
+        Field(
+            description="Promises an option can make, by name. An option lists the ones it makes in verify."
+        ),
+    ]
+    source: Annotated[
+        str, Field(description="The published standard the method follows.", min_length=1)
+    ]

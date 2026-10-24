@@ -1371,6 +1371,7 @@ export interface MethodOption {
 export interface MethodAction {
   bind?: MethodBind;
   replace?: MethodReplace;
+  insert?: MethodInsert;
 }
 /**
  * Binds a concept to a column that the producer of an evidence kind adds.
@@ -1410,6 +1411,39 @@ export interface Params1 {
   [k: string]: unknown;
 }
 /**
+ * Inserts a step running operator on the rows the step with role `before` reads (ADR-0063 slice 6).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodInsert".
+ */
+export interface MethodInsert {
+  before: OperatorRole;
+  operator: OperatorRef;
+  /**
+   * The inserted step's id; a free one with a suffix when the flow already has it.
+   */
+  node_id: string;
+  settings?: Params2;
+  /**
+   * Params read from a field of evidence the method needs: param name to <area>.<evidence>.<field>. Absent: none.
+   */
+  from_evidence?: {
+    [k: string]: string;
+  };
+  /**
+   * Params a project's binding fills: param name to concept. Absent: none.
+   */
+  concepts?: {
+    [k: string]: ConceptId;
+  };
+}
+/**
+ * Params that do not depend on the project. Absent: none.
+ */
+export interface Params2 {
+  [k: string]: unknown;
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodVerification".
  */
@@ -1419,12 +1453,12 @@ export interface MethodVerification {
    * What holds when it passes, for people.
    */
   promise: string;
-  settings?: Params2;
+  settings?: Params3;
 }
 /**
  * Values verify_<name>() reads. Absent: none.
  */
-export interface Params2 {
+export interface Params3 {
   [k: string]: unknown;
 }
 /**
@@ -1486,7 +1520,7 @@ export interface VerificationRequest {
   method: MethodRef;
   verification: VerificationName;
   evidence: EvidenceFields1;
-  settings: Params3;
+  settings: Params4;
 }
 /**
  * The fields of the evidence kind the verification needs.
@@ -1497,7 +1531,7 @@ export interface EvidenceFields1 {
 /**
  * The verification's settings from method.yaml; empty when it has none.
  */
-export interface Params3 {
+export interface Params4 {
   [k: string]: unknown;
 }
 /**
@@ -1735,13 +1769,13 @@ export interface RuleDecision {
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params4;
+      params?: Params5;
     },
     ...{
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params4;
+      params?: Params5;
     }[]
   ];
   evidence: MethodologyEvidence[];
@@ -1749,7 +1783,7 @@ export interface RuleDecision {
 /**
  * Concrete params for the manifest action's operator; present when applicable.
  */
-export interface Params4 {
+export interface Params5 {
   [k: string]: unknown;
 }
 /**
@@ -3114,7 +3148,7 @@ export interface Trial {
    * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
    */
   operator: string;
-  settings: Params5;
+  settings: Params6;
   state: TrialState;
   /**
    * Its attempts, oldest first.
@@ -3128,7 +3162,7 @@ export interface Trial {
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  */
-export interface Params5 {
+export interface Params6 {
   [k: string]: unknown;
 }
 /**

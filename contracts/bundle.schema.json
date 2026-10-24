@@ -1496,6 +1496,57 @@
         },
         "replace": {
           "$ref": "#/$defs/MethodReplace"
+        },
+        "insert": {
+          "$ref": "#/$defs/MethodInsert"
+        }
+      }
+    },
+    "MethodInsert": {
+      "type": "object",
+      "description": "Inserts a step running operator on the rows the step with role `before` reads (ADR-0063 slice 6).",
+      "additionalProperties": false,
+      "required": [
+        "before",
+        "operator",
+        "node_id"
+      ],
+      "properties": {
+        "before": {
+          "$ref": "#/$defs/OperatorRole"
+        },
+        "operator": {
+          "$ref": "#/$defs/OperatorRef"
+        },
+        "node_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "description": "The inserted step's id; a free one with a suffix when the flow already has it."
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "Params that do not depend on the project. Absent: none."
+        },
+        "from_evidence": {
+          "type": "object",
+          "description": "Params read from a field of evidence the method needs: param name to <area>.<evidence>.<field>. Absent: none.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
+        },
+        "concepts": {
+          "type": "object",
+          "description": "Params a project's binding fills: param name to concept. Absent: none.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/ConceptId"
+          }
         }
       }
     },
