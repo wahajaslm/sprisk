@@ -11,7 +11,7 @@ import { SideGroup } from "../components/ui/SideGroup.tsx";
 import { BodySection } from "../components/ui/RowList.tsx";
 import { stepLabel } from "../flow/stages.ts";
 import { Sidebar } from "../components/ui/Sidebar.tsx";
-import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
+import { useOperatorsByRef, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { type NodeInRun, useFlowRuns, useRunNodes } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
 import { flows } from "../flow/flows.ts";
@@ -31,7 +31,7 @@ const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
 export function Experiments() {
   const { pipelineVersionId, runId, compare, setCompare, setNav, showRun, experimentsTab, setExperimentsTab } = useSelection();
   const versions = usePipelineVersions();
-  const operators = useOperators();
+  const operators = useOperatorsByRef();
   const all = versions.data ?? [];
   const flow = flows(all).find((f) => pipelineVersionId !== undefined && f.ids.includes(pipelineVersionId));
   const runs = useFlowRuns(flow?.ids ?? [], MAX_RUNS);
@@ -40,7 +40,7 @@ export function Experiments() {
     ...new Set(
       (flow ? flow.ids : [])
         .flatMap((id) => byId.get(id)?.nodes ?? [])
-        .filter((n) => operators.data?.find((o) => o.id === n.operator)?.capability_class === "evaluator")
+        .filter((n) => operators.data?.get(n.operator)?.capability_class === "evaluator")
         .map((n) => n.id),
     ),
   ].sort();
@@ -188,11 +188,11 @@ function whatChanged(run: Run, byId: Map<string, PipelineVersion>): string {
 /** The run's steps in flow order, each with its latest attempt's state; a failed step says why. */
 function Monitor({ run, version }: { run: Run; version: PipelineVersion | undefined }) {
   const attempts = useRunAttempts(run.pipeline_version_id, run.id);
-  const operators = useOperators();
+  const operators = useOperatorsByRef();
   if (attempts.isError) return <p role="alert" className="error pad">{attempts.error.message}</p>;
   if (attempts.isPending) return <Loading text="Loading the run's steps…" pad />;
   const latest = (node: string) => attempts.data.filter((a) => a.node_id === node).sort((a, b) => b.number - a.number)[0];
-  const steps = (version?.nodes ?? []).map((n) => ({ id: n.id, title: stepLabel(n, operators.data?.find((o) => o.id === n.operator)).title, attempt: latest(n.id) }));
+  const steps = (version?.nodes ?? []).map((n) => ({ id: n.id, title: stepLabel(n, operators.data?.get(n.operator)).title, attempt: latest(n.id) }));
   const failed = steps.filter((s) => s.attempt?.state === "failed");
   const done = steps.filter((s) => s.attempt !== undefined && FINISHED.has(s.attempt.state)).length;
   return (

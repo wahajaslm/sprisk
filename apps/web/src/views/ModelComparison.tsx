@@ -2,7 +2,7 @@ import type { Attempt, DecisionProposal, PipelineVersion, SelectionDecision } fr
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client.ts";
-import { isLive, useOperators, useOperatorSource, useRuns } from "../api/hooks.ts";
+import { isLive, useOperatorsByRef, useOperatorSource, useRuns } from "../api/hooks.ts";
 import { useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
@@ -59,11 +59,11 @@ function AutoSelect({ head }: { head: PipelineVersion }) {
  * steps a recommend rule decides that fit on train rows (ADR-0050). */
 export function useComparedSteps(head: PipelineVersion): { node: PipelineVersion["nodes"][number]; models: boolean }[] {
   const rules = useMethodologyRules();
-  const operators = useOperators();
+  const operators = useOperatorsByRef();
   const active = (rules.data ?? []).filter((r) => r.status === "active");
   const shortlisted = new Set(active.filter((r) => r.selection === "shortlist").flatMap((r) => r.applies_to ?? []));
   const recommended = new Set(active.filter((r) => r.selection !== "shortlist").flatMap((r) => r.applies_to ?? []));
-  const fitsOnTrain = (operator: string) => operators.data?.find((o) => o.id === operator)?.fits_on_train === true;
+  const fitsOnTrain = (operator: string) => operators.data?.get(operator)?.fits_on_train === true;
   const name = (operator: string) => operator.split("@")[0] ?? "";
   return head.nodes
     .filter((n) => shortlisted.has(name(n.operator)) || (recommended.has(name(n.operator)) && fitsOnTrain(n.operator)))
