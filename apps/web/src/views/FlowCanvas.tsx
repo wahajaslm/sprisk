@@ -136,18 +136,20 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
           <h3 className="stage-head stage-name">
             {data.name}
           </h3>
-          <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
+          {/* The header keeps its height: a stage's promises take the step count's place. */}
+          {data.promises.length > 0 ? (
+            <ul className="stage-promises" aria-label="Promises">
+              {data.promises.map((p) => (
+                <li key={p.verification} className={`stage-promise tone-${STANDING[p.status].tone}`} title={`${p.promise} ${p.detail}`}>
+                  {STANDING[p.status].word}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
+          )}
         </div>
         <p className="stage-purpose">{data.purpose}</p>
-        {data.promises.length > 0 && (
-          <ul className="stage-promises" aria-label="Promises">
-            {data.promises.map((p) => (
-              <li key={p.verification} className={`stage-promise tone-${STANDING[p.status].tone}`} title={`${p.promise} ${p.detail}`}>
-                {STANDING[p.status].word}
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
     </div>
   );

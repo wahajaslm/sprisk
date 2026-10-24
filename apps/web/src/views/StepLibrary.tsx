@@ -6,6 +6,8 @@ import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.
 import { latestByNode, statusOf } from "../flow/latest.ts";
 import { stepOf } from "../flow/ports.ts";
 import { kindOf, newestVersions, STAGES, stageOf, stepOrigin, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
+import { stageNotebooks } from "../notebook/stageNotebooks.ts";
+import { useFlowDecisions } from "../api/walks.ts";
 import { flows } from "../flow/flows.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { KindIcon } from "./Icons.tsx";
@@ -49,34 +51,28 @@ export function StepLibrary() {
   const [query, setQuery] = useState("");
 
   const operators = useMemo(() => operatorsQuery.data ?? [], [operatorsQuery.data]);
+  const decided = useFlowDecisions(activeVersion?.id);
+  const decisions = useMemo(() => decided.data?.decisions ?? [], [decided.data]);
   const opMap = useMemo(() => new Map<string, Operator>(operators.map((o) => [o.id, o])), [operators]);
 
   const needle = query.trim().toLowerCase();
 
-  // Pipeline steps grouped by stage
+  // The flow's steps in the sections the canvas and the notebook show: stages, and the
+  // activities of the decisions that shaped them (ADR-0063).
   const pipelineStages = useMemo(() => {
-    const nodes = activeVersion?.nodes ?? [];
-    return STAGES.map((stage) => {
-      const inStage = nodes
-        .filter((node) => {
-          const op = opMap.get(node.operator);
-          const s = op ? stageOf(op) : "Clean";
-          return s === stage;
-        })
-        .filter((node) => {
-          if (!needle) return true;
-          return (
-            node.id.toLowerCase().includes(needle) ||
-            stepTitle(node.operator, opMap.get(node.operator)).toLowerCase().includes(needle)
-          );
-        });
-
-      return {
+    if (!activeVersion) return [];
+    return stageNotebooks(activeVersion, opMap, decisions)
+      .map(({ stage, nodes }) => ({
         stage,
-        nodes: inStage,
-      };
-    }).filter((g) => g.nodes.length > 0);
-  }, [activeVersion, opMap, needle]);
+        nodes: nodes.filter(
+          (node) =>
+            !needle ||
+            node.id.toLowerCase().includes(needle) ||
+            stepTitle(node.operator, opMap.get(node.operator)).toLowerCase().includes(needle),
+        ),
+      }))
+      .filter((g) => g.nodes.length > 0);
+  }, [activeVersion, opMap, decisions, needle]);
 
   // Selected node info
   const selectedNode = activeVersion?.nodes.find((n) => n.id === nodeId);
