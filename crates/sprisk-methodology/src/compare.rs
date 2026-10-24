@@ -28,7 +28,8 @@ fn is_split(registry: &Registry, node: &Node) -> bool {
 }
 
 /// Folds, repeats and seed of every comparison, recorded in each cross-validate step's params:
-/// ten shuffles into five folds, for the corrected repeated k-fold t-test (ADR-0050).
+/// at most ten shuffles into five folds, for the corrected repeated k-fold t-test (ADR-0050).
+/// A large train set is shuffled fewer times; the decision records how many ran (ADR-0064).
 pub const FOLDS: u64 = 5;
 pub const REPEATS: u64 = 10;
 pub const SEED: u64 = 0;

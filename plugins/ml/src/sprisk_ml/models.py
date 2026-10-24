@@ -92,7 +92,10 @@ def random_forest_estimator(
     settings: dict[str, Any] = {"min_samples_leaf": min_samples_leaf}
     if max_features is not None:
         settings["max_features"] = max_features
-    return forest(n_estimators=n_estimators, random_state=seed, **settings)
+    # Every core grows trees; the seed fixes each tree, so the forest is the same on any number.
+    # Its threads add their trees' votes in any order, so a probability may differ in its last
+    # bits between runs.
+    return forest(n_estimators=n_estimators, random_state=seed, n_jobs=-1, **settings)
 
 
 def fit(

@@ -176,6 +176,7 @@ def cross_validate(
         positive = costs["positive"]
         costs = resolved(costs, truth, target)
         model = costed(model, costs, settings.get("seed", 0))
+    repeats = _repeats_for(train.height, repeats)
     groups = None
     if time_column is not None:
         splits, folds_by = _time_splits(train, time_column, folds, repeats), "time"
@@ -338,6 +339,21 @@ def _importance_figure(importance: pl.DataFrame) -> go.Figure:
         importance["spread"].to_list(),
         "Permutation importance on held-out folds (predictive, not causal)",
     )
+
+
+# Project convention, departing from Bouckaert & Frank's 10x10 default: a large train set
+# already has a small spread between folds, and past 2 shuffles the corrected t-test's n2/n1
+# term outweighs what more shuffles remove. So shuffles are cut to about this many validated
+# rows, never below 2 when more were asked.
+VALIDATED_ROWS = 100_000
+
+
+def _repeats_for(rows: int, repeats: int) -> int:
+    """How many of the asked `repeats` shuffles the rows need. It depends only on the rows, so
+    every candidate on them gets the same folds."""
+    if rows == 0:
+        raise ValueError("there are no train rows to fold")
+    return min(repeats, max(2, math.ceil(VALIDATED_ROWS / rows)))
 
 
 def _splitter(
