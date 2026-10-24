@@ -65,7 +65,7 @@
 | [0061](0061-adopt-the-flow-studio-design-system.md) | Adopt the Flow Studio design system | Accepted |
 | [0062](0062-decision-centered-methodology-and-edit-aware-verification.md) | Decision-centered methodology and edit-aware verification | Proposed |
 | [0063](0063-methods-need-evidence-operators-produce-it.md) | Methods need evidence, operators produce it | Accepted |
-| [0064](0064-validate-the-architecture-before-the-libraries.md) | Validate the architecture before the method and operator libraries | Proposed |
+| [0064](0064-validate-the-architecture-before-the-libraries.md) | Validate the architecture before the method and operator libraries | Accepted |
 
 ## Open questions (arch doc §17)
 

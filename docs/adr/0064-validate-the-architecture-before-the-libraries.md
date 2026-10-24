@@ -1,5 +1,5 @@
 # ADR-0064: Validate the architecture before the method and operator libraries
-Status: Proposed
+Status: Accepted
 Date: 2026-10-24
 Arch doc sections: §4 (principles), §8.3 (decision lifecycle), §9.4 (data-access matrix), §15.1, §21–§22. Builds on ADR-0060 and ADR-0063.
 
