@@ -510,3 +510,26 @@ fn a_promise_s_producer_reading_an_unbound_concept_is_left_out_with_a_note() {
         measured.left_out
     );
 }
+
+#[test]
+fn a_decided_method_s_evidence_is_not_measured_again() {
+    // Repeated items decided: its producer is left where it is, never moved or re-added.
+    let ops = operators();
+    let (nodes, edges) = load_split();
+    let q = titled();
+    let independent = Made {
+        decides: "data.repeated_items".into(),
+        option: "independent_rows".into(),
+        bindings: Vec::new(),
+    };
+    let measured = measure(
+        &catalog(&ops),
+        &flow(nodes, edges),
+        &q,
+        &q.bindings,
+        &ops,
+        &[independent],
+    )
+    .unwrap();
+    assert!(measured.effects.is_empty(), "{:?}", measured.effects);
+}

@@ -29,8 +29,8 @@ pub struct Measuring {
     pub left_out: Vec<String>,
 }
 
-/// Places the producers of the evidence that the methods fitting `question` need, and that
-/// the promises of the options in `made` need.
+/// Places the producers of the evidence that the methods fitting `question` and not yet
+/// decided need, and that the promises of the options in `made` need.
 pub fn measure(
     catalog: &RuleCatalog,
     pipeline: &PipelineVersion,
@@ -50,7 +50,10 @@ pub fn measure(
             left_out: Vec::new(),
         },
     };
-    let needed = fitting(catalog, question.task.value).flat_map(|method| {
+    // A decided method reads nothing more: its producer stays where it is, unmoved.
+    let deciding = fitting(catalog, question.task.value)
+        .filter(|m| !made.iter().any(|d| d.decides == m.decides.as_str()));
+    let needed = deciding.flat_map(|method| {
         method.needs.evidence.iter().map(move |kind| {
             (
                 method,
