@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 
-import type { Attempt, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { Attempt, FlowDecision, Operator, PipelineVersion, PromiseStatus } from "@sprisk/contracts";
 import {
   applyNodeChanges,
   Background,
@@ -55,7 +55,9 @@ import { KindIcon, NotebookIcon, PlayIcon, RedoIcon, RestartIcon, TrashIcon, Und
 import { Button } from "../components/ui/Button.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 import { useEscape } from "../hooks/useEscape.ts";
-import { stageGroups } from "../notebook/stageNotebooks.ts";
+import { stageGroups, stageNotebooks } from "../notebook/stageNotebooks.ts";
+import { useFlowDecisions } from "../api/walks.ts";
+import { STANDING } from "./inspector/MethodDecision.tsx";
 import { stageDescription } from "./StageArtwork.tsx";
 import { stepOf } from "../flow/ports.ts";
 
@@ -91,6 +93,10 @@ type StepData = {
 };
 type StageData = {
   name: string;
+  /** Under the name: what the stage is for, or what its decisions chose (ADR-0063). */
+  purpose: string;
+  /** The promises its decisions made, with their standing on this version. */
+  promises: PromiseStatus[];
   count: number;
   completed?: number;
   running?: number;
@@ -132,7 +138,16 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
           </h3>
           <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
         </div>
-        <p className="stage-purpose">{purposeOf(data.name)}</p>
+        <p className="stage-purpose">{data.purpose}</p>
+        {data.promises.length > 0 && (
+          <ul className="stage-promises" aria-label="Promises">
+            {data.promises.map((p) => (
+              <li key={p.verification} className={`stage-promise tone-${STANDING[p.status].tone}`} title={`${p.promise} ${p.detail}`}>
+                {STANDING[p.status].word}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -146,6 +161,9 @@ const ORIGIN_TEXT: Record<StepOrigin, string> = {
 };
 
 const purposeOf = (name: string) => STAGE_PURPOSE[name as Stage] ?? "";
+
+/** "Fair evaluation#fair_evaluation" → "Fair evaluation". */
+const groupName = (id: string) => id.split("#")[0] ?? id;
 
 /** An edge into or out of the selected step is drawn brighter; failed gate is dashed red. */
 type FlowEdgeData = { active: boolean; failed?: boolean };
@@ -402,8 +420,10 @@ export function flowGraph(
   concerns: Map<string, number>,
   at: Map<string, Point>,
   groups: Group[] = [],
+  decisions: FlowDecision[] = [],
 ): { nodes: Node[]; edges: Edge[] } {
-  const groupOf = stageGroups(pipeline, operators);
+  const groupOf = stageGroups(pipeline, operators, decisions);
+  const decidedIn = new Map(stageNotebooks(pipeline, operators, decisions).map((s) => [s.stage, s.decisions]));
   const selectedGroup = selectedId ? groupOf.get(selectedId) : undefined;
   const heads: Node[] = groups.map((g) => {
     const stageNodes = pipeline.nodes.filter((n) => groupOf.get(n.id) === g.id);
@@ -429,7 +449,9 @@ export function flowGraph(
       selectable: true,
       zIndex: 0,
       data: {
-        name: g.id.split("#")[0] ?? g.id,
+        name: groupName(g.id),
+        purpose: (decidedIn.get(groupName(g.id)) ?? []).map((d) => d.label).join(" · ") || purposeOf(groupName(g.id)),
+        promises: (decidedIn.get(groupName(g.id)) ?? []).flatMap((d) => d.promises),
         count: g.count,
         active: g.id === selectedGroup,
         baseWidth: Math.round(g.width),
@@ -459,7 +481,7 @@ export function flowGraph(
       data: {
         id,
         operator: shortName(node.operator),
-        ...stepLabel(node),
+        ...stepLabel(node, op),
         operatorRef: node.operator,
         capability: op?.capability_class ?? "",
         params: node.params,
@@ -502,13 +524,15 @@ export function flowGraph(
 }
 
 /** Layout runs off the main path (ELK is async); a new flow or node size lays out afresh. */
-function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel, operators: Map<string, Operator>) {
+function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel, operators: Map<string, Operator>, decisions: FlowDecision[]) {
   // Sizes depend on each step's role, so lay out again once the operators are known.
   // Lay out again only when the shape changes: an edit to settings keeps every position.
   const shape = pipeline
     ? JSON.stringify([pipeline.nodes.map((n) => [n.id, n.operator]), pipeline.edges.map((e) => [e.from, e.to])])
     : "";
-  const key = pipeline ? `${shape}/${level}/${operators.size}` : "";
+  // Decisions move steps into their activity's card, so the cards' members are part of the shape.
+  const sections = JSON.stringify(decisions.map((d) => [d.activity, d.steps]));
+  const key = pipeline ? `${shape}/${level}/${operators.size}/${sections}` : "";
   const [result, setResult] = useState<{
     key: string;
     pipeline: PipelineVersion;
@@ -519,7 +543,7 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
   useEffect(() => {
     if (!pipeline) return;
     let live = true;
-    const groups = stageGroups(pipeline, operators);
+    const groups = stageGroups(pipeline, operators, decisions);
     flowPositions(
       pipeline,
       (node) => sizeOf(level, node),
@@ -550,10 +574,13 @@ export function FlowCanvas() {
   // Chart steps are views inside the step they draw, never canvas steps.
   const found = versions.data?.find((v) => v.id === pipelineVersionId);
   const pipelineNow = found;
-  const positions = usePositions(pipelineNow, level, new Map((operators.data ?? []).map((op) => [op.id, op])));
+  const decided = useFlowDecisions(pipelineVersionId);
+  const decisions = decided.data?.decisions ?? [];
+  const positions = usePositions(pipelineNow, level, new Map((operators.data ?? []).map((op) => [op.id, op])), decisions);
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
-  if (versions.isPending || operators.isPending) return <Loading text="Loading flow…" pad />;
+  // Decisions place steps in their activity's card: lay out once they are read, not twice.
+  if (versions.isPending || operators.isPending || (pipelineVersionId && decided.isPending)) return <Loading text="Loading flow…" pad />;
   const pipeline = pipelineNow;
   if (!pipeline) return <p className="muted pad">No flow yet. Submit one with <code>sprisk run</code>.</p>;
 
@@ -561,7 +588,7 @@ export function FlowCanvas() {
   const latest = latestByNode(attempts.data ?? []);
   if (positions?.error) return <p role="alert" className="error pad">Could not lay out the flow: {positions.error}</p>;
   if (!positions?.at) return <Loading text="Laying out the flow…" pad />;
-  const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups);
+  const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups, decisions);
   return (
     <div className="flow" aria-label="Flow canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}

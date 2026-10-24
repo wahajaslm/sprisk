@@ -7892,3 +7892,10 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .nb-decision-facts > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
 .nb-decision-facts dt { color: var(--ink-5); }
 .nb-decision-facts dd { margin: 0; color: var(--dim); }
+
+/* A stage card's promises (ADR-0063): one word per promise, its standing; the tooltip says it. */
+.stage-promises { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+.stage-promise { padding: 2px 6px; border-radius: 3px; background: var(--alpha-06); font: 500 10.5px/1.4 var(--mono); color: var(--ink-3); }
+.stage-promise.tone-bad { color: var(--alert); background: var(--alert-wash); }
+.stage-promise.tone-warn,
+.stage-promise.tone-idle { color: var(--ink-5); }

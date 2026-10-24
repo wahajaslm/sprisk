@@ -47,7 +47,7 @@ export function useStageSave(
           flow = withSettings(flow, id, read.settings);
           known.set(id, source);
         } else {
-          converted.push(`${id} is now your own Python code. The methodology checks for ${stepLabel(node).title} steps no longer cover it.`);
+          converted.push(`${id} is now your own Python code. The methodology checks for ${stepLabel(node, byRef.get(node.operator)).title} steps no longer cover it.`);
         }
       }
       const edits = stageEdits(flow, byRef, stage, now, known);

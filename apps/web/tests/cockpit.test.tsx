@@ -308,6 +308,22 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
+  it("names an activity's stage card by the activity, says what was chosen, and carries its promises (ADR-0063)", async () => {
+    const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const promise = { verification: "no_group_overlap", promise: "No item has rows in both train and test.", status: "stale" as const,
+      detail: "The split changed since it was checked.", last_result: "pass" as const };
+    const fair = { decides: "split.method", method: "methodology.supervised.split_method@1.0.0", activity: "Fair evaluation",
+      question: "How are rows divided?", option: "item_groups", label: "Keep each item's rows on one side", reason: "Why.",
+      assurance: "rule" as const, steps: ["split"], promises: [promise] };
+    const groups = [{ id: "Fair evaluation#fair_evaluation", count: 1, x: 100, y: 20, width: 200, height: 90 }];
+    const at = new Map([["split", { x: 110, y: 50 }]]);
+    const { nodes } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), at, groups, [fair]);
+    const stage = nodes.find((n) => n.id === "stage:Fair evaluation#fair_evaluation")!;
+    expect(stage.data).toMatchObject({ name: "Fair evaluation", purpose: "Keep each item's rows on one side", promises: [promise] });
+    expect(nodes.find((n) => n.id === "split")).toMatchObject({ parentId: "stage:Fair evaluation#fair_evaluation" });
+  });
+
   it("gives every compact card the Flow Studio size, whatever its title (ADR-0061)", async () => {
     const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
     const { NODE_SIZE } = await import("../src/workbench/detail.ts");
