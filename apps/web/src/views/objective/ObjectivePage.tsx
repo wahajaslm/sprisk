@@ -12,7 +12,7 @@ import { Tag } from "../../components/ui/Tag.tsx";
 import { SendIcon } from "../Icons.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { stepTitle } from "../../flow/stages.ts";
-import { timestamp } from "../../flow/edit.ts";
+import { nextVersion, timestamp } from "../../flow/edit.ts";
 import { currentQuestion } from "./ledger.ts";
 import { StartWalk } from "./StartWalk.tsx";
 
@@ -203,12 +203,13 @@ export function ObjectivePage() {
     });
   };
 
+  // A flow version never changes (rule 5): linking saves a child version that reads the question.
   const linkToPipeline = (questionId: string) => {
     if (!currentPipeline) return;
-    savePipeline.mutate({
-      ...currentPipeline,
-      question_version_id: questionId,
-    });
+    savePipeline.mutate(
+      { ...nextVersion(currentPipeline, currentPipeline), question_version_id: questionId },
+      { onSuccess: (saved) => selectPipelineVersion(saved.id) },
+    );
   };
 
   if (questionsQuery.isPending) {
@@ -451,6 +452,33 @@ export function ObjectivePage() {
                       </td>
                     </tr>
                   )}
+
+                  {(question.bindings ?? []).map((b, i) => (
+                    <tr key={`binding-${b.concept}`}>
+                      <td className="entry-key">{i === 0 ? "Column" : ""}</td>
+                      <td className="entry-value">
+                        <span>{conceptsQuery.data?.concepts[b.concept]?.description ?? b.concept}</span> ·{" "}
+                        <span className="mono">{b.source.column}</span>
+                      </td>
+                      <td className="entry-src">{b.set_by.assurance}</td>
+                      <td className="entry-st">
+                        <span className="status-badge badge-set">Set</span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {(question.answers ?? []).map((a, i) => (
+                    <tr key={`answer-${a.decides}`}>
+                      <td className="entry-key">{i === 0 ? "Answer" : ""}</td>
+                      <td className="entry-value">
+                        <span className="mono">{a.decides}</span> · <span className="mono">{a.option}</span>
+                      </td>
+                      <td className="entry-src">answered</td>
+                      <td className="entry-st">
+                        <span className="status-badge badge-set">Set</span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -759,7 +787,7 @@ export function ObjectivePage() {
                         <option value="">Not stated</option>
                         <option value="high">high: only models a person can read</option>
                         <option value="medium">medium</option>
-                        <option value="low">low: any model</option>
+                        <option value="low">low: no limit on the model</option>
                       </select>
                     </div>
                   </div>
