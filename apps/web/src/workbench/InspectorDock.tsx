@@ -8,12 +8,14 @@ import {
   type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
+  type SerializedDockview,
 } from "dockview-react";
 import { useEffect, useRef } from "react";
 
 import { TabBody, useStep } from "../views/inspector/step.tsx";
 import { closedTabs, INSPECTOR_TABS, type InspectorTab, readTab, TAB_LABEL } from "./inspectorTabs.ts";
 import { ViewInstance } from "./instance.tsx";
+import { readSavedLayout, restoreLayout, saveLayout } from "./layout.ts";
 import { useWorkbench } from "./workbench.ts";
 
 /** One Inspector tab: the selected step's answer to one question, or a prompt to pick a step. */
@@ -31,6 +33,11 @@ function TabPanel({ params }: IDockviewPanelProps) {
       )}
     </ViewInstance>
   );
+}
+
+/** A saved panel this version does not know: it is shown, never guessed at, and can be closed. */
+function Placeholder() {
+  return <p className="muted pad">This tab is no longer available. Close it, and reopen tabs from +.</p>;
 }
 
 /** A tab's name, with the count of what needs a look on Methodology and Console. */
@@ -55,6 +62,23 @@ function addTab(api: DockviewApi, tab: InspectorTab, reference?: string): void {
 function addDefaultTabs(api: DockviewApi): void {
   for (const tab of INSPECTOR_TABS) addTab(api, tab, api.panels[0]?.id);
   api.getPanel("step-checks")?.api.setActive();
+}
+
+/** The tabs as last left, or the default tabs when nothing readable was saved. */
+function openSaved(api: DockviewApi): void {
+  const saved = restoreLayout(readSavedLayout());
+  if (saved) {
+    try {
+      // restoreLayout checks only the panels; dockview checks the grid and throws when it is wrong.
+      api.fromJSON(saved as unknown as SerializedDockview);
+      return;
+    } catch (error) {
+      // A layout dockview cannot read is a stale preference: say so and start from the default.
+      console.warn("The saved dock layout could not be read; using the default.", error);
+      api.clear();
+    }
+  }
+  addDefaultTabs(api);
 }
 
 const openTabs = (api: DockviewApi): InspectorTab[] => api.panels.flatMap((p) => readTab(p.params) ?? []);
@@ -113,14 +137,16 @@ export function InspectorDock() {
   }, [attachDock]);
 
   const onReady = ({ api }: DockviewReadyEvent) => {
-    addDefaultTabs(api);
+    openSaved(api);
+    // Tabs closed, moved or split are kept for next time; layout is preference, not provenance.
+    api.onDidLayoutChange(() => saveLayout(api.toJSON()));
     dockApi.current = api;
     attachDock(commands(api));
   };
   return (
     <DockviewReact
       className="sprisk-dock"
-      components={{ tab: TabPanel }}
+      components={{ tab: TabPanel, placeholder: Placeholder }}
       tabComponents={{ tab: TabLabel }}
       rightHeaderActionsComponent={GroupActions}
       onReady={onReady}
