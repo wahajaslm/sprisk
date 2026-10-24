@@ -76,4 +76,51 @@ describe("Objective page bindings", () => {
     await waitFor(() => expect(sent).toBeDefined());
     expect(sent?.bindings).toBeUndefined();
   });
+
+  it("keeps every fact the form does not edit, such as the time column and the answers", async () => {
+    const answered = { ...question, answers: [{ decides: "data.repeated_items", option: "group_by_title" }] };
+    let sent: Record<string, unknown> | undefined;
+    server.use(
+      http.get("/api/question_versions", () => HttpResponse.json([answered])),
+      http.get("/api/concepts", () => HttpResponse.json(concepts)),
+      http.post("/api/question_versions", async ({ request }) => {
+        sent = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(sent, { status: 201 });
+      }),
+    );
+    renderWithApi(<ObjectivePage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Revise question" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save revision" }));
+
+    await waitFor(() => expect(sent).toBeDefined());
+    expect(sent).toMatchObject({
+      entity_column: question.entity_column,
+      time_column: question.time_column,
+      answers: answered.answers,
+    });
+  });
+
+  it("states the success bar and how far a person must follow each prediction", async () => {
+    let sent: Record<string, unknown> | undefined;
+    server.use(
+      http.get("/api/question_versions", () => HttpResponse.json([question])),
+      http.get("/api/concepts", () => HttpResponse.json(concepts)),
+      http.post("/api/question_versions", async ({ request }) => {
+        sent = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(sent, { status: 201 });
+      }),
+    );
+    renderWithApi(<ObjectivePage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Revise question" }));
+    await userEvent.selectOptions(await screen.findByLabelText("Success bar metric"), "weighted_f1");
+    await userEvent.type(screen.getByLabelText("Success bar score"), "0.8");
+    await userEvent.selectOptions(screen.getByLabelText("How far a person must follow each prediction"), "low");
+    await userEvent.click(screen.getByRole("button", { name: "Save revision" }));
+
+    await waitFor(() => expect(sent).toBeDefined());
+    expect(sent?.success_bar).toEqual({ value: { metric: "weighted_f1", score: 0.8 }, origin: "explicit" });
+    expect(sent?.interpretability).toEqual({ value: "low", origin: "explicit" });
+  });
 });

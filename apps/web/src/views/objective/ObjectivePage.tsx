@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import type { Binding, Fact, QuestionVersion, TaskType, Unknown } from "@sprisk/contracts";
+import type { Binding, Fact, QuestionVersion, SelectionMetric, TaskType, Unknown } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
 import { useLoadedTables } from "../../api/datasets.ts";
@@ -25,6 +25,31 @@ const stated = (concept: string, column: string): Binding => ({
   set_by: { assurance: "stated" },
 });
 
+type Interpretability = NonNullable<QuestionVersion["interpretability"]>["value"];
+
+const METRICS: SelectionMetric[] = ["weighted_f1", "balanced_accuracy", "expected_cost", "rmse"];
+
+/** `question` without the facts the form edits, so a revision keeps the rest. */
+function withoutEdited(question: QuestionVersion): Partial<QuestionVersion> {
+  const {
+    objective: _objective,
+    task: _task,
+    target: _target,
+    unit_of_analysis: _unit,
+    prediction_horizon: _horizon,
+    assumptions: _assumptions,
+    unknowns: _unknowns,
+    acceptance_criteria: _criteria,
+    costs: _costs,
+    success_bar: _bar,
+    interpretability: _interpretability,
+    bindings: _bindings,
+    parent_id: _parent,
+    ...kept
+  } = question;
+  return kept;
+}
+
 export function ObjectivePage() {
   const { pipelineVersionId, selectPipelineVersion, setNav } = useSelection();
   const questionsQuery = useQuestionVersions();
@@ -49,6 +74,10 @@ export function ObjectivePage() {
   const [formPositive, setFormPositive] = useState("");
   const [formFalseNegative, setFormFalseNegative] = useState("");
   const [formFalsePositive, setFormFalsePositive] = useState("");
+  // Stated before any walk, since no data can give them (ADR-0063 amendment).
+  const [formMetric, setFormMetric] = useState<SelectionMetric | "">("");
+  const [formBarScore, setFormBarScore] = useState("");
+  const [formInterpretability, setFormInterpretability] = useState<Interpretability | "">("");
   // Column typed per concept; an empty one leaves the concept unbound.
   const [formBindings, setFormBindings] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
@@ -79,6 +108,9 @@ export function ObjectivePage() {
       setFormPositive(base.costs?.value.positive ?? "");
       setFormFalseNegative(base.costs?.value.false_negative?.toString() ?? "");
       setFormFalsePositive(base.costs?.value.false_positive?.toString() ?? "");
+      setFormMetric(base.success_bar?.value.metric ?? "");
+      setFormBarScore(base.success_bar?.value.score.toString() ?? "");
+      setFormInterpretability(base.interpretability?.value ?? "");
       setFormBindings(Object.fromEntries((base.bindings ?? []).map((b) => [b.concept, b.source.column])));
     } else {
       setFormObjective("");
@@ -92,6 +124,9 @@ export function ObjectivePage() {
       setFormPositive("");
       setFormFalseNegative("");
       setFormFalsePositive("");
+      setFormMetric("");
+      setFormBarScore("");
+      setFormInterpretability("");
       setFormBindings({});
     }
     setRevising(base);
@@ -123,11 +158,24 @@ export function ObjectivePage() {
       };
     }
 
+    let successBar: QuestionVersion["success_bar"] | undefined;
+    if (formMetric || formBarScore.trim()) {
+      const score = Number(formBarScore.trim());
+      if (!formMetric || !formBarScore.trim() || !Number.isFinite(score)) {
+        setFormError("Pick the success bar's metric and give its score as a number, or neither.");
+        return;
+      }
+      successBar = { value: { metric: formMetric, score }, origin: "explicit" };
+    }
+
     const bindings = Object.entries(formBindings)
       .filter(([, column]) => column.trim())
       .map(([concept, column]) => stated(concept, column));
 
+    // A revision keeps what the form does not edit, such as the time column and the answers.
+    const kept = revising ? withoutEdited(revising) : {};
     const newQuestion: QuestionVersion = {
+      ...kept,
       schema_version: "sprisk.question_version/v1",
       id: `qv_${ulid()}`,
       investigation_id: revising?.investigation_id ?? question?.investigation_id ?? `inv_${ulid()}`,
@@ -141,6 +189,8 @@ export function ObjectivePage() {
       unknowns: lines(formUnknowns).map((u): Unknown => ({ question: u, blocks: "execution" })),
       acceptance_criteria: lines(formCriteria).map(fact),
       ...(costs ? { costs } : {}),
+      ...(successBar ? { success_bar: successBar } : {}),
+      ...(formInterpretability ? { interpretability: { value: formInterpretability, origin: "explicit" } } : {}),
       ...(bindings.length ? { bindings } : {}),
       created_at: timestamp(),
     };
@@ -267,7 +317,7 @@ export function ObjectivePage() {
                 )}
               </div>
               <h2 className="objective-sentence">{question.objective.value}</h2>
-              <StartWalk key={question.id} question={question} />
+              <StartWalk key={question.investigation_id} question={question} />
             </div>
 
             {/* Ledger Table */}
@@ -657,6 +707,63 @@ export function ObjectivePage() {
                       ))}
                   </div>
                 )}
+
+                {/* Stated before any walk */}
+                <div className="ds-form-card">
+                  <div className="ds-form-card-head">
+                    <span className="ds-form-card-title">Before the walk</span>
+                    <span className="ds-form-card-desc">No data can give these, so a walk starts only once they are stated</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-bar-metric" style={{ fontSize: "var(--fs-12)" }}>
+                        Success bar metric
+                      </label>
+                      <select
+                        id="obj-field-bar-metric"
+                        className="ds-input"
+                        value={formMetric}
+                        onChange={(e) => setFormMetric(e.target.value as SelectionMetric | "")}
+                      >
+                        <option value="">Not stated</option>
+                        {METRICS.map((metric) => (
+                          <option key={metric} value={metric}>
+                            {metric}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-bar-score" style={{ fontSize: "var(--fs-12)" }}>
+                        Success bar score
+                      </label>
+                      <input
+                        id="obj-field-bar-score"
+                        type="text"
+                        className="ds-input mono"
+                        value={formBarScore}
+                        onChange={(e) => setFormBarScore(e.target.value)}
+                        placeholder="e.g. 0.8"
+                      />
+                    </div>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-interpretability" style={{ fontSize: "var(--fs-12)" }}>
+                        How far a person must follow each prediction
+                      </label>
+                      <select
+                        id="obj-field-interpretability"
+                        className="ds-input"
+                        value={formInterpretability}
+                        onChange={(e) => setFormInterpretability(e.target.value as Interpretability | "")}
+                      >
+                        <option value="">Not stated</option>
+                        <option value="high">high: only models a person can read</option>
+                        <option value="medium">medium</option>
+                        <option value="low">low: any model</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Misclassification Costs Card */}
                 <div className="ds-form-card">

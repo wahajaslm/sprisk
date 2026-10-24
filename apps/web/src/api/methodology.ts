@@ -4,13 +4,6 @@ import { ulid } from "ulid";
 
 import { getList, getOne, postOne } from "./client.ts";
 
-export function useResolveSplit() {
-  return useMutation({
-    mutationFn: ({ pipelineId, nodeId }: { pipelineId: string; nodeId: string }) =>
-      postOne("DecisionProposal", `/pipeline_versions/${pipelineId}/methodology/split/${nodeId}/proposals`, {}),
-  });
-}
-
 /** A step's proposal; with `decides`, that of the one rule making that decision (ADR-0053). */
 export function useResolveMethodology() {
   return useMutation({

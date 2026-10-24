@@ -1,7 +1,7 @@
 import type { MethodologyRule, PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
 
-import { useApplyMethodology, useResolveMethodology, useResolveSplit } from "../../api/methodology.ts";
+import { useApplyMethodology, useResolveMethodology } from "../../api/methodology.ts";
 import { useSelection } from "../../workbench/selection.ts";
 
 /** One rule's choice for a step. With `rule`, the panel is titled by it and asks for its decision
@@ -12,10 +12,7 @@ export function SplitMethodology({ pipeline, nodeId, rule }: {
   rule?: Pick<MethodologyRule, "name" | "decides">;
 }) {
   const current = pipeline.nodes.find((node) => node.id === nodeId);
-  const isSplit = current?.operator.includes("split@") ?? false;
-  const resolveSplit = useResolveSplit();
-  const resolveGeneral = useResolveMethodology();
-  const resolve = isSplit ? resolveSplit : resolveGeneral;
+  const resolve = useResolveMethodology();
   const apply = useApplyMethodology();
   const selectPipeline = useSelection((state) => state.selectPipelineVersion);
   const openExperiments = useSelection((state) => state.openExperiments);
@@ -26,8 +23,6 @@ export function SplitMethodology({ pipeline, nodeId, rule }: {
 
   const headline = rule
     ? rule.name
-    : isSplit
-    ? "How should validation be separated?"
     : current?.operator.includes("clustering.") || current?.operator.includes("kmeans")
       ? "Which clustering algorithm fits the data topology?"
       : current?.operator.includes("impute@") || current?.operator.includes("drop_missing@")
@@ -40,11 +35,7 @@ export function SplitMethodology({ pipeline, nodeId, rule }: {
               ? "Which models are worth comparing?"
               : "Which methodology rule should be applied?";
 
-  const eyebrow = proposal?.rule
-    ? `Methodology · ${proposal.rule}`
-    : isSplit
-      ? "Methodology · split method"
-      : "Methodology · recommendation";
+  const eyebrow = proposal?.rule ? `Methodology · ${proposal.rule}` : "Methodology · recommendation";
 
   return <section className="method-choice" aria-label={rule?.name ?? "Split methodology"}>
     <header>
@@ -53,7 +44,7 @@ export function SplitMethodology({ pipeline, nodeId, rule }: {
     </header>
     <p className="muted">Current: {current?.operator}. The resolver reads the linked question revision and changes nothing until Apply.</p>
     {!pipeline.question_version_id ? <p role="alert" className="error">Link a question revision in Atlas before choosing a method.</p> : !proposal ? (
-      <button type="button" className="run-code" disabled={resolve.isPending} onClick={() => resolve.mutate({ pipelineId: pipeline.id, nodeId, ...(rule ? { decides: rule.decides } : {}) })}>{resolve.isPending ? "Resolving…" : isSplit ? "Review split choices" : "Review methodology choices"}</button>
+      <button type="button" className="run-code" disabled={resolve.isPending} onClick={() => resolve.mutate({ pipelineId: pipeline.id, nodeId, ...(rule ? { decides: rule.decides } : {}) })}>{resolve.isPending ? "Resolving…" : "Review methodology choices"}</button>
     ) : <>
       <div className="method-evidence"><strong>Evidence</strong>{proposal.evidence.map((item) => <span key={`${item.label}/${item.value}`}>{item.label}: {item.value} <small>({item.origin})</small></span>)}</div>
       {proposal.shortlist && <p className="muted">Sprisk cross-validates the shortlisted models on its own and recommends one on the Experiments page.</p>}
