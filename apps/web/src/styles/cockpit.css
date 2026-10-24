@@ -7874,3 +7874,26 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .mth-alts.compact li.selected { background: var(--alpha-05); }
 .mth-eyebrow { font-family: var(--font-sans); }
 .flow-inspector.collapsed .flow-inspector-chevron { transform: rotate(180deg); }
+
+/* A step's Methodology tab, as the design's main screen lays it out: one row of four columns
+   per rule (rule and pick, the evidence, the alternatives, the thresholds), then the checks. */
+.method-tab { display: flex; flex-direction: column; gap: var(--space-4); padding: 16px 20px; }
+.rule-decision { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; padding-bottom: var(--space-4); border-bottom: 1px solid var(--line-soft); }
+.rd-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12.5px; color: #d4d4d4; }
+.rd-col p { margin: 0; line-height: 1.45; }
+.rd-label { margin-bottom: 4px !important; font-size: 11.5px; color: #959595; }
+.rd-title { margin: 0; font-size: 13.5px; font-weight: 500; color: #f5f5f5; }
+.rd-tag { align-self: flex-start; margin-top: 4px; font-size: 11px; color: #737373; }
+.rd-facts { display: flex; flex-direction: column; margin: 0; }
+.rd-facts > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
+.rd-facts dt { color: #a3a3a3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-facts dd { margin: 0; color: #f5f5f5; font-variant-numeric: tabular-nums; text-align: right; }
+.rd-alternatives { display: flex; flex-direction: column; gap: 2px; }
+.rd-alternative { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.rd-alternative.selected { background: rgba(255, 255, 255, 0.06); }
+.rd-alternative input { margin: 2px 0 0; accent-color: #f5f5f5; }
+.rd-alternative > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rd-alt-label { color: #f5f5f5; }
+.rd-alternative small { font-size: 11.5px; color: #737373; }
+.rd-actions { display: flex; gap: 8px; margin-top: 6px; }
+.rd-source { margin-top: 8px !important; font-size: 11.5px; }

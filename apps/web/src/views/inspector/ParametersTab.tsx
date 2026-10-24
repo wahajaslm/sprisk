@@ -1,12 +1,10 @@
-import type { CodeInterface, CodeParameter, MethodologyRule, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { CodeInterface, CodeParameter, Operator, PipelineVersion } from "@sprisk/contracts";
 import { useId, useState } from "react";
 
 import type { Read } from "../../api/code.ts";
-import { useMethodologyRules } from "../../api/methodology.ts";
 import { isCodeOperator } from "../../flow/edit.ts";
 import { useRunEdit } from "./useRunEdit.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { SplitMethodology } from "./SplitMethodology.tsx";
 
 type Props = {
   pipeline: PipelineVersion;
@@ -19,7 +17,6 @@ type Props = {
  * steps: literal settings found in the code, exposed on request (ADR-0021). Running with
  * changed settings saves a new version; the code itself is never edited. */
 export function ParametersTab({ pipeline, nodeId, operator, found }: Props) {
-  const rules = useMethodologyRules();
   const node = pipeline.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
   if (isCodeOperator(node.operator)) {
@@ -29,28 +26,7 @@ export function ParametersTab({ pipeline, nodeId, operator, found }: Props) {
     return <Expose key={JSON.stringify(found.value.parameters)} pipeline={pipeline} nodeId={nodeId} params={node.params} found={found.value} />;
   }
   if (!operator) return <Loading />;
-  // A step has one panel per active rule that decides its operator (ADR-0045, ADR-0053).
-  const unversioned = node.operator.split("@")[0] ?? node.operator;
-  const deciding = (rules.data ?? [])
-    .filter((r) => r.status === "active" && r.applies_to?.includes(unversioned))
-    .sort(inWorkflowOrder);
-
-  return <>
-    {rules.isError && <p role="alert" className="error">Methodology rules could not be read: {rules.error.message}</p>}
-    {deciding.map((rule) => (
-      <SplitMethodology key={`method/${pipeline.id}/${nodeId}/${rule.decides}`} pipeline={pipeline} nodeId={nodeId} rule={rule} />
-    ))}
-    <Settings key={`${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} params={node.params} schema={operator.params_schema} />
-  </>;
-}
-
-/** The schema's stage order, so a step's rules read as the work goes: the model, then its threshold. */
-const STAGE_ORDER: Record<MethodologyRule["stage"], number> = {
-  question: 0, data: 1, cleaning: 2, split: 3, features: 4, models: 5, evaluation: 6, reporting: 7,
-};
-
-function inWorkflowOrder(a: MethodologyRule, b: MethodologyRule): number {
-  return STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || a.id.localeCompare(b.id);
+  return <Settings key={`${pipeline.id}/${nodeId}`} pipeline={pipeline} nodeId={nodeId} params={node.params} schema={operator.params_schema} />;
 }
 
 /** Exposed values as typed in the form, by parameter name. */

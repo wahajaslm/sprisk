@@ -1,12 +1,13 @@
 import { parse, type PipelineVersion } from "@sprisk/contracts";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import encodingBeforeModel from "../../../tests/contract/decision_proposal/valid/encoding-before-model.json";
 import scalingBeforeForest from "../../../tests/contract/decision_proposal/valid/scaling-before-forest.json";
-import { SplitMethodology } from "../src/views/inspector/SplitMethodology.tsx";
+import ruleJson from "../../../tests/contract/methodology_rule/valid/shortlist.json";
+import { RuleDecision } from "../src/views/inspector/MethodologyTab.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
@@ -19,6 +20,15 @@ const pipeline: PipelineVersion = {
   nodes: [{ id: "scale", operator: "sprisk.clean.scale@1.0.0", params: { columns: ["age"], method: "z_score" } }],
   edges: [],
   created_at: "2026-10-19T10:00:00Z",
+};
+
+/** The rule a panel shows, made from a real rule's manifest; the proposal under test comes
+ * from the mocked resolver. */
+const rule = {
+  ...parse("MethodologyRule", ruleJson),
+  name: "Feature Scaling",
+  decides: "features.scaling",
+  policy_thresholds: { ask_above_share: 0.05 },
 };
 
 const proposal = parse("DecisionProposal", {
@@ -44,10 +54,10 @@ const proposal = parse("DecisionProposal", {
   ],
 });
 
+/** Opens the panel; it resolves its proposal by itself. */
 async function review() {
-  server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(proposal, { status: 201 })));
-  renderWithApi(<SplitMethodology pipeline={pipeline} nodeId="scale" />);
-  await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+  server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () => HttpResponse.json(proposal, { status: 201 })));
+  renderWithApi(<RuleDecision pipeline={pipeline} nodeId="scale" rule={rule} />);
 }
 
 describe("methodology choice preview", () => {
@@ -77,9 +87,8 @@ describe("a replacing choice", () => {
 describe("an adding choice", () => {
   it("names the step it adds and the step it goes before (ADR-0057)", async () => {
     const model: PipelineVersion = { ...pipeline, nodes: [{ id: "model", operator: "sprisk.ml.random_forest@2.0.0", params: { target: "y", task: "classification" } }] };
-    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(parse("DecisionProposal", encodingBeforeModel), { status: 201 })));
-    renderWithApi(<SplitMethodology pipeline={model} nodeId="model" />);
-    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () => HttpResponse.json(parse("DecisionProposal", encodingBeforeModel), { status: 201 })));
+    renderWithApi(<RuleDecision pipeline={model} nodeId="model" rule={rule} />);
     await userEvent.click(await screen.findByRole("radio", { name: /One-Hot Encoding/ }));
     expect(screen.getByText(/^Add/)).toHaveTextContent("Add categories (sprisk.clean.encode@1.0.0) before model.");
     expect(screen.getByText(/"purpose"/)).toBeInTheDocument();
@@ -107,8 +116,7 @@ describe("a rule's panel", () => {
       asked.push(`${String(params.node)}/${String(params.decides)}`);
       return HttpResponse.json(threshold, { status: 201 });
     }));
-    renderWithApi(<SplitMethodology pipeline={model} nodeId="model" rule={{ name: "Decision Threshold", decides: "evaluation.decision_threshold" }} />);
-    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+    renderWithApi(<RuleDecision pipeline={model} nodeId="model" rule={{ ...rule, name: "Decision Threshold", decides: "evaluation.decision_threshold" }} />);
     await userEvent.click(await screen.findByRole("radio", { name: /Cost-Optimal Threshold/ }));
     expect(asked).toEqual(["model/evaluation.decision_threshold"]);
     expect(screen.getByRole("region", { name: "Decision Threshold" })).toBeInTheDocument();
@@ -141,12 +149,11 @@ describe("model shortlist", () => {
   });
 
   it("tags the shortlisted models and asks why when one is chosen without comparing", async () => {
-    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(shortlist, { status: 201 })));
-    renderWithApi(<SplitMethodology pipeline={modelPipeline} nodeId="model" />);
-    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () => HttpResponse.json(shortlist, { status: 201 })));
+    renderWithApi(<RuleDecision pipeline={modelPipeline} nodeId="model" rule={rule} />);
 
-    expect(await screen.findByText(/dummy_baseline@1.0.0 · shortlisted/)).toBeInTheDocument();
-    expect(screen.queryByText(/random_forest@1.1.0 · shortlisted/)).not.toBeInTheDocument();
+    expect(await screen.findByRole("radio", { name: /dummy_baseline@1.0.0\s*Shortlisted/ })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /random_forest@1.1.0\s*Shortlisted/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: /dummy_baseline/ }));
     expect(screen.getByLabelText(/Reason for choosing without comparing/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply to new flow version" })).toBeDisabled();
@@ -154,13 +161,25 @@ describe("model shortlist", () => {
 
   it("says Sprisk compares the shortlist itself and points to Experiments", async () => {
     useSelection.setState({ nav: "Flow" });
-    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node", () => HttpResponse.json(shortlist, { status: 201 })));
-    renderWithApi(<SplitMethodology pipeline={modelPipeline} nodeId="model" />);
-    await userEvent.click(screen.getByRole("button", { name: "Review methodology choices" }));
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () => HttpResponse.json(shortlist, { status: 201 })));
+    renderWithApi(<RuleDecision pipeline={modelPipeline} nodeId="model" rule={rule} />);
 
     expect(await screen.findByText(/Sprisk cross-validates the shortlisted models on its own/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Compare shortlisted models" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "See the comparison" }));
     expect(useSelection.getState()).toMatchObject({ nav: "Experiments", experimentsTab: "Compare" });
+  });
+});
+
+describe("a rule's decision, as the design lays it out", () => {
+  it("shows the rule's pick, the evidence it decided on, and the thresholds it decided with", async () => {
+    await review();
+    const panel = await screen.findByRole("region", { name: "Feature Scaling" });
+    expect(await within(panel).findByText(/^Chooses: No Scaling Step/)).toBeInTheDocument();
+    expect(within(panel).getByText("Model families downstream")).toBeInTheDocument();
+    expect(within(panel).getByText("tree_ensemble")).toBeInTheDocument();
+    expect(within(panel).getByRole("radio", { name: /No Scaling Step.*Rule's pick/ })).toBeChecked();
+    expect(within(panel).getByText("ask above share")).toBeInTheDocument();
+    expect(within(panel).getByText("0.05")).toBeInTheDocument();
   });
 });

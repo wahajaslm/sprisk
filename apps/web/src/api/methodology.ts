@@ -4,24 +4,23 @@ import { ulid } from "ulid";
 
 import { getList, getOne, postOne } from "./client.ts";
 
-export function useResolveSplit() {
-  return useMutation({
-    mutationFn: ({ pipelineId, nodeId }: { pipelineId: string; nodeId: string }) =>
-      postOne("DecisionProposal", `/pipeline_versions/${pipelineId}/methodology/split/${nodeId}/proposals`, {}),
-  });
-}
-
-/** A step's proposal; with `decides`, that of the one rule making that decision (ADR-0053). */
-export function useResolveMethodology() {
-  return useMutation({
-    mutationFn: ({ pipelineId, nodeId, decides }: { pipelineId: string; nodeId: string; decides?: string }) =>
+/** A step's proposal for one decision (ADR-0053). A flow version never changes, so it is resolved
+ * once per version, step and decision; the resolver changes nothing in the flow. */
+export const useStepProposal = (pipelineId: string | undefined, nodeId: string, decides: string, isSplit: boolean) =>
+  useQuery({
+    queryKey: ["step_proposal", pipelineId, nodeId, decides],
+    queryFn: () =>
       postOne(
         "DecisionProposal",
-        `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}${decides ? `/${decides}` : ""}`,
+        isSplit
+          ? `/pipeline_versions/${pipelineId}/methodology/split/${nodeId}/proposals`
+          : `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}/${decides}`,
         {},
       ),
+    enabled: pipelineId !== undefined,
+    staleTime: Infinity,
+    retry: false,
   });
-}
 
 export function useApplyMethodology() {
   const client = useQueryClient();

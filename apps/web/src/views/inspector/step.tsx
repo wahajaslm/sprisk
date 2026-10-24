@@ -15,7 +15,7 @@ import { CodeEditor } from "../CodeEditor.tsx";
 import { PinIcon } from "../Icons.tsx";
 import { FiguresTab } from "./FiguresTab.tsx";
 import { ViewControls } from "./ViewControls.tsx";
-import { ChecksTab } from "./ChecksTab.tsx";
+import { MethodologyTab } from "./MethodologyTab.tsx";
 import { namedPorts } from "../../flow/notebook.ts";
 import { PassOn } from "./CodeData.tsx";
 import { ConsoleTab, consoleProblems } from "./ConsoleTab.tsx";
@@ -157,7 +157,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
         pipeline && node && operator && <OperatorCode key={`${pipeline.id}/${node.id}`} pipeline={pipeline} nodeId={node.id} operator={operator} />
       );
     case "checks":
-      return <ChecksTab run={step.checks} nodeId={nodeId} />;
+      return pipeline && <MethodologyTab pipeline={pipeline} nodeId={nodeId} checks={step.checks} />;
     case "performance":
       return (
         <p className="muted">
