@@ -3752,6 +3752,11 @@
         "model": {
           "$ref": "#/$defs/OperatorModel"
         },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The step's name for people: the standard term for what it does (Group split, Imputation). Shown by the UI, CLI and notebooks; the description explains it in plain words. Absent: the operator's name stands in."
+        },
         "description": {
           "type": "string"
         },

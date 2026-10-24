@@ -3039,6 +3039,13 @@ class Operator(StrictModel):
     id: OperatorRef
     capability_class: CapabilityClass
     model: OperatorModel | None = None
+    title: Annotated[
+        str | None,
+        Field(
+            description="The step's name for people: the standard term for what it does (Group split, Imputation). Shown by the UI, CLI and notebooks; the description explains it in plain words. Absent: the operator's name stands in.",
+            min_length=1,
+        ),
+    ] = None
     description: str | None = None
     entrypoint: Annotated[
         Entrypoint, Field(description="Python `module:function` the worker calls.")

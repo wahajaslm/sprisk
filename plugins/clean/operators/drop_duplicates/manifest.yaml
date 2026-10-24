@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.drop_duplicates@1.0.0
+title: Exact duplicate removal
 capability_class: transform
 description: Drop exact duplicate rows, keeping the first. Run before the split, so no row is in both train and test.
 entrypoint: sprisk_clean.columns:drop_duplicates

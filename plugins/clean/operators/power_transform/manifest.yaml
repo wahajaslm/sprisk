@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.power_transform@1.0.0
+title: Yeo-Johnson transform
 capability_class: transform
 description: Yeo-Johnson power transform of numeric columns, fit on train only, so a skewed column comes out close to symmetric with mean 0 and spread 1.
 entrypoint: sprisk_clean.power_transform:power_transform

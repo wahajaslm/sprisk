@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.evaluate@2.0.0
+title: Test-set evaluation
 capability_class: evaluator
 description: Score a fitted model on a test table. Classification - accuracy, balanced accuracy, macro F1. Regression - RMSE, MAE, R2.
 entrypoint: sprisk_ml.evaluate:evaluate

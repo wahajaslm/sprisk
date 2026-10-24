@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.profile.distributions@1.0.0
+title: Distributions and correlation
 capability_class: analyzer
 description: Equal-width histograms (20 bins) of numeric columns and their pairwise Pearson correlation.
 entrypoint: sprisk_profile.distributions:distributions
