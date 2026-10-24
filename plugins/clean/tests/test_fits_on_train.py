@@ -27,6 +27,7 @@ SETTINGS: dict[str, dict[str, Any]] = {
     "sprisk.clean.date_parts@1.0.0": {"columns": ["d"]},
     "sprisk.clean.power_transform@1.0.0": {"columns": ["x"]},
     "sprisk.clean.vectorize_text@1.1.0": {"columns": ["s"]},
+    "sprisk.clean.spectral_gating@1.0.0": {"signal_column": "x", "snr_column": "y"},
 }
 TRAIN_PORTS = ("train", "train_words")
 

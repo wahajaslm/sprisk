@@ -12,14 +12,16 @@ from typing import Literal
 
 import networkx as nx
 
-from sprisk_contracts import MethodologyCheck, PipelineVersion
+from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
 from sprisk_contracts.generated.models import Node, Verdict
 from sprisk_supervised.split_leakage import (
     CODE_OPERATOR,
-    FITTING_TRANSFORMS,
-    HOLDOUT_PORTS,
+    HOLDOUT_PORT,
     TRAIN_PORT,
     CheckInputError,
+    fits_on_train,
+    is_split,
+    operators_by_node,
     unversioned,
 )
 
@@ -188,7 +190,9 @@ class _Step:
         return name if name and name[0].isupper() else None
 
 
-def code_leakage(pipeline: PipelineVersion, check_id: str, now: str) -> MethodologyCheck:
+def code_leakage(
+    pipeline: PipelineVersion, operators: Mapping[str, Operator], check_id: str, now: str
+) -> MethodologyCheck:
     """FAIL when code fits on holdout rows, cross-validates rows a fitting transform already
     learned from, or fits a transform on unsplit rows that are split in a connected step."""
     graph: nx.DiGraph[str] = nx.DiGraph()
@@ -200,9 +204,10 @@ def code_leakage(pipeline: PipelineVersion, check_id: str, now: str) -> Methodol
     if not code_nodes:
         return _result(pipeline, check_id, now, Verdict.not_assessed, "No code steps.", [])
 
-    split_nodes = {
-        n for n, node in nodes.items() if unversioned(node.operator.root) in HOLDOUT_PORTS
-    }
+    op_of = operators_by_node(pipeline, operators)
+    built_splits = frozenset(n for n, op in op_of.items() if is_split(op))
+    split_nodes = set(built_splits)
+    fitting = frozenset(n for n, op in op_of.items() if fits_on_train(op))
     steps: dict[str, _Step] = {}
     unread = []
     for node in code_nodes:
@@ -210,7 +215,9 @@ def code_leakage(pipeline: PipelineVersion, check_id: str, now: str) -> Methodol
         if not isinstance(source, str):
             raise CheckInputError(f"code step {node}: params.source is missing")
         inputs = {
-            e.to.root.split(".")[1]: _port_tags(pipeline, nodes, steps, e.from_.root)
+            e.to.root.split(".")[1]: _port_tags(
+                pipeline, steps, e.from_.root, built_splits, fitting
+            )
             for e in pipeline.edges
             if e.to.root.split(".")[0] == node
         }
@@ -263,14 +270,17 @@ def _first_finding(
 
 
 def _port_tags(
-    pipeline: PipelineVersion, nodes: Mapping[str, Node], steps: Mapping[str, _Step], port: str
+    pipeline: PipelineVersion,
+    steps: Mapping[str, _Step],
+    port: str,
+    splits: frozenset[str],
+    fitting: frozenset[str],
 ) -> Tags:
     """Tags of the rows an output port carries. A built-in step passes on its inputs' tags:
     the input of the same name when it has one, else all of them."""
     node, name = port.split(".")
-    op = unversioned(nodes[node].operator.root)
-    if op in HOLDOUT_PORTS:
-        if name == HOLDOUT_PORTS[op]:
+    if node in splits:
+        if name == HOLDOUT_PORT:
             return frozenset({"holdout"})
         return frozenset({"train"}) if name == TRAIN_PORT else NONE
     if node in steps:
@@ -278,9 +288,9 @@ def _port_tags(
     feeding = [e for e in pipeline.edges if e.to.root.split(".")[0] == node]
     same = [e for e in feeding if e.to.root.split(".")[1] == name]
     tags: Tags = NONE.union(
-        *(_port_tags(pipeline, nodes, steps, e.from_.root) for e in same or feeding)
+        *(_port_tags(pipeline, steps, e.from_.root, splits, fitting) for e in same or feeding)
     )
-    return tags | FITTED if op in FITTING_TRANSFORMS else tags
+    return tags | FITTED if node in fitting else tags
 
 
 def _outside_definitions(tree: ast.AST) -> Iterator[ast.AST]:

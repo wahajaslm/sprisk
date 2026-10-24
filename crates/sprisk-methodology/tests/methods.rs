@@ -10,25 +10,16 @@ use sprisk_contracts::Operator;
 use sprisk_methodology::{CatalogError, RuleCatalog};
 use sprisk_registry::Registry;
 use tempfile::TempDir;
-use walkdir::WalkDir;
 
 mod repo;
-use repo::{repo, repo_catalog};
+use repo::{copy_dir, repo, repo_catalog};
 
 /// A copy of the split-decision fixture, with a copy of the registered near-duplicates
 /// producer to break one file in.
 fn split_decision() -> TempDir {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/split_decision");
     let to = tempfile::tempdir().unwrap();
-    for entry in WalkDir::new(&from) {
-        let entry = entry.unwrap();
-        let target = to.path().join(entry.path().strip_prefix(&from).unwrap());
-        if entry.file_type().is_dir() {
-            fs::create_dir_all(&target).unwrap();
-        } else {
-            fs::copy(entry.path(), &target).unwrap();
-        }
-    }
+    copy_dir(&from, to.path());
     let producer = fs::read_to_string(repo(PLUGIN_NEAR_DUPLICATES)).unwrap();
     write(to.path(), NEAR_DUPLICATES, &producer);
     to
@@ -576,15 +567,7 @@ fn a_producer_with_no_attach_is_refused() {
 fn text_spelling() -> TempDir {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/text_spelling");
     let to = tempfile::tempdir().unwrap();
-    for entry in WalkDir::new(&from) {
-        let entry = entry.unwrap();
-        let target = to.path().join(entry.path().strip_prefix(&from).unwrap());
-        if entry.file_type().is_dir() {
-            fs::create_dir_all(&target).unwrap();
-        } else {
-            fs::copy(entry.path(), &target).unwrap();
-        }
-    }
+    copy_dir(&from, to.path());
     // No operator copies: the registered plugins are the operators.
     fs::create_dir_all(to.path().join("operators")).unwrap();
     to

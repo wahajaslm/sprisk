@@ -53,7 +53,8 @@ pub(crate) async fn create_walk(
         .get_question_version(&request.question_version_id)
         .await?;
     let sources: Vec<String> = request.sources.iter().map(|s| s.to_string()).collect();
-    let started = start(&question, &sources).map_err(|e| ApiError::BadRequest {
+    let defaults = sprisk_methodology::Defaults::of(&state.registry)?;
+    let started = start(&question, &sources, &defaults).map_err(|e| ApiError::BadRequest {
         code: "invalid_walk",
         message: e.to_string(),
     })?;
@@ -928,7 +929,8 @@ async fn score_test_rows(
         );
         return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
     }
-    let (nodes, edges) = with_test_scoring(&pipeline).map_err(|e| {
+    let defaults = sprisk_methodology::Defaults::of(&state.registry)?;
+    let (nodes, edges) = with_test_scoring(&pipeline, &defaults).map_err(|e| {
         ApiError::Internal(format!("scoring the test rows of {}: {e}", head.as_str()))
     })?;
     let scored: PipelineVersion = internal(parse(

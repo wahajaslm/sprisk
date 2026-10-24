@@ -168,12 +168,13 @@ export type EvidenceKind = string;
  */
 export type MethodOptionId = string;
 /**
- * The one job a step does in a flow, so methods place and replace steps by role, not by input names.
+ * The one job a step does in a flow, so methods place and replace steps by role, and the engine builds a step of a role from its default operator, never by name (ADR-0064). score: scores a model on rows. score_shares: compares the class shares of train and test at the final score. cross_validate: scores a candidate on folds. select: chooses among compared candidates. row_filter: only drops rows.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "OperatorRole".
  */
-export type OperatorRole = "source" | "split" | "model";
+export type OperatorRole =
+  "source" | "split" | "model" | "score" | "score_shares" | "cross_validate" | "select" | "row_filter";
 /**
  * A verification a method declares, the name of its verify_<name>() function.
  *
@@ -230,6 +231,13 @@ export type BindingSourceKind = "column" | "derived";
  * via the `definition` "BindingSetBy".
  */
 export type BindingSetBy = BindingStated | BindingByMethod;
+/**
+ * How a split's folds are made when models are compared on its train rows (ADR-0064). plain: shuffled rows. group: whole values of the split's group_column. time: in order of the split's time_column, never reshuffled.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SplitFolds".
+ */
+export type SplitFolds = "plain" | "group" | "time";
 /**
  * all: reads every row, before the split, so it may never read a label concept. train: reads train rows only.
  *
@@ -2578,9 +2586,17 @@ export interface Operator {
    */
   fits_on_train?: boolean;
   /**
-   * The one job a step does in a flow, so methods place and replace steps by role, not by input names.
+   * The one job a step does in a flow, so methods place and replace steps by role, and the engine builds a step of a role from its default operator, never by name (ADR-0064). score: scores a model on rows. score_shares: compares the class shares of train and test at the final score. cross_validate: scores a candidate on folds. select: chooses among compared candidates. row_filter: only drops rows.
    */
-  role?: "source" | "split" | "model";
+  role?: "source" | "split" | "model" | "score" | "score_shares" | "cross_validate" | "select" | "row_filter";
+  /**
+   * True for the operator the engine uses when it builds a step of this role (ADR-0064). At most one per role. Absent: not a default.
+   */
+  role_default?: boolean;
+  /**
+   * Set on a split: how its folds are made when models are compared. Absent: a flow with this split cannot be compared.
+   */
+  folds?: "plain" | "group" | "time";
   attach?: OperatorAttach1;
   /**
    * Which rows the step reads. Absent: whatever its inputs carry.

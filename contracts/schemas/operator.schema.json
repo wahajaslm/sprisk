@@ -58,6 +58,14 @@
           "$ref": "#/$defs/OperatorRole",
           "description": "The job the step does, for methods that replace a step by role (ADR-0063). Absent: no method places it by role."
         },
+        "role_default": {
+          "type": "boolean",
+          "description": "True for the operator the engine uses when it builds a step of this role (ADR-0064). At most one per role. Absent: not a default."
+        },
+        "folds": {
+          "$ref": "#/$defs/SplitFolds",
+          "description": "Set on a split: how its folds are made when models are compared. Absent: a flow with this split cannot be compared."
+        },
         "attach": {
           "$ref": "#/$defs/OperatorAttach",
           "description": "Set on an evidence producer: where the engine adds it (ADR-0063)."

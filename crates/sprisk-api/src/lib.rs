@@ -1379,15 +1379,9 @@ fn keeps_train_rows(registry: &Registry, node: &sprisk_contracts::Node) -> bool 
 fn keeps_flow_facts(registry: &Registry, node: &sprisk_contracts::Node) -> bool {
     let zero_fill = node.operator.as_str().starts_with("sprisk.clean.impute@")
         && node.params.get("method").and_then(|m| m.as_str()) == Some("zero");
-    let rows_only = matches!(
-        node.operator.as_str().split('@').next(),
-        Some(
-            "sprisk.clean.drop_missing"
-                | "sprisk.validation.random_split"
-                | "sprisk.validation.temporal_split"
-                | "sprisk.validation.group_split"
-        )
-    );
+    let rows_only = registry
+        .get(node.operator.as_str())
+        .is_some_and(|o| matches!(o.role, Some(OperatorRole::RowFilter | OperatorRole::Split)));
     rows_only || (keeps_train_rows(registry, node) && !zero_fill)
 }
 
@@ -2121,9 +2115,7 @@ async fn comparison_version(
         .store
         .get_question_version(&proposal.question_version_id)
         .await?;
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
     let keeps_train = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
-    let operator_of = |operator: &str| state.registry.get(operator);
     // A metric a person stated with the success bar is what models are compared by (ADR-0059).
     let scoring = sprisk_methodology::Scoring {
         task: question.task.value,
@@ -2136,22 +2128,20 @@ async fn comparison_version(
             proposal,
             rule,
             scoring,
-            is_split,
             keeps_train,
-            operator_of,
+            &state.registry,
         )
     } else if let Some(study) = study {
         sprisk_methodology::study_comparison(
             &base,
             proposal,
             scoring,
-            is_split,
             keeps_train,
-            operator_of,
+            &state.registry,
             study,
         )
     } else {
-        sprisk_methodology::comparison(&base, proposal, scoring, is_split, keeps_train, operator_of)
+        sprisk_methodology::comparison(&base, proposal, scoring, keeps_train, &state.registry)
     }
     .map_err(|e| match e {
         sprisk_methodology::ResolveError::NothingToCompare(_) => ApiError::BadRequest {

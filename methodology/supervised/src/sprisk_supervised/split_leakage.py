@@ -5,40 +5,39 @@ from typing import Any
 import networkx as nx
 
 from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
-from sprisk_contracts.generated.models import CapabilityClass, PortKind, Verdict
+from sprisk_contracts.generated.models import CapabilityClass, OperatorRole, PortKind, Verdict
 
 CHECK = "supervised.split_leakage@1.0.0"
 
 # Vertices: node ids and their output ports ("node.port").
 type PortGraph = nx.DiGraph[Any]
 
-# Pack settings (ADR-0015). Baseline models are reference points, not candidates.
-# Holdout ports are the sealed test outputs; other split outputs may be used for selection.
-BASELINE_OPERATORS = frozenset({"sprisk.ml.dummy_baseline"})
-HOLDOUT_PORTS = {
-    "sprisk.validation.random_split": "test",
-    "sprisk.validation.temporal_split": "test",
-    "sprisk.validation.group_split": "test",
-}
+# Splits, the baseline and fitting transforms are found by their manifests, never by name
+# (ADR-0064): a split by its role, the baseline as a model with no family, a fitting
+# transform by fits_on_train. Every split seals its test output; other split outputs may be
+# used for selection.
+HOLDOUT_PORT = "test"
 TRAIN_PORT = "train"
 # A code step may split rows in a way this check cannot see.
 CODE_OPERATOR = "sprisk.code.python"
 # Transforms that learn from their `train` input and apply to `train` and `test` (ADR-0018).
 TRAIN_OUTPUTS = frozenset({"train", "train_words"})
 WORDS_PORT = "words"
-FITTING_TRANSFORMS = frozenset(
-    {
-        "sprisk.clean.impute",
-        "sprisk.clean.scale",
-        "sprisk.clean.encode",
-        "sprisk.clean.group_rare",
-        "sprisk.clean.date_parts",
-        "sprisk.clean.power_transform",
-        "sprisk.clean.clip_outliers",
-        "sprisk.clean.spectral_gating",
-        "sprisk.clean.vectorize_text",
-    }
-)
+
+
+def is_split(op: Operator) -> bool:
+    return op.role == OperatorRole.split
+
+
+def is_baseline(op: Operator) -> bool:
+    """Baseline models are reference points, not candidates: a supervised model with no
+    family, as the comparison treats it."""
+    return op.model is not None and bool(op.model.tasks) and op.model.family is None
+
+
+def fits_on_train(op: Operator) -> bool:
+    return op.fits_on_train is True
+
 
 LIMITATIONS = (
     "Looks at this version of the flow only. If earlier versions compared models on the "
@@ -64,22 +63,15 @@ def split_leakage(
     - With no split step, a model scored on rows from the source it learns from FAILS; with a
       code step that may split them, NOT_ASSESSED. Never PASS.
     """
-    op_of = _operators_by_node(pipeline, operators)
+    op_of = operators_by_node(pipeline, operators)
     graph = _port_graph(pipeline, op_of)
-    holdouts = {
-        f"{node}.{HOLDOUT_PORTS[unversioned(op.id.root)]}"
-        for node, op in op_of.items()
-        if unversioned(op.id.root) in HOLDOUT_PORTS
-    }
-
-    splits = [n for n, op in op_of.items() if unversioned(op.id.root) in HOLDOUT_PORTS]
+    splits = [n for n, op in op_of.items() if is_split(op)]
+    holdouts = {f"{node}.{HOLDOUT_PORT}" for node in splits}
     sources = {n for n, op in op_of.items() if op.capability_class == CapabilityClass.source}
     # Cut every split's train port; any data source still reachable bypassed the split.
     cut = graph.copy()
     cut.remove_nodes_from(f"{s}.{TRAIN_PORT}" for s in splits)
-    for node in sorted(
-        n for n, op in op_of.items() if unversioned(op.id.root) in FITTING_TRANSFORMS
-    ):
+    for node in sorted(n for n, op in op_of.items() if fits_on_train(op)):
         problem = _fit_problem(graph, cut, node, splits, sources, holdouts)
         if problem:
             rationale, cited = problem
@@ -152,7 +144,7 @@ def split_leakage(
         table, model = _input_sources(evaluator, op_of[evaluator], graph)
         scored = holdouts & (nx.ancestors(graph, table) | {table})
         for model_node in _nearest_estimators(graph, model, op_of):
-            if unversioned(op_of[model_node].id.root) in BASELINE_OPERATORS:
+            if is_baseline(op_of[model_node]):
                 continue
             for holdout in scored:
                 candidates[holdout][model_node].add(evaluator)
@@ -181,7 +173,7 @@ def unversioned(ref: str) -> str:
     return ref.split("@")[0]
 
 
-def _operators_by_node(
+def operators_by_node(
     pipeline: PipelineVersion, operators: Mapping[str, Operator]
 ) -> dict[str, Operator]:
     op_of = {}
@@ -208,7 +200,7 @@ def _port_graph(pipeline: PipelineVersion, op_of: Mapping[str, Operator]) -> Por
     # its train input; its test outputs depend on both. Without this, every model after a
     # transform looks fit on test rows.
     for node, op in op_of.items():
-        if unversioned(op.id.root) in FITTING_TRANSFORMS:
+        if fits_on_train(op):
             source = _source_of(graph, node, TRAIN_PORT)
             for name in TRAIN_OUTPUTS & {p.name.root for p in op.outputs}:
                 graph.remove_edge(node, f"{node}.{name}")
@@ -225,7 +217,7 @@ def _scored_on_own_rows(
         table, model = _input_sources(evaluator, op_of[evaluator], graph)
         scored = sources & (nx.ancestors(graph, table) | {table.split(".")[0]})
         for node in sorted(_nearest_estimators(graph, model, op_of)):
-            if unversioned(op_of[node].id.root) in BASELINE_OPERATORS:
+            if is_baseline(op_of[node]):
                 continue
             shared = sorted(scored & nx.ancestors(graph, node))
             if shared:

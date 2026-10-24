@@ -530,6 +530,17 @@ class OperatorRole(StrEnum):
     source = "source"
     split = "split"
     model = "model"
+    score = "score"
+    score_shares = "score_shares"
+    cross_validate = "cross_validate"
+    select = "select"
+    row_filter = "row_filter"
+
+
+class SplitFolds(StrEnum):
+    plain = "plain"
+    group = "group"
+    time = "time"
 
 
 class Side(StrEnum):
@@ -3181,6 +3192,18 @@ class Operator(StrictModel):
         OperatorRole | None,
         Field(
             description="The job the step does, for methods that replace a step by role (ADR-0063). Absent: no method places it by role."
+        ),
+    ] = None
+    role_default: Annotated[
+        bool | None,
+        Field(
+            description="True for the operator the engine uses when it builds a step of this role (ADR-0064). At most one per role. Absent: not a default."
+        ),
+    ] = None
+    folds: Annotated[
+        SplitFolds | None,
+        Field(
+            description="Set on a split: how its folds are made when models are compared. Absent: a flow with this split cannot be compared."
         ),
     ] = None
     attach: Annotated[

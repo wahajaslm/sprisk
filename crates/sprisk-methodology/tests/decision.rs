@@ -18,7 +18,7 @@ use sprisk_methodology::{
 use sprisk_registry::Registry;
 
 mod repo;
-use repo::rules_with_example_split;
+use repo::{copy_dir, rules_with_example_split};
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
 
@@ -1610,9 +1610,8 @@ fn compare_by(
             task: TaskType::Classification,
             stated,
         },
-        is_split,
         keeps_train,
-        |operator| registry.get(operator),
+        &registry,
     )
 }
 
@@ -1814,6 +1813,86 @@ fn a_comparison_after_a_temporal_or_group_split_folds_the_same_way() {
 }
 
 #[test]
+fn a_split_s_folds_come_from_its_manifest_not_its_name() {
+    // A split added as a folder only: another id, folds declared by time (ADR-0064).
+    let plugins = tempfile::tempdir().unwrap();
+    copy_dir(&repo::repo("plugins"), plugins.path());
+    let manifest = std::fs::read_to_string(
+        plugins
+            .path()
+            .join("validation/operators/temporal_split/manifest.yaml"),
+    )
+    .unwrap()
+    .replace(
+        "sprisk.validation.temporal_split@1.0.0",
+        "acme.validation.later_split@1.0.0",
+    );
+    let folder = plugins.path().join("validation/operators/later_split");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("manifest.yaml"), manifest).unwrap();
+    let registry = Registry::load_dir(plugins.path()).unwrap();
+    let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+    pipeline["nodes"][1]["operator"] = json!("acme.validation.later_split@1.0.0");
+    pipeline["nodes"][1]["params"] = json!({ "time_column": "signup", "test_fraction": 0.2 });
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let proposal = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
+
+    let built = comparison(
+        &pipeline,
+        &proposal,
+        Scoring {
+            task: TaskType::Classification,
+            stated: None,
+        },
+        keeps_train,
+        &registry,
+    )
+    .unwrap();
+
+    let cv = serde_json::to_value(&built.nodes[2]).unwrap();
+    assert_eq!(cv["params"]["time_column"], "signup");
+    assert_eq!(cv["params"]["repeats"], 1);
+}
+
+#[test]
+fn a_split_that_declares_no_folds_cannot_be_compared() {
+    let plugins = tempfile::tempdir().unwrap();
+    copy_dir(&repo::repo("plugins"), plugins.path());
+    let manifest = std::fs::read_to_string(
+        plugins
+            .path()
+            .join("validation/operators/random_split/manifest.yaml"),
+    )
+    .unwrap()
+    .replace(
+        "sprisk.validation.random_split@1.0.0",
+        "acme.validation.any_split@1.0.0",
+    )
+    .replace("role_default: true\n", "")
+    .replace("folds: plain\n", "");
+    let folder = plugins.path().join("validation/operators/any_split");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("manifest.yaml"), manifest).unwrap();
+    let registry = Registry::load_dir(plugins.path()).unwrap();
+    let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
+    pipeline["nodes"][1]["operator"] = json!("acme.validation.any_split@1.0.0");
+    let pipeline: PipelineVersion = parse(&pipeline.to_string()).unwrap();
+    let proposal = shortlisted(&pipeline, json!(["ml_dummy_baseline", "ml_linear_model"]));
+    let scoring = Scoring {
+        task: TaskType::Classification,
+        stated: None,
+    };
+
+    let err = comparison(&pipeline, &proposal, scoring, keeps_train, &registry).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("declares no folds, so models cannot be compared on its train rows"),
+        "{err}"
+    );
+}
+
+#[test]
 fn a_comparison_refuses_folds_it_cannot_make_faithfully() {
     for (operator, params, why) in [
         (
@@ -1826,11 +1905,6 @@ fn a_comparison_refuses_folds_it_cannot_make_faithfully() {
             "sprisk.validation.group_split@1.0.0",
             json!({ "test_fraction": 0.2 }),
             "split step split names no group_column",
-        ),
-        (
-            "sprisk.validation.stratified_split@1.0.0",
-            json!({}),
-            "has no fold rule; compare knows random, temporal and group splits",
         ),
     ] {
         let mut pipeline = serde_json::to_value(evaluated_flow()).unwrap();
@@ -1936,9 +2010,8 @@ fn compare_preparation(
             task: TaskType::Classification,
             stated: None,
         },
-        is_split,
         fits,
-        |operator| registry.get(operator),
+        &registry,
     )
 }
 

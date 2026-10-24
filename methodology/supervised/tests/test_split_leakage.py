@@ -2,11 +2,11 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
+from repo_operators import repo_operators
 
 from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
 from sprisk_contracts.generated.models import Verdict
-from sprisk_supervised.split_leakage import FITTING_TRANSFORMS, CheckInputError, split_leakage
+from sprisk_supervised.split_leakage import CheckInputError, split_leakage
 
 PLUGINS = Path(__file__).parents[3] / "plugins"
 CHECK_ID = "mck_01JABCDEFGHJKMNPQRSTVWXYZ0"
@@ -73,10 +73,7 @@ def operators() -> dict[str, Operator]:
             [("metrics", "metrics")],
         ),
     }
-    for path in PLUGINS.rglob("manifest.yaml"):
-        op = Operator.model_validate_json(json.dumps(yaml.safe_load(path.read_text())))
-        ops[op.id.root] = op
-    return ops
+    return ops | repo_operators()
 
 
 def pipeline(nodes: dict[str, str], edges: list[tuple[str, str]]) -> PipelineVersion:
@@ -199,6 +196,22 @@ def test_model_fit_on_the_test_table_fails() -> None:
     nodes = {"load": SOURCE, "split": SPLIT, "cheat": LINEAR}
     edges = [("load.data", "split.data"), ("split.test", "cheat.train")]
     result = check(pipeline(nodes, edges))
+    assert result.verdict == Verdict.fail
+    assert [n.root for n in result.cited_nodes] == ["cheat", "split"]
+
+
+def test_a_split_is_found_by_its_role_not_its_name() -> None:
+    # A split added as a folder only, under another name (ADR-0064).
+    ops = operators()
+    later = ops["sprisk.validation.temporal_split@1.0.0"].model_copy(
+        update={
+            "id": ops[SPLIT].id.model_copy(update={"root": "acme.validation.later_split@1.0.0"})
+        }
+    )
+    ops[later.id.root] = later
+    nodes = {"load": SOURCE, "split": later.id.root, "cheat": LINEAR}
+    edges = [("load.data", "split.data"), ("split.test", "cheat.train")]
+    result = split_leakage(pipeline(nodes, edges), ops, CHECK_ID, NOW)
     assert result.verdict == Verdict.fail
     assert [n.root for n in result.cited_nodes] == ["cheat", "split"]
 
@@ -401,16 +414,21 @@ def test_a_comparison_fed_the_test_rows_fails() -> None:
     assert result.rationale.startswith("cv_a learns from the test set (split.test)")
 
 
-def test_every_core_step_that_fits_on_train_is_a_fitting_transform() -> None:
-    # A new preparation step (ADR-0050, ADR-0056) must not slip past the leakage checks.
-    plugins = Path(__file__).parents[3] / "plugins"
-    fitting = {
-        manifest["id"].split("@")[0]
-        for path in plugins.glob("*/operators/*/manifest.yaml")
-        if (manifest := yaml.safe_load(path.read_text())).get("fits_on_train")
-    }
-    assert fitting, "no core step fits on train"
-    assert fitting <= FITTING_TRANSFORMS, sorted(fitting - FITTING_TRANSFORMS)
+def test_a_step_that_fits_on_train_is_checked_whatever_its_name() -> None:
+    # A preparation step added as a folder only (ADR-0050, ADR-0064) must not slip past.
+    ops = operators()
+    impute = ops["sprisk.clean.impute@1.0.0"]
+    renamed = impute.model_copy(
+        update={"id": impute.id.model_copy(update={"root": "acme.clean.fill@1.0.0"})}
+    )
+    ops[renamed.id.root] = renamed
+    p = cleaned("load.data", "load.data")
+    for node in p.nodes:
+        if node.id.root == "impute":
+            node.operator = node.operator.model_copy(update={"root": renamed.id.root})
+    result = split_leakage(p, ops, CHECK_ID, NOW)
+    assert result.verdict == Verdict.fail
+    assert "impute" in [n.root for n in result.cited_nodes]
 
 
 VECTORIZE = "sprisk.clean.vectorize_text@1.1.0"

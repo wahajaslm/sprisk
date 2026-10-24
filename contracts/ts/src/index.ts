@@ -59,6 +59,7 @@ export interface Entities {
   CreateWalk: C.CreateWalk;
   Walk: C.Walk;
   WalkDetail: C.WalkDetail;
+  Report: C.Report;
   FlowDecisions: C.FlowDecisions;
   Report: C.Report;
   MethodFiles: C.MethodFiles;

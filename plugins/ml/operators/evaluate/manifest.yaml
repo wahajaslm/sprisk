@@ -2,6 +2,8 @@ schema_version: sprisk.operator/v1
 id: sprisk.ml.evaluate@2.0.0
 title: Test-set evaluation
 capability_class: evaluator
+role: score
+role_default: true
 description: Score a fitted model on a test table. Classification - accuracy, balanced accuracy, macro F1. Regression - RMSE, MAE, R2.
 entrypoint: sprisk_ml.evaluate:evaluate
 inputs: [{ name: model, kind: model }, { name: test, kind: table }, { name: words, kind: matrix, optional: true, description: "Word features of the test rows, from the Vectorize text step the model's train words came from; scored beside the test table (ADR-0058)." }]

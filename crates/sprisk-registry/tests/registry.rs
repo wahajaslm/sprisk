@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::Path;
 
+use sprisk_contracts::OperatorRole;
 use sprisk_registry::{Registry, RegistryError};
 
 const SPLIT: &str = r#"
@@ -145,6 +146,90 @@ fn only_a_matrix_input_may_be_optional() {
     );
     write(dir.path(), "ok/manifest.yaml", &words);
     assert_eq!(Registry::load_dir(dir.path()).unwrap().len(), 1);
+}
+
+fn split_default(id: &str) -> String {
+    format!("{}role: split\nrole_default: true\n", with_id(id))
+}
+
+#[test]
+fn a_role_s_default_operator_is_found_by_its_role() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "a/manifest.yaml",
+        &split_default("acme.t.a@1.0.0"),
+    );
+    write(
+        dir.path(),
+        "b/manifest.yaml",
+        &format!("{}role: split\n", with_id("acme.t.b@1.0.0")),
+    );
+    let registry = Registry::load_dir(dir.path()).unwrap();
+
+    let found = registry.default_for(OperatorRole::Split).unwrap();
+
+    assert_eq!(found.id.as_str(), "acme.t.a@1.0.0");
+    let err = registry.default_for(OperatorRole::Score).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("no default operator for the score role"),
+        "{err}"
+    );
+}
+
+#[test]
+fn two_defaults_for_one_role_are_refused_and_named() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "a/manifest.yaml",
+        &split_default("acme.t.a@1.0.0"),
+    );
+    write(
+        dir.path(),
+        "b/manifest.yaml",
+        &split_default("acme.t.b@1.0.0"),
+    );
+
+    let err = Registry::load_dir(dir.path()).unwrap_err().to_string();
+
+    assert!(
+        err.contains("acme.t.a@1.0.0") && err.contains("acme.t.b@1.0.0"),
+        "{err}"
+    );
+    assert!(err.contains("both the default for the split role"), "{err}");
+}
+
+#[test]
+fn a_default_with_no_role_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "a/manifest.yaml",
+        &format!("{}role_default: true\n", with_id("acme.t.a@1.0.0")),
+    );
+
+    let err = Registry::load_dir(dir.path()).unwrap_err().to_string();
+
+    assert!(err.contains("is a default but has no role"), "{err}");
+}
+
+#[test]
+fn every_core_role_has_its_one_default() {
+    let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+    let registry = Registry::load_dir(&plugins).unwrap();
+    for role in [
+        OperatorRole::Source,
+        OperatorRole::Split,
+        OperatorRole::Model,
+        OperatorRole::Score,
+        OperatorRole::ScoreShares,
+        OperatorRole::CrossValidate,
+        OperatorRole::Select,
+    ] {
+        registry.default_for(role).unwrap();
+    }
 }
 
 #[test]

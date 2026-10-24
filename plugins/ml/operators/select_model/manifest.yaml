@@ -2,6 +2,8 @@ schema_version: sprisk.operator/v1
 id: sprisk.ml.select_model@5.0.0
 title: Model selection
 capability_class: decision_evaluator
+role: select
+role_default: true
 description: Choose among cross-validated candidates (ADR-0044). Of the candidates that beat the baseline on the same folds, the simplest within one standard error of the best wins (ADR-0050). If none beats it, a floor baseline means no winner and a reference baseline stands. A study's tuned candidate takes each outer fold's score from the trial its inner folds chose, and a candidate that misses a guardrail cannot win (ADR-0052). Writes a SelectionDecision.
 entrypoint: sprisk_ml.compare:select_model
 inputs: []
