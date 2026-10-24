@@ -1,0 +1,65 @@
+{
+  "schema_version": "sprisk.question_version/v1",
+  "id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "investigation_id": "inv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "parent_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "objective": {
+    "value": "Predict which orders will be returned within 30 days.",
+    "origin": "explicit"
+  },
+  "task": {
+    "value": "classification",
+    "origin": "inferred"
+  },
+  "target": {
+    "value": "returned_within_30d",
+    "origin": "confirmed"
+  },
+  "unit_of_analysis": {
+    "value": "order",
+    "origin": "inferred"
+  },
+  "entity_column": {
+    "value": "order_id",
+    "origin": "explicit"
+  },
+  "time_column": {
+    "value": "order_date",
+    "origin": "measured"
+  },
+  "prediction_horizon": {
+    "value": "P30D",
+    "origin": "explicit"
+  },
+  "assumptions": [
+    {
+      "value": "Return labels are complete after 30 days.",
+      "origin": "explicit"
+    }
+  ],
+  "unknowns": [
+    {
+      "question": "Are exchanges counted as returns?",
+      "blocks": "release"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "value": "Average precision beats the dummy baseline on the temporal validation fold.",
+      "origin": "inferred"
+    }
+  ],
+  "created_at": "2026-10-15T10:00:00Z",
+  "bindings": [
+    {
+      "schema_version": "sprisk.binding/v1",
+      "concept": "common.item_title",
+      "source": {
+        "column": "designation"
+      },
+      "set_by": {
+        "assurance": "stated"
+      }
+    }
+  ]
+}

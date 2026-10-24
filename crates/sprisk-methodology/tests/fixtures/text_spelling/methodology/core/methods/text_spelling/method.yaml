@@ -1,0 +1,26 @@
+schema_version: sprisk.method/v1
+id: methodology.core.text_spelling@2.0.0
+decides: data.text_spelling
+activity: Text spelling
+question: Should category text that differs only in spaces or case be merged?
+needs:
+  concepts: []
+  evidence: [data.spelling_variants]
+  decisions: []
+options:
+  - id: normalise
+    label: Trim and lowercase
+    action:
+      insert:
+        before: split
+        operator: sprisk.clean.clean_text@1.0.0
+        node_id: text_spelling
+        settings: { lowercase: true, empty_to_null: false }
+        from_evidence: { columns: data.spelling_variants.columns }
+        concepts: { exclude: common.target }
+    verify: []
+  - id: keep
+    label: Keep the spelling
+    verify: []
+verifications: {}
+source: "OpenRefine documentation, 'Clustering methods in-depth': key collision with the fingerprint keyer."

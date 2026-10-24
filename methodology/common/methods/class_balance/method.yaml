@@ -1,0 +1,19 @@
+schema_version: sprisk.method/v1
+id: methodology.common.class_balance@2.0.0
+decides: question.class_balance
+activity: Target
+question: Is the target's class mix unbalanced?
+applies_when: { task: [classification] }
+needs:
+  concepts: [common.target]
+  evidence: [target.shape]
+  decisions: []
+options:
+  - id: balanced
+    label: Balanced enough
+    verify: []
+  - id: unbalanced
+    label: Unbalanced
+    verify: []
+verifications: {}
+source: "He & Garcia (2009) Learning from Imbalanced Data, IEEE TKDE 21(9):1263-1284. Unequal error costs are not imbalance: they move the decision threshold (Elkan 2001)."

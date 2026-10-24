@@ -1,5 +1,5 @@
 /** The Inspector: one dock panel per question about the selected step. */
-export const INSPECTOR_TABS = ["data", "visuals", "console", "inputs", "parameters", "code", "checks", "performance", "history"] as const;
+export const INSPECTOR_TABS = ["data", "visuals", "console", "inputs", "parameters", "code", "checks", "files", "performance", "history"] as const;
 export type InspectorTab = (typeof INSPECTOR_TABS)[number];
 
 export const TAB_LABEL: Record<InspectorTab, string> = {
@@ -10,6 +10,7 @@ export const TAB_LABEL: Record<InspectorTab, string> = {
   parameters: "Parameters",
   code: "Code",
   checks: "Methodology",
+  files: "Files",
   performance: "Performance",
   history: "History",
 };

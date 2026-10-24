@@ -798,7 +798,7 @@ pub fn proposal(
                             "{id} needs placement before, an operator, a node_id and params"
                         )));
                     };
-                    let step = free_id(pipeline, wanted.as_str());
+                    let step = free_id(&pipeline.nodes, wanted.as_str());
                     built["effect"] = json!({ "kind": "insert_node", "node_id": step, "operator": operator,
                                               "params": params, "before": node_id });
                     if let Some(other) = other_table(pipeline, operator.as_str(), operators)? {
@@ -930,9 +930,9 @@ fn model_settings(
     })
 }
 
-/// `wanted`, or `wanted` with the first suffix `_2`, `_3`, … that no step of `pipeline` has.
-fn free_id(pipeline: &PipelineVersion, wanted: &str) -> String {
-    let taken = |id: &str| pipeline.nodes.iter().any(|n| n.id.as_str() == id);
+/// `wanted`, or `wanted` with the first suffix `_2`, `_3`, … that no step in `nodes` has.
+pub(crate) fn free_id(nodes: &[Node], wanted: &str) -> String {
+    let taken = |id: &str| nodes.iter().any(|n| n.id.as_str() == id);
     let mut id = wanted.to_owned();
     let mut n = 1;
     while taken(&id) {

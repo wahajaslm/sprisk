@@ -1,0 +1,12 @@
+{
+  "schema_version": "sprisk.binding/v1",
+  "concept": "core.item_identity",
+  "source": {
+    "column": "item_group",
+    "step": "near_duplicates"
+  },
+  "set_by": {
+    "assurance": "confirmed",
+    "method": "methodology.core.repeated_items@1.0.0"
+  }
+}

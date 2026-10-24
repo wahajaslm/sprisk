@@ -1,7 +1,7 @@
 import type { MethodologyCheck, MethodologyRule } from "@sprisk/contracts";
 
 import type { RunChecks } from "../../api/checks.ts";
-import { useMethodologyDecision, useMethodologyProposal, useMethodologyRules } from "../../api/methodology.ts";
+import { byRule, useMethodologyDecision, useMethodologyProposal, useMethodologyRules } from "../../api/methodology.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 
 const PHASE: Record<NonNullable<MethodologyCheck["phase"]>, string> = {
@@ -51,11 +51,14 @@ export function ChecksTab({ run, nodeId }: { run: RunChecks; nodeId: string }) {
 /** What the decision that set this step chose, the reason given, and the evidence it weighed. */
 function DecisionLine({ id, rule }: { id: string; rule: MethodologyRule | undefined }) {
   const decision = useMethodologyDecision(id);
-  const proposal = useMethodologyProposal(decision.data?.proposal_id);
+  const ruled = byRule(decision.data) ? decision.data : undefined;
+  const proposal = useMethodologyProposal(ruled?.proposal_id);
   if (decision.isError) return <p role="alert" className="error">{decision.error.message}</p>;
   if (proposal.isError) return <p role="alert" className="error">{proposal.error.message}</p>;
   if (!decision.data) return <p className="check-limit">Set by a methodology decision.</p>;
-  const { alternative_id, reason } = decision.data;
+  const made = decision.data;
+  if (!byRule(made)) return <p className="check-limit">{`Decision took ${made.option}: ${made.reason}`}</p>;
+  const { alternative_id, reason } = made;
   const label = rule?.alternatives.find((a) => a.id === alternative_id)?.label ?? alternative_id;
   return (
     <>
@@ -70,7 +73,3 @@ function DecisionLine({ id, rule }: { id: string; rule: MethodologyRule | undefi
     </>
   );
 }
-
-/** Checks citing this step that did not pass; shown as a badge on the tab. */
-export const concerns = (run: RunChecks, nodeId: string) =>
-  run.status === "ready" ? run.checks.filter((c) => c.verdict !== "pass" && c.cited_nodes.includes(nodeId)).length : 0;

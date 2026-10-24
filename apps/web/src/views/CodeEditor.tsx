@@ -1,8 +1,8 @@
-import type { PipelineVersion } from "@sprisk/contracts";
+import type { Operator, PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
 import { useViewSelection } from "../workbench/instance.tsx";
 
-import { useOperators, useSaveAndRun } from "../api/hooks.ts";
+import { useOperatorsByRef, useSaveAndRun } from "../api/hooks.ts";
 import { setCodeSource } from "../flow/edit.ts";
 import { cellNumber, isNotebookStep, notebookSteps, withSource } from "../flow/notebook.ts";
 import { useSelection } from "../workbench/selection.ts";
@@ -16,8 +16,8 @@ import { useSaveCells } from "./useSaveCells.ts";
 export function CodeEditor({ pipeline, nodeId, source }: { pipeline: PipelineVersion; nodeId: string; source: string }) {
   const [draft, setDraft] = useState(source);
   const { saveAndRun, runSource } = useRunSource(pipeline, nodeId);
-  const operators = useOperators();
-  const byRef = new Map((operators.data ?? []).map((op) => [op.id, op]));
+  const operators = useOperatorsByRef();
+  const byRef = operators.data ?? new Map<string, Operator>();
   const cells = useSaveCells(pipeline, byRef);
   const isNotebookCode = isNotebookStep(pipeline.nodes.find((n) => n.id === nodeId)?.operator ?? "");
   const pending = saveAndRun.isPending || cells.pending || (isNotebookCode && operators.isPending);

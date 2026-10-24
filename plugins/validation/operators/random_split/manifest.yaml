@@ -1,6 +1,8 @@
 schema_version: sprisk.operator/v1
 id: sprisk.validation.random_split@1.0.0
+title: Random split
 capability_class: transform
+role: split
 description: Shuffle rows with a fixed seed into train and test.
 entrypoint: sprisk_validation.random_split:random_split
 notebook_code: sprisk_validation.random_split:as_code

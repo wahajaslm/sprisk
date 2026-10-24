@@ -1,4 +1,4 @@
-import type { PipelineVersion, Run } from "@sprisk/contracts";
+import type { Operator, PipelineVersion, Run } from "@sprisk/contracts";
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getList, getOne, getText, postOne } from "./client.ts";
@@ -11,8 +11,15 @@ export const isLive = (run: Run | undefined) => run !== undefined && !FINISHED.h
 export const usePipelineVersions = () =>
   useQuery({ queryKey: ["pipeline_versions"], queryFn: () => getList("PipelineVersion", "/pipeline_versions?limit=50") });
 
-export const useOperators = () =>
-  useQuery({ queryKey: ["operators"], queryFn: () => getList("Operator", "/operators"), staleTime: Infinity });
+const operatorsQuery = { queryKey: ["operators"], queryFn: () => getList("Operator", "/operators"), staleTime: Infinity };
+
+export const useOperators = () => useQuery(operatorsQuery);
+
+// Module-level, so the query keeps one Map until the operators change.
+const byRef = (operators: Operator[]) => new Map(operators.map((o) => [o.id, o]));
+
+/** The operators by ref, from the same cached request as useOperators. */
+export const useOperatorsByRef = () => useQuery({ ...operatorsQuery, select: byRef });
 
 /** A built-in operator's code. It changes only when the API restarts with new plugins. */
 export const operatorSourceQuery = (operatorRef: string) => ({
@@ -106,10 +113,25 @@ export function useRunAgain(onScreen: string | undefined) {
   });
 }
 
+/** Run a saved version from one step: that step and every step after it run again, even
+ * unchanged; the steps before it are reused from `onScreen` (ADR-0026 amendment). */
+export function useRunFrom(onScreen: string | undefined) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pipelineVersionId, nodeId }: { pipelineVersionId: string; nodeId: string }) =>
+      postOne("Run", "/runs", {
+        pipeline_version_id: pipelineVersionId,
+        run_from_node_id: nodeId,
+        ...(onScreen ? { reuse_run_id: onScreen } : {}),
+      }),
+    onSuccess: (run) => client.invalidateQueries({ queryKey: ["runs", run.pipeline_version_id] }),
+  });
+}
+
 /** Save an edited flow as a new pipeline version, then run it. Rust compiles and checks
  * the version; the UI never does (rule 3). */
 /** Save a new version without running it: a flow made from someone's notebook runs only when
- * the person presses Run graph (ADR-0031). */
+ * the person presses Run flow (ADR-0031). */
 export function useSavePipelineVersion() {
   const client = useQueryClient();
   return useMutation({
@@ -122,7 +144,7 @@ export function useSavePipelineVersion() {
 }
 
 /** Save an edited version and run it from the edited step onwards: every unchanged step
- * reuses `onScreen`, the run being looked at (ADR-0026). Run graph (useStartRun) runs from
+ * reuses `onScreen`, the run being looked at (ADR-0026). Run flow (useStartRun) runs from
  * the start. */
 export function useSaveAndRun(onScreen: string | undefined) {
   const client = useQueryClient();

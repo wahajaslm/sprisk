@@ -4,14 +4,15 @@ import { useState } from "react";
 import { useReadSettings, useSplitCells } from "../../api/code.ts";
 import { useRunAgain, useSaveAndRun } from "../../api/hooks.ts";
 import { nodeOf, splitRequest, versionFromSplit } from "../../flow/notebook.ts";
-import { type Stage, stepLabel } from "../../flow/stages.ts";
+import { stepLabel } from "../../flow/stages.ts";
 import { codeRequest, editedReadyMade, newStepsIn, stageCells, stageEdits, withSettings } from "../../notebook/stageCells.ts";
+import type { Section } from "../../notebook/stageNotebooks.ts";
 import { useSelection } from "../../workbench/selection.ts";
 
-/** Save a stage's cells as the next flow version when they changed, then run it, reusing
- * unchanged steps (ADR-0026, ADR-0055). The stage notebook and a step's Code tab both save
+/** Save a section's cells as the next flow version when they changed, then run it, reusing
+ * unchanged steps (ADR-0026, ADR-0055). The section notebook and a step's Code tab both save
  * this way, so a cell and its node never disagree. `code` holds ready-made steps' plain Python. */
-export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Operator>, stage: Stage, code: Map<string, string>) {
+export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Operator>, section: Section, code: Map<string, string>) {
   const runId = useSelection((s) => s.runId);
   const showRun = useSelection((s) => s.showRun);
   const split = useSplitCells();
@@ -25,7 +26,7 @@ export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Opera
     setProblem(undefined);
     try {
       // Cells as the flow has them: run it again, no new version.
-      if (sameCells(now, stageCells(pipeline, byRef, stage, code))) {
+      if (sameCells(now, stageCells(section, code))) {
         const run = await runAgain.mutateAsync(pipeline.id);
         return showRun(pipeline.id, run.id, show);
       }
@@ -40,16 +41,16 @@ export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Opera
           flow = withSettings(flow, id, read.settings);
           known.set(id, source);
         } else {
-          converted.push(`${id} is now your own Python code. The methodology checks for ${stepLabel(node).title} steps no longer cover it.`);
+          converted.push(`${id} is now your own Python code. The methodology checks for ${stepLabel(node, byRef.get(node.operator)).title} steps no longer cover it.`);
         }
       }
-      const edits = stageEdits(flow, byRef, stage, now, known);
+      const edits = stageEdits(flow, byRef, section.name, now, known);
       if ("refused" in edits) return setProblem(edits.refused);
       const request = splitRequest(edits.base, byRef, edits.steps);
       const found = await split.mutateAsync(request.cells);
       const made = versionFromSplit(edits.base, byRef, request, found);
       setNotes([...converted, ...made.notes]);
-      const version = newStepsIn(made.version, pipeline, stage);
+      const version = newStepsIn(made.version, pipeline, section.home);
       const run = await saveAndRun.mutateAsync(version);
       showRun(version.id, run.id, show);
     } catch (e) {

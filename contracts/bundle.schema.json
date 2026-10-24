@@ -19,6 +19,10 @@
         "reuse_run_id": {
           "$ref": "#/$defs/RunId",
           "description": "Reuse this run's results for every step whose definition is unchanged; run the rest (ADR-0026). Omitted: run from the start."
+        },
+        "run_from_node_id": {
+          "$ref": "#/$defs/NodeId",
+          "description": "Run this step and every step after it again, even where unchanged; reuse or take from the cache only the steps before it (ADR-0026 amendment). It must be a step of the version. Omitted: only changed steps run."
         }
       }
     },
@@ -1320,6 +1324,881 @@
         }
       }
     },
+    "Method": {
+      "title": "Method",
+      "description": "A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "decides",
+        "activity",
+        "question",
+        "needs",
+        "options",
+        "verifications",
+        "source"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.method/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "decides": {
+          "$ref": "#/$defs/DecisionKey"
+        },
+        "activity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The group this decision is shown in: one stage card on the canvas, one notebook section."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The decision as a question for people."
+        },
+        "applies_when": {
+          "$ref": "#/$defs/MethodAppliesWhen"
+        },
+        "needs": {
+          "$ref": "#/$defs/MethodNeeds"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MethodOption"
+          }
+        },
+        "verifications": {
+          "type": "object",
+          "description": "Promises an option can make, by name. An option lists the ones it makes in verify.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/MethodVerification"
+          }
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The published standard the method follows."
+        }
+      }
+    },
+    "MethodRef": {
+      "type": "string",
+      "description": "methodology.<pack>.<method>@<semver>",
+      "pattern": "^methodology\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "DecisionKey": {
+      "type": "string",
+      "description": "<area>.<decision>, the key other methods read a decision by.",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "ConceptId": {
+      "type": "string",
+      "description": "<pack>.<concept>, a meaning defined in a pack's concepts.yaml.",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "EvidenceKind": {
+      "type": "string",
+      "description": "<area>.<evidence>, a measured fact one operator produces.",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "MethodAppliesWhen": {
+      "type": "object",
+      "description": "When the method applies. Absent: always.",
+      "additionalProperties": false,
+      "required": [
+        "task"
+      ],
+      "properties": {
+        "task": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskType"
+          }
+        }
+      }
+    },
+    "MethodNeeds": {
+      "type": "object",
+      "description": "Everything decide() may read. It reads nothing else.",
+      "additionalProperties": false,
+      "required": [
+        "concepts",
+        "evidence",
+        "decisions"
+      ],
+      "properties": {
+        "concepts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceKind"
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DecisionKey"
+          }
+        }
+      }
+    },
+    "MethodOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "verify"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/MethodAction"
+        },
+        "verify": {
+          "type": "array",
+          "description": "The verifications this option promises, by name.",
+          "items": {
+            "$ref": "#/$defs/VerificationName"
+          }
+        }
+      }
+    },
+    "MethodAction": {
+      "type": "object",
+      "description": "What the option changes. Absent: nothing.",
+      "additionalProperties": false,
+      "properties": {
+        "bind": {
+          "$ref": "#/$defs/MethodBind"
+        },
+        "replace": {
+          "$ref": "#/$defs/MethodReplace"
+        },
+        "insert": {
+          "$ref": "#/$defs/MethodInsert"
+        }
+      }
+    },
+    "MethodInsert": {
+      "type": "object",
+      "description": "Inserts a step running operator on the rows the step with role `before` reads (ADR-0063 slice 6).",
+      "additionalProperties": false,
+      "required": [
+        "before",
+        "operator",
+        "node_id"
+      ],
+      "properties": {
+        "before": {
+          "$ref": "#/$defs/OperatorRole"
+        },
+        "operator": {
+          "$ref": "#/$defs/OperatorRef"
+        },
+        "node_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "description": "The inserted step's id; a free one with a suffix when the flow already has it."
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "Params that do not depend on the project. Absent: none."
+        },
+        "from_evidence": {
+          "type": "object",
+          "description": "Params read from a field of evidence the method needs: param name to <area>.<evidence>.<field>. Absent: none.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          }
+        },
+        "concepts": {
+          "type": "object",
+          "description": "Params a project's binding fills: param name to concept. Absent: none.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        }
+      }
+    },
+    "MethodBind": {
+      "type": "object",
+      "description": "Binds a concept to a column that the producer of an evidence kind adds.",
+      "additionalProperties": false,
+      "required": [
+        "concept",
+        "evidence",
+        "column"
+      ],
+      "properties": {
+        "concept": {
+          "$ref": "#/$defs/ConceptId"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "column": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A column the producer writes, never a dataset column."
+        }
+      }
+    },
+    "MethodVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "needs",
+        "promise"
+      ],
+      "properties": {
+        "needs": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "promise": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What holds when it passes, for people."
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "Values verify_<name>() reads. Absent: none."
+        }
+      }
+    },
+    "MethodRequest": {
+      "title": "MethodRequest",
+      "description": "Rust to the method session (`python -m sprisk_workers.method`), one JSON line per decision (ADR-0063): the method module Rust picked from the loaded catalog, and only what its needs declare. decide() may read nothing else.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "module",
+        "method",
+        "needs",
+        "options",
+        "task",
+        "evidence",
+        "decisions",
+        "bound"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.method_request/v1"
+          ]
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored."
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "needs": {
+          "$ref": "#/$defs/MethodNeeds"
+        },
+        "options": {
+          "type": "array",
+          "description": "The ids of the method's options: decide() chooses or asks for one of them.",
+          "items": {
+            "$ref": "#/$defs/MethodOptionId"
+          }
+        },
+        "task": {
+          "$ref": "#/$defs/TaskType"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceSet",
+          "description": "Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names."
+        },
+        "decisions": {
+          "type": "object",
+          "description": "Each needed decision, by its key: the option chosen.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/MethodOptionId"
+          }
+        },
+        "bound": {
+          "type": "array",
+          "description": "The needed concepts a stated, confirmed or method-made binding names. Never a column name.",
+          "items": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        }
+      }
+    },
+    "VerificationRequest": {
+      "title": "VerificationRequest",
+      "description": "Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "module",
+        "method",
+        "verification",
+        "evidence",
+        "settings"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.verification_request/v1"
+          ]
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored."
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceFields",
+          "description": "The fields of the evidence kind the verification needs."
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "The verification's settings from method.yaml; empty when it has none."
+        }
+      }
+    },
+    "MethodFiles": {
+      "title": "MethodFiles",
+      "description": "Read-only files of one method folder (ADR-0063): its method.yaml and method.py, as the packs loaded them, so a person sees the code that decides and checks a step. Served by GET /methods/{id}/source; the API reads only files inside the method's folder.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "files"
+      ],
+      "properties": {
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "language",
+              "text"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Relative to the method folder, e.g. method.yaml. Never an absolute path.",
+                "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./-]*$"
+              },
+              "language": {
+                "type": "string",
+                "enum": [
+                  "yaml",
+                  "python"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "MethodOptionId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "VerificationName": {
+      "type": "string",
+      "description": "A verification a method declares, the name of its verify_<name>() function.",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "MethodAssurance": {
+      "type": "string",
+      "description": "How a method's option was taken: confirmed, a person answered the method's ask; rule, the method chose it unasked.",
+      "enum": [
+        "confirmed",
+        "rule"
+      ]
+    },
+    "MethodAnswer": {
+      "title": "MethodAnswer",
+      "description": "The method session's one JSON line per request, tagged by `answer`: what decide() returned, what verify_<name>() found, or why the method refused its request. Any other failure ends the session.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MethodDecided"
+        },
+        {
+          "$ref": "#/$defs/MethodRefused"
+        },
+        {
+          "$ref": "#/$defs/MethodVerified"
+        }
+      ]
+    },
+    "MethodDecided": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "method",
+        "outcome",
+        "option",
+        "reason"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "decided"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "choose",
+            "ask"
+          ],
+          "description": "choose: the method applies the option. ask: a person confirms the option, or picks another, before anything relies on it."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why, for a person. For ask, the question itself."
+        }
+      }
+    },
+    "MethodRefused": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "error"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "refused"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The method's own error (an undeclared read, an unknown option). It may name local paths, so it goes to the log, not to a client."
+        }
+      }
+    },
+    "MethodVerified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "method",
+        "verification",
+        "result",
+        "detail"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "verified"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "result": {
+          "$ref": "#/$defs/VerificationOutcome"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the evidence showed, for a person."
+        }
+      }
+    },
+    "VerificationOutcome": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive"
+      ],
+      "description": "What verify_<name>() found. pass: the promise holds. fail: it does not. inconclusive: the evidence cannot say, such as one side with no groups. Never stale: only the control plane knows what changed since."
+    },
+    "DecisionAnswer": {
+      "type": "object",
+      "description": "A person's answer to a method's ask (ADR-0063 amendment): the option to apply for the decision. The walk applies it with assurance confirmed.",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "option"
+      ],
+      "properties": {
+        "decides": {
+          "$ref": "#/$defs/DecisionKey"
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        }
+      }
+    },
+    "ConceptSet": {
+      "title": "ConceptSet",
+      "description": "A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for. Served by GET /concepts with the concepts of every loaded pack.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "concepts"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.concept_set/v1"
+          ]
+        },
+        "concepts": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/Concept"
+          }
+        }
+      }
+    },
+    "Concept": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description",
+        "binds_to"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ConceptKind"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binds_to": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BindingSourceKind"
+          }
+        }
+      }
+    },
+    "ConceptKind": {
+      "type": "string",
+      "description": "label: what a model predicts; an all-rows step may never read it. text: free text. entity_identifier: groups rows of one real-world thing. time: when a row's event happened.",
+      "enum": [
+        "label",
+        "text",
+        "entity_identifier",
+        "time"
+      ]
+    },
+    "BindingSourceKind": {
+      "type": "string",
+      "description": "column: a column of the loaded data. derived: a column a step adds.",
+      "enum": [
+        "column",
+        "derived"
+      ]
+    },
+    "Binding": {
+      "title": "Binding",
+      "description": "Which column means a concept in one project (ADR-0063). Column names live only here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "concept",
+        "source",
+        "set_by"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.binding/v1"
+          ]
+        },
+        "concept": {
+          "$ref": "#/$defs/ConceptId"
+        },
+        "source": {
+          "$ref": "#/$defs/BindingSource"
+        },
+        "set_by": {
+          "$ref": "#/$defs/BindingSetBy"
+        }
+      }
+    },
+    "BindingSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column"
+      ],
+      "properties": {
+        "column": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step": {
+          "$ref": "#/$defs/NodeId",
+          "description": "The step that adds the column. Absent: a column of the loaded data."
+        }
+      }
+    },
+    "OperatorRole": {
+      "type": "string",
+      "description": "The one job a step does in a flow, so methods place and replace steps by role, not by input names.",
+      "enum": [
+        "source",
+        "split",
+        "model"
+      ]
+    },
+    "OperatorAttach": {
+      "type": "object",
+      "description": "Where the engine adds an evidence producer: on the rows going into (input) or coming out of (output) the step with this role.",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "side"
+      ],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/OperatorRole"
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "input",
+            "output"
+          ]
+        }
+      }
+    },
+    "OperatorScope": {
+      "type": "string",
+      "description": "all: reads every row, before the split, so it may never read a label concept. train: reads train rows only.",
+      "enum": [
+        "all",
+        "train"
+      ]
+    },
+    "EvidenceProduced": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "default": {
+          "type": "boolean",
+          "description": "The producer the engine adds when several operators produce this kind. Absent: false."
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/EvidenceFieldType"
+          }
+        }
+      }
+    },
+    "EvidenceSet": {
+      "title": "EvidenceSet",
+      "description": "What one evidence producer measured, written to its output port named evidence (ADR-0063): each kind it produces, with each field's value. The operator's produces says which kinds and fields, of which types; the control plane checks the file against it when the step's outputs are saved.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/EvidenceFields"
+      }
+    },
+    "EvidenceFields": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/EvidenceValue"
+      }
+    },
+    "EvidenceValue": {
+      "description": "A field's value: a number, a yes or no, a short text, or a list of short texts (string_list).",
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "EvidenceFieldType": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "number",
+        "boolean",
+        "string",
+        "string_list"
+      ],
+      "description": "string_list: short values shown to people, such as the ids of overlapping groups."
+    },
+    "MethodReplace": {
+      "type": "object",
+      "description": "Replaces the step with this role by a step running operator.",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "operator"
+      ],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/OperatorRole"
+        },
+        "operator": {
+          "$ref": "#/$defs/OperatorRef"
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "Params that do not depend on the project. Absent: none."
+        },
+        "concepts": {
+          "type": "object",
+          "description": "Params a project's binding fills: param name to concept. A param the operator already maps to a concept is not listed here. Absent: none.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        }
+      }
+    },
+    "BindingSetBy": {
+      "description": "Who set the binding, tagged by assurance: a person stated it, or a method's option made it, confirmed by a person or set unasked by the method (rule).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BindingStated"
+        },
+        {
+          "$ref": "#/$defs/BindingByMethod"
+        }
+      ]
+    },
+    "BindingStated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assurance"
+      ],
+      "properties": {
+        "assurance": {
+          "type": "string",
+          "enum": [
+            "stated"
+          ]
+        }
+      }
+    },
+    "BindingByMethod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assurance",
+        "method"
+      ],
+      "properties": {
+        "assurance": {
+          "$ref": "#/$defs/MethodAssurance"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        }
+      }
+    },
     "RuleObservation": {
       "title": "RuleObservation",
       "description": "What a rule's decide() reads (ADR-0042): confirmed question facts and measured profile values, never raw rows, plus its settings. Sent by Rust to the Python rule runner.",
@@ -2052,6 +2931,66 @@
               "description": "A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input."
             }
           }
+        },
+        {
+          "type": "object",
+          "description": "Adds step node_id beside the flow: each of its inputs reads the output named in inputs, and no step reads it yet, such as an evidence producer (ADR-0063).",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "node_id",
+            "operator",
+            "params",
+            "inputs"
+          ],
+          "properties": {
+            "kind": {
+              "const": "add_node"
+            },
+            "node_id": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "operator": {
+              "$ref": "#/$defs/OperatorRef"
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            },
+            "inputs": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_]{0,62}$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/PortRef"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Feeds input port of step node_id from output from instead of what fed it (ADR-0063).",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "node_id",
+            "port",
+            "from"
+          ],
+          "properties": {
+            "kind": {
+              "const": "set_input"
+            },
+            "node_id": {
+              "$ref": "#/$defs/NodeId"
+            },
+            "port": {
+              "$ref": "#/$defs/PortName"
+            },
+            "from": {
+              "$ref": "#/$defs/PortRef"
+            }
+          }
         }
       ]
     },
@@ -2279,7 +3218,19 @@
     },
     "MethodologyDecision": {
       "title": "MethodologyDecision",
-      "description": "Immutable record of an alternative atomically applied to a new pipeline version.",
+      "description": "Immutable record of one decision made through Apply: a rule's alternative, or a method's option (ADR-0064).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MethodologyDecisionByRule"
+        },
+        {
+          "$ref": "#/$defs/MethodologyDecisionByMethod"
+        }
+      ]
+    },
+    "MethodologyDecisionByRule": {
+      "title": "MethodologyDecisionByRule",
+      "description": "A rule's alternative atomically applied to a new pipeline version.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -2344,6 +3295,85 @@
             "$ref": "#/$defs/PipelineVersionId"
           },
           "description": "Earlier versions applied from the same proposal whose runs had already scored the test rows (arch doc §11). Absent when none had."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "MethodologyDecisionByMethod": {
+      "title": "MethodologyDecisionByMethod",
+      "description": "A method's option taken through the same Apply as a rule's (ADR-0064): keyed per walk round, refused on a changed base, and cited by every step it changed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "method",
+        "decides",
+        "option",
+        "assurance",
+        "reason",
+        "question_version_id",
+        "base_pipeline_version_id",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "enum": [
+            "sprisk.methodology_decision/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/MethodologyDecisionId"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "decides": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "assurance": {
+          "$ref": "#/$defs/MethodAssurance"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "base_pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId",
+          "description": "The version the option made. Absent when it changed no step."
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphEffect"
+          },
+          "description": "The patch the option applied, in order. Absent: it changed no step."
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          },
+          "description": "The bindings the option made. Absent: none."
+        },
+        "promises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VerificationName"
+          },
+          "description": "The verifications the option promises, by name. Absent: none."
         },
         "created_at": {
           "$ref": "#/$defs/Timestamp"
@@ -2908,6 +3938,11 @@
         "model": {
           "$ref": "#/$defs/OperatorModel"
         },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The step's name for people: the standard term for what it does (Group split, Imputation). Shown by the UI, CLI and notebooks; the description explains it in plain words. Absent: the operator's name stands in."
+        },
         "description": {
           "type": "string"
         },
@@ -2922,6 +3957,38 @@
         "fits_on_train": {
           "type": "boolean",
           "description": "True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
+        },
+        "role": {
+          "$ref": "#/$defs/OperatorRole",
+          "description": "The job the step does, for methods that replace a step by role (ADR-0063). Absent: no method places it by role."
+        },
+        "attach": {
+          "$ref": "#/$defs/OperatorAttach",
+          "description": "Set on an evidence producer: where the engine adds it (ADR-0063)."
+        },
+        "scope": {
+          "$ref": "#/$defs/OperatorScope",
+          "description": "Which rows the step reads. Absent: whatever its inputs carry."
+        },
+        "concepts": {
+          "type": "object",
+          "description": "Params a project's binding fills: param name to concept (ADR-0063). Absent: none.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        },
+        "produces": {
+          "type": "object",
+          "description": "The evidence the step measures, by kind, with its fields (ADR-0063). The step writes it as one EvidenceSet to its output named evidence, and needs an attach. Absent: none.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/EvidenceProduced"
+          }
         },
         "inputs": {
           "type": "array",
@@ -3433,6 +4500,20 @@
           "$ref": "#/$defs/SuccessBarFact",
           "description": "The cross-validated score that counts as good enough, in a metric models are compared by (ADR-0059). Only a person can state it. Absent: not stated; the text acceptance criteria hold everything else."
         },
+        "bindings": {
+          "type": "array",
+          "description": "Which column means each concept the packs ask for, in this project (ADR-0063). One binding per concept. Absent: none stated.",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          }
+        },
+        "answers": {
+          "type": "array",
+          "description": "A person's answers to the methods' asks, one per decision key (ADR-0063 amendment). Absent: none given.",
+          "items": {
+            "$ref": "#/$defs/DecisionAnswer"
+          }
+        },
         "created_at": {
           "$ref": "#/$defs/Timestamp"
         }
@@ -3622,6 +4703,160 @@
         }
       }
     },
+    "ReportId": {
+      "type": "string",
+      "pattern": "^rpt_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "Report": {
+      "title": "Report",
+      "description": "What a completed walk found, built from its records, never written by a model (ADR-0064). Immutable; one per completed walk. Its answer is the model's score on the test rows, scored once, against the success bar and the baseline.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "walk_id",
+        "question_version_id",
+        "question",
+        "answer",
+        "claims",
+        "limitations",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "enum": [
+            "sprisk.report/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/ReportId"
+        },
+        "walk_id": {
+          "$ref": "#/$defs/WalkId"
+        },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The question's objective, as a person stated it."
+        },
+        "answer": {
+          "$ref": "#/$defs/ReportClaim"
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReportClaim"
+          },
+          "description": "One per decision the walk made and per promise it checked, in trail order."
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "What the answer does not show."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "ReportClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statement",
+        "evidence"
+      ],
+      "properties": {
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReportEvidence"
+          },
+          "description": "The records the statement rests on. The engine builds every claim on at least one."
+        }
+      }
+    },
+    "ReportEvidence": {
+      "description": "One record a claim rests on, by id.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decision"
+          ],
+          "properties": {
+            "decision": {
+              "$ref": "#/$defs/MethodologyDecisionId"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "run"
+          ],
+          "properties": {
+            "run": {
+              "$ref": "#/$defs/RunId"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pipeline_version"
+          ],
+          "properties": {
+            "pipeline_version": {
+              "$ref": "#/$defs/PipelineVersionId"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "walk_step"
+          ],
+          "properties": {
+            "walk_step": {
+              "$ref": "#/$defs/WalkStepRef"
+            }
+          }
+        }
+      ]
+    },
+    "WalkStepRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "walk_id",
+        "round"
+      ],
+      "properties": {
+        "walk_id": {
+          "$ref": "#/$defs/WalkId"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "Run": {
       "title": "Run",
       "description": "One execution of a pipeline version against its inputs (arch doc §4, §9). Status is the transactionally maintained current state; history lives in attempts and audit events.",
@@ -3657,6 +4892,10 @@
         "reuse_run_id": {
           "$ref": "#/$defs/RunId",
           "description": "The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start."
+        },
+        "run_from_node_id": {
+          "$ref": "#/$defs/NodeId",
+          "description": "The step this run ran again from, with every step after it (ADR-0026 amendment). Omitted when only changed steps ran."
         },
         "created_at": {
           "$ref": "#/$defs/Timestamp"
@@ -4466,12 +5705,71 @@
           "type": "string",
           "minLength": 1,
           "description": "What is open, for a person to read. Never parsed."
+        },
+        "asks": {
+          "type": "array",
+          "description": "Every question the walk's look found open, as one list (ADR-0063 amendment). Absent: the walk stopped for another reason.",
+          "items": {
+            "$ref": "#/$defs/WalkAsk"
+          }
+        }
+      }
+    },
+    "WalkAsk": {
+      "type": "object",
+      "description": "One open question. A method's ask names its method and options: a person answers it with one option, on the question. Any other names the question fact to state, as its key.",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "question"
+      ],
+      "properties": {
+        "decides": {
+          "$ref": "#/$defs/DecisionKey",
+          "description": "The decision it holds back: a method's or a rule's key, such as data.repeated_items, or the question fact to state, such as question.success_bar."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The question, for a person."
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef",
+          "description": "The method that asks. Absent: a rule or the engine asks."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId",
+          "description": "The option the method would take, once a person confirms it."
+        },
+        "options": {
+          "type": "array",
+          "description": "Every option of the method, for the person to pick from. Present exactly when method is.",
+          "items": {
+            "$ref": "#/$defs/WalkAskOption"
+          }
+        }
+      }
+    },
+    "WalkAskOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
     "WalkStopReason": {
       "type": "string",
-      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.",
+      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. unverified: every rule is settled, but a promise a decision made did not pass on the head's run, so the test rows stay sealed. error: the engine could not take its next step; the detail says why.",
       "enum": [
         "complete",
         "needs_person",
@@ -4480,19 +5778,23 @@
         "source_changed",
         "run_failed",
         "stale",
+        "unverified",
         "budget_exhausted",
         "error"
       ]
     },
     "WalkAction": {
       "type": "string",
-      "description": "build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. stop: ended the walk.",
+      "description": "build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. verify: checked each promise the walk's decisions made, on the evidence the head's run measured (ADR-0063). stop: ended the walk.",
       "enum": [
         "build",
         "run",
         "apply",
         "compare",
+        "measure",
+        "decide",
         "score",
+        "verify",
         "stop"
       ]
     },
@@ -4555,11 +5857,51 @@
         },
         "made_pipeline_version_id": {
           "$ref": "#/$defs/PipelineVersionId",
-          "description": "The version a build or apply made."
+          "description": "The version a build, apply, measure or decide made. Absent for a decide whose option changes no step."
+        },
+        "effects": {
+          "type": "array",
+          "description": "The patch a measure or decide step applied, in order (ADR-0063). Absent for every other action.",
+          "items": {
+            "$ref": "#/$defs/GraphEffect"
+          }
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef",
+          "description": "The method a decide step decided for."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId",
+          "description": "The option a decide step took. A decide step always has method, decides, option and assurance."
+        },
+        "assurance": {
+          "$ref": "#/$defs/MethodAssurance",
+          "description": "How a decide step's option was taken."
+        },
+        "bindings": {
+          "type": "array",
+          "description": "The bindings a decide step's option made. Absent: none.",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          }
+        },
+        "promises": {
+          "type": "array",
+          "description": "The verifications a decide step's option promises, by name. Absent: none.",
+          "items": {
+            "$ref": "#/$defs/VerificationName"
+          }
+        },
+        "verifications": {
+          "type": "array",
+          "description": "What a verify step found, one item per promise the walk's decisions made. Absent for every other action.",
+          "items": {
+            "$ref": "#/$defs/PromiseCheck"
+          }
         },
         "run_id": {
           "$ref": "#/$defs/RunId",
-          "description": "The run a run step started."
+          "description": "The run a run step started, or the run whose evidence a verify step read."
         },
         "reason": {
           "type": "string",
@@ -4570,6 +5912,207 @@
           "$ref": "#/$defs/Timestamp"
         }
       }
+    },
+    "PromiseCheck": {
+      "type": "object",
+      "description": "One promise checked on the evidence a run measured (ADR-0063).",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "method",
+        "verification",
+        "promise",
+        "result",
+        "detail"
+      ],
+      "properties": {
+        "decides": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "promise": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What holds when it passes, from method.yaml."
+        },
+        "step": {
+          "$ref": "#/$defs/NodeId",
+          "description": "The step that measured the evidence. Absent when not_evaluated."
+        },
+        "result": {
+          "$ref": "#/$defs/PromiseResult"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the evidence showed, or why nothing measured it."
+        }
+      }
+    },
+    "PromiseResult": {
+      "type": "string",
+      "description": "pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.",
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive",
+        "not_evaluated"
+      ]
+    },
+    "FlowDecisions": {
+      "title": "FlowDecisions",
+      "description": "What decided a flow version, for people (ADR-0063 slice 5): the decisions of the walk that made the version or its nearest ancestor, each with the steps it shaped and the status of its promises on this version. Read only; worked out from the walk's steps.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "pipeline_version_id",
+        "decisions"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.flow_decisions/v1"
+          ]
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "walk_id": {
+          "$ref": "#/$defs/WalkId",
+          "description": "The walk that made the version or its nearest ancestor. Absent: no walk did, so nothing decided it."
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FlowDecision"
+          }
+        }
+      }
+    },
+    "FlowDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "method",
+        "activity",
+        "question",
+        "option",
+        "label",
+        "reason",
+        "assurance",
+        "steps",
+        "promises"
+      ],
+      "properties": {
+        "decides": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "activity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The method's activity: one stage card, one notebook section."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The question the method answers."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The option, for people."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why it was taken, from the decide step."
+        },
+        "assurance": {
+          "$ref": "#/$defs/MethodAssurance"
+        },
+        "steps": {
+          "type": "array",
+          "description": "The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises.",
+          "items": {
+            "$ref": "#/$defs/NodeId"
+          }
+        },
+        "bindings": {
+          "type": "array",
+          "description": "The bindings it made. Absent: none.",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          }
+        },
+        "promises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PromiseStatus"
+          }
+        }
+      }
+    },
+    "PromiseStatus": {
+      "type": "object",
+      "description": "One promise's standing on the version asked about.",
+      "additionalProperties": false,
+      "required": [
+        "verification",
+        "promise",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "promise": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "$ref": "#/$defs/PromiseStanding"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step": {
+          "$ref": "#/$defs/NodeId",
+          "description": "The step that measured its evidence. Absent when nothing did."
+        },
+        "last_result": {
+          "$ref": "#/$defs/PromiseResult",
+          "description": "For stale: what the check found when it ran."
+        }
+      }
+    },
+    "PromiseStanding": {
+      "type": "string",
+      "description": "pass, fail, inconclusive, not_evaluated: what the last check found, and it still holds for this version. stale: the step that measured it, or a step before it, changed since; never shown as pass.",
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive",
+        "not_evaluated",
+        "stale"
+      ]
     },
     "WalkDetail": {
       "title": "WalkDetail",

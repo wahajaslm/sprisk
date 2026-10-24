@@ -31,8 +31,13 @@ const entities: [keyof Entities, string][] = [
   ["RuleObservation", "rule_observation"],
   ["RuleRequest", "rule_request"],
   ["RuleAnswer", "rule_answer"],
+  ["MethodRequest", "method_request"],
+  ["MethodFiles", "method_files"],
+  ["MethodAnswer", "method_answer"],
+  ["VerificationRequest", "verification_request"],
   ["RuleDecision", "rule_decision"],
   ["FigureSet", "figure_set"],
+  ["FlowDecisions", "flow_decisions"],
   ["LoadedTable", "loaded_table"],
   ["DatasetProfile", "dataset_profile"],
   ["KeyMatches", "key_matches"],
@@ -58,7 +63,12 @@ const entities: [keyof Entities, string][] = [
   ["CreateWalk", "create_walk"],
   ["Walk", "walk"],
   ["WalkDetail", "walk_detail"],
+  ["Report", "report"],
   ["WalkStep", "walk_step"],
+  ["Method", "method"],
+  ["ConceptSet", "concept_set"],
+  ["EvidenceSet", "evidence_set"],
+  ["Binding", "binding"],
 ];
 
 it("every fixture dir has an entity", () => {

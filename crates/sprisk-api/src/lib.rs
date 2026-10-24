@@ -4,16 +4,21 @@
 use std::sync::Arc;
 
 mod bounded;
+mod decisions;
 mod engine;
 mod figures;
 mod kernel;
+mod line_session;
+mod method_session;
 mod notebook_code;
 mod profile;
+mod report;
 mod rules;
 mod split;
 pub use bounded::ProcessError;
 pub use engine::resume_walks;
 pub use kernel::{KernelError, KernelLimits, Kernels};
+pub use method_session::{MethodRunner, MethodSession};
 pub use notebook_code::CodeWriter;
 use profile::Profiles;
 pub use profile::{KeyMatcher, Profiler};
@@ -29,20 +34,20 @@ use axum::{Json, Router};
 use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
-    AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, CapabilityClass,
-    CodeSplit, CodeSplitRequest, CreateRun, DatasetProfile, DecisionProposal, FigureSet,
-    GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodologyAlternativeApplicability,
-    MethodologyDecision, MethodologyDecisionId, MethodologyProposalId, MethodologyReview,
+    AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, BindingSourceKind,
+    CapabilityClass, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, DatasetProfile,
+    DecisionProposal, FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse,
+    MethodFiles, MethodologyAlternativeApplicability, MethodologyDecision,
+    MethodologyDecisionByRule, MethodologyDecisionId, MethodologyProposalId, MethodologyReview,
     MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
     NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
     NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
-    NotebookVersionId, Operator, OperatorSource, PipelineVersion, PipelineVersionId, Problem,
-    QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study, StudyDetail,
-    StudyId, StudyStatus, TaskType, Trial, parse,
+    NotebookVersionId, Operator, OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId,
+    Problem, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study,
+    StudyDetail, StudyId, StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
-use sprisk_methodology::review::SPLIT_DECISION;
 use sprisk_registry::Registry;
 use sprisk_scheduler::{ProcessWorkers, Scheduler, Settings};
 use sprisk_store::{SqliteStore, StoreError};
@@ -77,6 +82,7 @@ pub struct AppState {
     pub code_writer: CodeWriter,
     /// Runs a methodology rule's Python decide() (ADR-0042).
     pub rule_runner: RuleRunner,
+    pub method_runner: MethodRunner,
     /// One live Python kernel per notebook being explored (ADR-0036).
     pub kernels: Kernels,
 }
@@ -92,10 +98,6 @@ pub fn router(state: AppState) -> Router {
             post(create_question_version).get(list_question_versions),
         )
         .route("/question_versions/{id}", get(get_question_version))
-        .route(
-            "/pipeline_versions/{id}/methodology/split/{node_id}/proposals",
-            post(propose_split),
-        )
         .route(
             "/pipeline_versions/{id}/methodology/proposals/{node_id}",
             post(propose_node_methodology),
@@ -123,14 +125,20 @@ pub fn router(state: AppState) -> Router {
             post(create_study),
         )
         .route("/pipeline_versions/{id}/studies", get(list_studies))
+        .route(
+            "/pipeline_versions/{id}/decisions",
+            get(decisions::get_decisions),
+        )
         .route("/studies/{id}", get(get_study))
         .route("/methodology_decisions", get(list_methodology_decisions))
         .route("/methodology_decisions/{id}", get(get_methodology_decision))
+        .route("/concepts", get(list_concepts))
         .route("/methodology_rules", get(list_methodology_rules))
         .route(
             "/methodology_rules/{id}/source",
             get(get_methodology_rule_source),
         )
+        .route("/methods/{id}/files", get(get_method_files))
         .route("/operators", get(list_operators))
         .route("/operators/{id}/source", get(get_operator_source))
         .route("/operators/{id}/notebook_code", post(write_notebook_code))
@@ -157,8 +165,9 @@ pub fn router(state: AppState) -> Router {
         .route("/notebooks/{id}/interrupt", post(interrupt_kernel))
         .route("/notebooks/{id}/restart", post(restart_kernel))
         .route("/notebooks/{id}/variables", get(kernel_variables))
-        .route("/walks", post(engine::create_walk))
+        .route("/walks", get(engine::list_walks).post(engine::create_walk))
         .route("/walks/{id}", get(engine::get_walk))
+        .route("/walks/{id}/report", get(engine::get_walk_report))
         .layer(axum::middleware::from_fn(local_host_only))
         .with_state(state)
 }
@@ -308,9 +317,10 @@ impl ApiError {
                 StatusCode::TOO_MANY_REQUESTS,
                 vec![("code_busy", self.to_string())],
             ),
-            ApiError::Rules(sprisk_methodology::CatalogError::UnknownRule(_)) => {
-                (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
-            }
+            ApiError::Rules(
+                sprisk_methodology::CatalogError::UnknownRule(_)
+                | sprisk_methodology::CatalogError::UnknownMethod(_),
+            ) => (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())]),
             ApiError::Store(StoreError::NotFound { .. }) => {
                 (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
             }
@@ -532,6 +542,20 @@ fn optional_id<T: std::str::FromStr>(query: &Query, key: &str) -> Result<Option<
     query.get(key).map(|raw| id(raw)).transpose()
 }
 
+/// The concepts the loaded packs define, which a question's bindings name (ADR-0063).
+async fn list_concepts(State(state): State<AppState>) -> Result<Json<ConceptSet>, ApiError> {
+    let concepts: serde_json::Map<String, serde_json::Value> = state
+        .rules
+        .concepts()
+        .map(|(id, concept)| Ok((id.to_owned(), serde_json::to_value(concept)?)))
+        .collect::<Result<_, serde_json::Error>>()
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let set = json!({ "schema_version": "sprisk.concept_set/v1", "concepts": concepts });
+    parse(&set.to_string())
+        .map(Json)
+        .map_err(|e| ApiError::Internal(e.to_string()))
+}
+
 async fn list_methodology_rules(State(state): State<AppState>) -> Json<Vec<MethodologyRule>> {
     Json(state.rules.rules().cloned().collect())
 }
@@ -541,6 +565,13 @@ async fn get_methodology_rule_source(
     Path(rule_ref): Path<String>,
 ) -> Result<Json<MethodologyRuleSource>, ApiError> {
     Ok(Json(state.rules.source(&rule_ref)?.clone()))
+}
+
+async fn get_method_files(
+    State(state): State<AppState>,
+    Path(method_ref): Path<String>,
+) -> Result<Json<MethodFiles>, ApiError> {
+    Ok(Json(state.rules.method_files(&method_ref)?.clone()))
 }
 
 async fn list_operators(State(state): State<AppState>) -> Json<Vec<Operator>> {
@@ -912,7 +943,7 @@ async fn read_notebook_settings(
             check_settings(operator, &settings)?;
             Ok(Json(NotebookSettings::Settings(settings)))
         }
-        NotebookSettings::Code if is_split(&state.rules, &operator_ref) => {
+        NotebookSettings::Code if is_split(&state.registry, &operator_ref) => {
             Err(ApiError::BadRequest {
                 code: "split_is_not_code",
                 message: format!(
@@ -975,6 +1006,8 @@ async fn create_question_version(
     let question: QuestionVersion = body(&text)?;
     check_costs(&question)?;
     check_success_bar(&question)?;
+    check_bindings(&question, &state.rules)?;
+    check_answers(&question, &state.rules)?;
     if let Some(parent_id) = &question.parent_id {
         let parent =
             state
@@ -1013,6 +1046,70 @@ async fn create_question_version(
     }
     state.store.insert_question_version(&question).await?;
     Ok((StatusCode::CREATED, Json(question)))
+}
+
+/// Each binding names a concept a loaded pack defines, and no concept is bound twice
+/// (ADR-0063).
+fn check_bindings(
+    question: &QuestionVersion,
+    rules: &sprisk_methodology::RuleCatalog,
+) -> Result<(), ApiError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for binding in &question.bindings {
+        let concept = binding.concept.as_str();
+        let kind = match binding.source.step {
+            Some(_) => BindingSourceKind::Derived,
+            None => BindingSourceKind::Column,
+        };
+        let defined = rules.concepts().find(|(id, _)| *id == concept);
+        let why = if defined.is_none() {
+            format!("no pack defines the concept {concept}")
+        } else if defined.is_some_and(|(_, c)| !c.binds_to.contains(&kind)) {
+            match kind {
+                BindingSourceKind::Derived => {
+                    format!("{concept} binds to a column of the loaded data, not one a step makes")
+                }
+                BindingSourceKind::Column => {
+                    format!("{concept} binds to a column a step makes, not one of the loaded data")
+                }
+            }
+        } else if !seen.insert(concept) {
+            format!("{concept} is bound twice")
+        } else {
+            continue;
+        };
+        return Err(ApiError::BadRequest {
+            code: "invalid_bindings",
+            message: why,
+        });
+    }
+    Ok(())
+}
+
+/// Each answer names a loaded method's decision and one of its options, and no decision is
+/// answered twice (ADR-0063 amendment).
+fn check_answers(
+    question: &QuestionVersion,
+    rules: &sprisk_methodology::RuleCatalog,
+) -> Result<(), ApiError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for answer in &question.answers {
+        let decides = answer.decides.as_str();
+        let option = answer.option.as_str();
+        let why = match rules.methods().find(|m| m.decides.as_str() == decides) {
+            None => format!("no method decides {decides}"),
+            Some(method) if !method.options.iter().any(|o| o.id.as_str() == option) => {
+                format!("{decides} has no option {option}")
+            }
+            Some(_) if !seen.insert(decides) => format!("{decides} is answered twice"),
+            Some(_) => continue,
+        };
+        return Err(ApiError::BadRequest {
+            code: "invalid_answers",
+            message: why,
+        });
+    }
+    Ok(())
 }
 
 /// A success bar is a score its metric can take, in a metric its task is compared by: a
@@ -1100,13 +1197,6 @@ async fn get_question_version(
     Ok(Json(state.store.get_question_version(&id(&raw)?).await?))
 }
 
-async fn propose_split(
-    State(state): State<AppState>,
-    Path((raw, node_id)): Path<(String, String)>,
-) -> Result<(StatusCode, Json<DecisionProposal>), ApiError> {
-    propose(&state, &raw, &node_id, Some(SPLIT_DECISION)).await
-}
-
 async fn propose_node_methodology(
     State(state): State<AppState>,
     Path((raw, node_id)): Path<(String, String)>,
@@ -1155,10 +1245,14 @@ async fn review_methodology(
     let decided = |node: &sprisk_contracts::Node, rule: &MethodologyRule| {
         let subject = node.id.as_str();
         review::carries_decision(&pipeline, subject, |step| {
-            applied.iter().any(|d| {
-                step.methodology_decision_id.as_ref() == Some(&d.id)
-                    && d.rule.as_str() == rule.id.as_str()
-                    && review::decided_for(subject, step.id.as_str(), d)
+            // A method's decision never settles a rule's item.
+            applied.iter().any(|d| match d {
+                MethodologyDecision::Rule(d) => {
+                    step.methodology_decision_id.as_ref() == Some(&d.id)
+                        && d.rule.as_str() == rule.id.as_str()
+                        && review::decided_for(subject, step.id.as_str(), d)
+                }
+                MethodologyDecision::Method(_) => false,
             })
         })
     };
@@ -1249,7 +1343,7 @@ fn before_the_split(
     if !sprisk_methodology::facts::needs_train_rows(rule.reads.iter().map(|r| r.as_str())) {
         return None;
     }
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
     let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let traced = sprisk_methodology::train_rows_source(pipeline, node.id.as_str(), is_split, keeps);
     let step = node.id.as_str();
@@ -1263,11 +1357,11 @@ fn before_the_split(
     })
 }
 
-/// A step the split rule decides, whatever its version.
-fn is_split(rules: &sprisk_methodology::RuleCatalog, operator: &str) -> bool {
-    rules
-        .rules_for_operator(operator)
-        .any(|r| r.decides.as_str() == SPLIT_DECISION)
+/// A step whose operator has the split role (ADR-0063).
+fn is_split(registry: &Registry, operator: &str) -> bool {
+    registry
+        .get(operator)
+        .is_some_and(|o| o.role == Some(OperatorRole::Split))
 }
 
 /// Steps whose manifest says they fit on train and write train and test each from its own
@@ -1525,7 +1619,7 @@ async fn train_profile_facts(
     profiles: &mut Profiles,
 ) -> Result<serde_json::Map<String, serde_json::Value>, ApiError> {
     let step = node.id.as_str();
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
     let keeps = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let source = sprisk_methodology::train_rows_source(pipeline, step, is_split, keeps)
         .map_err(|e| evidence_unavailable(e.to_string()))?;
@@ -1633,7 +1727,10 @@ async fn chosen_by(
         .await?;
     let Some(selection) = decisions
         .into_iter()
-        .find(|d| d.pipeline_version_id == pipeline.id)
+        .find_map(|d| match d {
+            MethodologyDecision::Rule(d) if d.pipeline_version_id == pipeline.id => Some(d),
+            _ => None,
+        })
         .and_then(|d| d.selection_id)
     else {
         return Ok(None);
@@ -1725,7 +1822,7 @@ async fn apply_methodology(
         .methodology_decision_by_key(request.idempotency_key.as_str())
         .await?
     {
-        sprisk_store::replays(
+        let replayed = sprisk_store::replays(
             &saved,
             request.idempotency_key.as_str(),
             &proposal.id,
@@ -1734,7 +1831,7 @@ async fn apply_methodology(
         )?;
         let saved_pipeline = state
             .store
-            .get_pipeline_version(&saved.pipeline_version_id)
+            .get_pipeline_version(&replayed.pipeline_version_id)
             .await?;
         return Ok((
             StatusCode::OK,
@@ -1854,16 +1951,18 @@ async fn apply_methodology(
     if !seen.is_empty() {
         decision_json["test_rows_seen_by"] = json!(seen);
     }
-    let decision: MethodologyDecision =
+    let decision: MethodologyDecisionByRule =
         parse(&decision_json.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
+    let key = request.idempotency_key.as_str();
     let saved = state
         .store
-        .apply_methodology_decision(&decision, &pipeline, request.idempotency_key.as_str())
+        .apply_methodology_decision(&decision.into(), Some(&pipeline), key)
         .await?;
-    let saved_pipeline = state
-        .store
-        .get_pipeline_version(&saved.pipeline_version_id)
-        .await?;
+    // A rule's decision always makes a version; a saved one under this key is a rule's too.
+    let made = saved.pipeline_version_id().ok_or_else(|| {
+        ApiError::Internal(format!("decision {} made no version", saved.id().as_str()))
+    })?;
+    let saved_pipeline = state.store.get_pipeline_version(made).await?;
     Ok((
         StatusCode::CREATED,
         Json(AppliedMethodologyDecision {
@@ -2022,7 +2121,7 @@ async fn comparison_version(
         .store
         .get_question_version(&proposal.question_version_id)
         .await?;
-    let is_split = |n: &sprisk_contracts::Node| is_split(&state.rules, n.operator.as_str());
+    let is_split = |n: &sprisk_contracts::Node| is_split(&state.registry, n.operator.as_str());
     let keeps_train = |n: &sprisk_contracts::Node| keeps_train_rows(&state.registry, n);
     let operator_of = |operator: &str| state.registry.get(operator);
     // A metric a person stated with the success bar is what models are compared by (ADR-0059).
@@ -2537,66 +2636,50 @@ fn materialize_effect(
         })?;
     let effect: GraphEffect = serde_json::from_value(effect.clone())
         .map_err(|error| ApiError::Internal(format!("stored effect is invalid: {error}")))?;
+    let (mut nodes, edges) =
+        sprisk_methodology::patch::apply(base, std::slice::from_ref(&effect), |o| registry.get(o))
+            .map_err(|e| match e {
+                sprisk_methodology::ResolveError::UnknownNode(id) => ApiError::BadRequest {
+                    code: "stale_proposal",
+                    message: format!("node {id} is no longer present"),
+                },
+                sprisk_methodology::ResolveError::Unremovable(_) => ApiError::BadRequest {
+                    code: "cannot_remove_step",
+                    message: e.to_string(),
+                },
+                other => ApiError::BadRequest {
+                    code: "cannot_add_step",
+                    message: other.to_string(),
+                },
+            })?;
+    cite_decision(&mut nodes, &effect, decision_id)?;
     let mut value =
         serde_json::to_value(base).map_err(|error| ApiError::Internal(error.to_string()))?;
     value["id"] = json!(pipeline_id);
     value["parent_id"] = json!(base.id);
     value["created_at"] = json!(at);
-    match effect {
-        GraphEffect::RemoveNode { node_id } => {
-            let (nodes, edges) =
-                sprisk_methodology::without_node(base, node_id.as_str()).map_err(|e| {
-                    ApiError::BadRequest {
-                        code: "cannot_remove_step",
-                        message: e.to_string(),
-                    }
-                })?;
-            value["nodes"] = json!(nodes);
-            value["edges"] = json!(edges);
-        }
-        GraphEffect::ReplaceNode {
-            node_id,
-            operator,
-            params,
-        } => {
-            let node = value["nodes"]
-                .as_array_mut()
-                .and_then(|nodes| nodes.iter_mut().find(|node| node["id"] == node_id.as_str()))
-                .ok_or_else(|| ApiError::BadRequest {
-                    code: "stale_proposal",
-                    message: format!("node {} is no longer present", node_id.as_str()),
-                })?;
-            node["operator"] = json!(operator);
-            node["params"] = json!(params);
-            node["methodology_decision_id"] = json!(decision_id);
-        }
-        GraphEffect::InsertNode {
-            node_id,
-            operator,
-            params,
-            before,
-            other,
-        } => {
-            let step = json!({ "id": node_id, "operator": operator, "params": params,
-                               "methodology_decision_id": decision_id });
-            let step =
-                parse(&step.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
-            let (nodes, edges) = sprisk_methodology::with_node_before(
-                base,
-                step,
-                before.as_str(),
-                other.as_ref().map(|o| o.as_str()),
-                |o| registry.get(o),
-            )
-            .map_err(|e| ApiError::BadRequest {
-                code: "cannot_add_step",
-                message: e.to_string(),
-            })?;
-            value["nodes"] = json!(nodes);
-            value["edges"] = json!(edges);
-        }
-    }
+    value["nodes"] = json!(nodes);
+    value["edges"] = json!(edges);
     parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()))
+}
+
+/// The step a decision changed or added carries it, so the review and the trail know what
+/// decided it.
+fn cite_decision(
+    nodes: &mut [sprisk_contracts::Node],
+    effect: &GraphEffect,
+    decision_id: &str,
+) -> Result<(), ApiError> {
+    if let GraphEffect::ReplaceNode { node_id, .. } | GraphEffect::InsertNode { node_id, .. } =
+        effect
+        && let Some(node) = nodes.iter_mut().find(|n| n.id == *node_id)
+    {
+        node.methodology_decision_id = Some(
+            parse(&json!(decision_id).to_string())
+                .map_err(|error| ApiError::Internal(error.to_string()))?,
+        );
+    }
+    Ok(())
 }
 
 async fn list_methodology_decisions(
@@ -2660,16 +2743,35 @@ async fn create_run(
         .store
         .get_pipeline_version(&request.pipeline_version_id)
         .await?;
-    let run = start_run(&state, pipeline, request.reuse_run_id).await?;
+    if let Some(from) = &request.run_from_node_id
+        && !pipeline.nodes.iter().any(|n| n.id == *from)
+    {
+        return Err(ApiError::BadRequest {
+            code: "unknown_step",
+            message: format!(
+                "run from {}: version {} has no such step",
+                from.as_str(),
+                pipeline.id.as_str()
+            ),
+        });
+    }
+    let run = start_run(
+        &state,
+        pipeline,
+        request.reuse_run_id,
+        request.run_from_node_id,
+    )
+    .await?;
     Ok((StatusCode::ACCEPTED, Json(run)))
 }
 
 /// Queues a run of `pipeline` and runs it in the background, reusing `reuse` up to the first
-/// changed step (ADR-0026).
+/// changed step, or up to `from` (ADR-0026 and its amendment).
 async fn start_run(
     state: &AppState,
     pipeline: PipelineVersion,
     reuse: Option<RunId>,
+    from: Option<sprisk_contracts::NodeId>,
 ) -> Result<Run, ApiError> {
     // Checked again: the files or the configured roots may have changed since submit.
     let plan = run_plan(state, &pipeline).await?;
@@ -2695,6 +2797,9 @@ async fn start_run(
     });
     if let Some(reuse) = &reuse {
         doc["reuse_run_id"] = json!(reuse);
+    }
+    if let Some(from) = &from {
+        doc["run_from_node_id"] = json!(from);
     }
     let run: Run = parse(&doc.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?;
     state.store.insert_run(&run).await?;
@@ -2806,6 +2911,10 @@ async fn drive_run(
     }
     if let Some(reuse) = reuse {
         scheduler = scheduler.reusing(reuse);
+    }
+    // Read from the stored run, so every way a run is driven runs from the same step.
+    if let Some(from) = state.store.get_run(run_id).await?.run_from_node_id {
+        scheduler = scheduler.running_from(from.as_str());
     }
     if let Some(deadline) = deadline {
         scheduler = scheduler.until(deadline, state.clock.clone());

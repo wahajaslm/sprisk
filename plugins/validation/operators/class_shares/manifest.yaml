@@ -1,0 +1,22 @@
+schema_version: sprisk.operator/v1
+id: sprisk.validation.class_shares@1.0.0
+title: Stratification check
+capability_class: analyzer
+description: Measures how far each class's share of rows differs between train and test, the evidence that a stratified split kept the shares (ADR-0063).
+entrypoint: sprisk_validation.split_evidence:class_shares
+attach: { role: split, side: output }
+concepts: { target: common.target }
+produces:
+  evaluation.class_shares:
+    fields: { largest_gap: number, train_rows: integer, test_rows: integer }
+inputs: [{ name: train, kind: table }, { name: test, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [target]
+  properties:
+    target: { type: string, minLength: 1, x-sprisk-column: true, description: "The column the model predicts." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }

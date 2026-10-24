@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.spectral_gating@1.0.0
+title: Spectral gating
 capability_class: transform
 description: Adaptive spectral gating for acoustic and time-series noise reduction. Learns stationary noise threshold from train and suppresses sub-threshold spectral energy across train and test partitions.
 entrypoint: sprisk_clean.spectral_gating:spectral_gating

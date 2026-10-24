@@ -1,13 +1,22 @@
+import { useState } from "react";
 import type { PipelineVersion, Run } from "@sprisk/contracts";
 
-import { PageHeader } from "../components/ui/PageHeader.tsx";
 import { Button } from "../components/ui/Button.tsx";
-import { useOperators, usePipelineVersions } from "../api/hooks.ts";
+import { InfoDock } from "../components/ui/InfoDock.tsx";
+import { ListRow } from "../components/ui/ListRow.tsx";
+import { Loading } from "../components/ui/Loading.tsx";
+import { PageFrame } from "../components/ui/PageFrame.tsx";
+import { SearchField } from "../components/ui/SearchField.tsx";
+import { SideGroup } from "../components/ui/SideGroup.tsx";
+import { BodySection } from "../components/ui/RowList.tsx";
+import { stepLabel } from "../flow/stages.ts";
+import { Sidebar } from "../components/ui/Sidebar.tsx";
+import { useOperatorsByRef, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { type NodeInRun, useFlowRuns, useRunNodes } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
 import { flows } from "../flow/flows.ts";
 import { flowName } from "../flow/labels.ts";
-import { useSelection } from "../workbench/selection.ts";
+import { EXPERIMENTS_TABS, type ExperimentsTab, useSelection } from "../workbench/selection.ts";
 import { useStudies } from "../api/studies.ts";
 import { ModelComparisons } from "./ModelComparison.tsx";
 import { Studies } from "./Studies.tsx";
@@ -18,11 +27,11 @@ import { ExperimentsIcon } from "./Icons.tsx";
 const MAX_RUNS = 20;
 const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
 
-/** Every run of the current flow, with what changed and how it scored; two runs compared. */
+/** Every run of the current flow: one run's steps, two runs compared, and the flow's studies. */
 export function Experiments() {
-  const { pipelineVersionId, compare, setCompare, setNav } = useSelection();
+  const { pipelineVersionId, runId, compare, setCompare, setNav, showRun, experimentsTab, setExperimentsTab } = useSelection();
   const versions = usePipelineVersions();
-  const operators = useOperators();
+  const operators = useOperatorsByRef();
   const all = versions.data ?? [];
   const flow = flows(all).find((f) => pipelineVersionId !== undefined && f.ids.includes(pipelineVersionId));
   const runs = useFlowRuns(flow?.ids ?? [], MAX_RUNS);
@@ -31,79 +40,232 @@ export function Experiments() {
     ...new Set(
       (flow ? flow.ids : [])
         .flatMap((id) => byId.get(id)?.nodes ?? [])
-        .filter((n) => operators.data?.find((o) => o.id === n.operator)?.capability_class === "evaluator")
+        .filter((n) => operators.data?.get(n.operator)?.capability_class === "evaluator")
         .map((n) => n.id),
     ),
   ].sort();
   const nodes = useRunNodes(runs, evaluators);
+  const [search, setSearch] = useState("");
   const studies = useStudies(flow?.head.id);
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (!flow) {
     return (
-      <div className="single-panel-layout experiments-page-layout">
-        <main className="center-screen experiments-main experiments">
-          <PageHeader eyebrow="Flow Experiments" title="Experiments & Model Tracking" description="Systematic comparison of pipeline versions, evaluation metrics, and studies." />
-          <div className="experiments-empty-viewport">
-            <div className="experiments-empty-card">
-              <div className="experiments-empty-icon">
-                <ExperimentsIcon size={28} />
-              </div>
-              <h3 className="experiments-empty-title">No Flow Selected</h3>
-              <p className="experiments-empty-sub">
-                Select or open a pipeline flow in Flow Studio to track training runs, compare metric deltas, and analyze model studies.
-              </p>
-              <Button variant="primary" onClick={() => setNav("Flow")}>
-                Open Flow Studio
-              </Button>
-            </div>
-          </div>
-        </main>
-      </div>
+      <PageFrame header={{ eyebrow: "Experiments", title: "No flow selected", description: "Open a flow to see its runs, compare them and follow its studies." }}>
+        <div className="empty-state">
+          <ExperimentsIcon size={28} />
+          <Button variant="primary" onClick={() => setNav("Flow")}>
+            Open Flow
+          </Button>
+        </div>
+      </PageFrame>
     );
   }
 
+  const label = (run: Run) => `#${runs.length - runs.indexOf(run)}`;
+  const shown = runs.find((r) => r.id === runId) ?? runs[0];
+  const shownAt = shown ? runs.indexOf(shown) : -1;
   const picked = compare.filter((id) => runs.some((r) => r.id === id));
   const pair = (picked.length === 2 ? picked : runs.slice(0, 2).map((r) => r.id)).map((id) => runs.findIndex((r) => r.id === id));
   // Older run first, so changes read "before → after".
   const [olderAt, newerAt] = [...pair].sort((a, b) => b - a) as [number, number];
   const toggle = (id: string) =>
     setCompare(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(-2));
+  const header =
+    experimentsTab === "Monitor"
+      ? {
+          eyebrow: shown ? `Run ${label(shown)} · ${flowName(flow.head)} · started ${when(shown.created_at)}` : flowName(flow.head),
+          title: shown ? sentence(shown.status) : "No runs yet",
+          description: shown ? whatChanged(shown, byId) : "Run the flow to see each step here.",
+        }
+      : experimentsTab === "Compare"
+        ? {
+            eyebrow: `Compare · ${flowName(flow.head)}`,
+            title: runs.length < 2 ? "Compare runs" : `Run ${label(runs[olderAt]!)} vs run ${label(runs[newerAt]!)}`,
+          }
+        : {
+            eyebrow: `Sweep · ${flowName(flow.head)}`,
+            title: "Studies",
+            description: "Each study searches a model's settings within a budget, then recommends one.",
+          };
 
   return (
-    <div className="single-panel-layout experiments-page-layout">
-      <main className="center-screen experiments-main experiments">
-        <PageHeader
-          eyebrow={runs.length === 1 ? "1 run" : `${runs.length} runs`}
-          title={`${flowName(flow.head)}: every run, with what changed`}
-        />
-        <div className="exp-scroll">
-          {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
+    <PageFrame
+      sidebar={
+        <Sidebar
+          title="Runs"
+          search={<SearchField value={search} onChange={setSearch} placeholder="Search runs" />}
+          dock={shown && <RunDock run={shown} label={label(shown)} metrics={nodes[shownAt]} before={runs[shownAt + 1]} beforeMetrics={nodes[shownAt + 1]} beforeLabel={runs[shownAt + 1] && label(runs[shownAt + 1]!)} />}
+        >
+          <SideGroup num={1} label="Runs" meta={runs.length}>
+          {runs.length === 0 && <p className="muted pad">No runs yet.</p>}
+          {runs
+            .filter((run) => `run ${label(run)} ${whatChanged(run, byId)}`.toLowerCase().includes(search.trim().toLowerCase()))
+            .map((run) => (
+              <ListRow
+                key={run.id}
+                title={`Run ${label(run)}`}
+                meta={`${when(run.created_at)} · ${whatChanged(run, byId)}`}
+                {...(run.status === "failed" ? { badge: "Issue", warn: true } : run.status === "running" ? { badge: "Running" } : run.status === "queued" ? { badge: "Queued" } : {})}
+                selected={run.id === shown?.id}
+                onClick={() => showRun(run.pipeline_version_id, run.id)}
+              />
+            ))}
+          </SideGroup>
+          {(studies.data ?? []).length > 0 && (
+            <SideGroup num={2} label="Sweeps" meta={studies.data!.length}>
+              {studies.data!.map((study) => (
+                <ListRow
+                  key={study.id}
+                  title={`Study of ${study.node_id}`}
+                  meta={`up to ${study.max_trials} trials`}
+                  {...(study.status === "running" ? { badge: "Running" } : study.status === "failed" ? { badge: "Issue", warn: true } : {})}
+                  onClick={() => setExperimentsTab("Sweep")}
+                />
+              ))}
+            </SideGroup>
+          )}
+        </Sidebar>
+      }
+      header={{
+        ...header,
+        ...(experimentsTab === "Monitor" && shown
+          ? {
+              actions: (
+                <Button variant="primary" onClick={() => { showRun(shown.pipeline_version_id, shown.id); setNav("Flow"); }}>
+                  Open in flow
+                </Button>
+              ),
+            }
+          : {}),
+      }}
+      tabs={{ label: "Experiments", items: EXPERIMENTS_TABS.map((t) => ({ value: t, label: t })), value: experimentsTab, onChange: (t) => setExperimentsTab(t as ExperimentsTab) }}
+    >
+      {experimentsTab === "Monitor" && shown && <Monitor run={shown} version={byId.get(shown.pipeline_version_id)} />}
+      {experimentsTab === "Compare" && (
+        <>
           {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
           {!studies.isPending && (
-            <>
-              <Studies head={flow.head} versions={all} studies={studies.data ?? []} />
-              <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
-            </>
+            <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
           )}
           <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
-        </div>
-        {runs.length < 2 ? (
-          <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
-        ) : (
-          <Compare
-            older={runs[olderAt]}
-            newer={runs[newerAt]}
-            olderNodes={nodes[olderAt] ?? {}}
-            newerNodes={nodes[newerAt] ?? {}}
-            byId={byId}
-            evaluators={evaluators}
-            labelOf={(run) => `#${runs.length - runs.indexOf(run)}`}
-          />
-        )}
-      </main>
+          {runs.length < 2 ? (
+            <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
+          ) : (
+            <Compare
+              older={runs[olderAt]}
+              newer={runs[newerAt]}
+              olderNodes={nodes[olderAt] ?? {}}
+              newerNodes={nodes[newerAt] ?? {}}
+              byId={byId}
+              evaluators={evaluators}
+              labelOf={label}
+            />
+          )}
+        </>
+      )}
+      {experimentsTab === "Sweep" && (
+        <>
+          {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
+          {!studies.isPending && <Studies head={flow.head} versions={all} studies={studies.data ?? []} />}
+        </>
+      )}
+    </PageFrame>
+  );
+}
+
+const sentence = (status: string) => status[0]!.toUpperCase() + status.slice(1).replaceAll("_", " ");
+
+/** What the run's version changed from its parent, in a few words. */
+function whatChanged(run: Run, byId: Map<string, PipelineVersion>): string {
+  const version = byId.get(run.pipeline_version_id);
+  const parent = version?.parent_id ? byId.get(version.parent_id) : undefined;
+  const changes = version && parent ? settingChanges(parent, version) : [];
+  if (changes.length === 0) return parent ? "re-run" : "first version";
+  return `${describe(changes[0]!)}${changes.length > 1 ? ` +${changes.length - 1}` : ""}`;
+}
+
+/** The run's steps in flow order, each with its latest attempt's state; a failed step says why. */
+function Monitor({ run, version }: { run: Run; version: PipelineVersion | undefined }) {
+  const attempts = useRunAttempts(run.pipeline_version_id, run.id);
+  const operators = useOperatorsByRef();
+  if (attempts.isError) return <p role="alert" className="error pad">{attempts.error.message}</p>;
+  if (attempts.isPending) return <Loading text="Loading the run's steps…" pad />;
+  const latest = (node: string) => attempts.data.filter((a) => a.node_id === node).sort((a, b) => b.number - a.number)[0];
+  const steps = (version?.nodes ?? []).map((n) => ({ id: n.id, title: stepLabel(n, operators.data?.get(n.operator)).title, attempt: latest(n.id) }));
+  const failed = steps.filter((s) => s.attempt?.state === "failed");
+  const done = steps.filter((s) => s.attempt !== undefined && FINISHED.has(s.attempt.state)).length;
+  return (
+    <div className="exp-monitor">
+      <div className="exp-progress">
+        <span className="exp-progress-bar" aria-hidden="true">
+          <span style={{ width: `${steps.length === 0 ? 0 : (done / steps.length) * 100}%` }} />
+        </span>
+        <span>
+          {done} of {steps.length} steps
+        </span>
+      </div>
+      {failed.map((s) => (
+        <p key={s.id} role="alert" className="exp-failure">
+          {s.id} failed: {s.attempt?.error?.message ?? "no message"}
+        </p>
+      ))}
+      <BodySection title="Steps">
+        <ul className="exp-steps" aria-label="Steps">
+          {steps.map((s) => {
+            const state = s.attempt?.state;
+            const tone = state === "failed" ? "failed" : state === "running" || state === "leased" ? "running" : state && FINISHED.has(state) ? "done" : "waiting";
+            return (
+              <li key={s.id} className={tone}>
+                <span className="exp-step-name">
+                  {s.title} <span className="exp-step-subject">{s.id}</span>
+                </span>
+                <span className="exp-step-state">
+                  <span className="exp-step-dot" aria-hidden="true" />
+                  {state ? state.replaceAll("_", " ") : "not started"}
+                </span>
+                <span className="exp-step-bar" aria-hidden="true">
+                  <span />
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </BodySection>
     </div>
   );
+}
+
+/** Attempt states after which a step has its outputs. */
+const FINISHED = new Set(["succeeded", "cache_hit"]);
+
+/** The shown run's headline metric, and how far it moved from the run before. */
+function RunDock({ run, label, metrics, before, beforeMetrics, beforeLabel }: {
+  run: Run;
+  label: string;
+  metrics: Record<string, NodeInRun> | undefined;
+  before: Run | undefined;
+  beforeMetrics: Record<string, NodeInRun> | undefined;
+  beforeLabel: string | undefined;
+}) {
+  const now = firstHeadline(metrics);
+  const then = now && before ? firstHeadline(beforeMetrics, now.name) : undefined;
+  const rows: { k: string; v: string }[] = [{ k: "Run", v: label }, { k: "Status", v: run.status }];
+  if (now) rows.push({ k: now.name, v: formatMetric(now.value) });
+  if (now && then && beforeLabel) {
+    const delta = now.value - then.value;
+    rows.push({ k: "Change", v: `${delta < 0 ? "−" : "+"}${formatMetric(Math.abs(delta))} from run ${beforeLabel}` });
+  }
+  return <InfoDock rows={rows} />;
+}
+
+/** The first evaluator's headline metric, or the one named. */
+function firstHeadline(nodes: Record<string, NodeInRun> | undefined, name?: string) {
+  for (const node of Object.values(nodes ?? {})) {
+    const found = name ? (node.metrics?.[name] !== undefined ? { name, value: node.metrics[name]! } : undefined) : headlineOf(node.metrics);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 type TableProps = {

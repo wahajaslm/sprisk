@@ -172,8 +172,8 @@ describe("methodology page", () => {
     const map = await screen.findByRole("region", { name: "Methodology map" });
     expect(within(map).getByRole("button", { name: worded.name })).toHaveTextContent(worded.question!);
     expect(within(map).getByText(/hold out 0.2 of rows at random/)).toBeInTheDocument();
-    const detail = screen.getByRole("region", { name: worded.name });
-    expect(within(detail).getByRole("heading", { level: 1 })).toHaveTextContent(worded.question!);
+    // The page's heading asks the picked decision as its question.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(worded.question!);
 
     await userEvent.click(screen.getByRole("radio", { name: "Flow" }));
     const flow = screen.getByRole("region", { name: "Methodology flow" });
@@ -181,10 +181,24 @@ describe("methodology page", () => {
     expect(within(flow).getByText(/hold out 0.2 of rows at random/)).toBeInTheDocument();
   });
 
-  it("opens on the map canvas of the active rules, where a decision or a route is picked by a click", async () => {
+  it("opens on the design's rule map: numbered stages, a dot per active rule, picked by a click", async () => {
     const splitting: MethodologyRule = { ...split, status: "active", question: "How should the rows be split?" };
     serve([features, splitting]);
     renderWithApi(<MethodologyPage />);
+    const map = await screen.findByRole("region", { name: "Rule map" });
+    expect(within(map).getByText("Split")).toBeInTheDocument();
+    const rule = within(map).getByRole("button", { name: new RegExp(splitting.name) });
+    expect(within(map).queryByRole("button", { name: new RegExp(features.name) })).not.toBeInTheDocument();
+    await userEvent.click(rule);
+    expect(rule).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: splitting.name })).toHaveTextContent("Chosen by rule");
+  });
+
+  it("shows the transit canvas of the active rules when asked, where a decision or a route is picked by a click", async () => {
+    const splitting: MethodologyRule = { ...split, status: "active", question: "How should the rows be split?" };
+    serve([features, splitting]);
+    renderWithApi(<MethodologyPage />);
+    await userEvent.click(await screen.findByRole("radio", { name: "Canvas" }));
 
     const canvas = await screen.findByRole("region", { name: "Methodology canvas" });
     expect(within(canvas).getByRole("button", { name: splitting.name })).toHaveTextContent("How should the rows be split?");
@@ -217,9 +231,10 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
-    await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
+    await userEvent.click(await within(await screen.findByRole("region", { name: "Methodology map" })).findByRole("button", { name: /Multicollinearity/ }));
+    await userEvent.click(screen.getByRole("tab", { name: "Overview" }));
     const detail = screen.getByRole("region", { name: features.name });
-    expect(within(detail).getByRole("heading", { level: 1, name: features.name })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: features.name })).toBeInTheDocument();
     expect(within(detail).getByText(features.decides)).toBeInTheDocument();
     expect(within(detail).getByText(features.provenance.citation)).toBeInTheDocument();
     expect(within(detail).getByText("Pairwise Correlation Pruning")).toBeInTheDocument();
@@ -240,6 +255,7 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
     const detail = await screen.findByRole("region", { name: active.name });
     expect(within(detail).getByText("question.time_column", { selector: "code" })).toBeInTheDocument();
     const example = within(detail).getByRole("listitem", { name: "Example 1" });
@@ -264,6 +280,7 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Overview" }));
     const detail = await screen.findByRole("region", { name: shortlist.name });
     expect(within(detail).getByText(/every registered model that fits the task/i)).toBeInTheDocument();
     expect(within(detail).getByRole("listitem", { name: "Example 1" })).toHaveTextContent("shortlist: ml_dummy_baseline, ml_linear_model");
@@ -275,7 +292,8 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
-    await userEvent.click(await screen.findByRole("button", { name: /Multicollinearity/ }));
+    await userEvent.click(await within(await screen.findByRole("region", { name: "Methodology map" })).findByRole("button", { name: /Multicollinearity/ }));
+    await userEvent.click(screen.getByRole("tab", { name: "Overview" }));
     const detail = screen.getByRole("region", { name: features.name });
     expect(within(detail).getByText(/Draft: not run yet/)).toBeInTheDocument();
     expect(within(detail).getAllByText(/^When:/).length).toBeGreaterThan(0);
@@ -302,6 +320,48 @@ describe("methodology page", () => {
 
     await userEvent.click(await screen.findByRole("tab", { name: "Code" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("lists the rules by stage in the sidebar, each with its status on the selected flow", async () => {
+    serve([features, split]);
+    server.use(
+      http.get("/api/pipeline_versions/:id/methodology/review", () =>
+        HttpResponse.json({
+          schema_version: "sprisk.methodology_review/v1",
+          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+          items: [{ rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "proposal", reason: "Keeps class shares.", recommended_alternative_id: split.alternatives[0]!.id }],
+          next: [0],
+        }),
+      ),
+    );
+    useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
+    renderWithApi(<MethodologyPage />);
+    await showTree();
+    const side = await screen.findByRole("complementary", { name: "Rules" });
+    expect(within(side).getByText("Split")).toBeInTheDocument();
+    expect(await within(side).findByRole("button", { name: new RegExp(`${split.name}.*Proposal`) })).toBeInTheDocument();
+    useSelection.setState({ pipelineVersionId: undefined });
+  });
+
+  it("shows the steps a rule decides on the selected flow under Used in", async () => {
+    serve([split]);
+    server.use(
+      http.get("/api/pipeline_versions/:id/methodology/review", () =>
+        HttpResponse.json({
+          schema_version: "sprisk.methodology_review/v1",
+          pipeline_version_id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+          items: [{ rule: split.id, decides: "split.method", stage: "split", subject_node_id: "split", status: "proposal", reason: "Keeps class shares.", recommended_alternative_id: split.alternatives[0]!.id }],
+          next: [0],
+        }),
+      ),
+    );
+    useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
+    renderWithApi(<MethodologyPage />);
+    // The fixture is a draft rule, which only the tree view lists.
+    await showTree();
+    await userEvent.click(await screen.findByRole("tab", { name: "Used in" }));
+    expect(await screen.findByRole("list", { name: "Used in" })).toHaveTextContent(/Step split.*Proposal · Keeps class shares\./);
+    useSelection.setState({ pipelineVersionId: undefined });
   });
 
   it("says so when the rules cannot be read", async () => {

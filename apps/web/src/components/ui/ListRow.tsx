@@ -1,143 +1,44 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 export interface ListRowProps {
   title: string;
   meta?: string;
-  trailing?: React.ReactNode;
-  status?: "ok" | "queued" | "warn" | "idle";
-  selected?: boolean;
+  /** A short state word on the right, e.g. "Issue" or "Running". */
+  badge?: string;
+  /** A problem: the title and badge turn red (ADR-0061). */
   warn?: boolean;
+  selected?: boolean;
+  /** A 24px icon disc on the left, e.g. a step's kind. */
+  icon?: ReactNode;
+  /** Shown on hover, e.g. a long description that would not fit. */
+  hint?: string;
+  /** Absent: the row is a plain item, not a button. */
   onClick?: () => void;
-
-  // Compatibility props
-  mono?: boolean;
-  mark?: React.ReactNode;
-  state?: React.ReactNode;
-  current?: boolean;
-  pressed?: boolean;
-  disabled?: boolean;
 }
 
-export function ListRow({
-  title,
-  meta,
-  trailing,
-  status,
-  selected = false,
-  warn = false,
-  onClick,
-  mono = false,
-  mark,
-  state,
-  current,
-  pressed,
-  disabled = false,
-}: ListRowProps) {
-  const [h, setH] = React.useState(false);
-  const isSelected = selected || current || pressed;
-  const two = meta != null;
-
-  return (
-    <div
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      aria-current={isSelected ? "true" : undefined}
-      onClick={disabled ? undefined : onClick}
-      onKeyDown={(e) => {
-        if (!disabled && onClick && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      onMouseEnter={() => !disabled && setH(true)}
-      onMouseLeave={() => !disabled && setH(false)}
-      style={{
-        borderRadius: "var(--radius-sm)",
-        padding: two ? "8px 10px" : "0 10px",
-        height: two ? "auto" : "var(--size-row)",
-        display: "flex",
-        flexDirection: two ? "column" : "row",
-        alignItems: two ? "stretch" : "center",
-        gap: two ? 2 : 10,
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.45 : 1,
-        minWidth: 0,
-        background: isSelected ? "var(--bg-selected)" : h ? "var(--bg-hover)" : "transparent",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 8,
-          minWidth: 0,
-          flex: two ? "none" : 1,
-        }}
-      >
-        {mark && <span style={{ flexShrink: 0 }}>{mark}</span>}
-        <span
-          style={{
-            flex: 1,
-            minWidth: 0,
-            fontFamily: mono ? "var(--font-mono)" : "inherit",
-            fontSize: two ? "var(--fs-14)" : "var(--fs-13-5)",
-            fontWeight: two ? "var(--fw-book)" : 400,
-            color: warn ? "var(--danger)" : isSelected ? "var(--text-strong)" : "var(--text-body)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {title}
-        </span>
-        {!two && state && <span style={{ flexShrink: 0 }}>{state}</span>}
-        {trailing != null && (
-          <span
-            style={{
-              fontSize: "var(--fs-12-5)",
-              color: "var(--text-faint)",
-              fontVariantNumeric: "tabular-nums",
-              flexShrink: 0,
-            }}
-          >
-            {trailing}
-          </span>
-        )}
-        {status && !two && (
-          <span
-            style={{
-              width: 5,
-              height: 5,
-              borderRadius: 3,
-              flexShrink: 0,
-              alignSelf: "center",
-              background: {
-                ok: "var(--accent)",
-                queued: "var(--text-primary)",
-                warn: "var(--danger)",
-                idle: "var(--text-disabled)",
-              }[status],
-            }}
-          />
-        )}
+/** One sidebar row, as the design draws it: a title, an optional line of facts, a badge. */
+export function ListRow({ title, meta, badge, warn = false, selected = false, icon, hint, onClick }: ListRowProps) {
+  const className = `side-row${meta ? " two" : ""}${warn ? " warn" : ""}`;
+  const content = (
+    <>
+      {icon && <span className="side-row-icon">{icon}</span>}
+      <span className="side-row-text">
+        <span className="side-row-title">{title}</span>
+        {meta && <span className="side-row-meta">{meta}</span>}
+      </span>
+      {badge && <span className="side-row-badge">{badge}</span>}
+    </>
+  );
+  if (!onClick) {
+    return (
+      <div className={`${className} static`} title={hint}>
+        {content}
       </div>
-      {two && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-          <span
-            style={{
-              fontSize: "var(--fs-12-5)",
-              color: "var(--ink-5)",
-              fontVariantNumeric: "tabular-nums",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {meta}
-          </span>
-          {state && <span style={{ flexShrink: 0, fontSize: "var(--fs-12)", color: "var(--ink-4)" }}>{state}</span>}
-        </div>
-      )}
-    </div>
+    );
+  }
+  return (
+    <button type="button" className={className} aria-current={selected ? "true" : undefined} title={hint} onClick={onClick}>
+      {content}
+    </button>
   );
 }

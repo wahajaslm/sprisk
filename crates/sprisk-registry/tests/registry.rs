@@ -162,9 +162,31 @@ fn malformed_yaml_names_the_file() {
 fn every_core_plugin_manifest_is_valid() {
     let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
     let registry = Registry::load_dir(&plugins).unwrap();
-    assert_eq!(registry.len(), 38);
+    assert_eq!(registry.len(), 43);
+    assert!(
+        registry
+            .get("sprisk.validation.group_overlap@1.0.0")
+            .is_some()
+    );
+    assert!(
+        registry
+            .get("sprisk.validation.class_shares@1.0.0")
+            .is_some()
+    );
     assert!(registry.get("sprisk.ml.linear_model@3.0.0").is_some());
     assert!(registry.get("sprisk.clean.spectral_gating@1.0.0").is_some());
+}
+
+#[test]
+fn every_core_plugin_step_has_a_title_for_people() {
+    let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+    let registry = Registry::load_dir(&plugins).unwrap();
+    let untitled: Vec<&str> = registry
+        .operators()
+        .filter(|o| o.title.is_none())
+        .map(|o| o.id.as_str())
+        .collect();
+    assert!(untitled.is_empty(), "no title: {untitled:?}");
 }
 
 const ID: &str = "sprisk.validation.temporal_split@1.0.0";

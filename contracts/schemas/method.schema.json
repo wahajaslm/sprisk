@@ -1,0 +1,840 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Methods, concepts and bindings (ADR-0063). A method decides; an operator computes the evidence it needs.",
+  "$defs": {
+    "Method": {
+      "title": "Method",
+      "description": "A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "decides",
+        "activity",
+        "question",
+        "needs",
+        "options",
+        "verifications",
+        "source"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.method/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "decides": {
+          "$ref": "#/$defs/DecisionKey"
+        },
+        "activity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The group this decision is shown in: one stage card on the canvas, one notebook section."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The decision as a question for people."
+        },
+        "applies_when": {
+          "$ref": "#/$defs/MethodAppliesWhen"
+        },
+        "needs": {
+          "$ref": "#/$defs/MethodNeeds"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MethodOption"
+          }
+        },
+        "verifications": {
+          "type": "object",
+          "description": "Promises an option can make, by name. An option lists the ones it makes in verify.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/MethodVerification"
+          }
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The published standard the method follows."
+        }
+      }
+    },
+    "MethodRef": {
+      "type": "string",
+      "description": "methodology.<pack>.<method>@<semver>",
+      "pattern": "^methodology\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "DecisionKey": {
+      "type": "string",
+      "description": "<area>.<decision>, the key other methods read a decision by.",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "ConceptId": {
+      "type": "string",
+      "description": "<pack>.<concept>, a meaning defined in a pack's concepts.yaml.",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "EvidenceKind": {
+      "type": "string",
+      "description": "<area>.<evidence>, a measured fact one operator produces.",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "MethodAppliesWhen": {
+      "type": "object",
+      "description": "When the method applies. Absent: always.",
+      "additionalProperties": false,
+      "required": [
+        "task"
+      ],
+      "properties": {
+        "task": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskType"
+          }
+        }
+      }
+    },
+    "MethodNeeds": {
+      "type": "object",
+      "description": "Everything decide() may read. It reads nothing else.",
+      "additionalProperties": false,
+      "required": [
+        "concepts",
+        "evidence",
+        "decisions"
+      ],
+      "properties": {
+        "concepts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EvidenceKind"
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DecisionKey"
+          }
+        }
+      }
+    },
+    "MethodOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "verify"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/MethodAction"
+        },
+        "verify": {
+          "type": "array",
+          "description": "The verifications this option promises, by name.",
+          "items": {
+            "$ref": "#/$defs/VerificationName"
+          }
+        }
+      }
+    },
+    "MethodAction": {
+      "type": "object",
+      "description": "What the option changes. Absent: nothing.",
+      "additionalProperties": false,
+      "properties": {
+        "bind": {
+          "$ref": "#/$defs/MethodBind"
+        },
+        "replace": {
+          "$ref": "#/$defs/MethodReplace"
+        },
+        "insert": {
+          "$ref": "#/$defs/MethodInsert"
+        }
+      }
+    },
+    "MethodInsert": {
+      "type": "object",
+      "description": "Inserts a step running operator on the rows the step with role `before` reads (ADR-0063 slice 6).",
+      "additionalProperties": false,
+      "required": ["before", "operator", "node_id"],
+      "properties": {
+        "before": { "$ref": "#/$defs/OperatorRole" },
+        "operator": { "$ref": "#/$defs/OperatorRef" },
+        "node_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "description": "The inserted step's id; a free one with a suffix when the flow already has it."
+        },
+        "settings": { "$ref": "#/$defs/Params", "description": "Params that do not depend on the project. Absent: none." },
+        "from_evidence": {
+          "type": "object",
+          "description": "Params read from a field of evidence the method needs: param name to <area>.<evidence>.<field>. Absent: none.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+          "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }
+        },
+        "concepts": {
+          "type": "object",
+          "description": "Params a project's binding fills: param name to concept. Absent: none.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+          "additionalProperties": { "$ref": "#/$defs/ConceptId" }
+        }
+      }
+    },
+    "MethodBind": {
+      "type": "object",
+      "description": "Binds a concept to a column that the producer of an evidence kind adds.",
+      "additionalProperties": false,
+      "required": [
+        "concept",
+        "evidence",
+        "column"
+      ],
+      "properties": {
+        "concept": {
+          "$ref": "#/$defs/ConceptId"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "column": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A column the producer writes, never a dataset column."
+        }
+      }
+    },
+    "MethodVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "needs",
+        "promise"
+      ],
+      "properties": {
+        "needs": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "promise": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What holds when it passes, for people."
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "Values verify_<name>() reads. Absent: none."
+        }
+      }
+    },
+    "MethodRequest": {
+      "title": "MethodRequest",
+      "description": "Rust to the method session (`python -m sprisk_workers.method`), one JSON line per decision (ADR-0063): the method module Rust picked from the loaded catalog, and only what its needs declare. decide() may read nothing else.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "module",
+        "method",
+        "needs",
+        "options",
+        "task",
+        "evidence",
+        "decisions",
+        "bound"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.method_request/v1"
+          ]
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored."
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "needs": {
+          "$ref": "#/$defs/MethodNeeds"
+        },
+        "options": {
+          "type": "array",
+          "description": "The ids of the method's options: decide() chooses or asks for one of them.",
+          "items": {
+            "$ref": "#/$defs/MethodOptionId"
+          }
+        },
+        "task": {
+          "$ref": "#/$defs/TaskType"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceSet",
+          "description": "Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names."
+        },
+        "decisions": {
+          "type": "object",
+          "description": "Each needed decision, by its key: the option chosen.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/MethodOptionId"
+          }
+        },
+        "bound": {
+          "type": "array",
+          "description": "The needed concepts a stated, confirmed or method-made binding names. Never a column name.",
+          "items": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        }
+      }
+    },
+    "VerificationRequest": {
+      "title": "VerificationRequest",
+      "description": "Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "module",
+        "method",
+        "verification",
+        "evidence",
+        "settings"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.verification_request/v1"
+          ]
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored."
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceFields",
+          "description": "The fields of the evidence kind the verification needs."
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "The verification's settings from method.yaml; empty when it has none."
+        }
+      }
+    },
+    "MethodFiles": {
+      "title": "MethodFiles",
+      "description": "Read-only files of one method folder (ADR-0063): its method.yaml and method.py, as the packs loaded them, so a person sees the code that decides and checks a step. Served by GET /methods/{id}/source; the API reads only files inside the method's folder.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "files"
+      ],
+      "properties": {
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "language",
+              "text"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Relative to the method folder, e.g. method.yaml. Never an absolute path.",
+                "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./-]*$"
+              },
+              "language": {
+                "type": "string",
+                "enum": [
+                  "yaml",
+                  "python"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "MethodOptionId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "VerificationName": {
+      "type": "string",
+      "description": "A verification a method declares, the name of its verify_<name>() function.",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "MethodAssurance": {
+      "type": "string",
+      "description": "How a method's option was taken: confirmed, a person answered the method's ask; rule, the method chose it unasked.",
+      "enum": [
+        "confirmed",
+        "rule"
+      ]
+    },
+    "MethodAnswer": {
+      "title": "MethodAnswer",
+      "description": "The method session's one JSON line per request, tagged by `answer`: what decide() returned, what verify_<name>() found, or why the method refused its request. Any other failure ends the session.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MethodDecided"
+        },
+        {
+          "$ref": "#/$defs/MethodRefused"
+        },
+        {
+          "$ref": "#/$defs/MethodVerified"
+        }
+      ]
+    },
+    "MethodDecided": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "method",
+        "outcome",
+        "option",
+        "reason"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "decided"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "choose",
+            "ask"
+          ],
+          "description": "choose: the method applies the option. ask: a person confirms the option, or picks another, before anything relies on it."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why, for a person. For ask, the question itself."
+        }
+      }
+    },
+    "MethodRefused": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "error"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "refused"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The method's own error (an undeclared read, an unknown option). It may name local paths, so it goes to the log, not to a client."
+        }
+      }
+    },
+    "MethodVerified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "method",
+        "verification",
+        "result",
+        "detail"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "verified"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "result": {
+          "$ref": "#/$defs/VerificationOutcome"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the evidence showed, for a person."
+        }
+      }
+    },
+    "VerificationOutcome": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive"
+      ],
+      "description": "What verify_<name>() found. pass: the promise holds. fail: it does not. inconclusive: the evidence cannot say, such as one side with no groups. Never stale: only the control plane knows what changed since."
+    },
+    "DecisionAnswer": {
+      "type": "object",
+      "description": "A person's answer to a method's ask (ADR-0063 amendment): the option to apply for the decision. The walk applies it with assurance confirmed.",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "option"
+      ],
+      "properties": {
+        "decides": {
+          "$ref": "#/$defs/DecisionKey"
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        }
+      }
+    },
+    "ConceptSet": {
+      "title": "ConceptSet",
+      "description": "A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for. Served by GET /concepts with the concepts of every loaded pack.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "concepts"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.concept_set/v1"
+          ]
+        },
+        "concepts": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/Concept"
+          }
+        }
+      }
+    },
+    "Concept": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description",
+        "binds_to"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ConceptKind"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binds_to": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BindingSourceKind"
+          }
+        }
+      }
+    },
+    "ConceptKind": {
+      "type": "string",
+      "description": "label: what a model predicts; an all-rows step may never read it. text: free text. entity_identifier: groups rows of one real-world thing. time: when a row's event happened.",
+      "enum": [
+        "label",
+        "text",
+        "entity_identifier",
+        "time"
+      ]
+    },
+    "BindingSourceKind": {
+      "type": "string",
+      "description": "column: a column of the loaded data. derived: a column a step adds.",
+      "enum": [
+        "column",
+        "derived"
+      ]
+    },
+    "Binding": {
+      "title": "Binding",
+      "description": "Which column means a concept in one project (ADR-0063). Column names live only here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "concept",
+        "source",
+        "set_by"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.binding/v1"
+          ]
+        },
+        "concept": {
+          "$ref": "#/$defs/ConceptId"
+        },
+        "source": {
+          "$ref": "#/$defs/BindingSource"
+        },
+        "set_by": {
+          "$ref": "#/$defs/BindingSetBy"
+        }
+      }
+    },
+    "BindingSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column"
+      ],
+      "properties": {
+        "column": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step": {
+          "$ref": "#/$defs/NodeId",
+          "description": "The step that adds the column. Absent: a column of the loaded data."
+        }
+      }
+    },
+    "OperatorRole": {
+      "type": "string",
+      "description": "The one job a step does in a flow, so methods place and replace steps by role, not by input names.",
+      "enum": [
+        "source",
+        "split",
+        "model"
+      ]
+    },
+    "OperatorAttach": {
+      "type": "object",
+      "description": "Where the engine adds an evidence producer: on the rows going into (input) or coming out of (output) the step with this role.",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "side"
+      ],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/OperatorRole"
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "input",
+            "output"
+          ]
+        }
+      }
+    },
+    "OperatorScope": {
+      "type": "string",
+      "description": "all: reads every row, before the split, so it may never read a label concept. train: reads train rows only.",
+      "enum": [
+        "all",
+        "train"
+      ]
+    },
+    "EvidenceProduced": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "default": {
+          "type": "boolean",
+          "description": "The producer the engine adds when several operators produce this kind. Absent: false."
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/EvidenceFieldType"
+          }
+        }
+      }
+    },
+    "EvidenceSet": {
+      "title": "EvidenceSet",
+      "description": "What one evidence producer measured, written to its output port named evidence (ADR-0063): each kind it produces, with each field's value. The operator's produces says which kinds and fields, of which types; the control plane checks the file against it when the step's outputs are saved.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+      "additionalProperties": { "$ref": "#/$defs/EvidenceFields" }
+    },
+    "EvidenceFields": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+      "additionalProperties": { "$ref": "#/$defs/EvidenceValue" }
+    },
+    "EvidenceValue": {
+      "description": "A field's value: a number, a yes or no, a short text, or a list of short texts (string_list).",
+      "anyOf": [
+        { "type": "integer" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
+    "EvidenceFieldType": {
+      "type": "string",
+      "enum": [
+        "integer",
+        "number",
+        "boolean",
+        "string",
+        "string_list"
+      ],
+      "description": "string_list: short values shown to people, such as the ids of overlapping groups."
+    },
+    "MethodReplace": {
+      "type": "object",
+      "description": "Replaces the step with this role by a step running operator.",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "operator"
+      ],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/OperatorRole"
+        },
+        "operator": {
+          "$ref": "#/$defs/OperatorRef"
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "Params that do not depend on the project. Absent: none."
+        },
+        "concepts": {
+          "type": "object",
+          "description": "Params a project's binding fills: param name to concept. A param the operator already maps to a concept is not listed here. Absent: none.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        }
+      }
+    },
+    "BindingSetBy": {
+      "description": "Who set the binding, tagged by assurance: a person stated it, or a method's option made it, confirmed by a person or set unasked by the method (rule).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BindingStated"
+        },
+        {
+          "$ref": "#/$defs/BindingByMethod"
+        }
+      ]
+    },
+    "BindingStated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assurance"
+      ],
+      "properties": {
+        "assurance": {
+          "type": "string",
+          "enum": [
+            "stated"
+          ]
+        }
+      }
+    },
+    "BindingByMethod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assurance",
+        "method"
+      ],
+      "properties": {
+        "assurance": {
+          "$ref": "#/$defs/MethodAssurance"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        }
+      }
+    }
+  }
+}

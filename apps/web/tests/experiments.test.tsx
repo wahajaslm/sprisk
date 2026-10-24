@@ -45,9 +45,9 @@ function twoVersions() {
 describe("experiments", () => {
   it("lists every run of the flow across its versions, with what changed and its metric", async () => {
     twoVersions();
+    useSelection.setState({ experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
     const table = await screen.findByRole("table", { name: "Runs" });
-    expect(await screen.findByText("2 runs")).toBeInTheDocument();
     const rows = within(table).getAllByRole("row").slice(1);
     await waitFor(() => expect(rows[0]).toHaveTextContent("0.9"));
     expect(rows[0]).toHaveTextContent("split seed 42 → 7");
@@ -56,6 +56,7 @@ describe("experiments", () => {
 
   it("compares the two chosen runs: settings that differ and metrics side by side", async () => {
     twoVersions();
+    useSelection.setState({ experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
     const diff = await screen.findByRole("region", { name: "Settings that differ" });
     await waitFor(() => expect(diff).toHaveTextContent("split · seed"));
@@ -69,6 +70,7 @@ describe("experiments", () => {
 
   it("opens a run in the Flow view", async () => {
     twoVersions();
+    useSelection.setState({ experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
     const table = await screen.findByRole("table", { name: "Runs" });
     await userEvent.click(within(table).getAllByRole("button", { name: "Open in Flow" })[1]!);
@@ -76,15 +78,91 @@ describe("experiments", () => {
   });
 
   it("says so when the flow has fewer than two runs to compare", async () => {
-    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
     expect(await screen.findByText(/Run the flow again/)).toBeInTheDocument();
+  });
+});
+
+describe("experiments frame", () => {
+  it("lists the flow's runs in the sidebar, newest first, with what changed; a badge only when not done", async () => {
+    twoVersions();
+    renderWithApi(<Experiments />);
+    const side = await screen.findByRole("complementary", { name: "Runs" });
+    const rows = await within(side).findAllByRole("button", { name: /^Run #/ });
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringMatching(/^Run #2.*split seed 42 → 7$/),
+      expect.stringMatching(/^Run #1.*first version$/),
+    ]);
+  });
+
+  it("filters the runs by what changed, and counts what it shows", async () => {
+    twoVersions();
+    renderWithApi(<Experiments />);
+    const side = await screen.findByRole("complementary", { name: "Runs" });
+    await within(side).findAllByRole("button", { name: /^Run #/ });
+    await userEvent.type(within(side).getByRole("searchbox", { name: "Search runs" }), "seed");
+    expect(within(side).getAllByRole("button", { name: /^Run #/ }).map((r) => r.textContent)).toEqual([expect.stringMatching(/^Run #2/)]);
+  });
+
+  it("says how many of the run's steps are done", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<Experiments />);
+    expect(await screen.findByText(`${pipeline.nodes.length} of ${pipeline.nodes.length} steps`)).toBeInTheDocument();
+  });
+
+  it("marks a failed run as an issue in the sidebar", async () => {
+    server.use(http.get("/api/runs", () => HttpResponse.json([{ ...run, status: "failed" }])));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<Experiments />);
+    const side = await screen.findByRole("complementary", { name: "Runs" });
+    expect(await within(side).findByRole("button", { name: /^Run #1/ })).toHaveTextContent(/Issue$/);
+  });
+
+  it("monitors the chosen run: each step's state, and why a step failed", async () => {
+    server.use(
+      http.get(`/api/runs/${RUN}/attempts`, () =>
+        HttpResponse.json(attempts.filter((a) => a.node_id !== "split" || a.number === 1)),
+      ),
+    );
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<Experiments />);
+    expect(await screen.findByRole("tab", { name: "Monitor" })).toHaveAttribute("aria-selected", "true");
+    const steps = await screen.findByRole("list", { name: "Steps" });
+    expect(await within(steps).findByText("load")).toBeInTheDocument();
+    expect(steps).toHaveTextContent(/split.*failed/);
+    expect(await screen.findByRole("alert")).toHaveTextContent("split failed: worker exited");
+  });
+
+  it("says why the chosen run's steps cannot be read", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json({ errors: [{ code: "internal", message: "store locked" }] }, { status: 500 })));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<Experiments />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("store locked");
+  });
+
+  it("shows the chosen run's headline metric and its change from the run before", async () => {
+    twoVersions();
+    renderWithApi(<Experiments />);
+    const dock = await screen.findByRole("region", { name: "Info" });
+    await waitFor(() => expect(dock).toHaveTextContent(/accuracy\s*0\.9/));
+    expect(dock).toHaveTextContent("−0.047 from run #1");
+  });
+
+  it("has the design's tabs: Monitor, Compare and Sweep", async () => {
+    twoVersions();
+    renderWithApi(<Experiments />);
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Monitor", "Compare", "Sweep"]);
+    await userEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(await screen.findByRole("table", { name: "Runs" })).toBeInTheDocument();
   });
 });
 
 describe("comparison cautions", () => {
   it("warns that a changed split means different test rows, and how much one row moves a metric", async () => {
     twoVersions();
+    useSelection.setState({ experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
     const metrics = await screen.findByRole("region", { name: "Metrics" });
     expect(await within(metrics).findByText(/split changed, so the two runs were scored on different test rows/)).toBeInTheDocument();
@@ -151,7 +229,7 @@ describe("model comparison", () => {
         return HttpResponse.json(appliedDecision, { status: 201 });
       }),
     );
-    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, experimentsTab: "Compare" });
     renderWithApi(strict ? <StrictMode><Experiments /></StrictMode> : <Experiments />);
     return applied;
   }
@@ -173,7 +251,7 @@ describe("model comparison", () => {
     expect(region).toHaveTextContent("Not compared: ml_gradient_boosting (Not on the shortlist: Too few rows to trust.)");
     expect(region).toHaveTextContent(winner.reason);
     // A comparison is not a run of the flow.
-    expect(screen.getByText("1 run")).toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "Runs" })).getAllByRole("button", { name: /^Run #/ })).toHaveLength(1);
   });
 
   it("uses the recommended model with no reason asked", async () => {

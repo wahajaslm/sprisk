@@ -82,20 +82,11 @@ export default function MonacoCode({ value, onChange, onRun, onRunStay, onEscape
         bracketPairColorization: { enabled: false },
         scrollBeyondLastLine: false,
         padding: { top: 10 },
-        // A notebook cell: as tall as its code, no line numbers, long lines wrapped.
+        // A notebook cell is the Code tab's editor, only as tall as its code: no scrollbars.
         ...(fit
           ? {
-              lineNumbers: "off" as const,
-              folding: false,
-              glyphMargin: false,
-              lineDecorationsWidth: 12,
-              wordWrap: "on" as const,
-              renderLineHighlight: "none" as const,
-              overviewRulerLanes: 0,
-              overviewRulerBorder: false,
-              hideCursorInOverviewRuler: true,
               padding: { top: 10, bottom: 10 },
-              scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const, alwaysConsumeMouseWheel: false },
+              scrollbar: { vertical: "hidden" as const, horizontal: "auto" as const, alwaysConsumeMouseWheel: false },
             }
           : {}),
         tabSize: 4,

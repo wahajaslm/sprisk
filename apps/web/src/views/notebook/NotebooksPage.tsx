@@ -1,12 +1,19 @@
+import { useState } from "react";
+
 import { useNotebooks, useSaveNotebook } from "../../api/notebooks.ts";
 import { useOperators, usePipelineVersions } from "../../api/hooks.ts";
+import { useFlowDecisions } from "../../api/walks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.ts";
 import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { flowOf, flows } from "../../flow/flows.ts";
 import { useSelection } from "../../workbench/selection.ts";
-import { useWorkbench } from "../../workbench/workbench.ts";
-import { AddIcon, PanelToggleIcon } from "../Icons.tsx";
+import { InfoDock } from "../../components/ui/InfoDock.tsx";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { ListRow } from "../../components/ui/ListRow.tsx";
+import { SideGroup } from "../../components/ui/SideGroup.tsx";
+import { Sidebar } from "../../components/ui/Sidebar.tsx";
+import { flowName } from "../../flow/labels.ts";
 import { StageNotebook } from "./StageNotebook.tsx";
 import { NotebookList } from "./NotebookList.tsx";
 import { SessionNotebook } from "./SessionNotebook.tsx";
@@ -18,7 +25,7 @@ export function NotebooksPage() {
   const versions = usePipelineVersions();
   const operators = useOperators();
   const save = useSaveNotebook();
-  const { sidebarOpen, toggleSidebar } = useWorkbench();
+  const [filter, setFilter] = useState("");
   const openId = useSelection((s) => s.notebookId);
   const stageTarget = useSelection((s) => s.stageTarget);
   const openNotebook = useSelection((s) => s.openNotebook);
@@ -27,6 +34,9 @@ export function NotebooksPage() {
   const flow = flowOf(flows(versions.data ?? []), pipelineVersionId);
   // The version on screen, as the canvas shows it; the newest when none is picked.
   const shownFlow = (versions.data ?? []).find((v) => v.id === pipelineVersionId) ?? flow?.head;
+  // A walk's decisions make one section per activity; until they are read, stages alone.
+  const decided = useFlowDecisions(shownFlow?.id);
+  const decisions = decided.data?.decisions ?? [];
 
   if (notebooks.isError) return <p role="alert" className="error pad">{notebooks.error.message}</p>;
   if (notebooks.isPending || versions.isPending || operators.isPending) return <Loading text="Loading notebooks…" pad />;
@@ -41,10 +51,10 @@ export function NotebooksPage() {
         .filter((v) => v.pipeline_version_id === undefined)
         .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
     : [];
-  const stages = shownFlow ? stageNotebooks(shownFlow, new Map((operators.data ?? []).map((o) => [o.id, o]))) : [];
+  const stages = shownFlow ? stageNotebooks(shownFlow, new Map((operators.data ?? []).map((o) => [o.id, o])), decisions) : [];
   const saved = openId ? [...mine, ...loose].find((v) => v.notebook_id === openId) : undefined;
   // A stage the canvas asked for, else a saved notebook picked here, else the first stage.
-  const stageOpen = stages.find((s) => s.stage === stageTarget)?.stage ?? (saved ? undefined : stages[0]?.stage);
+  const stageOpen = stages.find((s) => s.name === stageTarget) ?? (saved ? undefined : stages[0]);
   const open = stageOpen ? undefined : (saved ?? mine[0] ?? loose[0]);
 
   const create = () => {
@@ -53,80 +63,59 @@ export function NotebooksPage() {
     save.mutate(version, { onSuccess: (saved) => openNotebook(saved.notebook_id) });
   };
 
+  const needle = filter.trim().toLowerCase();
+  const matches = (name: string) => name.toLowerCase().includes(needle);
+  const shownStages = stages.filter((s) => matches(s.name));
+  const shownMine = mine.filter((n) => matches(n.title));
+  const shownLoose = loose.filter((n) => matches(n.title));
+
   return (
-    <div className={`notebooks-page-layout notebooks-page ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
-      <nav className={`main-sidebar notebooks-list ${sidebarOpen ? "" : "sidebar-rail-wrap"}`} aria-label="Notebooks">
-        {!sidebarOpen ? (
-          <div className="sidebar-rail" aria-label="Notebooks rail">
-            <button
-              type="button"
-              className="sidebar-toggle-btn"
-              title="Expand Notebooks sidebar"
-              aria-label="Expand Notebooks sidebar"
-              onClick={toggleSidebar}
-            >
-              <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
-            </button>
-            <span
-              className="sidebar-rail-label"
-              role="button"
-              tabIndex={0}
-              onClick={toggleSidebar}
-            >
-              Notebooks
-            </span>
-          </div>
-        ) : (
-          <>
-            <div className="sidebar-header">
-              <div className="sidebar-title-row">
-                <h2 className="sidebar-title">Notebooks</h2>
-                <div style={{ flex: 1 }} />
-                <button type="button" className="page-btn" disabled={save.isPending} onClick={create}>
-                  <AddIcon /> New notebook
-                </button>
-                <button
-                  type="button"
-                  className="sidebar-toggle-btn"
-                  title="Collapse Notebooks sidebar"
-                  aria-label="Collapse Notebooks sidebar"
-                  onClick={toggleSidebar}
-                >
-                  <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
-                </button>
-              </div>
-            </div>
-
+    <div className="page-frame">
+      <Sidebar
+        title="Notebooks"
+        add={{ label: "New notebook", onClick: create, disabled: save.isPending }}
+        search={<SearchField value={filter} onChange={setFilter} placeholder="Search notebooks" ariaLabel="Filter notebooks" />}
+        dock={
+          <InfoDock
+            rows={[
+              { k: "Flow", v: shownFlow ? flowName(shownFlow) : "None yet" },
+              { k: "Stages", v: String(stages.length) },
+              { k: "Saved", v: String(mine.length + loose.length) },
+            ]}
+          />
+        }
+      >
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
-        {stages.length > 0 && (
-          <>
-            <p className="notebooks-heading">Stages</p>
-            <ul aria-label="This flow's stages">
-              {stages.map(({ stage, nodes }) => (
-                <li key={stage} className="nb-item">
-                  <button type="button" className="nb-item-open" aria-current={stage === stageOpen} onClick={() => openStage(stage)}>
-                    {stage} <span className="muted">· {nodes.length === 1 ? "1 step" : `${nodes.length} steps`}</span>
-                  </button>
-                </li>
+        {decided.isError && <p role="alert" className="error">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
+        {shownStages.length > 0 && (
+          <SideGroup num={1} label="Stages" meta={shownStages.length}>
+            <div role="list" aria-label="This flow's stages">
+              {shownStages.map(({ name, nodes }) => (
+                <div key={name} role="listitem">
+                  <ListRow title={name} meta={nodes.length === 1 ? "1 step" : `${nodes.length} steps`} selected={name === stageOpen?.name} onClick={() => openStage(name)} />
+                </div>
               ))}
-            </ul>
-          </>
+            </div>
+          </SideGroup>
         )}
-        {mine.length > 0 && <p className="notebooks-heading">Saved notebooks</p>}
-        <NotebookList label="This flow's notebooks" notebooks={mine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
-        {loose.length > 0 && (
-          <>
-            <p className="notebooks-heading">Not in a flow yet</p>
-            <NotebookList label="Not in a flow yet" notebooks={loose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
-          </>
+        {shownMine.length > 0 && (
+          <SideGroup num={2} label="Saved notebooks" meta={shownMine.length}>
+            <NotebookList label="This flow's notebooks" notebooks={shownMine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
+          </SideGroup>
         )}
-          </>
+        {shownLoose.length > 0 && (
+          <SideGroup num={3} label="Not in a flow yet" meta={shownLoose.length}>
+            <NotebookList label="Not in a flow yet" notebooks={shownLoose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
+          </SideGroup>
         )}
-      </nav>
+      </Sidebar>
 
-      <div className="center-screen notebooks-center">
-        {stageOpen && shownFlow ? (
-          <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} />
+      <section className="center-screen page-pane" aria-label="Notebook">
+        {stageOpen && shownFlow && decided.isPending ? (
+          // The cells are read once per section, so they wait for the decisions that place them.
+          <Loading text="Loading the stage…" pad />
+        ) : stageOpen && shownFlow ? (
+          <StageNotebook key={`${shownFlow.id}/${stageOpen.name}`} pipeline={shownFlow} section={stageOpen} />
         ) : open ? (
           <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
         ) : (
@@ -134,7 +123,7 @@ export function NotebooksPage() {
             <p>No open notebook. Make a flow, or start a new notebook.</p>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

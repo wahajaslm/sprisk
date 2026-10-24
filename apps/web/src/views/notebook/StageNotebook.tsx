@@ -1,39 +1,45 @@
-import type { Attempt, NotebookCell, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { Attempt, FlowDecision, NotebookCell, Operator, PipelineVersion } from "@sprisk/contracts";
 import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { plainCodeQuery, useCodeDisplay } from "../../api/code.ts";
-import { useOperators, useRunAttempts } from "../../api/hooks.ts";
+import { useOperators, useOutputs, useRunAttempts } from "../../api/hooks.ts";
+import { PARQUET } from "../../api/media.ts";
 import { readersOf, removeStep } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
-import { type Stage, stepLabel } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useCollapsed } from "../../notebook/collapsed.ts";
 import type { Ran } from "../../notebook/outputs.ts";
-import { codeRequest, isReadyMade, stageCells, stageNodes } from "../../notebook/stageCells.ts";
-import { stepNames } from "../../notebook/stageNotebooks.ts";
+import { codeRequest, isReadyMade, stageCells } from "../../notebook/stageCells.ts";
+import type { Section } from "../../notebook/stageNotebooks.ts";
 import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
-import { AddIcon, RedoIcon, RunAllIcon, TrashIcon, UndoIcon } from "../Icons.tsx";
-import { TabBody, useStep } from "../inspector/step.tsx";
-import { OutputItems } from "./CellOutputs.tsx";
+import { Button } from "../../components/ui/Button.tsx";
+import { PageHeader } from "../../components/ui/PageHeader.tsx";
+import { flowName } from "../../flow/labels.ts";
+import { AddIcon, RedoIcon, TrashIcon, UndoIcon } from "../Icons.tsx";
+import { FiguresTab } from "../inspector/FiguresTab.tsx";
+import { PromiseList } from "../PromiseList.tsx";
+import { useStep } from "../inspector/step.tsx";
+import { ArtifactTable, OutputItems } from "./CellOutputs.tsx";
 import { codeCellIds, NotebookCells, notebookKeys } from "./NotebookCells.tsx";
 import { useCellEditing } from "./useCellEditing.ts";
 import { useStageSave } from "./useStageSave.ts";
 
 const LIVE = new Set<Attempt["state"]>(["created", "validated", "queued", "leased", "running", "uploading"]);
 
-/** One stage of the flow in the notebook editor (ADR-0055). The cells are the flow's steps,
+/** One section of the flow in the notebook editor (ADR-0055): a stage, or an activity whose
+ * decisions open it (ADR-0063). The cells are the flow's steps,
  * read from the flow itself: a code step is its code, a ready-made step its settings form.
  * Running a cell saves the flow if its cells changed and runs it, reusing unchanged steps
  * (ADR-0026), so a cell's result is its step's result. There is no kernel. Mounted per flow
  * version: a save shows the new version's cells. */
-export function StageNotebook({ pipeline, stage }: { pipeline: PipelineVersion; stage: Stage }) {
+export function StageNotebook({ pipeline, section }: { pipeline: PipelineVersion; section: Section }) {
   const operators = useOperators();
   const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
   // Only steps whose manifest names a writer have plain code to ask for.
   const writing = operators.data
-    ? stageNodes(pipeline, byRef, stage).filter((n) => isReadyMade(pipeline, n.id) && byRef.get(n.operator)?.notebook_code !== undefined)
+    ? section.nodes.filter((n) => isReadyMade(pipeline, n.id) && byRef.get(n.operator)?.notebook_code !== undefined)
     : [];
   const plain = useQueries({ queries: writing.map((n) => plainCodeQuery(n.operator, codeRequest(pipeline, byRef, n.id))) });
   if (operators.isError) return <p role="alert" className="error pad">Steps could not be read: {operators.error.message}</p>;
@@ -41,20 +47,27 @@ export function StageNotebook({ pipeline, stage }: { pipeline: PipelineVersion; 
   const code = new Map(writing.flatMap((n, i) => (plain[i]?.data ? [[n.id, plain[i].data] as const] : [])));
   // A step whose code could not be written shows why in its own cell, with its settings.
   const unwritten = new Map(writing.flatMap((n, i) => (plain[i]?.error ? [[n.id, plain[i].error.message] as const] : [])));
-  return <StageEditor pipeline={pipeline} stage={stage} byRef={byRef} code={code} unwritten={unwritten} />;
+  return <StageEditor pipeline={pipeline} section={section} byRef={byRef} code={code} unwritten={unwritten} />;
 }
 
 /** The editor, made once the operators and the steps' code are known: its cells are read from
  * the flow once. */
-function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: PipelineVersion; stage: Stage; byRef: Map<string, Operator>; code: Map<string, string>; unwritten: Map<string, string> }) {
+function StageEditor({ pipeline, section, byRef, code, unwritten }: {
+  pipeline: PipelineVersion;
+  section: Section;
+  byRef: Map<string, Operator>;
+  code: Map<string, string>;
+  unwritten: Map<string, string>;
+}) {
   const runId = useSelection((s) => s.runId);
   const attempts = useRunAttempts(pipeline.id, runId);
-  const edit = useCellEditing(stageCells(pipeline, byRef, stage, code), stage);
+  const stage = section.name;
+  const edit = useCellEditing(stageCells(section, code), stage);
   const { cells, active } = edit;
   const foldKey = `stage:${stage}`;
   const toggleFold = useCollapsed((s) => s.toggle);
   const foldOutputs = useCollapsed((s) => s.setOutputsCollapsed);
-  const stageSave = useStageSave(pipeline, byRef, stage, code);
+  const stageSave = useStageSave(pipeline, byRef, section, code);
   const { busy, setProblem, notes } = stageSave;
   const problem = stageSave.problem;
   const [starting, setStarting] = useState<string>();
@@ -96,6 +109,15 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
 
   return (
     <div className="notebook" aria-label="Notebook">
+      <PageHeader
+        eyebrow={`Notebook · ${flowName(pipeline)} · flow ${busy || runs.running ? "running" : "idle"}`}
+        title={stage}
+        description="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change."
+        actions={<Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>}
+      />
+      {section.decisions.map((decision) => (
+        <SectionDecision key={decision.decides} decision={decision} />
+      ))}
       <div className="nb-toolbar" role="toolbar" aria-label="Notebook actions">
         <button type="button" className="nb-action" onClick={() => edit.insert(active + 1, "code")}>
           <AddIcon /> Code
@@ -113,10 +135,6 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
         <button type="button" className="nb-action" disabled={!edit.canRedo} onClick={edit.redo} aria-label="Redo" title="Redo cell action (⇧Z / ⌘⇧Z / ⌘Y)">
           <RedoIcon />
         </button>
-        <span className="nb-divider" />
-        <button type="button" className="nb-action" disabled={busy} onClick={runAll}>
-          <RunAllIcon /> Run All
-        </button>
         <button type="button" className="nb-action" aria-label="Collapse All Outputs" title="Collapse All Outputs" onClick={() => foldOutputs(foldKey, codeCellIds(cells), true)}>
           Collapse
         </button>
@@ -125,12 +143,6 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
         </button>
       </div>
       <div className="nb-scroll" onKeyDown={onKeyDown}>
-        <div className="nb-title-row">
-          <h2 className="nb-title">{stage}</h2>
-          <span className="nb-kernel" title="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change.">
-            <span className={`nb-kernel-dot${busy || runs.running ? " busy" : ""}`} /> Flow · {busy || runs.running ? "running" : "idle"}
-          </span>
-        </div>
         {(problem ?? attempts.error?.message) && <p role="alert" className="error nb-message">{problem ?? attempts.error?.message}</p>}
         {notes.map((note, i) => (
           <p key={i} className="nb-message nb-note">{note}</p>
@@ -140,17 +152,11 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
           runs={runs}
           foldKey={foldKey}
           onRun={runCell}
-          onRunAbove={() => runAll()}
-          onRemove={remove}
-          labelOf={(cell) => {
-            const node = pipeline.nodes.find((n) => n.id === cell.id);
-            return node && stepLabel(node);
-          }}
           stepOf={(cell) =>
             isReadyMade(pipeline, cell.id) && !code.has(cell.id) ? (
               <ViewInstance pin={cellPin(cell.id)} setPin={undefined}>
                 {unwritten.has(cell.id) && <p role="alert" className="error">{cell.id}'s code could not be written: {unwritten.get(cell.id)}</p>}
-                <StepForm names={stepNames(pipeline, byRef, cell.id)} />
+                <StepWithoutCode />
               </ViewInstance>
             ) : undefined
           }
@@ -164,6 +170,27 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
         />
       </div>
     </div>
+  );
+}
+
+/** What opens an activity's section: the question its method asks, what it found, what it
+ * decided, and whether its promises hold on this version. */
+function SectionDecision({ decision }: { decision: FlowDecision }) {
+  return (
+    <section className="nb-decision" aria-label={`Decision: ${decision.question}`}>
+      <p className="nb-decision-question">{decision.question}</p>
+      <dl className="nb-decision-facts">
+        <div>
+          <dt>Finding</dt>
+          <dd>{decision.reason}</dd>
+        </div>
+        <div>
+          <dt>Decision</dt>
+          <dd>{decision.label}</dd>
+        </div>
+      </dl>
+      <PromiseList promises={decision.promises} />
+    </section>
   );
 }
 
@@ -189,38 +216,34 @@ function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline:
   return { results, running, queued: live.filter((id) => id !== running), live: undefined };
 }
 
-/** A ready-made step's cell: what it reads and gives, its settings, and its code on request. */
-function StepForm({ names }: { names: { reads: string[]; gives: string[] } }) {
+/** A ready-made step with no plain code yet: a notebook shows code, so it says so and points
+ * to where its settings live. */
+function StepWithoutCode() {
   const step = useStep();
-  const [showCode, setShowCode] = useState(false);
   if (!step.node) return <p role="alert" className="error">This step is not in the flow version on screen.</p>;
-  if (!step.operator) return <p role="alert" className="error">{step.node.operator} is not installed, so this step cannot show its settings or run.</p>;
-  return (
-    <div className="flow-step">
-      <p className="flow-step-names muted">{namesLine(names)}</p>
-      <TabBody tab="parameters" step={step} />
-      <button type="button" className="page-btn" aria-expanded={showCode} onClick={() => setShowCode(!showCode)}>
-        {showCode ? "Hide code" : "Show code"}
-      </button>
-      {showCode && <TabBody tab="code" step={step} />}
-    </div>
-  );
+  if (!step.operator) return <p role="alert" className="error">{step.node.operator} is not installed, so this step cannot run.</p>;
+  return <p className="nb-no-code">{`# ${step.node.operator} has no plain code yet; its settings are in the flow's Parameters tab.`}</p>;
 }
 
-/** What a step showed in the run on screen: a code step's output as a notebook shows it, a
- * ready-made step's figures or tables. */
+/** What a step showed in the run on screen, as plain notebook output: a code step's printed
+ * output; a ready-made step's tables (first rows) and figures. */
 function StepOutput() {
   const step = useStep();
   const display = useCodeDisplay(step.isCode ? step.done : undefined);
+  const outputs = useOutputs(step.isCode ? undefined : step.done?.id);
   if (step.isCode) {
     if (display.status === "ready") return <OutputItems items={display.value.items} />;
     if (display.status === "error") return <p role="alert" className="error">{display.message}</p>;
     return null;
   }
-  return <TabBody tab={step.visuals > 0 ? "visuals" : "data"} step={step} />;
-}
-
-function namesLine({ reads, gives }: { reads: string[]; gives: string[] }): string {
-  const read = reads.length > 0 ? `reads ${reads.join(", ")}` : "reads nothing";
-  return gives.length > 0 ? `${read} → gives ${gives.join(", ")}` : read;
+  if (outputs.isError) return <p role="alert" className="error">The step's outputs could not be read: {outputs.error.message}</p>;
+  const tables = (outputs.data ?? []).filter((o) => o.artifact.media_type === PARQUET);
+  return (
+    <>
+      {tables.map((o) => (
+        <ArtifactTable key={o.port} artifactId={o.artifact.id} />
+      ))}
+      {step.figurePorts.length > 0 && <FiguresTab attempt={step.done} ports={step.figurePorts} />}
+    </>
+  );
 }

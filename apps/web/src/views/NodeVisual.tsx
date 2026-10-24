@@ -16,6 +16,7 @@ import {
 import { formatMetric, headlineMetric } from "./NodeFact.tsx";
 import { FigureView } from "./inspector/FiguresTab.tsx";
 import { MAX_FIGURE_BYTES, useFirstFigure } from "../api/figures.ts";
+import { isNumeric, isText } from "./RowsTable.tsx";
 
 /** Thumbnails are only read when small; bigger figures stay in the Inspector. */
 const MAX_THUMB_SOURCE_BYTES = 1024 * 1024;
@@ -34,10 +35,11 @@ export type VisualFor = {
 
 function SpectralGatingVisual({ artifactId, params }: { artifactId: string; params: Record<string, unknown> }) {
   const page = useTablePage(artifactId, 0, 100);
-  const thresh = typeof params.threshold_db === "number" ? params.threshold_db : -6;
-  const atten = typeof params.attenuation_factor === "number" ? params.attenuation_factor : 0.15;
+  // An unset setting runs at the operator's own default, which this view does not repeat.
+  const thresh = typeof params.threshold_db === "number" ? `${params.threshold_db} dB` : "default";
+  const atten = typeof params.attenuation_factor === "number" ? `${params.attenuation_factor}×` : "default";
 
-  let gatedPct = "50%";
+  let gatedPct = "—";
   if (page.data) {
     const gainIdx = page.data.columns.findIndex((c) => c.name.toLowerCase().includes("gain") || c.name.toLowerCase().includes("gate"));
     if (gainIdx >= 0) {
@@ -50,11 +52,11 @@ function SpectralGatingVisual({ artifactId, params }: { artifactId: string; para
   }
 
   return (
-    <div className="nv nv-spectral" aria-label={`spectral gating threshold ${thresh} dB`}>
+    <div className="nv nv-spectral" aria-label={`spectral gating threshold ${thresh}`}>
       <div className="nv-legend">
-        <span>threshold: <b>{thresh} dB</b></span>
+        <span>threshold: <b>{thresh}</b></span>
         <span>attenuated: <b>{gatedPct}</b></span>
-        <span>floor: <b>{atten}×</b></span>
+        <span>floor: <b>{atten}</b></span>
       </div>
     </div>
   );
@@ -273,14 +275,13 @@ function DistributionsVisual({ outputs }: { outputs: AttemptOutput[] }) {
   );
 }
 
-/** Outlier Treatment & Clipping: bell curve with shaded cutoff tails */
+/** Outlier clipping: a bell curve with shaded tails beyond the Q1 − k IQR and Q3 + k IQR fences. */
 function ClipOutliersVisual({ params }: { params: Record<string, unknown> }) {
-  const lower = typeof params.lower_quantile === "number" ? params.lower_quantile : 0.01;
-  const upper = typeof params.upper_quantile === "number" ? params.upper_quantile : 0.99;
+  const fences = typeof params.k === "number" ? `${params.k} × IQR` : "—";
   const cols = Array.isArray(params.columns) ? params.columns.length : undefined;
 
   return (
-    <div className="nv nv-clip" aria-label={`clipped outliers [${lower * 100}% - ${upper * 100}%]`}>
+    <div className="nv nv-clip" aria-label={`clipped outliers at ${fences} fences`}>
       <div className="nv-clip-curve">
         <svg viewBox="0 0 100 24" className="nv-spark" role="img" aria-label="Outlier clipping bell curve">
           <path d="M 0,22 Q 10,22 18,18 L 18,22 Z" fill="var(--alert)" opacity="0.45" />
@@ -292,7 +293,7 @@ function ClipOutliersVisual({ params }: { params: Record<string, unknown> }) {
         </svg>
       </div>
       <div className="nv-legend">
-        <span>quantiles: <b>P{Math.round(lower * 100)}–P{Math.round(upper * 100)}</b></span>
+        <span>fences: <b>{fences}</b></span>
         <span>{cols !== undefined ? `${cols} cols clipped` : "tails clipped"}</span>
       </div>
     </div>
@@ -377,7 +378,7 @@ function TypeChips({ page }: { page: TablePage }) {
   );
 }
 
-const typeGlyph = (t: string) => (/Float|Int|Decimal/.test(t) ? "#" : /Utf8|String|Categorical|Dictionary/.test(t) ? "Aa" : /Date|Time/.test(t) ? "◷" : "·");
+const typeGlyph = (t: string) => (isNumeric(t) ? "#" : isText(t) ? "Aa" : /Date|Time/.test(t) ? "◷" : "·");
 
 function MiniConfusion({ matrix }: { matrix: number[][] }) {
   if (!matrix || matrix.length < 2) return null;

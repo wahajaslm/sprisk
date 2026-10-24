@@ -21,3 +21,7 @@ class ManifestError(WorkerError):
 
 class RuleError(WorkerError):
     """A methodology rule could not be loaded, or read or returned an invalid message."""
+
+
+class MethodError(WorkerError):
+    """A method could not be loaded, read what it did not declare, or returned no choice."""

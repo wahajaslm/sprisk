@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clustering.dbscan@1.0.0
+title: DBSCAN clustering
 capability_class: transform
 model: { family: density_based }
 description: "DBSCAN density-based clustering: identifies arbitrary dense regions and assigns noise to -1."

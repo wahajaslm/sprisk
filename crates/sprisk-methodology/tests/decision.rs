@@ -17,10 +17,13 @@ use sprisk_methodology::{
 };
 use sprisk_registry::Registry;
 
+mod repo;
+use repo::rules_with_example_split;
+
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
 
 fn catalog() -> RuleCatalog {
-    RuleCatalog::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology")).unwrap()
+    rules_with_example_split()
 }
 
 fn question() -> QuestionVersion {
@@ -897,7 +900,7 @@ fn an_insert_step_with_no_place_or_id_for_the_step_is_refused_not_ignored() {
             rule.join("rule.py"),
         )
         .unwrap();
-        let catalog = RuleCatalog::load_dir(packs.path()).unwrap();
+        let catalog = RuleCatalog::load_dir(packs.path(), []).unwrap();
         let err = proposal(
             catalog.rule(ENCODING).unwrap(),
             &one_hot_decision(),

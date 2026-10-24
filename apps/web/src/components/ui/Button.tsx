@@ -1,69 +1,17 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 export interface ButtonProps {
   variant?: "primary" | "secondary" | "ghost" | "danger";
   size?: "sm" | "md";
   disabled?: boolean;
-  children?: React.ReactNode;
+  children?: ReactNode;
   onClick?: () => void;
-  style?: React.CSSProperties;
 }
 
-export function Button({
-  variant = "secondary",
-  size = "md",
-  disabled = false,
-  children,
-  onClick,
-  style,
-}: ButtonProps) {
-  const [h, setH] = React.useState(false);
-  const v = {
-    primary: {
-      background: h ? "var(--ink-0)" : "var(--bg-inverse)",
-      color: "var(--text-inverse)",
-      fontWeight: "var(--fw-semibold)",
-    },
-    secondary: {
-      border: "1px solid " + (h ? "var(--border-control-hover)" : "var(--border-control)"),
-      color: "var(--text-secondary)",
-    },
-    ghost: {
-      background: h ? "var(--bg-hover)" : "transparent",
-      color: h ? "var(--text-primary)" : "var(--text-muted)",
-    },
-    danger: {
-      border: "1px solid rgba(255,92,92," + (h ? 0.7 : 0.4) + ")",
-      color: "var(--danger)",
-    },
-  }[variant];
-
+/** A text button for page and panel actions (Flow Studio). Its look is the .btn classes. */
+export function Button({ variant = "secondary", size = "md", disabled = false, children, onClick }: ButtonProps) {
   return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      onMouseEnter={() => setH(true)}
-      onMouseLeave={() => setH(false)}
-      style={{
-        height: size === "sm" ? 28 : "var(--size-control)",
-        padding: "0 12px",
-        borderRadius: "var(--radius-sm)",
-        border: "1px solid transparent",
-        background: "transparent",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        fontFamily: "var(--font-sans)",
-        fontSize: "var(--fs-13)",
-        fontWeight: "var(--fw-medium)",
-        whiteSpace: "nowrap",
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.4 : 1,
-        transition: "all var(--dur-fast)",
-        ...v,
-        ...style,
-      }}
-    >
+    <button type="button" className={`btn btn-${variant} btn-${size}`} disabled={disabled} onClick={onClick}>
       {children}
     </button>
   );

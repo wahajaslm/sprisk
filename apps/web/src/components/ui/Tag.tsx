@@ -2,11 +2,10 @@ import React from "react";
 
 export interface TagProps {
   children?: React.ReactNode;
-  onClick?: () => void;
   tone?: "neutral" | "danger" | "default" | "queued" | "ok";
 }
 
-export function Tag({ children, onClick, tone = "neutral" }: TagProps) {
+export function Tag({ children, tone = "neutral" }: TagProps) {
   const toneClass =
     tone === "danger"
       ? "tag-danger"
@@ -17,10 +16,7 @@ export function Tag({ children, onClick, tone = "neutral" }: TagProps) {
           : "";
 
   return (
-    <span
-      onClick={onClick}
-      className={`tag ${toneClass} ${onClick ? "clickable" : ""}`}
-    >
+    <span className={`tag ${toneClass}`}>
       {children}
     </span>
   );

@@ -2,11 +2,16 @@ import polars as pl
 
 
 def clean_text(
-    data: pl.DataFrame, columns: list[str], lowercase: bool = False, empty_to_null: bool = True
+    data: pl.DataFrame,
+    columns: list[str],
+    lowercase: bool = False,
+    empty_to_null: bool = True,
+    exclude: list[str] | None = None,
 ) -> pl.DataFrame:
-    """Trim, collapse repeated spaces, optionally lowercase; blank text becomes missing."""
+    """Trim, collapse repeated spaces, optionally lowercase; blank text becomes missing.
+    Columns in `exclude` are left as typed, even when `columns` names them."""
     cleaned = []
-    for c in columns:
+    for c in [c for c in columns if c not in (exclude or [])]:
         dtype = data.schema.get(c)
         if dtype is None:
             raise pl.exceptions.ColumnNotFoundError(c)

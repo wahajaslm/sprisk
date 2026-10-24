@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.profile.chart@1.0.0
+title: Chart
 capability_class: analyzer
 description: A chart of a table, drawn with Plotly from only the numbers it needs (bins, quartiles, a capped sample). ADR-0023, ADR-0024.
 entrypoint: sprisk_profile.chart:chart

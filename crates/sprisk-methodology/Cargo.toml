@@ -12,15 +12,16 @@ itertools = "0.15"
 petgraph = "0.8.3"
 rand = { version = "0.9.5", default-features = false, features = ["alloc"] }
 rand_chacha = "0.9.0"
+serde = "1.0.229"
 serde_json = "1.0.154"
 sha2 = "0.11"
 sprisk-contracts = { path = "../sprisk-contracts" }
+sprisk-registry = { path = "../sprisk-registry" }
 thiserror = "2.0.21"
 walkdir = "2.5.0"
 yaml_serde = "0.10.7"
 
 [dev-dependencies]
-sprisk-registry = { path = "../sprisk-registry" }
 tempfile = "3.27.0"
 
 [lints]

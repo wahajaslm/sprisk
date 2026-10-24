@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { plainCodeQuery } from "../../api/code.ts";
-import { useOperators, useOperatorSource, useSaveAndRun } from "../../api/hooks.ts";
+import { useOperatorsByRef, useOperatorSource, useSaveAndRun } from "../../api/hooks.ts";
 import { codeRequest, stageCells } from "../../notebook/stageCells.ts";
 import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { useStageSave } from "../notebook/useStageSave.ts";
@@ -33,8 +33,8 @@ type Props = { pipeline: PipelineVersion; nodeId: string; operator: Operator };
  * and editing it makes the step that code (ADR-0055). Otherwise its module, which Edit turns
  * into this step's own code in a new version; Revert goes back to the built-in (ADR-0028). */
 export function OperatorCode({ pipeline, nodeId, operator }: Props) {
-  const operators = useOperators();
-  const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
+  const operators = useOperatorsByRef();
+  const byRef = operators.data ?? new Map<string, Operator>();
   const plain = useQuery({ ...plainCodeQuery(operator.id, codeRequest(pipeline, byRef, nodeId)), enabled: operators.data !== undefined });
   if (operators.isError) return <p role="alert" className="error">{operators.error.message}</p>;
   if (plain.isError) return <p role="alert" className="error">{plain.error.message}</p>;
@@ -46,12 +46,13 @@ export function OperatorCode({ pipeline, nodeId, operator }: Props) {
 /** A ready-made step's plain Python. Running an edit saves it the way its notebook cell does. */
 function PlainCode({ pipeline, nodeId, byRef, code }: { pipeline: PipelineVersion; nodeId: string; byRef: Map<string, Operator>; code: string }) {
   const [draft, setDraft] = useState<string | undefined>(undefined);
-  const stage = stageNotebooks(pipeline, byRef).find((s) => s.nodes.some((n) => n.id === nodeId))?.stage ?? "Load";
+  const section = stageNotebooks(pipeline, byRef).find((s) => s.nodes.some((n) => n.id === nodeId));
+  if (!section) throw new Error(`step ${nodeId} is in no section of version ${pipeline.id}`);
   const plain = new Map([[nodeId, code]]);
-  const stageSave = useStageSave(pipeline, byRef, stage, plain);
+  const stageSave = useStageSave(pipeline, byRef, section, plain);
   const run = (source: string) => {
     if (source.trim() === "" || stageSave.busy) return;
-    const cells = stageCells(pipeline, byRef, stage, plain).map((c) => (c.id === nodeId ? { ...c, source } : c));
+    const cells = stageCells(section, plain).map((c) => (c.id === nodeId ? { ...c, source } : c));
     void stageSave.save(cells, nodeId);
   };
   const editing = draft !== undefined;

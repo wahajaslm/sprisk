@@ -1,416 +1,219 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import type { Operator } from "@sprisk/contracts";
 
-import { useOperators, usePipelineVersions } from "../../api/hooks.ts";
 import { useLoadedTables } from "../../api/datasets.ts";
+import { useOperators, usePipelineVersions } from "../../api/hooks.ts";
 import { useMethodologyRules } from "../../api/methodology.ts";
-import { STAGES, stageOf, stepTitle, type Stage } from "../../flow/stages.ts";
-import { SearchField } from "../../components/ui/SearchField.tsx";
-import { Tag } from "../../components/ui/Tag.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
-import { Chevron, KindIcon, PanelToggleIcon } from "../Icons.tsx";
+import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { useWorkbench } from "../../workbench/workbench.ts";
+import { PageFrame } from "../../components/ui/PageFrame.tsx";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { SideGroup } from "../../components/ui/SideGroup.tsx";
+import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
+import { Sidebar } from "../../components/ui/Sidebar.tsx";
+import { flowCount } from "../../flow/flows.ts";
+import { pluginOf, plugins } from "../../flow/plugins.ts";
+import { stepTitle } from "../../flow/stages.ts";
+import { tableSize } from "../datasets/tableSize.ts";
+import { useSelection } from "../../workbench/selection.ts";
 
-const TABS = ["Installed", "Details", "Schema"] as const;
-type Tab = (typeof TABS)[number];
+const PLATFORM = ["Packs", "Plugins", "Environments", "Compute", "Data"] as const;
+const ACCESS = ["Members"] as const;
+type Page = (typeof PLATFORM)[number] | (typeof ACCESS)[number];
 
+/** Pages local mode has no API for yet: they say so instead of showing made-up status. */
+const NOT_YET: Partial<Record<Page, { description: string; note: string }>> = {
+  Environments: {
+    description: "The Python environments steps run in.",
+    note: "Local mode runs every step in the Python environment Sprisk started with. Named environments are not available yet.",
+  },
+  Compute: {
+    description: "Where steps run, and how much they may use.",
+    note: "Local mode runs every step on this machine. Compute pools are not available yet.",
+  },
+  Members: {
+    description: "Who can open this project.",
+    note: "Local mode has one user. Members come with hosted mode.",
+  },
+};
+
+/** What is installed: methodology packs, operator plugins and loaded data. */
 export function SettingsPage() {
-  const [query, setQuery] = useState("");
-  const [selectedGroup, setSelectedGroup] = useState<string>("all-operators");
-  const [selectedOperatorId, setSelectedOperatorId] = useState<string>();
-  const [activeTab, setActiveTab] = useState<Tab>("Installed");
-  const { sidebarOpen, toggleSidebar } = useWorkbench();
+  const operators = useOperators();
+  const rules = useMethodologyRules();
+  const tables = useLoadedTables();
+  const setNav = useSelection((s) => s.setNav);
+  const [page, setPage] = useState<Page>("Packs");
+  const [search, setSearch] = useState("");
+  const matches = (p: Page) => p.toLowerCase().includes(search.trim().toLowerCase());
 
-  const operatorsQuery = useOperators();
-  const pipelinesQuery = usePipelineVersions();
-  const tablesQuery = useLoadedTables();
-  const rulesQuery = useMethodologyRules();
+  if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
+  if (operators.isPending) return <Loading text="Loading settings…" pad />;
 
+  const meta: Record<Page, string> = {
+    Packs: count(rules, (r) => packs(r).length),
+    Plugins: String(plugins(operators.data).length),
+    Environments: "",
+    Compute: "",
+    Data: count(tables, (t) => t.length),
+    Members: "",
+  };
+  const row = (p: Page) => <ListRow key={p} title={p} meta={meta[p] || "Not in local mode"} selected={p === page} onClick={() => setPage(p)} />;
 
-  const operators = useMemo(() => operatorsQuery.data ?? [], [operatorsQuery.data]);
-  const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
-  const tables = useMemo(() => tablesQuery.data ?? [], [tablesQuery.data]);
-  const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
-
-  // Group operators by stage
-  const operatorsByStage = useMemo(() => {
-    const map = new Map<Stage, Operator[]>();
-    for (const stage of STAGES) {
-      map.set(stage, []);
-    }
-    for (const op of operators) {
-      const stage = stageOf(op);
-      map.get(stage)?.push(op);
-    }
-    return map;
-  }, [operators]);
-
-  // Filtered operators for current search & selection
-  const displayedOperators = useMemo(() => {
-    let list = operators;
-    if (selectedGroup !== "all-operators" && selectedGroup !== "system") {
-      list = operatorsByStage.get(selectedGroup as Stage) ?? [];
-    }
-    if (!query.trim()) return list;
-    const needle = query.trim().toLowerCase();
-    return list.filter(
-      (op) =>
-        op.id.toLowerCase().includes(needle) ||
-        stepTitle(op.id).toLowerCase().includes(needle) ||
-        (op.description ?? "").toLowerCase().includes(needle),
-    );
-  }, [operators, selectedGroup, operatorsByStage, query]);
-
-  const activeOp = useMemo(() => {
-    if (selectedOperatorId) {
-      return operators.find((o) => o.id === selectedOperatorId) ?? displayedOperators[0];
-    }
-    return displayedOperators[0];
-  }, [selectedOperatorId, operators, displayedOperators]);
-
-  if (operatorsQuery.isPending) {
-    return <Loading text="Loading settings & operator registry…" pad />;
-  }
-
-  const isSystemView = selectedGroup === "system";
+  const header = {
+    Packs: {
+      eyebrow: "Settings · Platform",
+      title: "Packs",
+      description: "Methodology packs: the rules Sprisk checks a flow against.",
+      actions: <Button variant="primary" onClick={() => setNav("Methodology")}>Open methodology</Button>,
+    },
+    Plugins: {
+      eyebrow: "Settings · Platform",
+      title: "Plugins",
+      description: "The operators the registry loaded, by plugin. Each runs in the Python worker.",
+      actions: <Button onClick={() => void operators.refetch()}>Refresh</Button>,
+    },
+    Data: {
+      eyebrow: "Settings · Platform",
+      title: "Data",
+      description: "Tables loaded by a flow's steps. Sprisk reads files in place; it keeps only what steps write.",
+      actions: <Button variant="primary" onClick={() => setNav("Datasets")}>Open datasets</Button>,
+    },
+  }[page as "Packs" | "Plugins" | "Data"] ?? { eyebrow: `Settings · ${ACCESS.includes(page as "Members") ? "Access" : "Platform"}`, title: page, description: NOT_YET[page]?.description ?? "" };
 
   return (
-    <div className="set-page-layout">
-      {/* 280px Settings Sidebar */}
-      <aside className="main-sidebar set-sidebar" aria-label="Settings navigation">
-        <div className="sidebar-header">
-          <div className="sidebar-title-row">
-            <h2 className="sidebar-title">Settings</h2>
-          </div>
-          <div className="sidebar-search">
-            <SearchField
-              value={query}
-              onChange={setQuery}
-              placeholder="Search operators"
+    <PageFrame
+      sidebar={
+        <Sidebar
+          title="Settings"
+          search={<SearchField value={search} onChange={setSearch} placeholder="Search settings" />}
+          dock={
+            <InfoDock
+              rows={[
+                { k: "Operators", v: String(operators.data.length) },
+                { k: "Rules", v: count(rules, (r) => r.length) },
+                { k: "Datasets", v: count(tables, (t) => t.length) },
+              ]}
             />
-          </div>
-        </div>
+          }
+        >
+          <SideGroup num={1} label="Platform" meta={PLATFORM.filter(matches).length}>
+            {PLATFORM.filter(matches).map(row)}
+          </SideGroup>
+          <SideGroup num={2} label="Access" meta={ACCESS.filter(matches).length}>
+            {ACCESS.filter(matches).map(row)}
+          </SideGroup>
+        </Sidebar>
+      }
+      header={header}
+      view={page === "Data" ? "Tables" : NOT_YET[page] ? "Overview" : "Installed"}
+    >
+      {page === "Packs" && <Packs />}
+      {page === "Plugins" && <Plugins operators={operators.data} />}
+      {page === "Data" && <Data />}
+      {NOT_YET[page] && <p className="muted">{NOT_YET[page].note}</p>}
+    </PageFrame>
+  );
+}
 
-        <div className="set-sidebar-list">
-          {/* Section 01: Operator Registry */}
-          <section className="set-group-section">
-            <div className="set-group-header">
-              <span className="set-group-num mono">01</span>
-              <span className="set-group-name">Operators</span>
-              <span className="set-group-count mono">{operators.length}</span>
-              <span className="set-group-chevron open">
-                <Chevron />
-              </span>
-            </div>
+/** A count from a read, or why there is none: never a 0 that only means "not read". */
+function count<T>(query: { isError: boolean; isPending: boolean; data: T | undefined }, of: (data: T) => number): string {
+  if (query.isError) return "Could not read";
+  if (query.isPending || query.data === undefined) return "…";
+  return String(of(query.data));
+}
 
-            <div className="set-group-items">
-              <button
-                type="button"
-                className={`set-item ${selectedGroup === "all-operators" ? "selected" : ""}`}
-                onClick={() => {
-                  setSelectedGroup("all-operators");
-                  setSelectedOperatorId(undefined);
-                }}
-              >
-                <div className="set-item-title-row">
-                  <span className="set-item-title">All operators</span>
-                  <Tag tone="default">{operators.length}</Tag>
-                </div>
-                <span className="set-item-sub">Registered across all stages</span>
-              </button>
+/** Rule ids are `methodology.<pack>.<rule>@<version>`. */
+const packOf = (ruleId: string) => ruleId.split(".")[1] ?? ruleId;
+const packs = (rules: { id: string; status: string }[]) => [...new Set(rules.map((r) => packOf(r.id)))].sort();
 
-              {STAGES.map((stage) => {
-                const count = operatorsByStage.get(stage)?.length ?? 0;
-                if (count === 0) return null;
-                const isSelected = selectedGroup === stage;
-                return (
-                  <button
-                    key={stage}
-                    type="button"
-                    className={`set-item ${isSelected ? "selected" : ""}`}
-                    onClick={() => {
-                      setSelectedGroup(stage);
-                      setSelectedOperatorId(undefined);
-                    }}
-                  >
-                    <div className="set-item-title-row">
-                      <span className="set-item-title">{stage}</span>
-                      <span className="set-item-count mono">{count}</span>
-                    </div>
-                    <span className="set-item-sub">{stage} stage operators</span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
 
-          {/* Section 02: System & Runtime */}
-          <section className="set-group-section">
-            <div className="set-group-header">
-              <span className="set-group-num mono">02</span>
-              <span className="set-group-name">System</span>
-              <span className="set-group-count mono">Runtime</span>
-              <span className="set-group-chevron open">
-                <Chevron />
-              </span>
-            </div>
+function Packs() {
+  const rules = useMethodologyRules();
+  return (
+    <>
+      {rules.isError && <p role="alert" className="error pad">{rules.error.message}</p>}
+      {rules.isPending && <Loading text="Loading packs…" pad />}
+      {rules.data && (
+        <BodySection title="Installed" note="Each pack holds the rules for one kind of question.">
+          <RowList label="Packs">
+            {packs(rules.data).map((pack) => {
+              const mine = rules.data.filter((r) => packOf(r.id) === pack);
+              const active = mine.filter((r) => r.status === "active").length;
+              return <RowItem key={pack} name={pack} meta={`${active} active · ${mine.length - active} draft`} />;
+            })}
+          </RowList>
+        </BodySection>
+      )}
+    </>
+  );
+}
 
-            <div className="set-group-items">
-              <button
-                type="button"
-                className={`set-item ${selectedGroup === "system" ? "selected" : ""}`}
-                onClick={() => setSelectedGroup("system")}
-              >
-                <div className="set-item-title-row">
-                  <span className="set-item-title">Backend status</span>
-                  <Tag tone="default">Live</Tag>
-                </div>
-                <span className="set-item-sub">Rust runtime & caches</span>
-              </button>
-            </div>
-          </section>
-        </div>
+function Plugins({ operators }: { operators: Operator[] }) {
+  const [open, setOpen] = useState<string>();
+  return plugins(operators).map((plugin) => (
+    <BodySection key={plugin} title={plugin} note={`${operators.filter((op) => pluginOf(op) === plugin).length} operators`}>
+      <RowList label={plugin}>
+        {operators
+          .filter((op) => pluginOf(op) === plugin)
+          .map((op) => (
+            <RowItem
+              key={op.id}
+              name={stepTitle(op.id, op)}
+              meta={`${op.capability_class} · ${op.inputs.length} in · ${op.outputs.length} out`}
+              open={open === op.id}
+              onToggle={() => setOpen(open === op.id ? undefined : op.id)}
+            >
+              <OperatorDetail op={op} />
+            </RowItem>
+          ))}
+      </RowList>
+    </BodySection>
+  ));
+}
 
-        <div className="set-sidebar-dock">
-          <InfoDock
-            title="System Info"
-            rows={[
-              { k: "Operators", v: String(operators.length) },
-              { k: "Pipelines", v: String(pipelines.length) },
-              { k: "Rules", v: String(rules.length) },
-              { k: "Datasets", v: String(tablesQuery.data?.length ?? 0) },
-            ]}
-          />
-        </div>
-      </aside>
+function OperatorDetail({ op }: { op: Operator }) {
+  const ports = (list: Operator["inputs"]) => (list.length === 0 ? "None" : list.map((p) => `${p.name} (${p.kind})`).join(" · "));
+  return (
+    <section className="set-detail" aria-label={op.id}>
+      {op.description && <p>{op.description}</p>}
+      <dl>
+        <dt>Id</dt>
+        <dd className="mono">{op.id}</dd>
+        <dt>Entrypoint</dt>
+        <dd className="mono">{op.entrypoint}</dd>
+        <dt>Inputs</dt>
+        <dd>{ports(op.inputs)}</dd>
+        <dt>Outputs</dt>
+        <dd>{ports(op.outputs)}</dd>
+        <dt>Effects</dt>
+        <dd>{op.effects} · network {op.network}</dd>
+      </dl>
+      <pre className="set-schema">{JSON.stringify(op.params_schema, null, 2)}</pre>
+    </section>
+  );
+}
 
-      {/* Main Settings Body */}
-      <main className="center-screen set-main" aria-label="Settings configuration">
-        {isSystemView ? (
-          <div>
-            <header className="set-head">
-              <div className="set-head-meta">
-                <span className="set-eyebrow">Platform · System Runtime</span>
-                <h1 className="set-title">Backend Status & Storage</h1>
-                <p className="set-subtitle">
-                  Sprisk backend services, cached artifacts, and active contracts.
-                </p>
-              </div>
-            </header>
-
-            <div className="set-content">
-              <section className="set-section">
-                <div className="set-section-header">
-                  <h2 className="set-section-title">Backend API</h2>
-                  <span className="set-section-sub">Connected local service</span>
-                </div>
-                <div className="set-packs-list">
-                  <div className="set-pack-row">
-                    <div className="set-pack-info">
-                      <div className="set-pack-title-line">
-                        <strong className="set-pack-name">Sprisk HTTP API</strong>
-                        <Tag tone="default">Connected</Tag>
-                      </div>
-                      <span className="set-pack-desc mono">Target: /api · OpenAPI schema v1</span>
-                    </div>
-                  </div>
-                  <div className="set-pack-row">
-                    <div className="set-pack-info">
-                      <div className="set-pack-title-line">
-                        <strong className="set-pack-name">Artifact Cache</strong>
-                        <Tag tone="default">Ready</Tag>
-                      </div>
-                      <span className="set-pack-desc mono">
-                        {tablesQuery.data?.length ?? 0} datasets cached · {pipelines.length} pipeline versions stored
-                      </span>
-                    </div>
-                  </div>
-                  <div className="set-pack-row">
-                    <div className="set-pack-info">
-                      <div className="set-pack-title-line">
-                        <strong className="set-pack-name">Methodology Engine</strong>
-                        <Tag tone="default">Active</Tag>
-                      </div>
-                      <span className="set-pack-desc mono">
-                        {rules.length} methodology rules loaded and verified
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
-        ) : (
-          <div>
-            {/* Header */}
-            <header className="set-head">
-              <div className="set-head-meta">
-                <span className="set-eyebrow">
-                  Platform · {selectedGroup === "all-operators" ? "All stages" : `${selectedGroup} stage`}
-                </span>
-                <h1 className="set-title">
-                  {selectedGroup === "all-operators" ? "Operator Registry" : `${selectedGroup} Operators`}
-                </h1>
-                <p className="set-subtitle">
-                  Registered operators in the Sprisk backend runtime. Each operator executes in the Python worker.
-                </p>
-              </div>
-              <div className="set-head-actions">
-                <Button variant="secondary" size="sm" onClick={() => void operatorsQuery.refetch()}>
-                  Reload registry
-                </Button>
-              </div>
-            </header>
-
-            {/* Subtabs */}
-            <div className="set-subtabs" role="tablist">
-              {TABS.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === t}
-                  className={`set-tab-btn ${activeTab === t ? "active" : ""}`}
-                  onClick={() => setActiveTab(t)}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-
-            {/* Main Content */}
-            <div className="set-content">
-              {activeTab === "Installed" ? (
-                <section className="set-section">
-                  <div className="set-section-header">
-                    <h2 className="set-section-title">
-                      {displayedOperators.length} {displayedOperators.length === 1 ? "operator" : "operators"} available
-                    </h2>
-                    <span className="set-section-sub">Select an operator to view parameters and ports</span>
-                  </div>
-
-                  <div className="set-packs-list">
-                    {displayedOperators.map((op) => {
-                      const isSelected = activeOp?.id === op.id;
-                      const paramCount = Object.keys(op.params_schema?.properties ?? {}).length;
-                      return (
-                        <div
-                          key={op.id}
-                          className={`set-pack-row ${isSelected ? "selected" : ""}`}
-                          style={{
-                            cursor: "pointer",
-                            background: isSelected ? "var(--alpha-04)" : undefined,
-                            borderLeft: isSelected ? "2px solid var(--accent)" : undefined,
-                          }}
-                          onClick={() => setSelectedOperatorId(op.id)}
-                        >
-                          <div className="set-pack-info">
-                            <div className="set-pack-title-line">
-                              <strong className="set-pack-name">{stepTitle(op.id)}</strong>
-                              <Tag tone="default">{op.capability_class}</Tag>
-                              {op.fits_on_train && <Tag tone="default">Fits on train</Tag>}
-                            </div>
-                            <span className="set-pack-desc mono">{op.id}</span>
-                            {op.description && (
-                              <span style={{ fontSize: "var(--fs-12)", color: "var(--text-secondary)", marginTop: 4 }}>
-                                {op.description}
-                              </span>
-                            )}
-                          </div>
-                          <div className="set-pack-action">
-                            <span className="mono" style={{ fontSize: "var(--fs-11-5)", color: "var(--text-muted)" }}>
-                              {op.inputs.length} in · {op.outputs.length} out · {paramCount} params
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              ) : activeTab === "Details" && activeOp ? (
-                <section className="set-detail-section">
-                  <div className="set-section-header">
-                    <h2 className="set-section-title">{stepTitle(activeOp.id)}</h2>
-                    <span className="set-section-sub mono">{activeOp.id}</span>
-                  </div>
-
-                  <div className="set-features-grid">
-                    <div className="set-feature-card">
-                      <span className="set-feat-name">Capability & Stage</span>
-                      <span className="set-feat-desc">
-                        {activeOp.capability_class} · {stageOf(activeOp)} stage
-                      </span>
-                    </div>
-
-                    <div className="set-feature-card">
-                      <span className="set-feat-name">Entrypoint</span>
-                      <span className="set-feat-desc mono">{activeOp.entrypoint}</span>
-                    </div>
-
-                    <div className="set-feature-card">
-                      <span className="set-feat-name">Input Ports</span>
-                      <span className="set-feat-desc">
-                        {activeOp.inputs.length === 0
-                          ? "None (Root operator)"
-                          : activeOp.inputs.map((i) => `${i.name} (${i.kind}${i.optional ? ", optional" : ""})`).join(" · ")}
-                      </span>
-                    </div>
-
-                    <div className="set-feature-card">
-                      <span className="set-feat-name">Output Ports</span>
-                      <span className="set-feat-desc">
-                        {activeOp.outputs.length === 0
-                          ? "None (Terminal sink)"
-                          : activeOp.outputs.map((o) => `${o.name} (${o.kind})`).join(" · ")}
-                      </span>
-                    </div>
-
-                    <div className="set-feature-card">
-                      <span className="set-feat-name">Train / Test Isolation</span>
-                      <span className="set-feat-desc">
-                        {activeOp.fits_on_train
-                          ? "Strict: fits only on train rows, keeps held-out rows unseen (ADR-0050)"
-                          : "Standard execution"}
-                      </span>
-                    </div>
-
-                    <div className="set-feature-card">
-                      <span className="set-feat-name">Network & Sandbox</span>
-                      <span className="set-feat-desc">
-                        Network: {activeOp.network ?? "none"} · Effects: {activeOp.effects ?? "pure"}
-                      </span>
-                    </div>
-                  </div>
-                </section>
-              ) : (
-                <section className="set-section">
-                  <div className="set-section-header">
-                    <h2 className="set-section-title">Parameters JSON Schema</h2>
-                    <span className="set-section-sub mono">{activeOp?.id}</span>
-                  </div>
-                  <pre
-                    style={{
-                      background: "var(--bg-surface)",
-                      border: "1px solid var(--border-panel)",
-                      borderRadius: 4,
-                      padding: 16,
-                      fontSize: "var(--fs-12)",
-                      fontFamily: "var(--font-mono)",
-                      color: "var(--text-secondary)",
-                      overflow: "auto",
-                      maxHeight: 480,
-                    }}
-                  >
-                    {JSON.stringify(activeOp?.params_schema ?? {}, null, 2)}
-                  </pre>
-                </section>
-              )}
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
+function Data() {
+  const tables = useLoadedTables();
+  const versions = usePipelineVersions();
+  return (
+    <>
+      {tables.isError && <p role="alert" className="error pad">{tables.error.message}</p>}
+      {tables.isPending && <Loading text="Loading data…" pad />}
+      {tables.data?.length === 0 && <p className="muted pad">No data loaded yet.</p>}
+      {tables.data && tables.data.length > 0 && (
+        <BodySection title="Tables" note="The latest table each source step loaded.">
+          <RowList label="Data">
+            {tables.data.map((t) => {
+              const used = flowCount(t, versions.data ?? []);
+              return <RowItem key={t.artifact.id} name={t.name} meta={`${tableSize(t)} · used by ${used} ${used === 1 ? "flow" : "flows"}`} />;
+            })}
+          </RowList>
+        </BodySection>
+      )}
+    </>
   );
 }

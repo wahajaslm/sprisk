@@ -2,9 +2,13 @@ import type { PipelineVersion } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
 import { newStepsIn, stageCells, stageEdits } from "../src/notebook/stageCells.ts";
+import { stageNotebooks } from "../src/notebook/stageNotebooks.ts";
 import { notebookOperator, operators, pipeline } from "./fixtures.ts";
 
 const byRef = new Map([...operators, notebookOperator].map((o) => [o.id, o]));
+
+/** A section of the fixture flow, as the Notebooks page passes it. */
+const section = (name: string) => stageNotebooks(flow, byRef).find((s) => s.name === name)!;
 
 /** The fixture flow with a code step in Clean, after impute, and notes around the split. */
 const flow: PipelineVersion = {
@@ -18,12 +22,12 @@ const flow: PipelineVersion = {
 
 describe("a stage's cells (ADR-0055)", () => {
   it("are its notes as Markdown and its steps as code cells named by the step", () => {
-    expect(stageCells(flow, byRef, "Split")).toEqual([
+    expect(stageCells(section("Split"))).toEqual([
       { id: "split-before-0", kind: "markdown", source: "## Hold out a quarter" },
       { id: "split", kind: "code", source: "" },
       { id: "split-after-0", kind: "markdown", source: "Test rows stay unread." },
     ]);
-    expect(stageCells(flow, byRef, "Clean")).toEqual([
+    expect(stageCells(section("Clean"))).toEqual([
       { id: "impute", kind: "code", source: "" },
       { id: "rate", kind: "code", source: "rate = impute_train.height" },
     ]);
@@ -31,7 +35,7 @@ describe("a stage's cells (ADR-0055)", () => {
 
   it("show a ready-made step as its plain Python when it has some", () => {
     const code = new Map([["split", "split_train, split_test = cut(load_data)\n"]]);
-    expect(stageCells(flow, byRef, "Split", code)[1]).toEqual({ id: "split", kind: "code", source: "split_train, split_test = cut(load_data)\n" });
+    expect(stageCells(section("Split"), code)[1]).toEqual({ id: "split", kind: "code", source: "split_train, split_test = cut(load_data)\n" });
   });
 });
 
@@ -39,7 +43,7 @@ describe("editing a ready-made step's plain Python", () => {
   const code = new Map([["split", "split_train, split_test = cut(load_data)\n"]]);
 
   it("makes it a code step with that code, whose outputs still reach the steps that read them", () => {
-    const cells = stageCells(flow, byRef, "Split", code).map((c) => (c.id === "split" ? { ...c, source: "split_train, split_test = cut(load_data, 0.3)\n" } : c));
+    const cells = stageCells(section("Split"), code).map((c) => (c.id === "split" ? { ...c, source: "split_train, split_test = cut(load_data, 0.3)\n" } : c));
     const done = stageEdits(flow, byRef, "Split", cells, code);
     if ("refused" in done) throw new Error(done.refused);
     const split = done.base.nodes.find((n) => n.id === "split")!;
@@ -50,7 +54,7 @@ describe("editing a ready-made step's plain Python", () => {
   });
 
   it("leaves an unedited one as the ready-made step", () => {
-    const done = stageEdits(flow, byRef, "Split", stageCells(flow, byRef, "Split", code), code);
+    const done = stageEdits(flow, byRef, "Split", stageCells(section("Split"), code), code);
     if ("refused" in done) throw new Error(done.refused);
     expect(done.base.nodes.find((n) => n.id === "split")?.operator).toBe("sprisk.validation.random_split@1.0.0");
   });
@@ -58,7 +62,7 @@ describe("editing a ready-made step's plain Python", () => {
 
 describe("saving a stage's cells", () => {
   it("puts edited code into its step", () => {
-    const cells = stageCells(flow, byRef, "Clean").map((c) => (c.id === "rate" ? { ...c, source: "rate = impute_train.height * 2" } : c));
+    const cells = stageCells(section("Clean")).map((c) => (c.id === "rate" ? { ...c, source: "rate = impute_train.height * 2" } : c));
     const done = stageEdits(flow, byRef, "Clean", cells);
     if ("refused" in done) throw new Error(done.refused);
     const step = done.steps.find((s) => s.nodeId === "rate");
@@ -66,7 +70,7 @@ describe("saving a stage's cells", () => {
   });
 
   it("puts a new code cell right after the step above it", () => {
-    const cells = [...stageCells(flow, byRef, "Clean").slice(0, 1), { id: "new1", kind: "code" as const, source: "n = len(impute_train)" }, ...stageCells(flow, byRef, "Clean").slice(1)];
+    const cells = [...stageCells(section("Clean")).slice(0, 1), { id: "new1", kind: "code" as const, source: "n = len(impute_train)" }, ...stageCells(section("Clean")).slice(1)];
     const done = stageEdits(flow, byRef, "Clean", cells);
     if ("refused" in done) throw new Error(done.refused);
     const at = done.steps.findIndex((s) => s.nodeId === "impute");

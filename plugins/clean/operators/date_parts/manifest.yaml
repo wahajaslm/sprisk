@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.date_parts@1.0.0
+title: Date feature extraction
 capability_class: transform
 description: Each date column becomes its year, month and weekday, with month and weekday also as sine and cosine, in place of the date. Each row on its own; nothing is learned.
 entrypoint: sprisk_clean.date_parts:date_parts

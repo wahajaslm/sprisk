@@ -1,0 +1,1 @@
+{ "schema_version": "sprisk.concept_set/v1", "concepts": { "target": { "kind": "label", "description": "d", "binds_to": ["column"] } } }

@@ -19,7 +19,6 @@ export function Cockpit() {
   const nav = useSelection((s) => s.nav);
   const copilotOpen = useWorkbench((s) => s.copilotOpen);
   const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
-  const shellMode = useWorkbench((s) => s.shellMode);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
@@ -34,11 +33,11 @@ export function Cockpit() {
   }, []);
 
   return (
-    <div className={`cockpit ${shellMode} ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
+    <div className={`cockpit ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
       <TopBar />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <div
-        className={`cockpit-shell ${shellMode} ${sidebarOpen ? "with-sidebar" : "folded-sidebar"} ${
+        className={`cockpit-shell ${sidebarOpen ? "with-sidebar" : "folded-sidebar"} ${
           copilotOpen ? "with-copilot" : "folded-copilot"
         }`}
       >

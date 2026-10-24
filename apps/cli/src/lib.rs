@@ -84,6 +84,7 @@ pub async fn serve_on(
         .get("sprisk.methodology.split_rows@1.0.0")
         .context("methodology root has no split row check entrypoint")?
         .clone();
+    let plugins = sprisk_registry::Registry::load_dir(&config.plugins)?;
     let worker_command = vec![
         config.python.display().to_string(),
         "-m".into(),
@@ -137,10 +138,11 @@ pub async fn serve_on(
         artifacts: Arc::new(sprisk_artifacts::ArtifactStore::local(
             &config.data_dir.join("artifacts"),
         )?),
-        registry: Arc::new(sprisk_registry::Registry::load_dir(&config.plugins)?),
         rules: Arc::new(sprisk_methodology::RuleCatalog::load_dir(
             &config.methodology,
+            plugins.operators(),
         )?),
+        registry: Arc::new(plugins),
         gate: Some(gate),
         split_check: Some(split_check),
         worker_command,
@@ -188,6 +190,15 @@ pub async fn serve_on(
                 config.python.display().to_string(),
                 "-m".into(),
                 "sprisk_workers.rule".into(),
+            ],
+            std::time::Duration::from_secs(30),
+            4,
+        ),
+        method_runner: sprisk_api::MethodRunner::new(
+            vec![
+                config.python.display().to_string(),
+                "-m".into(),
+                "sprisk_workers.method".into(),
             ],
             std::time::Duration::from_secs(30),
             4,
@@ -261,6 +272,7 @@ impl Client {
         let request = CreateRun {
             pipeline_version_id: pipeline.id.clone(),
             reuse_run_id: None,
+            run_from_node_id: None,
         };
         let response = self
             .http

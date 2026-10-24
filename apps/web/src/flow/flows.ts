@@ -1,4 +1,4 @@
-import type { PipelineVersion } from "@sprisk/contracts";
+import type { LoadedTable, PipelineVersion } from "@sprisk/contracts";
 
 /** `ids` runs from the head back to the oldest version in the list. */
 export type Flow = { head: PipelineVersion; ids: string[] };
@@ -22,3 +22,12 @@ export function flows(all: PipelineVersion[]): Flow[] {
       return { head, ids };
     });
 }
+
+/** The distinct flows that load the table; a version not listed counts as its own flow. */
+export function flowCount(dataset: LoadedTable, versions: PipelineVersion[]): number {
+  const all = flows(versions);
+  return new Set(dataset.used_by.map((u) => flowOfVersion(all, u.pipeline_version_id)?.head.id ?? u.pipeline_version_id)).size;
+}
+
+/** The flow holding this version, if it is listed. */
+export const flowOfVersion = (all: Flow[], versionId: string): Flow | undefined => all.find((f) => f.ids.includes(versionId));

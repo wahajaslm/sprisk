@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.vectorize_text@1.1.0
+title: TF-IDF vectorization
 capability_class: transform
 description: Free text becomes word features, TF-IDF weighted, learnt from the train rows only (ADR-0058). Each text column leaves the tables and becomes words in a sparse matrix, named after its column. A word seen only in test rows, or in fewer train rows than min_df, is ignored; missing text gives a row of zeros.
 entrypoint: sprisk_clean.vectorize_text:vectorize_text

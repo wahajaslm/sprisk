@@ -1,13 +1,22 @@
 """Does each split step split the way the question's confirmed facts require? (ADR-0042)
 
-This is the verification half of the data split rule, so it carries that rule's identity.
+It began as the verification half of the data split rule and keeps that rule's check id, so
+stored checks stay comparable. The split is now decided by the split_method method, whose
+promises replace this check when the old rules go (ADR-0063 slice 6).
 It reads settings, not rows: a pass is partial coverage until a run checks the rows.
 """
 
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from sprisk_contracts import MethodologyCheck, MethodologyDecision, PipelineVersion, QuestionVersion
+from sprisk_contracts import (
+    MethodologyCheck,
+    MethodologyDecision,
+    MethodologyDecisionByMethod,
+    MethodologyDecisionByRule,
+    PipelineVersion,
+    QuestionVersion,
+)
 from sprisk_contracts.generated.models import (
     MethodologyCoverage,
     MethodologyPhase,
@@ -21,7 +30,7 @@ CHECK = "methodology.supervised.data_split@1.0.0"
 RANDOM = "sprisk.validation.random_split"
 TEMPORAL = "sprisk.validation.temporal_split"
 GROUP = "sprisk.validation.group_split"
-# The operator each alternative of rules/data_split/rule.yaml builds; a test keeps them equal.
+# The operator each alternative of the retired data_split rule built, for the decisions it made.
 ALTERNATIVE_OPERATORS = {
     "temporal": TEMPORAL,
     "entity_group": GROUP,
@@ -46,7 +55,7 @@ def split_design(
     splits = [n for n in pipeline.nodes if unversioned(n.operator.root) in HOLDOUT_PORTS]
     if not splits:
         return [_result(pipeline, new_id(), now, Verdict.not_assessed, "No split step.", None)]
-    sent = {d.id.root: d for d in decisions}
+    sent = {d.root.id.root: d.root for d in decisions}
     results = []
     for node in splits:
         decision = _own_decision(node, sent)
@@ -60,14 +69,17 @@ def split_design(
 
 
 def _own_decision(
-    node: Node, sent: Mapping[str, MethodologyDecision]
-) -> MethodologyDecision | None:
+    node: Node, sent: Mapping[str, MethodologyDecisionByRule | MethodologyDecisionByMethod]
+) -> MethodologyDecisionByRule | None:
     """The split decision `node` cites. Citing one that was not sent, or that decided
-    something else, is bad input: the check would credit the split to the wrong choice."""
+    something else, is bad input: the check would credit the split to the wrong choice. A
+    method's decision is not this rule's: the walk checks the method's own promises."""
     cited = node.methodology_decision_id
     if cited is None:
         return None
     decision = sent.get(cited.root)
+    if isinstance(decision, MethodologyDecisionByMethod):
+        return None
     if decision is None or decision.rule.root != CHECK or decision.subject_node_id != node.id:
         raise CheckInputError(
             f"split {node.id.root} cites decision {cited.root}, which was not sent or is not "
@@ -76,7 +88,7 @@ def _own_decision(
     return decision
 
 
-def _drift(node: Node, decision: MethodologyDecision) -> str | None:
+def _drift(node: Node, decision: MethodologyDecisionByRule) -> str | None:
     """Why the step no longer matches the alternative its decision chose, or None."""
     chose = decision.alternative_id
     if ALTERNATIVE_OPERATORS.get(chose) == unversioned(node.operator.root):
@@ -153,7 +165,7 @@ def _result(
     verdict: Verdict,
     rationale: str,
     node: Node | None,
-    decision: MethodologyDecision | None = None,
+    decision: MethodologyDecisionByRule | None = None,
 ) -> MethodologyCheck:
     coverage = {
         Verdict.pass_: MethodologyCoverage.partial,

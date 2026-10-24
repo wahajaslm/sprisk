@@ -32,11 +32,12 @@ it("shows the empty text for an empty list, and the content otherwise", () => {
   expect(screen.getByText("a,b")).toBeInTheDocument();
 });
 
-it("renders a row as a button with a title, a note and a state", () => {
-  render(<ListRow title="Run 1" meta="today" state="succeeded" current onClick={() => {}} />);
+it("renders a row as a real button with a title, its facts and a badge", () => {
+  render(<ListRow title="Run 1" meta="today" badge="Running" selected onClick={() => {}} />);
   const row = screen.getByRole("button", { name: /Run 1/ });
+  expect(row.tagName).toBe("BUTTON");
   expect(row).toHaveAttribute("aria-current", "true");
-  expect(row).toHaveTextContent(/today.*succeeded/);
+  expect(row).toHaveTextContent(/today.*Running/);
 });
 
 it("a page header names the page, says what it is for and holds its actions", async () => {
@@ -45,4 +46,30 @@ it("a page header names the page, says what it is for and holds its actions", as
   expect(screen.getByRole("heading", { level: 1, name: "Question ledger" })).toBeInTheDocument();
   expect(screen.getByText("What this analysis asks.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
+});
+
+it("page tabs are real tabs: the selected one is marked, and arrow keys move between them", async () => {
+  const { Tabs } = await import("../src/components/ui/Tabs.tsx");
+  const { default: userEvent } = await import("@testing-library/user-event");
+  const { useState } = await import("react");
+  function Page() {
+    const [tab, setTab] = useState("card");
+    return (
+      <Tabs label="Model" value={tab} onChange={setTab} items={[{ value: "card", label: "Card" }, { value: "explain", label: "Explain" }]}>
+        <p>Showing {tab}</p>
+      </Tabs>
+    );
+  }
+  render(<Page />);
+  expect(screen.getByRole("tablist", { name: "Model" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Card" })).toHaveAttribute("aria-selected", "true");
+  const panel = screen.getByRole("tabpanel");
+  expect(panel).toHaveTextContent("Showing card");
+  expect(screen.getByRole("tab", { name: "Card" })).toHaveAttribute("aria-controls", panel.id);
+
+  await userEvent.click(screen.getByRole("tab", { name: "Explain" }));
+  expect(screen.getByRole("tab", { name: "Explain" })).toHaveAttribute("aria-selected", "true");
+
+  await userEvent.keyboard("{ArrowLeft}");
+  expect(screen.getByRole("tab", { name: "Card" })).toHaveAttribute("aria-selected", "true");
 });

@@ -6,10 +6,11 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, ArtifactId, Attempt, AttemptId, AttemptState, CreateStudy, CreateWalk,
-    DecisionProposal, InvestigationId, MethodologyDecision, MethodologyDecisionId,
-    MethodologyProposalId, NodeId, NotebookId, NotebookVersion, NotebookVersionId, PipelineVersion,
-    PipelineVersionId, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyId,
-    StudyStatus, Timestamp, Walk, WalkId, WalkStep, WorkerId,
+    DecisionProposal, InvestigationId, MethodologyDecision, MethodologyDecisionByRule,
+    MethodologyDecisionId, MethodologyProposalId, NodeId, NotebookId, NotebookVersion,
+    NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId,
+    Report, Run, RunId, RunStatus, Study, StudyId, StudyStatus, Timestamp, Walk, WalkId, WalkStep,
+    WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -496,6 +497,25 @@ impl SqliteStore {
         Ok((walk.clone(), true))
     }
 
+    /// Newest first, at most `limit`, optionally only one question's and before a walk id.
+    pub async fn list_walks(
+        &self,
+        question: Option<&QuestionVersionId>,
+        before: Option<&WalkId>,
+        limit: u32,
+    ) -> Result<Vec<Walk>, StoreError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM walks WHERE (?1 IS NULL OR question_version_id = ?1) \
+             AND (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?3",
+        )
+        .bind(question.map(|q| q.as_str()))
+        .bind(before.map(|w| w.as_str()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        parse_all(rows, "walk")
+    }
+
     pub async fn get_walk(&self, id: &WalkId) -> Result<Walk, StoreError> {
         let body: Option<String> = sqlx::query_scalar("SELECT body FROM walks WHERE id = ?")
             .bind(id.as_str())
@@ -515,6 +535,38 @@ impl SqliteStore {
             .iter()
             .map(|b| Ok(serde_json::from_str(b)?))
             .collect()
+    }
+
+    /// The walk that made version `id` or its nearest ancestor, and the round of the step that
+    /// made that version. A person's edits on top of a walk's version take its decisions.
+    pub async fn walk_making_nearest(
+        &self,
+        id: &PipelineVersionId,
+    ) -> Result<Option<(WalkId, usize)>, StoreError> {
+        // Bounded: a walk takes at most 200 actions, and a person's edits stay far below this.
+        let found: Option<(String, i64)> = sqlx::query_as(
+            "WITH RECURSIVE line (id, depth) AS ( \
+                 SELECT ?, 0 \
+                 UNION ALL \
+                 SELECT json_extract(v.body, '$.parent_id'), line.depth + 1 \
+                 FROM pipeline_versions v JOIN line ON v.id = line.id \
+                 WHERE line.depth < 1000 AND json_extract(v.body, '$.parent_id') IS NOT NULL) \
+             SELECT s.walk_id, s.round FROM line \
+             JOIN walk_steps s ON json_extract(s.body, '$.made_pipeline_version_id') = line.id \
+             ORDER BY line.depth, s.round LIMIT 1",
+        )
+        .bind(id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((walk, round)) = found else {
+            return Ok(None);
+        };
+        let round = usize::try_from(round)
+            .map_err(|_| StoreError::Conflict(format!("round {round} is out of range")))?;
+        Ok(Some((
+            walk.parse().map_err(|_| StoreError::BadId(walk))?,
+            round,
+        )))
     }
 
     /// The walks still walking: those a stopped server left, to resume (ADR-0060).
@@ -602,6 +654,22 @@ impl SqliteStore {
         Ok(None)
     }
 
+    /// Stores the version `made` with the walk step that made it, in one transaction, so a
+    /// server that stops between them leaves no version the walk does not know it made.
+    pub async fn record_walk_version(
+        &self,
+        walk: &Walk,
+        step: &WalkStep,
+        made: &PipelineVersion,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        insert_version(&mut *tx, made).await?;
+        insert_walk_step(&mut tx, step).await?;
+        update_walk(&mut tx, walk).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Appends `step` to its walk and saves `walk` as it stands after it, in one transaction.
     /// A round already recorded is a conflict, and nothing changes.
     pub async fn record_walk_step(&self, walk: &Walk, step: &WalkStep) -> Result<(), StoreError> {
@@ -610,6 +678,36 @@ impl SqliteStore {
         update_walk(&mut tx, walk).await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Ends a completed walk: its last step, the walk as it stands after it and its report, in
+    /// one transaction. A walk has one report; a second is a conflict, and nothing changes.
+    pub async fn record_walk_report(
+        &self,
+        walk: &Walk,
+        step: &WalkStep,
+        report: &Report,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        insert_walk_step(&mut tx, step).await?;
+        update_walk(&mut tx, walk).await?;
+        sqlx::query("INSERT INTO reports (id, walk_id, body) VALUES (?, ?, ?)")
+            .bind(report.id.as_str())
+            .bind(report.walk_id.as_str())
+            .bind(to_json(report)?)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// The report of `walk`. A walk that has not completed has none.
+    pub async fn walk_report(&self, walk: &WalkId) -> Result<Report, StoreError> {
+        let body: Option<String> = sqlx::query_scalar("SELECT body FROM reports WHERE walk_id = ?")
+            .bind(walk.as_str())
+            .fetch_optional(&self.pool)
+            .await?;
+        from_json(body, "report", walk.as_str())
     }
 
     /// The version comparing `proposal`'s shortlist (ADR-0046), if one was built.
@@ -680,7 +778,7 @@ impl SqliteStore {
     pub async fn decisions_of(
         &self,
         proposal: &MethodologyProposalId,
-    ) -> Result<Vec<MethodologyDecision>, StoreError> {
+    ) -> Result<Vec<MethodologyDecisionByRule>, StoreError> {
         let bodies: Vec<String> = sqlx::query_scalar(
             "SELECT body FROM methodology_decisions WHERE proposal_id = ? ORDER BY id",
         )
@@ -817,12 +915,13 @@ impl SqliteStore {
             .map_err(StoreError::from)
     }
 
-    /// Commits the applied graph and its decision in one transaction. A repeated key returns
-    /// the original decision, so a lost HTTP response cannot create a second graph version.
+    /// Commits the decision and the version it made, if any, in one transaction. A repeated
+    /// key returns the original decision, so a lost HTTP response or a repeated walk round
+    /// cannot create a second graph version.
     pub async fn apply_methodology_decision(
         &self,
         decision: &MethodologyDecision,
-        pipeline: &PipelineVersion,
+        made: Option<&PipelineVersion>,
         idempotency_key: &str,
     ) -> Result<MethodologyDecision, StoreError> {
         let mut tx = self.pool.begin().await?;
@@ -834,24 +933,25 @@ impl SqliteStore {
         if let Some(body) = existing {
             tx.rollback().await?;
             let saved: MethodologyDecision = serde_json::from_str(&body)?;
-            replays(
-                &saved,
-                idempotency_key,
-                &decision.proposal_id,
-                decision.alternative_id.as_str(),
-                decision.reason.as_ref().map(|r| r.as_str()),
-            )?;
+            same_request(&saved, idempotency_key, decision)?;
             return Ok(saved);
         }
-        sqlx::query("INSERT INTO pipeline_versions (id, project_id, body) VALUES (?, ?, ?)")
-            .bind(pipeline.id.as_str())
-            .bind(pipeline.project_id.as_str())
-            .bind(to_json(pipeline)?)
-            .execute(&mut *tx)
-            .await?;
+        if let Some(pipeline) = made {
+            sqlx::query("INSERT INTO pipeline_versions (id, project_id, body) VALUES (?, ?, ?)")
+                .bind(pipeline.id.as_str())
+                .bind(pipeline.project_id.as_str())
+                .bind(to_json(pipeline)?)
+                .execute(&mut *tx)
+                .await?;
+        }
+        let proposal = match decision {
+            MethodologyDecision::Rule(d) => Some(d.proposal_id.as_str()),
+            MethodologyDecision::Method(_) => None,
+        };
         sqlx::query("INSERT INTO methodology_decisions (id, proposal_id, pipeline_version_id, idempotency_key, body) VALUES (?, ?, ?, ?, ?)")
-            .bind(decision.id.as_str()).bind(decision.proposal_id.as_str())
-            .bind(decision.pipeline_version_id.as_str()).bind(idempotency_key).bind(to_json(decision)?)
+            .bind(decision.id().as_str()).bind(proposal)
+            .bind(decision.pipeline_version_id().map(|v| v.as_str())).bind(idempotency_key)
+            .bind(to_json(decision)?)
             .execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(decision.clone())
@@ -1461,23 +1561,64 @@ fn from_json<T: DeserializeOwned>(
 /// Whether a request under idempotency `key` asks for what `saved` already chose: a retry gets
 /// that decision; the same key with another proposal, choice or reason is a conflict, never
 /// answered with the first (arch doc SCI-07).
-pub fn replays(
-    saved: &MethodologyDecision,
+pub fn replays<'a>(
+    saved: &'a MethodologyDecision,
     key: &str,
     proposal: &MethodologyProposalId,
     alternative: &str,
     reason: Option<&str>,
-) -> Result<(), StoreError> {
-    let same = &saved.proposal_id == proposal
-        && saved.alternative_id.as_str() == alternative
-        && saved.reason.as_ref().map(|r| r.as_str()) == reason;
-    if same {
-        return Ok(());
+) -> Result<&'a MethodologyDecisionByRule, StoreError> {
+    if let MethodologyDecision::Rule(rule) = saved
+        && &rule.proposal_id == proposal
+        && rule.alternative_id.as_str() == alternative
+        && rule.reason.as_ref().map(|r| r.as_str()) == reason
+    {
+        return Ok(rule);
     }
-    Err(StoreError::Conflict(format!(
-        "idempotency key {key} was used for another request: decision {} chose {} from proposal {}",
-        saved.id.as_str(),
-        saved.alternative_id.as_str(),
-        saved.proposal_id.as_str()
-    )))
+    Err(reused(saved, key))
+}
+
+/// Refuses a key reused for a different decision. A method's decision is the same request
+/// when it takes the same option of the same method on the same base, with the same patch.
+pub fn same_request(
+    saved: &MethodologyDecision,
+    key: &str,
+    asked: &MethodologyDecision,
+) -> Result<(), StoreError> {
+    match (saved, asked) {
+        (_, MethodologyDecision::Rule(rule)) => replays(
+            saved,
+            key,
+            &rule.proposal_id,
+            rule.alternative_id.as_str(),
+            rule.reason.as_ref().map(|r| r.as_str()),
+        )
+        .map(|_| ()),
+        (MethodologyDecision::Method(had), MethodologyDecision::Method(wants))
+            if had.method == wants.method
+                && had.option == wants.option
+                && had.base_pipeline_version_id == wants.base_pipeline_version_id
+                && had.effects == wants.effects =>
+        {
+            Ok(())
+        }
+        _ => Err(reused(saved, key)),
+    }
+}
+
+fn reused(saved: &MethodologyDecision, key: &str) -> StoreError {
+    let chose = match saved {
+        MethodologyDecision::Rule(d) => format!(
+            "chose {} from proposal {}",
+            d.alternative_id.as_str(),
+            d.proposal_id.as_str()
+        ),
+        MethodologyDecision::Method(d) => {
+            format!("took {} of {}", d.option.as_str(), d.method.as_str())
+        }
+    };
+    StoreError::Conflict(format!(
+        "idempotency key {key} was used for another request: decision {} {chose}",
+        saved.id().as_str()
+    ))
 }

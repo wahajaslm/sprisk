@@ -47,3 +47,10 @@ def test_a_column_name_that_looks_like_a_pattern_cleans_only_that_column() -> No
     data = pl.DataFrame({"^.*$": [" A "], "other": [" B "]})
     out = clean_text(data, columns=["^.*$"])
     assert out["^.*$"].to_list() == ["A"] and out["other"].to_list() == [" B "]
+
+
+def test_a_column_named_in_exclude_is_left_as_typed() -> None:
+    # The target's labels: 'MALE' and 'male' as two classes is a question for a person.
+    out = clean_text(DATA, columns=["island", "sex"], lowercase=True, exclude=["sex"])
+    assert out["sex"].to_list() == DATA["sex"].to_list()
+    assert out["island"].to_list()[0] == "biscoe"

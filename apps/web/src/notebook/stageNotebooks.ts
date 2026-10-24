@@ -1,4 +1,4 @@
-import type { Node, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { FlowDecision, Node, Operator, PipelineVersion } from "@sprisk/contracts";
 
 import { isCodeOperator } from "../flow/edit.ts";
 import { namedPorts, nodeOf, notebookOrder, outputName } from "../flow/notebook.ts";
@@ -31,17 +31,46 @@ export function stagesOf(pipeline: PipelineVersion, operators: Operators): Map<s
   return placed;
 }
 
-/** The flow as one notebook per stage, in stage order, each step after the steps it reads. */
-export function stageNotebooks(pipeline: PipelineVersion, operators: Operators): { stage: Stage; nodes: Node[] }[] {
+/** One notebook section: a stage, or the activity of the decisions that shaped its steps.
+ * `home` is the stage a cell added to it takes: its own, or its first step's. */
+export type Section = { name: string; home: Stage; nodes: Node[]; decisions: FlowDecision[] };
+
+/** The flow as one notebook per section, in working order, each step after the steps it reads.
+ * The steps a decision shaped sit under its activity (ADR-0063), placed where the earliest of
+ * them would sit by stage; every other step keeps its stage. */
+export function stageNotebooks(pipeline: PipelineVersion, operators: Operators, decisions: FlowDecision[] = []): Section[] {
   const placed = stagesOf(pipeline, operators);
   const order = notebookOrder(pipeline);
-  return STAGES.map((stage) => ({ stage, nodes: order.filter((n) => placed.get(n.id) === stage) })).filter((s) => s.nodes.length > 0);
+  const activityOf = new Map<string, FlowDecision>();
+  for (const decision of decisions) {
+    for (const step of decision.steps) if (!activityOf.has(step)) activityOf.set(step, decision);
+  }
+  const sections = new Map<string, Section & { at: number }>();
+  for (const node of order) {
+    const stage = placed.get(node.id) ?? "Unknown";
+    const decision = activityOf.get(node.id);
+    const name = decision?.activity ?? stage;
+    // Decisions that share an activity share its section; an activity named like a stage does not.
+    const key = decision ? `activity:${name}` : `stage:${name}`;
+    // A stage comes before an activity that starts in it: Load, then what was measured on it.
+    const at = STAGES.indexOf(stage) * 2 + (decision ? 1 : 0);
+    const section = sections.get(key) ?? { name, home: stage, nodes: [], decisions: [], at };
+    section.nodes.push(node);
+    section.at = Math.min(section.at, at);
+    if (decision && !section.decisions.includes(decision)) section.decisions.push(decision);
+    sections.set(key, section);
+  }
+  return [...sections.values()].sort((a, b) => a.at - b.at).map(({ at: _at, ...section }) => section);
 }
 
-/** Heading groups on the canvas, one per stage, placed as the notebooks are. Keys look like
- * "Clean#clean"; the part before "#" is the stage shown. */
-export function stageGroups(pipeline: PipelineVersion, operators: Operators): Map<string, string> {
-  return new Map([...stagesOf(pipeline, operators)].map(([id, stage]) => [id, `${stage}#${stage.toLowerCase()}`]));
+/** Heading groups on the canvas, one per section, placed as the notebooks are. Keys look like
+ * "Clean#clean"; the part before "#" is the name shown. */
+export function stageGroups(pipeline: PipelineVersion, operators: Operators, decisions: FlowDecision[] = []): Map<string, string> {
+  return new Map(
+    stageNotebooks(pipeline, operators, decisions).flatMap(({ name, nodes }) =>
+      nodes.map((n) => [n.id, `${name}#${name.toLowerCase().replaceAll(" ", "_")}`] as const),
+    ),
+  );
 }
 
 const latest = (stages: Stage[]): Stage => stages.reduce((a, b) => (STAGES.indexOf(b) > STAGES.indexOf(a) ? b : a));
@@ -51,13 +80,4 @@ function outputPorts(node: Node, operators: Operators): string[] {
   const operator = operators.get(node.operator);
   const declared = (operator?.outputs ?? []).filter((o) => o.kind !== "diagnostics").map((o) => String(o.name));
   return [...declared, ...namedPorts(operator, node.params, "output")];
-}
-
-/** The names a step's cell reads from cells above and gives to cells below. */
-export function stepNames(pipeline: PipelineVersion, operators: Operators, nodeId: string): { reads: string[]; gives: string[] } {
-  const node = nodeOf(pipeline, nodeId);
-  const into = pipeline.edges.filter((e) => stepOf(e.to) === nodeId);
-  const reads = isCodeOperator(node.operator) ? into.map((e) => portOf(e.to)) : into.map((e) => outputName(pipeline, e.from));
-  const gives = outputPorts(node, operators).map((port) => outputName(pipeline, `${nodeId}.${port}`));
-  return { reads: [...new Set(reads)], gives };
 }

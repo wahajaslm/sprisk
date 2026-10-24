@@ -1,0 +1,7 @@
+{
+  "answer": "decided",
+  "method": "methodology.common.repeated_items@1.0.0",
+  "outcome": "choose",
+  "option": "independent_rows",
+  "reason": "No two rows share a title."
+}

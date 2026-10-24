@@ -11,8 +11,11 @@ use sprisk_methodology::review::{
 };
 use sprisk_registry::Registry;
 
+mod repo;
+use repo::rules_with_example_split;
+
 fn catalog() -> RuleCatalog {
-    RuleCatalog::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology")).unwrap()
+    rules_with_example_split()
 }
 
 fn flow(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> PipelineVersion {
@@ -91,14 +94,11 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("question.unit_of_prediction".to_owned(), at("split")),
             ("data.exact_duplicates".to_owned(), at("split")),
             ("data.missing_markers".to_owned(), at("split")),
-            ("data.text_spelling".to_owned(), at("split")),
             ("data.type_repair".to_owned(), at("split")),
             ("split.method".to_owned(), at("split")),
             ("cleaning.missingness_strategy".to_owned(), at("fill")),
             // Question rules on the model measure its train rows, so they follow the fill.
-            ("question.class_balance".to_owned(), at("model")),
             ("question.error_costs".to_owned(), at("model")),
-            ("question.task_type".to_owned(), at("model")),
             ("cleaning.outlier_strategy".to_owned(), None),
             ("features.scaling_strategy".to_owned(), at("model")),
             ("features.skew_transform".to_owned(), at("model")),
@@ -543,12 +543,11 @@ fn rules_measuring_the_split_s_table_come_after_the_rules_that_shape_its_columns
     let pipeline = filled_linear();
     let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let at = |decides: &str| &planned[index_of(&planned, decides)];
-    let (join, roles, html, duplicates, spelling) = (
+    let (join, roles, html, duplicates) = (
         at("data.join_sources"),
         at("data.column_roles"),
         at("data.html_text"),
         at("data.exact_duplicates"),
-        at("data.text_spelling"),
     );
 
     assert!(comes_after(&pipeline, duplicates, join));
@@ -556,17 +555,15 @@ fn rules_measuring_the_split_s_table_come_after_the_rules_that_shape_its_columns
     assert!(comes_after(&pipeline, roles, join));
     assert!(!comes_after(&pipeline, join, roles));
     assert!(!comes_after(&pipeline, roles, duplicates));
-    // Markup is stripped from the final columns, and before spelling and copies are counted:
-    // "Caf&eacute;" and "Café" are one spelling, two rows differing only in markup one row.
+    // Markup is stripped from the final columns, and before copies are counted: two rows
+    // differing only in markup are one row.
     assert!(comes_after(&pipeline, html, roles));
-    assert!(comes_after(&pipeline, spelling, html));
     assert!(comes_after(&pipeline, duplicates, html));
-    assert!(!comes_after(&pipeline, html, spelling));
 }
 
 #[test]
 fn a_step_upstream_settles_a_subject_only_with_a_decision_made_for_that_subject() {
-    let decision = |subject: &str| -> sprisk_contracts::MethodologyDecision {
+    let decision = |subject: &str| -> sprisk_contracts::MethodologyDecisionByRule {
         let mut d: Value = serde_json::from_str(include_str!(
             "../../../tests/contract/methodology_decision/valid/applied.json"
         ))

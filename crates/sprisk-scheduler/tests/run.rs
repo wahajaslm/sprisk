@@ -35,6 +35,10 @@ enum Behave {
     GateFail,
     /// Gate B attempt whose checks output is not a MethodologyCheck array.
     GateGarbage,
+    /// Also writes evidence that matches what `producer_load` declares.
+    GoodEvidence,
+    /// Also writes evidence whose field has another type than declared.
+    BadEvidence,
 }
 
 /// node id -> behaviour per attempt number (1-based); missing entries succeed.
@@ -214,6 +218,19 @@ fn replies(lease: &LeaseAttempt, behave: Behave) -> VecDeque<Result<WorkerMessag
                     )
                 })
                 .collect();
+            if let Some(rows) = match behave {
+                Behave::GoodEvidence => Some(json!(120)),
+                Behave::BadEvidence => Some(json!("many")),
+                _ => None,
+            } {
+                let bytes = json!({ "data.rows": { "rows": rows } }).to_string();
+                let path = staging.join("evidence");
+                std::fs::write(&path, &bytes).unwrap();
+                out.push_back(msg(json!({"type": "artifact_manifest", "attempt_id": attempt,
+                    "port": "evidence", "staging_uri": url::Url::from_file_path(&path).unwrap().to_string(),
+                    "content_hash": sha256(bytes.as_bytes()), "media_type": "application/json",
+                    "size_bytes": bytes.len()})));
+            }
             out.push_front(msg(json!({"type": "heartbeat", "attempt_id": attempt})));
             out.push_back(msg(json!({"type": "complete", "attempt_id": attempt})));
             out
@@ -339,6 +356,8 @@ struct Case {
     decided: bool,
     /// A deadline the clock passes after this many reads of it.
     deadline_after: Option<usize>,
+    /// The load step's operator also produces `data.rows` evidence (ADR-0063).
+    producer_load: bool,
 }
 
 impl Default for Case {
@@ -353,6 +372,7 @@ impl Default for Case {
             split_check: false,
             decided: false,
             deadline_after: None,
+            producer_load: false,
         }
     }
 }
@@ -368,6 +388,7 @@ async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::Schedule
         split_check,
         decided,
         deadline_after,
+        producer_load,
     } = case;
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteStore::in_memory().await.unwrap();
@@ -401,6 +422,17 @@ async fn setup(case: Case) -> (Env, Result<RunStatus, sprisk_scheduler::Schedule
     if let Some(node) = side_effecting {
         let step = plan.steps.iter_mut().find(|s| s.node_id == node).unwrap();
         step.operator.effects = sprisk_contracts::Effects::SideEffecting;
+    }
+    if producer_load {
+        let step = plan.steps.iter_mut().find(|s| s.node_id == "load").unwrap();
+        let mut operator = serde_json::to_value(&step.operator).unwrap();
+        operator["outputs"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({ "name": "evidence", "kind": "report" }));
+        operator["produces"] = json!({ "data.rows": { "fields": { "rows": "integer" } } });
+        operator["attach"] = json!({ "role": "split", "side": "input" });
+        step.operator = parse(&operator.to_string()).unwrap();
     }
     let artifacts = ArtifactStore::local(dir.path()).unwrap();
     let log = workers.log.clone();
@@ -754,6 +786,49 @@ async fn bad_manifests_fail_the_attempt_permanently() {
     }
 }
 
+async fn run_producer(behave: Behave) -> (Env, RunStatus) {
+    let workers = FakeWorkers {
+        script: [("load", vec![behave])].into(),
+        ..FakeWorkers::default()
+    };
+    let (env, status) = setup(Case {
+        workers,
+        producer_load: true,
+        ..Case::default()
+    })
+    .await;
+    (env, status.unwrap())
+}
+
+#[tokio::test]
+async fn evidence_matching_its_manifest_is_saved_with_the_step() {
+    let (env, status) = run_producer(Behave::GoodEvidence).await;
+    assert_eq!(status, RunStatus::Succeeded);
+    assert_eq!(states(&env, "load").await, vec![AttemptState::Succeeded]);
+}
+
+#[tokio::test]
+async fn evidence_that_breaks_its_manifest_fails_the_step_and_saves_nothing() {
+    let (env, status) = run_producer(Behave::BadEvidence).await;
+    assert_eq!(status, RunStatus::Failed);
+    let attempts = env
+        .store
+        .list_attempts(&RUN.parse().unwrap())
+        .await
+        .unwrap();
+    let load = attempts
+        .iter()
+        .find(|a| a.node_id.as_str() == "load")
+        .unwrap();
+    assert_eq!(load.state, AttemptState::Failed);
+    let message = load.error.as_ref().unwrap().message.as_str();
+    assert!(
+        message.contains("data.rows.rows is \"many\", not integer"),
+        "{message}"
+    );
+    assert!(env.store.outputs(&load.id).await.unwrap().is_empty());
+}
+
 #[tokio::test]
 async fn gate_b_runs_first_with_the_pipeline_its_operators_question_and_decisions_as_inputs() {
     let (env, status) = setup(Case {
@@ -913,7 +988,7 @@ async fn seed_decision(store: &SqliteStore) {
     let decision: sprisk_contracts::MethodologyDecision =
         fixture_with("methodology_decision", "applied.json", json!({}));
     store
-        .apply_methodology_decision(&decision, &applied, "key-0001")
+        .apply_methodology_decision(&decision, Some(&applied), "key-0001")
         .await
         .unwrap();
 }
@@ -964,17 +1039,18 @@ async fn rerun(change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
 }
 
 async fn rerun_in(project: &str, change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
-    rerun_with(project, false, change).await
+    rerun_with(project, false, None, change).await
 }
 
 /// A second run after an edit, reusing the first run's results (ADR-0026).
 async fn rerun_reusing(change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
-    rerun_with("prj_01JABCDEFGHJKMNPQRSTVWXYZ0", true, change).await
+    rerun_with("prj_01JABCDEFGHJKMNPQRSTVWXYZ0", true, None, change).await
 }
 
 async fn rerun_with(
     project: &str,
     reuse: bool,
+    from: Option<&str>,
     change: impl FnOnce(&mut Plan),
 ) -> (Env, Vec<String>) {
     let (env, status) = run_with(Script::new()).await;
@@ -998,6 +1074,9 @@ async fn rerun_with(
     let mut scheduler = Scheduler::new(&env.store, &env.artifacts, workers, Settings::default());
     if reuse {
         scheduler = scheduler.reusing(RUN.parse().unwrap());
+    }
+    if let Some(from) = from {
+        scheduler = scheduler.running_from(from);
     }
     let status = scheduler.run(&run.id, &pipeline(), &plan).await.unwrap();
     assert_eq!(status, RunStatus::Succeeded);
@@ -1138,6 +1217,57 @@ async fn an_edit_reuses_the_earlier_run_up_to_the_edited_step() {
     assert_eq!(
         states_in(&env, RUN2, "load").await,
         [AttemptState::CacheHit]
+    );
+}
+
+#[tokio::test]
+async fn running_from_a_step_runs_it_and_every_step_after_it_even_unchanged() {
+    let (env, leased) = rerun_with(
+        "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        true,
+        Some("split"),
+        |_| {},
+    )
+    .await;
+
+    assert_eq!(leased, ["split", "model", "score"]);
+    assert_eq!(
+        states_in(&env, RUN2, "load").await,
+        [AttemptState::CacheHit],
+        "steps before it are reused"
+    );
+}
+
+#[tokio::test]
+async fn running_from_a_step_skips_the_shared_cache_too() {
+    let (_, leased) = rerun_with(
+        "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        false,
+        Some("model"),
+        |_| {},
+    )
+    .await;
+    assert_eq!(
+        leased,
+        ["load", "model", "score"],
+        "load is a source; split comes from the cache"
+    );
+}
+
+#[tokio::test]
+async fn running_from_a_step_the_plan_lacks_is_refused() {
+    let (env, status) = run_with(Script::new()).await;
+    assert_eq!(status, RunStatus::Succeeded);
+    let workers = FakeWorkers {
+        log: env.log.clone(),
+        ..FakeWorkers::default()
+    };
+    let refused = Scheduler::new(&env.store, &env.artifacts, workers, Settings::default())
+        .running_from("nowhere")
+        .run(&RUN.parse().unwrap(), &pipeline(), &plan())
+        .await;
+    assert!(
+        matches!(refused, Err(sprisk_scheduler::SchedulerError::UnknownStartStep(n)) if n == "nowhere")
     );
 }
 

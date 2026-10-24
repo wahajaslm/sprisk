@@ -1,11 +1,11 @@
-import type { PipelineVersion } from "@sprisk/contracts";
+import type { FlowDecision, PipelineVersion } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
-import { stageNotebooks, stepNames } from "../src/notebook/stageNotebooks.ts";
+import { stageNotebooks } from "../src/notebook/stageNotebooks.ts";
 import { notebookOperator, operators, pipeline } from "./fixtures.ts";
 
 const byRef = new Map([...operators, notebookOperator].map((o) => [o.id, o]));
-const ids = (flow: PipelineVersion) => stageNotebooks(flow, byRef).map(({ stage, nodes }) => [stage, nodes.map((n) => n.id)]);
+const ids = (flow: PipelineVersion) => stageNotebooks(flow, byRef).map(({ name, nodes }) => [name, nodes.map((n) => n.id)]);
 
 describe("a flow as one notebook per stage (ADR-0055)", () => {
   it("puts each step in its operator's stage, stages in order, steps in flow order", () => {
@@ -53,25 +53,45 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
   });
 });
 
-describe("the names a step's cell reads and gives", () => {
-  it("are <step>_<port>, the names a code cell reads them by", () => {
-    expect(stepNames(pipeline, byRef, "load")).toEqual({ reads: [], gives: ["load_data"] });
-    expect(stepNames(pipeline, byRef, "split")).toEqual({ reads: ["load_data"], gives: ["split_train", "split_test"] });
-    expect(stepNames(pipeline, byRef, "model")).toEqual({ reads: ["impute_train"], gives: ["model_model"] });
+const decision = (activity: string, steps: string[]): FlowDecision => ({
+  decides: "split.method",
+  method: "methodology.supervised.split_method@1.0.0",
+  activity,
+  question: "How are rows divided into training and test so the score is fair?",
+  option: "item_groups",
+  label: "Keep each item's rows on one side",
+  reason: "Rows of one item stay on one side.",
+  assurance: "rule",
+  steps,
+  promises: [],
+});
+
+const grouped = (flow: PipelineVersion, decisions: FlowDecision[]) =>
+  stageNotebooks(flow, byRef, decisions).map(({ name, nodes }) => [name, nodes.map((n) => n.id)]);
+
+describe("a decision's steps as one section per activity (ADR-0063)", () => {
+  it("puts the steps a decision shaped under its activity, where its first step's stage sits", () => {
+    expect(grouped(pipeline, [decision("Repeated observations", ["profile"]), decision("Fair evaluation", ["split"])])).toEqual([
+      ["Load", ["load"]],
+      ["Repeated observations", ["profile"]],
+      ["Fair evaluation", ["split"]],
+      ["Clean", ["impute"]],
+      ["Model", ["model"]],
+      ["Evaluate", ["score"]],
+    ]);
   });
 
-  it("are the step's own names when it keeps them", () => {
-    const flow = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "split" ? { ...n, names: { train: "train", test: "test" } } : n)) };
-    expect(stepNames(flow, byRef, "split").gives).toEqual(["train", "test"]);
-    expect(stepNames(flow, byRef, "impute").reads).toEqual(["train", "test"]);
+  it("gives each section the decisions it shows", () => {
+    const fair = decision("Fair evaluation", ["split"]);
+    const sections = stageNotebooks(pipeline, byRef, [fair]);
+    expect(sections.find((s) => s.name === "Fair evaluation")?.decisions).toEqual([fair]);
+    expect(sections.find((s) => s.name === "Load")?.decisions).toEqual([]);
   });
 
-  it("are a code step's variables", () => {
-    const flow: PipelineVersion = {
-      ...pipeline,
-      nodes: [...pipeline.nodes, { id: "rate", operator: notebookOperator.id, params: { source: "rate = data.height", inputs: ["data"], outputs: ["rate"] } }],
-      edges: [...pipeline.edges, { from: "load.data", to: "rate.data" }],
-    };
-    expect(stepNames(flow, byRef, "rate")).toEqual({ reads: ["data"], gives: ["rate"] });
+  it("keeps a step two decisions shaped under the first, and ignores steps the flow no longer has", () => {
+    expect(grouped(pipeline, [decision("Fair evaluation", ["split", "gone"]), decision("Other", ["split"])])).toContainEqual([
+      "Fair evaluation",
+      ["split"],
+    ]);
   });
 });

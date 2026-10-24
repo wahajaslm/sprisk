@@ -16,6 +16,23 @@ impl PortRef {
     }
 }
 
+impl MethodologyDecision {
+    pub fn id(&self) -> &MethodologyDecisionId {
+        match self {
+            Self::Rule(d) => &d.id,
+            Self::Method(d) => &d.id,
+        }
+    }
+
+    /// The version it made. A method's option that changed no step made none.
+    pub fn pipeline_version_id(&self) -> Option<&PipelineVersionId> {
+        match self {
+            Self::Rule(d) => Some(&d.pipeline_version_id),
+            Self::Method(d) => d.pipeline_version_id.as_ref(),
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ContractError {
     #[error("null is not allowed; omit the field instead (at {0})")]

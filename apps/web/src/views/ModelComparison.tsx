@@ -2,8 +2,8 @@ import type { Attempt, DecisionProposal, PipelineVersion, SelectionDecision } fr
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client.ts";
-import { isLive, useOperators, useOperatorSource, useRuns } from "../api/hooks.ts";
-import { useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
+import { isLive, useOperatorsByRef, useOperatorSource, useRuns } from "../api/hooks.ts";
+import { byRule, useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
 import { useSelection } from "../workbench/selection.ts";
@@ -59,11 +59,11 @@ function AutoSelect({ head }: { head: PipelineVersion }) {
  * steps a recommend rule decides that fit on train rows (ADR-0050). */
 export function useComparedSteps(head: PipelineVersion): { node: PipelineVersion["nodes"][number]; models: boolean }[] {
   const rules = useMethodologyRules();
-  const operators = useOperators();
+  const operators = useOperatorsByRef();
   const active = (rules.data ?? []).filter((r) => r.status === "active");
   const shortlisted = new Set(active.filter((r) => r.selection === "shortlist").flatMap((r) => r.applies_to ?? []));
   const recommended = new Set(active.filter((r) => r.selection !== "shortlist").flatMap((r) => r.applies_to ?? []));
-  const fitsOnTrain = (operator: string) => operators.data?.find((o) => o.id === operator)?.fits_on_train === true;
+  const fitsOnTrain = (operator: string) => operators.data?.get(operator)?.fits_on_train === true;
   const name = (operator: string) => operator.split("@")[0] ?? "";
   return head.nodes
     .filter((n) => shortlisted.has(name(n.operator)) || (recommended.has(name(n.operator)) && fitsOnTrain(n.operator)))
@@ -278,6 +278,8 @@ function StepCode({ operator }: { operator: string }) {
 function differences(base: PipelineVersion, effect: NonNullable<DecisionProposal["alternatives"][number]["effect"]>): string {
   if (effect.kind === "remove_node") return `${effect.node_id} removed`;
   if (effect.kind === "insert_node") return `${effect.node_id} added before ${effect.before}`;
+  if (effect.kind === "add_node") return `${effect.node_id} added beside the flow`;
+  if (effect.kind === "set_input") return `${effect.node_id}.${effect.port} reads ${effect.from}`;
   const before = base.nodes.find((n) => n.id === effect.node_id);
   if (!before) return `${effect.node_id} is not in the flow`;
   const after = { ...before, operator: effect.operator, params: effect.params };
@@ -350,10 +352,11 @@ function ChoiceCautions({ head }: { head: PipelineVersion }) {
 /** What a choice cost: test rows already scored by another branch, guardrails it missed. */
 function ChoiceCaution({ decisionId }: { decisionId: string }) {
   const decision = useMethodologyDecision(decisionId);
-  const seen = decision.data?.test_rows_seen_by ?? [];
-  const missed = decision.data?.missed_guardrails ?? [];
+  const ruled = byRule(decision.data) ? decision.data : undefined;
+  const seen = ruled?.test_rows_seen_by ?? [];
+  const missed = ruled?.missed_guardrails ?? [];
   if (seen.length === 0 && missed.length === 0) return null;
-  const step = decision.data?.subject_node_id;
+  const step = ruled?.subject_node_id;
   return (
     <div className="cautions pad">
       {seen.length > 0 && (

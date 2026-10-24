@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 
-import type { Attempt, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { Attempt, FlowDecision, Operator, PipelineVersion, PromiseStatus } from "@sprisk/contracts";
 import {
   applyNodeChanges,
   Background,
@@ -26,12 +26,13 @@ import { createPortal } from "react-dom";
 import { create } from "zustand";
 
 import { useOperators, usePipelineVersions, useRunAttempts, useSaveAndRun, useStartRun } from "../api/hooks.ts";
-import { type RunChecks, useRunChecks } from "../api/checks.ts";
+import { checkCount, concernsByNode, useRunChecks } from "../api/checks.ts";
 import { hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { CardFigure } from "./CardFigure.tsx";
-import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
+import { addCodeStep, readersOf } from "../flow/edit.ts";
+import { useCanvasNotice, useStepActions } from "./flow/useStepActions.ts";
 import {
   flowPositions,
   GROUP_HEAD,
@@ -44,16 +45,19 @@ import {
   STAGE_HEAD_HEIGHT,
   STAGE_PAD_X,
 } from "../flow/layout.ts";
-import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, stepLabel } from "../flow/stages.ts";
+import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, type Stage, stepLabel, type StepOrigin, stepOrigin } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
 import { useNotebooks } from "../api/notebooks.ts";
-import { KindIcon, KindMark, NotebookIcon, PlayIcon, RestartIcon, StopIcon, TrashIcon } from "./Icons.tsx";
+import { KindIcon, NotebookIcon, PlayIcon, RedoIcon, RestartIcon, TrashIcon, UndoIcon } from "./Icons.tsx";
+import { Button } from "../components/ui/Button.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 import { useEscape } from "../hooks/useEscape.ts";
-import { stageGroups } from "../notebook/stageNotebooks.ts";
+import { stageGroups, stageNotebooks } from "../notebook/stageNotebooks.ts";
+import { useFlowDecisions } from "../api/walks.ts";
+import { STANDING } from "./PromiseList.tsx";
 import { stageDescription } from "./StageArtwork.tsx";
 import { stepOf } from "../flow/ports.ts";
 
@@ -76,6 +80,8 @@ type StepData = {
   role: string;
   /** The step runs its own code in this flow, not the built-in (ADR-0028). */
   edited: boolean;
+  /** Where the step comes from, shown by its shape (ADR-0063). */
+  origin: StepOrigin;
   state: string;
   attemptId?: string;
   /** The output port holding the step's figures, if it draws any. */
@@ -87,6 +93,10 @@ type StepData = {
 };
 type StageData = {
   name: string;
+  /** Under the name: what the stage is for, or what its decisions chose (ADR-0063). */
+  purpose: string;
+  /** The promises its decisions made, with their standing on this version. */
+  promises: PromiseStatus[];
   count: number;
   completed?: number;
   running?: number;
@@ -126,12 +136,36 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
           <h3 className="stage-head stage-name">
             {data.name}
           </h3>
-          <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
+          {/* The header keeps its height: a stage's promises take the step count's place. */}
+          {data.promises.length > 0 ? (
+            <ul className="stage-promises" aria-label="Promises">
+              {data.promises.map((p) => (
+                <li key={p.verification} className={`stage-promise tone-${STANDING[p.status].tone}`} title={`${p.promise} ${p.detail}`}>
+                  {STANDING[p.status].word}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
+          )}
         </div>
+        <p className="stage-purpose">{data.purpose}</p>
       </div>
     </div>
   );
 }
+
+/** What a step's shape means, in its tooltip and for screen readers. */
+const ORIGIN_TEXT: Record<StepOrigin, string> = {
+  decided: "chosen by a method",
+  measures: "measures evidence for a method",
+  written: "operator step",
+};
+
+const purposeOf = (name: string) => STAGE_PURPOSE[name as Stage] ?? "";
+
+/** "Fair evaluation#fair_evaluation" → "Fair evaluation". */
+const groupName = (id: string) => id.split("#")[0] ?? id;
 
 /** An edge into or out of the selected step is drawn brighter; failed gate is dashed red. */
 type FlowEdgeData = { active: boolean; failed?: boolean };
@@ -142,40 +176,14 @@ function StepNode(props: NodeProps<Node<StepData>>) {
 
 function CardNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
-  const { pipelineVersionId, runId } = useSelection();
+  const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
   const versions = usePipelineVersions();
   const pipeline = versions.data?.find((v) => v.id === pipelineVersionId);
-  const saveAndRun = useSaveAndRun(runId);
-  const startRun = useStartRun();
+  const actions = useStepActions(pipeline);
 
   const status = statusOf(data.state);
   const isLive = status.tone === "live";
   const { width, height } = NODE_SIZE[data.level];
-
-  const handleRunFromNode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (pipelineVersionId) {
-      startRun.mutate(pipelineVersionId);
-    }
-  };
-
-  const showRun = useSelection((s) => s.showRun);
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!pipeline) return;
-    const readers = readersOf(pipeline, data.id);
-    if (readers.length > 0) {
-      alert(`Step "${data.id}" cannot be deleted because it is read by: ${readers.join(", ")}`);
-      return;
-    }
-    const next = removeStep(pipeline, data.id);
-    saveAndRun.mutate(next, {
-      onSuccess: (r) => {
-        select(undefined);
-        showRun(next.id, r.id);
-      },
-    });
-  };
 
   return (
     <button
@@ -185,9 +193,6 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
       aria-label={`${data.id}, ${data.title}, ${status.text}`}
       title={data.operatorRef}
       onClick={() => select(data.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Delete" || e.key === "Backspace") handleDelete(e as any);
-      }}
       onContextMenu={(e) => {
         e.preventDefault();
         select(data.id);
@@ -205,38 +210,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
           {data.edited && " · edited"}
         </span>
         <span className={`node-hover-actions${isLive ? " has-live" : ""}`}>
-          <span
-            role="button"
-            tabIndex={0}
-            className={`node-hover-btn run${isLive ? " live" : ""}`}
-            title={isLive ? `Stop ${data.id}` : `Run from ${data.id} and connected downstream steps`}
-            onClick={handleRunFromNode}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                handleRunFromNode(e as any);
-              }
-            }}
-            aria-label={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
-          >
-            {isLive ? <StopIcon /> : <PlayIcon />}
-          </span>
-          <span
-            role="button"
-            tabIndex={0}
-            className="node-hover-btn del"
-            title={`Delete step ${data.id}`}
-            onClick={handleDelete}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                handleDelete(e as any);
-              }
-            }}
-            aria-label={`Delete ${data.id}`}
-          >
-            <TrashIcon />
-          </span>
+          <StepButtons id={data.id} live={isLive} actions={actions} />
         </span>
       </span>
       <span className="card-body">
@@ -259,13 +233,60 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
         <span className="dot" aria-hidden="true" />
         {status.text}
         {data.concerns > 0 && (
-          <span className="card-concern">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>
+          <span className="card-concern">⚠ {checkCount(data.concerns)}</span>
         )}
       </span>
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
       <Handle id="top" type="target" position={Position.Top} isConnectable={false} />
       <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} />
     </button>
+  );
+}
+
+/** A step's hover buttons. No route stops a run, so a live step only says it is running. */
+function StepButtons({ id, live, actions }: { id: string; live: boolean; actions: ReturnType<typeof useStepActions> }) {
+  const readers = actions.readers(id);
+  const press = (act: () => void) => ({
+    onClick: (e: React.MouseEvent) => {
+      e.stopPropagation();
+      act();
+    },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.stopPropagation();
+      act();
+    },
+  });
+  // `nodrag`: pressing a step's button never starts dragging the step (React Flow).
+  const runLabel = live ? `${id} is running` : `Run from ${id}`;
+  const deleteTitle = readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : `Delete step ${id}`;
+  return (
+    <>
+      <span
+        role="button"
+        tabIndex={0}
+        className={`node-hover-btn nodrag run${live ? " live" : ""}`}
+        title={live ? runLabel : `${runLabel}: it and every step after it run again`}
+        aria-label={runLabel}
+        aria-disabled={live}
+        {...press(() => {
+          if (!live) actions.runFrom(id);
+        })}
+      >
+        <PlayIcon />
+      </span>
+      <span
+        role="button"
+        tabIndex={0}
+        className="node-hover-btn nodrag del"
+        title={deleteTitle}
+        aria-label={`Delete ${id}`}
+        aria-disabled={readers.length > 0}
+        {...press(() => actions.remove(id))}
+      >
+        <TrashIcon />
+      </span>
+    </>
   );
 }
 
@@ -305,57 +326,32 @@ function metricsPortOf(op: Operator): { metricsPort?: string } {
   return port === undefined ? {} : { metricsPort: String(port) };
 }
 
-/** Width of the round icon in Compact (.round-icon) - 34px disc node glyph. */
-const ROUND_ICON = 34;
+/** Width of the round icon in Compact (.round-icon); lines run down from its centre. */
+const ROUND_ICON = 30;
 
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
-  const { pipelineVersionId, runId } = useSelection();
+  const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
   const versions = usePipelineVersions();
   const pipeline = versions.data?.find((v) => v.id === pipelineVersionId);
-  const saveAndRun = useSaveAndRun(runId);
-  const startRun = useStartRun();
+  const actions = useStepActions(pipeline);
 
   const status = statusOf(data.state);
   const isLive = status.tone === "live";
   const bad = status.tone === "bad" || data.concerns > 0;
-
-  const handleRunFromNode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (pipelineVersionId) {
-      startRun.mutate(pipelineVersionId);
-    }
-  };
-
-  const showRun = useSelection((s) => s.showRun);
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!pipeline) return;
-    const readers = readersOf(pipeline, data.id);
-    if (readers.length > 0) {
-      alert(`Step "${data.id}" cannot be deleted because it is read by: ${readers.join(", ")}`);
-      return;
-    }
-    const next = removeStep(pipeline, data.id);
-    saveAndRun.mutate(next, {
-      onSuccess: (r) => {
-        select(undefined);
-        showRun(next.id, r.id);
-      },
-    });
-  };
+  const attention = [
+    ...(status.tone === "bad" || isLive ? [status.text] : []),
+    ...(data.concerns > 0 ? [`⚠ ${checkCount(data.concerns)}`] : []),
+  ];
 
   return (
     <button
       type="button"
-      className={`flow-round${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
-      aria-label={`${data.id}, ${data.title}, ${status.text}`}
-      title={data.operatorRef}
+      className={`flow-round shape-${data.origin}${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
+      aria-label={`${data.id}, ${data.title}, ${ORIGIN_TEXT[data.origin]}, ${status.text}`}
+      title={`${data.operatorRef} · ${ORIGIN_TEXT[data.origin]}`}
       onClick={() => select(data.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Delete" || e.key === "Backspace") handleDelete(e as any);
-      }}
       onContextMenu={(e) => {
         e.preventDefault();
         select(data.id);
@@ -369,47 +365,23 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       </span>
       <span className="round-text">
         <span className="node-title">{data.title}</span>
-        <span className="round-sub">
-          {data.subject}
-          {data.edited && " · edited"}
-        </span>
-        {/* Only what needs attention gets words; a finished step is just its dot. */}
-        {(status.tone === "bad" || status.tone === "live") && <span className={`round-state tone-${status.tone}`}>{status.text}</span>}
-        {data.concerns > 0 && <span className="round-state tone-bad">⚠ {data.concerns === 1 ? "1 check" : `${data.concerns} checks`}</span>}
+        {/* Two lines, as the design draws a step. What needs attention takes the second line;
+            otherwise, once the step ran, one measured fact about its output. */}
+        {attention.length > 0 ? (
+          <span className={`round-sub round-state tone-${status.tone === "live" ? "live" : "bad"}`}>{attention.join(" · ")}</span>
+        ) : (
+          <span className="round-sub">
+            {data.attemptId ? (
+              <NodeFact attemptId={data.attemptId} operator={data.operatorRef} metricsPort={data.metricsPort} status={data.subject} />
+            ) : (
+              data.subject
+            )}
+            {data.edited && " · edited"}
+          </span>
+        )}
       </span>
       <span className={`compact-hover-actions${isLive ? " has-live" : ""}`}>
-        <span
-          role="button"
-          tabIndex={0}
-          className={`node-hover-btn run${isLive ? " live" : ""}`}
-          title={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
-          onClick={handleRunFromNode}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-              handleRunFromNode(e as any);
-            }
-          }}
-          aria-label={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
-        >
-          {isLive ? <StopIcon /> : <PlayIcon />}
-        </span>
-        <span
-          role="button"
-          tabIndex={0}
-          className="node-hover-btn del"
-          title={`Delete step ${data.id}`}
-          onClick={handleDelete}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-              handleDelete(e as any);
-            }
-          }}
-          aria-label={`Delete ${data.id}`}
-        >
-          <TrashIcon />
-        </span>
+        <StepButtons id={data.id} live={isLive} actions={actions} />
       </span>
       {/* The node is as wide as its label, so outgoing lines start right after the text. */}
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
@@ -427,19 +399,18 @@ function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
 
 /** Fit the flow to the panel with a thin margin, so steps stay readable. */
 const FIT = { padding: 0.08, maxZoom: 1 };
+/** The design's main screen opens at 100%, the first stage card 20px in and 16px down; Fit
+ * shows the whole flow on demand. The layout starts at (0, 0). */
+const OPENING_VIEW = { x: 20, y: 16, zoom: 1 };
 
 const nodeTypes = { step: StepNode, stage: StageHead };
 const edgeTypes = { flow: FlowEdge };
 
 const LABEL_MAX = 300;
 
-/** A compact node is the circle plus its label, no wider; Detail cards have one size. The label
- * width is estimated from its length (12.5px title, 11px subject) and wraps past LABEL_MAX. */
-function sizeOf(level: DetailLevel, node: PipelineVersion["nodes"][number]) {
-  if (level !== "compact") return NODE_SIZE[level];
-  const { title, subject } = stepLabel(node);
-  const label = Math.min(LABEL_MAX, Math.ceil(Math.max(title.length * 10.5, subject.length * 9.2)));
-  return { width: Math.round(34 + 14 + label + 8), height: Math.round(NODE_SIZE.compact.height) };
+/** A compact node has standardized 184x52 card size matching Flow Studio spec; Detail cards have 248x176 size. */
+function sizeOf(level: DetailLevel, _node: PipelineVersion["nodes"][number]) {
+  return NODE_SIZE[level];
 }
 
 /** React Flow nodes and edges for a flow, at the positions the layout chose. */
@@ -452,8 +423,10 @@ export function flowGraph(
   concerns: Map<string, number>,
   at: Map<string, Point>,
   groups: Group[] = [],
+  decisions: FlowDecision[] = [],
 ): { nodes: Node[]; edges: Edge[] } {
-  const groupOf = stageGroups(pipeline, operators);
+  const groupOf = stageGroups(pipeline, operators, decisions);
+  const decidedIn = new Map(stageNotebooks(pipeline, operators, decisions).map((s) => [s.name, s.decisions]));
   const selectedGroup = selectedId ? groupOf.get(selectedId) : undefined;
   const heads: Node[] = groups.map((g) => {
     const stageNodes = pipeline.nodes.filter((n) => groupOf.get(n.id) === g.id);
@@ -479,7 +452,9 @@ export function flowGraph(
       selectable: true,
       zIndex: 0,
       data: {
-        name: g.id.split("#")[0] ?? g.id,
+        name: groupName(g.id),
+        purpose: (decidedIn.get(groupName(g.id)) ?? []).map((d) => d.label).join(" · ") || purposeOf(groupName(g.id)),
+        promises: (decidedIn.get(groupName(g.id)) ?? []).flatMap((d) => d.promises),
         count: g.count,
         active: g.id === selectedGroup,
         baseWidth: Math.round(g.width),
@@ -509,7 +484,7 @@ export function flowGraph(
       data: {
         id,
         operator: shortName(node.operator),
-        ...stepLabel(node),
+        ...stepLabel(node, op),
         operatorRef: node.operator,
         capability: op?.capability_class ?? "",
         params: node.params,
@@ -521,6 +496,7 @@ export function flowGraph(
         kind: op ? kindOf(op) : "recipe",
         role: op ? roleOf(op) : "Step",
         edited: node.code !== undefined,
+        origin: stepOrigin(node, op),
         state: latest.get(id)?.state ?? "not run",
         ...(hasOutputs(latest.get(id)) ? { attemptId: latest.get(id)?.id } : {}),
         ...(op && figurePortOf(op) ? { figurePort: figurePortOf(op) } : {}),
@@ -551,13 +527,15 @@ export function flowGraph(
 }
 
 /** Layout runs off the main path (ELK is async); a new flow or node size lays out afresh. */
-function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel, operators: Map<string, Operator>) {
+function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel, operators: Map<string, Operator>, decisions: FlowDecision[]) {
   // Sizes depend on each step's role, so lay out again once the operators are known.
   // Lay out again only when the shape changes: an edit to settings keeps every position.
   const shape = pipeline
     ? JSON.stringify([pipeline.nodes.map((n) => [n.id, n.operator]), pipeline.edges.map((e) => [e.from, e.to])])
     : "";
-  const key = pipeline ? `${shape}/${level}/${operators.size}` : "";
+  // Decisions move steps into their activity's card, so the cards' members are part of the shape.
+  const sections = JSON.stringify(decisions.map((d) => [d.activity, d.steps]));
+  const key = pipeline ? `${shape}/${level}/${operators.size}/${sections}` : "";
   const [result, setResult] = useState<{
     key: string;
     pipeline: PipelineVersion;
@@ -568,7 +546,7 @@ function usePositions(pipeline: PipelineVersion | undefined, level: DetailLevel,
   useEffect(() => {
     if (!pipeline) return;
     let live = true;
-    const groups = stageGroups(pipeline, operators);
+    const groups = stageGroups(pipeline, operators, decisions);
     flowPositions(
       pipeline,
       (node) => sizeOf(level, node),
@@ -599,10 +577,13 @@ export function FlowCanvas() {
   // Chart steps are views inside the step they draw, never canvas steps.
   const found = versions.data?.find((v) => v.id === pipelineVersionId);
   const pipelineNow = found;
-  const positions = usePositions(pipelineNow, level, new Map((operators.data ?? []).map((op) => [op.id, op])));
+  const decided = useFlowDecisions(pipelineVersionId);
+  const decisions = decided.data?.decisions ?? [];
+  const positions = usePositions(pipelineNow, level, new Map((operators.data ?? []).map((op) => [op.id, op])), decisions);
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
-  if (versions.isPending || operators.isPending) return <Loading text="Loading flow…" pad />;
+  // Decisions place steps in their activity's card: lay out once they are read, not twice.
+  if (versions.isPending || operators.isPending || (pipelineVersionId && decided.isPending)) return <Loading text="Loading flow…" pad />;
   const pipeline = pipelineNow;
   if (!pipeline) return <p className="muted pad">No flow yet. Submit one with <code>sprisk run</code>.</p>;
 
@@ -610,13 +591,15 @@ export function FlowCanvas() {
   const latest = latestByNode(attempts.data ?? []);
   if (positions?.error) return <p role="alert" className="error pad">Could not lay out the flow: {positions.error}</p>;
   if (!positions?.at) return <Loading text="Laying out the flow…" pad />;
-  const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups);
+  const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups, decisions);
   return (
     <div className="flow" aria-label="Flow canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
+      {decided.isError && <p role="alert" className="error pad">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
       {/* A new layout means new positions: start the canvas afresh. */}
       <Canvas computed={computed} level={level} pipeline={pipeline} />
       <StepMenu pipeline={pipeline} operators={byRef} />
+      <CanvasNotice />
     </div>
   );
 }
@@ -644,7 +627,7 @@ export function encapsulateStages(nodes: Node[]): Node[] {
       const baseW = ((node.data as any)?.baseWidth as number | undefined) ?? node.width ?? MIN_STAGE_CARD_WIDTH;
       const baseH = ((node.data as any)?.baseHeight as number | undefined) ?? node.height ?? MIN_STAGE_CARD_HEIGHT;
       const neededWidth = Math.round(Math.max(baseW, bounds.maxRight + STAGE_PAD_X));
-      const neededHeight = Math.round(Math.max(baseH, bounds.maxBottom + STAGE_FOOTER_HEIGHT + 24));
+      const neededHeight = Math.round(Math.max(baseH, bounds.maxBottom + STAGE_FOOTER_HEIGHT));
       if (node.width !== neededWidth || node.height !== neededHeight) {
         return {
           ...node,
@@ -669,9 +652,9 @@ type CanvasSnapshot = {
 function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edges: Edge[] }; level: DetailLevel; pipeline?: PipelineVersion }) {
   const selectNode = useSelection((s) => s.selectNode);
   const selectedNodeId = useSelection((s) => s.nodeId);
-  const runId = useSelection((s) => s.runId);
-  const showRun = useSelection((s) => s.showRun);
-  const saveAndRun = useSaveAndRun(runId);
+  const stepActions = useStepActions(pipeline);
+  const stepActionsRef = useRef(stepActions);
+  stepActionsRef.current = stepActions;
   const [nodes, setNodes] = useState<Node[]>(() => encapsulateStages(computed.nodes));
   const nodesRef = useRef<Node[]>(nodes);
   nodesRef.current = nodes;
@@ -864,24 +847,13 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedNodeId && pipeline) {
           e.preventDefault();
-          const readers = readersOf(pipeline, selectedNodeId);
-          if (readers.length > 0) {
-            alert(`Step "${selectedNodeId}" cannot be deleted because it is read by: ${readers.join(", ")}`);
-            return;
-          }
-          const next = removeStep(pipeline, selectedNodeId);
-          saveAndRun.mutate(next, {
-            onSuccess: (r) => {
-              selectNode(undefined);
-              showRun(next.id, r.id);
-            },
-          });
+          stepActionsRef.current.remove(selectedNodeId);
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNodeId, pipeline, saveAndRun, selectNode, showRun]);
+  }, [selectedNodeId, pipeline]);
 
   const onPaneClick = () => {
     selectNode(undefined);
@@ -915,15 +887,15 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
       }}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      fitView
-      fitViewOptions={FIT}
+      defaultViewport={OPENING_VIEW}
       nodesConnectable={false}
       minZoom={0.3}
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
     >
-      <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(255,255,255,0.07)" />
+      {/* React Flow sizes a dot by its diameter; the design's 1px-radius dots are 2px across. */}
+      <Background variant={BackgroundVariant.Dots} gap={16} size={2} color="rgba(255,255,255,0.06)" />
       <Panel position="bottom-left" className="canvas-controls">
         <ZoomControl
           tidy={tidy}
@@ -933,9 +905,6 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
           canRedo={redoStack.length > 0}
         />
         <DetailSwitch />
-      </Panel>
-      <Panel position="bottom-right" className="canvas-legend">
-        <Legend />
       </Panel>
     </ReactFlow>
   );
@@ -958,37 +927,25 @@ function ZoomControl({
   const { zoom } = useViewport();
   return (
     <div className="flow-zoom-bar zoom" role="group" aria-label="Zoom controls">
-      <button
-        type="button"
-        className="flow-zoom-text-btn fit"
-        title="Undo (Ctrl+Z / ⌘Z)"
-        disabled={!canUndo}
-        onClick={undo}
-      >
-        Undo
+      <button type="button" className="flow-zoom-btn" aria-label="Undo" title="Undo (Ctrl+Z / ⌘Z)" disabled={!canUndo} onClick={undo}>
+        <UndoIcon />
       </button>
-      <button
-        type="button"
-        className="flow-zoom-text-btn fit"
-        title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)"
-        disabled={!canRedo}
-        onClick={redo}
-      >
-        Redo
+      <button type="button" className="flow-zoom-btn" aria-label="Redo" title="Redo (Ctrl+Shift+Z / ⌘⇧Z / ⌘Y)" disabled={!canRedo} onClick={redo}>
+        <RedoIcon />
       </button>
-      <span className="flow-zoom-dot" aria-hidden="true">·</span>
+      <span className="zoom-sep" aria-hidden="true" />
       <button type="button" className="flow-zoom-btn" aria-label="Zoom out" onClick={() => void zoomOut()}>
         −
       </button>
-      <span className="flow-zoom-label mono">{Math.round(zoom * 100)}%</span>
+      <span className="zoom-label">{Math.round(zoom * 100)}%</span>
       <button type="button" className="flow-zoom-btn" aria-label="Zoom in" onClick={() => void zoomIn()}>
         +
       </button>
-      <span className="flow-zoom-dot" aria-hidden="true">·</span>
+      <span className="zoom-sep" aria-hidden="true" />
       <button type="button" className="flow-zoom-text-btn fit" onClick={() => void fitView(FIT)}>
         Fit
       </button>
-      <span className="flow-zoom-dot" aria-hidden="true">·</span>
+      <span className="zoom-sep" aria-hidden="true" />
       <button
         type="button"
         className="flow-zoom-text-btn fit"
@@ -1020,36 +977,6 @@ function DetailSwitch() {
   );
 }
 
-function concernsByNode(run: RunChecks): Map<string, number> {
-  const counts = new Map<string, number>();
-  if (run.status !== "ready") return counts;
-  for (const check of run.checks) {
-    if (check.verdict === "pass") continue;
-    for (const node of check.cited_nodes) counts.set(node, (counts.get(node) ?? 0) + 1);
-  }
-  return counts;
-}
-
-const LEGEND: [NodeKind, string][] = [
-  ["source", "Data"],
-  ["recipe", "Step"],
-  ["decision", "Decision"],
-  ["model", "Model"],
-];
-
-function Legend() {
-  return (
-    <div className="legend">
-      {LEGEND.map(([kind, label]) => (
-        <span key={kind}>
-          <KindMark kind={kind} />
-          {label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 type MenuAt = { nodeId: string; x: number; y: number };
 
 /** Which step's action menu is open, and where. UI state only. */
@@ -1065,18 +992,34 @@ const OPEN_TABS: [InspectorTab, string][] = [
   ["parameters", "Open parameters"],
 ];
 
+/** Why a step action was refused or failed, until it is dismissed or the next action. */
+function CanvasNotice() {
+  const { notice, say } = useCanvasNotice();
+  if (!notice) return null;
+  return (
+    <p role="alert" className="error canvas-error">
+      {notice}{" "}
+      <Button variant="ghost" size="sm" onClick={() => say(undefined)}>
+        Dismiss
+      </Button>
+    </p>
+  );
+}
+
 /** Right-click actions on a step. Escape or a click elsewhere closes it. */
 function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operators: Map<string, Operator> }) {
   const { at, set } = useStepMenu();
   const dock = useWorkbench((s) => s.dock);
   const { selectNode, showRun } = useSelection();
   const saveAndRun = useSaveAndRun(useSelection((s) => s.runId));
+  const actions = useStepActions(pipeline);
+  const say = useCanvasNotice((s) => s.say);
   const first = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (at) first.current?.focus();
   }, [at]);
   useEscape(() => set(undefined), at !== undefined);
-  if (!at) return saveAndRun.isError ? <p role="alert" className="error canvas-error">{saveAndRun.error.message}</p> : null;
+  if (!at) return null;
   const node = pipeline.nodes.find((n) => n.id === at.nodeId);
   const tablePort = node ? operators.get(node.operator)?.outputs.find((o) => o.kind === "table")?.name : undefined;
   const readers = readersOf(pipeline, at.nodeId);
@@ -1110,7 +1053,10 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
             disabled={saveAndRun.isPending}
             onClick={act(() => {
               const { version, nodeId } = addCodeStep(pipeline, at.nodeId, String(tablePort));
-              saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
+              saveAndRun.mutate(version, {
+                onSuccess: (r) => showRun(version.id, r.id, nodeId),
+                onError: (error) => say(error.message),
+              });
             })}
           >
             Explore in code
@@ -1123,12 +1069,9 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
         <button
           type="button"
           role="menuitem"
-          disabled={saveAndRun.isPending || readers.length > 0}
+          disabled={actions.pending || readers.length > 0}
           title={readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : undefined}
-          onClick={act(() => {
-            const version = removeStep(pipeline, at.nodeId);
-            saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id) });
-          })}
+          onClick={act(() => actions.remove(at.nodeId))}
         >
           Remove step
         </button>

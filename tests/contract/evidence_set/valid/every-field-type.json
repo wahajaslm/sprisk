@@ -1,0 +1,9 @@
+{
+  "evaluation.group_overlap": {
+    "share": 0.25,
+    "overlapping": 3,
+    "clean": false,
+    "note": "three items on both sides",
+    "groups": ["g1", "g7", "g9"]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": "sprisk.flow_decisions/v1",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "decisions": [
+    {
+      "decides": "split.method",
+      "method": "methodology.supervised.split_method@1.0.0",
+      "question": "How are rows divided?",
+      "option": "item_groups",
+      "label": "Keep each item's rows on one side",
+      "reason": "Rows of one item stay on one side.",
+      "assurance": "rule",
+      "steps": ["split"],
+      "promises": []
+    }
+  ]
+}

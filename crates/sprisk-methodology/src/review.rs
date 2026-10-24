@@ -3,7 +3,7 @@
 
 use serde_json::json;
 use sprisk_contracts::{
-    DecisionProposal, GraphEffect, MethodologyAlternativeApplicability, MethodologyDecision,
+    DecisionProposal, GraphEffect, MethodologyAlternativeApplicability, MethodologyDecisionByRule,
     MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule, MethodologyRuleStatus,
     MethodologyStage, Node, Operator, PipelineVersion, RuleActionType, TaskType, parse,
 };
@@ -11,9 +11,6 @@ use sprisk_contracts::{
 use crate::{
     ResolveError, RuleCatalog, catalog::decides, compare::upstream, facts, reopened_stage,
 };
-
-/// What the split rule decides. A rule that measures train rows needs it decided first.
-pub const SPLIT_DECISION: &str = "split.method";
 
 /// Decisions that shape the table a split reads, in order: a join adds the other table's
 /// columns, identifiers are left out, then markup is stripped from the text left. Rules
@@ -109,8 +106,9 @@ pub fn plan<'a>(
     Ok(ordered)
 }
 
-/// Whether `later` must wait for `earlier`: it measures train rows, and `earlier` decides
-/// the split or a step strictly upstream of `later`'s. A rule reading cross-validation
+/// Whether `later` must wait for `earlier`: it measures train rows, and `earlier` decides a
+/// step strictly upstream of `later`'s. The split is a method's decision, made in the walk's
+/// look before any rule acts (ADR-0063). A rule reading cross-validation
 /// results also waits for the rules of its own step that do not (ADR-0059): they may change
 /// what was compared. A rule measuring the table a step reads waits for the rules of that step
 /// that shape it (`TABLE_SHAPE`), and the rules shaping a model's inputs go in
@@ -144,9 +142,6 @@ pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planne
     let results = facts::needs_results(reads(later));
     if !results && !facts::needs_train_rows(reads(later)) {
         return false;
-    }
-    if earlier.rule.decides.as_str() == SPLIT_DECISION {
-        return true;
     }
     match (later.subject, earlier.subject) {
         (Some(later_step), Some(earlier_step)) if later_step.id == earlier_step.id => {
@@ -357,7 +352,7 @@ pub fn fits_task<'a>(
 /// and an upstream step's only when it was made for `subject`. A rule that adds a step records
 /// its decision there, for the subject; a person's own step decided for itself says nothing
 /// about what else reaches the subject.
-pub fn decided_for(subject: &str, step: &str, decision: &MethodologyDecision) -> bool {
+pub fn decided_for(subject: &str, step: &str, decision: &MethodologyDecisionByRule) -> bool {
     step == subject || decision.subject_node_id.as_str() == subject
 }
 

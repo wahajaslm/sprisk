@@ -215,21 +215,20 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     const posts = noNotebooks();
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
     const items = within(await stages()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Load · 2 steps", "Split · 1 step", "Clean · 1 step", "Model · 1 step", "Evaluate · 1 step"]);
+    expect(items).toEqual(["Load2 steps", "Split1 step", "Clean1 step", "Model1 step", "Evaluate1 step"]);
     expect(await screen.findByRole("heading", { name: "Load" })).toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: /^Cell / })).toHaveLength(2);
     expect(posts).toEqual([]);
   });
 
-  it("shows a ready-made step as its settings form and the names it reads and gives", async () => {
+  it("shows a ready-made step's plain code, or one line when it has none, never a settings form", async () => {
     noNotebooks();
     renderWithApi(<NotebooksPage />);
-    const load = await screen.findByRole("group", { name: "Cell 1" });
-    expect(await within(load).findByText("reads nothing → gives load_data")).toBeInTheDocument();
-    expect(await within(load).findByRole("combobox", { name: "format" })).toHaveValue("csv");
+    await screen.findByRole("group", { name: "Cell 1" });
+    expect(screen.queryByRole("combobox", { name: "format" })).not.toBeInTheDocument();
     await userEvent.click(within(await stages()).getByRole("button", { name: /Split/ }));
     expect(await screen.findByRole("heading", { name: "Split" })).toBeInTheDocument();
-    expect(await screen.findByText("reads load_data → gives split_train, split_test")).toBeInTheDocument();
+    expect(await screen.findByText(/has no plain code yet; its settings are in the flow's Parameters tab\./)).toBeInTheDocument();
   });
 
   it("says so when a step's operator is not installed", async () => {
@@ -239,6 +238,23 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     renderWithApi(<NotebooksPage />);
     const load = await screen.findByRole("group", { name: "Cell 1" });
     expect(await within(load).findByRole("alert")).toHaveTextContent("sprisk.io.gone@9.0.0 is not installed");
+  });
+
+  it("counts the notebooks and filters them by name", async () => {
+    noNotebooks();
+    renderWithApi(<NotebooksPage />);
+    const side = await screen.findByRole("complementary", { name: "Notebooks" });
+    expect(within(side).getByRole("button", { name: /Stages/ })).toHaveTextContent("01Stages5");
+    await userEvent.type(within(side).getByRole("searchbox", { name: "Filter notebooks" }), "spl");
+    expect(within(await stages()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Split1 step"]);
+  });
+
+  it("heads a stage notebook with its flow, and runs every cell from the header", async () => {
+    noNotebooks();
+    renderWithApi(<NotebooksPage />);
+    expect(await screen.findByRole("heading", { level: 1, name: "Load" })).toBeInTheDocument();
+    expect(screen.getByText(/^Notebook · iris\.csv/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run all" })).toBeEnabled();
   });
 
   it("opens the stage the canvas asked for", async () => {

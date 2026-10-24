@@ -285,6 +285,8 @@ context + scoped evidence -> methodology applicability -> alternatives
 
 Proposals fingerprint all relevant revisions: question, dataset/parser, feature semantics, split manifest, graph base, method/operator code, policy pack and settings. A stale proposal fails Apply without partial mutation. The same idempotency key and same payload return the same commit; key reuse with a changed payload is conflict. Equivalent manual edits go through the same admission policy.
 
+A method's option (ADR-0063) takes the same Apply (ADR-0064): it is a `MethodologyDecision` with its method, option, bindings, promises and effects, keyed per walk round. A base that gained a version is refused, and every step the option changed cites the decision. A method has no stored proposal; its option is computed from the base and its evidence each round.
+
 # 9. Universal method contract and execution semantics
 
 Every `MethodDefinition` is metadata **bound to an actual adapter** and has: identity/version, input ports, physical/semantic compatibility, task applicability, data reads (`X`, `y`, group, time), fit lifecycle, parameter schema, output effect/shape, resource needs, trust class, verification requirements, implementation digest and supported backend.
@@ -362,6 +364,7 @@ Architecturally represent source triggers, microbatch boundaries, watermark/late
 | TrialAttempt | worker ID, logs, status, resources, error, timestamps |
 | TrialResult | per-fold metrics, predictions ref, artifacts, checks, cost and uncertainty |
 | SelectionDecision | declared objective, guardrails, comparable candidates, reasons, approvals |
+| Report | a completed walk's question, answer and claims, each claim on evidence ids (decisions, runs, versions, walk steps), and limitations; built from records, never by a model (ADR-0064) |
 
 **Metric objective versus business decision:** selection may depend on PR-AUC, recall at contact budget, inference cost, latency, interpretability and operational limits. Define primary selection metric and guardrails before viewing final-holdout results. Cross-study rankings without a compatible protocol must be labeled *not directly comparable*.
 

@@ -144,12 +144,71 @@
           "type": "string",
           "minLength": 1,
           "description": "What is open, for a person to read. Never parsed."
+        },
+        "asks": {
+          "type": "array",
+          "description": "Every question the walk's look found open, as one list (ADR-0063 amendment). Absent: the walk stopped for another reason.",
+          "items": {
+            "$ref": "#/$defs/WalkAsk"
+          }
+        }
+      }
+    },
+    "WalkAsk": {
+      "type": "object",
+      "description": "One open question. A method's ask names its method and options: a person answers it with one option, on the question. Any other names the question fact to state, as its key.",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "question"
+      ],
+      "properties": {
+        "decides": {
+          "$ref": "#/$defs/DecisionKey",
+          "description": "The decision it holds back: a method's or a rule's key, such as data.repeated_items, or the question fact to state, such as question.success_bar."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The question, for a person."
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef",
+          "description": "The method that asks. Absent: a rule or the engine asks."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId",
+          "description": "The option the method would take, once a person confirms it."
+        },
+        "options": {
+          "type": "array",
+          "description": "Every option of the method, for the person to pick from. Present exactly when method is.",
+          "items": {
+            "$ref": "#/$defs/WalkAskOption"
+          }
+        }
+      }
+    },
+    "WalkAskOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
     "WalkStopReason": {
       "type": "string",
-      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.",
+      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. unverified: every rule is settled, but a promise a decision made did not pass on the head's run, so the test rows stay sealed. error: the engine could not take its next step; the detail says why.",
       "enum": [
         "complete",
         "needs_person",
@@ -158,19 +217,23 @@
         "source_changed",
         "run_failed",
         "stale",
+        "unverified",
         "budget_exhausted",
         "error"
       ]
     },
     "WalkAction": {
       "type": "string",
-      "description": "build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. stop: ended the walk.",
+      "description": "build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. verify: checked each promise the walk's decisions made, on the evidence the head's run measured (ADR-0063). stop: ended the walk.",
       "enum": [
         "build",
         "run",
         "apply",
         "compare",
+        "measure",
+        "decide",
         "score",
+        "verify",
         "stop"
       ]
     },
@@ -233,11 +296,43 @@
         },
         "made_pipeline_version_id": {
           "$ref": "#/$defs/PipelineVersionId",
-          "description": "The version a build or apply made."
+          "description": "The version a build, apply, measure or decide made. Absent for a decide whose option changes no step."
+        },
+        "effects": {
+          "type": "array",
+          "description": "The patch a measure or decide step applied, in order (ADR-0063). Absent for every other action.",
+          "items": { "$ref": "#/$defs/GraphEffect" }
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef",
+          "description": "The method a decide step decided for."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId",
+          "description": "The option a decide step took. A decide step always has method, decides, option and assurance."
+        },
+        "assurance": {
+          "$ref": "#/$defs/MethodAssurance",
+          "description": "How a decide step's option was taken."
+        },
+        "bindings": {
+          "type": "array",
+          "description": "The bindings a decide step's option made. Absent: none.",
+          "items": { "$ref": "#/$defs/Binding" }
+        },
+        "promises": {
+          "type": "array",
+          "description": "The verifications a decide step's option promises, by name. Absent: none.",
+          "items": { "$ref": "#/$defs/VerificationName" }
+        },
+        "verifications": {
+          "type": "array",
+          "description": "What a verify step found, one item per promise the walk's decisions made. Absent for every other action.",
+          "items": { "$ref": "#/$defs/PromiseCheck" }
         },
         "run_id": {
           "$ref": "#/$defs/RunId",
-          "description": "The run a run step started."
+          "description": "The run a run step started, or the run whose evidence a verify step read."
         },
         "reason": {
           "type": "string",
@@ -248,6 +343,76 @@
           "$ref": "#/$defs/Timestamp"
         }
       }
+    },
+    "PromiseCheck": {
+      "type": "object",
+      "description": "One promise checked on the evidence a run measured (ADR-0063).",
+      "additionalProperties": false,
+      "required": ["decides", "method", "verification", "promise", "result", "detail"],
+      "properties": {
+        "decides": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+        "method": { "$ref": "#/$defs/MethodRef" },
+        "verification": { "$ref": "#/$defs/VerificationName" },
+        "promise": { "type": "string", "minLength": 1, "description": "What holds when it passes, from method.yaml." },
+        "step": { "$ref": "#/$defs/NodeId", "description": "The step that measured the evidence. Absent when not_evaluated." },
+        "result": { "$ref": "#/$defs/PromiseResult" },
+        "detail": { "type": "string", "minLength": 1, "description": "What the evidence showed, or why nothing measured it." }
+      }
+    },
+    "PromiseResult": {
+      "type": "string",
+      "description": "pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.",
+      "enum": ["pass", "fail", "inconclusive", "not_evaluated"]
+    },
+    "FlowDecisions": {
+      "title": "FlowDecisions",
+      "description": "What decided a flow version, for people (ADR-0063 slice 5): the decisions of the walk that made the version or its nearest ancestor, each with the steps it shaped and the status of its promises on this version. Read only; worked out from the walk's steps.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "pipeline_version_id", "decisions"],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.flow_decisions/v1"] },
+        "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
+        "walk_id": { "$ref": "#/$defs/WalkId", "description": "The walk that made the version or its nearest ancestor. Absent: no walk did, so nothing decided it." },
+        "decisions": { "type": "array", "items": { "$ref": "#/$defs/FlowDecision" } }
+      }
+    },
+    "FlowDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decides", "method", "activity", "question", "option", "label", "reason", "assurance", "steps", "promises"],
+      "properties": {
+        "decides": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+        "method": { "$ref": "#/$defs/MethodRef" },
+        "activity": { "type": "string", "minLength": 1, "description": "The method's activity: one stage card, one notebook section." },
+        "question": { "type": "string", "minLength": 1, "description": "The question the method answers." },
+        "option": { "$ref": "#/$defs/MethodOptionId" },
+        "label": { "type": "string", "minLength": 1, "description": "The option, for people." },
+        "reason": { "type": "string", "minLength": 1, "description": "Why it was taken, from the decide step." },
+        "assurance": { "$ref": "#/$defs/MethodAssurance" },
+        "steps": { "type": "array", "description": "The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises.", "items": { "$ref": "#/$defs/NodeId" } },
+        "bindings": { "type": "array", "description": "The bindings it made. Absent: none.", "items": { "$ref": "#/$defs/Binding" } },
+        "promises": { "type": "array", "items": { "$ref": "#/$defs/PromiseStatus" } }
+      }
+    },
+    "PromiseStatus": {
+      "type": "object",
+      "description": "One promise's standing on the version asked about.",
+      "additionalProperties": false,
+      "required": ["verification", "promise", "status", "detail"],
+      "properties": {
+        "verification": { "$ref": "#/$defs/VerificationName" },
+        "promise": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/PromiseStanding" },
+        "detail": { "type": "string", "minLength": 1 },
+        "step": { "$ref": "#/$defs/NodeId", "description": "The step that measured its evidence. Absent when nothing did." },
+        "last_result": { "$ref": "#/$defs/PromiseResult", "description": "For stale: what the check found when it ran." }
+      }
+    },
+    "PromiseStanding": {
+      "type": "string",
+      "description": "pass, fail, inconclusive, not_evaluated: what the last check found, and it still holds for this version. stale: the step that measured it, or a step before it, changed since; never shown as pass.",
+      "enum": ["pass", "fail", "inconclusive", "not_evaluated", "stale"]
     },
     "WalkDetail": {
       "title": "WalkDetail",

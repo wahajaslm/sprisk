@@ -6,7 +6,6 @@ import { StepTabLabel } from "../src/views/inspector/step.tsx";
 import { StepTab } from "../src/views/StepTab.tsx";
 import { ViewInstance } from "../src/workbench/instance.tsx";
 import { readTab } from "../src/workbench/inspectorTabs.ts";
-import { LAYOUT_VERSION, restoreLayout } from "../src/workbench/layout.ts";
 import { useSelection } from "../src/workbench/selection.ts";
 import { useWorkbench } from "../src/workbench/workbench.ts";
 import { fakeDock, PV, RUN } from "./fixtures.ts";
@@ -88,22 +87,13 @@ describe("saved tab panels", () => {
     expect(readTab({ tab: "hologram" })).toBeUndefined();
     expect(readTab(null)).toBeUndefined();
   });
-
-  it("keeps step-tab panels and drops the old single Inspector panel to a placeholder", () => {
-    const saved = JSON.stringify({
-      version: LAYOUT_VERSION,
-      dock: { panels: { t: { id: "t", contentComponent: "step-tab" }, i: { id: "i", contentComponent: "inspector" } } },
-    });
-    expect(restoreLayout(saved)?.panels["t"]?.contentComponent).toBe("step-tab");
-    expect(restoreLayout(saved)?.panels["i"]?.contentComponent).toBe("placeholder");
-  });
 });
 
 describe("closed tabs can come back", () => {
   it("lists the tabs that are not open, in Inspector order", async () => {
     const { closedTabs } = await import("../src/workbench/inspectorTabs.ts");
-    expect(closedTabs(["data", "history", "console"])).toEqual(["visuals", "inputs", "parameters", "code", "checks", "performance"]);
-    expect(closedTabs([])).toHaveLength(9);
+    expect(closedTabs(["data", "history", "console"])).toEqual(["visuals", "inputs", "parameters", "code", "checks", "files", "performance"]);
+    expect(closedTabs([])).toHaveLength(10);
   });
 });
 

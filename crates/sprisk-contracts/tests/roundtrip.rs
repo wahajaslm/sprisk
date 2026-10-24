@@ -8,14 +8,16 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, CreateRun, CreateStudy, CreateWalk,
-    DatasetProfile, DecisionProposal, FigureSet, KeyMatches, LoadedTable, MethodologyCheck,
-    MethodologyDecision, MethodologyReview, MethodologyRule, MethodologyRuleSource, ModelSelection,
-    NotebookCode, NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
-    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
-    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
-    RuleAnswer, RuleDecision, RuleObservation, RuleRequest, Run, SelectionDecision, Study,
-    StudyDetail, TablePage, Trial, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
+    Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
+    CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet,
+    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
+    MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
+    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
+    NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
+    NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
+    PipelineVersion, Problem, QuestionVersion, Report, RuleAnswer, RuleDecision, RuleObservation,
+    RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial, VerificationRequest,
+    Walk, WalkDetail, WalkStep, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -63,18 +65,26 @@ const ENTITIES: &[&str] = &[
     "artifact",
     "attempt",
     "attempt_output",
+    "binding",
     "code_display",
     "code_interface",
     "code_split",
     "code_split_request",
+    "concept_set",
     "create_run",
     "create_study",
     "create_walk",
     "dataset_profile",
     "decision_proposal",
+    "evidence_set",
     "figure_set",
+    "flow_decisions",
     "key_matches",
     "loaded_table",
+    "method",
+    "method_answer",
+    "method_files",
+    "method_request",
     "methodology_check",
     "methodology_decision",
     "methodology_review",
@@ -96,6 +106,7 @@ const ENTITIES: &[&str] = &[
     "pipeline_version",
     "problem",
     "question_version",
+    "report",
     "rule_answer",
     "rule_decision",
     "rule_observation",
@@ -106,6 +117,7 @@ const ENTITIES: &[&str] = &[
     "study_detail",
     "table_page",
     "trial",
+    "verification_request",
     "walk",
     "walk_detail",
     "walk_step",
@@ -279,6 +291,31 @@ fn rule_answer() {
 }
 
 #[test]
+fn method_request() {
+    check::<MethodRequest>("method_request");
+}
+
+#[test]
+fn method_answer() {
+    check::<MethodAnswer>("method_answer");
+}
+
+#[test]
+fn method_files() {
+    check::<MethodFiles>("method_files");
+}
+
+#[test]
+fn flow_decisions() {
+    check::<FlowDecisions>("flow_decisions");
+}
+
+#[test]
+fn verification_request() {
+    check::<VerificationRequest>("verification_request");
+}
+
+#[test]
 fn code_interface() {
     check::<CodeInterface>("code_interface");
 }
@@ -384,6 +421,31 @@ fn walk_detail() {
 }
 
 #[test]
+fn report() {
+    check::<Report>("report");
+}
+
+#[test]
 fn walk_step() {
     check::<WalkStep>("walk_step");
+}
+
+#[test]
+fn method() {
+    check::<Method>("method");
+}
+
+#[test]
+fn concept_set() {
+    check::<ConceptSet>("concept_set");
+}
+
+#[test]
+fn evidence_set() {
+    check::<EvidenceSet>("evidence_set");
+}
+
+#[test]
+fn binding() {
+    check::<Binding>("binding");
 }

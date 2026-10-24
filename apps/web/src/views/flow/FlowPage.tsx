@@ -2,22 +2,14 @@ import { lazy, Suspense } from "react";
 import { StepLibrary } from "../StepLibrary.tsx";
 import { FlowInspector } from "./FlowInspector.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { useWorkbench } from "../../workbench/workbench.ts";
 
 const FlowCanvas = lazy(() => import("../FlowCanvas.tsx").then((m) => ({ default: m.FlowCanvas })));
 
 /** The Flow page: StepLibrary sidebar + interactive FlowCanvas graph + bottom Inspector drawer (ADR-0061). */
 export function FlowPage() {
-  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
-
   return (
-    <div className={`flow-page-layout ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
-      <aside
-        className={`main-sidebar flow-sidebar ${sidebarOpen ? "" : "sidebar-rail-wrap"}`}
-        aria-label="Step library"
-      >
-        <StepLibrary />
-      </aside>
+    <div className="page-frame">
+      <StepLibrary />
       <main className="center-screen flow-center" aria-label="Flow canvas and step details">
         <div className="flow-canvas-viewport">
           <Suspense fallback={<Loading text="Loading flow…" pad />}>

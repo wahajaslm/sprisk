@@ -1,0 +1,53 @@
+{
+  "schema_version": "sprisk.operator/v1",
+  "id": "sprisk.diagnose.near_duplicates@1.0.0",
+  "capability_class": "analyzer",
+  "entrypoint": "sprisk_diagnose.near_duplicates:run",
+  "scope": "some",
+  "attach": {
+    "role": "split",
+    "side": "input"
+  },
+  "concepts": {
+    "title_column": "core.item_title"
+  },
+  "produces": {
+    "data.near_duplicate_groups": {
+      "default": true,
+      "fields": {
+        "rows": "integer",
+        "groups": "integer",
+        "rows_in_groups": "integer",
+        "largest_group": "integer"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "data",
+      "kind": "table"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "data",
+      "kind": "table"
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "properties": {
+      "title_column": {
+        "type": "string"
+      }
+    }
+  },
+  "effects": "pure",
+  "network": "none",
+  "resources": {
+    "cpu_cores": 1,
+    "memory_mb": 512,
+    "gpu": "none",
+    "timeout_seconds": 60
+  }
+}

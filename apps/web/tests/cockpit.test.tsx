@@ -1,11 +1,12 @@
 import type { Attempt } from "@sprisk/contracts";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import splitProposal from "../../../tests/contract/decision_proposal/valid/split.json";
 import appliedDecision from "../../../tests/contract/methodology_decision/valid/applied.json";
+import methodDecision from "../../../tests/contract/methodology_decision/valid/by-method-changes-steps.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
 import { FlowCanvas } from "../src/views/FlowCanvas.tsx";
 import { Inspector } from "./inspector.tsx";
@@ -50,7 +51,7 @@ describe("top bar", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
-  it("puts the project and flow switcher first, then the views including Objective, then Run graph", async () => {
+  it("puts the project and flow switcher first, then the views including Objective, then Run flow", async () => {
     renderWithApi(<TopBar />);
     const bar = screen.getByRole("banner");
     const switcher = await within(bar).findByRole("button", { name: "Project and flow" });
@@ -58,7 +59,7 @@ describe("top bar", () => {
     const tabs = within(nav).getAllByRole("button").map((b) => b.textContent);
     expect(tabs).toEqual(["Objective", "Flow", "Datasets", "Notebooks", "Methodology", "Experiments", "Deploy", "Reports", "Settings"]);
     expect(switcher.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(bar).getByRole("button", { name: /Run graph/ })).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: /Run flow/ })).toBeInTheDocument();
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
   });
 
@@ -99,8 +100,8 @@ describe("top bar", () => {
     );
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
-    await userEvent.click(screen.getByRole("button", { name: /Run graph/ }));
-    // Run graph runs from the start: nothing reused.
+    await userEvent.click(screen.getByRole("button", { name: /Run flow/ }));
+    // Run flow runs from the start: nothing reused.
     await waitFor(() => expect(posted).toEqual({ pipeline_version_id: PV }));
   });
 
@@ -112,7 +113,7 @@ describe("top bar", () => {
     );
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
-    await userEvent.click(screen.getByRole("button", { name: /Run graph/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Run flow/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("path_outside_data_roots");
   });
 });
@@ -121,7 +122,7 @@ describe("step library", () => {
   it("groups registered operators by stage", async () => {
     renderWithApi(<StepLibrary />);
     const clean = await screen.findByRole("region", { name: "Clean" });
-    expect(within(clean).getByText("Impute")).toBeInTheDocument();
+    expect(within(clean).getByText("Imputation")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Model" })).getByText("Linear model")).toBeInTheDocument();
   });
 
@@ -139,9 +140,9 @@ describe("step library", () => {
     const heading = within(clean).getByRole("button", { name: /Clean/ });
     await userEvent.click(heading);
     expect(heading).toHaveAttribute("aria-expanded", "false");
-    expect(within(clean).queryByText("Impute")).toBeNull();
+    expect(within(clean).queryByText("Imputation")).toBeNull();
     await userEvent.click(heading);
-    expect(within(clean).getByText("Impute")).toBeInTheDocument();
+    expect(within(clean).getByText("Imputation")).toBeInTheDocument();
   });
 
   it("lists only the newest version of an operator", async () => {
@@ -157,12 +158,72 @@ describe("step library", () => {
     expect(within(explore).getByTitle(/sprisk.code.python@1.10.0/)).toBeInTheDocument();
   });
 
+  it("badges only the steps that need a look, from the run's latest attempts, never a made-up state", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(attempts.map((a) => (a.node_id === "impute" ? { ...a, state: "failed" } : a)))));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByRole("button", { name: /^Imputation.*Issue$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Random split$/ })).toBeInTheDocument();
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+
+  it("says a picked step that never ran is not run, in the Info dock", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: undefined, nodeId: "split" });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByRole("button", { name: /^Random split$/ })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Info" })).getByText("Not run")).toBeInTheDocument();
+  });
+
+  it("counts the steps that read the selected step", async () => {
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "load" });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByText("2 steps")).toBeInTheDocument();
+    act(() => useSelection.setState({ nodeId: "score" }));
+    expect(await screen.findByText("0 steps")).toBeInTheDocument();
+  });
+
+  it("tags a step that a methodology check did not pass", async () => {
+    const failing = JSON.parse(checksJson).map((c: { verdict: string }) => ({ ...c, verdict: "fail" }));
+    server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify(failing))));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByRole("button", { name: /^Random split.*1 check$/ })).toBeInTheDocument();
+  });
+
+  it("shows why the run's attempts cannot be read, instead of tagging steps not run", async () => {
+    server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json({ errors: [{ code: "internal", message: "disk full" }] }, { status: 500 })));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+  });
+
+  it("shows why the checks cannot be read, instead of tagging steps clean", async () => {
+    server.use(http.get("/api/artifacts/:id/content", () => HttpResponse.text("not json")));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
+    renderWithApi(<StepLibrary />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Unreadable methodology checks|JSON/);
+  });
+
+  it("lists the plugins the registered operators come from", async () => {
+    renderWithApi(<StepLibrary />);
+    await screen.findByRole("region", { name: "Clean" });
+    await userEvent.click(screen.getByRole("tab", { name: "Plugins" }));
+    // ml holds the linear model and its evaluator.
+    expect(screen.getByText("ml").parentElement).toHaveTextContent("ml2 operators");
+  });
+
   it("filters steps by search", async () => {
     renderWithApi(<StepLibrary />);
     await screen.findByRole("region", { name: "Clean" });
     await userEvent.type(screen.getByRole("searchbox", { name: "Search steps" }), "split");
     expect(screen.getByText("Random split")).toBeInTheDocument();
-    expect(screen.queryByText("Impute")).toBeNull();
+    expect(screen.queryByText("Imputation")).toBeNull();
   });
 });
 
@@ -248,15 +309,33 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
-  it("sizes a compact card for the title and subject it shows (ADR-0055)", async () => {
+  it("names an activity's stage card by the activity, says what was chosen, and carries its promises (ADR-0063)", async () => {
     const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const promise = { verification: "no_group_overlap", promise: "No item has rows in both train and test.", status: "stale" as const,
+      detail: "The split changed since it was checked.", last_result: "pass" as const };
+    const fair = { decides: "split.method", method: "methodology.supervised.split_method@1.0.0", activity: "Fair evaluation",
+      question: "How are rows divided?", option: "item_groups", label: "Keep each item's rows on one side", reason: "Why.",
+      assurance: "rule" as const, steps: ["split"], promises: [promise] };
+    const groups = [{ id: "Fair evaluation#fair_evaluation", count: 1, x: 100, y: 20, width: 200, height: 90 }];
+    const at = new Map([["split", { x: 110, y: 50 }]]);
+    const { nodes } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), at, groups, [fair]);
+    const stage = nodes.find((n) => n.id === "stage:Fair evaluation#fair_evaluation")!;
+    expect(stage.data).toMatchObject({ name: "Fair evaluation", purpose: "Keep each item's rows on one side", promises: [promise] });
+    expect(nodes.find((n) => n.id === "split")).toMatchObject({ parentId: "stage:Fair evaluation#fair_evaluation" });
+  });
+
+  it("gives every compact card the Flow Studio size, whatever its title (ADR-0061)", async () => {
+    const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const { NODE_SIZE } = await import("../src/workbench/detail.ts");
     const byRef = new Map(operators.map((o) => [o.id, o]));
     const width = (title: string) => {
       const titled = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "split" ? { ...n, title } : n)) };
       return flowGraph(titled, byRef, new Map(), undefined, "compact", new Map(), new Map()).nodes.find((n) => n.id === "split")!.width!;
     };
-    // The id "split" is short; a long kind of step still fits on its card.
-    expect(width("Stratified train/test split by class")).toBeGreaterThan(width("Split") + 200);
+    // A long title is cut short on the card, so the canvas keeps one grid of equal steps.
+    expect(width("Stratified train/test split by class")).toBe(NODE_SIZE.compact.width);
+    expect(width("Split")).toBe(NODE_SIZE.compact.width);
   });
 
   it("links steps of one stage top to bottom, and stages side to side", async () => {
@@ -273,6 +352,14 @@ describe("flow canvas", () => {
     renderWithApi(<FlowCanvas />);
     const heading = await screen.findByRole("heading", { name: /Split/ });
     expect(heading).toHaveTextContent(/^Split$/);
+  });
+
+  it("says when the flow's decisions cannot be read, and still draws its stages (ADR-0063)", async () => {
+    server.use(http.get("/api/pipeline_versions/:id/decisions", () => HttpResponse.json({ errors: [{ code: "store", message: "disk full" }] }, { status: 500 })));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The flow's decisions could not be read");
+    expect(await screen.findByRole("heading", { name: /Split/ })).toBeInTheDocument();
   });
 
   it("Tidy puts every step back where the layout places it", async () => {
@@ -318,12 +405,12 @@ describe("flow canvas", () => {
         data: {},
       },
     ];
+    const { STAGE_FOOTER_HEIGHT, STAGE_PAD_X } = await import("../src/flow/layout.ts");
     const encapsulated = encapsulateStages(testNodes);
     const stage = encapsulated.find((n) => n.id === "stage:Split#split")!;
-    // Right = 350 + 200 = 550; + STAGE_PAD_X (20) = 570
-    // Bottom = 550 + 80 = 630; + STAGE_FOOTER_HEIGHT (44) + 24 = 698
-    expect(stage.width).toBe(570);
-    expect(stage.height).toBe(698);
+    // The child's right edge (350 + 200) and bottom edge (550 + 80), plus the room below it.
+    expect(stage.width).toBe(350 + 200 + STAGE_PAD_X);
+    expect(stage.height).toBe(550 + 80 + STAGE_FOOTER_HEIGHT);
   });
 
   it("right-click on a step opens its actions", async () => {
@@ -429,7 +516,7 @@ describe("inspector", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "score" });
     await userEvent.click(await screen.findByRole("tab", { name: "History" }));
     await userEvent.click(await screen.findByRole("button", { name: "Compare run #1 with the shown run" }));
-    expect(useSelection.getState()).toMatchObject({ nav: "Experiments", compare: [older.id, RUN] });
+    expect(useSelection.getState()).toMatchObject({ nav: "Experiments", experimentsTab: "Compare", compare: [older.id, RUN] });
   });
 
   it("the tab line holds only the tabs: no step name, state or settings", async () => {
@@ -532,6 +619,20 @@ describe("inspector failures and checks", () => {
     );
     const evidence = await within(chosen!).findByRole("list", { name: "Evidence the decision weighed" });
     expect(evidence).toHaveTextContent("Time column: order_date (explicit)");
+  });
+
+  it("says which option a method took when its decision set the step", async () => {
+    const cited = { ...JSON.parse(checksJson)[0], methodology_decision_id: methodDecision.id };
+    server.use(
+      http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify([cited]))),
+      http.get("/api/methodology_decisions/:id", () => HttpResponse.json(methodDecision)),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
+    expect(await screen.findByText(/Decision took item_groups/)).toHaveTextContent(
+      `Decision took item_groups: ${methodDecision.reason}`,
+    );
   });
 
   it("says so when the decision a verdict cites cannot be loaded", async () => {
@@ -1460,13 +1561,15 @@ describe("node detail switch", () => {
     expect(screen.queryByRole("region", { name: "Table · train" })).toBeNull();
   });
 
-  it("shows round steps with name and state in Compact and full cards in Detail; there is no Summary", async () => {
+  it("shows round steps with name, state and one measured fact in Compact, and full cards in Detail", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     await userEvent.click(await screen.findByRole("radio", { name: "Compact" }));
     expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Compact", "Detail"]);
     const score = await screen.findByRole("button", { name: /^score/ });
-    expect(score).toHaveTextContent(/^Evaluate\s*score$/);
+    // Once it ran, the line under its name is a measured fact, as the design shows: its score.
+    expect(score.querySelector(".node-title")).toHaveTextContent("Evaluate");
+    expect(await within(score).findByText("accuracy 0.947")).toBeInTheDocument();
     expect(score.querySelector(".state-dot.tone-done")).not.toBeNull();
     expect(score.querySelector(".round-icon")).not.toBeNull();
 
@@ -1476,11 +1579,12 @@ describe("node detail switch", () => {
     expect(screen.getByRole("radio", { name: "Detail" })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("a remembered Summary choice opens as Detail", async () => {
+  it("a remembered choice other than Detail opens as Compact, the Flow Studio default", async () => {
     const { readLevel } = await import("../src/workbench/detail.ts");
-    expect(readLevel("summary")).toBe("detail");
+    expect(readLevel("detail")).toBe("detail");
     expect(readLevel("compact")).toBe("compact");
-    expect(readLevel(42)).toBe("detail");
+    expect(readLevel("summary")).toBe("compact");
+    expect(readLevel(42)).toBe("compact");
   });
 
   it("draws the train / test balance of a split in Detail", async () => {
@@ -1525,7 +1629,7 @@ describe("cached steps", () => {
     server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(cachedAttempts())));
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done · 1 cached")).toBeInTheDocument();
+    expect(await screen.findByText("This run: 6 of 7 step attempts done · 1 cached.")).toBeInTheDocument();
   });
 });
 
@@ -1545,16 +1649,47 @@ describe("a run that finishes between polls", () => {
     );
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done", {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(await screen.findByText("This run: 6 of 7 step attempts done.", {}, { timeout: 4000 })).toBeInTheDocument();
   });
 });
 
 describe("copilot", () => {
+  it("says it is not connected instead of making up answers", async () => {
+    useSelection.setState({ nav: "Flow", pipelineVersionId: PV, runId: undefined, nodeId: undefined });
+    renderWithApi(<Copilot />);
+
+    expect(screen.getByText(/Copilot is not connected/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Ask Copilot" })).toBeDisabled();
+    for (const fake of ["Step Audit · Missing values ≥ 20%", "store_sales_2021_2026.csv", "German Credit v2", "Compare with 30%"]) {
+      expect(screen.queryByText(fake)).not.toBeInTheDocument();
+    }
+  });
+
+  it("names the open flow and its steps", async () => {
+    useSelection.setState({ nav: "Flow", pipelineVersionId: PV, runId: undefined, nodeId: undefined });
+    renderWithApi(<Copilot />);
+
+    expect(await screen.findByText(`iris.csv · ${pipeline.nodes.length} steps`)).toBeInTheDocument();
+    expect(screen.queryByText("German Credit · 7 steps")).not.toBeInTheDocument();
+  });
+
   it("summarises the run's step attempts, without the gate", async () => {
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done")).toBeInTheDocument();
+    expect(await screen.findByText(/^This run: 6 of 7 step attempts done\.$/)).toBeInTheDocument();
     expect(run.status).toBe("succeeded");
+  });
+
+  it("says why the selected step failed, from its own attempt", async () => {
+    const error = { code: "invalid_input", message: "description, designation are not numbers" };
+    server.use(
+      http.get(`/api/runs/${RUN}/attempts`, () =>
+        HttpResponse.json(attempts.map((a) => (a.node_id === "model" ? { ...a, state: "failed", error } : a))),
+      ),
+    );
+    renderWithApi(<Copilot />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "model" });
+    expect(await screen.findByText("model failed: description, designation are not numbers")).toBeInTheDocument();
   });
 
   it("shows an attempts error", async () => {
@@ -1573,20 +1708,6 @@ describe("activity bar and sidebar", () => {
     expect(useSelection.getState().nav).toBe("Datasets");
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(useSelection.getState().nav).toBe("Settings");
-  });
-
-  it("opens another tab panel and resets the layout from the Views sidebar", async () => {
-    const { ViewsPanel } = await import("../src/views/ViewsPanel.tsx");
-    const { useWorkbench } = await import("../src/workbench/workbench.ts");
-    const dock = fakeDock();
-    useWorkbench.setState({ activity: "views", editing: false, dock });
-    renderWithApi(<ViewsPanel />);
-    await userEvent.click(screen.getByRole("button", { name: /^Console/ }));
-    expect(dock.openTab).toHaveBeenCalledWith("console");
-    await userEvent.click(screen.getByRole("button", { name: /Edit layout/ }));
-    expect(dock.setEditing).toHaveBeenCalledWith(true);
-    await userEvent.click(screen.getByRole("button", { name: /Reset to Studio layout/ }));
-    expect(dock.resetLayout).toHaveBeenCalled();
   });
 });
 

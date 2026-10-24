@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { Attempt } from "@sprisk/contracts";
 
-import { useRunAttempts } from "../api/hooks.ts";
+import { usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { askCopilot } from "../api/copilot.ts";
-import { hasOutputs, isGateNode } from "../flow/latest.ts";
+import { flowName } from "../flow/labels.ts";
+import { hasOutputs, isGateNode, latestByNode } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { PanelToggleIcon, SendIcon, SparkIcon } from "./Icons.tsx";
@@ -11,10 +12,11 @@ import { QueryState } from "../components/ui/QueryState.tsx";
 import { CopilotMessage } from "../components/ui/CopilotMessage.tsx";
 import { Tag } from "../components/ui/Tag.tsx";
 
-/** Copilot pane: 340px width folding to a 44px rail (ADR-0061). */
+/** Copilot pane: 340px width folding to a 44px rail (ADR-0061). Connected to local Qwen 2.5. */
 export function Copilot() {
   const { nav, pipelineVersionId, runId, nodeId } = useSelection();
   const attempts = useRunAttempts(pipelineVersionId, runId);
+  const flow = usePipelineVersions().data?.find((v) => v.id === pipelineVersionId);
   const { copilotOpen, toggleCopilot } = useWorkbench();
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -49,10 +51,10 @@ export function Copilot() {
 
   const contextText = nodeId
     ? `Step · ${nodeId}`
-    : nav === "Objective"
-      ? "Objective · Ledger"
-      : nav === "Flow"
-        ? "German Credit · 7 steps"
+    : nav === "Flow" && flow
+      ? `${flowName(flow)} · ${flow.nodes.length} steps`
+      : nav === "Objective"
+        ? "Objective · Ledger"
         : `${nav} · Context`;
 
   const sendMessage = async (text: string) => {
@@ -108,14 +110,7 @@ export function Copilot() {
       </div>
 
       <div className="copilot-body">
-        {runId && (
-          <div className="card" style={{ padding: "10px 12px", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", marginBottom: 12, background: "var(--bg-surface)" }}>
-            <div className="card-head" style={{ fontSize: "var(--fs-12-5)", color: "var(--text-label)", marginBottom: 4, fontWeight: "var(--fw-medium)" }}>This run</div>
-            <div className="card-body">
-              <QueryState query={attempts}>{(data) => <RunSummary attempts={data} />}</QueryState>
-            </div>
-          </div>
-        )}
+        {runId && <QueryState query={attempts}>{(data) => <RunNotes attempts={data} nodeId={nodeId} />}</QueryState>}
         {chatMessages.length === 0 ? (
           <>
             {nav === "Objective" ? (
@@ -231,7 +226,7 @@ export function Copilot() {
             type="button"
             className="send"
             aria-label="Send"
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isSending}
             onClick={handleSend}
           >
             <SendIcon />
@@ -242,13 +237,19 @@ export function Copilot() {
   );
 }
 
-function RunSummary({ attempts }: { attempts: Attempt[] }) {
+/** What the run on screen says, in plain sentences: how far it got, and why the selected step
+ * failed, from that step's own attempt. Facts only; nothing is generated. */
+function RunNotes({ attempts, nodeId }: { attempts: Attempt[]; nodeId: string | undefined }) {
   const steps = attempts.filter((a) => !isGateNode(a.node_id));
   const done = steps.filter(hasOutputs).length;
   const cached = steps.filter((a) => a.state === "cache_hit").length;
+  const failed = nodeId ? latestByNode(attempts).get(nodeId)?.error : undefined;
   return (
-    <p className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--text-secondary)", marginTop: 4 }}>
-      {done} of {steps.length} step attempts done{cached > 0 ? ` · ${cached} cached` : ""}
-    </p>
+    <>
+      <CopilotMessage>
+        {`This run: ${done} of ${steps.length} step attempts done${cached > 0 ? ` · ${cached} cached` : ""}.`}
+      </CopilotMessage>
+      {failed && <CopilotMessage>{`${nodeId} failed: ${failed.message}`}</CopilotMessage>}
+    </>
   );
 }

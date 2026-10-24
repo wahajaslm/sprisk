@@ -1,0 +1,22 @@
+schema_version: sprisk.operator/v1
+id: sprisk.validation.group_overlap@1.0.0
+title: Group leakage check
+capability_class: analyzer
+description: Counts the groups with rows in both train and test, the evidence that a group split keeps each item on one side (ADR-0063).
+entrypoint: sprisk_validation.split_evidence:group_overlap
+attach: { role: split, side: output }
+concepts: { group_column: common.item_identity }
+produces:
+  evaluation.group_overlap:
+    fields: { overlapping: integer, overlapping_groups: string_list, train_groups: integer, test_groups: integer }
+inputs: [{ name: train, kind: table }, { name: test, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [group_column]
+  properties:
+    group_column: { type: string, minLength: 1, x-sprisk-column: true, description: "The column that names each row's item." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }

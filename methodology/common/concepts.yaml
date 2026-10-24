@@ -1,0 +1,20 @@
+# Meanings the common pack's methods and operators ask for. A project binds each one to a
+# real column; column names never appear in a pack (ADR-0063).
+schema_version: sprisk.concept_set/v1
+concepts:
+  common.item_title:
+    kind: text
+    description: Short text that names the item a row describes.
+    binds_to: [column]
+  common.item_identity:
+    kind: entity_identifier
+    description: Groups rows that describe the same real-world item.
+    binds_to: [column, derived]
+  common.target:
+    kind: label
+    description: The value the model learns to predict.
+    binds_to: [column]
+  common.event_time:
+    kind: time
+    description: When the event a row describes happened.
+    binds_to: [column]

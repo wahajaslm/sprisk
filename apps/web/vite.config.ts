@@ -11,7 +11,8 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:7420",
+        // Another worktree's API may hold 7420; the port can move, the host stays loopback.
+        target: `http://127.0.0.1:${process.env.SPRISK_API_PORT ?? "7420"}`,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },

@@ -1,25 +1,21 @@
-import type { AppliedMethodologyDecision, ApplyMethodologyDecision, PipelineVersion } from "@sprisk/contracts";
+import type {
+  AppliedMethodologyDecision,
+  ApplyMethodologyDecision,
+  MethodologyDecision,
+  MethodologyDecisionByRule,
+  PipelineVersion,
+} from "@sprisk/contracts";
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ulid } from "ulid";
 
 import { getList, getOne, postOne } from "./client.ts";
 
-export function useResolveSplit() {
+/** Resolves a step's proposal for one decision (ADR-0053). Resolving stores a proposal, so it
+ * runs only when a person asks; it changes nothing in the flow. */
+export function useResolveStep() {
   return useMutation({
-    mutationFn: ({ pipelineId, nodeId }: { pipelineId: string; nodeId: string }) =>
-      postOne("DecisionProposal", `/pipeline_versions/${pipelineId}/methodology/split/${nodeId}/proposals`, {}),
-  });
-}
-
-/** A step's proposal; with `decides`, that of the one rule making that decision (ADR-0053). */
-export function useResolveMethodology() {
-  return useMutation({
-    mutationFn: ({ pipelineId, nodeId, decides }: { pipelineId: string; nodeId: string; decides?: string }) =>
-      postOne(
-        "DecisionProposal",
-        `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}${decides ? `/${decides}` : ""}`,
-        {},
-      ),
+    mutationFn: ({ pipelineId, nodeId, decides }: { pipelineId: string; nodeId: string; decides: string }) =>
+      postOne("DecisionProposal", `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}/${decides}`, {}),
   });
 }
 
@@ -62,6 +58,10 @@ export function useSelectModel() {
 export const useMethodologyRules = () =>
   useQuery({ queryKey: ["methodology_rules"], queryFn: () => getList("MethodologyRule", "/methodology_rules"), staleTime: Infinity });
 
+/** The meanings a question can bind to a column (ADR-0063); they change only with the packs. */
+export const useConcepts = () =>
+  useQuery({ queryKey: ["concepts"], queryFn: () => getOne("ConceptSet", "/concepts"), staleTime: Infinity });
+
 export const useMethodologyRuleSource = (ruleRef: string) =>
   useQuery({
     queryKey: ["methodology_rule_source", ruleRef],
@@ -78,6 +78,10 @@ export const useMethodologyReview = (pipelineVersionId: string | undefined) =>
     enabled: pipelineVersionId !== undefined,
     placeholderData: keepPreviousData,
   });
+
+/** A rule's decision comes from a proposal; a method's does not (ADR-0064). */
+export const byRule = (decision: MethodologyDecision | undefined): decision is MethodologyDecisionByRule =>
+  decision !== undefined && "proposal_id" in decision;
 
 /** A decision never changes once applied (ADR-0042). */
 export const useMethodologyDecision = (id: string | undefined) =>
@@ -100,3 +104,12 @@ export const useMethodologyProposal = (id: string | undefined) =>
 
 /** Several proposals at once, e.g. the ones the flow's comparisons compare. */
 export const useMethodologyProposals = (ids: string[]) => useQueries({ queries: ids.map(proposalQuery) });
+
+/** A method's method.yaml and method.py, as the packs loaded them (ADR-0063). They change
+ * only when the API restarts with new packs. */
+export const useMethodFiles = (methodRef: string) =>
+  useQuery({
+    queryKey: ["method_files", methodRef],
+    queryFn: () => getOne("MethodFiles", `/methods/${encodeURIComponent(methodRef)}/files`),
+    staleTime: Infinity,
+  });

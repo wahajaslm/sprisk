@@ -115,7 +115,7 @@ describe("the session notebook (ADR-0036)", () => {
     expect(screen.getByRole("img", { name: "chart" })).toHaveAttribute("src", "data:image/png;base64,iVBOR");
   });
 
-  it("marks a cell edited since it ran, and a kernel restart clears every other result", async () => {
+  it("a kernel restart clears every other cell's result", async () => {
     withApi((code, n) =>
       code === "boom"
         ? { status: "error", execution_count: n, outputs: [], error: { name: "MemoryLimit", message: "restarted", traceback: [] }, kernel_restarted: true }
@@ -124,8 +124,6 @@ describe("the session notebook (ADR-0036)", () => {
     renderWithApi(<NotebooksPage />);
     await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
     await screen.findByText("out 1");
-    await userEvent.type(cell(2), "0");
-    expect(screen.getByText("Changed since it ran")).toBeInTheDocument();
     await userEvent.clear(cell(3));
     await userEvent.type(cell(3), "boom");
     await userEvent.click(screen.getByRole("button", { name: "Run cell 3" }));
@@ -180,10 +178,11 @@ describe("the session notebook (ADR-0036)", () => {
     release(0);
     const running = screen.getByRole("group", { name: "Cell 2" });
     expect(await within(running).findByText("epoch 1")).toBeInTheDocument();
-    expect(within(running).getByText("Running")).toBeInTheDocument();
+    // As Jupyter marks a running cell.
+    expect(within(running).getByText("[*]")).toBeInTheDocument();
     release(1);
     expect(await within(running).findByText(/epoch 1\s+epoch 2/)).toBeInTheDocument();
-    await waitFor(() => expect(within(running).queryByText("Running")).toBeNull());
+    await waitFor(() => expect(within(running).queryByText("[*]")).toBeNull());
     expect(accepts).toEqual(["application/x-ndjson"]);
   });
 
@@ -207,10 +206,10 @@ describe("the session notebook (ADR-0036)", () => {
     expect(screen.getByText("Cell In[1], line 1")).toBeInTheDocument();
   });
 
-  it("Run All runs every code cell in order, one at a time", async () => {
+  it("Run all runs every code cell in order, one at a time", async () => {
     const sent = withApi();
     renderWithApi(<NotebooksPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Run All" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Run all" }));
     await waitFor(() => expect(sent.executed.map((e) => e.cell_id)).toEqual(["params", "load", "filter", "show"]));
     expect(await screen.findByText("out 4")).toBeInTheDocument();
   });
@@ -268,7 +267,7 @@ describe("the session notebook (ADR-0036)", () => {
     server.use(http.get("/api/notebooks", () => HttpResponse.json([elsewhere, sales])));
     useSelection.setState({ pipelineVersionId: pipeline.id });
     renderWithApi(<NotebooksPage />);
-    const list = await screen.findByRole("navigation", { name: "Notebooks" });
+    const list = await screen.findByRole("complementary", { name: "Notebooks" });
     await within(list).findByRole("button", { name: "Sales analysis" });
     expect(within(list).queryByRole("button", { name: "Other flow's notebook" })).toBeNull();
   });
@@ -305,11 +304,11 @@ describe("the session notebook (ADR-0036)", () => {
     expect(await screen.findByText("Flow updated: 4 steps from this notebook.")).toBeInTheDocument();
   });
 
-  it("Run All runs the cells and brings the flow up to date", async () => {
+  it("Run all runs the cells and brings the flow up to date", async () => {
     const sent = withApi();
     useSelection.setState({ pipelineVersionId: pipeline.id });
     renderWithApi(<NotebooksPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Run All" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Run all" }));
     await waitFor(() => expect(sent.executed).toHaveLength(4));
     await waitFor(() => expect(sent.versions).toHaveLength(1));
   });
@@ -333,7 +332,7 @@ describe("the session notebook (ADR-0036)", () => {
   });
 });
 
-describe("collapsing cells, as VS Code does (ADR-0035)", () => {
+describe("collapsing outputs (ADR-0035)", () => {
   const drawn = (_: string, n: number): NotebookExecution => ({
     status: "ok",
     execution_count: n,
@@ -342,10 +341,6 @@ describe("collapsing cells, as VS Code does (ADR-0035)", () => {
       { kind: "figure", figure: { library: "matplotlib", format: "svg", content: "<svg/>", title: `Chart ${n}` } },
     ],
   });
-  // Each part folds from the bar in the gutter (a mouse target, hidden from screen readers) or
-  // the chevron (the one control a screen reader announces).
-  const bar = (group: HTMLElement, name: string) => within(group).getAllByTitle(name).find((b) => b.getAttribute("aria-hidden") === "true")!;
-  const chevron = (group: HTMLElement, name: string) => within(group).getByRole("button", { name });
   const requestsDuring = async (act: () => Promise<void>) => {
     const urls: string[] = [];
     const listen = ({ request }: { request: Request }) => void urls.push(request.url);
@@ -355,45 +350,19 @@ describe("collapsing cells, as VS Code does (ADR-0035)", () => {
     return urls;
   };
 
-  it("collapses a cell's input to its first line and expands it again", async () => {
-    withApi();
-    renderWithApi(<NotebooksPage />);
-    await screen.findByRole("heading", { name: "Sales Analysis Notebook" });
-    const intro = screen.getByRole("group", { name: "Cell 1" });
-    await userEvent.click(chevron(intro, "Collapse input of cell 1"));
-    expect(screen.queryByRole("heading", { name: "Sales Analysis Notebook" })).not.toBeInTheDocument();
-    expect(within(intro).getByText("# Sales Analysis Notebook")).toBeInTheDocument();
-    expect(within(intro).getByText("…")).toBeInTheDocument();
-    const expand = chevron(intro, "Expand input of cell 1");
-    expect(expand).toHaveAttribute("aria-expanded", "false");
-    await userEvent.click(expand);
-    expect(screen.getByRole("heading", { name: "Sales Analysis Notebook" })).toBeInTheDocument();
-  });
-
-  it("the bar in the gutter collapses a code cell's input; its code stays as typed", async () => {
-    withApi();
-    renderWithApi(<NotebooksPage />);
-    await userEvent.type(await screen.findByRole("textbox", { name: "Cell 2" }), "0");
-    const params = screen.getByRole("group", { name: "Cell 2" });
-    await userEvent.click(bar(params, "Collapse input of cell 2"));
-    expect(screen.queryByRole("textbox", { name: "Cell 2" })).not.toBeInTheDocument();
-    expect(within(params).getByText("MIN = 100")).toBeInTheDocument();
-    await userEvent.click(bar(params, "Expand input of cell 2"));
-    expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("MIN = 100");
-  });
-
-  it("collapses a cell's output without running or fetching anything, and draws it again on expand", async () => {
+  it("the o key collapses a cell's output without running or fetching anything, and draws it again", async () => {
     const sent = withApi(drawn);
     renderWithApi(<NotebooksPage />);
     await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
     await screen.findByText("out 1");
     const params = screen.getByRole("group", { name: "Cell 2" });
     const urls = await requestsDuring(async () => {
-      await userEvent.click(bar(params, "Collapse output of cell 2"));
+      params.focus();
+      await userEvent.keyboard("o");
       expect(screen.queryByText("out 1")).not.toBeInTheDocument();
       expect(screen.queryByRole("img", { name: "Chart 1" })).not.toBeInTheDocument();
       expect(within(params).getByText("Outputs are collapsed")).toBeInTheDocument();
-      await userEvent.click(chevron(params, "Expand output of cell 2"));
+      await userEvent.keyboard("o");
       expect(screen.getByText("out 1")).toBeInTheDocument();
       expect(screen.getByRole("img", { name: "Chart 1" })).toBeInTheDocument();
     });
@@ -407,7 +376,6 @@ describe("collapsing cells, as VS Code does (ADR-0035)", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Run cell 2" }));
     const params = screen.getByRole("group", { name: "Cell 2" });
     await within(params).findByText("[1]");
-    expect(within(params).queryByTitle("Collapse output of cell 2")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Collapse All Outputs" }));
     expect(screen.queryByText("Outputs are collapsed")).not.toBeInTheDocument();
   });
@@ -415,7 +383,7 @@ describe("collapsing cells, as VS Code does (ADR-0035)", () => {
   it("Collapse All Outputs hides every output and Expand All Outputs shows them again", async () => {
     withApi();
     renderWithApi(<NotebooksPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Run All" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Run all" }));
     await screen.findByText("out 4");
     await userEvent.click(screen.getByRole("button", { name: "Collapse All Outputs" }));
     for (const n of [1, 2, 3, 4]) expect(screen.queryByText(`out ${n}`)).not.toBeInTheDocument();
@@ -440,7 +408,7 @@ describe("collapsing cells, as VS Code does (ADR-0035)", () => {
   it("undoes and redoes cell insertion and deletion via toolbar and shortcuts", async () => {
     withApi();
     renderWithApi(<NotebooksPage />);
-    await screen.findByRole("button", { name: "Run All" });
+    await screen.findByRole("button", { name: "Run all" });
     const initialCellCount = screen.getAllByRole("group", { name: /^Cell \d+$/ }).length;
 
     // Insert a new code cell

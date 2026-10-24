@@ -1,0 +1,25 @@
+schema_version: sprisk.method/v1
+id: methodology.common.task_type@2.0.0
+decides: question.task_type
+activity: Target
+question: Does the model predict a class or a number?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: [common.target]
+  evidence: [target.shape]
+  decisions: []
+options:
+  - id: classification
+    label: Predict a class
+    verify: [labels_are_classes]
+  - id: regression
+    label: Predict a number
+    verify: [labels_are_numbers]
+verifications:
+  labels_are_classes:
+    needs: target.shape
+    promise: The target's labels can be read as classes.
+  labels_are_numbers:
+    needs: target.shape
+    promise: The target's values are numbers.
+source: "Kapoor et al. (2024) REFORMS: Consensus-based recommendations for machine-learning-based science, Science Advances 10(18), module 1: state the task before any result."

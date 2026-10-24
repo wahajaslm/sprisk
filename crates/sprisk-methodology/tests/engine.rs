@@ -1,16 +1,17 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::Path;
-
 use serde_json::{Value, json};
 use sprisk_contracts::{MethodologyReview, QuestionVersion, WalkStopReason, parse};
 use sprisk_methodology::RuleCatalog;
 use sprisk_methodology::engine::{
-    Action, HeadRun, Start, next_action, start, unconfirmed_reads, with_test_scoring,
+    Action, HeadRun, Start, look_asks, next_action, start, unconfirmed_reads, with_test_scoring,
 };
 
+mod repo;
+use repo::rules_with_example_split;
+
 fn catalog() -> RuleCatalog {
-    RuleCatalog::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology")).unwrap()
+    rules_with_example_split()
 }
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
@@ -612,4 +613,56 @@ fn a_flow_holding_a_baseline_scoring_step_is_not_scored_again() {
         let err = with_test_scoring(&pipeline).unwrap_err();
         assert!(err.to_string().contains(taken), "{err}");
     }
+}
+
+const HTML: &str = "methodology.common.html_text@1.0.0";
+
+fn asked(asks: &[sprisk_contracts::WalkAsk]) -> Vec<String> {
+    asks.iter().map(|a| a.decides.to_string()).collect()
+}
+
+#[test]
+fn the_look_lists_every_fact_a_person_must_state_and_every_guess_a_rule_reads() {
+    let review = review(vec![
+        item(CONSTRAINTS, "question.hard_constraints", "needs_fact", None),
+        item(HTML, "data.html_text", "proposal", Some("strip")),
+        item(
+            DUPLICATES,
+            "data.exact_duplicates",
+            "proposal",
+            Some("drop_duplicates"),
+        ),
+    ]);
+    let guessed = question(json!({ "time_column": { "value": "date", "origin": "inferred" } }));
+    let asks = look_asks(&review, &guessed, &catalog()).unwrap();
+    assert_eq!(
+        asked(&asks),
+        [
+            "question.hard_constraints",
+            "data.html_text",
+            "question.success_bar"
+        ]
+    );
+    assert!(
+        asks[1]
+            .question
+            .contains("question.time_column, still a guess"),
+        "{:?}",
+        asks[1].question
+    );
+}
+
+#[test]
+fn the_look_asks_nothing_once_everything_is_stated() {
+    let review = review(vec![
+        item(CONSTRAINTS, "question.hard_constraints", "settled", None),
+        item(
+            DUPLICATES,
+            "data.exact_duplicates",
+            "proposal",
+            Some("drop_duplicates"),
+        ),
+    ]);
+    let asks = look_asks(&review, &question(barred()), &catalog()).unwrap();
+    assert!(asks.is_empty(), "{asks:?}");
 }

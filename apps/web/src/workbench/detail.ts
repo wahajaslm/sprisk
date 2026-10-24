@@ -6,12 +6,12 @@ export type DetailLevel = (typeof DETAIL_LEVELS)[number];
 
 /** Node size on the canvas for each level of detail. */
 export const NODE_SIZE: Record<DetailLevel, { width: number; height: number }> = {
-  compact: { width: 184, height: 52 },
+  compact: { width: 176, height: 40 },
   detail: { width: 248, height: 176 },
 };
 
-/** Stored preferences are untrusted; anything else (e.g. the removed "summary") opens as Detail. */
-export const readLevel = (value: unknown): DetailLevel => (value === "compact" ? "compact" : "detail");
+/** Stored preferences are untrusted; anything else opens as Compact. */
+export const readLevel = (value: unknown): DetailLevel => (value === "detail" ? "detail" : "compact");
 
 type CanvasDetail = { level: DetailLevel; setLevel: (level: DetailLevel) => void };
 

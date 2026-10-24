@@ -1,6 +1,7 @@
 import type { TablePage } from "@sprisk/contracts";
 
 export const isText = (dataType: string) => /Utf8|String|Dictionary|Categorical/.test(dataType);
+export const isNumeric = (dataType: string) => /^(U?Int|Float|Decimal)/.test(dataType);
 
 /** A cell as people read it: a float to six significant digits, as a notebook prints it, with
  * the full value on hover. Everything else as stored. */

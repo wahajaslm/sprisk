@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -12,6 +12,7 @@ use sprisk_contracts::{
     PipelineVersion, PortKind, RunId, RunStatus, Verdict, WorkerMessage, parse,
 };
 use sprisk_graph::{Input, Plan, Step};
+use sprisk_registry::evidence::{self, EVIDENCE_PORT};
 use sprisk_store::{SqliteStore, StoreError};
 
 use crate::cache::{cache_key, cacheable};
@@ -59,6 +60,8 @@ pub enum SchedulerError {
     GateOutput(String),
     #[error("node {node} cites methodology decision {decision}, which is not stored")]
     UnknownDecision { node: String, decision: String },
+    #[error("run from {0}: the plan has no such step")]
+    UnknownStartStep(String),
 }
 
 /// Reads the time, for deadlines. A fake clock lets a test pass a deadline between steps.
@@ -99,6 +102,9 @@ pub struct Scheduler<'a, W: Workers> {
     split_check: Option<Operator>,
     worker: Option<W::Worker>,
     reuse: Option<RunId>,
+    from: Option<String>,
+    /// The start step and every step after it: they run even where unchanged.
+    rerun: HashSet<String>,
     deadline: Option<(jiff::Timestamp, Clock)>,
 }
 
@@ -118,6 +124,8 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             split_check: None,
             worker: None,
             reuse: None,
+            from: None,
+            rerun: HashSet::new(),
             deadline: None,
         }
     }
@@ -134,6 +142,13 @@ impl<'a, W: Workers> Scheduler<'a, W> {
     /// runs from the edited step onwards.
     pub fn reusing(mut self, run: RunId) -> Self {
         self.reuse = Some(run);
+        self
+    }
+
+    /// Run `node` and every step after it again, even where unchanged; steps before it are
+    /// still reused or taken from the cache (ADR-0026 amendment).
+    pub fn running_from(mut self, node: &str) -> Self {
+        self.from = Some(node.to_owned());
         self
     }
 
@@ -188,6 +203,9 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             self.store
                 .set_run_status(run_id, RunStatus::Running, &now())
                 .await?;
+        }
+        if let Some(from) = &self.from {
+            self.rerun = from_step(plan, from)?;
         }
         let mut done = self.reconcile(run_id).await?;
         if let Some(operator) = self.gate.clone() {
@@ -393,6 +411,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             _ => None,
         };
         let source = match (&key, &self.reuse) {
+            _ if self.rerun.contains(&step.node_id) => None,
             (Some(key), _) if cacheable(step) => self.store.cached_attempt(key).await?,
             (Some(key), Some(reuse)) => {
                 self.store
@@ -651,6 +670,12 @@ impl<'a, W: Workers> Scheduler<'a, W> {
                 let reason = format!("{} is outside {}", staged.display(), staging.display());
                 return self.reject(id, &reason).await;
             }
+            if m.port.as_str() == EVIDENCE_PORT
+                && !step.operator.produces.is_empty()
+                && let Err(reason) = checked_evidence(&step.operator, &staged, m.size_bytes)
+            {
+                return self.reject(id, &reason).await;
+            }
             let committed = match self.artifacts.commit(&staged, &m.content_hash).await {
                 Ok(committed) => committed,
                 Err(e) => return self.reject(id, &e.to_string()).await,
@@ -860,7 +885,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             .collect();
         let ids: Vec<_> = cited.iter().map(|(d, _)| d.clone()).collect();
         let found = self.store.methodology_decisions(&ids).await?;
-        cited.retain(|(d, _)| !found.iter().any(|f| f.id == *d));
+        cited.retain(|(d, _)| !found.iter().any(|f| f.id() == d));
         if let Some((decision, node)) = cited.first() {
             return Err(SchedulerError::UnknownDecision {
                 node: node.id.as_str().to_owned(),
@@ -917,4 +942,36 @@ fn is_split(step: &Step) -> bool {
 /// The reserved node id of `split`'s row check.
 fn split_check_node(split: &Step) -> String {
     format!("{}{}", sprisk_graph::RESERVED_NODE_PREFIX, split.node_id)
+}
+
+/// Evidence is a few numbers per kind; a larger file is not evidence.
+const MAX_EVIDENCE_BYTES: u64 = 1 << 20;
+
+/// Refuses what a producer wrote to its evidence output when it breaks its manifest
+/// (ADR-0063), before it is saved, so no reader ever meets bad evidence.
+fn checked_evidence(operator: &Operator, staged: &Path, size: u64) -> Result<(), String> {
+    if size > MAX_EVIDENCE_BYTES {
+        return Err(format!(
+            "its evidence is {size} bytes, more than {MAX_EVIDENCE_BYTES}"
+        ));
+    }
+    let bytes = std::fs::read(staged).map_err(|e| format!("cannot read its evidence: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|e| format!("its evidence is not JSON: {e}"))?;
+    evidence::check(operator, &value).map_err(|e| e.to_string())
+}
+
+/// `from` and every step that reads from it, directly or through others. The plan lists each
+/// step after its inputs, so one pass finds them all.
+fn from_step(plan: &Plan, from: &str) -> Result<HashSet<String>, SchedulerError> {
+    if !plan.steps.iter().any(|s| s.node_id == from) {
+        return Err(SchedulerError::UnknownStartStep(from.to_owned()));
+    }
+    let mut rerun = HashSet::from([from.to_owned()]);
+    for step in &plan.steps {
+        if step.inputs.iter().any(|i| rerun.contains(&i.from_node)) {
+            rerun.insert(step.node_id.clone());
+        }
+    }
+    Ok(rerun)
 }

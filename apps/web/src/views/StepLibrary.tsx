@@ -1,15 +1,22 @@
 import { useMemo, useState } from "react";
-import type { Operator } from "@sprisk/contracts";
+import type { Node, Operator } from "@sprisk/contracts";
 
-import { useOperators, usePipelineVersions } from "../api/hooks.ts";
-import { kindOf, newestVersions, STAGES, stageOf, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
+import { checkCount, concernsByNode, useRunChecks } from "../api/checks.ts";
+import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
+import { latestByNode, statusOf } from "../flow/latest.ts";
+import { stepOf } from "../flow/ports.ts";
+import { kindOf, newestVersions, STAGES, stageOf, stepOrigin, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
+import { stageNotebooks } from "../notebook/stageNotebooks.ts";
+import { useFlowDecisions } from "../api/walks.ts";
 import { flows } from "../flow/flows.ts";
 import { useSelection } from "../workbench/selection.ts";
-import { useWorkbench } from "../workbench/workbench.ts";
-import { Chevron, KindIcon, PanelToggleIcon } from "./Icons.tsx";
+import { KindIcon } from "./Icons.tsx";
 import { SearchField } from "../components/ui/SearchField.tsx";
 import { Segmented } from "../components/ui/Segmented.tsx";
-import { Tag } from "../components/ui/Tag.tsx";
+import { ListRow } from "../components/ui/ListRow.tsx";
+import { SideGroup } from "../components/ui/SideGroup.tsx";
+import { Sidebar } from "../components/ui/Sidebar.tsx";
+import { pluginOf, plugins } from "../flow/plugins.ts";
 import { InfoDock } from "../components/ui/InfoDock.tsx";
 
 type SidebarTab = "Pipeline" | "Operators" | "Plugins";
@@ -17,8 +24,11 @@ type SidebarTab = "Pipeline" | "Operators" | "Plugins";
 export function StepLibrary() {
   const versionsQuery = usePipelineVersions();
   const operatorsQuery = useOperators();
-  const { pipelineVersionId, nodeId, selectNode } = useSelection();
-  const { sidebarOpen, toggleSidebar } = useWorkbench();
+  const { pipelineVersionId, runId, nodeId, selectNode } = useSelection();
+  const attempts = useRunAttempts(pipelineVersionId, runId);
+  const latest = useMemo(() => latestByNode(attempts.data ?? []), [attempts.data]);
+  const checks = useRunChecks(attempts.data ?? []);
+  const concerns = concernsByNode(checks);
 
   const allVersions = useMemo(() => versionsQuery.data ?? [], [versionsQuery.data]);
   const activeFlow = useMemo(() => {
@@ -39,101 +49,45 @@ export function StepLibrary() {
   const [userTab, setUserTab] = useState<SidebarTab | undefined>(undefined);
   const tab: SidebarTab = userTab ?? (hasPipelineSelected ? "Pipeline" : "Operators");
   const [query, setQuery] = useState("");
-  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
 
   const operators = useMemo(() => operatorsQuery.data ?? [], [operatorsQuery.data]);
+  const decided = useFlowDecisions(activeVersion?.id);
+  const decisions = useMemo(() => decided.data?.decisions ?? [], [decided.data]);
   const opMap = useMemo(() => new Map<string, Operator>(operators.map((o) => [o.id, o])), [operators]);
 
   const needle = query.trim().toLowerCase();
 
-  const toggle = (stage: string) =>
-    setFolded((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(stage)) next.add(stage);
-      return next;
-    });
-
-  // Pipeline steps grouped by stage
+  // The flow's steps in the sections the canvas and the notebook show: stages, and the
+  // activities of the decisions that shaped them (ADR-0063).
   const pipelineStages = useMemo(() => {
-    const nodes = activeVersion?.nodes ?? [];
-    return STAGES.map((stage, idx) => {
-      const inStage = nodes
-        .filter((node) => {
-          const op = opMap.get(node.operator);
-          const s = op ? stageOf(op) : "Clean";
-          return s === stage;
-        })
-        .filter((node) => {
-          if (!needle) return true;
-          return (
+    if (!activeVersion) return [];
+    return stageNotebooks(activeVersion, opMap, decisions)
+      .map(({ name, nodes }) => ({
+        stage: name,
+        nodes: nodes.filter(
+          (node) =>
+            !needle ||
             node.id.toLowerCase().includes(needle) ||
-            stepTitle(node.operator).toLowerCase().includes(needle)
-          );
-        });
-
-      return {
-        stage,
-        num: String(idx + 1).padStart(2, "0"),
-        nodes: inStage,
-      };
-    }).filter((g) => g.nodes.length > 0 || !needle);
-  }, [activeVersion, opMap, needle]);
+            stepTitle(node.operator, opMap.get(node.operator)).toLowerCase().includes(needle),
+        ),
+      }))
+      .filter((g) => g.nodes.length > 0);
+  }, [activeVersion, opMap, decisions, needle]);
 
   // Selected node info
-  const selectedNode = useMemo(() => {
-    return activeVersion?.nodes.find((n) => n.id === nodeId) ?? activeVersion?.nodes[0];
-  }, [activeVersion, nodeId]);
+  const selectedNode = activeVersion?.nodes.find((n) => n.id === nodeId);
 
+  // The distinct steps that read any output of the selected step.
   const downstreamCount = useMemo(() => {
     if (!selectedNode || !activeVersion) return 0;
-    return activeVersion.edges.filter((e) => e.from.startsWith(selectedNode.id)).length;
+    const readers = activeVersion.edges.filter((e) => stepOf(e.from) === selectedNode.id).map((e) => stepOf(e.to));
+    return new Set(readers).size;
   }, [selectedNode, activeVersion]);
 
-  if (!sidebarOpen) {
-    return (
-      <div className="sidebar-rail" aria-label="Pipeline rail">
-        <button
-          type="button"
-          className="sidebar-toggle-btn"
-          title="Expand Pipeline sidebar"
-          aria-label="Expand Pipeline sidebar"
-          onClick={toggleSidebar}
-        >
-          <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
-        </button>
-        <span
-          className="sidebar-rail-label"
-          role="button"
-          tabIndex={0}
-          onClick={toggleSidebar}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") toggleSidebar();
-          }}
-        >
-          Pipeline
-        </span>
-      </div>
-    );
-  }
-
   return (
-    <div className="library">
-      {/* Header */}
-      <div className="sidebar-header">
-        <div className="sidebar-title-row">
-          <h2 className="sidebar-title">Pipeline</h2>
-          <div style={{ flex: 1 }} />
-          <button
-            type="button"
-            className="sidebar-toggle-btn"
-            title="Collapse Pipeline sidebar"
-            aria-label="Collapse Pipeline sidebar"
-            onClick={toggleSidebar}
-          >
-            <PanelToggleIcon size={14} style={{ transform: "scaleX(-1)" }} />
-          </button>
-        </div>
-
+    <Sidebar
+      title="Pipeline"
+      modes={
         <Segmented<SidebarTab>
           value={tab}
           onChange={setUserTab}
@@ -143,135 +97,83 @@ export function StepLibrary() {
             { value: "Plugins", label: "Plugins" },
           ]}
         />
-        <div className="sidebar-search">
-          <SearchField
-            value={query}
-            onChange={setQuery}
-            placeholder="Search steps"
-            ariaLabel="Search steps"
-          />
-        </div>
-      </div>
-
-      {/* List content */}
-      <div className="sidebar-list">
-        {tab === "Pipeline" ? (
-          pipelineStages.length === 0 ? (
-            <p className="muted pad" style={{ fontSize: "var(--fs-12)" }}>
-              No pipeline steps found.
-            </p>
-          ) : (
-            pipelineStages.map(({ stage, num, nodes }) => {
-              const open = !folded.has(stage);
-              return (
-                <section key={stage} aria-label={stage} className="stage-group">
-                  <h3 className="stage-heading">
-                    <button type="button" aria-expanded={open} onClick={() => toggle(stage)}>
-                      <span className="stage-chevron">
-                        <Chevron />
-                      </span>
-                      <span className="mono" style={{ color: "var(--text-disabled)", fontSize: "11px" }}>
-                        {num}
-                      </span>
-                      <span style={{ flex: 1 }}>{stage}</span>
-                      <span className="mono" style={{ color: "var(--text-disabled)", fontSize: "11px" }}>
-                        {nodes.length}
-                      </span>
-                    </button>
-                  </h3>
-                  {open &&
-                    nodes.map((node) => {
-                      const op = opMap.get(node.operator);
-                      const kind: NodeKind = op ? kindOf(op) : "recipe";
-                      const isSelected = node.id === nodeId;
-                      const isIssue = node.id.includes("leak") || node.id.includes("gate");
-                      return (
-                        <div
-                          key={node.id}
-                          className={`step-item ${isSelected ? "selected" : ""}`}
-                          onClick={() => selectNode(node.id)}
-                          role="button"
-                          tabIndex={0}
-                          aria-current={isSelected ? "true" : undefined}
-                        >
-                          <span className={`step-icon kind-${kind}`}>
-                            <KindIcon kind={kind} size={12} />
-                          </span>
-                          <span className="step-item-name">{stepTitle(node.operator)}</span>
-                          {isIssue ? (
-                            <Tag tone="danger">Issue</Tag>
-                          ) : (
-                            <Tag tone="queued">Queued</Tag>
-                          )}
-                        </div>
-                      );
-                    })}
-                </section>
-              );
-            })
-          )
+      }
+      search={<SearchField value={query} onChange={setQuery} placeholder="Search steps" ariaLabel="Search steps" />}
+      dock={
+        <InfoDock
+          rows={[
+            { k: "Type", v: selectedNode ? typeOf(selectedNode, opMap.get(selectedNode.operator)) : "—" },
+            { k: "Status", v: selectedNode ? statusText(latest.get(selectedNode.id)?.state) : "—" },
+            { k: "Downstream", v: selectedNode ? `${downstreamCount} ${downstreamCount === 1 ? "step" : "steps"}` : "—" },
+          ]}
+        />
+      }
+    >
+      {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
+      {checks.status === "error" && <p role="alert" className="error pad">{checks.message}</p>}
+      {tab === "Pipeline" && decided.isError && (
+        <p role="alert" className="error">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>
+      )}
+      {tab === "Pipeline" &&
+        (pipelineStages.length === 0 ? (
+          <p className="muted pad">No pipeline steps found.</p>
         ) : (
-          STAGES.map((stage) => {
-            const inStage = newestVersions(operators).filter(
-              (op) =>
-                stageOf(op) === stage &&
-                (needle === "" || `${op.id} ${stepTitle(op.id)}`.toLowerCase().includes(needle)),
-            );
-            if (inStage.length === 0) return null;
-            const open = !folded.has(stage);
-            return (
-              <section key={stage} aria-label={stage} className="stage-group">
-                <h3 className="stage-heading">
-                  <button type="button" aria-expanded={open} onClick={() => toggle(stage)}>
-                    <span className="stage-chevron">
-                      <Chevron />
-                    </span>
-                    <span style={{ flex: 1 }}>{stage}</span>
-                    <span className="mono" style={{ color: "var(--text-disabled)", fontSize: "11px" }}>
-                      {inStage.length}
-                    </span>
-                  </button>
-                </h3>
-                {open &&
-                  inStage.map((op) => (
-                    <div
-                      key={op.id}
-                      className="step-item"
-                      title={op.description ? `${op.description}\n${op.id}` : op.id}
-                    >
-                      <span className={`step-icon kind-${kindOf(op)}`}>
-                        <KindIcon kind={kindOf(op)} size={12} />
-                      </span>
-                      <span className="step-item-name">{stepTitle(op.id)}</span>
-                      <span className="step-item-meta">{op.capability_class}</span>
-                    </div>
-                  ))}
-              </section>
-            );
-          })
-        )}
-      </div>
-
-      {/* Info Dock */}
-      <InfoDock
-        title="Info"
-        rows={[
-          {
-            k: "Type",
-            v: selectedNode && opMap.get(selectedNode.operator)
-              ? kindOf(opMap.get(selectedNode.operator)!).toUpperCase()
-              : "Decision",
-          },
-          {
-            k: "Status",
-            v: "Queued",
-          },
-          {
-            k: "Downstream",
-            v: `${downstreamCount || 3} steps`,
-          },
-        ]}
-      />
-    </div>
+          pipelineStages.map(({ stage, nodes }, i) => (
+            <SideGroup key={stage} num={i + 1} label={stage} meta={`${nodes.filter((n) => isDone(latest.get(n.id)?.state)).length} / ${nodes.length}`}>
+              {nodes.map((node) => {
+                const op = opMap.get(node.operator);
+                const kind: NodeKind = op ? kindOf(op) : "recipe";
+                return (
+                  <ListRow
+                    key={node.id}
+                    title={stepTitle(node.operator, op)}
+                    icon={<KindIcon kind={kind} size={12} />}
+                    selected={node.id === nodeId}
+                    onClick={() => selectNode(node.id)}
+                    {...badgeOf(concerns.get(node.id) ?? 0, latest.get(node.id)?.state)}
+                  />
+                );
+              })}
+            </SideGroup>
+          ))
+        ))}
+      {tab === "Operators" &&
+        STAGES.map((stage) => newestVersions(operators).filter((op) => stageOf(op) === stage && (needle === "" || `${op.id} ${stepTitle(op.id, op)}`.toLowerCase().includes(needle))))
+          .map((inStage, i) => ({ stage: STAGES[i]!, inStage }))
+          .filter(({ inStage }) => inStage.length > 0)
+          .map(({ stage, inStage }, i) => (
+            <SideGroup key={stage} num={i + 1} label={stage} meta={inStage.length}>
+              {inStage.map((op) => (
+                <ListRow key={op.id} title={stepTitle(op.id, op)} meta={op.capability_class} icon={<KindIcon kind={kindOf(op)} size={12} />} hint={op.description ? `${op.description}\n${op.id}` : op.id} />
+              ))}
+            </SideGroup>
+          ))}
+      {tab === "Plugins" &&
+        plugins(operators)
+          .filter((name) => needle === "" || name.includes(needle))
+          .map((name) => <ListRow key={name} title={name} meta={`${operators.filter((op) => pluginOf(op) === name).length} operators`} />)}
+    </Sidebar>
   );
+}
+
+/** A badge only where the design shows one: a step that needs a look, or one still to run. */
+function badgeOf(issues: number, state: string | undefined): { badge?: string; warn?: boolean } {
+  if (issues > 0) return { badge: checkCount(issues), warn: true };
+  if (state === "failed" || state === "timed_out") return { badge: "Issue", warn: true };
+  if (state === "running" || state === "leased" || state === "uploading") return { badge: "Running" };
+  if (state === "queued" || state === "created" || state === "validated") return { badge: "Queued" };
+  return {};
+}
+
+const isDone = (state: string | undefined) => state === "succeeded" || state === "cache_hit";
+
+const statusText = (state: string | undefined) => (state ? statusOf(state).text : "Not run");
+
+/** A step's type in the Info panel: what a method made of it, else its kind (ADR-0063). */
+function typeOf(node: Node, operator: Operator | undefined): string {
+  const origin = stepOrigin(node, operator);
+  if (origin === "decided") return "Decision";
+  if (origin === "measures") return "Evidence";
+  const kind = operator ? kindOf(operator) : "recipe";
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
 }

@@ -37,3 +37,8 @@ Arch doc sections: §2A (Datasets view), §4 (`Dataset` / `DatasetVersion`), §1
 - The diabetes, iris and penguins flows each show their dataset with the right rows, columns and users.
 - A profile request never sends table rows to the browser; a 10× larger file still answers within the time limit or says it ran out of time.
 - When `POST /datasets` lands, `DatasetProfile` and the profiler are reused unchanged; `LoadedTable` stays a view of what flows load.
+
+## Amendment (2026-10-24): a Preview tab
+- The page opens on a **Preview** of the table's first 50 rows, as the Flow Studio design shows (ADR-0061).
+- The rows come from the paged rows endpoint (`GET /artifacts/{id}/rows?offset=0&limit=50`), as the Flow Data tab already does. The browser never loads the table (rule 9); a profile request still sends no rows.
+- Like the profile, the preview covers every row as loaded, held-out rows included, and is for looking only (rule 8).

@@ -1,177 +1,214 @@
 import { useState } from "react";
-import type { QuestionVersion } from "@sprisk/contracts";
+import type { PipelineVersion, QuestionVersion, Unknown } from "@sprisk/contracts";
 
-import { useQuestionVersions } from "../../api/questions.ts";
+import { useLoadedTables } from "../../api/datasets.ts";
 import { usePipelineVersions } from "../../api/hooks.ts";
-import { Sidebar } from "../../components/ui/Sidebar.tsx";
-import { ListRow } from "../../components/ui/ListRow.tsx";
-import { InfoDock } from "../../components/ui/InfoDock.tsx";
-import { SearchField } from "../../components/ui/SearchField.tsx";
-import { PageHeader } from "../../components/ui/PageHeader.tsx";
-import { Tabs } from "../../components/ui/Tabs.tsx";
+import { useQuestionVersions } from "../../api/questions.ts";
 import { Button } from "../../components/ui/Button.tsx";
-import { Tag } from "../../components/ui/Tag.tsx";
+import { InfoDock } from "../../components/ui/InfoDock.tsx";
+import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { useWorkbench } from "../../workbench/workbench.ts";
-import { ReportsIcon } from "../Icons.tsx";
+import { PageFrame } from "../../components/ui/PageFrame.tsx";
+import { SearchField } from "../../components/ui/SearchField.tsx";
+import { SideGroup } from "../../components/ui/SideGroup.tsx";
+import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
+import { Sidebar } from "../../components/ui/Sidebar.tsx";
+import { flows } from "../../flow/flows.ts";
+import { flowName } from "../../flow/labels.ts";
+import { tableSize } from "../datasets/tableSize.ts";
+import { useSelection } from "../../workbench/selection.ts";
+import { currentQuestion, openEntries } from "../objective/ledger.ts";
 
-const TABS = ["Ledger", "Criteria", "Assumptions", "Unknowns"] as const;
+const TABS = ["Questions", "Sources"] as const;
 type Tab = (typeof TABS)[number];
 
+const BLOCKS: Record<Unknown["blocks"], string> = { planning: "planning", execution: "running", release: "release" };
+const BLOCK_ORDER: Unknown["blocks"][] = ["planning", "execution", "release"];
+
+/** One entry of the ledger: the objective itself, or one open unknown. */
+type Entry = { key: string; number: number } & ({ kind: "objective" } | { kind: "unknown"; unknown: Unknown });
+
+/** The question ledger: what the analysis set out to answer, what is still open, and its sources. */
 export function ReportsPage() {
-  const questionsQuery = useQuestionVersions();
-  const pipelinesQuery = usePipelineVersions();
-  const sidebarOpen = useWorkbench((s) => s.sidebarOpen);
-  const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string>();
-  const [activeTab, setActiveTab] = useState<Tab>("Ledger");
+  const questions = useQuestionVersions();
+  const versions = usePipelineVersions();
+  const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
+  const setNav = useSelection((s) => s.setNav);
+  const [tab, setTab] = useState<Tab>("Questions");
+  const [picked, setPicked] = useState("objective");
+  const [search, setSearch] = useState("");
 
-  if (questionsQuery.isError) {
-    return <p role="alert" className="error pad">{questionsQuery.error.message}</p>;
-  }
-  if (questionsQuery.isPending) {
-    return <Loading text="Loading reports…" pad />;
-  }
+  if (questions.isError) return <p role="alert" className="error pad">{questions.error.message}</p>;
+  if (questions.isPending) return <Loading text="Loading the question ledger…" pad />;
 
-  const questions = questionsQuery.data ?? [];
-  const filtered = questions.filter(
-    (q) => !query || q.objective.value.toLowerCase().includes(query.toLowerCase()) || q.id.toLowerCase().includes(query.toLowerCase()),
-  );
-
-  const selectedQuestion = filtered.find((q) => q.id === selectedId) ?? filtered[0];
+  const question = currentQuestion(questions.data, versions.data?.find((v) => v.id === pipelineVersionId));
+  const entries: Entry[] = question
+    ? [
+        { key: "objective", number: 1, kind: "objective" },
+        ...question.unknowns.map((unknown, i) => ({ key: `unknown-${i}`, number: i + 2, kind: "unknown" as const, unknown })),
+      ]
+    : [];
+  const entry = entries.find((e) => e.key === picked) ?? entries[0];
+  const open = question ? openEntries(question) : 0;
+  const matches = (text: string) => text.toLowerCase().includes(search.trim().toLowerCase());
 
   return (
-    <div className={`reports-page-layout ${sidebarOpen ? "with-sidebar" : "folded-sidebar"}`}>
-      {/* 280px Design System Sidebar */}
-      <Sidebar
-        title="Ledger"
-        meta={String(questions.length)}
-        search={
-          <SearchField
-            value={query}
-            onChange={setQuery}
-            placeholder="Search questions"
-          />
-        }
-        dock={
-          selectedQuestion ? (
-            <InfoDock
-              title="Question Metadata"
-              rows={[
-                { k: "Task", v: selectedQuestion.task.value },
-                { k: "Target", v: selectedQuestion.target?.value ?? "None" },
-                { k: "Unit", v: selectedQuestion.unit_of_analysis?.value ?? "—" },
-              ]}
-            />
-          ) : undefined
-        }
-      >
-        {questions.length === 0 ? (
-          <p className="muted pad" style={{ padding: "16px 12px", fontSize: "var(--fs-13)" }}>
-            No question revisions recorded yet. Start in Objective to state questions.
-          </p>
-        ) : (
-          filtered.map((q) => {
-            const isSelected = selectedQuestion?.id === q.id;
-            return (
-              <ListRow
-                key={q.id}
-                title={q.objective.value}
-                meta={`${q.task.value} · target: ${q.target?.value ?? "None"}`}
-                selected={isSelected}
-                onClick={() => setSelectedId(q.id)}
+    <PageFrame
+      sidebar={
+        <Sidebar
+          title="Questions"
+          search={<SearchField value={search} onChange={setSearch} placeholder="Search questions" />}
+          dock={
+            question && (
+              <InfoDock
+                rows={[
+                  { k: "Open", v: String(open), warn: open > 0 },
+                  { k: "Assumptions", v: String(question.assumptions.length) },
+                  { k: "Criteria", v: String(question.acceptance_criteria.length) },
+                ]}
               />
-            );
-          })
-        )}
-      </Sidebar>
-
-      {/* Main Content Area */}
-      <main className="center-screen reports-main">
-        {selectedQuestion ? (
+            )
+          }
+        >
+          {!question && <p className="muted pad">No question yet. State one on the Objective page.</p>}
+          {question && matches(question.objective.value) && (
+            <SideGroup num={1} label="Objective">
+              <ListRow title={question.objective.value} meta={`${question.task.value} · ${open} open`} selected={entry?.key === "objective"} onClick={() => setPicked("objective")} />
+            </SideGroup>
+          )}
+          {question &&
+            BLOCK_ORDER.map((b) => ({ b, shown: entries.flatMap((e) => (e.kind === "unknown" && e.unknown.blocks === b && matches(e.unknown.question) ? [{ key: e.key, unknown: e.unknown }] : [])) }))
+              .filter(({ shown }) => shown.length > 0)
+              .map(({ b, shown }, i) => (
+                <SideGroup key={b} num={i + 2} label={`Before ${BLOCKS[b]}`} meta={shown.length}>
+                  {shown.map((e) => (
+                    <ListRow key={e.key} title={e.unknown.question} meta="Not answered yet" badge="Open" warn selected={e.key === entry?.key} onClick={() => setPicked(e.key)} />
+                  ))}
+                </SideGroup>
+              ))}
+        </Sidebar>
+      }
+      header={{
+        eyebrow: "Question ledger",
+        title: "What we set out to answer",
+        actions: (
           <>
-            <PageHeader
-              title={selectedQuestion.objective.value}
-              description={`Revision ${selectedQuestion.id.slice(-8)} · Target: ${selectedQuestion.target?.value ?? "None"}`}
-              actions={
-                <Button variant="secondary" onClick={() => window.print()}>
-                  Export report
-                </Button>
-              }
-            />
-            <Tabs
-              items={TABS.map((t) => ({ value: t, label: t }))}
-              value={activeTab}
-              onChange={(t) => setActiveTab(t as Tab)}
-            />
-
-            <div style={{ flex: 1, overflow: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-              {activeTab === "Ledger" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                  <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", padding: 18 }}>
-                    <h3 style={{ margin: "0 0 10px", fontSize: "var(--fs-14)", fontWeight: "var(--fw-medium)" }}>Objective</h3>
-                    <p style={{ margin: 0, fontSize: "var(--fs-13-5)", color: "var(--text-secondary)", lineHeight: 1.5 }}>{selectedQuestion.objective.value}</p>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-                    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", padding: 14 }}>
-                      <span style={{ fontSize: "var(--fs-12)", color: "var(--text-label)" }}>Task type</span>
-                      <p style={{ margin: "4px 0 0", fontSize: "var(--fs-14)", fontWeight: "var(--fw-medium)" }}>{selectedQuestion.task.value}</p>
-                    </div>
-                    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", padding: 14 }}>
-                      <span style={{ fontSize: "var(--fs-12)", color: "var(--text-label)" }}>Target variable</span>
-                      <p style={{ margin: "4px 0 0", fontSize: "var(--fs-14)", fontWeight: "var(--fw-medium)" }}>{selectedQuestion.target?.value ?? "None"}</p>
-                    </div>
-                    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", padding: 14 }}>
-                      <span style={{ fontSize: "var(--fs-12)", color: "var(--text-label)" }}>Analysis unit</span>
-                      <p style={{ margin: "4px 0 0", fontSize: "var(--fs-14)", fontWeight: "var(--fw-medium)" }}>{selectedQuestion.unit_of_analysis?.value ?? "—"}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "Criteria" && (
-                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", padding: 18 }}>
-                  <h3 style={{ margin: "0 0 10px", fontSize: "var(--fs-14)", fontWeight: "var(--fw-medium)" }}>Acceptance Criteria</h3>
-                  <p style={{ margin: 0, fontSize: "var(--fs-13-5)", color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                    {selectedQuestion.acceptance_criteria?.map((c) => c.value).join("; ") || "No explicit acceptance criteria specified for this revision."}
-                  </p>
-                </div>
-              )}
-
-              {activeTab === "Assumptions" && (
-                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", padding: 18 }}>
-                  <h3 style={{ margin: "0 0 10px", fontSize: "var(--fs-14)", fontWeight: "var(--fw-medium)" }}>Assumptions</h3>
-                  <p style={{ margin: 0, fontSize: "var(--fs-13-5)", color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                    {selectedQuestion.assumptions?.map((a) => a.value).join("; ") || "No domain assumptions documented for this revision."}
-                  </p>
-                </div>
-              )}
-
-              {activeTab === "Unknowns" && (
-                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-panel)", borderRadius: "var(--radius-sm)", padding: 18 }}>
-                  <h3 style={{ margin: "0 0 10px", fontSize: "var(--fs-14)", fontWeight: "var(--fw-medium)" }}>Documented Unknowns</h3>
-                  <p style={{ margin: 0, fontSize: "var(--fs-13-5)", color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                    {selectedQuestion.unknowns?.map((u) => u.question).join("; ") || "No open unknowns tracked for this revision."}
-                  </p>
-                </div>
-              )}
-            </div>
+            <Button onClick={() => window.print()}>Export report</Button>
+            <Button variant="primary" onClick={() => setNav("Objective")}>
+              Add question
+            </Button>
           </>
-        ) : (
-          <div className="reports-empty-viewport">
-            <div className="reports-empty-card">
-              <div className="reports-empty-icon">
-                <ReportsIcon size={28} />
-              </div>
-              <h3 className="reports-empty-title">No Questions in the Ledger</h3>
-              <p className="reports-empty-sub">
-                Revisions, acceptance criteria, assumptions, and audited evidence will appear here as you develop workflows in Objective and Flow.
-              </p>
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
+        ),
+      }}
+      tabs={{ label: "Report", items: TABS.map((t) => ({ value: t, label: t })), value: tab, onChange: (t) => setTab(t as Tab) }}
+    >
+      {tab === "Questions" && question && entry && (
+        <EntryReport entry={entry} question={question} history={questions.data} versions={versions.data ?? []} />
+      )}
+      {tab === "Sources" && <Sources />}
+    </PageFrame>
   );
 }
+
+function EntryReport({ entry, question, history, versions }: {
+  entry: Entry;
+  question: QuestionVersion;
+  history: QuestionVersion[];
+  versions: PipelineVersion[];
+}) {
+  const { selectPipelineVersion, setNav } = useSelection();
+  const objective = entry.kind === "objective";
+  const open = objective ? openEntries(question) > 0 : true;
+  const usesQuestion = (id: string) => versions.find((v) => v.id === id)?.question_version_id === question.id;
+  const usedBy = flows(versions).filter((f) => f.ids.some(usesQuestion));
+  const revisions = history.filter((q) => q.investigation_id === question.investigation_id);
+  return (
+    <article className="report-entry">
+      <header className="report-entry-head">
+        <span className="report-eyebrow">
+          Q{entry.number} · {objective ? "objective" : "open question"} · {day(question.created_at)}
+        </span>
+        <h2 className="report-question">{objective ? question.objective.value : entry.unknown.question}</h2>
+        <span className={`report-status${open ? " open" : ""}`}>{open ? "Open" : "Stated"}</span>
+      </header>
+
+      <section className="report-answer" aria-label="Current answer">
+        <h3 className="report-h">Current answer</h3>
+        {objective ? (
+          <dl className="report-facts">
+            <dt>Task</dt>
+            <dd>{question.task.value}</dd>
+            <dt>Target</dt>
+            <dd>{question.target?.value ?? "Not stated"}</dd>
+            <dt>Unit</dt>
+            <dd>{question.unit_of_analysis?.value ?? "Not stated"}</dd>
+            <dt>Horizon</dt>
+            <dd>{question.prediction_horizon?.value ?? "Not stated"}</dd>
+          </dl>
+        ) : (
+          <p>Not answered yet. It must be settled before {BLOCKS[entry.unknown.blocks]}.</p>
+        )}
+      </section>
+
+      {objective && (
+        <>
+          <ListSection label="Assumptions" items={question.assumptions.map((a) => a.value)} />
+          <ListSection label="Acceptance criteria" items={question.acceptance_criteria.map((c) => c.value)} />
+          <section className="report-section" aria-label="Evidence">
+            <h3 className="report-h">Evidence</h3>
+            {usedBy.length === 0 ? (
+              <p className="muted">No flow uses this question yet.</p>
+            ) : (
+              <div className="report-links">
+                {usedBy.map(({ head }) => (
+                  <Button key={head.id} onClick={() => { selectPipelineVersion(head.id); setNav("Flow"); }}>
+                    Open flow {flowName(head)}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </section>
+          <section className="report-section" aria-label="History">
+            <h3 className="report-h">History</h3>
+            <ol className="report-history">
+              {revisions.map((q, i) => (
+                <li key={q.id}>
+                  <span className="mono">v{revisions.length - i}</span>
+                  <span>{q.objective.value}</span>
+                  <span className="muted">{day(q.created_at)}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </>
+      )}
+    </article>
+  );
+}
+
+function ListSection({ label, items }: { label: string; items: string[] }) {
+  return (
+    <section className="report-section" aria-label={label}>
+      <h3 className="report-h">{label}</h3>
+      {items.length === 0 ? <p className="muted">None written down.</p> : <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>}
+    </section>
+  );
+}
+
+function Sources() {
+  const tables = useLoadedTables();
+  if (tables.isError) return <p role="alert" className="error pad">{tables.error.message}</p>;
+  if (tables.isPending) return <Loading text="Loading sources…" pad />;
+  if (tables.data.length === 0) return <p className="muted pad">No data loaded yet.</p>;
+  return (
+    <BodySection title="Loaded tables" note="The data the flows read.">
+      <RowList label="Sources">
+        {tables.data.map((t) => (
+          <RowItem key={t.artifact.id} name={t.name} meta={tableSize(t)} />
+        ))}
+      </RowList>
+    </BodySection>
+  );
+}
+
+const day = (timestamp: string) => new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });

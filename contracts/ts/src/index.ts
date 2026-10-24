@@ -38,6 +38,8 @@ export interface Entities {
   RuleObservation: C.RuleObservation;
   RuleRequest: C.RuleRequest;
   RuleAnswer: C.RuleAnswer;
+  MethodRequest: C.MethodRequest;
+  MethodAnswer: C.MethodAnswer;
   RuleDecision: C.RuleDecision;
   FigureSet: C.FigureSet;
   LoadedTable: C.LoadedTable;
@@ -57,8 +59,15 @@ export interface Entities {
   CreateWalk: C.CreateWalk;
   Walk: C.Walk;
   WalkDetail: C.WalkDetail;
+  FlowDecisions: C.FlowDecisions;
+  MethodFiles: C.MethodFiles;
+  VerificationRequest: C.VerificationRequest;
   WalkStep: C.WalkStep;
   Trial: C.Trial;
+  Method: C.Method;
+  ConceptSet: C.ConceptSet;
+  EvidenceSet: C.EvidenceSet;
+  Binding: C.Binding;
 }
 
 export class ContractError extends Error {}

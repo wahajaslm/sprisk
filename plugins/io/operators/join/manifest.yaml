@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.io.join@1.0.0
+title: Left join
 capability_class: transform
 description: Give each row the columns of the other table's row with the same key, keeping the rows and their order; a row whose key finds none keeps gaps. A key the other table repeats is refused, since it would copy rows. Fits nothing, so it runs before the split.
 entrypoint: sprisk_io.join:join

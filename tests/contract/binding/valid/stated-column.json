@@ -1,0 +1,10 @@
+{
+  "schema_version": "sprisk.binding/v1",
+  "concept": "core.target",
+  "source": {
+    "column": "product_type"
+  },
+  "set_by": {
+    "assurance": "stated"
+  }
+}

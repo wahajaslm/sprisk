@@ -130,6 +130,121 @@ export type RunId = string;
  */
 export type WorkerId = string;
 /**
+ * methodology.<pack>.<method>@<semver>
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodRef".
+ */
+export type MethodRef = string;
+/**
+ * <area>.<decision>, the key other methods read a decision by.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DecisionKey".
+ */
+export type DecisionKey = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TaskType".
+ */
+export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
+/**
+ * <pack>.<concept>, a meaning defined in a pack's concepts.yaml.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ConceptId".
+ */
+export type ConceptId = string;
+/**
+ * <area>.<evidence>, a measured fact one operator produces.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceKind".
+ */
+export type EvidenceKind = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodOptionId".
+ */
+export type MethodOptionId = string;
+/**
+ * The one job a step does in a flow, so methods place and replace steps by role, not by input names.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorRole".
+ */
+export type OperatorRole = "source" | "split" | "model";
+/**
+ * A verification a method declares, the name of its verify_<name>() function.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "VerificationName".
+ */
+export type VerificationName = string;
+/**
+ * A field's value: a number, a yes or no, a short text, or a list of short texts (string_list).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceValue".
+ */
+export type EvidenceValue = number | boolean | string | string[];
+/**
+ * How a method's option was taken: confirmed, a person answered the method's ask; rule, the method chose it unasked.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodAssurance".
+ */
+export type MethodAssurance = "confirmed" | "rule";
+/**
+ * The method session's one JSON line per request, tagged by `answer`: what decide() returned, what verify_<name>() found, or why the method refused its request. Any other failure ends the session.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodAnswer".
+ */
+export type MethodAnswer = MethodDecided | MethodRefused | MethodVerified;
+/**
+ * What verify_<name>() found. pass: the promise holds. fail: it does not. inconclusive: the evidence cannot say, such as one side with no groups. Never stale: only the control plane knows what changed since.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "VerificationOutcome".
+ */
+export type VerificationOutcome = "pass" | "fail" | "inconclusive";
+/**
+ * label: what a model predicts; an all-rows step may never read it. text: free text. entity_identifier: groups rows of one real-world thing. time: when a row's event happened.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ConceptKind".
+ */
+export type ConceptKind = "label" | "text" | "entity_identifier" | "time";
+/**
+ * column: a column of the loaded data. derived: a column a step adds.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingSourceKind".
+ */
+export type BindingSourceKind = "column" | "derived";
+/**
+ * Who set the binding, tagged by assurance: a person stated it, or a method's option made it, confirmed by a person or set unasked by the method (rule).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingSetBy".
+ */
+export type BindingSetBy = BindingStated | BindingByMethod;
+/**
+ * all: reads every row, before the split, so it may never read a label concept. train: reads train rows only.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorScope".
+ */
+export type OperatorScope = "all" | "train";
+/**
+ * string_list: short values shown to people, such as the ids of overlapping groups.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceFieldType".
+ */
+export type EvidenceFieldType = "integer" | "number" | "boolean" | "string" | "string_list";
+/**
  * methodology.<pack>.<rule>@<semver>
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -197,7 +312,29 @@ export type GraphEffect =
        * A step that joins: the output feeding its `other` input, a source table no step read before (ADR-0059). Absent for a step with one input.
        */
       other?: string;
+    }
+  | {
+      kind: "add_node";
+      node_id: NodeId;
+      operator: OperatorRef;
+      params: Params;
+      inputs: {
+        [k: string]: PortRef;
+      };
+    }
+  | {
+      kind: "set_input";
+      node_id: NodeId;
+      port: PortName;
+      from: PortRef;
     };
+/**
+ * `<node_id>.<port_name>`.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PortRef".
+ */
+export type PortRef = string;
 /**
  * Pinned rule: <pack>.<rule>@<semver>.
  *
@@ -214,19 +351,19 @@ export type CheckRef = string;
 export type MethodologyReviewStatus =
   "settled" | "proposal" | "needs_fact" | "needs_run" | "waiting" | "no_subject" | "not_applicable" | "reopen";
 /**
+ * Immutable record of one decision made through Apply: a rule's alternative, or a method's option (ADR-0064).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyDecision".
+ */
+export type MethodologyDecision = MethodologyDecisionByRule | MethodologyDecisionByMethod;
+/**
  * Stable within a notebook across versions, as in Jupyter's nbformat 4.5.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "NotebookCellId".
  */
 export type NotebookCellId = string;
-/**
- * `<node_id>.<port_name>`.
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "PortRef".
- */
-export type PortRef = string;
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "RunStatus".
@@ -281,11 +418,6 @@ export type CapabilityClass =
   | "sink"
   | "custom_code";
 /**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "TaskType".
- */
-export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
-/**
  * What a port carries. A table is Parquet; a matrix is rows by named number columns, stored sparse (SciPy CSR in .npz, ADR-0058): row i is row i of the table it was made from.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -330,6 +462,35 @@ export type Stage = "load" | "split" | "explore" | "clean" | "model" | "evaluate
  * via the `definition` "SelectionMetric".
  */
 export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse" | "weighted_f1";
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ReportId".
+ */
+export type ReportId = string;
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkId".
+ */
+export type WalkId = string;
+/**
+ * One record a claim rests on, by id.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ReportEvidence".
+ */
+export type ReportEvidence =
+  | {
+      decision: MethodologyDecisionId;
+    }
+  | {
+      run: RunId;
+    }
+  | {
+      pipeline_version: PipelineVersionId;
+    }
+  | {
+      walk_step: WalkStepRef;
+    };
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "AttemptState".
@@ -381,11 +542,6 @@ export type StudyStatus = "running" | "completed" | "budget_reached" | "failed";
  */
 export type TrialState = "not_started" | "running" | "succeeded" | "failed" | "cancelled";
 /**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "WalkId".
- */
-export type WalkId = string;
-/**
  * Local CSV or Parquet files, inside an allowed data folder, read as file_source steps. The first holds the rows to predict on; any other is joined to it by a rule.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -400,7 +556,7 @@ export type WalkSources = string[];
  */
 export type WalkStatus = "walking" | "stopped";
 /**
- * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.
+ * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. unverified: every rule is settled, but a promise a decision made did not pass on the head's run, so the test rows stay sealed. error: the engine could not take its next step; the detail says why.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkStopReason".
@@ -413,15 +569,30 @@ export type WalkStopReason =
   | "source_changed"
   | "run_failed"
   | "stale"
+  | "unverified"
   | "budget_exhausted"
   | "error";
 /**
- * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. stop: ended the walk.
+ * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. verify: checked each promise the walk's decisions made, on the evidence the head's run measured (ADR-0063). stop: ended the walk.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkAction".
  */
-export type WalkAction = "build" | "run" | "apply" | "compare" | "score" | "stop";
+export type WalkAction = "build" | "run" | "apply" | "compare" | "measure" | "decide" | "score" | "verify" | "stop";
+/**
+ * pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseResult".
+ */
+export type PromiseResult = "pass" | "fail" | "inconclusive" | "not_evaluated";
+/**
+ * pass, fail, inconclusive, not_evaluated: what the last check found, and it still holds for this version. stale: the step that measured it, or a step before it, changed since; never shown as pass.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseStanding".
+ */
+export type PromiseStanding = "pass" | "fail" | "inconclusive" | "not_evaluated" | "stale";
 /**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *
@@ -446,6 +617,10 @@ export interface CreateRun {
    * Reuse this run's results for every step whose definition is unchanged; run the rest (ADR-0026). Omitted: run from the start.
    */
   reuse_run_id?: string;
+  /**
+   * Run this step and every step after it again, even where unchanged; reuse or take from the cache only the steps before it (ADR-0026 amendment). It must be a step of the version. Omitted: only changed steps run.
+   */
+  run_from_node_id?: string;
 }
 /**
  * One committed output of an attempt: the port that produced it and the artifact.
@@ -1154,6 +1329,403 @@ export interface Params {
   [k: string]: unknown;
 }
 /**
+ * A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Method".
+ */
+export interface Method {
+  schema_version: "sprisk.method/v1";
+  id: MethodRef;
+  decides: DecisionKey;
+  /**
+   * The group this decision is shown in: one stage card on the canvas, one notebook section.
+   */
+  activity: string;
+  /**
+   * The decision as a question for people.
+   */
+  question: string;
+  applies_when?: MethodAppliesWhen;
+  needs: MethodNeeds;
+  options: MethodOption[];
+  /**
+   * Promises an option can make, by name. An option lists the ones it makes in verify.
+   */
+  verifications: {
+    [k: string]: MethodVerification;
+  };
+  /**
+   * The published standard the method follows.
+   */
+  source: string;
+}
+/**
+ * When the method applies. Absent: always.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodAppliesWhen".
+ */
+export interface MethodAppliesWhen {
+  task: TaskType[];
+}
+/**
+ * Everything decide() may read. It reads nothing else.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodNeeds".
+ */
+export interface MethodNeeds {
+  concepts: ConceptId[];
+  evidence: EvidenceKind[];
+  decisions: DecisionKey[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodOption".
+ */
+export interface MethodOption {
+  id: MethodOptionId;
+  label: string;
+  action?: MethodAction;
+  /**
+   * The verifications this option promises, by name.
+   */
+  verify: VerificationName[];
+}
+/**
+ * What the option changes. Absent: nothing.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodAction".
+ */
+export interface MethodAction {
+  bind?: MethodBind;
+  replace?: MethodReplace;
+  insert?: MethodInsert;
+}
+/**
+ * Binds a concept to a column that the producer of an evidence kind adds.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodBind".
+ */
+export interface MethodBind {
+  concept: ConceptId;
+  evidence: EvidenceKind;
+  /**
+   * A column the producer writes, never a dataset column.
+   */
+  column: string;
+}
+/**
+ * Replaces the step with this role by a step running operator.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodReplace".
+ */
+export interface MethodReplace {
+  role: OperatorRole;
+  operator: OperatorRef;
+  settings?: Params1;
+  /**
+   * Params a project's binding fills: param name to concept. A param the operator already maps to a concept is not listed here. Absent: none.
+   */
+  concepts?: {
+    [k: string]: ConceptId;
+  };
+}
+/**
+ * Params that do not depend on the project. Absent: none.
+ */
+export interface Params1 {
+  [k: string]: unknown;
+}
+/**
+ * Inserts a step running operator on the rows the step with role `before` reads (ADR-0063 slice 6).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodInsert".
+ */
+export interface MethodInsert {
+  before: OperatorRole;
+  operator: OperatorRef;
+  /**
+   * The inserted step's id; a free one with a suffix when the flow already has it.
+   */
+  node_id: string;
+  settings?: Params2;
+  /**
+   * Params read from a field of evidence the method needs: param name to <area>.<evidence>.<field>. Absent: none.
+   */
+  from_evidence?: {
+    [k: string]: string;
+  };
+  /**
+   * Params a project's binding fills: param name to concept. Absent: none.
+   */
+  concepts?: {
+    [k: string]: ConceptId;
+  };
+}
+/**
+ * Params that do not depend on the project. Absent: none.
+ */
+export interface Params2 {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodVerification".
+ */
+export interface MethodVerification {
+  needs: EvidenceKind;
+  /**
+   * What holds when it passes, for people.
+   */
+  promise: string;
+  settings?: Params3;
+}
+/**
+ * Values verify_<name>() reads. Absent: none.
+ */
+export interface Params3 {
+  [k: string]: unknown;
+}
+/**
+ * Rust to the method session (`python -m sprisk_workers.method`), one JSON line per decision (ADR-0063): the method module Rust picked from the loaded catalog, and only what its needs declare. decide() may read nothing else.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodRequest".
+ */
+export interface MethodRequest {
+  schema_version: "sprisk.method_request/v1";
+  /**
+   * Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored.
+   */
+  module: string;
+  method: MethodRef;
+  needs: MethodNeeds;
+  /**
+   * The ids of the method's options: decide() chooses or asks for one of them.
+   */
+  options: MethodOptionId[];
+  task: TaskType;
+  evidence: EvidenceSet;
+  /**
+   * Each needed decision, by its key: the option chosen.
+   */
+  decisions: {
+    [k: string]: MethodOptionId;
+  };
+  /**
+   * The needed concepts a stated, confirmed or method-made binding names. Never a column name.
+   */
+  bound: ConceptId[];
+}
+/**
+ * Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names.
+ */
+export interface EvidenceSet {
+  [k: string]: EvidenceFields;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceFields".
+ */
+export interface EvidenceFields {
+  [k: string]: EvidenceValue;
+}
+/**
+ * Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "VerificationRequest".
+ */
+export interface VerificationRequest {
+  schema_version: "sprisk.verification_request/v1";
+  /**
+   * Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored.
+   */
+  module: string;
+  method: MethodRef;
+  verification: VerificationName;
+  evidence: EvidenceFields1;
+  settings: Params4;
+}
+/**
+ * The fields of the evidence kind the verification needs.
+ */
+export interface EvidenceFields1 {
+  [k: string]: EvidenceValue;
+}
+/**
+ * The verification's settings from method.yaml; empty when it has none.
+ */
+export interface Params4 {
+  [k: string]: unknown;
+}
+/**
+ * Read-only files of one method folder (ADR-0063): its method.yaml and method.py, as the packs loaded them, so a person sees the code that decides and checks a step. Served by GET /methods/{id}/source; the API reads only files inside the method's folder.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodFiles".
+ */
+export interface MethodFiles {
+  method: MethodRef;
+  files: {
+    /**
+     * Relative to the method folder, e.g. method.yaml. Never an absolute path.
+     */
+    path: string;
+    language: "yaml" | "python";
+    text: string;
+  }[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodDecided".
+ */
+export interface MethodDecided {
+  answer: "decided";
+  method: MethodRef;
+  /**
+   * choose: the method applies the option. ask: a person confirms the option, or picks another, before anything relies on it.
+   */
+  outcome: "choose" | "ask";
+  option: MethodOptionId;
+  /**
+   * Why, for a person. For ask, the question itself.
+   */
+  reason: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodRefused".
+ */
+export interface MethodRefused {
+  answer: "refused";
+  /**
+   * The method's own error (an undeclared read, an unknown option). It may name local paths, so it goes to the log, not to a client.
+   */
+  error: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodVerified".
+ */
+export interface MethodVerified {
+  answer: "verified";
+  method: MethodRef;
+  verification: VerificationName;
+  result: VerificationOutcome;
+  /**
+   * What the evidence showed, for a person.
+   */
+  detail: string;
+}
+/**
+ * A person's answer to a method's ask (ADR-0063 amendment): the option to apply for the decision. The walk applies it with assurance confirmed.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "DecisionAnswer".
+ */
+export interface DecisionAnswer {
+  decides: DecisionKey;
+  option: MethodOptionId;
+}
+/**
+ * A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for. Served by GET /concepts with the concepts of every loaded pack.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ConceptSet".
+ */
+export interface ConceptSet {
+  schema_version: "sprisk.concept_set/v1";
+  concepts: {
+    [k: string]: Concept;
+  };
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Concept".
+ */
+export interface Concept {
+  kind: ConceptKind;
+  description: string;
+  binds_to: BindingSourceKind[];
+}
+/**
+ * Which column means a concept in one project (ADR-0063). Column names live only here.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Binding".
+ */
+export interface Binding {
+  schema_version: "sprisk.binding/v1";
+  concept: ConceptId;
+  source: BindingSource;
+  set_by: BindingSetBy;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingSource".
+ */
+export interface BindingSource {
+  column: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  step?: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingStated".
+ */
+export interface BindingStated {
+  assurance: "stated";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "BindingByMethod".
+ */
+export interface BindingByMethod {
+  assurance: MethodAssurance;
+  method: MethodRef;
+}
+/**
+ * Where the engine adds an evidence producer: on the rows going into (input) or coming out of (output) the step with this role.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "OperatorAttach".
+ */
+export interface OperatorAttach {
+  role: OperatorRole;
+  side: "input" | "output";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceProduced".
+ */
+export interface EvidenceProduced {
+  /**
+   * The producer the engine adds when several operators produce this kind. Absent: false.
+   */
+  default?: boolean;
+  fields: {
+    [k: string]: EvidenceFieldType;
+  };
+}
+/**
+ * What one evidence producer measured, written to its output port named evidence (ADR-0063): each kind it produces, with each field's value. The operator's produces says which kinds and fields, of which types; the control plane checks the file against it when the step's outputs are saved.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "EvidenceSet".
+ */
+export interface EvidenceSet1 {
+  [k: string]: EvidenceFields;
+}
+/**
  * What a rule's decide() reads (ADR-0042): confirmed question facts and measured profile values, never raw rows, plus its settings. Sent by Rust to the Python rule runner.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1228,13 +1800,13 @@ export interface RuleDecision {
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params1;
+      params?: Params5;
     },
     ...{
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params1;
+      params?: Params5;
     }[]
   ];
   evidence: MethodologyEvidence[];
@@ -1242,7 +1814,7 @@ export interface RuleDecision {
 /**
  * Concrete params for the manifest action's operator; present when applicable.
  */
-export interface Params1 {
+export interface Params5 {
   [k: string]: unknown;
 }
 /**
@@ -1546,12 +2118,12 @@ export interface ApplyMethodologyDecision {
   idempotency_key: string;
 }
 /**
- * Immutable record of an alternative atomically applied to a new pipeline version.
+ * A rule's alternative atomically applied to a new pipeline version.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyDecision".
+ * via the `definition` "MethodologyDecisionByRule".
  */
-export interface MethodologyDecision {
+export interface MethodologyDecisionByRule {
   schema_version: "sprisk.methodology_decision/v1";
   id: MethodologyDecisionId;
   proposal_id: MethodologyProposalId;
@@ -1595,6 +2167,40 @@ export interface GuardrailResult {
    * Whether `mean` is at least `at_least`.
    */
   passed: boolean;
+}
+/**
+ * A method's option taken through the same Apply as a rule's (ADR-0064): keyed per walk round, refused on a changed base, and cited by every step it changed.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyDecisionByMethod".
+ */
+export interface MethodologyDecisionByMethod {
+  schema_version: "sprisk.methodology_decision/v1";
+  id: MethodologyDecisionId;
+  method: MethodRef;
+  decides: string;
+  option: MethodOptionId;
+  assurance: MethodAssurance;
+  reason: string;
+  question_version_id: QuestionVersionId;
+  base_pipeline_version_id: PipelineVersionId;
+  /**
+   * The version the option made. Absent when it changed no step.
+   */
+  pipeline_version_id?: string;
+  /**
+   * The patch the option applied, in order. Absent: it changed no step.
+   */
+  effects?: GraphEffect[];
+  /**
+   * The bindings the option made. Absent: none.
+   */
+  bindings?: Binding[];
+  /**
+   * The verifications the option promises, by name. Absent: none.
+   */
+  promises?: VerificationName[];
+  created_at: Timestamp;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1732,6 +2338,10 @@ export interface Run {
    * The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start.
    */
   reuse_run_id?: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  run_from_node_id?: string;
   created_at: Timestamp;
   /**
    * UTC, whole seconds, Z suffix. One canonical form so every language round-trips it unchanged. Pattern only: typify ignores pattern when format is set.
@@ -1950,6 +2560,10 @@ export interface Operator {
   id: OperatorRef;
   capability_class: CapabilityClass;
   model?: OperatorModel;
+  /**
+   * The step's name for people: the standard term for what it does (Group split, Imputation). Shown by the UI, CLI and notebooks; the description explains it in plain words. Absent: the operator's name stands in.
+   */
+  title?: string;
   description?: string;
   /**
    * Python `module:function` the worker calls.
@@ -1963,6 +2577,27 @@ export interface Operator {
    * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows.
    */
   fits_on_train?: boolean;
+  /**
+   * The one job a step does in a flow, so methods place and replace steps by role, not by input names.
+   */
+  role?: "source" | "split" | "model";
+  attach?: OperatorAttach1;
+  /**
+   * Which rows the step reads. Absent: whatever its inputs carry.
+   */
+  scope?: "all" | "train";
+  /**
+   * Params a project's binding fills: param name to concept (ADR-0063). Absent: none.
+   */
+  concepts?: {
+    [k: string]: ConceptId;
+  };
+  /**
+   * The evidence the step measures, by kind, with its fields (ADR-0063). The step writes it as one EvidenceSet to its output named evidence, and needs an attach. Absent: none.
+   */
+  produces?: {
+    [k: string]: EvidenceProduced;
+  };
   inputs: InputPort[];
   outputs: Port[];
   /**
@@ -2012,6 +2647,13 @@ export interface OperatorModel {
 export interface SearchSetting {
   name: string;
   values: unknown[];
+}
+/**
+ * Set on an evidence producer: where the engine adds it (ADR-0063).
+ */
+export interface OperatorAttach1 {
+  role: OperatorRole;
+  side: "input" | "output";
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2112,6 +2754,14 @@ export interface QuestionVersion {
   costs?: CostsFact;
   interpretability?: InterpretabilityFact;
   success_bar?: SuccessBarFact;
+  /**
+   * Which column means each concept the packs ask for, in this project (ADR-0063). One binding per concept. Absent: none stated.
+   */
+  bindings?: Binding[];
+  /**
+   * A person's answers to the methods' asks, one per decision key (ADR-0063 amendment). Absent: none given.
+   */
+  answers?: DecisionAnswer[];
   created_at: Timestamp;
 }
 /**
@@ -2245,6 +2895,51 @@ export interface CostsFact1 {
    * Costs are never inferred or measured.
    */
   origin: "explicit" | "confirmed";
+}
+/**
+ * What a completed walk found, built from its records, never written by a model (ADR-0064). Immutable; one per completed walk. Its answer is the model's score on the test rows, scored once, against the success bar and the baseline.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Report".
+ */
+export interface Report {
+  schema_version: "sprisk.report/v1";
+  id: ReportId;
+  walk_id: WalkId;
+  question_version_id: QuestionVersionId;
+  /**
+   * The question's objective, as a person stated it.
+   */
+  question: string;
+  answer: ReportClaim;
+  /**
+   * One per decision the walk made and per promise it checked, in trail order.
+   */
+  claims: ReportClaim[];
+  /**
+   * What the answer does not show.
+   */
+  limitations: string[];
+  created_at: Timestamp;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ReportClaim".
+ */
+export interface ReportClaim {
+  statement: string;
+  /**
+   * The records the statement rests on. The engine builds every claim on at least one.
+   */
+  evidence: ReportEvidence[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkStepRef".
+ */
+export interface WalkStepRef {
+  walk_id: WalkId;
+  round: number;
 }
 /**
  * One try of one step (a node in a run). Retries create a new attempt with the next number; old attempts are never replaced (arch doc §9).
@@ -2563,7 +3258,7 @@ export interface Trial {
    * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
    */
   operator: string;
-  settings: Params2;
+  settings: Params6;
   state: TrialState;
   /**
    * Its attempts, oldest first.
@@ -2577,7 +3272,7 @@ export interface Trial {
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  */
-export interface Params2 {
+export interface Params6 {
   [k: string]: unknown;
 }
 /**
@@ -2650,6 +3345,46 @@ export interface WalkStop {
    * What is open, for a person to read. Never parsed.
    */
   detail: string;
+  /**
+   * Every question the walk's look found open, as one list (ADR-0063 amendment). Absent: the walk stopped for another reason.
+   */
+  asks?: WalkAsk[];
+}
+/**
+ * One open question. A method's ask names its method and options: a person answers it with one option, on the question. Any other names the question fact to state, as its key.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkAsk".
+ */
+export interface WalkAsk {
+  /**
+   * <area>.<decision>, the key other methods read a decision by.
+   */
+  decides: string;
+  /**
+   * The question, for a person.
+   */
+  question: string;
+  /**
+   * methodology.<pack>.<method>@<semver>
+   */
+  method?: string;
+  /**
+   * The option the method would take, once a person confirms it.
+   */
+  option?: string;
+  /**
+   * Every option of the method, for the person to pick from. Present exactly when method is.
+   */
+  options?: WalkAskOption[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "WalkAskOption".
+ */
+export interface WalkAskOption {
+  id: MethodOptionId;
+  label: string;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2661,6 +3396,10 @@ export interface WalkStop1 {
    * What is open, for a person to read. Never parsed.
    */
   detail: string;
+  /**
+   * Every question the walk's look found open, as one list (ADR-0063 amendment). Absent: the walk stopped for another reason.
+   */
+  asks?: WalkAsk[];
 }
 /**
  * One thing the engine did, and why (ADR-0060). Immutable; a walk's trail is its steps in round order.
@@ -2701,11 +3440,39 @@ export interface WalkStep {
    */
   methodology_decision_id?: string;
   /**
-   * The version a build or apply made.
+   * The version a build, apply, measure or decide made. Absent for a decide whose option changes no step.
    */
   made_pipeline_version_id?: string;
   /**
-   * The run a run step started.
+   * The patch a measure or decide step applied, in order (ADR-0063). Absent for every other action.
+   */
+  effects?: GraphEffect[];
+  /**
+   * methodology.<pack>.<method>@<semver>
+   */
+  method?: string;
+  /**
+   * The option a decide step took. A decide step always has method, decides, option and assurance.
+   */
+  option?: string;
+  /**
+   * How a method's option was taken: confirmed, a person answered the method's ask; rule, the method chose it unasked.
+   */
+  assurance?: "confirmed" | "rule";
+  /**
+   * The bindings a decide step's option made. Absent: none.
+   */
+  bindings?: Binding[];
+  /**
+   * The verifications a decide step's option promises, by name. Absent: none.
+   */
+  promises?: VerificationName[];
+  /**
+   * What a verify step found, one item per promise the walk's decisions made. Absent for every other action.
+   */
+  verifications?: PromiseCheck[];
+  /**
+   * The run a run step started, or the run whose evidence a verify step read.
    */
   run_id?: string;
   /**
@@ -2713,6 +3480,100 @@ export interface WalkStep {
    */
   reason: string;
   created_at: Timestamp;
+}
+/**
+ * One promise checked on the evidence a run measured (ADR-0063).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseCheck".
+ */
+export interface PromiseCheck {
+  decides: string;
+  method: MethodRef;
+  verification: VerificationName;
+  /**
+   * What holds when it passes, from method.yaml.
+   */
+  promise: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  step?: string;
+  result: PromiseResult;
+  /**
+   * What the evidence showed, or why nothing measured it.
+   */
+  detail: string;
+}
+/**
+ * What decided a flow version, for people (ADR-0063 slice 5): the decisions of the walk that made the version or its nearest ancestor, each with the steps it shaped and the status of its promises on this version. Read only; worked out from the walk's steps.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "FlowDecisions".
+ */
+export interface FlowDecisions {
+  schema_version: "sprisk.flow_decisions/v1";
+  pipeline_version_id: PipelineVersionId;
+  /**
+   * The walk that made the version or its nearest ancestor. Absent: no walk did, so nothing decided it.
+   */
+  walk_id?: string;
+  decisions: FlowDecision[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "FlowDecision".
+ */
+export interface FlowDecision {
+  decides: string;
+  method: MethodRef;
+  /**
+   * The method's activity: one stage card, one notebook section.
+   */
+  activity: string;
+  /**
+   * The question the method answers.
+   */
+  question: string;
+  option: MethodOptionId;
+  /**
+   * The option, for people.
+   */
+  label: string;
+  /**
+   * Why it was taken, from the decide step.
+   */
+  reason: string;
+  assurance: MethodAssurance;
+  /**
+   * The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises.
+   */
+  steps: NodeId[];
+  /**
+   * The bindings it made. Absent: none.
+   */
+  bindings?: Binding[];
+  promises: PromiseStatus[];
+}
+/**
+ * One promise's standing on the version asked about.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseStatus".
+ */
+export interface PromiseStatus {
+  verification: VerificationName;
+  promise: string;
+  status: PromiseStanding;
+  detail: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  step?: string;
+  /**
+   * pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.
+   */
+  last_result?: "pass" | "fail" | "inconclusive" | "not_evaluated";
 }
 /**
  * A walk and its trail, oldest step first. A walk takes at most max_actions steps, so the trail is bounded.

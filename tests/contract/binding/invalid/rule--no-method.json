@@ -1,0 +1,10 @@
+{
+  "schema_version": "sprisk.binding/v1",
+  "concept": "core.target",
+  "source": {
+    "column": "y"
+  },
+  "set_by": {
+    "assurance": "rule"
+  }
+}

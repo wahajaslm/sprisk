@@ -1,86 +1,113 @@
 import type { ColumnProfile, DatasetProfile, LoadedTable } from "@sprisk/contracts";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 
 import { useDatasetProfile } from "../../api/datasets.ts";
-import { shortName } from "../../flow/stages.ts";
+import { useTablePage } from "../../api/hooks.ts";
+import { PlainTable } from "../notebook/CellOutputs.tsx";
+import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { useSelection } from "../../workbench/selection.ts";
+import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
 import { correlationField, distributions, missingMap } from "./profileFigures.ts";
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
-/** One table: what it is, who loads it, each column, and three pictures of its values. */
-export function DatasetDetail({ dataset, usedBy }: { dataset: LoadedTable; usedBy: string[] }) {
-  const profile = useDatasetProfile(dataset.artifact.id);
-  const showRun = useSelection((s) => s.showRun);
-  const setNav = useSelection((s) => s.setNav);
-  const [tab, setTab] = useState<"columns" | "visuals">("columns");
-  const first = dataset.used_by[0];
+/** Numeric columns a correlation field needs before it is drawn. */
+const MIN_CORRELATED = 3;
 
+/** One step that loads the table, named for people. */
+export type Use = { label: string; use: LoadedTable["used_by"][number] };
+
+/** Rows a preview shows: one page from the server, never the table (ADR-0038 amendment). */
+const PREVIEW_ROWS = 50;
+
+/** The table's first rows, as the design shows them, in the one plain table. */
+export function PreviewTab({ dataset }: { dataset: LoadedTable }) {
+  const page = useTablePage(dataset.artifact.id, 0, PREVIEW_ROWS);
+  if (page.isError) return <p role="alert" className="error">The rows could not be read: {page.error.message}</p>;
+  if (page.isPending) return <Loading text="Reading the first rows…" />;
   return (
-    <section className="dsx-detail" aria-label={dataset.name}>
-      <header className="dsx-title">
-        <div>
-          <h1>{dataset.name}</h1>
-          <p className="muted">Loaded by {shortName(dataset.operator)} · Used by {usedBy.join(", ") || "—"}</p>
-        </div>
-        <div className="dsx-actions">
-          {first && (
-            <button
-              type="button"
-              className="page-btn ds-open-btn"
-              aria-label={`Open ${dataset.name} in Flow`}
-              onClick={() => {
-                showRun(first.pipeline_version_id, first.run_id, first.node_id);
-                setNav("Flow");
-              }}
-            >
-              Open in flow
-            </button>
-          )}
-        </div>
-      </header>
-      <div className="dsx-tabs" role="tablist" aria-label="Dataset view tabs">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "columns"}
-          className={`dsx-tab-btn${tab === "columns" ? " active" : ""}`}
-          onClick={() => setTab("columns")}
-        >
-          Columns & Schema ({profile.data ? profile.data.columns.length : dataset.total_columns})
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "visuals"}
-          className={`dsx-tab-btn${tab === "visuals" ? " active" : ""}`}
-          onClick={() => setTab("visuals")}
-        >
-          Distributions & Correlations
-        </button>
-      </div>
-      {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
-      <p className="nv-note ds-note">
-        Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
-        Missing counts empty cells, NaN and infinity.
-      </p>
+    <div className="ds-preview">
+      <PlainTable page={page.data} label={`First rows of ${dataset.name}`} rowNumbers />
+      <p className="ds-note">{`First ${page.data.rows.length} rows. Includes held-out test rows; for looking only.`}</p>
+    </div>
+  );
+}
+
+/** Each column and three pictures of the table's values. A profile request sends no rows
+ * (ADR-0038). */
+export function ProfileTab({ dataset }: { dataset: LoadedTable }) {
+  const profile = useDatasetProfile(dataset.artifact.id);
+  return (
+    <div className="ds-profile">
       {profile.isError ? (
         <p role="alert" className="error">{profile.error.message}</p>
       ) : profile.isPending ? (
         <Loading text="Profiling the table…" />
       ) : (
         <>
-          <Partial profile={profile.data} />
-          <div className={`dsx-tab-pane${tab === "columns" ? " active" : ""}`} data-active={tab === "columns"}>
+          <MissingShare profile={profile.data} />
+          <BodySection title="Columns" note="Each column's type, missing share, distinct values and shape.">
+            <Partial profile={profile.data} />
             <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
-          </div>
-          <div className={`dsx-tab-pane${tab === "visuals" ? " active" : ""}`} data-active={tab === "visuals"}>
+          </BodySection>
+          <BodySection title="Distributions" note="Where values are missing, how numeric columns correlate, and each column's spread.">
             <Plots profile={profile.data} />
-          </div>
+          </BodySection>
         </>
       )}
-    </section>
+      {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
+      <p className="ds-note">
+        Includes every row, including held-out test rows. Use it to inspect the data, not to choose features, transforms or models.
+        Missing counts empty cells, NaN and infinity.
+      </p>
+    </div>
+  );
+}
+
+/** Each flow and step that loads the table, each with a way to open it. */
+export function LineageTab({ lineage, onOpen }: { lineage: Use[]; onOpen: (use: Use["use"]) => void }) {
+  if (lineage.length === 0) return <p className="muted">No flow loads this table yet.</p>;
+  return (
+    <BodySection title="Loaded by" note="Each flow and step that loads this table.">
+      <RowList label="Lineage">
+        {lineage.map((l) => (
+          <RowItem key={l.label} name={l.label} meta={`run ${l.use.run_id.slice(-6)}`} action={<Button size="sm" onClick={() => onOpen(l.use)}>Open</Button>} />
+        ))}
+      </RowList>
+    </BodySection>
+  );
+}
+
+/** The design's profile view: one bar per column for its missing share, red from 20%, then
+ * the columns missing most. */
+function MissingShare({ profile }: { profile: DatasetProfile }) {
+  const rows = profile.profiled_rows;
+  const shares = profile.columns.map((c) => ({ name: c.name, share: rows === 0 ? 0 : c.missing / rows }));
+  const most = Math.max(...shares.map((c) => c.share), 0.0001);
+  const worst = [...shares].sort((a, b) => b.share - a.share).slice(0, 4);
+  // A chart of zeros draws an empty box; one line says the same.
+  if (shares.every((c) => c.share === 0)) {
+    return <BodySection title="Missing share per column" note="No column has missing values.">{null}</BodySection>;
+  }
+  return (
+    <BodySection title="Missing share per column" note="Red from 20% empty.">
+      <div className="ds-bars" aria-hidden="true">
+        {shares.map((c) => (
+          <span key={c.name} className={c.share >= MISSING_WARN ? "warn" : undefined} style={{ height: `${Math.max(2, (c.share / most) * 100)}%` }} />
+        ))}
+      </div>
+      <ul className="ds-worst" aria-label="Columns missing most">
+        {worst.map((c) => (
+          <li key={c.name} className={c.share >= MISSING_WARN ? "warn" : undefined}>
+            <span className="ds-worst-name">{c.name}</span>
+            <span className="ds-worst-bar">
+              <span style={{ width: `${(c.share / most) * 100}%` }} />
+            </span>
+            <span className="ds-worst-share">{percent(c.share)}</span>
+          </li>
+        ))}
+      </ul>
+    </BodySection>
   );
 }
 
@@ -106,7 +133,8 @@ function Columns({ name, columns, rows }: { name: string; columns: ColumnProfile
               <td>
                 <span className="ds-missing">
                   <span className="ds-missing-bar" aria-hidden="true">
-                    <span className={share > 0 ? "warn" : undefined} style={{ width: `${share * 100}%` }} />
+                    {/* Red is for problems (ADR-0061): a column 20% or more empty. */}
+                    <span data-testid="missing" className={share >= MISSING_WARN ? "warn" : undefined} style={{ width: `${share * 100}%` }} />
                   </span>
                   <span className="mono">{percent(share)}</span>
                 </span>
@@ -140,7 +168,9 @@ function Shape({ column }: { column: ColumnProfile }) {
 function Plots({ profile }: { profile: DatasetProfile }) {
   const css = getComputedStyle(document.documentElement);
   const color = (token: string) => css.getPropertyValue(token).trim();
-  const figures = [missingMap(profile, color), correlationField(profile, color), distributions(profile, color)];
+  // Two numeric columns make a 2 × 2 field that says less than their one number; draw it from three.
+  const correlated = profile.correlation.columns.length >= MIN_CORRELATED;
+  const figures = [missingMap(profile, color), ...(correlated ? [correlationField(profile, color)] : []), distributions(profile, color)];
   return (
     <section className="ds-plots" aria-label="Plots">
       {figures.map((figure) => {
@@ -178,5 +208,7 @@ function missingShare(profile: DatasetProfile): number {
   const cells = profile.profiled_rows * profile.columns.length;
   return cells === 0 ? 0 : profile.columns.reduce((sum, c) => sum + c.missing, 0) / cells;
 }
+
+const MISSING_WARN = 0.2;
 
 const percent = (share: number) => (share > 0 && share < 0.01 ? "<1%" : `${Math.round(share * 100)}%`);

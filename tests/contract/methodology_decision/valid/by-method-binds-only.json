@@ -1,0 +1,20 @@
+{
+  "schema_version": "sprisk.methodology_decision/v1",
+  "id": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ3",
+  "method": "methodology.common.repeated_items@1.0.0",
+  "decides": "data.repeated_items",
+  "option": "group_by_title",
+  "assurance": "confirmed",
+  "reason": "Confirmed by a person: rows with matching titles are the same item.",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "base_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "bindings": [
+    {
+      "schema_version": "sprisk.binding/v1",
+      "concept": "common.item_identity",
+      "source": { "column": "item_group", "step": "near_duplicates" },
+      "set_by": { "assurance": "confirmed", "method": "methodology.common.repeated_items@1.0.0" }
+    }
+  ],
+  "created_at": "2026-10-22T10:02:00Z"
+}

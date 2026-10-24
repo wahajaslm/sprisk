@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
-import type { Fact, QuestionVersion, TaskType, Unknown } from "@sprisk/contracts";
+import type { Binding, Fact, QuestionVersion, SelectionMetric, TaskType, Unknown } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
 import { useLoadedTables, useDatasetProfile } from "../../api/datasets.ts";
-import { usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
+import { useConcepts } from "../../api/methodology.ts";
+import { useOperatorsByRef, usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
 import { useQuestionVersions, useSaveQuestionVersion } from "../../api/questions.ts";
 import { inferQuestionLedger } from "../../api/copilot.ts";
 import { useSelection } from "../../workbench/selection.ts";
@@ -12,16 +13,51 @@ import { Tag } from "../../components/ui/Tag.tsx";
 import { SendIcon, SparkIcon } from "../Icons.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { stepTitle } from "../../flow/stages.ts";
-import { timestamp } from "../../flow/edit.ts";
+import { nextVersion, timestamp } from "../../flow/edit.ts";
+import { currentQuestion } from "./ledger.ts";
+import { StartWalk } from "./StartWalk.tsx";
 
 const fact = (value: string): Fact => ({ value: value.trim(), origin: "explicit" });
 const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
+const stated = (concept: string, column: string): Binding => ({
+  schema_version: "sprisk.binding/v1",
+  concept,
+  source: { column: column.trim() },
+  set_by: { assurance: "stated" },
+});
+
+type Interpretability = NonNullable<QuestionVersion["interpretability"]>["value"];
+
+const METRICS: SelectionMetric[] = ["weighted_f1", "balanced_accuracy", "expected_cost", "rmse"];
+
+/** `question` without the facts the form edits, so a revision keeps the rest. */
+function withoutEdited(question: QuestionVersion): Partial<QuestionVersion> {
+  const {
+    objective: _objective,
+    task: _task,
+    target: _target,
+    unit_of_analysis: _unit,
+    prediction_horizon: _horizon,
+    assumptions: _assumptions,
+    unknowns: _unknowns,
+    acceptance_criteria: _criteria,
+    costs: _costs,
+    success_bar: _bar,
+    interpretability: _interpretability,
+    bindings: _bindings,
+    parent_id: _parent,
+    ...kept
+  } = question;
+  return kept;
+}
 
 export function ObjectivePage() {
   const { pipelineVersionId, selectPipelineVersion, setNav } = useSelection();
   const questionsQuery = useQuestionVersions();
   const pipelinesQuery = usePipelineVersions();
   const tablesQuery = useLoadedTables();
+  const operatorsQuery = useOperatorsByRef();
+  const conceptsQuery = useConcepts();
   const saveQuestion = useSaveQuestionVersion();
   const savePipeline = useSavePipelineVersion();
 
@@ -40,9 +76,17 @@ export function ObjectivePage() {
   const [formPositive, setFormPositive] = useState("");
   const [formFalseNegative, setFormFalseNegative] = useState("");
   const [formFalsePositive, setFormFalsePositive] = useState("");
+  // Stated before any walk, since no data can give them (ADR-0063 amendment).
+  const [formMetric, setFormMetric] = useState<SelectionMetric | "">("");
+  const [formBarScore, setFormBarScore] = useState("");
+  const [formInterpretability, setFormInterpretability] = useState<Interpretability | "">("");
+  // Column typed per concept; an empty one leaves the concept unbound.
+  const [formBindings, setFormBindings] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
   const [isInferring, setIsInferring] = useState(false);
   const [copilotClarification, setCopilotClarification] = useState<string>();
+  // The question being revised; undefined for a new question.
+  const [revising, setRevising] = useState<QuestionVersion>();
 
   const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
   const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
@@ -56,12 +100,7 @@ export function ObjectivePage() {
     [pipelines, pipelineVersionId],
   );
 
-  const currentQuestion = useMemo(() => {
-    if (currentPipeline?.question_version_id) {
-      return questions.find((q) => q.id === currentPipeline.question_version_id);
-    }
-    return questions[0];
-  }, [questions, currentPipeline]);
+  const question = useMemo(() => currentQuestion(questions, currentPipeline), [questions, currentPipeline]);
 
   const handleInferLedger = async (reqText: string) => {
     if (!reqText.trim()) return;
@@ -98,6 +137,10 @@ export function ObjectivePage() {
       setFormPositive(base.costs?.value.positive ?? "");
       setFormFalseNegative(base.costs?.value.false_negative?.toString() ?? "");
       setFormFalsePositive(base.costs?.value.false_positive?.toString() ?? "");
+      setFormMetric(base.success_bar?.value.metric ?? "");
+      setFormBarScore(base.success_bar?.value.score.toString() ?? "");
+      setFormInterpretability(base.interpretability?.value ?? "");
+      setFormBindings(Object.fromEntries((base.bindings ?? []).map((b) => [b.concept, b.source.column])));
     } else {
       setFormObjective("");
       setFormTask("classification");
@@ -110,7 +153,12 @@ export function ObjectivePage() {
       setFormPositive("");
       setFormFalseNegative("");
       setFormFalsePositive("");
+      setFormMetric("");
+      setFormBarScore("");
+      setFormInterpretability("");
+      setFormBindings({});
     }
+    setRevising(base);
     setFormError(undefined);
     setIsEditing(true);
   };
@@ -139,10 +187,28 @@ export function ObjectivePage() {
       };
     }
 
+    let successBar: QuestionVersion["success_bar"] | undefined;
+    if (formMetric || formBarScore.trim()) {
+      const score = Number(formBarScore.trim());
+      if (!formMetric || !formBarScore.trim() || !Number.isFinite(score)) {
+        setFormError("Pick the success bar's metric and give its score as a number, or neither.");
+        return;
+      }
+      successBar = { value: { metric: formMetric, score }, origin: "explicit" };
+    }
+
+    const bindings = Object.entries(formBindings)
+      .filter(([, column]) => column.trim())
+      .map(([concept, column]) => stated(concept, column));
+
+    // A revision keeps what the form does not edit, such as the time column and the answers.
+    const kept = revising ? withoutEdited(revising) : {};
     const newQuestion: QuestionVersion = {
+      ...kept,
       schema_version: "sprisk.question_version/v1",
       id: `qv_${ulid()}`,
-      investigation_id: currentQuestion?.investigation_id ?? `inv_${ulid()}`,
+      investigation_id: revising?.investigation_id ?? question?.investigation_id ?? `inv_${ulid()}`,
+      ...(revising ? { parent_id: revising.id } : {}),
       objective: fact(formObjective),
       task: { value: formTask, origin: "explicit" },
       ...(formTarget.trim() ? { target: fact(formTarget) } : {}),
@@ -152,31 +218,27 @@ export function ObjectivePage() {
       unknowns: lines(formUnknowns).map((u): Unknown => ({ question: u, blocks: "execution" })),
       acceptance_criteria: lines(formCriteria).map(fact),
       ...(costs ? { costs } : {}),
+      ...(successBar ? { success_bar: successBar } : {}),
+      ...(formInterpretability ? { interpretability: { value: formInterpretability, origin: "explicit" } } : {}),
+      ...(bindings.length ? { bindings } : {}),
       created_at: timestamp(),
     };
 
     saveQuestion.mutate(newQuestion, {
-      onSuccess: (saved) => {
-        setIsEditing(false);
-        if (currentPipeline && currentPipeline.question_version_id !== saved.id) {
-          savePipeline.mutate({
-            ...currentPipeline,
-            question_version_id: saved.id,
-          });
-        }
-      },
+      onSuccess: () => setIsEditing(false),
       onError: (err) => {
         setFormError(err.message);
       },
     });
   };
 
+  // A flow version never changes (rule 5): linking saves a child version that reads the question.
   const linkToPipeline = (questionId: string) => {
     if (!currentPipeline) return;
-    savePipeline.mutate({
-      ...currentPipeline,
-      question_version_id: questionId,
-    });
+    savePipeline.mutate(
+      { ...nextVersion(currentPipeline, currentPipeline), question_version_id: questionId },
+      { onSuccess: (saved) => selectPipelineVersion(saved.id) },
+    );
   };
 
   if (questionsQuery.isPending) {
@@ -272,14 +334,14 @@ export function ObjectivePage() {
                 variant="secondary"
                 size="sm"
                 disabled={isInferring}
-                onClick={() => handleInferLedger(currentQuestion?.objective.value || "")}
+                onClick={() => handleInferLedger(question?.objective.value || "")}
                 title="Use Qwen 2.5 Copilot to re-infer ledger facts from current objective and data profile"
               >
                 <SparkIcon size={13} style={{ marginRight: 4 }} />
                 {isInferring ? "Inferring…" : "Infer with Copilot"}
               </Button>
             )}
-            <Button variant="secondary" size="sm" onClick={() => openEditor(currentQuestion)}>
+            <Button variant="secondary" size="sm" onClick={() => openEditor(question)}>
               Revise question
             </Button>
             <Button variant="primary" size="sm" onClick={() => openEditor()}>
@@ -288,7 +350,7 @@ export function ObjectivePage() {
           </div>
         </div>
 
-        {activeTab === "ledger" && currentQuestion ? (
+        {activeTab === "ledger" && question ? (
           <div className="objective-scroll-body">
             {copilotClarification && (
               <div
@@ -317,20 +379,21 @@ export function ObjectivePage() {
             <div className="objective-headline-box">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="objective-version-meta">
-                  Question Revision · {currentQuestion.id.slice(-8)}
-                  {currentPipeline?.question_version_id === currentQuestion.id && (
+                  Question Revision · {question.id.slice(-8)}
+                  {currentPipeline?.question_version_id === question.id && (
                     <span style={{ marginLeft: 8 }}>
                       <Tag tone="default">Active in current flow</Tag>
                     </span>
                   )}
                 </span>
-                {currentPipeline && currentPipeline.question_version_id !== currentQuestion.id && (
-                  <Button variant="secondary" size="sm" onClick={() => linkToPipeline(currentQuestion.id)}>
+                {currentPipeline && currentPipeline.question_version_id !== question.id && (
+                  <Button variant="secondary" size="sm" onClick={() => linkToPipeline(question.id)}>
                     Link to current flow
                   </Button>
                 )}
               </div>
-              <h2 className="objective-sentence">{currentQuestion.objective.value}</h2>
+              <h2 className="objective-sentence">{question.objective.value}</h2>
+              <StartWalk key={question.investigation_id} question={question} />
             </div>
 
             {/* Ledger Table */}
@@ -349,70 +412,70 @@ export function ObjectivePage() {
                   <tr>
                     <td className="entry-key">Task</td>
                     <td className="entry-value">
-                      <span className="mono">{currentQuestion.task.value}</span>
+                      <span>{question.task.value}</span>
                     </td>
-                    <td className="entry-src">{currentQuestion.task.origin}</td>
+                    <td className="entry-src">{question.task.origin}</td>
                     <td className="entry-st">
                       <span className="status-badge badge-set">Set</span>
                     </td>
                   </tr>
 
                   {/* Target */}
-                  <tr className={!currentQuestion.target ? "row-open" : ""}>
+                  <tr>
                     <td className="entry-key">Target</td>
                     <td className="entry-value">
-                      {currentQuestion.target ? (
-                        <span className="mono">{currentQuestion.target.value}</span>
+                      {question.target ? (
+                        <span>{question.target.value}</span>
                       ) : (
                         <span className="val-open-title">Target variable not specified</span>
                       )}
                     </td>
-                    <td className="entry-src">{currentQuestion.target?.origin ?? "—"}</td>
+                    <td className="entry-src">{question.target?.origin ?? "—"}</td>
                     <td className="entry-st">
-                      <span className={`status-badge ${currentQuestion.target ? "badge-set" : "badge-open"}`}>
-                        {currentQuestion.target ? "Set" : "Open"}
+                      <span className={`status-badge ${question.target ? "badge-set" : "badge-open"}`}>
+                        {question.target ? "Set" : "Open"}
                       </span>
                     </td>
                   </tr>
 
                   {/* Unit of analysis */}
-                  <tr className={!currentQuestion.unit_of_analysis ? "row-open" : ""}>
+                  <tr>
                     <td className="entry-key">Unit of Analysis</td>
                     <td className="entry-value">
-                      {currentQuestion.unit_of_analysis ? (
-                        <span className="mono">{currentQuestion.unit_of_analysis.value}</span>
+                      {question.unit_of_analysis ? (
+                        <span>{question.unit_of_analysis.value}</span>
                       ) : (
                         <span className="val-open-title">Unit not specified</span>
                       )}
                     </td>
-                    <td className="entry-src">{currentQuestion.unit_of_analysis?.origin ?? "—"}</td>
+                    <td className="entry-src">{question.unit_of_analysis?.origin ?? "—"}</td>
                     <td className="entry-st">
-                      <span className={`status-badge ${currentQuestion.unit_of_analysis ? "badge-set" : "badge-open"}`}>
-                        {currentQuestion.unit_of_analysis ? "Set" : "Open"}
+                      <span className={`status-badge ${question.unit_of_analysis ? "badge-set" : "badge-open"}`}>
+                        {question.unit_of_analysis ? "Set" : "Open"}
                       </span>
                     </td>
                   </tr>
 
                   {/* Prediction horizon */}
-                  <tr className={!currentQuestion.prediction_horizon ? "row-open" : ""}>
+                  <tr>
                     <td className="entry-key">Horizon</td>
                     <td className="entry-value">
-                      {currentQuestion.prediction_horizon ? (
-                        <span className="mono">{currentQuestion.prediction_horizon.value}</span>
+                      {question.prediction_horizon ? (
+                        <span>{question.prediction_horizon.value}</span>
                       ) : (
                         <span className="val-open-title">Horizon not specified</span>
                       )}
                     </td>
-                    <td className="entry-src">{currentQuestion.prediction_horizon?.origin ?? "—"}</td>
+                    <td className="entry-src">{question.prediction_horizon?.origin ?? "—"}</td>
                     <td className="entry-st">
-                      <span className={`status-badge ${currentQuestion.prediction_horizon ? "badge-set" : "badge-open"}`}>
-                        {currentQuestion.prediction_horizon ? "Set" : "Open"}
+                      <span className={`status-badge ${question.prediction_horizon ? "badge-set" : "badge-open"}`}>
+                        {question.prediction_horizon ? "Set" : "Open"}
                       </span>
                     </td>
                   </tr>
 
                   {/* Assumptions */}
-                  {currentQuestion.assumptions.map((a, i) => (
+                  {question.assumptions.map((a, i) => (
                     <tr key={`assumption-${i}`}>
                       <td className="entry-key">{i === 0 ? "Assumption" : ""}</td>
                       <td className="entry-value">{a.value}</td>
@@ -424,8 +487,8 @@ export function ObjectivePage() {
                   ))}
 
                   {/* Unknowns */}
-                  {currentQuestion.unknowns.map((u, i) => (
-                    <tr key={`unknown-${i}`} className="row-open">
+                  {question.unknowns.map((u, i) => (
+                    <tr key={`unknown-${i}`}>
                       <td className="entry-key">{i === 0 ? "Unknown" : ""}</td>
                       <td className="entry-value">
                         <span className="val-open-title">{u.question}</span>
@@ -438,7 +501,7 @@ export function ObjectivePage() {
                   ))}
 
                   {/* Acceptance Criteria */}
-                  {currentQuestion.acceptance_criteria.map((c, i) => (
+                  {question.acceptance_criteria.map((c, i) => (
                     <tr key={`criteria-${i}`}>
                       <td className="entry-key">{i === 0 ? "Criteria" : ""}</td>
                       <td className="entry-value">{c.value}</td>
@@ -450,20 +513,47 @@ export function ObjectivePage() {
                   ))}
 
                   {/* Costs */}
-                  {currentQuestion.costs && (
+                  {question.costs && (
                     <tr>
                       <td className="entry-key">Costs</td>
                       <td className="entry-value">
-                        Positive class: <code>{currentQuestion.costs.value.positive}</code> · False negative:{" "}
-                        {currentQuestion.costs.value.false_negative} · False positive:{" "}
-                        {currentQuestion.costs.value.false_positive}
+                        Positive class: <code>{question.costs.value.positive}</code> · False negative:{" "}
+                        {question.costs.value.false_negative} · False positive:{" "}
+                        {question.costs.value.false_positive}
                       </td>
-                      <td className="entry-src">{currentQuestion.costs.origin}</td>
+                      <td className="entry-src">{question.costs.origin}</td>
                       <td className="entry-st">
                         <span className="status-badge badge-set">Set</span>
                       </td>
                     </tr>
                   )}
+
+                  {(question.bindings ?? []).map((b, i) => (
+                    <tr key={`binding-${b.concept}`}>
+                      <td className="entry-key">{i === 0 ? "Column" : ""}</td>
+                      <td className="entry-value">
+                        <span>{conceptsQuery.data?.concepts[b.concept]?.description ?? b.concept}</span> ·{" "}
+                        <span>{b.source.column}</span>
+                      </td>
+                      <td className="entry-src">{b.set_by.assurance}</td>
+                      <td className="entry-st">
+                        <span className="status-badge badge-set">Set</span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {(question.answers ?? []).map((a, i) => (
+                    <tr key={`answer-${a.decides}`}>
+                      <td className="entry-key">{i === 0 ? "Answer" : ""}</td>
+                      <td className="entry-value">
+                        <span>{a.decides}</span> · <span>{a.option}</span>
+                      </td>
+                      <td className="entry-src">answered</td>
+                      <td className="entry-st">
+                        <span className="status-badge badge-set">Set</span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -481,7 +571,7 @@ export function ObjectivePage() {
                     <div key={t.artifact.id} className="from-data-row">
                       <span className="from-data-k">{t.name}</span>
                       <span className="from-data-v">
-                        {t.total_rows.toLocaleString()} rows · {t.total_columns} columns · {stepTitle(t.operator)}
+                        {t.total_rows.toLocaleString()} rows · {t.total_columns} columns · {stepTitle(t.operator, operatorsQuery.data?.get(t.operator))}
                       </span>
                     </div>
                   ))}
@@ -713,6 +803,92 @@ export function ObjectivePage() {
                     onChange={(e) => setFormCriteria(e.target.value)}
                     placeholder="e.g. Average precision beats the dummy baseline on temporal validation."
                   />
+                </div>
+
+                {conceptsQuery.data && (
+                  <div className="ds-form-card">
+                    <div className="ds-form-card-head">
+                      <span className="ds-form-card-title">Columns the methods read</span>
+                      <span className="ds-form-card-desc">
+                        Name the column that holds each meaning, if one does. Leave it empty if none does.
+                      </span>
+                    </div>
+                    {Object.entries(conceptsQuery.data.concepts)
+                      .filter(([, concept]) => concept.binds_to.includes("column"))
+                      .map(([id, concept]) => (
+                        <div className="ds-form-field" key={id}>
+                          <label className="ds-form-label" htmlFor={`obj-field-concept-${id}`}>
+                            <span>{concept.description}</span>
+                            <span className="ds-form-label-sub mono">{id}</span>
+                          </label>
+                          <input
+                            id={`obj-field-concept-${id}`}
+                            type="text"
+                            className="ds-input mono"
+                            value={formBindings[id] ?? ""}
+                            onChange={(e) => setFormBindings({ ...formBindings, [id]: e.target.value })}
+                            placeholder="Column name"
+                          />
+                        </div>
+                      ))}
+                  </div>
+                )}
+
+                {/* Stated before any walk */}
+                <div className="ds-form-card">
+                  <div className="ds-form-card-head">
+                    <span className="ds-form-card-title">Before the walk</span>
+                    <span className="ds-form-card-desc">No data can give these, so a walk starts only once they are stated</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-bar-metric" style={{ fontSize: "var(--fs-12)" }}>
+                        Success bar metric
+                      </label>
+                      <select
+                        id="obj-field-bar-metric"
+                        className="ds-input"
+                        value={formMetric}
+                        onChange={(e) => setFormMetric(e.target.value as SelectionMetric | "")}
+                      >
+                        <option value="">Not stated</option>
+                        {METRICS.map((metric) => (
+                          <option key={metric} value={metric}>
+                            {metric}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-bar-score" style={{ fontSize: "var(--fs-12)" }}>
+                        Success bar score
+                      </label>
+                      <input
+                        id="obj-field-bar-score"
+                        type="text"
+                        className="ds-input mono"
+                        value={formBarScore}
+                        onChange={(e) => setFormBarScore(e.target.value)}
+                        placeholder="e.g. 0.8"
+                      />
+                    </div>
+                    <div className="ds-form-field">
+                      <label className="ds-form-label" htmlFor="obj-field-interpretability" style={{ fontSize: "var(--fs-12)" }}>
+                        How far a person must follow each prediction
+                      </label>
+                      <select
+                        id="obj-field-interpretability"
+                        className="ds-input"
+                        value={formInterpretability}
+                        onChange={(e) => setFormInterpretability(e.target.value as Interpretability | "")}
+                      >
+                        <option value="">Not stated</option>
+                        <option value="high">high: only models a person can read</option>
+                        <option value="medium">medium</option>
+                        <option value="low">low: no limit on the model</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Misclassification Costs Card */}

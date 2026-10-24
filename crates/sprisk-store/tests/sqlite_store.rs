@@ -4,7 +4,10 @@ use std::fs;
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
-use sprisk_contracts::{Artifact, Attempt, AttemptState, NotebookVersion, Run, RunStatus, parse};
+use sprisk_contracts::{
+    Artifact, Attempt, AttemptState, MethodologyDecision, MethodologyDecisionByMethod,
+    MethodologyDecisionByRule, NotebookVersion, Run, RunStatus, parse,
+};
 use sprisk_store::{SqliteStore, StoreError};
 
 const NOW: &str = "2026-10-15T10:00:30Z";
@@ -668,7 +671,7 @@ fn fixture_with<T: DeserializeOwned>(entity: &str, name: &str, fields: serde_jso
 }
 
 /// A store holding one question, a base pipeline, a proposal for it and the applied decision.
-async fn store_with_decision() -> (SqliteStore, sprisk_contracts::MethodologyDecision) {
+async fn store_with_decision() -> (SqliteStore, MethodologyDecisionByRule) {
     let store = SqliteStore::in_memory().await.unwrap();
     let question: sprisk_contracts::QuestionVersion = fixture_with(
         "question_version",
@@ -689,10 +692,9 @@ async fn store_with_decision() -> (SqliteStore, sprisk_contracts::MethodologyDec
         "single-node-no-parent.json",
         serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1"}),
     );
-    let decision: sprisk_contracts::MethodologyDecision =
-        fixture("methodology_decision", "applied.json");
+    let decision: MethodologyDecisionByRule = fixture("methodology_decision", "applied.json");
     store
-        .apply_methodology_decision(&decision, &applied, "key-0001")
+        .apply_methodology_decision(&decision.clone().into(), Some(&applied), "key-0001")
         .await
         .unwrap();
     (store, decision)
@@ -709,7 +711,7 @@ async fn methodology_decisions_are_found_by_their_ids_and_unknown_ids_are_left_o
         .await
         .unwrap();
 
-    assert_eq!(found, vec![decision]);
+    assert_eq!(found, vec![decision.into()]);
 }
 
 #[tokio::test]
@@ -832,15 +834,15 @@ async fn an_apply_key_gives_its_decision_to_the_same_choice_and_refuses_another(
     retry.pipeline_version_id = applied.id.clone();
 
     let kept = store
-        .apply_methodology_decision(&retry, &applied, "key-0001")
+        .apply_methodology_decision(&retry.clone().into(), Some(&applied), "key-0001")
         .await
         .unwrap();
-    assert_eq!(kept, decision);
+    assert_eq!(kept, decision.into());
 
     let mut other = retry;
     other.alternative_id = "stratified_random".parse().unwrap();
     let err = store
-        .apply_methodology_decision(&other, &applied, "key-0001")
+        .apply_methodology_decision(&other.into(), Some(&applied), "key-0001")
         .await
         .unwrap_err();
     assert!(matches!(err, StoreError::Conflict(_)), "{err}");
@@ -851,9 +853,77 @@ async fn an_apply_key_gives_its_decision_to_the_same_choice_and_refuses_another(
     );
 }
 
+/// The store of `store_with_decision`, and a method's decision on its base, not stored yet.
+async fn store_with_method_decision(name: &str) -> (SqliteStore, MethodologyDecisionByMethod) {
+    let (store, _) = store_with_decision().await;
+    (store, fixture("methodology_decision", name))
+}
+
+#[tokio::test]
+async fn a_method_decision_that_changed_no_step_is_kept_without_a_version() {
+    let (store, decision) = store_with_method_decision("by-method-binds-only.json").await;
+    let decision: MethodologyDecision = decision.into();
+
+    let kept = store
+        .apply_methodology_decision(&decision, None, "wlk-round-3")
+        .await
+        .unwrap();
+
+    assert_eq!(kept, decision);
+    let id = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ3".parse().unwrap();
+    assert_eq!(
+        store.methodology_decisions(&[id]).await.unwrap(),
+        vec![decision]
+    );
+}
+
+#[tokio::test]
+async fn a_method_decision_is_saved_with_the_version_it_made() {
+    let (store, decision) = store_with_method_decision("by-method-changes-steps.json").await;
+    let made: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ5"}),
+    );
+    let mut decision = decision;
+    decision.pipeline_version_id = Some(made.id.clone());
+
+    store
+        .apply_methodology_decision(&decision.into(), Some(&made), "wlk-round-4")
+        .await
+        .unwrap();
+
+    assert_eq!(store.get_pipeline_version(&made.id).await.unwrap(), made);
+}
+
+#[tokio::test]
+async fn a_walk_round_s_key_gives_its_method_decision_to_the_same_option_and_refuses_another() {
+    let (store, decision) = store_with_method_decision("by-method-binds-only.json").await;
+    store
+        .apply_methodology_decision(&decision.clone().into(), None, "wlk-round-3")
+        .await
+        .unwrap();
+    let mut retry = decision.clone();
+    retry.id = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ8".parse().unwrap();
+
+    let kept = store
+        .apply_methodology_decision(&retry.clone().into(), None, "wlk-round-3")
+        .await
+        .unwrap();
+    assert_eq!(kept, decision.into());
+
+    let mut other = retry;
+    other.option = "keep_rows".parse().unwrap();
+    let err = store
+        .apply_methodology_decision(&other.into(), None, "wlk-round-3")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+}
+
 /// A study of the decision's base version, its comparison and its run, none stored yet.
 fn study_parts(
-    decision: &sprisk_contracts::MethodologyDecision,
+    decision: &MethodologyDecisionByRule,
 ) -> (
     sprisk_contracts::Study,
     sprisk_contracts::CreateStudy,
@@ -981,8 +1051,7 @@ async fn two_studies_stored_at_once_with_one_key_keep_one() {
     store.insert_pipeline_version(&base).await.unwrap();
     let proposal: sprisk_contracts::DecisionProposal = fixture("decision_proposal", "split.json");
     store.insert_methodology_proposal(&proposal).await.unwrap();
-    let decision: sprisk_contracts::MethodologyDecision =
-        fixture("methodology_decision", "applied.json");
+    let decision: MethodologyDecisionByRule = fixture("methodology_decision", "applied.json");
     let (study, request, comparison, run) = study_parts(&decision);
     let (again, again_comparison, again_run) = rebuilt(&study, &comparison, &run);
 
@@ -1255,6 +1324,80 @@ async fn a_walk_key_gives_its_walk_to_the_same_request_and_refuses_another() {
 }
 
 #[tokio::test]
+async fn a_question_s_walks_are_listed_newest_first_and_paged() {
+    let (store, walk, request, _, build) = walk_parts().await;
+    let other: sprisk_contracts::QuestionVersion = fixture_with(
+        "question_version",
+        "classification-all-fields.json",
+        serde_json::json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ1"}),
+    );
+    store.insert_question_version(&other).await.unwrap();
+    let mut walks = Vec::new();
+    for (n, question) in [
+        (1, &walk.question_version_id),
+        (2, &other.id),
+        (3, &walk.question_version_id),
+    ] {
+        let mut made = walk.clone();
+        made.id = format!("wlk_01JABCDEFGHJKMNPQRSTVWXYZ{n}").parse().unwrap();
+        made.question_version_id = question.clone();
+        let mut asked = request.clone();
+        asked.idempotency_key = format!("walk-list-{n}").parse().unwrap();
+        let mut step = build.clone();
+        step.walk_id = made.id.clone();
+        store.insert_walk(&made, &asked, None, &step).await.unwrap();
+        walks.push(made);
+    }
+    let question = Some(&walk.question_version_id);
+
+    let page = store.list_walks(question, None, 1).await.unwrap();
+    assert_eq!(page, vec![walks[2].clone()]);
+    let next = store
+        .list_walks(question, Some(&walks[2].id), 10)
+        .await
+        .unwrap();
+    assert_eq!(next, vec![walks[0].clone()]);
+    assert_eq!(store.list_walks(None, None, 10).await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn a_completed_walk_s_report_is_kept_with_its_last_step_once() {
+    let (store, walk, request, first, build) = walk_parts().await;
+    store
+        .insert_walk(&walk, &request, Some(&first), &build)
+        .await
+        .unwrap();
+    let detail: sprisk_contracts::WalkDetail = fixture("walk_detail", "trail.json");
+    let mut last = detail.steps[3].clone();
+    last.round = 1;
+    let report: sprisk_contracts::Report = fixture("report", "complete.json");
+    assert!(matches!(
+        store.walk_report(&walk.id).await,
+        Err(StoreError::NotFound { .. })
+    ));
+
+    store
+        .record_walk_report(&detail.walk, &last, &report)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.walk_report(&walk.id).await.unwrap(),
+        report.clone()
+    );
+    assert_eq!(store.get_walk(&walk.id).await.unwrap(), detail.walk);
+    let mut again = report;
+    again.id = "rpt_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    last.round = 2;
+    let err = store
+        .record_walk_report(&detail.walk, &last, &again)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+    assert_eq!(store.walk_steps(&walk.id).await.unwrap().len(), 2);
+}
+
+#[tokio::test]
 async fn a_walk_step_is_kept_once_per_round_with_the_walk_it_leaves() {
     let (store, walk, request, first, build) = walk_parts().await;
     store
@@ -1279,6 +1422,40 @@ async fn a_walk_step_is_kept_once_per_round_with_the_walk_it_leaves() {
     let err = store.record_walk_step(&walk, &run).await.unwrap_err();
     assert!(matches!(err, StoreError::Conflict(_)), "{err}");
     assert_eq!(store.get_walk(&walk.id).await.unwrap(), stopped);
+}
+
+#[tokio::test]
+async fn a_version_takes_the_walk_that_made_it_or_its_nearest_ancestor() {
+    let (store, walk, request, first, build) = walk_parts().await;
+    store
+        .insert_walk(&walk, &request, Some(&first), &build)
+        .await
+        .unwrap();
+    let made = build.made_pipeline_version_id.clone().unwrap();
+    assert_eq!(
+        store.walk_making_nearest(&made).await.unwrap(),
+        Some((walk.id.clone(), 0))
+    );
+
+    // A person's edit on top of the walk's version, and an edit of that edit.
+    let mut edit = first.clone();
+    edit.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8".parse().unwrap();
+    edit.parent_id = Some(made.clone());
+    store.insert_pipeline_version(&edit).await.unwrap();
+    let mut again = edit.clone();
+    again.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    again.parent_id = Some(edit.id.clone());
+    store.insert_pipeline_version(&again).await.unwrap();
+    assert_eq!(
+        store.walk_making_nearest(&again.id).await.unwrap(),
+        Some((walk.id.clone(), 0))
+    );
+
+    // A flow no walk made, nor any of its ancestors.
+    let mut alone = first.clone();
+    alone.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ7".parse().unwrap();
+    store.insert_pipeline_version(&alone).await.unwrap();
+    assert_eq!(store.walk_making_nearest(&alone.id).await.unwrap(), None);
 }
 
 #[tokio::test]

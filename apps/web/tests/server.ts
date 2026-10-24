@@ -25,6 +25,10 @@ export const handlers = [
   http.get("/api/methodology_rules", () => HttpResponse.json([])),
   http.get("/api/pipeline_versions", () => HttpResponse.json([pipeline])),
   http.get("/api/pipeline_versions/:id/studies", () => HttpResponse.json([])),
+  // No walk made a flow unless a test says so (ADR-0063).
+  http.get("/api/pipeline_versions/:id/decisions", ({ params }) =>
+    HttpResponse.json({ schema_version: "sprisk.flow_decisions/v1", pipeline_version_id: params.id, decisions: [] }),
+  ),
   http.get("/api/operators", () => HttpResponse.json(operators)),
   // Steps have no plain code unless a test says so (ADR-0055).
   http.post("/api/operators/:id/notebook_code", () => HttpResponse.json({ errors: [{ code: "no_plain_code", message: "none yet" }] }, { status: 404 })),

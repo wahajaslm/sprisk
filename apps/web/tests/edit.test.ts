@@ -25,6 +25,8 @@ describe("flow edits create a new pipeline version", () => {
   it("removes a step and the edges into it as a new version; readers are listed", () => {
     expect(readersOf(pipeline, "load").sort()).toEqual(["profile", "split"]);
     expect(readersOf(pipeline, "profile")).toEqual([]);
+    // impute reads both the train and the test rows of split: it is one reader.
+    expect(readersOf(pipeline, "split")).toEqual(["impute"]);
     const removed = removeStep(pipeline, "profile");
     expect(removed.parent_id).toBe(pipeline.id);
     expect(removed.nodes.some((n) => n.id === "profile")).toBe(false);
