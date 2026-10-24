@@ -308,8 +308,6 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
           runs={{ results, running, queued, live }}
           foldKey={notebookId}
           onRun={runCell}
-          onRunAbove={(index) => enqueue(codeOf(0, index))}
-          onRemove={remove}
         />
       </div>
     </div>

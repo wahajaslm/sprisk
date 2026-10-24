@@ -221,15 +221,14 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     expect(posts).toEqual([]);
   });
 
-  it("shows a ready-made step as its settings form and the names it reads and gives", async () => {
+  it("shows a ready-made step's plain code, or one line when it has none, never a settings form", async () => {
     noNotebooks();
     renderWithApi(<NotebooksPage />);
-    const load = await screen.findByRole("group", { name: "Cell 1" });
-    expect(await within(load).findByText("reads nothing → gives load_data")).toBeInTheDocument();
-    expect(await within(load).findByRole("combobox", { name: "format" })).toHaveValue("csv");
+    await screen.findByRole("group", { name: "Cell 1" });
+    expect(screen.queryByRole("combobox", { name: "format" })).not.toBeInTheDocument();
     await userEvent.click(within(await stages()).getByRole("button", { name: /Split/ }));
     expect(await screen.findByRole("heading", { name: "Split" })).toBeInTheDocument();
-    expect(await screen.findByText("reads load_data → gives split_train, split_test")).toBeInTheDocument();
+    expect(await screen.findByText(/has no plain code yet; its settings are in the flow's Parameters tab\./)).toBeInTheDocument();
   });
 
   it("says so when a step's operator is not installed", async () => {

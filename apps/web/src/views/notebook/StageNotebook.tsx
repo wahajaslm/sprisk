@@ -3,24 +3,24 @@ import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { plainCodeQuery, useCodeDisplay } from "../../api/code.ts";
-import { useOperators, useRunAttempts } from "../../api/hooks.ts";
+import { useOperators, useOutputs, useRunAttempts } from "../../api/hooks.ts";
+import { PARQUET } from "../../api/media.ts";
 import { readersOf, removeStep } from "../../flow/edit.ts";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
-import { type Stage, stepLabel } from "../../flow/stages.ts";
+import type { Stage } from "../../flow/stages.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useCollapsed } from "../../notebook/collapsed.ts";
 import type { Ran } from "../../notebook/outputs.ts";
 import { codeRequest, isReadyMade, stageCells, stageNodes } from "../../notebook/stageCells.ts";
-import { stepNames } from "../../notebook/stageNotebooks.ts";
 import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { PageHeader } from "../../components/ui/PageHeader.tsx";
-import { SingleTab } from "../../components/ui/Tabs.tsx";
 import { flowName } from "../../flow/labels.ts";
 import { AddIcon, RedoIcon, TrashIcon, UndoIcon } from "../Icons.tsx";
-import { TabBody, useStep } from "../inspector/step.tsx";
-import { OutputItems } from "./CellOutputs.tsx";
+import { FiguresTab } from "../inspector/FiguresTab.tsx";
+import { useStep } from "../inspector/step.tsx";
+import { ArtifactTable, OutputItems } from "./CellOutputs.tsx";
 import { codeCellIds, NotebookCells, notebookKeys } from "./NotebookCells.tsx";
 import { useCellEditing } from "./useCellEditing.ts";
 import { useStageSave } from "./useStageSave.ts";
@@ -106,7 +106,6 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
         description="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change."
         actions={<Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>}
       />
-      <SingleTab name="Cells" />
       <div className="nb-toolbar" role="toolbar" aria-label="Notebook actions">
         <button type="button" className="nb-action" onClick={() => edit.insert(active + 1, "code")}>
           <AddIcon /> Code
@@ -141,17 +140,11 @@ function StageEditor({ pipeline, stage, byRef, code, unwritten }: { pipeline: Pi
           runs={runs}
           foldKey={foldKey}
           onRun={runCell}
-          onRunAbove={() => runAll()}
-          onRemove={remove}
-          labelOf={(cell) => {
-            const node = pipeline.nodes.find((n) => n.id === cell.id);
-            return node && stepLabel(node);
-          }}
           stepOf={(cell) =>
             isReadyMade(pipeline, cell.id) && !code.has(cell.id) ? (
               <ViewInstance pin={cellPin(cell.id)} setPin={undefined}>
                 {unwritten.has(cell.id) && <p role="alert" className="error">{cell.id}'s code could not be written: {unwritten.get(cell.id)}</p>}
-                <StepForm names={stepNames(pipeline, byRef, cell.id)} />
+                <StepWithoutCode />
               </ViewInstance>
             ) : undefined
           }
@@ -190,38 +183,34 @@ function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline:
   return { results, running, queued: live.filter((id) => id !== running), live: undefined };
 }
 
-/** A ready-made step's cell: what it reads and gives, its settings, and its code on request. */
-function StepForm({ names }: { names: { reads: string[]; gives: string[] } }) {
+/** A ready-made step with no plain code yet: a notebook shows code, so it says so and points
+ * to where its settings live. */
+function StepWithoutCode() {
   const step = useStep();
-  const [showCode, setShowCode] = useState(false);
   if (!step.node) return <p role="alert" className="error">This step is not in the flow version on screen.</p>;
-  if (!step.operator) return <p role="alert" className="error">{step.node.operator} is not installed, so this step cannot show its settings or run.</p>;
-  return (
-    <div className="flow-step">
-      <p className="flow-step-names muted">{namesLine(names)}</p>
-      <TabBody tab="parameters" step={step} />
-      <button type="button" className="page-btn" aria-expanded={showCode} onClick={() => setShowCode(!showCode)}>
-        {showCode ? "Hide code" : "Show code"}
-      </button>
-      {showCode && <TabBody tab="code" step={step} />}
-    </div>
-  );
+  if (!step.operator) return <p role="alert" className="error">{step.node.operator} is not installed, so this step cannot run.</p>;
+  return <p className="nb-no-code">{`# ${step.node.operator} has no plain code yet; its settings are in the flow's Parameters tab.`}</p>;
 }
 
-/** What a step showed in the run on screen: a code step's output as a notebook shows it, a
- * ready-made step's figures or tables. */
+/** What a step showed in the run on screen, as plain notebook output: a code step's printed
+ * output; a ready-made step's tables (first rows) and figures. */
 function StepOutput() {
   const step = useStep();
   const display = useCodeDisplay(step.isCode ? step.done : undefined);
+  const outputs = useOutputs(step.isCode ? undefined : step.done?.id);
   if (step.isCode) {
     if (display.status === "ready") return <OutputItems items={display.value.items} />;
     if (display.status === "error") return <p role="alert" className="error">{display.message}</p>;
     return null;
   }
-  return <TabBody tab={step.visuals > 0 ? "visuals" : "data"} step={step} />;
-}
-
-function namesLine({ reads, gives }: { reads: string[]; gives: string[] }): string {
-  const read = reads.length > 0 ? `reads ${reads.join(", ")}` : "reads nothing";
-  return gives.length > 0 ? `${read} → gives ${gives.join(", ")}` : read;
+  if (outputs.isError) return <p role="alert" className="error">The step's outputs could not be read: {outputs.error.message}</p>;
+  const tables = (outputs.data ?? []).filter((o) => o.artifact.media_type === PARQUET);
+  return (
+    <>
+      {tables.map((o) => (
+        <ArtifactTable key={o.port} artifactId={o.artifact.id} />
+      ))}
+      {step.figurePorts.length > 0 && <FiguresTab attempt={step.done} ports={step.figurePorts} />}
+    </>
+  );
 }

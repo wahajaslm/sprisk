@@ -5,7 +5,7 @@ import Markdown, { defaultUrlTransform } from "react-markdown";
 import { type CellPart, type Folded, useCollapsed } from "../../notebook/collapsed.ts";
 import type { Ran } from "../../notebook/outputs.ts";
 import { CodeInput } from "../CodeInput.tsx";
-import { AddIcon, CheckIcon, Chevron, CrossIcon, PlayIcon, RunAllIcon, TrashIcon } from "../Icons.tsx";
+import { AddIcon, PlayIcon } from "../Icons.tsx";
 import { CellOutputs, hasOutputs, OutputItems } from "./CellOutputs.tsx";
 import type { CellEditing } from "./useCellEditing.ts";
 
@@ -25,20 +25,16 @@ type Props = {
   /** Where folds are kept: one notebook's cells. */
   foldKey: string;
   onRun: (index: number, code: string, advance: boolean) => void;
-  onRunAbove: (index: number) => void;
-  onRemove: (index: number) => void;
   /** A cell that is a ready-made step shows this in place of code (ADR-0055). */
   stepOf?: (cell: NotebookCell) => ReactNode | undefined;
-  /** The kind of step a cell is and what it is about, shown above it (ADR-0055). */
-  labelOf?: (cell: NotebookCell) => { title: string; subject: string } | undefined;
   /** What a cell shows under it when its result is not a kernel's: a step's in a run. */
   outputOf?: (cell: NotebookCell) => ReactNode | undefined;
 };
 
-/** The cells of a notebook laid out as VS Code's notebook editor (ADR-0035). */
-export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove, stepOf, labelOf, outputOf }: Props) {
+/** The cells of a notebook as a plain notebook shows them: the run count, the code, then what
+ * it printed. Actions live in the toolbar and the keys (ADR-0035). */
+export function NotebookCells({ edit, runs, foldKey, onRun, stepOf, outputOf }: Props) {
   const folds = useCollapsed((s) => s.byNotebook[foldKey]) ?? NOTHING_FOLDED;
-  const toggleFold = useCollapsed((s) => s.toggle);
   const { cells, active, editing, generation, cellNodes, select } = edit;
   return (
     <>
@@ -48,13 +44,10 @@ export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove
         const ran = runs.results[cell.id];
         const result = ran?.result;
         const step = stepOf?.(cell);
-        const stale = ran !== undefined && step === undefined && ran.code !== cell.source;
         const state = runs.running === cell.id ? "running" : runs.queued.includes(cell.id) ? "queued" : undefined;
         const folded = folds[cell.id] ?? {};
-        const fold = (part: CellPart) => ({ part, n, collapsed: folded[part] === true, onToggle: () => toggleFold(foldKey, cell.id, part) });
         const live = state === "running" && runs.live?.cellId === cell.id ? runs.live : undefined;
         const stepOutput = outputOf?.(cell);
-        const label = labelOf?.(cell);
         return (
           <div key={`${generation}/${cell.id}`}>
             <div
@@ -75,30 +68,8 @@ export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove
                 <span className="nb-count">{cell.kind === "code" ? count(state, result) : ""}</span>
               </div>
               <div className="nb-main">
-                <div className="nb-cell-toolbar">
-                  <Fold look="chevron" {...fold("input")} />
-                  {cell.kind === "code" && (
-                    <button type="button" className="nb-icon" title="Execute Above Cells" aria-label={`Run cells above ${n}`} onClick={() => onRunAbove(index)}>
-                      <RunAllIcon />
-                    </button>
-                  )}
-                  <button type="button" className="nb-icon" title="Delete Cell" aria-label={`Delete cell ${n}`} onClick={() => onRemove(index)}>
-                    <TrashIcon />
-                  </button>
-                </div>
-                {label && (
-                  <p className="nb-cell-label">
-                    <span className="nb-cell-kind">{label.title}</span> {label.subject}
-                  </p>
-                )}
                 <div className="nb-part">
-                  <Fold look="bar" {...fold("input")} />
-                  {folded.input ? (
-                    <p className="nb-folded">
-                      <span className="nb-folded-text">{step !== undefined ? "Ready-made step" : firstLine(cell.source)}</span>
-                      <span aria-hidden="true">…</span>
-                    </p>
-                  ) : step !== undefined ? (
+                  {step !== undefined ? (
                     <div className="nb-step">{step}</div>
                   ) : cell.kind === "markdown" && !editing.has(cell.id) ? (
                     <div className="nb-markdown" onDoubleClick={() => edit.startEditing(cell.id)}>
@@ -118,16 +89,8 @@ export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove
                     </div>
                   )}
                 </div>
-                <div className="nb-status">
-                  {cell.kind === "code" && <Status state={state} result={result} />}
-                  {cell.kind === "code" && stale && !state && <span className="nb-live">Changed since it ran</span>}
-                  <span className="spacer" />
-                  <span>{step !== undefined ? "Step" : cell.kind === "code" ? "Python" : "Markdown"}</span>
-                </div>
                 {cell.kind === "code" && (live || stepOutput || (result && hasOutputs(result))) && (
                   <div className="nb-part">
-                    <Fold look="bar" {...fold("output")} />
-                    <Fold look="chevron" {...fold("output")} />
                     {folded.output ? (
                       <p className="nb-folded nb-output-folded">
                         <span>Outputs are collapsed</span>
@@ -157,7 +120,7 @@ export function NotebookCells({ edit, runs, foldKey, onRun, onRunAbove, onRemove
 /** Jupyter's command-mode keys on the cells, as VS Code's notebook has them. */
 export function notebookKeys(
   edit: CellEditing,
-  { onRun, onRemove, onSave, foldKey, toggleFold }: { onRun: Props["onRun"]; onRemove: Props["onRemove"]; onSave: () => void; foldKey: string; toggleFold: (key: string, cellId: string, part: CellPart) => void },
+  { onRun, onRemove, onSave, foldKey, toggleFold }: { onRun: Props["onRun"]; onRemove: (index: number) => void; onSave: () => void; foldKey: string; toggleFold: (key: string, cellId: string, part: CellPart) => void },
 ) {
   return (e: KeyboardEvent<HTMLDivElement>) => {
     const typing = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
@@ -222,41 +185,10 @@ export function notebookKeys(
 
 export const codeCellIds = (cells: NotebookCell[]) => cells.flatMap((c) => (c.kind === "code" ? [c.id] : []));
 
-const firstLine = (source: string) => source.split("\n").find((line) => line.trim() !== "") ?? "";
-
-/** Folds one part of a cell, as VS Code does: the bar in the gutter for the mouse, the chevron
- * for the keyboard and screen readers too. The bar is a mouse target only, so each part is
- * announced and tabbed to once. */
-function Fold({ look, part, n, collapsed, onToggle }: { look: "bar" | "chevron"; part: CellPart; n: number; collapsed: boolean; onToggle: () => void }) {
-  const label = `${collapsed ? "Expand" : "Collapse"} ${part} of cell ${n}`;
-  return (
-    <button
-      type="button"
-      className={look === "bar" ? "nb-fold-bar" : `nb-icon nb-fold nb-fold-${part}`}
-      tabIndex={look === "bar" ? -1 : undefined}
-      aria-hidden={look === "bar" ? true : undefined}
-      aria-expanded={!collapsed}
-      aria-label={label}
-      title={label}
-      onClick={onToggle}
-    >
-      {look === "chevron" && <Chevron />}
-    </button>
-  );
-}
-
 function count(state: "running" | "queued" | undefined, result: NotebookExecution | undefined) {
   if (state === "running") return "[*]";
   if (state === "queued") return "[ ]";
   return result?.execution_count === undefined ? "" : `[${result.execution_count}]`;
-}
-
-function Status({ state, result }: { state: "running" | "queued" | undefined; result: NotebookExecution | undefined }) {
-  if (state) return <span className="nb-live">{state === "running" ? "Running" : "Queued"}</span>;
-  if (!result) return null;
-  if (result.status === "ok") return <span className="nb-ok"><CheckIcon /> Done</span>;
-  const text = { error: "Failed", interrupted: "Interrupted", timed_out: "Timed out" }[result.status];
-  return <span className="nb-bad"><CrossIcon /> {text}</span>;
 }
 
 /** A notebook may come from anyone: its images load only from the notebook itself (data:),

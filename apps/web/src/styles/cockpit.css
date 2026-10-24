@@ -1851,17 +1851,9 @@ p { margin: 0; }
 /* The focus indicator, as VS Code's: a bar at the left of each part of the selected cell.
    Clicking it folds that part; the wide button around the thin line is the click target. */
 .nb-part { position: relative; }
-.nb-fold-bar { position: absolute; left: -41px; top: 0; bottom: 0; width: 8px; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.nb-fold-bar::before { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; border-radius: 1px; }
-.nb-cell:hover .nb-fold-bar::before { background: var(--line-strong); }
-.nb-cell.active .nb-fold-bar::before { background: var(--nb-focus); }
-.nb-fold-bar:hover::before { background: var(--soft); }
-.nb-fold svg { transition: transform 0.1s; }
-.nb-fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
 /* The output's chevron sits in the gutter beside it; hidden with opacity so Tab still reaches it. */
 
 .nb-folded { display: flex; align-items: center; gap: var(--space-2); height: 26px; margin: 0; padding: 0 var(--space-3); border: 1px solid var(--line-soft); border-radius: 4px; font: var(--text-sm) var(--mono); color: var(--faint); }
-.nb-folded-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .nb-output-folded { border: 0; padding: 0 var(--space-1); font-family: inherit; font-size: var(--text-xs); }
 .nb-gutter { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px; }
 /* Hidden with opacity, not display, so Tab still reaches it. */
@@ -1871,23 +1863,13 @@ p { margin: 0; }
 .nb-count { min-height: 16px; font: var(--text-xs) var(--mono); color: var(--ghost); }
 .nb-main { position: relative; min-width: 0; }
 .nb-editor { overflow: hidden; }
-.nb-status { display: flex; align-items: center; gap: var(--space-2); height: 22px; padding: 0 var(--space-1); font-size: var(--text-xs); color: var(--faint); }
 /* A ready-made step's cell in a stage notebook (ADR-0055): its form in place of code. */
 .nb-step { padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: 4px; background: var(--raised); }
-.nb-cell-label { margin: 0 0 var(--space-1); font-size: var(--text-xs); color: var(--faint); }
-.nb-cell-kind { font-weight: 600; color: var(--soft, inherit); }
 .nb-step .settings-grid { max-width: 640px; }
 /* A step's result is a preview in the notebook; the Data tab has the whole table. */
 .nb-step-output { max-height: 320px; overflow: auto; }
 .flow-step-names { margin: 2px 0 var(--space-2); font-family: var(--mono); font-size: var(--text-xs); }
-.nb-ok, .nb-bad { display: inline-flex; align-items: center; gap: var(--space-1); }
-.nb-ok { color: var(--nb-ok); }
-.nb-bad { color: var(--alert); }
-.nb-live { color: var(--soft); }
 /* The cell's tools float on its top edge, as VS Code's cell toolbar. */
-.nb-cell-toolbar { position: absolute; top: -13px; right: var(--space-3); z-index: 2; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); opacity: 0; }
-.nb-cell-toolbar:empty { display: none; }
-.nb-cell:hover .nb-cell-toolbar, .nb-cell.active .nb-cell-toolbar, .nb-cell-toolbar:focus-within { opacity: 1; }
 .nb-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: 3px; background: transparent; color: var(--soft); cursor: pointer; }
 .nb-icon:hover, .nb-icon.on { background: var(--node-hover); color: var(--ink); }
 /* A notebook cell's editor looks like the Code tab's: same frame and ground, sized to its code. */
@@ -1898,6 +1880,13 @@ p { margin: 0; }
 .nb-output .figure, .nb-output .plotly-figure, .nb-output .vega-figure { width: 100%; max-width: 760px; }
 .nb-output .peek { width: 100%; overflow: auto; }
 .nb-text { margin: 0; color: var(--soft); }
+/* A table as plain notebook output (ADR-0035): names, values, its size; no frame, no tools. */
+.nb-table { max-width: 100%; overflow-x: auto; font: var(--text-xs) var(--mono); color: var(--soft); }
+.nb-table table { border-collapse: collapse; }
+.nb-table th { padding: 2px var(--space-3) 4px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.nb-table td { padding: 2px var(--space-3) 2px 0; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.nb-table-size { margin: var(--space-1) 0 0; color: var(--faint); }
+.nb-no-code { margin: 0; padding: var(--space-2) var(--space-3); font: var(--text-xs) var(--mono); color: var(--faint); }
 .nb-text.stderr { width: 100%; padding: var(--space-1) var(--space-2); background: var(--alert-wash); }
 .nb-error { width: 100%; margin: 0; padding: var(--space-2) var(--space-3); background: var(--alert-wash); color: var(--alert); }
 

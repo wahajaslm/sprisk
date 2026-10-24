@@ -68,6 +68,12 @@ function withApi() {
   return sent;
 }
 
+/** Selects cell `n` and deletes it from the toolbar, as a person does. */
+async function deleteCell(n: number) {
+  await userEvent.click(await screen.findByRole("group", { name: `Cell ${n}` }));
+  await userEvent.click(screen.getByRole("button", { name: "Delete Cell" }));
+}
+
 describe("a stage in the notebook editor (ADR-0055)", () => {
   it("shows each step as plain Python: a ready-made step's code, a code step's own", async () => {
     withApi();
@@ -76,17 +82,18 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("rate = impute_train.height");
   });
 
-  it("shows a ready-made step with no plain code yet as its settings form", async () => {
+  it("shows a ready-made step with no plain code yet as one line saying so, never a form", async () => {
     withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Split" />);
-    expect(await screen.findByText("reads load_data → gives split_train, split_test")).toBeInTheDocument();
+    expect(await screen.findByText("# sprisk.validation.random_split@1.0.0 has no plain code yet; its settings are in the flow's Parameters tab.")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Cell 1" })).not.toBeInTheDocument();
   });
 
   it("asks for plain code only from steps that write it", async () => {
     const sent = withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Split" />);
-    await screen.findByText("reads load_data → gives split_train, split_test");
+    await screen.findByText("# sprisk.validation.random_split@1.0.0 has no plain code yet; its settings are in the flow's Parameters tab.");
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
     await screen.findByRole("textbox", { name: "Cell 2" });
     expect(sent.code).toEqual(["sprisk.clean.impute@1.0.0"]);
@@ -103,8 +110,8 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
   it("shows no made-up run number on a cell", async () => {
     withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
-    // The step ran in the run on screen, so its cell says Done, with no count to make up.
-    expect((await screen.findAllByText("Done")).length).toBeGreaterThan(0);
+    // The step ran in the run on screen, but a flow run gives no kernel count to show.
+    await screen.findByRole("textbox", { name: "Cell 1" });
     expect(screen.queryByText(/^\[\d+\]$/)).not.toBeInTheDocument();
   });
 
@@ -159,7 +166,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
   it("deleting a step nothing reads saves the flow without it", async () => {
     const sent = withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Delete cell 2" }));
+    await deleteCell(2);
     await waitFor(() => expect(sent.versions).toHaveLength(1));
     expect(sent.versions[0]!.nodes.map((n) => n.id)).not.toContain("rate");
   });
@@ -171,14 +178,14 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
       return HttpResponse.json({});
     }));
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Delete cell 2" }));
+    await deleteCell(2);
     await waitFor(() => expect(screen.getByRole("button", { name: "Run all" })).toBeDisabled());
   });
 
   it("refuses to delete a step another step reads, naming it", async () => {
     const sent = withApi();
     renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Delete cell 1" }));
+    await deleteCell(1);
     expect(await screen.findByRole("alert")).toHaveTextContent("Cannot delete impute: model, score, rate read its output.");
     expect(sent.versions).toEqual([]);
   });
