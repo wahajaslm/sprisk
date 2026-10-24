@@ -21,8 +21,6 @@ Remove an item when it is done; link the commit or ADR.
 | Remaining Supervised rules: chronology, baseline included, duplicates across split, target proxies, group split, imbalance metric | ADR-0015 | M3 |
 | Exploration pack rules | ADR-0015 | M3 |
 | `split_leakage`: detect selection across pipeline versions that reuse one split (key on split artifact hash) | methodology review | M3 |
-| Mark holdout ports in manifests instead of a pack setting | methodology review | with ADR-0016 |
-| Declare "fits on train" in the operator manifest (`fit_input`) instead of the `FITTING_TRANSFORMS` pack list, so new plugin transforms are checked without editing the rule (§15.1) | methodology review | with ADR-0016 |
 | Rule `target_untouched`: cleaning transforms must not include the target column | methodology review | M3 |
 | Rule `report_only`: no step that chooses features or models may read a `feature_importance` (or other test-set report) output | methodology review | M3 |
 | Per-project pack settings (thresholds, severity, applicability) — needs an ADR | design discussion | M3 |
@@ -53,3 +51,15 @@ Remove an item when it is done; link the commit or ADR.
 | Code steps: run user code in a separate sandbox process (no network, read-only inputs, no lease credentials); `network: none` is declared, not enforced | security review (ADR-0020) | before hosted (M5) |
 | Flaky e2e: `worker_killed_mid_run_is_replaced…` can finish before the kill lands (0 lost attempts); make the kill wait on a known-running attempt | seen 2026-10-16 | next test pass |
 | Caching: test a control-plane restart mid-run where reconciled `cache_hit` attempts feed downstream inputs | simplicity review | next scheduler change |
+
+## Engine (from the ADR-0064 proof of concept)
+| Item | Source | Milestone |
+| --- | --- | --- |
+| A preparation a rule adds after the model is chosen (scaling after a linear winner) leaves the loop-back rule waiting for a comparison the walk never starts: the walk stops as uncovered | ADR-0064 step 3 proof | M4 |
+| A failed promise stops the walk with no remedy: the walk cannot reopen the decision that made it | ADR-0063, ADR-0064 | M4 |
+| `no_row_in_both` compares every column but the target, so it relies on the column-roles rule dropping identifiers before the split | ADR-0064 methodology review | M4 |
+| The temporal option does not check its purging (`no_group_overlap` would block every temporal walk without an item column) | ADR-0064 methodology review | M4 |
+| The build step's Load steps cite no decision record; they come from the walk's sources | ADR-0064 proof of concept | M4 |
+| Name the remaining old-rule operators by role: the scale step (`decision.rs`), the impute zero fill (review flow facts), the code step | ADR-0064 step 3 | with ADR-0063 slice 6 |
+| A forest grows on every core in each worker; several workers at once oversubscribe the cores | ADR-0064 step 5 review | before hosted (M5) |
+

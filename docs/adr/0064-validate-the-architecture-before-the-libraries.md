@@ -53,7 +53,7 @@ Not in it: forecasting, deploy, copilot, dataset versions. Each needs its own AD
 - Bad: `MethodologyDecision` grows a second shape until the old rules go (ADR-0063 slice 6).
 
 ## Validation
-- The eight proof-of-concept criteria pass on the real Rakuten files, recorded in the PoC report.
+- The eight proof-of-concept criteria pass on the real Rakuten files, recorded in the [PoC report](../research/2026-10-adr-0064-rakuten-poc.md) (2026-10-24).
 - `grep` finds no operator id in `crates/` outside tests and the packs' defaults.
 
 ## Arch doc edits
