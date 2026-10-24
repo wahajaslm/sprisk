@@ -3,6 +3,7 @@
 
 mod catalog;
 mod compare;
+pub mod deciding;
 mod decision;
 pub mod engine;
 pub mod facts;
@@ -54,6 +55,8 @@ pub enum ResolveError {
     NotInsertable(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]
     UndeclaredAlternative(String),
+    #[error("method {method} has no option {option}")]
+    UndeclaredOption { method: String, option: String },
     #[error("a walk needs at least one source")]
     NoSource,
     #[error("cannot tell how {0} is stored: name a .csv or .parquet file")]

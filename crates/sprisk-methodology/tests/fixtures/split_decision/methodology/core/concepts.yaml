@@ -13,3 +13,7 @@ concepts:
     kind: entity_identifier
     description: Groups rows that describe the same real-world item.
     binds_to: [column, derived]
+  common.event_time:
+    kind: time
+    description: When the event a row describes happened.
+    binds_to: [column]

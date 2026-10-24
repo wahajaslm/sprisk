@@ -159,6 +159,15 @@ impl RuleCatalog {
         self.methods.iter().map(|e| &e.method)
     }
 
+    /// The path of the method's `method.py`, for the method runner.
+    pub fn method_module(&self, method_ref: &str) -> Result<PathBuf, CatalogError> {
+        self.methods
+            .iter()
+            .find(|e| e.method.id.as_str() == method_ref)
+            .map(|e| e.path.with_file_name(methods::METHOD_MODULE))
+            .ok_or_else(|| CatalogError::NoModule(method_ref.to_owned()))
+    }
+
     /// Every concept the packs define, by id.
     pub fn concepts(&self) -> impl Iterator<Item = (&str, &Concept)> {
         self.concepts

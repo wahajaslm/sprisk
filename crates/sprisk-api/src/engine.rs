@@ -298,8 +298,16 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     if matches!(action, Action::Run { .. } | Action::Stop { .. }) {
         let pipeline = state.store.get_pipeline_version(&head).await?;
         let operators: Vec<Operator> = state.registry.operators().cloned().collect();
-        let measuring = measure(&state.rules, &pipeline, &question, &operators)
+        let effective = sprisk_methodology::deciding::bindings(&question, &[])
             .map_err(|e| ApiError::Internal(e.to_string()))?;
+        let measuring = measure(
+            &state.rules,
+            &pipeline,
+            &question,
+            &effective.bindings,
+            &operators,
+        )
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
         if !measuring.effects.is_empty() {
             return record_measure(state, walk, round, &pipeline, measuring).await;
         }

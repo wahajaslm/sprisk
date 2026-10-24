@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion, TaskType,
-    parse,
+    Binding, GraphEffect, Method, Operator, OperatorAttachSide, PipelineVersion, QuestionVersion,
+    TaskType, parse,
 };
 
 use crate::decision::free_id;
@@ -31,6 +31,7 @@ pub fn measure(
     catalog: &RuleCatalog,
     pipeline: &PipelineVersion,
     question: &QuestionVersion,
+    bindings: &[Binding],
     operators: &[Operator],
 ) -> Result<Measuring, ResolveError> {
     let by_id: BTreeMap<String, &Operator> =
@@ -49,7 +50,7 @@ pub fn measure(
             let producer = methods::producer(kind.as_str(), &by_id)
                 .map_err(|p| ResolveError::Rules(CatalogError::Evidence(p)))?;
             let need = format!("{} needs {}", method.decides.as_str(), kind.as_str());
-            match bound_params(producer, question) {
+            match bound_params(producer, bindings) {
                 Ok(params) => {
                     if let Some(why) = placing.place(producer, params, &need)? {
                         placing
@@ -83,13 +84,12 @@ pub fn fitting(catalog: &RuleCatalog, task: TaskType) -> impl Iterator<Item = &M
     })
 }
 
-/// The producer's concept params, each the column the question binds to its concept; the
+/// The producer's concept params, each the column `bindings` binds to its concept; the
 /// first unbound concept otherwise.
-fn bound_params(producer: &Operator, question: &QuestionVersion) -> Result<Value, String> {
+fn bound_params(producer: &Operator, bindings: &[Binding]) -> Result<Value, String> {
     let mut params = Map::new();
     for (param, concept) in &producer.concepts {
-        let binding = question
-            .bindings
+        let binding = bindings
             .iter()
             .find(|b| b.concept == *concept)
             .ok_or_else(|| concept.to_string())?;
@@ -170,8 +170,13 @@ impl Placing<'_> {
             return self.add(added, change).map(|()| None);
         };
         let step = placed.id.to_string();
+        // The anchor reads what the producer adds: the producer already sits on its rows.
+        let feeds_anchor = wanted
+            .values()
+            .any(|from| from.split_once('.').is_some_and(|(s, _)| s == step));
         let moves: Vec<Value> = wanted
             .iter()
+            .filter(|_| !feeds_anchor)
             .filter(|(port, from)| {
                 let reads = self
                     .flow

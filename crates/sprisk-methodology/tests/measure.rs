@@ -111,7 +111,7 @@ fn a_needed_producer_is_added_on_the_rows_the_split_reads() {
     let ops = operators();
     let (nodes, edges) = load_split();
     let start = flow(nodes, edges);
-    let measured = measure(&catalog(&ops), &start, &titled(), &ops).unwrap();
+    let measured = measure(&catalog(&ops), &start, &titled(), &titled().bindings, &ops).unwrap();
 
     assert_eq!(
         effects_of(&measured),
@@ -149,10 +149,10 @@ fn a_producer_in_place_changes_nothing() {
     let ops = operators();
     let (nodes, edges) = load_split();
     let start = flow(nodes, edges);
-    let first = measure(&catalog(&ops), &start, &titled(), &ops).unwrap();
+    let first = measure(&catalog(&ops), &start, &titled(), &titled().bindings, &ops).unwrap();
     let placed = applied(&start, &first, &ops);
 
-    let again = measure(&catalog(&ops), &placed, &titled(), &ops).unwrap();
+    let again = measure(&catalog(&ops), &placed, &titled(), &titled().bindings, &ops).unwrap();
     assert!(again.effects.is_empty(), "{:?}", again.effects);
     assert!(again.changes.is_empty(), "{:?}", again.changes);
 }
@@ -172,7 +172,7 @@ fn a_producer_follows_a_step_added_before_the_split() {
         { "from": "load.data", "to": "near_duplicates.data" },
     ]);
     let start = flow(nodes, edges);
-    let measured = measure(&catalog(&ops), &start, &titled(), &ops).unwrap();
+    let measured = measure(&catalog(&ops), &start, &titled(), &titled().bindings, &ops).unwrap();
 
     assert_eq!(
         effects_of(&measured),
@@ -199,6 +199,7 @@ fn a_producer_whose_concept_is_unbound_is_not_added_and_says_what_to_state() {
         &catalog(&ops),
         &flow(nodes, edges),
         &question(json!([])),
+        &[],
         &ops,
     )
     .unwrap();
@@ -217,7 +218,14 @@ fn a_producer_whose_concept_is_unbound_is_not_added_and_says_what_to_state() {
 fn a_producer_with_no_step_of_its_attach_role_is_left_out_with_a_note() {
     let ops = operators();
     let nodes = json!([{ "id": "load", "operator": LOAD, "params": { "path": "standin.csv", "format": "csv" } }]);
-    let measured = measure(&catalog(&ops), &flow(nodes, json!([])), &titled(), &ops).unwrap();
+    let measured = measure(
+        &catalog(&ops),
+        &flow(nodes, json!([])),
+        &titled(),
+        &titled().bindings,
+        &ops,
+    )
+    .unwrap();
 
     assert!(measured.changes.is_empty());
     assert!(measured.effects.is_empty());
@@ -239,7 +247,14 @@ fn a_producer_with_two_steps_of_its_attach_role_is_left_out_with_a_note() {
         { "from": "load.data", "to": "split.data" },
         { "from": "load.data", "to": "split_2.data" },
     ]);
-    let measured = measure(&catalog(&ops), &flow(nodes, edges), &titled(), &ops).unwrap();
+    let measured = measure(
+        &catalog(&ops),
+        &flow(nodes, edges),
+        &titled(),
+        &titled().bindings,
+        &ops,
+    )
+    .unwrap();
 
     assert!(measured.changes.is_empty());
     assert_eq!(
@@ -255,14 +270,14 @@ fn a_rebound_concept_resets_the_producer_s_column() {
     let ops = operators();
     let (nodes, edges) = load_split();
     let start = flow(nodes, edges);
-    let first = measure(&catalog(&ops), &start, &titled(), &ops).unwrap();
+    let first = measure(&catalog(&ops), &start, &titled(), &titled().bindings, &ops).unwrap();
     let placed = applied(&start, &first, &ops);
     let retitled = question(
         json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_title",
         "source": { "column": "titre" }, "set_by": { "assurance": "stated" } }]),
     );
 
-    let again = measure(&catalog(&ops), &placed, &retitled, &ops).unwrap();
+    let again = measure(&catalog(&ops), &placed, &retitled, &retitled.bindings, &ops).unwrap();
     assert_eq!(
         effects_of(&again),
         json!([{ "kind": "replace_node", "node_id": "near_duplicates", "operator": PRODUCER,
@@ -278,4 +293,24 @@ fn a_rebound_concept_resets_the_producer_s_column() {
         again.changes,
         ["Sets near_duplicates's columns from the question's bindings."]
     );
+}
+
+#[test]
+fn a_producer_the_split_reads_from_stays_where_it_is() {
+    // Once the split reads the column the producer adds, the producer is the rows' last step
+    // before the split: moving it onto what the split reads would make it read itself.
+    let ops = operators();
+    let nodes = json!([
+        { "id": "load", "operator": LOAD, "params": { "path": "standin.csv", "format": "csv" } },
+        { "id": "near_duplicates", "operator": PRODUCER, "params": { "title_column": "designation" } },
+        { "id": "split", "operator": "sprisk.validation.group_split@1.0.0",
+          "params": { "group_column": "item_group", "test_fraction": 0.2, "seed": 42 } },
+    ]);
+    let edges = json!([
+        { "from": "load.data", "to": "near_duplicates.data" },
+        { "from": "near_duplicates.data", "to": "split.data" },
+    ]);
+    let q = titled();
+    let measured = measure(&catalog(&ops), &flow(nodes, edges), &q, &q.bindings, &ops).unwrap();
+    assert!(measured.effects.is_empty(), "{:?}", measured.effects);
 }

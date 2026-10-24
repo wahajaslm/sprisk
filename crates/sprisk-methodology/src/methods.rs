@@ -14,7 +14,7 @@ use crate::catalog::{CatalogError, parse_yaml};
 use sprisk_registry::evidence::EVIDENCE_PORT;
 
 pub(crate) const METHOD: &str = "method.yaml";
-const METHOD_MODULE: &str = "method.py";
+pub(crate) const METHOD_MODULE: &str = "method.py";
 pub(crate) const CONCEPTS: &str = "concepts.yaml";
 
 #[derive(Debug)]
