@@ -272,6 +272,7 @@ impl Client {
         let request = CreateRun {
             pipeline_version_id: pipeline.id.clone(),
             reuse_run_id: None,
+            run_from_node_id: None,
         };
         let response = self
             .http
