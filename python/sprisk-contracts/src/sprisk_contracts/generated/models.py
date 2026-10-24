@@ -454,6 +454,12 @@ class MethodRefused(StrictModel):
     ]
 
 
+class VerificationOutcome(StrEnum):
+    pass_ = "pass"
+    fail = "fail"
+    inconclusive = "inconclusive"
+
+
 class DecisionAnswer(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1769,13 +1775,16 @@ class MethodAction(StrictModel):
     replace: MethodReplace | None = None
 
 
-class MethodAnswer(RootModel[MethodDecided | MethodRefused]):
-    root: Annotated[
-        MethodDecided | MethodRefused,
-        Field(
-            description="The method session's one JSON line per MethodRequest, tagged by `answer`: what decide() returned, or why the method refused its request. Any other failure ends the session.",
-            title="MethodAnswer",
-        ),
+class MethodVerified(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["verified"]
+    method: MethodRef
+    verification: VerificationName
+    result: VerificationOutcome
+    detail: Annotated[
+        str, Field(description="What the evidence showed, for a person.", min_length=1)
     ]
 
 
@@ -2723,6 +2732,39 @@ class MethodOption(StrictModel):
     verify: Annotated[
         list[VerificationName],
         Field(description="The verifications this option promises, by name."),
+    ]
+
+
+class VerificationRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.verification_request/v1"]
+    module: Annotated[
+        str,
+        Field(
+            description="Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored.",
+            min_length=1,
+        ),
+    ]
+    method: MethodRef
+    verification: VerificationName
+    evidence: Annotated[
+        EvidenceFields, Field(description="The fields of the evidence kind the verification needs.")
+    ]
+    settings: Annotated[
+        Params,
+        Field(description="The verification's settings from method.yaml; empty when it has none."),
+    ]
+
+
+class MethodAnswer(RootModel[MethodDecided | MethodRefused | MethodVerified]):
+    root: Annotated[
+        MethodDecided | MethodRefused | MethodVerified,
+        Field(
+            description="The method session's one JSON line per request, tagged by `answer`: what decide() returned, what verify_<name>() found, or why the method refused its request. Any other failure ends the session.",
+            title="MethodAnswer",
+        ),
     ]
 
 

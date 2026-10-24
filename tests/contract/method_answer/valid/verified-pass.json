@@ -1,0 +1,7 @@
+{
+  "answer": "verified",
+  "method": "methodology.supervised.split_method@1.0.0",
+  "verification": "no_group_overlap",
+  "result": "pass",
+  "detail": "No item is in both sides (332 train, 83 test items)."
+}

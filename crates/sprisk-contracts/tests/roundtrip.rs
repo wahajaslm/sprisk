@@ -16,7 +16,8 @@ use sprisk_contracts::{
     NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
     NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
     RuleAnswer, RuleDecision, RuleObservation, RuleRequest, Run, SelectionDecision, Study,
-    StudyDetail, TablePage, Trial, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
+    StudyDetail, TablePage, Trial, VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage,
+    parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -113,6 +114,7 @@ const ENTITIES: &[&str] = &[
     "study_detail",
     "table_page",
     "trial",
+    "verification_request",
     "walk",
     "walk_detail",
     "walk_step",
@@ -293,6 +295,11 @@ fn method_request() {
 #[test]
 fn method_answer() {
     check::<MethodAnswer>("method_answer");
+}
+
+#[test]
+fn verification_request() {
+    check::<VerificationRequest>("verification_request");
 }
 
 #[test]

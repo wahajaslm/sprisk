@@ -1,0 +1,8 @@
+{
+  "schema_version": "sprisk.verification_request/v1",
+  "module": "/packs/supervised/methods/split_method/method.py",
+  "method": "methodology.supervised.split_method@1.0.0",
+  "verification": "class_shares_kept",
+  "evidence": { "largest_gap": 0.012, "train_rows": 476, "test_rows": 120 },
+  "settings": { "max_gap": 0.05 }
+}

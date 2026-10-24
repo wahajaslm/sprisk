@@ -1,0 +1,8 @@
+{
+  "schema_version": "sprisk.verification_request/v1",
+  "module": "/packs/supervised/methods/split_method/method.py",
+  "method": "methodology.supervised.split_method@1.0.0",
+  "verification": "No Group Overlap",
+  "evidence": { "overlapping": 0 },
+  "settings": {}
+}

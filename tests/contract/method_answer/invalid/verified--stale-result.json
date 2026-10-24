@@ -1,0 +1,7 @@
+{
+  "answer": "verified",
+  "method": "methodology.supervised.split_method@1.0.0",
+  "verification": "no_group_overlap",
+  "result": "stale",
+  "detail": "Only the control plane says stale: a verification only ever ran on what it saw."
+}

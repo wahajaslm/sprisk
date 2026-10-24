@@ -152,3 +152,58 @@ def test_what_a_method_prints_never_reaches_the_answers(tmp_path: Path) -> None:
     (answer,) = [json.loads(line) for line in session.stdout.splitlines()]
     assert answer["outcome"] == "ask"
     assert "forged" in session.stderr
+
+
+VERIFIES = """
+def verify_kept_apart(evidence, settings):
+    if evidence["overlapping"] > settings["allowed"]:
+        return "fail", f"{evidence['overlapping']} items are on both sides."
+    return "pass", "No item is on both sides."
+"""
+
+
+def verify_request(module: Path, **changes: Any) -> str:
+    message = {
+        "schema_version": "sprisk.verification_request/v1",
+        "module": str(module),
+        "method": METHOD,
+        "verification": "kept_apart",
+        "evidence": {"overlapping": 0},
+        "settings": {"allowed": 0},
+    }
+    return json.dumps({**message, **changes})
+
+
+def test_a_promise_is_checked_on_the_evidence_and_settings_it_was_given(tmp_path: Path) -> None:
+    module = write(tmp_path, "verifies", VERIFIES)
+    held, broken = answers(
+        verify_request(module), verify_request(module, evidence={"overlapping": 2})
+    )
+    assert held == {
+        "answer": "verified",
+        "method": METHOD,
+        "verification": "kept_apart",
+        "result": "pass",
+        "detail": "No item is on both sides.",
+    }
+    assert (broken["result"], broken["detail"]) == ("fail", "2 items are on both sides.")
+
+
+def test_a_verification_with_no_function_is_refused(tmp_path: Path) -> None:
+    module = write(tmp_path, "verifies", VERIFIES)
+    (answer,) = answers(verify_request(module, verification="other_promise"))
+    assert answer["answer"] == "refused"
+    assert "verify_other_promise" in answer["error"]
+
+
+@pytest.mark.parametrize(
+    "returned", ['"stale", "seen before"', '"pass", ""', '"pass"', '"maybe", "no idea"']
+)
+def test_a_verification_that_returns_no_result_and_detail_is_refused(
+    tmp_path: Path, returned: str
+) -> None:
+    module = write(
+        tmp_path, "verifies", f"def verify_kept_apart(evidence, settings):\n    return {returned}\n"
+    )
+    (answer,) = answers(verify_request(module))
+    assert answer["answer"] == "refused"
