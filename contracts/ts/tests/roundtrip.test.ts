@@ -36,6 +36,7 @@ const entities: [keyof Entities, string][] = [
   ["VerificationRequest", "verification_request"],
   ["RuleDecision", "rule_decision"],
   ["FigureSet", "figure_set"],
+  ["FlowDecisions", "flow_decisions"],
   ["LoadedTable", "loaded_table"],
   ["DatasetProfile", "dataset_profile"],
   ["KeyMatches", "key_matches"],

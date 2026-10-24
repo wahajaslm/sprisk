@@ -1282,6 +1282,40 @@ async fn a_walk_step_is_kept_once_per_round_with_the_walk_it_leaves() {
 }
 
 #[tokio::test]
+async fn a_version_takes_the_walk_that_made_it_or_its_nearest_ancestor() {
+    let (store, walk, request, first, build) = walk_parts().await;
+    store
+        .insert_walk(&walk, &request, Some(&first), &build)
+        .await
+        .unwrap();
+    let made = build.made_pipeline_version_id.clone().unwrap();
+    assert_eq!(
+        store.walk_making_nearest(&made).await.unwrap(),
+        Some((walk.id.clone(), 0))
+    );
+
+    // A person's edit on top of the walk's version, and an edit of that edit.
+    let mut edit = first.clone();
+    edit.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8".parse().unwrap();
+    edit.parent_id = Some(made.clone());
+    store.insert_pipeline_version(&edit).await.unwrap();
+    let mut again = edit.clone();
+    again.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    again.parent_id = Some(edit.id.clone());
+    store.insert_pipeline_version(&again).await.unwrap();
+    assert_eq!(
+        store.walk_making_nearest(&again.id).await.unwrap(),
+        Some((walk.id.clone(), 0))
+    );
+
+    // A flow no walk made, nor any of its ancestors.
+    let mut alone = first.clone();
+    alone.id = "plv_01JABCDEFGHJKMNPQRSTVWXYZ7".parse().unwrap();
+    store.insert_pipeline_version(&alone).await.unwrap();
+    assert_eq!(store.walk_making_nearest(&alone.id).await.unwrap(), None);
+}
+
+#[tokio::test]
 async fn a_selection_run_that_failed_or_was_cancelled_gives_way_to_a_fresh_one() {
     let (store, decision) = store_with_decision().await;
     let base = decision.base_pipeline_version_id.clone();

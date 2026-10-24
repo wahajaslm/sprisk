@@ -5612,6 +5612,155 @@
         "not_evaluated"
       ]
     },
+    "FlowDecisions": {
+      "title": "FlowDecisions",
+      "description": "What decided a flow version, for people (ADR-0063 slice 5): the decisions of the walk that made the version or its nearest ancestor, each with the steps it shaped and the status of its promises on this version. Read only; worked out from the walk's steps.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "pipeline_version_id",
+        "decisions"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.flow_decisions/v1"
+          ]
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "walk_id": {
+          "$ref": "#/$defs/WalkId",
+          "description": "The walk that made the version or its nearest ancestor. Absent: no walk did, so nothing decided it."
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FlowDecision"
+          }
+        }
+      }
+    },
+    "FlowDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "method",
+        "activity",
+        "question",
+        "option",
+        "label",
+        "reason",
+        "assurance",
+        "steps",
+        "promises"
+      ],
+      "properties": {
+        "decides": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "activity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The method's activity: one stage card, one notebook section."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The question the method answers."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The option, for people."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why it was taken, from the decide step."
+        },
+        "assurance": {
+          "$ref": "#/$defs/MethodAssurance"
+        },
+        "steps": {
+          "type": "array",
+          "description": "The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises.",
+          "items": {
+            "$ref": "#/$defs/NodeId"
+          }
+        },
+        "bindings": {
+          "type": "array",
+          "description": "The bindings it made. Absent: none.",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          }
+        },
+        "promises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PromiseStatus"
+          }
+        }
+      }
+    },
+    "PromiseStatus": {
+      "type": "object",
+      "description": "One promise's standing on the version asked about.",
+      "additionalProperties": false,
+      "required": [
+        "verification",
+        "promise",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "promise": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "$ref": "#/$defs/PromiseStanding"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step": {
+          "$ref": "#/$defs/NodeId",
+          "description": "The step that measured its evidence. Absent when nothing did."
+        },
+        "last_result": {
+          "$ref": "#/$defs/PromiseResult",
+          "description": "For stale: what the check found when it ran."
+        }
+      }
+    },
+    "PromiseStanding": {
+      "type": "string",
+      "description": "pass, fail, inconclusive, not_evaluated: what the last check found, and it still holds for this version. stale: the step that measured it, or a step before it, changed since; never shown as pass.",
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive",
+        "not_evaluated",
+        "stale"
+      ]
+    },
     "WalkDetail": {
       "title": "WalkDetail",
       "description": "A walk and its trail, oldest step first. A walk takes at most max_actions steps, so the trail is bounded.",

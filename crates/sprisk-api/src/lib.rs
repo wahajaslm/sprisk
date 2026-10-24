@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 mod bounded;
+mod decisions;
 mod engine;
 mod figures;
 mod kernel;
@@ -123,6 +124,10 @@ pub fn router(state: AppState) -> Router {
             post(create_study),
         )
         .route("/pipeline_versions/{id}/studies", get(list_studies))
+        .route(
+            "/pipeline_versions/{id}/decisions",
+            get(decisions::get_decisions),
+        )
         .route("/studies/{id}", get(get_study))
         .route("/methodology_decisions", get(list_methodology_decisions))
         .route("/methodology_decisions/{id}", get(get_methodology_decision))

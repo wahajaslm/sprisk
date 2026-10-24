@@ -9,10 +9,10 @@ use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
-    CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet, KeyMatches,
-    LoadedTable, Method, MethodAnswer, MethodRequest, MethodologyCheck, MethodologyDecision,
-    MethodologyReview, MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookCode,
-    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
+    CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet,
+    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodRequest, MethodologyCheck,
+    MethodologyDecision, MethodologyReview, MethodologyRule, MethodologyRuleSource, ModelSelection,
+    NotebookCode, NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
     NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
     NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
     RuleAnswer, RuleDecision, RuleObservation, RuleRequest, Run, SelectionDecision, Study,
@@ -78,6 +78,7 @@ const ENTITIES: &[&str] = &[
     "decision_proposal",
     "evidence_set",
     "figure_set",
+    "flow_decisions",
     "key_matches",
     "loaded_table",
     "method",
@@ -295,6 +296,11 @@ fn method_request() {
 #[test]
 fn method_answer() {
     check::<MethodAnswer>("method_answer");
+}
+
+#[test]
+fn flow_decisions() {
+    check::<FlowDecisions>("flow_decisions");
 }
 
 #[test]

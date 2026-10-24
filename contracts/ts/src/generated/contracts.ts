@@ -556,6 +556,13 @@ export type WalkAction = "build" | "run" | "apply" | "compare" | "measure" | "de
  */
 export type PromiseResult = "pass" | "fail" | "inconclusive" | "not_evaluated";
 /**
+ * pass, fail, inconclusive, not_evaluated: what the last check found, and it still holds for this version. stale: the step that measured it, or a step before it, changed since; never shown as pass.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseStanding".
+ */
+export type PromiseStanding = "pass" | "fail" | "inconclusive" | "not_evaluated" | "stale";
+/**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -3324,6 +3331,76 @@ export interface PromiseCheck {
    * What the evidence showed, or why nothing measured it.
    */
   detail: string;
+}
+/**
+ * What decided a flow version, for people (ADR-0063 slice 5): the decisions of the walk that made the version or its nearest ancestor, each with the steps it shaped and the status of its promises on this version. Read only; worked out from the walk's steps.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "FlowDecisions".
+ */
+export interface FlowDecisions {
+  schema_version: "sprisk.flow_decisions/v1";
+  pipeline_version_id: PipelineVersionId;
+  /**
+   * The walk that made the version or its nearest ancestor. Absent: no walk did, so nothing decided it.
+   */
+  walk_id?: string;
+  decisions: FlowDecision[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "FlowDecision".
+ */
+export interface FlowDecision {
+  decides: string;
+  method: MethodRef;
+  /**
+   * The method's activity: one stage card, one notebook section.
+   */
+  activity: string;
+  /**
+   * The question the method answers.
+   */
+  question: string;
+  option: MethodOptionId;
+  /**
+   * The option, for people.
+   */
+  label: string;
+  /**
+   * Why it was taken, from the decide step.
+   */
+  reason: string;
+  assurance: MethodAssurance;
+  /**
+   * The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises.
+   */
+  steps: NodeId[];
+  /**
+   * The bindings it made. Absent: none.
+   */
+  bindings?: Binding[];
+  promises: PromiseStatus[];
+}
+/**
+ * One promise's standing on the version asked about.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseStatus".
+ */
+export interface PromiseStatus {
+  verification: VerificationName;
+  promise: string;
+  status: PromiseStanding;
+  detail: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  step?: string;
+  /**
+   * pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.
+   */
+  last_result?: "pass" | "fail" | "inconclusive" | "not_evaluated";
 }
 /**
  * A walk and its trail, oldest step first. A walk takes at most max_actions steps, so the trail is bounded.

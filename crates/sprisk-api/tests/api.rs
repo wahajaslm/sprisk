@@ -5690,6 +5690,73 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
         .find(|n| n["id"] == "split")
         .unwrap();
     assert_eq!(split["operator"], "sprisk.validation.group_split@1.0.0");
+
+    // What decided the flow: each decision with its activity, and the split's promise, which
+    // holds on the head.
+    let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
+    let uri = format!("/pipeline_versions/{head}/decisions");
+    let (status, decided) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{decided}");
+    assert_eq!(decided["walk_id"], detail["walk"]["id"], "{decided}");
+    let by_split = decided["decisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["decides"] == "split.method")
+        .unwrap();
+    assert_eq!(by_split["activity"], "Fair evaluation", "{decided}");
+    assert_eq!(by_split["promises"][0]["status"], "pass", "{decided}");
+
+    // A person edits the split's seed in a child version: the promise is stale there.
+    let mut edited = flow.clone();
+    edited["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ9");
+    edited["parent_id"] = json!(head);
+    for node in edited["nodes"].as_array_mut().unwrap() {
+        if node["id"] == "split" {
+            node["params"]["seed"] = json!(7);
+        }
+    }
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(edited)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ9/decisions";
+    let (_, decided) = call(&api.app, "GET", uri, None).await;
+    let by_split = decided["decisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["decides"] == "split.method")
+        .unwrap();
+    assert_eq!(by_split["promises"][0]["status"], "stale", "{decided}");
+    assert_eq!(by_split["promises"][0]["last_result"], "pass", "{decided}");
+}
+
+#[tokio::test]
+async fn a_flow_no_walk_made_has_no_decisions() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let uri = format!(
+        "/pipeline_versions/{}/decisions",
+        body["id"].as_str().unwrap()
+    );
+    let (status, decided) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{decided}");
+    assert!(decided.get("walk_id").is_none(), "{decided}");
+    assert_eq!(decided["decisions"], json!([]), "{decided}");
+    let (status, _) = call(
+        &api.app,
+        "GET",
+        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ8/decisions",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

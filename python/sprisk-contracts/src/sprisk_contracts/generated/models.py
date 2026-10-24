@@ -1361,6 +1361,14 @@ class PromiseResult(StrEnum):
     not_evaluated = "not_evaluated"
 
 
+class PromiseStanding(StrEnum):
+    pass_ = "pass"
+    fail = "fail"
+    inconclusive = "inconclusive"
+    not_evaluated = "not_evaluated"
+    stale = "stale"
+
+
 class Handshake(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2567,6 +2575,23 @@ class PromiseCheck(StrictModel):
     ]
 
 
+class PromiseStatus(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    verification: VerificationName
+    promise: Annotated[str, Field(min_length=1)]
+    status: PromiseStanding
+    detail: Annotated[str, Field(min_length=1)]
+    step: Annotated[
+        NodeId | None,
+        Field(description="The step that measured its evidence. Absent when nothing did."),
+    ] = None
+    last_result: Annotated[
+        PromiseResult | None, Field(description="For stale: what the check found when it ran.")
+    ] = None
+
+
 class LeaseAttempt(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3235,6 +3260,37 @@ class WalkStep(StrictModel):
     created_at: Timestamp
 
 
+class FlowDecision(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    decides: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")]
+    method: MethodRef
+    activity: Annotated[
+        str,
+        Field(
+            description="The method's activity: one stage card, one notebook section.", min_length=1
+        ),
+    ]
+    question: Annotated[str, Field(description="The question the method answers.", min_length=1)]
+    option: MethodOptionId
+    label: Annotated[str, Field(description="The option, for people.", min_length=1)]
+    reason: Annotated[
+        str, Field(description="Why it was taken, from the decide step.", min_length=1)
+    ]
+    assurance: MethodAssurance
+    steps: Annotated[
+        list[NodeId],
+        Field(
+            description="The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises."
+        ),
+    ]
+    bindings: Annotated[
+        list[Binding] | None, Field(description="The bindings it made. Absent: none.")
+    ] = None
+    promises: list[PromiseStatus]
+
+
 class WorkerMessage(
     RootModel[
         Handshake
@@ -3558,6 +3614,21 @@ class Walk(StrictModel):
     )
     created_at: Timestamp
     finished_at: Annotated[Timestamp | None, Field(description="Set once stopped.")] = None
+
+
+class FlowDecisions(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.flow_decisions/v1"]
+    pipeline_version_id: PipelineVersionId
+    walk_id: Annotated[
+        WalkId | None,
+        Field(
+            description="The walk that made the version or its nearest ancestor. Absent: no walk did, so nothing decided it."
+        ),
+    ] = None
+    decisions: list[FlowDecision]
 
 
 class WalkDetail(StrictModel):

@@ -517,6 +517,38 @@ impl SqliteStore {
             .collect()
     }
 
+    /// The walk that made version `id` or its nearest ancestor, and the round of the step that
+    /// made that version. A person's edits on top of a walk's version take its decisions.
+    pub async fn walk_making_nearest(
+        &self,
+        id: &PipelineVersionId,
+    ) -> Result<Option<(WalkId, usize)>, StoreError> {
+        // Bounded: a walk takes at most 200 actions, and a person's edits stay far below this.
+        let found: Option<(String, i64)> = sqlx::query_as(
+            "WITH RECURSIVE line (id, depth) AS ( \
+                 SELECT ?, 0 \
+                 UNION ALL \
+                 SELECT json_extract(v.body, '$.parent_id'), line.depth + 1 \
+                 FROM pipeline_versions v JOIN line ON v.id = line.id \
+                 WHERE line.depth < 1000 AND json_extract(v.body, '$.parent_id') IS NOT NULL) \
+             SELECT s.walk_id, s.round FROM line \
+             JOIN walk_steps s ON json_extract(s.body, '$.made_pipeline_version_id') = line.id \
+             ORDER BY line.depth, s.round LIMIT 1",
+        )
+        .bind(id.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((walk, round)) = found else {
+            return Ok(None);
+        };
+        let round = usize::try_from(round)
+            .map_err(|_| StoreError::Conflict(format!("round {round} is out of range")))?;
+        Ok(Some((
+            walk.parse().map_err(|_| StoreError::BadId(walk))?,
+            round,
+        )))
+    }
+
     /// The walks still walking: those a stopped server left, to resume (ADR-0060).
     pub async fn walking_walks(&self) -> Result<Vec<WalkId>, StoreError> {
         let ids: Vec<String> =

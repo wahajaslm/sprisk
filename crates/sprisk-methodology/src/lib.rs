@@ -7,6 +7,7 @@ pub mod deciding;
 mod decision;
 pub mod engine;
 pub mod facts;
+pub mod flow_decisions;
 pub mod measure;
 mod methods;
 pub mod patch;
@@ -56,6 +57,8 @@ pub enum ResolveError {
     NotInsertable(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]
     UndeclaredAlternative(String),
+    #[error("method {0} is in no loaded pack")]
+    UnknownMethod(String),
     #[error("method {method} has no option {option}")]
     UndeclaredOption { method: String, option: String },
     #[error("a walk needs at least one source")]
