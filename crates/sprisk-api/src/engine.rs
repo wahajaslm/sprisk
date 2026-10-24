@@ -20,7 +20,7 @@ use sprisk_methodology::engine::{
     start, with_test_scoring,
 };
 use sprisk_methodology::measure::{Measuring, fitting, measure};
-use sprisk_methodology::verifying::{Checking, checked, checking, fresh, sealed_by};
+use sprisk_methodology::verifying::{Checking, Measured, checked, checking, fresh, sealed_by};
 use sprisk_registry::evidence::EVIDENCE_PORT;
 
 use crate::method_session::MethodSession;
@@ -345,14 +345,16 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         }
         notes = measuring.left_out;
     }
-    let evidence = evidence(state, &steps, &head, &pipeline).await?;
-    let promised = checking(&state.rules, &made, &evidence).map_err(resolve_error)?;
+    let measured = evidence(state, &steps, &head, &pipeline).await?;
+    let fields: BTreeMap<String, Value> = measured
+        .iter()
+        .map(|(kind, (_, found))| (kind.clone(), found.clone()))
+        .collect();
+    let promised = checking(&state.rules, &made, &measured).map_err(resolve_error)?;
+    let holding = holding_checks(state, &steps, &pipeline, &promised).await?;
     let mut session = state.method_runner.session();
     // A run that failed after the split still measured what the split wrote.
-    if head_run != HeadRun::NotRun
-        && !promised.is_empty()
-        && !checks_hold(state, &steps, &pipeline, &promised).await?
-    {
+    if head_run != HeadRun::NotRun && !promised.is_empty() && holding.is_none() {
         return record_verify(
             state,
             walk,
@@ -369,7 +371,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         &question,
         &made,
         &effective,
-        &evidence,
+        &fields,
         &operators,
     )
     .map_err(resolve_error)?;
@@ -493,16 +495,8 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
                 return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
             }
             if !promised.is_empty() {
-                let held = match last_verify(&steps) {
-                    Some(verified) if checks_hold(state, &steps, &pipeline, &promised).await? => {
-                        sealed_by(&verified.verifications)
-                    }
-                    _ => Some(
-                        "The test rows stay sealed: the promises were not checked on this flow."
-                            .to_owned(),
-                    ),
-                };
-                if let Some(held) = held {
+                let checks = holding.map(|verified| verified.verifications.as_slice());
+                if let Some(held) = sealed_by(checks) {
                     let detail = noted(format!("{detail} {held}"));
                     return record_stop(state, walk, round, WalkStopReason::Unverified, &detail)
                         .await;
@@ -566,14 +560,14 @@ fn produced_kinds(state: &AppState, pipeline: &PipelineVersion) -> Vec<String> {
         .collect()
 }
 
-/// What the producers of `head` measured in the walk's run of it, by evidence kind. Empty
-/// when the walk has not run it.
+/// What the producers of `head` measured in the walk's run of it, by evidence kind, with the
+/// step that measured it. Empty when the walk has not run it.
 async fn evidence(
     state: &AppState,
     steps: &[WalkStep],
     head: &PipelineVersionId,
     pipeline: &PipelineVersion,
-) -> Result<BTreeMap<String, Value>, ApiError> {
+) -> Result<Measured, ApiError> {
     let mut found = BTreeMap::new();
     let Some(run_id) = head_run_id(steps, head) else {
         return Ok(found);
@@ -607,7 +601,10 @@ async fn evidence(
         let set: BTreeMap<String, Value> = serde_json::from_slice(&bytes).map_err(|e| {
             ApiError::Internal(format!("evidence of step {}: {e}", node.id.as_str()))
         })?;
-        found.extend(set);
+        found.extend(
+            set.into_iter()
+                .map(|(kind, fields)| (kind, (node.id.to_string(), fields))),
+        );
     }
     Ok(found)
 }
@@ -730,21 +727,16 @@ async fn record_decide(
     Ok(WalkStatus::Walking)
 }
 
-/// The walk's last verify step, if it checked any promise.
-fn last_verify(steps: &[WalkStep]) -> Option<&WalkStep> {
-    steps.iter().rev().find(|s| s.action == WalkAction::Verify)
-}
-
-/// Whether the last verify step checked the promises in `promised` and each check still
-/// holds for `head`: nothing before the evidence it read changed.
-async fn checks_hold(
+/// The walk's last verify step, when it checked the promises in `promised` and each check
+/// still holds for `head`: nothing before the evidence it read changed.
+async fn holding_checks<'s>(
     state: &AppState,
-    steps: &[WalkStep],
+    steps: &'s [WalkStep],
     head: &PipelineVersion,
     promised: &[Checking<'_>],
-) -> Result<bool, ApiError> {
-    let Some(last) = last_verify(steps) else {
-        return Ok(false);
+) -> Result<Option<&'s WalkStep>, ApiError> {
+    let Some(last) = steps.iter().rev().find(|s| s.action == WalkAction::Verify) else {
+        return Ok(None);
     };
     let checked: Vec<(&str, &str)> = last
         .verifications
@@ -756,13 +748,14 @@ async fn checks_hold(
         .map(|c| (c.promise.method.decides.as_str(), c.promise.name.as_str()))
         .collect();
     if checked != promises {
-        return Ok(false);
+        return Ok(None);
     }
     let on = last.pipeline_version_id.as_ref().ok_or_else(|| {
         ApiError::Internal(format!("verify step {} names no version", last.round))
     })?;
     let verified = state.store.get_pipeline_version(on).await?;
-    Ok(last.verifications.iter().all(|c| fresh(&verified, head, c)))
+    let holds = last.verifications.iter().all(|c| fresh(&verified, head, c));
+    Ok(holds.then_some(last))
 }
 
 /// Checks each promise on the evidence the head's run measured, and records what each check
@@ -778,7 +771,7 @@ async fn record_verify(
 ) -> Result<WalkStatus, ApiError> {
     let mut checks = Vec::new();
     for promise in promised {
-        let Some(request) = &promise.request else {
+        let Some((_, request)) = &promise.request else {
             checks.push(promise.not_evaluated().map_err(resolve_error)?);
             continue;
         };
@@ -788,8 +781,7 @@ async fn record_verify(
                 promise.promise.method.id.as_str()
             ))
         })?;
-        let step = producer_step(state, head, &promise.promise.needs)?;
-        checks.push(checked(promise, step, &verified).map_err(resolve_error)?);
+        checks.push(checked(promise, &verified).map_err(resolve_error)?);
     }
     let made = json!({ "pipeline_version_id": head.id,
                        "run_id": head_run_id(steps, &head.id), "verifications": checks });
@@ -804,30 +796,6 @@ async fn record_verify(
     )?;
     state.store.record_walk_step(&walk, &step).await?;
     Ok(WalkStatus::Walking)
-}
-
-/// The step of `pipeline` that produces evidence `kind`.
-fn producer_step<'p>(
-    state: &AppState,
-    pipeline: &'p PipelineVersion,
-    kind: &str,
-) -> Result<&'p str, ApiError> {
-    pipeline
-        .nodes
-        .iter()
-        .find(|n| {
-            state
-                .registry
-                .get(n.operator.as_str())
-                .is_some_and(|o| o.produces.keys().any(|k| k.as_str() == kind))
-        })
-        .map(|n| n.id.as_str())
-        .ok_or_else(|| {
-            ApiError::Internal(format!(
-                "version {} measured {kind}, but no step produces it",
-                pipeline.id.as_str()
-            ))
-        })
 }
 
 fn resolve_error(error: sprisk_methodology::ResolveError) -> ApiError {

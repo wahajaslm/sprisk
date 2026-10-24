@@ -11,7 +11,7 @@ use sprisk_contracts::{
 };
 use sprisk_methodology::RuleCatalog;
 use sprisk_methodology::deciding::Made;
-use sprisk_methodology::verifying::{checked, checking, fresh, sealed_by};
+use sprisk_methodology::verifying::{Measured, checked, checking, fresh, sealed_by};
 use sprisk_registry::Registry;
 
 fn fixture() -> PathBuf {
@@ -39,11 +39,14 @@ fn split(option: &str) -> Made {
     }
 }
 
-fn overlap(overlapping: i64) -> BTreeMap<String, Value> {
+fn overlap(overlapping: i64) -> Measured {
     BTreeMap::from([(
         "evaluation.group_overlap".to_owned(),
-        json!({ "overlapping": overlapping, "overlapping_groups": [],
-                "train_groups": 40, "test_groups": 10 }),
+        (
+            "group_overlap".to_owned(),
+            json!({ "overlapping": overlapping, "overlapping_groups": [],
+                    "train_groups": 40, "test_groups": 10 }),
+        ),
     )])
 }
 
@@ -69,10 +72,15 @@ fn a_measured_promise_is_sent_with_its_evidence_and_settings() {
         found[0].promise.promise,
         "No item has rows in both train and test."
     );
-    let request = serde_json::to_value(found[0].request.as_ref().unwrap()).unwrap();
+    let (step, request) = found[0].request.as_ref().unwrap();
+    assert_eq!(step, "group_overlap");
+    let request = serde_json::to_value(request).unwrap();
     assert_eq!(request["verification"], "no_group_overlap");
     assert_eq!(request["method"], "methodology.core.split_method@1.0.0");
-    assert_eq!(request["evidence"], overlap(0)["evaluation.group_overlap"]);
+    assert_eq!(
+        request["evidence"],
+        overlap(0)["evaluation.group_overlap"].1
+    );
     assert_eq!(request["settings"], json!({}));
     assert!(
         request["module"]
@@ -87,17 +95,20 @@ fn a_promise_s_settings_come_from_its_method() {
     let catalog = catalog();
     let measured = BTreeMap::from([(
         "evaluation.class_shares".to_owned(),
-        json!({ "largest_gap": 0.01, "train_rows": 80, "test_rows": 20 }),
+        (
+            "class_shares".to_owned(),
+            json!({ "largest_gap": 0.01, "train_rows": 80, "test_rows": 20 }),
+        ),
     )]);
     let found = checking(&catalog, &[split("stratified_random")], &measured).unwrap();
-    let request = serde_json::to_value(found[0].request.as_ref().unwrap()).unwrap();
+    let request = serde_json::to_value(&found[0].request.as_ref().unwrap().1).unwrap();
     assert_eq!(request["settings"], json!({ "max_gap": 0.05 }));
 }
 
 #[test]
 fn a_promise_nothing_measured_is_not_evaluated_and_says_which_evidence_is_missing() {
     let catalog = catalog();
-    let found = checking(&catalog, &[split("item_groups")], &BTreeMap::new()).unwrap();
+    let found = checking(&catalog, &[split("item_groups")], &Measured::new()).unwrap();
 
     assert!(found[0].request.is_none());
     let recorded = found[0].not_evaluated().unwrap();
@@ -114,7 +125,7 @@ fn a_promise_nothing_measured_is_not_evaluated_and_says_which_evidence_is_missin
 fn an_option_that_promises_nothing_has_nothing_to_check() {
     let catalog = catalog();
     assert!(
-        checking(&catalog, &[split("simple_random")], &BTreeMap::new())
+        checking(&catalog, &[split("simple_random")], &Measured::new())
             .unwrap()
             .is_empty()
     );
@@ -132,7 +143,7 @@ fn a_verified_promise_records_its_result_and_the_step_that_measured_it() {
     )
     .unwrap();
 
-    let recorded = checked(&found[0], "group_overlap", &verified).unwrap();
+    let recorded = checked(&found[0], &verified).unwrap();
     let mut expected = check("pass", "No item is in both sides.");
     expected.step = Some(parse("\"group_overlap\"").unwrap());
     assert_eq!(recorded, expected);
@@ -140,17 +151,23 @@ fn a_verified_promise_records_its_result_and_the_step_that_measured_it() {
 
 #[test]
 fn the_test_rows_stay_sealed_unless_every_promise_passed() {
-    assert_eq!(sealed_by(&[check("pass", "Fine.")]), None);
-    let held = sealed_by(&[
+    assert_eq!(sealed_by(Some(&[check("pass", "Fine.")])), None);
+    let held = sealed_by(Some(&[
         check("pass", "Fine."),
         check("fail", "3 items have rows in both train and test."),
-    ])
+    ]))
     .unwrap();
     assert!(held.contains("evaluation.split_method"), "{held}");
     assert!(held.contains("no_group_overlap"), "{held}");
     assert!(held.contains("3 items have rows in both"), "{held}");
-    assert!(sealed_by(&[check("inconclusive", "One side has no groups.")]).is_some());
-    assert!(sealed_by(&[check("not_evaluated", "Nothing measured it.")]).is_some());
+    assert!(sealed_by(Some(&[check("inconclusive", "One side has no groups.")])).is_some());
+    assert!(sealed_by(Some(&[check("not_evaluated", "Nothing measured it.")])).is_some());
+}
+
+#[test]
+fn promises_never_checked_on_the_flow_keep_the_test_rows_sealed() {
+    let held = sealed_by(None).unwrap();
+    assert!(held.contains("not checked on this flow"), "{held}");
 }
 
 fn flow(id: &str, nodes: Value, edges: Value) -> PipelineVersion {

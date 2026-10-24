@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    Method, MethodVerified, PipelineVersion, PromiseCheck, PromiseResult, VerificationRequest,
-    parse,
+    Method, MethodVerified, PipelineVersion, PromiseCheck, PromiseResult, VerificationOutcome,
+    VerificationRequest, parse,
 };
 
 use crate::compare::upstream;
@@ -48,14 +48,18 @@ pub fn promises<'c>(
                 option: decided.option.clone(),
             })?;
         for name in &option.verify {
-            // Checked when packs load: an option promises only verifications its method declares.
-            let Some(verification) = method
+            // Refused when packs load too; a promise skipped here would unseal the test rows.
+            let verification = method
                 .verifications
                 .iter()
                 .find_map(|(k, v)| (k.as_str() == name.as_str()).then_some(v))
-            else {
-                continue;
-            };
+                .ok_or_else(|| {
+                    ResolveError::NotInsertable(format!(
+                        "{} promises {}, which it does not declare",
+                        method.id.as_str(),
+                        name.as_str()
+                    ))
+                })?;
             found.push(Promise {
                 method,
                 name: name.as_str().to_owned(),
@@ -68,23 +72,27 @@ pub fn promises<'c>(
     Ok(found)
 }
 
-/// A promise, and the request that checks it; None when nothing measured its evidence.
+/// What a run's producers measured, by evidence kind: the step that measured it, and its fields.
+pub type Measured = BTreeMap<String, (String, Value)>;
+
+/// A promise, and the request that checks it with the step whose evidence it reads; None
+/// when nothing measured its evidence.
 #[derive(Debug)]
 pub struct Checking<'c> {
     pub promise: Promise<'c>,
-    pub request: Option<VerificationRequest>,
+    pub request: Option<(String, VerificationRequest)>,
 }
 
 /// What to check for each promise the options in `made` make, on the evidence in `measured`.
 pub fn checking<'c>(
     catalog: &'c RuleCatalog,
     made: &[Made],
-    measured: &BTreeMap<String, Value>,
+    measured: &Measured,
 ) -> Result<Vec<Checking<'c>>, ResolveError> {
     promises(catalog, made)?
         .into_iter()
         .map(|promise| {
-            let Some(evidence) = measured.get(&promise.needs) else {
+            let Some((step, evidence)) = measured.get(&promise.needs) else {
                 return Ok(Checking {
                     promise,
                     request: None,
@@ -105,7 +113,7 @@ pub fn checking<'c>(
             )?;
             Ok(Checking {
                 promise,
-                request: Some(request),
+                request: Some((step.clone(), request)),
             })
         })
         .collect()
@@ -139,18 +147,28 @@ impl Checking<'_> {
     }
 }
 
-/// The record of what verify_<name>() found on the evidence `step` measured.
+/// The record of what verify_<name>() found on the evidence its step measured.
 pub fn checked(
     checking: &Checking<'_>,
-    step: &str,
     verified: &MethodVerified,
 ) -> Result<PromiseCheck, ResolveError> {
-    let result: PromiseResult = parse(&json!(verified.result).to_string())?;
-    checking.record(Some(step), result, verified.detail.as_str())
+    let result = match verified.result {
+        VerificationOutcome::Pass => PromiseResult::Pass,
+        VerificationOutcome::Fail => PromiseResult::Fail,
+        VerificationOutcome::Inconclusive => PromiseResult::Inconclusive,
+    };
+    let step = checking.request.as_ref().map(|(step, _)| step.as_str());
+    checking.record(step, result, verified.detail.as_str())
 }
 
-/// Why the test rows stay sealed: each promise that did not pass. None when all passed.
-pub fn sealed_by(checks: &[PromiseCheck]) -> Option<String> {
+/// Why the test rows stay sealed: each promise in `checks` that did not pass, or that the
+/// promises were not checked on the flow (None). None when all passed.
+pub fn sealed_by(checks: Option<&[PromiseCheck]>) -> Option<String> {
+    let Some(checks) = checks else {
+        return Some(
+            "The test rows stay sealed: the promises were not checked on this flow.".to_owned(),
+        );
+    };
     let open: Vec<String> = checks
         .iter()
         .filter(|c| c.result != PromiseResult::Pass)

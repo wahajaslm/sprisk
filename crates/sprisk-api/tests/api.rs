@@ -6274,6 +6274,34 @@ async fn a_promise_that_fails_keeps_the_test_rows_sealed() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_method_that_refuses_to_check_its_promise_stops_the_walk_with_an_error() {
+    let mut api = api().await;
+    let refusing = "import sprisk_workers.method as m\n\
+        m.verify = lambda request: m.MethodAnswer.model_validate_json(\n\
+        \x20   '{\"answer\": \"refused\", \"error\": \"no verify here\"}')\n\
+        m.main()\n";
+    api.state.method_runner = sprisk_api::MethodRunner::new(
+        vec![
+            root().join(".venv/bin/python").display().to_string(),
+            "-c".into(),
+            refusing.into(),
+        ],
+        Duration::from_secs(30),
+        2,
+    );
+    api.app = router(api.state.clone());
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-refused-check")).await;
+
+    assert_eq!(detail["walk"]["stop"]["reason"], "error", "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains("refused its request"), "{why}");
+    assert!(!trail(&detail).contains(&"score".to_owned()), "{detail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_second_walk_on_the_same_files_never_scores_their_test_rows_again() {
     let api = api().await;
     std::fs::write(&api.csv, learnable_table()).unwrap();
