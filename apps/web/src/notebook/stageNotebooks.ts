@@ -33,7 +33,7 @@ export function stagesOf(pipeline: PipelineVersion, operators: Operators): Map<s
 
 /** One notebook section: a stage, or the activity of the decisions that shaped its steps.
  * `home` is the stage a cell added to it takes: its own, or its first step's. */
-export type Section = { stage: string; home: Stage; nodes: Node[]; decisions: FlowDecision[] };
+export type Section = { name: string; home: Stage; nodes: Node[]; decisions: FlowDecision[] };
 
 /** The flow as one notebook per section, in working order, each step after the steps it reads.
  * The steps a decision shaped sit under its activity (ADR-0063), placed where the earliest of
@@ -50,13 +50,15 @@ export function stageNotebooks(pipeline: PipelineVersion, operators: Operators, 
     const stage = placed.get(node.id) ?? "Unknown";
     const decision = activityOf.get(node.id);
     const name = decision?.activity ?? stage;
+    // Decisions that share an activity share its section; an activity named like a stage does not.
+    const key = decision ? `activity:${name}` : `stage:${name}`;
     // A stage comes before an activity that starts in it: Load, then what was measured on it.
     const at = STAGES.indexOf(stage) * 2 + (decision ? 1 : 0);
-    const section = sections.get(name) ?? { stage: name, home: stage, nodes: [], decisions: [], at };
+    const section = sections.get(key) ?? { name, home: stage, nodes: [], decisions: [], at };
     section.nodes.push(node);
     section.at = Math.min(section.at, at);
     if (decision && !section.decisions.includes(decision)) section.decisions.push(decision);
-    sections.set(name, section);
+    sections.set(key, section);
   }
   return [...sections.values()].sort((a, b) => a.at - b.at).map(({ at: _at, ...section }) => section);
 }
@@ -65,8 +67,8 @@ export function stageNotebooks(pipeline: PipelineVersion, operators: Operators, 
  * "Clean#clean"; the part before "#" is the name shown. */
 export function stageGroups(pipeline: PipelineVersion, operators: Operators, decisions: FlowDecision[] = []): Map<string, string> {
   return new Map(
-    stageNotebooks(pipeline, operators, decisions).flatMap(({ stage, nodes }) =>
-      nodes.map((n) => [n.id, `${stage}#${stage.toLowerCase().replaceAll(" ", "_")}`] as const),
+    stageNotebooks(pipeline, operators, decisions).flatMap(({ name, nodes }) =>
+      nodes.map((n) => [n.id, `${name}#${name.toLowerCase().replaceAll(" ", "_")}`] as const),
     ),
   );
 }

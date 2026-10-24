@@ -57,7 +57,7 @@ import { Loading } from "../components/ui/Loading.tsx";
 import { useEscape } from "../hooks/useEscape.ts";
 import { stageGroups, stageNotebooks } from "../notebook/stageNotebooks.ts";
 import { useFlowDecisions } from "../api/walks.ts";
-import { STANDING } from "./inspector/MethodDecision.tsx";
+import { STANDING } from "./PromiseList.tsx";
 import { stageDescription } from "./StageArtwork.tsx";
 import { stepOf } from "../flow/ports.ts";
 
@@ -425,7 +425,7 @@ export function flowGraph(
   decisions: FlowDecision[] = [],
 ): { nodes: Node[]; edges: Edge[] } {
   const groupOf = stageGroups(pipeline, operators, decisions);
-  const decidedIn = new Map(stageNotebooks(pipeline, operators, decisions).map((s) => [s.stage, s.decisions]));
+  const decidedIn = new Map(stageNotebooks(pipeline, operators, decisions).map((s) => [s.name, s.decisions]));
   const selectedGroup = selectedId ? groupOf.get(selectedId) : undefined;
   const heads: Node[] = groups.map((g) => {
     const stageNodes = pipeline.nodes.filter((n) => groupOf.get(n.id) === g.id);
@@ -594,6 +594,7 @@ export function FlowCanvas() {
   return (
     <div className="flow" aria-label="Flow canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
+      {decided.isError && <p role="alert" className="error pad">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
       {/* A new layout means new positions: start the canvas afresh. */}
       <Canvas computed={computed} level={level} pipeline={pipeline} />
       <StepMenu pipeline={pipeline} operators={byRef} />

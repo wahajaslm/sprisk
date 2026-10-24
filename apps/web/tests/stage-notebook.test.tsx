@@ -1,9 +1,10 @@
-import type { CodeSplitRequest, NotebookSettingsRequest, PipelineVersion } from "@sprisk/contracts";
+import type { CodeSplitRequest, FlowDecision, NotebookSettingsRequest, PipelineVersion } from "@sprisk/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { stageNotebooks } from "../src/notebook/stageNotebooks.ts";
 import { StageNotebook } from "../src/views/notebook/StageNotebook.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { notebookOperator, operators, pipeline, RUN } from "./fixtures.ts";
@@ -16,6 +17,14 @@ const flow: PipelineVersion = {
   nodes: [...pipeline.nodes.map((n) => (n.id === "impute" ? { ...n, methodology_decision_id: "mdc_01JABCDEFGHJKMNPQRSTVWXYZ0", stage: "clean" as const } : n)), { id: "rate", operator: notebookOperator.id, params: { source: "rate = impute_train.height", inputs: ["impute_train"], outputs: [] } }],
   edges: [...pipeline.edges, { from: "impute.train", to: "rate.impute_train" }],
 };
+
+/** The section named `name` of `flow`, as the Notebooks page passes it. */
+function sectionOf(flow: PipelineVersion, name: string, decisions: FlowDecision[] = []) {
+  const byRef = new Map([...operators, notebookOperator].map((o) => [o.id, o]));
+  const found = stageNotebooks(flow, byRef, decisions).find((s) => s.name === name);
+  if (!found) throw new Error(`no section ${name}`);
+  return found;
+}
 
 function withApi() {
   const sent = { versions: [] as PipelineVersion[], runs: [] as unknown[], split: [] as CodeSplitRequest[], code: [] as string[] };
@@ -77,14 +86,14 @@ async function deleteCell(n: number) {
 describe("a stage in the notebook editor (ADR-0055)", () => {
   it("shows each step as plain Python: a ready-made step's code, a code step's own", async () => {
     withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     expect(await screen.findByRole("textbox", { name: "Cell 1" })).toHaveValue("impute_train, impute_test = fill(split_train, split_test, method='median')\n");
     expect(screen.getByRole("textbox", { name: "Cell 2" })).toHaveValue("rate = impute_train.height");
   });
 
   it("shows a ready-made step with no plain code yet as one line saying so, never a form", async () => {
     withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Split" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Split")} />);
     expect(await screen.findByText("# sprisk.validation.random_split@1.0.0 has no plain code yet; its settings are in the flow's Parameters tab.")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Cell 1" })).not.toBeInTheDocument();
@@ -92,9 +101,9 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
 
   it("asks for plain code only from steps that write it", async () => {
     const sent = withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Split" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Split")} />);
     await screen.findByText("# sprisk.validation.random_split@1.0.0 has no plain code yet; its settings are in the flow's Parameters tab.");
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     await screen.findByRole("textbox", { name: "Cell 2" });
     expect(sent.code).toEqual(["sprisk.clean.impute@1.0.0"]);
   });
@@ -102,14 +111,14 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
   it("a step whose code cannot be written says so in its own cell, and the others still show", async () => {
     withApi();
     server.use(http.post("/api/operators/:id/notebook_code", () => HttpResponse.json({ errors: [{ code: "code_failed", message: "the writer broke" }] }, { status: 500 })));
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     expect(await screen.findByRole("textbox", { name: "Cell 2" })).toHaveValue("rate = impute_train.height");
     expect(await screen.findByText(/impute's code could not be written: .*the writer broke/)).toBeInTheDocument();
   });
 
   it("shows no made-up run number on a cell", async () => {
     withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     // The step ran in the run on screen, but a flow run gives no kernel count to show.
     await screen.findByRole("textbox", { name: "Cell 1" });
     expect(screen.queryByText(/^\[\d+\]$/)).not.toBeInTheDocument();
@@ -117,7 +126,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
 
   it("editing a ready-made step's code makes it a code step running that code, and says its checks no longer cover it", async () => {
     const sent = withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     const code = await screen.findByRole("textbox", { name: "Cell 1" });
     await userEvent.clear(code);
     await userEvent.type(code, "impute_train, impute_test = fill(split_train, split_test, 0)");
@@ -131,7 +140,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
 
   it("changing only a value in a ready-made step's code changes its setting and keeps the step", async () => {
     const sent = withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     const code = await screen.findByRole("textbox", { name: "Cell 1" });
     await userEvent.clear(code);
     await userEvent.type(code, "impute_train, impute_test = fill(split_train, split_test, method='mean')");
@@ -143,7 +152,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
 
   it("running an edited code cell saves its step in a new flow version and runs it", async () => {
     const sent = withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     const code = await screen.findByRole("textbox", { name: "Cell 2" });
     await userEvent.clear(code);
     await userEvent.type(code, "rate = impute_train.height * 2");
@@ -155,9 +164,27 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     expect(sent.runs[0]).toEqual({ pipeline_version_id: sent.versions[0]!.id, reuse_run_id: RUN });
   });
 
+  it("a cell added to an activity's section is saved in its first step's stage (ADR-0063)", async () => {
+    const sent = withApi();
+    const fair: FlowDecision = {
+      decides: "split.method", method: "methodology.supervised.split_method@1.0.0", activity: "Fair evaluation",
+      question: "How are rows divided?", option: "item_groups", label: "Keep each item's rows on one side",
+      reason: "Why.", assurance: "rule", steps: ["split"], promises: [],
+    };
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Fair evaluation", [fair])} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Code" }));
+    const added = await screen.findByRole("textbox", { name: "Cell 2" });
+    await userEvent.type(added, "n = 1");
+    await userEvent.click(screen.getByRole("button", { name: "Run cell 2" }));
+    await waitFor(() => expect(sent.versions).toHaveLength(1));
+    const made = sent.versions[0]!.nodes.filter((n) => !flow.nodes.some((old) => old.id === n.id));
+    expect(made).toHaveLength(1);
+    expect(made[0]!.stage).toBe("split");
+  });
+
   it("running an unchanged cell runs the flow again without a new version", async () => {
     const sent = withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     await userEvent.click(await screen.findByRole("button", { name: "Run cell 1" }));
     await waitFor(() => expect(sent.runs).toEqual([{ pipeline_version_id: flow.id, reuse_run_id: RUN }]));
     expect(sent.versions).toEqual([]);
@@ -165,7 +192,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
 
   it("deleting a step nothing reads saves the flow without it", async () => {
     const sent = withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     await deleteCell(2);
     await waitFor(() => expect(sent.versions).toHaveLength(1));
     expect(sent.versions[0]!.nodes.map((n) => n.id)).not.toContain("rate");
@@ -177,14 +204,14 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
       await delay("infinite");
       return HttpResponse.json({});
     }));
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     await deleteCell(2);
     await waitFor(() => expect(screen.getByRole("button", { name: "Run all" })).toBeDisabled());
   });
 
   it("refuses to delete a step another step reads, naming it", async () => {
     const sent = withApi();
-    renderWithApi(<StageNotebook pipeline={flow} stage="Clean" />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Clean")} />);
     await deleteCell(1);
     expect(await screen.findByRole("alert")).toHaveTextContent("Cannot delete impute: model, score, rate read its output.");
     expect(sent.versions).toEqual([]);

@@ -10,8 +10,8 @@ import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useCollapsed } from "../../notebook/collapsed.ts";
 import type { Ran } from "../../notebook/outputs.ts";
-import { codeRequest, isReadyMade, stageCells, stageNodes } from "../../notebook/stageCells.ts";
-import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
+import { codeRequest, isReadyMade, stageCells } from "../../notebook/stageCells.ts";
+import type { Section } from "../../notebook/stageNotebooks.ts";
 import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -19,7 +19,7 @@ import { PageHeader } from "../../components/ui/PageHeader.tsx";
 import { flowName } from "../../flow/labels.ts";
 import { AddIcon, RedoIcon, TrashIcon, UndoIcon } from "../Icons.tsx";
 import { FiguresTab } from "../inspector/FiguresTab.tsx";
-import { PromiseList } from "../inspector/MethodDecision.tsx";
+import { PromiseList } from "../PromiseList.tsx";
 import { useStep } from "../inspector/step.tsx";
 import { ArtifactTable, OutputItems } from "./CellOutputs.tsx";
 import { codeCellIds, NotebookCells, notebookKeys } from "./NotebookCells.tsx";
@@ -34,12 +34,12 @@ const LIVE = new Set<Attempt["state"]>(["created", "validated", "queued", "lease
  * Running a cell saves the flow if its cells changed and runs it, reusing unchanged steps
  * (ADR-0026), so a cell's result is its step's result. There is no kernel. Mounted per flow
  * version: a save shows the new version's cells. */
-export function StageNotebook({ pipeline, stage, decisions = [] }: { pipeline: PipelineVersion; stage: string; decisions?: FlowDecision[] }) {
+export function StageNotebook({ pipeline, section }: { pipeline: PipelineVersion; section: Section }) {
   const operators = useOperators();
   const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
   // Only steps whose manifest names a writer have plain code to ask for.
   const writing = operators.data
-    ? stageNodes(pipeline, byRef, stage, decisions).filter((n) => isReadyMade(pipeline, n.id) && byRef.get(n.operator)?.notebook_code !== undefined)
+    ? section.nodes.filter((n) => isReadyMade(pipeline, n.id) && byRef.get(n.operator)?.notebook_code !== undefined)
     : [];
   const plain = useQueries({ queries: writing.map((n) => plainCodeQuery(n.operator, codeRequest(pipeline, byRef, n.id))) });
   if (operators.isError) return <p role="alert" className="error pad">Steps could not be read: {operators.error.message}</p>;
@@ -47,29 +47,27 @@ export function StageNotebook({ pipeline, stage, decisions = [] }: { pipeline: P
   const code = new Map(writing.flatMap((n, i) => (plain[i]?.data ? [[n.id, plain[i].data] as const] : [])));
   // A step whose code could not be written shows why in its own cell, with its settings.
   const unwritten = new Map(writing.flatMap((n, i) => (plain[i]?.error ? [[n.id, plain[i].error.message] as const] : [])));
-  return <StageEditor pipeline={pipeline} stage={stage} decisions={decisions} byRef={byRef} code={code} unwritten={unwritten} />;
+  return <StageEditor pipeline={pipeline} section={section} byRef={byRef} code={code} unwritten={unwritten} />;
 }
 
 /** The editor, made once the operators and the steps' code are known: its cells are read from
  * the flow once. */
-function StageEditor({ pipeline, stage, decisions, byRef, code, unwritten }: {
+function StageEditor({ pipeline, section, byRef, code, unwritten }: {
   pipeline: PipelineVersion;
-  stage: string;
-  decisions: FlowDecision[];
+  section: Section;
   byRef: Map<string, Operator>;
   code: Map<string, string>;
   unwritten: Map<string, string>;
 }) {
   const runId = useSelection((s) => s.runId);
   const attempts = useRunAttempts(pipeline.id, runId);
-  const edit = useCellEditing(stageCells(pipeline, byRef, stage, code, decisions), stage);
+  const stage = section.name;
+  const edit = useCellEditing(stageCells(section, code), stage);
   const { cells, active } = edit;
   const foldKey = `stage:${stage}`;
   const toggleFold = useCollapsed((s) => s.toggle);
   const foldOutputs = useCollapsed((s) => s.setOutputsCollapsed);
-  const stageSave = useStageSave(pipeline, byRef, stage, code, decisions);
-  // Every decision of the flow places the steps; this section shows its own.
-  const shown = stageNotebooks(pipeline, byRef, decisions).find((s) => s.stage === stage)?.decisions ?? [];
+  const stageSave = useStageSave(pipeline, byRef, section, code);
   const { busy, setProblem, notes } = stageSave;
   const problem = stageSave.problem;
   const [starting, setStarting] = useState<string>();
@@ -117,7 +115,7 @@ function StageEditor({ pipeline, stage, decisions, byRef, code, unwritten }: {
         description="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change."
         actions={<Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>}
       />
-      {shown.map((decision) => (
+      {section.decisions.map((decision) => (
         <SectionDecision key={decision.decides} decision={decision} />
       ))}
       <div className="nb-toolbar" role="toolbar" aria-label="Notebook actions">

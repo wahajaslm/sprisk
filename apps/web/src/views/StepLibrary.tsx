@@ -62,8 +62,8 @@ export function StepLibrary() {
   const pipelineStages = useMemo(() => {
     if (!activeVersion) return [];
     return stageNotebooks(activeVersion, opMap, decisions)
-      .map(({ stage, nodes }) => ({
-        stage,
+      .map(({ name, nodes }) => ({
+        stage: name,
         nodes: nodes.filter(
           (node) =>
             !needle ||
@@ -111,6 +111,9 @@ export function StepLibrary() {
     >
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
       {checks.status === "error" && <p role="alert" className="error pad">{checks.message}</p>}
+      {tab === "Pipeline" && decided.isError && (
+        <p role="alert" className="error">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>
+      )}
       {tab === "Pipeline" &&
         (pipelineStages.length === 0 ? (
           <p className="muted pad">No pipeline steps found.</p>

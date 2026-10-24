@@ -5,7 +5,7 @@ import { stageNotebooks } from "../src/notebook/stageNotebooks.ts";
 import { notebookOperator, operators, pipeline } from "./fixtures.ts";
 
 const byRef = new Map([...operators, notebookOperator].map((o) => [o.id, o]));
-const ids = (flow: PipelineVersion) => stageNotebooks(flow, byRef).map(({ stage, nodes }) => [stage, nodes.map((n) => n.id)]);
+const ids = (flow: PipelineVersion) => stageNotebooks(flow, byRef).map(({ name, nodes }) => [name, nodes.map((n) => n.id)]);
 
 describe("a flow as one notebook per stage (ADR-0055)", () => {
   it("puts each step in its operator's stage, stages in order, steps in flow order", () => {
@@ -67,7 +67,7 @@ const decision = (activity: string, steps: string[]): FlowDecision => ({
 });
 
 const grouped = (flow: PipelineVersion, decisions: FlowDecision[]) =>
-  stageNotebooks(flow, byRef, decisions).map(({ stage, nodes }) => [stage, nodes.map((n) => n.id)]);
+  stageNotebooks(flow, byRef, decisions).map(({ name, nodes }) => [name, nodes.map((n) => n.id)]);
 
 describe("a decision's steps as one section per activity (ADR-0063)", () => {
   it("puts the steps a decision shaped under its activity, where its first step's stage sits", () => {
@@ -84,8 +84,8 @@ describe("a decision's steps as one section per activity (ADR-0063)", () => {
   it("gives each section the decisions it shows", () => {
     const fair = decision("Fair evaluation", ["split"]);
     const sections = stageNotebooks(pipeline, byRef, [fair]);
-    expect(sections.find((s) => s.stage === "Fair evaluation")?.decisions).toEqual([fair]);
-    expect(sections.find((s) => s.stage === "Load")?.decisions).toEqual([]);
+    expect(sections.find((s) => s.name === "Fair evaluation")?.decisions).toEqual([fair]);
+    expect(sections.find((s) => s.name === "Load")?.decisions).toEqual([]);
   });
 
   it("keeps a step two decisions shaped under the first, and ignores steps the flow no longer has", () => {

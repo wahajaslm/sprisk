@@ -46,12 +46,13 @@ export function OperatorCode({ pipeline, nodeId, operator }: Props) {
 /** A ready-made step's plain Python. Running an edit saves it the way its notebook cell does. */
 function PlainCode({ pipeline, nodeId, byRef, code }: { pipeline: PipelineVersion; nodeId: string; byRef: Map<string, Operator>; code: string }) {
   const [draft, setDraft] = useState<string | undefined>(undefined);
-  const stage = stageNotebooks(pipeline, byRef).find((s) => s.nodes.some((n) => n.id === nodeId))?.stage ?? "Load";
+  const section = stageNotebooks(pipeline, byRef).find((s) => s.nodes.some((n) => n.id === nodeId));
+  if (!section) throw new Error(`step ${nodeId} is in no section of version ${pipeline.id}`);
   const plain = new Map([[nodeId, code]]);
-  const stageSave = useStageSave(pipeline, byRef, stage, plain);
+  const stageSave = useStageSave(pipeline, byRef, section, plain);
   const run = (source: string) => {
     if (source.trim() === "" || stageSave.busy) return;
-    const cells = stageCells(pipeline, byRef, stage, plain).map((c) => (c.id === nodeId ? { ...c, source } : c));
+    const cells = stageCells(section, plain).map((c) => (c.id === nodeId ? { ...c, source } : c));
     void stageSave.save(cells, nodeId);
   };
   const editing = draft !== undefined;

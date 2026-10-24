@@ -353,6 +353,14 @@ describe("flow canvas", () => {
     expect(heading).toHaveTextContent(/^Split$/);
   });
 
+  it("says when the flow's decisions cannot be read, and still draws its stages (ADR-0063)", async () => {
+    server.use(http.get("/api/pipeline_versions/:id/decisions", () => HttpResponse.json({ errors: [{ code: "store", message: "disk full" }] }, { status: 500 })));
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN });
+    renderWithApi(<FlowCanvas />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The flow's decisions could not be read");
+    expect(await screen.findByRole("heading", { name: /Split/ })).toBeInTheDocument();
+  });
+
   it("Tidy puts every step back where the layout places it", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);

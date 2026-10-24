@@ -4,7 +4,8 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { StageNotebook } from "../src/views/notebook/StageNotebook.tsx";
-import { pipeline } from "./fixtures.ts";
+import { stageNotebooks } from "../src/notebook/stageNotebooks.ts";
+import { operators, pipeline } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -31,7 +32,9 @@ describe("a notebook section for an activity (ADR-0063)", () => {
         HttpResponse.json({ schema_version: "sprisk.flow_decisions/v1", pipeline_version_id: pipeline.id, decisions: [fair] }),
       ),
     );
-    renderWithApi(<StageNotebook pipeline={pipeline} stage="Fair evaluation" decisions={[fair]} />);
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const section = stageNotebooks(pipeline, byRef, [fair]).find((s) => s.name === "Fair evaluation")!;
+    renderWithApi(<StageNotebook pipeline={pipeline} section={section} />);
 
     expect(await screen.findByRole("heading", { name: "Fair evaluation" })).toBeInTheDocument();
     const block = screen.getByRole("region", { name: "Decision: How are rows divided into training and test so the score is fair?" });

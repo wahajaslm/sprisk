@@ -1,10 +1,10 @@
-import type { FlowDecision, Node, NotebookCell, NotebookCodeRequest, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { Node, NotebookCell, NotebookCodeRequest, Operator, PipelineVersion } from "@sprisk/contracts";
 
 import { isCodeOperator } from "../flow/edit.ts";
 import { isNotebookStep, nodeOf, NOTEBOOK_OPERATOR, type NotebookStep, notebookSteps, outputName, withSource } from "../flow/notebook.ts";
 import { portOf, stepOf } from "../flow/ports.ts";
 import type { Stage } from "../flow/stages.ts";
-import { stageNotebooks } from "./stageNotebooks.ts";
+import type { Section } from "./stageNotebooks.ts";
 
 type Operators = Map<string, Operator>;
 
@@ -18,21 +18,11 @@ const STAGE_KEY: Record<Stage, NonNullable<Node["stage"]> | undefined> = {
   Unknown: undefined,
 };
 
-/** A section's steps, in notebook order. */
-export const stageNodes = (pipeline: PipelineVersion, operators: Operators, stage: string, decisions: FlowDecision[] = []) =>
-  stageNotebooks(pipeline, operators, decisions).find((s) => s.stage === stage)?.nodes ?? [];
-
-/** A stage's cells, read from the flow (ADR-0055): each step's notes as Markdown around one
+/** A section's cells, read from the flow (ADR-0055): each step's notes as Markdown around one
  * code cell named by the step. A code step's cell holds its code; a ready-made step's holds
  * its plain Python (`code`, by step), or nothing when it has none yet and shows its form. */
-export function stageCells(
-  pipeline: PipelineVersion,
-  operators: Operators,
-  stage: string,
-  code: Map<string, string> = new Map(),
-  decisions: FlowDecision[] = [],
-): NotebookCell[] {
-  return stageNodes(pipeline, operators, stage, decisions).flatMap((node) => [
+export function stageCells(section: Section, code: Map<string, string> = new Map()): NotebookCell[] {
+  return section.nodes.flatMap((node) => [
     ...(node.notes?.before ?? []).map((source, k): NotebookCell => ({ id: `${node.id}-before-${k}`, kind: "markdown", source })),
     { id: node.id, kind: "code" as const, source: isCodeOperator(node.operator) ? String(node.params["source"] ?? "") : (code.get(node.id) ?? "") },
     ...(node.notes?.after ?? []).map((source, k): NotebookCell => ({ id: `${node.id}-after-${k}`, kind: "markdown", source })),

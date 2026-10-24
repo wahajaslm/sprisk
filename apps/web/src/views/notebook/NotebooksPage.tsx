@@ -54,7 +54,7 @@ export function NotebooksPage() {
   const stages = shownFlow ? stageNotebooks(shownFlow, new Map((operators.data ?? []).map((o) => [o.id, o])), decisions) : [];
   const saved = openId ? [...mine, ...loose].find((v) => v.notebook_id === openId) : undefined;
   // A stage the canvas asked for, else a saved notebook picked here, else the first stage.
-  const stageOpen = stages.find((s) => s.stage === stageTarget)?.stage ?? (saved ? undefined : stages[0]?.stage);
+  const stageOpen = stages.find((s) => s.name === stageTarget) ?? (saved ? undefined : stages[0]);
   const open = stageOpen ? undefined : (saved ?? mine[0] ?? loose[0]);
 
   const create = () => {
@@ -65,7 +65,7 @@ export function NotebooksPage() {
 
   const needle = filter.trim().toLowerCase();
   const matches = (name: string) => name.toLowerCase().includes(needle);
-  const shownStages = stages.filter((s) => matches(s.stage));
+  const shownStages = stages.filter((s) => matches(s.name));
   const shownMine = mine.filter((n) => matches(n.title));
   const shownLoose = loose.filter((n) => matches(n.title));
 
@@ -86,12 +86,13 @@ export function NotebooksPage() {
         }
       >
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
+        {decided.isError && <p role="alert" className="error">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
         {shownStages.length > 0 && (
           <SideGroup num={1} label="Stages" meta={shownStages.length}>
             <div role="list" aria-label="This flow's stages">
-              {shownStages.map(({ stage, nodes }) => (
-                <div key={stage} role="listitem">
-                  <ListRow title={stage} meta={nodes.length === 1 ? "1 step" : `${nodes.length} steps`} selected={stage === stageOpen} onClick={() => openStage(stage)} />
+              {shownStages.map(({ name, nodes }) => (
+                <div key={name} role="listitem">
+                  <ListRow title={name} meta={nodes.length === 1 ? "1 step" : `${nodes.length} steps`} selected={name === stageOpen?.name} onClick={() => openStage(name)} />
                 </div>
               ))}
             </div>
@@ -114,7 +115,7 @@ export function NotebooksPage() {
           // The cells are read once per section, so they wait for the decisions that place them.
           <Loading text="Loading the stage…" pad />
         ) : stageOpen && shownFlow ? (
-          <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} decisions={decisions} />
+          <StageNotebook key={`${shownFlow.id}/${stageOpen.name}`} pipeline={shownFlow} section={stageOpen} />
         ) : open ? (
           <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
         ) : (

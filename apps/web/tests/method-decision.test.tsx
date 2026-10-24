@@ -44,7 +44,7 @@ describe("a method's decision on a step (ADR-0063)", () => {
     const promise = await screen.findByRole("listitem", { name: "No item has rows in both train and test." });
     expect(within(promise).getByText("Stale")).toBeInTheDocument();
     expect(within(promise).queryByText("Holds")).not.toBeInTheDocument();
-    expect(within(promise).getByText(/changed since it was checked|changed since this was checked/)).toBeInTheDocument();
+    expect(within(promise).getByText(decided.decisions[1]!.promises[0]!.detail)).toBeInTheDocument();
   });
 
   it("says a promise holds when its last check passed and nothing changed", async () => {
