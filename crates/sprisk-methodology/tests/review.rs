@@ -94,7 +94,6 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("question.unit_of_prediction".to_owned(), at("split")),
             ("data.exact_duplicates".to_owned(), at("split")),
             ("data.missing_markers".to_owned(), at("split")),
-            ("data.text_spelling".to_owned(), at("split")),
             ("data.type_repair".to_owned(), at("split")),
             ("split.method".to_owned(), at("split")),
             ("cleaning.missingness_strategy".to_owned(), at("fill")),
@@ -546,12 +545,11 @@ fn rules_measuring_the_split_s_table_come_after_the_rules_that_shape_its_columns
     let pipeline = filled_linear();
     let planned = plan(&catalog, &pipeline, supervised).unwrap();
     let at = |decides: &str| &planned[index_of(&planned, decides)];
-    let (join, roles, html, duplicates, spelling) = (
+    let (join, roles, html, duplicates) = (
         at("data.join_sources"),
         at("data.column_roles"),
         at("data.html_text"),
         at("data.exact_duplicates"),
-        at("data.text_spelling"),
     );
 
     assert!(comes_after(&pipeline, duplicates, join));
@@ -559,12 +557,10 @@ fn rules_measuring_the_split_s_table_come_after_the_rules_that_shape_its_columns
     assert!(comes_after(&pipeline, roles, join));
     assert!(!comes_after(&pipeline, join, roles));
     assert!(!comes_after(&pipeline, roles, duplicates));
-    // Markup is stripped from the final columns, and before spelling and copies are counted:
-    // "Caf&eacute;" and "Café" are one spelling, two rows differing only in markup one row.
+    // Markup is stripped from the final columns, and before copies are counted: two rows
+    // differing only in markup are one row.
     assert!(comes_after(&pipeline, html, roles));
-    assert!(comes_after(&pipeline, spelling, html));
     assert!(comes_after(&pipeline, duplicates, html));
-    assert!(!comes_after(&pipeline, html, spelling));
 }
 
 #[test]

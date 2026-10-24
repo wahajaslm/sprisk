@@ -615,7 +615,7 @@ fn a_flow_holding_a_baseline_scoring_step_is_not_scored_again() {
     }
 }
 
-const SPELLING: &str = "methodology.common.text_spelling@1.0.0";
+const HTML: &str = "methodology.common.html_text@1.0.0";
 
 fn asked(asks: &[sprisk_contracts::WalkAsk]) -> Vec<String> {
     asks.iter().map(|a| a.decides.to_string()).collect()
@@ -625,12 +625,7 @@ fn asked(asks: &[sprisk_contracts::WalkAsk]) -> Vec<String> {
 fn the_look_lists_every_fact_a_person_must_state_and_every_guess_a_rule_reads() {
     let review = review(vec![
         item(CONSTRAINTS, "question.hard_constraints", "needs_fact", None),
-        item(
-            SPELLING,
-            "data.text_spelling",
-            "proposal",
-            Some("normalize"),
-        ),
+        item(HTML, "data.html_text", "proposal", Some("strip")),
         item(
             DUPLICATES,
             "data.exact_duplicates",
@@ -644,7 +639,7 @@ fn the_look_lists_every_fact_a_person_must_state_and_every_guess_a_rule_reads() 
         asked(&asks),
         [
             "question.hard_constraints",
-            "data.text_spelling",
+            "data.html_text",
             "question.success_bar"
         ]
     );

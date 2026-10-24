@@ -2428,7 +2428,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 64);
+    assert_eq!(rules.len(), 63);
     // The words people read go with each rule (ADR-0045 amendment).
     let clustering = rules
         .iter()
@@ -4848,7 +4848,6 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
         ("question.unit_of_prediction", "waiting"),
         ("data.exact_duplicates", "waiting"),
         ("data.missing_markers", "waiting"),
-        ("data.text_spelling", "waiting"),
         ("data.type_repair", "waiting"),
         // The split is a method's decision, made in the walk's look (ADR-0063).
         ("question.class_balance", "waiting"),
@@ -5146,25 +5145,32 @@ async fn after_a_run_the_target_on_the_train_rows_settles_the_task_and_class_bal
 #[tokio::test(flavor = "multi_thread")]
 async fn values_that_differ_only_in_case_are_lowercased_before_the_split() {
     let api = api().await;
-    forest_flow(&api).await;
-    let mut csv = String::from("age,city,returned_within_30d\n");
-    for age in 20..80 {
-        let city = ["Paris", "paris ", "Lyon"][usize::try_from(age % 3).unwrap()];
-        csv.push_str(&format!("{age},{city},{}\n", u8::from(age >= 50)));
+    let mut csv = String::from("dose,batch,city,outcome\n");
+    for (row, line) in learnable_table().lines().skip(1).enumerate() {
+        let (dose_batch, outcome) = line.rsplit_once(',').unwrap();
+        let city = ["Paris", "paris ", "Lyon"][row % 3];
+        csv.push_str(&format!("{dose_batch},{city},{outcome}\n"));
     }
     std::fs::write(&api.csv, csv).unwrap();
-    run_version(&api, BASE).await;
+    learnable_question(&api).await;
+    let mut request = walk_request(&[&api.csv], "walk-spelling");
+    request["max_actions"] = json!(4);
 
-    let spelling = propose_for(&api, BASE, "split", "data.text_spelling").await;
+    let detail = walk_to_end(&api, request).await;
+    let steps = detail["steps"].as_array().unwrap();
+    let spelling = steps
+        .iter()
+        .find(|s| s["decides"] == "data.text_spelling")
+        .expect("the spelling is decided in the look");
+    assert_eq!(spelling["option"], "normalise", "{detail}");
+    // One step before the split trims and lowercases the city; the target stays as typed.
     assert_eq!(
-        spelling["recommended_alternative_id"], "normalise",
-        "{spelling}"
-    );
-    let effect = recommended_effect(&spelling);
-    assert_eq!(effect["before"], "split", "{effect}");
-    assert_eq!(
-        effect["params"],
-        json!({"columns": ["city"], "lowercase": true, "empty_to_null": false})
+        spelling["effects"],
+        json!([{ "kind": "insert_node", "node_id": "text_spelling", "before": "split",
+                 "operator": "sprisk.clean.clean_text@1.0.0",
+                 "params": { "lowercase": true, "empty_to_null": false,
+                             "columns": ["city"], "exclude": ["outcome"] } }]),
+        "{detail}"
     );
 }
 
@@ -5446,7 +5452,9 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
         trail(&detail),
         [
             "build",
+            "measure",
             "run",
+            "decide data.text_spelling keep",
             "decide data.repeated_items independent_rows",
             "decide split.method stratified_random",
             "measure",
@@ -5474,15 +5482,23 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     // model's train rows show 27 classes, an old rule not yet converted (ADR-0063 slice 6).
     assert!(!open.contains("question.hard_constraints"), "{open}");
     assert!(open.contains("question.task_type"), "{open}");
-    // No column is named as the title, so repeated titles are not measured, and it says so.
-    assert!(
-        open.contains("data.repeated_items needs common.item_title"),
-        "{open}"
-    );
+    // No column is named as the title, so repeated titles are not measured, and the
+    // decision says so.
     let steps = detail["steps"].as_array().unwrap();
+    let repeated = steps
+        .iter()
+        .find(|s| s["decides"] == "data.repeated_items")
+        .unwrap();
+    assert!(
+        repeated["reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("No column is named as the item's title"),
+        "{detail}"
+    );
     let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
-        *head, steps[13]["made_pipeline_version_id"],
+        *head, steps[15]["made_pipeline_version_id"],
         "the head is the version the last apply made"
     );
     let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
@@ -5560,7 +5576,8 @@ async fn a_person_s_answer_is_taken_even_where_the_method_would_choose_another()
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let mut request = walk_request(&[&api.csv], "walk-answered-split");
     request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
-    request["max_actions"] = json!(4);
+    // The look measures and runs; text spelling and repeated items decide before the split.
+    request["max_actions"] = json!(6);
 
     let detail = walk_to_end(&api, request).await;
     let steps = detail["steps"].as_array().unwrap();
@@ -5622,19 +5639,29 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    // The look: the producer is placed and the first flow runs once, before any rule acts.
+    // The look: the producers are placed and the first flow runs once, before any rule acts.
+    // No category text is typed several ways, so the spelling stays.
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-relistings")).await;
     assert_eq!(
         trail(&detail),
-        ["build", "measure", "run", "stop"],
+        [
+            "build",
+            "measure",
+            "run",
+            "decide data.text_spelling keep",
+            "stop"
+        ],
         "{detail}"
     );
     let steps = detail["steps"].as_array().unwrap();
-    assert_eq!(steps[1]["effects"][0]["kind"], "add_node", "{detail}");
-    assert_eq!(
-        steps[1]["effects"][0]["params"]["title_column"], "designation",
-        "{detail}"
-    );
+    let near = steps[1]["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["operator"] == "sprisk.profile.near_duplicates@1.0.0")
+        .unwrap();
+    assert_eq!(near["kind"], "add_node", "{detail}");
+    assert_eq!(near["params"]["title_column"], "designation", "{detail}");
     // One list: the only open question is the one the data raised.
     let stop = &detail["walk"]["stop"];
     assert_eq!(stop["reason"], "needs_person", "{detail}");
@@ -5666,11 +5693,12 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     let detail = walk_to_end(&api, request).await;
     let walked = trail(&detail);
     assert_eq!(
-        walked[..8],
+        walked[..9],
         [
             "build",
             "measure",
             "run",
+            "decide data.text_spelling keep",
             "decide data.repeated_items group_by_title",
             "decide split.method item_groups",
             "measure",
@@ -5686,23 +5714,23 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let steps = detail["steps"].as_array().unwrap();
     // The answer binds the item to the group column the producer adds, confirmed by a person.
-    assert_eq!(steps[3]["assurance"], "confirmed", "{detail}");
+    assert_eq!(steps[4]["assurance"], "confirmed", "{detail}");
     assert_eq!(
-        steps[3]["bindings"],
+        steps[4]["bindings"],
         json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_identity",
                  "source": { "column": "item_group", "step": "near_duplicates" },
                  "set_by": { "assurance": "confirmed",
                              "method": "methodology.common.repeated_items@1.0.0" } }])
     );
     // The split method replaces the split through a patch, and promises what it keeps.
-    assert_eq!(steps[4]["assurance"], "rule", "{detail}");
+    assert_eq!(steps[5]["assurance"], "rule", "{detail}");
     assert_eq!(
-        steps[4]["promises"],
+        steps[5]["promises"],
         json!(["no_group_overlap"]),
         "{detail}"
     );
     assert_eq!(
-        steps[4]["effects"],
+        steps[5]["effects"],
         json!([
             { "kind": "replace_node", "node_id": "split",
               "operator": "sprisk.validation.group_split@1.0.0",
@@ -5712,15 +5740,15 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
         ])
     );
     // The promise is checked on what the split wrote: no item is on both sides.
-    let checks = steps[7]["verifications"].as_array().unwrap();
+    let checks = steps[8]["verifications"].as_array().unwrap();
     assert_eq!(checks.len(), 1, "{detail}");
     assert_eq!(checks[0]["verification"], "no_group_overlap", "{detail}");
     assert_eq!(checks[0]["result"], "pass", "{detail}");
     assert_eq!(checks[0]["step"], "group_overlap", "{detail}");
-    assert_eq!(steps[7]["run_id"], steps[6]["run_id"], "{detail}");
+    assert_eq!(steps[8]["run_id"], steps[7]["run_id"], "{detail}");
     // The promise's producer reads what the split wrote, whatever code wrote it.
     assert_eq!(
-        steps[5]["effects"],
+        steps[6]["effects"],
         json!([{ "kind": "add_node", "node_id": "group_overlap",
                  "operator": "sprisk.validation.group_overlap@1.0.0",
                  "params": { "group_column": "item_group" },
@@ -5882,8 +5910,8 @@ async fn a_walk_stops_when_it_has_taken_its_actions() {
     let detail = walk_to_end(&api, request).await;
     assert_eq!(
         trail(&detail),
-        ["build", "run", "stop"],
-        "the look's run is its one action: {detail}"
+        ["build", "measure", "stop"],
+        "placing the look's producers is its one action: {detail}"
     );
     assert_eq!(
         detail["walk"]["stop"]["reason"], "budget_exhausted",
@@ -5949,28 +5977,22 @@ async fn a_walk_whose_head_someone_else_changes_stops_as_stale() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
     rakuten_like_question(&api).await;
-    let (status, walk) = call(
-        &api.app,
-        "POST",
-        "/walks",
-        Some(walk_request(&[&api.csv], "walk-stale")),
-    )
-    .await;
-    assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
-    // A person saves a version on the walk's first flow while its first round reviews it.
-    let head = walk["head_pipeline_version_id"].as_str().unwrap();
+    // Stored, not yet driven: a person saves a version on the walk's first flow before its
+    // first round reviews it.
+    let (walk, head) = walk_left_walking(&api).await;
     let (_, mut edited) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
     edited["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
     edited["parent_id"] = json!(head);
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(edited)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
+    let walk = serde_json::to_value(&walk).unwrap();
 
     let detail = stopped(&api, &walk).await;
     assert_eq!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
-    // The look's run may start before the edit lands; a run changes no version.
-    let walked = trail(&detail);
-    assert!(
-        walked == ["build", "stop"] || walked == ["build", "run", "stop"],
+    assert_eq!(
+        trail(&detail),
+        ["build", "stop"],
         "nothing applied on a changed head: {detail}"
     );
 }
@@ -6110,8 +6132,10 @@ async fn a_restarted_server_finishes_its_walks_without_a_second_run_for_a_round(
     let steps = detail["steps"].as_array().unwrap();
     let runs_of_round_one = steps.iter().filter(|s| s["round"] == 1).count();
     assert_eq!(runs_of_round_one, 1, "{detail}");
-    // The walk goes on from the run: the methods decide on what it measured.
-    assert_eq!(steps[2]["action"], "decide", "{detail}");
+    // The walk goes on from the run: the look places the producers the first flow lacks, and
+    // the methods decide on what they measured.
+    assert_eq!(steps[2]["action"], "measure", "{detail}");
+    assert!(steps.iter().any(|s| s["action"] == "decide"), "{detail}");
     assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
 }
 
@@ -6263,7 +6287,9 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
         trail(&detail),
         [
             "build",
+            "measure",
             "run",
+            "decide data.text_spelling keep",
             "decide data.repeated_items independent_rows",
             "decide split.method stratified_random",
             "measure",
