@@ -86,3 +86,14 @@ Each slice is done when the Rakuten-shaped walk test gets further on the synthet
 - §4: add `Binding` and evidence records. `MethodologyDecision` records the option, its promises and bindings.
 - §8: methods need evidence, operators produce it. Concepts and bindings. Promises per option.
 - §14: `methodology/<pack>/methods/<name>/`, `methodology/<pack>/concepts.yaml`, `manifest.yaml` gains `role`, `attach`, `scope`, `concepts` and `produces`.
+
+## Amendments
+- 2026-10-24: **Questions come first, in one list.** A walk that stops to ask several times, one question per stop, makes a person sit beside it. A person should answer everything once, then let the walk run to its end.
+  - **Questions that need no data** (the target, the task, the success bar, hard constraints) are asked on the Objective page. Start stays disabled until they are answered (ADR-0060 gate).
+  - **Questions found in the data** come from one look, the walk's first run. The engine builds the first flow, places the producers methods need, and runs it once before any rule acts. Producers that read every row may never read the label (the load check above). Nothing scores the test rows.
+  - After that run, every fitting method decides, and every rule is reviewed. All asks are collected: methods' `ask`, rules that need a fact or read a guess, and a missing success bar. If any is open, the walk stops once, with reason `needs_person` and the asks as one structured list on its stop.
+  - **A person answers on the question.** `QuestionVersion.answers` holds one option per decision key (`decides`, `option`). The next walk applies an answered option with assurance `confirmed`, so it does not ask again.
+  - The walk then runs to its end. It stops only for results (complete, a limitation such as "no model beats the baseline"), a failure or a budget. A new ask after the look is a safety stop, never planned. It means the look missed it, which is a bug to fix in the method.
+  - **A method's decision is recorded on its walk step** (action `decide`): the method, the option, its promises, the bindings it made and its patch. `MethodologyDecision` stays rule-shaped until slice 6, when the old rules go.
+  - **Question facts as bindings, until slice 6.** A stated or confirmed `target`, `time_column` and `entity_column` count as bindings of `common.target`, `common.event_time` and `common.item_identity`. A guessed one is asked in the look, as `unconfirmed_reads` asks today.
+  - Old rules that ask only after another rule acts (none in the Rakuten walk) still stop mid-walk until they are converted.
