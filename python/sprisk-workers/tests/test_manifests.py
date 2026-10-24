@@ -69,6 +69,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.ml.select_model@5.0.0",
         "sprisk.profile.chart@1.0.0",
         "sprisk.profile.distributions@1.0.0",
+        "sprisk.profile.identity_frequency@1.0.0",
         "sprisk.profile.near_duplicates@1.0.0",
         "sprisk.profile.spelling_variants@1.0.0",
         "sprisk.profile.summarize@1.0.0",

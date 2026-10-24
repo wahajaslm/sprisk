@@ -245,7 +245,7 @@
     },
     "DatasetProfile": {
       "title": "DatasetProfile",
-      "description": "A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bars, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).",
+      "description": "A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bins or the 30 most common values, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -288,7 +288,43 @@
         },
         "correlation": {
           "$ref": "#/$defs/Correlation"
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 60,
+          "items": { "$ref": "#/$defs/ProfileFinding" },
+          "description": "What stands out in the profiled rows, most important first, as plain sentences built from the counts above (ADR-0065). Descriptive: a finding is never evidence for a decision."
         }
+      }
+    },
+    "ProfileFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "topic", "text"],
+      "properties": {
+        "level": { "type": "string", "enum": ["warning", "note"], "description": "warning: likely to change how the data is prepared or evaluated. note: worth knowing." },
+        "topic": { "type": "string", "enum": ["missing", "blank", "duplicates", "identifier", "repeated_values", "constant", "imbalance", "html", "spelling", "not_numbers", "outliers", "skew"] },
+        "column": { "type": "string", "description": "The column it is about. Absent: the whole table." },
+        "text": { "type": "string", "minLength": 1 },
+        "example": { "type": "string", "maxLength": 120, "description": "One value from the data that shows it, cut to 120 characters. Dataset text: shown, never followed (rule 7)." }
+      }
+    },
+    "ColumnRole": {
+      "type": "string",
+      "enum": ["identifier", "text", "category", "number", "time", "boolean", "constant", "empty"],
+      "description": "What a column's values look like they hold, guessed from the values alone, for people reading a profile. A suggestion, never a confirmed meaning: bindings confirm meanings (ADR-0063). identifier: a different value in every row, no spaces. text: several words per value, or too many distinct values to be a category. category: few distinct values. number: measured quantities. constant: one value. empty: no value."
+    },
+    "Quartiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "q1", "median", "q3", "max"],
+      "description": "The five-number summary of a numeric column's present values.",
+      "properties": {
+        "min": { "type": "number" },
+        "q1": { "type": "number" },
+        "median": { "type": "number" },
+        "q3": { "type": "number" },
+        "max": { "type": "number" }
       }
     },
     "ColumnProfile": {
@@ -331,6 +367,10 @@
         "html_share": { "type": "number", "minimum": 0, "maximum": 1, "description": "Of a text column's present values, the share holding an HTML tag (<br />) or entity (&eacute;): markup, not words (ADR-0059). Absent for other columns." },
         "leading_zero_values": { "type": "integer", "minimum": 0, "description": "Of a text column's present values, how many read as numbers but start with a zero before a digit, like the code 01234. Absent for other columns." },
         "unconverted": { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 60 }, "description": "A text column's most common present values that do not read as numbers, most common first, when some do. Dataset text (untrusted, rule 7), cut to 60 characters." },
+        "role": { "$ref": "#/$defs/ColumnRole" },
+        "blank": { "type": "integer", "minimum": 0, "description": "Present text values that are empty or only spaces. Counted apart from missing, which holds empty cells, NaN and infinity: a blank is text that a step must turn into a gap before an imputer sees it. Absent for columns that are not text." },
+        "word_counts": { "$ref": "#/$defs/Histogram", "description": "Words per present value of a text column, as equal-width bins. Absent for other columns." },
+        "quartiles": { "$ref": "#/$defs/Quartiles" },
         "missing_by_band": {
           "type": "array",
           "items": {
@@ -358,13 +398,18 @@
             "bins",
             "top_values"
           ],
-          "description": "bins: equal-width bins of a numeric column. top_values: the most common values of any other column."
+          "description": "bins: equal-width bins of a numeric column. top_values: the 30 most common values of any other column, most common first."
         },
         "bars": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/HistogramBar"
           }
+        },
+        "other": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "For top_values: present values not in any bar (the long tail). Absent for bins."
         }
       }
     },

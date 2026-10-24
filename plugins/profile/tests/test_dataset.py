@@ -15,6 +15,7 @@ from sprisk_profile.dataset import (
     MAX_CORRELATED,
     MAX_RARE_VALUES,
     MIN_PAIRED,
+    TOP_VALUES,
     read_table,
 )
 from sprisk_profile.dataset import profile as raw_profile
@@ -74,9 +75,13 @@ def test_numeric_columns_get_bins_and_others_their_top_values() -> None:
     assert column(p, "empty").histogram is None
 
 
-def test_top_values_keep_the_ten_most_common() -> None:
-    p = profile(pl.DataFrame({"t": [f"v{i % 25}" for i in range(250)]}))
-    assert len(bar_labels(p, "t")) == 10
+def test_top_values_keep_the_most_common_and_count_the_rest() -> None:
+    p = profile(
+        pl.DataFrame({"t": [f"v{i % (TOP_VALUES + 5)}" for i in range(10 * (TOP_VALUES + 5))]})
+    )
+    assert len(bar_labels(p, "t")) == TOP_VALUES
+    histogram = column(p, "t").histogram
+    assert histogram is not None and histogram.other == 50
 
 
 def test_missing_map_has_bounded_bands_in_row_order() -> None:

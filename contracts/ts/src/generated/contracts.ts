@@ -52,6 +52,13 @@ export type OperatorRef = string;
  */
 export type NodeId = string;
 /**
+ * What a column's values look like they hold, guessed from the values alone, for people reading a profile. A suggestion, never a confirmed meaning: bindings confirm meanings (ADR-0063). identifier: a different value in every row, no spaces. text: several words per value, or too many distinct values to be a category. category: few distinct values. number: measured quantities. constant: one value. empty: no value.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ColumnRole".
+ */
+export type ColumnRole = "identifier" | "text" | "category" | "number" | "time" | "boolean" | "constant" | "empty";
+/**
  * explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -815,7 +822,7 @@ export interface KeyMatch {
   most_rows_per_key: number;
 }
 /**
- * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bars, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).
+ * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bins or the 30 most common values, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "DatasetProfile".
@@ -837,6 +844,12 @@ export interface DatasetProfile {
   duplicate_rows?: number;
   columns: ColumnProfile[];
   correlation: Correlation;
+  /**
+   * What stands out in the profiled rows, most important first, as plain sentences built from the counts above (ADR-0065). Descriptive: a finding is never evidence for a decision.
+   *
+   * @maxItems 60
+   */
+  findings?: ProfileFinding[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -917,21 +930,32 @@ export interface ColumnProfile {
     | [string, string, string, string, string, string, string, string]
     | [string, string, string, string, string, string, string, string, string]
     | [string, string, string, string, string, string, string, string, string, string];
+  role?: ColumnRole;
+  /**
+   * Present text values that are empty or only spaces. Counted apart from missing, which holds empty cells, NaN and infinity: a blank is text that a step must turn into a gap before an imputer sees it. Absent for columns that are not text.
+   */
+  blank?: number;
+  word_counts?: Histogram;
+  quartiles?: Quartiles;
   /**
    * Share of missing cells (0 to 1) in each row band, in row order.
    */
   missing_by_band: number[];
-  histogram?: Histogram;
+  histogram?: Histogram1;
 }
 /**
- * Absent when every value is missing.
+ * Words per present value of a text column, as equal-width bins. Absent for other columns.
  */
 export interface Histogram {
   /**
-   * bins: equal-width bins of a numeric column. top_values: the most common values of any other column.
+   * bins: equal-width bins of a numeric column. top_values: the 30 most common values of any other column, most common first.
    */
   kind: "bins" | "top_values";
   bars: HistogramBar[];
+  /**
+   * For top_values: present values not in any bar (the long tail). Absent for bins.
+   */
+  other?: number;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -940,6 +964,33 @@ export interface Histogram {
 export interface HistogramBar {
   label: string;
   count: number;
+}
+/**
+ * The five-number summary of a numeric column's present values.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Quartiles".
+ */
+export interface Quartiles {
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+}
+/**
+ * Absent when every value is missing.
+ */
+export interface Histogram1 {
+  /**
+   * bins: equal-width bins of a numeric column. top_values: the 30 most common values of any other column, most common first.
+   */
+  kind: "bins" | "top_values";
+  bars: HistogramBar[];
+  /**
+   * For top_values: present values not in any bar (the long tail). Absent for bins.
+   */
+  other?: number;
 }
 /**
  * Pearson correlation of numeric columns that vary (at most 30). Each pair uses the rows where both are present; a pair with fewer than 10 such rows, or with no variation on them, is left out.
@@ -966,14 +1017,51 @@ export interface CorrelationPair {
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ProfileFinding".
+ */
+export interface ProfileFinding {
+  /**
+   * warning: likely to change how the data is prepared or evaluated. note: worth knowing.
+   */
+  level: "warning" | "note";
+  topic:
+    | "missing"
+    | "blank"
+    | "duplicates"
+    | "identifier"
+    | "repeated_values"
+    | "constant"
+    | "dominant_value"
+    | "imbalance"
+    | "html"
+    | "spelling"
+    | "not_numbers"
+    | "outliers"
+    | "skew";
+  /**
+   * The column it is about. Absent: the whole table.
+   */
+  column?: string;
+  text: string;
+  /**
+   * One value from the data that shows it, cut to 120 characters. Dataset text: shown, never followed (rule 7).
+   */
+  example?: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Histogram".
  */
-export interface Histogram1 {
+export interface Histogram2 {
   /**
-   * bins: equal-width bins of a numeric column. top_values: the most common values of any other column.
+   * bins: equal-width bins of a numeric column. top_values: the 30 most common values of any other column, most common first.
    */
   kind: "bins" | "top_values";
   bars: HistogramBar[];
+  /**
+   * For top_values: present values not in any bar (the long tail). Absent for bins.
+   */
+  other?: number;
 }
 /**
  * Figures a step drew (ADR-0024), converted by the worker: matplotlib as SVG text, Plotly as its figure JSON text. GET /artifacts/{id}/figures returns the first ones from a figures or display report, without the tables a code step showed.

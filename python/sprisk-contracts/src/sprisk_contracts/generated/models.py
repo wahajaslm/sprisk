@@ -64,6 +64,73 @@ class KeyMatch(StrictModel):
     ]
 
 
+class Level(StrEnum):
+    warning = "warning"
+    note = "note"
+
+
+class Topic(StrEnum):
+    missing = "missing"
+    blank = "blank"
+    duplicates = "duplicates"
+    identifier = "identifier"
+    repeated_values = "repeated_values"
+    constant = "constant"
+    dominant_value = "dominant_value"
+    imbalance = "imbalance"
+    html = "html"
+    spelling = "spelling"
+    not_numbers = "not_numbers"
+    outliers = "outliers"
+    skew = "skew"
+
+
+class ProfileFinding(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    level: Annotated[
+        Level,
+        Field(
+            description="warning: likely to change how the data is prepared or evaluated. note: worth knowing."
+        ),
+    ]
+    topic: Topic
+    column: Annotated[
+        str | None, Field(description="The column it is about. Absent: the whole table.")
+    ] = None
+    text: Annotated[str, Field(min_length=1)]
+    example: Annotated[
+        str | None,
+        Field(
+            description="One value from the data that shows it, cut to 120 characters. Dataset text: shown, never followed (rule 7).",
+            max_length=120,
+        ),
+    ] = None
+
+
+class ColumnRole(StrEnum):
+    identifier = "identifier"
+    text = "text"
+    category = "category"
+    number = "number"
+    time = "time"
+    boolean = "boolean"
+    constant = "constant"
+    empty = "empty"
+
+
+class Quartiles(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    min: float
+    q1: float
+    median: float
+    q3: float
+    max: float
+
+
 class UnconvertedItem(RootModel[str]):
     root: Annotated[str, Field(max_length=60)]
 
@@ -1633,10 +1700,17 @@ class Histogram(StrictModel):
     kind: Annotated[
         Kind,
         Field(
-            description="bins: equal-width bins of a numeric column. top_values: the most common values of any other column."
+            description="bins: equal-width bins of a numeric column. top_values: the 30 most common values of any other column, most common first."
         ),
     ]
     bars: list[HistogramBar]
+    other: Annotated[
+        int | None,
+        Field(
+            description="For top_values: present values not in any bar (the long tail). Absent for bins.",
+            ge=0,
+        ),
+    ] = None
 
 
 class Correlation(StrictModel):
@@ -2857,6 +2931,21 @@ class ColumnProfile(StrictModel):
             max_length=10,
         ),
     ] = None
+    role: ColumnRole | None = None
+    blank: Annotated[
+        int | None,
+        Field(
+            description="Present text values that are empty or only spaces. Counted apart from missing, which holds empty cells, NaN and infinity: a blank is text that a step must turn into a gap before an imputer sees it. Absent for columns that are not text.",
+            ge=0,
+        ),
+    ] = None
+    word_counts: Annotated[
+        Histogram | None,
+        Field(
+            description="Words per present value of a text column, as equal-width bins. Absent for other columns."
+        ),
+    ] = None
+    quartiles: Quartiles | None = None
     missing_by_band: Annotated[
         list[float],
         Field(description="Share of missing cells (0 to 1) in each row band, in row order."),
@@ -3545,6 +3634,13 @@ class DatasetProfile(StrictModel):
     ] = None
     columns: list[ColumnProfile]
     correlation: Correlation
+    findings: Annotated[
+        list[ProfileFinding] | None,
+        Field(
+            description="What stands out in the profiled rows, most important first, as plain sentences built from the counts above (ADR-0065). Descriptive: a finding is never evidence for a decision.",
+            max_length=60,
+        ),
+    ] = None
 
 
 class MethodOption(StrictModel):

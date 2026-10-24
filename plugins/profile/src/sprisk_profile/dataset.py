@@ -16,12 +16,18 @@ from typing import Any
 import polars as pl
 
 from .distributions import histogram_bins, numeric_columns
+from .understanding import findings, role
 
 MAX_BANDS = 40
 MAX_CORRELATED = 30
 # A correlation from fewer rows than this says little; it is left out rather than drawn as exact.
 MIN_PAIRED = 10
-TOP_VALUES = 10
+TOP_VALUES = 30
+# Values that do not read as numbers, named for the missing-marker rule.
+UNCONVERTED = 10
+QUARTILES = (("min", 0.0), ("q1", 0.25), ("median", 0.5), ("q3", 0.75), ("max", 1.0))
+# Bars of a words-per-value histogram.
+WORD_BINS = 20
 # Most distinct values a column may have and still report its rarest value's share: enough for
 # the classes of a target, few enough that the share means something.
 MAX_RARE_VALUES = 20
@@ -62,15 +68,19 @@ def profile(
     band_rows = -(-rows // MAX_BANDS)
     numeric = numeric_columns(data)
     bins = histogram_bins(data, numeric)
-    varying = [c for c in numeric if data[c].drop_nulls().n_unique() > 1][:MAX_CORRELATED]
+    columns = [_column(data[name], name in numeric, bins, band_rows) for name in data.columns]
+    # Identifiers and category codes are numbers only in type; their correlation means nothing.
+    measured = [c["name"] for c in columns if c["role"] == "number"]
+    varying = [c for c in measured if data[c].drop_nulls().n_unique() > 1][:MAX_CORRELATED]
     return {
         "total_rows": rows if total_rows is None else total_rows,
         "total_columns": width if total_columns is None else total_columns,
         "profiled_rows": rows,
         "band_rows": band_rows,
         **({} if duplicates is None else {"duplicate_rows": duplicates}),
-        "columns": [_column(data[name], name in numeric, bins, band_rows) for name in data.columns],
+        "columns": columns,
         "correlation": {"columns": varying, "pairs": _pairs(data, varying)},
+        "findings": findings(data, columns, duplicates),
     }
 
 
@@ -94,7 +104,7 @@ def _finite(data: pl.DataFrame) -> pl.DataFrame:
 
 
 def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> dict[str, Any]:
-    column = {
+    column: dict[str, Any] = {
         "name": s.name,
         "data_type": str(s.dtype)[:MAX_LABEL],
         "missing": s.null_count(),
@@ -105,11 +115,17 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
         column["rarest_share"] = rarest
     if numeric:
         column.update(_shape(s))
+        if (quartiles := _quartiles(s)) is not None:
+            column["quartiles"] = quartiles
     if s.dtype == pl.String:
         column.update(_conversion(s))
         column.update(spelling(s))
         column.update(words(s))
         column.update(_html(s))
+        column["blank"] = int((s.drop_nulls().str.strip_chars() == "").sum())
+    column["role"] = role(s, column.get("word_share"))
+    if column["role"] == "text" and (counted := _word_counts(s)) is not None:
+        column["word_counts"] = counted
     histogram = _bins(bins, s.name) if numeric else _top_values(s)
     if histogram is not None:
         column["histogram"] = histogram
@@ -168,7 +184,7 @@ def _conversion(s: pl.Series) -> dict[str, Any]:
         .rename("value")
         .value_counts(name="n")
         .sort(["n", "value"], descending=[True, False])
-        .head(TOP_VALUES)
+        .head(UNCONVERTED)
     )
     return {
         "numeric_share": share,
@@ -246,7 +262,33 @@ def _top_values(s: pl.Series) -> dict[str, Any] | None:
         .head(TOP_VALUES)
     )
     bars = [{"label": v[:MAX_LABEL], "count": n} for v, n in counts.iter_rows()]
-    return {"kind": "top_values", "bars": bars}
+    return {"kind": "top_values", "bars": bars, "other": present.len() - int(counts["n"].sum())}
+
+
+def _quartiles(s: pl.Series) -> dict[str, float] | None:
+    present = s.drop_nulls().cast(pl.Float64)
+    q = {k: present.quantile(p, "linear") for k, p in QUARTILES}
+    if any(v is None for v in q.values()):
+        return None
+    return {k: float(v) for k, v in q.items() if v is not None}
+
+
+def _word_counts(s: pl.Series) -> dict[str, Any] | None:
+    """Words per non-blank value: one bar per count while there are at most WORD_BINS counts,
+    else WORD_BINS equal ranges of whole words."""
+    counts = s.drop_nulls().str.count_matches(r"\S+")
+    counts = counts.filter(counts > 0)
+    if counts.is_empty():
+        return None
+    low, high = int(counts.min()), int(counts.max())  # type: ignore[arg-type]
+    width = -(-(high - low + 1) // WORD_BINS)
+    buckets = ((counts - low) // width).rename("b").value_counts(name="n").sort("b")
+    bars = []
+    for b, n in buckets.iter_rows():
+        lo = low + b * width
+        hi = lo + width - 1
+        bars.append({"label": str(lo) if width == 1 else f"{lo}–{hi}", "count": n})
+    return {"kind": "bins", "bars": bars}
 
 
 def _pairs(data: pl.DataFrame, columns: list[str]) -> list[dict[str, Any]]:
