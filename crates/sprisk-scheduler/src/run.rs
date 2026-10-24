@@ -60,6 +60,8 @@ pub enum SchedulerError {
     GateOutput(String),
     #[error("node {node} cites methodology decision {decision}, which is not stored")]
     UnknownDecision { node: String, decision: String },
+    #[error("run from {0}: the plan has no such step")]
+    UnknownStartStep(String),
 }
 
 /// Reads the time, for deadlines. A fake clock lets a test pass a deadline between steps.
@@ -100,6 +102,9 @@ pub struct Scheduler<'a, W: Workers> {
     split_check: Option<Operator>,
     worker: Option<W::Worker>,
     reuse: Option<RunId>,
+    from: Option<String>,
+    /// The start step and every step after it: they run even where unchanged.
+    rerun: HashSet<String>,
     deadline: Option<(jiff::Timestamp, Clock)>,
 }
 
@@ -119,6 +124,8 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             split_check: None,
             worker: None,
             reuse: None,
+            from: None,
+            rerun: HashSet::new(),
             deadline: None,
         }
     }
@@ -135,6 +142,13 @@ impl<'a, W: Workers> Scheduler<'a, W> {
     /// runs from the edited step onwards.
     pub fn reusing(mut self, run: RunId) -> Self {
         self.reuse = Some(run);
+        self
+    }
+
+    /// Run `node` and every step after it again, even where unchanged; steps before it are
+    /// still reused or taken from the cache (ADR-0026 amendment).
+    pub fn running_from(mut self, node: &str) -> Self {
+        self.from = Some(node.to_owned());
         self
     }
 
@@ -189,6 +203,9 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             self.store
                 .set_run_status(run_id, RunStatus::Running, &now())
                 .await?;
+        }
+        if let Some(from) = &self.from {
+            self.rerun = from_step(plan, from)?;
         }
         let mut done = self.reconcile(run_id).await?;
         if let Some(operator) = self.gate.clone() {
@@ -394,6 +411,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             _ => None,
         };
         let source = match (&key, &self.reuse) {
+            _ if self.rerun.contains(&step.node_id) => None,
             (Some(key), _) if cacheable(step) => self.store.cached_attempt(key).await?,
             (Some(key), Some(reuse)) => {
                 self.store
@@ -941,4 +959,19 @@ fn checked_evidence(operator: &Operator, staged: &Path, size: u64) -> Result<(),
     let value: serde_json::Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("its evidence is not JSON: {e}"))?;
     evidence::check(operator, &value).map_err(|e| e.to_string())
+}
+
+/// `from` and every step that reads from it, directly or through others. The plan lists each
+/// step after its inputs, so one pass finds them all.
+fn from_step(plan: &Plan, from: &str) -> Result<HashSet<String>, SchedulerError> {
+    if !plan.steps.iter().any(|s| s.node_id == from) {
+        return Err(SchedulerError::UnknownStartStep(from.to_owned()));
+    }
+    let mut rerun = HashSet::from([from.to_owned()]);
+    for step in &plan.steps {
+        if step.inputs.iter().any(|i| rerun.contains(&i.from_node)) {
+            rerun.insert(step.node_id.clone());
+        }
+    }
+    Ok(rerun)
 }

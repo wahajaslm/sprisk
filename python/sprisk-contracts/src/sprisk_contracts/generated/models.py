@@ -1463,6 +1463,12 @@ class CreateRun(StrictModel):
             description="Reuse this run's results for every step whose definition is unchanged; run the rest (ADR-0026). Omitted: run from the start."
         ),
     ] = None
+    run_from_node_id: Annotated[
+        NodeId | None,
+        Field(
+            description="Run this step and every step after it again, even where unchanged; reuse or take from the cache only the steps before it (ADR-0026 amendment). It must be a step of the version. Omitted: only changed steps run."
+        ),
+    ] = None
 
 
 class Problem(StrictModel):
@@ -2385,6 +2391,12 @@ class Run(StrictModel):
         RunId | None,
         Field(
             description="The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start."
+        ),
+    ] = None
+    run_from_node_id: Annotated[
+        NodeId | None,
+        Field(
+            description="The step this run ran again from, with every step after it (ADR-0026 amendment). Omitted when only changed steps ran."
         ),
     ] = None
     created_at: Timestamp

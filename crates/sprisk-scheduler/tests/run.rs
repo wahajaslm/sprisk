@@ -1039,17 +1039,18 @@ async fn rerun(change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
 }
 
 async fn rerun_in(project: &str, change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
-    rerun_with(project, false, change).await
+    rerun_with(project, false, None, change).await
 }
 
 /// A second run after an edit, reusing the first run's results (ADR-0026).
 async fn rerun_reusing(change: impl FnOnce(&mut Plan)) -> (Env, Vec<String>) {
-    rerun_with("prj_01JABCDEFGHJKMNPQRSTVWXYZ0", true, change).await
+    rerun_with("prj_01JABCDEFGHJKMNPQRSTVWXYZ0", true, None, change).await
 }
 
 async fn rerun_with(
     project: &str,
     reuse: bool,
+    from: Option<&str>,
     change: impl FnOnce(&mut Plan),
 ) -> (Env, Vec<String>) {
     let (env, status) = run_with(Script::new()).await;
@@ -1073,6 +1074,9 @@ async fn rerun_with(
     let mut scheduler = Scheduler::new(&env.store, &env.artifacts, workers, Settings::default());
     if reuse {
         scheduler = scheduler.reusing(RUN.parse().unwrap());
+    }
+    if let Some(from) = from {
+        scheduler = scheduler.running_from(from);
     }
     let status = scheduler.run(&run.id, &pipeline(), &plan).await.unwrap();
     assert_eq!(status, RunStatus::Succeeded);
@@ -1213,6 +1217,57 @@ async fn an_edit_reuses_the_earlier_run_up_to_the_edited_step() {
     assert_eq!(
         states_in(&env, RUN2, "load").await,
         [AttemptState::CacheHit]
+    );
+}
+
+#[tokio::test]
+async fn running_from_a_step_runs_it_and_every_step_after_it_even_unchanged() {
+    let (env, leased) = rerun_with(
+        "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        true,
+        Some("split"),
+        |_| {},
+    )
+    .await;
+
+    assert_eq!(leased, ["split", "model", "score"]);
+    assert_eq!(
+        states_in(&env, RUN2, "load").await,
+        [AttemptState::CacheHit],
+        "steps before it are reused"
+    );
+}
+
+#[tokio::test]
+async fn running_from_a_step_skips_the_shared_cache_too() {
+    let (_, leased) = rerun_with(
+        "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        false,
+        Some("model"),
+        |_| {},
+    )
+    .await;
+    assert_eq!(
+        leased,
+        ["load", "model", "score"],
+        "load is a source; split comes from the cache"
+    );
+}
+
+#[tokio::test]
+async fn running_from_a_step_the_plan_lacks_is_refused() {
+    let (env, status) = run_with(Script::new()).await;
+    assert_eq!(status, RunStatus::Succeeded);
+    let workers = FakeWorkers {
+        log: env.log.clone(),
+        ..FakeWorkers::default()
+    };
+    let refused = Scheduler::new(&env.store, &env.artifacts, workers, Settings::default())
+        .running_from("nowhere")
+        .run(&RUN.parse().unwrap(), &pipeline(), &plan())
+        .await;
+    assert!(
+        matches!(refused, Err(sprisk_scheduler::SchedulerError::UnknownStartStep(n)) if n == "nowhere")
     );
 }
 

@@ -850,6 +850,47 @@ async fn a_run_can_reuse_an_earlier_run_which_must_exist() {
     assert_eq!(second["reuse_run_id"], first["id"]);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_from_a_step_runs_it_again_and_says_so_and_an_unknown_step_is_refused() {
+    let api = api().await;
+    let (_, version) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    let id = version["id"].clone();
+    let (_, first) = call(
+        &api.app,
+        "POST",
+        "/runs",
+        Some(json!({"pipeline_version_id": id})),
+    )
+    .await;
+    wait_run(&api, first["id"].as_str().unwrap()).await;
+
+    let unknown = json!({"pipeline_version_id": id, "reuse_run_id": first["id"], "run_from_node_id": "nowhere"});
+    let (status, body) = call(&api.app, "POST", "/runs", Some(unknown)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "unknown_step", "{body}");
+
+    let from =
+        json!({"pipeline_version_id": id, "reuse_run_id": first["id"], "run_from_node_id": "load"});
+    let (status, second) = call(&api.app, "POST", "/runs", Some(from)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{second}");
+    assert_eq!(second["run_from_node_id"], "load");
+    let (_, attempts) = wait_run(&api, second["id"].as_str().unwrap()).await;
+    let load = attempts
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["node_id"] == "load")
+        .unwrap();
+    // Reusing alone would take load from the first run; run from load reads the file again.
+    assert_eq!(load["state"], "succeeded", "{attempts}");
+}
+
 #[tokio::test]
 async fn notebook_cells_are_split_into_linked_steps() {
     let api = api().await;
