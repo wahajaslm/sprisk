@@ -2,7 +2,7 @@ import type { FlowDecision } from "@sprisk/contracts";
 
 import { PromiseList } from "../PromiseList.tsx";
 
-const TAKEN: Record<FlowDecision["assurance"], string> = {
+export const TAKEN: Record<FlowDecision["assurance"], string> = {
   rule: "Chosen by the method",
   confirmed: "Confirmed by a person",
 };

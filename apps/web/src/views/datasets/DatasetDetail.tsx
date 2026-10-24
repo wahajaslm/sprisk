@@ -46,6 +46,7 @@ export function ProfileTab({ dataset }: { dataset: LoadedTable }) {
       ) : (
         <>
           <MissingShare profile={profile.data} />
+          <RepeatedRows profile={profile.data} />
           <BodySection title="Columns" note="Each column's type, missing share, distinct values and shape.">
             <Partial profile={profile.data} />
             <Columns name={dataset.name} columns={profile.data.columns} rows={profile.data.profiled_rows} />
@@ -74,6 +75,23 @@ export function LineageTab({ lineage, onOpen }: { lineage: Use[]; onOpen: (use: 
           <RowItem key={l.label} name={l.label} meta={`run ${l.use.run_id.slice(-6)}`} action={<Button size="sm" onClick={() => onOpen(l.use)}>Open</Button>} />
         ))}
       </RowList>
+    </BodySection>
+  );
+}
+
+/** Rows equal in every column to an earlier one. A whole-table count to look at; a decision
+ * reads a producer's evidence instead (ADR-0065). */
+function RepeatedRows({ profile }: { profile: DatasetProfile }) {
+  // An older profile has no count; saying "no repeats" would claim what was never measured.
+  if (profile.duplicate_rows === undefined) return null;
+  const repeated = profile.duplicate_rows;
+  const text =
+    repeated === 0
+      ? "No row is identical in every column to another."
+      : `${repeated.toLocaleString()} of ${profile.profiled_rows.toLocaleString()} rows are identical in every column to an earlier row.`;
+  return (
+    <BodySection title="Repeated rows" note="Counted over every row, test rows included. Whether a repeat is the same item is a question for an investigation.">
+      <p className={repeated > 0 ? "ds-repeated warn" : "ds-repeated"}>{text}</p>
     </BodySection>
   );
 }
@@ -202,11 +220,6 @@ function Partial({ profile }: { profile: DatasetProfile }) {
       {note}
     </p>
   ));
-}
-
-function missingShare(profile: DatasetProfile): number {
-  const cells = profile.profiled_rows * profile.columns.length;
-  return cells === 0 ? 0 : profile.columns.reduce((sum, c) => sum + c.missing, 0) / cells;
 }
 
 const MISSING_WARN = 0.2;

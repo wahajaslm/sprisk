@@ -14,10 +14,12 @@ import { PageFrame } from "../../components/ui/PageFrame.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { LineageTab, PreviewTab, ProfileTab, type Use } from "./DatasetDetail.tsx";
+import { InvestigationTab } from "./InvestigationTab.tsx";
 import { SearchField } from "../../components/ui/SearchField.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 
-/** Every table the flows load, and a preview and profile of the one picked (ADR-0038, ADR-0061). */
+/** Every table the flows load, and a preview, profile and investigations of the one picked
+ * (ADR-0038, ADR-0061, ADR-0065). */
 export function DatasetsPage() {
   const datasets = useLoadedTables();
   const versions = usePipelineVersions();
@@ -84,6 +86,8 @@ export function DatasetsPage() {
     >
       {current && (tab === "Lineage" ? (
         <LineageTab lineage={lineage} onOpen={open} />
+      ) : tab === "Investigation" ? (
+        <InvestigationTab key={current.artifact.id} dataset={current} versions={versions.data ?? []} />
       ) : tab === "Preview" ? (
         <PreviewTab key={current.artifact.id} dataset={current} />
       ) : (
@@ -93,7 +97,7 @@ export function DatasetsPage() {
   );
 }
 
-const TABS = ["Preview", "Profile", "Lineage"] as const;
+const TABS = ["Preview", "Profile", "Investigation", "Lineage"] as const;
 type Tab = (typeof TABS)[number];
 
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;

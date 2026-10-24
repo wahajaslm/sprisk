@@ -1524,6 +1524,32 @@ p { margin: 0; }
 .ds-shape { width: 120px; height: 18px; }
 .ds-plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--space-3); }
 .ds-plots .plotly-figure { min-height: 320px; }
+.ds-repeated { margin: 0; font-family: var(--mono); font-size: var(--text-sm); color: var(--soft); }
+.ds-repeated.warn { color: var(--ink); }
+/* Investigation (ADR-0065): the chart leads each analysis; the words sit beside it. */
+.ds-investigation { display: grid; gap: var(--space-4); }
+.ds-investigation .body-section { max-width: 1200px; }
+.ds-investigations { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); }
+.ds-context { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--alpha-05); border-radius: 4px; font-size: var(--text-sm); }
+.ds-context div { display: flex; gap: var(--space-2); min-width: 0; }
+.ds-context dt { color: var(--muted); }
+.ds-context dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.ds-analysis { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); grid-template-areas: "head head" "charts facts" "charts promises" "actions actions"; gap: var(--space-3) var(--space-5); padding: var(--space-4); margin-bottom: var(--space-3); border: 1px solid var(--alpha-05); border-radius: 4px; }
+.ds-analysis:not(:has(.ds-analysis-charts)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "facts" "promises" "actions"; }
+.ds-analysis-head { grid-area: head; display: grid; gap: var(--space-1); }
+.ds-analysis-charts { grid-area: charts; display: grid; gap: var(--space-3); align-content: start; min-width: 0; }
+.ds-analysis-charts .plotly-figure { min-height: 300px; }
+.ds-analysis-facts { grid-area: facts; display: grid; gap: var(--space-3); margin: 0; align-content: start; }
+.ds-analysis-facts dt { color: var(--muted); font-size: var(--text-xs); }
+.ds-analysis-facts dd { margin: 0; display: grid; gap: var(--space-1); color: var(--soft); }
+.ds-analysis > .promise-list, .ds-analysis > .muted { grid-area: promises; }
+.ds-analysis-actions { grid-area: actions; }
+.ds-line { display: block; }
+.ds-answer { margin: 0 0 var(--space-3); color: var(--ink); }
+.ds-claims, .ds-limitations { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding-left: var(--space-4); color: var(--soft); }
+@media (max-width: 760px) {
+  .ds-analysis { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "charts" "facts" "promises" "actions"; }
+}
 .status-failed { color: var(--alert); }
 .metric-cell { display: inline-flex; align-items: center; gap: var(--space-2); font: var(--text-sm) var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
 .dots { position: relative; width: 84px; height: 6px; background-image: radial-gradient(var(--ghost) 1px, transparent 1.2px); background-size: 4px 6px; }

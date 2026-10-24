@@ -61,3 +61,8 @@ def test_rows_with_no_identifier_are_named_because_the_item_split_refuses_them()
     d = decide(METHOD, evidence=frequency(missing=12), bound=["common.item_identity"])
     assert (d["outcome"], d["option"]) == ("choose", "stated_items")
     assert "12 rows have no item identifier" in d["reason"]
+
+
+def test_a_stated_item_column_with_no_repeats_says_so() -> None:
+    d = decide(METHOD, evidence=frequency(repeated=0), bound=["common.item_identity"])
+    assert d["reason"].endswith("No two rows share an item.")

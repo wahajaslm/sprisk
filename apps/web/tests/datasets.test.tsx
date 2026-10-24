@@ -105,6 +105,27 @@ describe("datasets", () => {
     expect(screen.getByRole("img", { name: "Distributions" })).toBeInTheDocument();
   });
 
+  it("counts rows identical in every column, as a whole-table count for looking only", async () => {
+    serve(undefined, () => HttpResponse.json({ ...profile, duplicate_rows: 7 }));
+    await openProfile();
+    const repeated = await screen.findByRole("region", { name: "Repeated rows" });
+    expect(repeated).toHaveTextContent("7 of 120 rows are identical in every column to an earlier row");
+    expect(repeated).toHaveTextContent("every row, test rows included");
+  });
+
+  it("says no row repeats when none does", async () => {
+    serve(undefined, () => HttpResponse.json({ ...profile, duplicate_rows: 0 }));
+    await openProfile();
+    expect(await screen.findByRole("region", { name: "Repeated rows" })).toHaveTextContent("No row is identical in every column to another.");
+  });
+
+  it("claims nothing about repeated rows when the profile did not count them", async () => {
+    serve();
+    await openProfile();
+    await screen.findByRole("table", { name: "Columns of iris.csv" });
+    expect(screen.queryByRole("region", { name: "Repeated rows" })).toBeNull();
+  });
+
   it("says the profile includes held-out rows and is for looking, not for choosing", async () => {
     serve();
     await openProfile();
@@ -174,9 +195,9 @@ describe("datasets", () => {
     expect(useSelection.getState()).toMatchObject({ nav: "Flow", pipelineVersionId: PV, runId: RUN, nodeId: "load" });
   });
 
-  it("has Preview, Profile and Lineage tabs; Lineage lists each step loading the table", async () => {
+  it("has Preview, Profile, Investigation and Lineage tabs; Lineage lists each step loading the table", async () => {
     serve();
-    expect((await screen.findAllByRole("tab")).map((t) => t.textContent)).toEqual(["Preview", "Profile", "Lineage"]);
+    expect((await screen.findAllByRole("tab")).map((t) => t.textContent)).toEqual(["Preview", "Profile", "Investigation", "Lineage"]);
     await userEvent.click(screen.getByRole("tab", { name: "Lineage" }));
     const lineage = await screen.findByRole("list", { name: "Lineage" });
     expect(lineage).toHaveTextContent(/iris\.csv.*load/);
