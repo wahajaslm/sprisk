@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useNotebooks, useSaveNotebook } from "../../api/notebooks.ts";
 import { useOperators, usePipelineVersions } from "../../api/hooks.ts";
+import { useFlowDecisions } from "../../api/walks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { firstVersion, LOCAL_PROJECT, newCellId } from "../../notebook/document.ts";
 import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
@@ -33,6 +34,9 @@ export function NotebooksPage() {
   const flow = flowOf(flows(versions.data ?? []), pipelineVersionId);
   // The version on screen, as the canvas shows it; the newest when none is picked.
   const shownFlow = (versions.data ?? []).find((v) => v.id === pipelineVersionId) ?? flow?.head;
+  // A walk's decisions make one section per activity; until they are read, stages alone.
+  const decided = useFlowDecisions(shownFlow?.id);
+  const decisions = decided.data?.decisions ?? [];
 
   if (notebooks.isError) return <p role="alert" className="error pad">{notebooks.error.message}</p>;
   if (notebooks.isPending || versions.isPending || operators.isPending) return <Loading text="Loading notebooks…" pad />;
@@ -47,7 +51,7 @@ export function NotebooksPage() {
         .filter((v) => v.pipeline_version_id === undefined)
         .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
     : [];
-  const stages = shownFlow ? stageNotebooks(shownFlow, new Map((operators.data ?? []).map((o) => [o.id, o]))) : [];
+  const stages = shownFlow ? stageNotebooks(shownFlow, new Map((operators.data ?? []).map((o) => [o.id, o])), decisions) : [];
   const saved = openId ? [...mine, ...loose].find((v) => v.notebook_id === openId) : undefined;
   // A stage the canvas asked for, else a saved notebook picked here, else the first stage.
   const stageOpen = stages.find((s) => s.stage === stageTarget)?.stage ?? (saved ? undefined : stages[0]?.stage);
@@ -106,8 +110,11 @@ export function NotebooksPage() {
       </Sidebar>
 
       <section className="center-screen page-pane" aria-label="Notebook">
-        {stageOpen && shownFlow ? (
-          <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} />
+        {stageOpen && shownFlow && decided.isPending ? (
+          // The cells are read once per section, so they wait for the decisions that place them.
+          <Loading text="Loading the stage…" pad />
+        ) : stageOpen && shownFlow ? (
+          <StageNotebook key={`${shownFlow.id}/${stageOpen}`} pipeline={shownFlow} stage={stageOpen} decisions={decisions} />
         ) : open ? (
           <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
         ) : (

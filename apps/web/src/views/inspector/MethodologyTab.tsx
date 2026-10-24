@@ -3,14 +3,19 @@ import { useState } from "react";
 
 import type { RunChecks } from "../../api/checks.ts";
 import { useApplyMethodology, useMethodologyRules, useResolveStep } from "../../api/methodology.ts";
+import { useFlowDecisions } from "../../api/walks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { ChecksTab } from "./ChecksTab.tsx";
+import { MethodDecision } from "./MethodDecision.tsx";
 
-/** A step's methodology, as the design's main screen lays it out: each rule that decides the
- * step, with its decision, then the checks of the last run that cite the step. */
+/** A step's methodology, as the design's main screen lays it out: each method that shaped the
+ * step (ADR-0063), each rule that decides it, with its decision, then the checks of the last
+ * run that cite the step. */
 export function MethodologyTab({ pipeline, nodeId, checks }: { pipeline: PipelineVersion; nodeId: string; checks: RunChecks }) {
   const rules = useMethodologyRules();
+  const decided = useFlowDecisions(pipeline.id);
+  const methods = (decided.data?.decisions ?? []).filter((d) => d.steps.includes(nodeId));
   const node = pipeline.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
   const unversioned = node.operator.split("@")[0] ?? node.operator;
@@ -21,8 +26,14 @@ export function MethodologyTab({ pipeline, nodeId, checks }: { pipeline: Pipelin
   return (
     <div className="method-tab">
       {rules.isError && <p role="alert" className="error">Methodology rules could not be read: {rules.error.message}</p>}
-      {rules.isPending && <Loading />}
-      {rules.isSuccess && deciding.length === 0 && <p className="muted">No methodology rule decides this step.</p>}
+      {decided.isError && <p role="alert" className="error">The flow's decisions could not be read: {decided.error.message}</p>}
+      {(rules.isPending || decided.isPending) && <Loading />}
+      {methods.map((decision) => (
+        <MethodDecision key={decision.decides} decision={decision} />
+      ))}
+      {rules.isSuccess && decided.isSuccess && deciding.length === 0 && methods.length === 0 && (
+        <p className="muted">No methodology rule decides this step.</p>
+      )}
       {deciding.map((rule) => (
         <RuleDecision key={`${pipeline.id}/${nodeId}/${rule.decides}`} pipeline={pipeline} nodeId={nodeId} rule={rule} />
       ))}

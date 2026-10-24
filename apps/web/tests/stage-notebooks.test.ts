@@ -1,4 +1,4 @@
-import type { PipelineVersion } from "@sprisk/contracts";
+import type { FlowDecision, PipelineVersion } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
 import { stageNotebooks } from "../src/notebook/stageNotebooks.ts";
@@ -50,5 +50,48 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
   it("leaves out a stage with no steps", () => {
     const flow = { ...pipeline, nodes: pipeline.nodes.filter((n) => n.id !== "impute"), edges: [] };
     expect(ids(flow).map(([stage]) => stage)).toEqual(["Load", "Split", "Model", "Evaluate"]);
+  });
+});
+
+const decision = (activity: string, steps: string[]): FlowDecision => ({
+  decides: "split.method",
+  method: "methodology.supervised.split_method@1.0.0",
+  activity,
+  question: "How are rows divided into training and test so the score is fair?",
+  option: "item_groups",
+  label: "Keep each item's rows on one side",
+  reason: "Rows of one item stay on one side.",
+  assurance: "rule",
+  steps,
+  promises: [],
+});
+
+const grouped = (flow: PipelineVersion, decisions: FlowDecision[]) =>
+  stageNotebooks(flow, byRef, decisions).map(({ stage, nodes }) => [stage, nodes.map((n) => n.id)]);
+
+describe("a decision's steps as one section per activity (ADR-0063)", () => {
+  it("puts the steps a decision shaped under its activity, where its first step's stage sits", () => {
+    expect(grouped(pipeline, [decision("Repeated observations", ["profile"]), decision("Fair evaluation", ["split"])])).toEqual([
+      ["Load", ["load"]],
+      ["Repeated observations", ["profile"]],
+      ["Fair evaluation", ["split"]],
+      ["Clean", ["impute"]],
+      ["Model", ["model"]],
+      ["Evaluate", ["score"]],
+    ]);
+  });
+
+  it("gives each section the decisions it shows", () => {
+    const fair = decision("Fair evaluation", ["split"]);
+    const sections = stageNotebooks(pipeline, byRef, [fair]);
+    expect(sections.find((s) => s.stage === "Fair evaluation")?.decisions).toEqual([fair]);
+    expect(sections.find((s) => s.stage === "Load")?.decisions).toEqual([]);
+  });
+
+  it("keeps a step two decisions shaped under the first, and ignores steps the flow no longer has", () => {
+    expect(grouped(pipeline, [decision("Fair evaluation", ["split", "gone"]), decision("Other", ["split"])])).toContainEqual([
+      "Fair evaluation",
+      ["split"],
+    ]);
   });
 });

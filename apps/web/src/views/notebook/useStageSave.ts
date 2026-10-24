@@ -1,17 +1,24 @@
-import type { NotebookCell, Operator, PipelineVersion } from "@sprisk/contracts";
+import type { FlowDecision, NotebookCell, Operator, PipelineVersion } from "@sprisk/contracts";
 import { useState } from "react";
 
 import { useReadSettings, useSplitCells } from "../../api/code.ts";
 import { useRunAgain, useSaveAndRun } from "../../api/hooks.ts";
 import { nodeOf, splitRequest, versionFromSplit } from "../../flow/notebook.ts";
-import { type Stage, stepLabel } from "../../flow/stages.ts";
+import { stepLabel } from "../../flow/stages.ts";
 import { codeRequest, editedReadyMade, newStepsIn, stageCells, stageEdits, withSettings } from "../../notebook/stageCells.ts";
+import { stageNotebooks } from "../../notebook/stageNotebooks.ts";
 import { useSelection } from "../../workbench/selection.ts";
 
-/** Save a stage's cells as the next flow version when they changed, then run it, reusing
- * unchanged steps (ADR-0026, ADR-0055). The stage notebook and a step's Code tab both save
+/** Save a section's cells as the next flow version when they changed, then run it, reusing
+ * unchanged steps (ADR-0026, ADR-0055). The section notebook and a step's Code tab both save
  * this way, so a cell and its node never disagree. `code` holds ready-made steps' plain Python. */
-export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Operator>, stage: Stage, code: Map<string, string>) {
+export function useStageSave(
+  pipeline: PipelineVersion,
+  byRef: Map<string, Operator>,
+  stage: string,
+  code: Map<string, string>,
+  decisions: FlowDecision[] = [],
+) {
   const runId = useSelection((s) => s.runId);
   const showRun = useSelection((s) => s.showRun);
   const split = useSplitCells();
@@ -25,7 +32,7 @@ export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Opera
     setProblem(undefined);
     try {
       // Cells as the flow has them: run it again, no new version.
-      if (sameCells(now, stageCells(pipeline, byRef, stage, code))) {
+      if (sameCells(now, stageCells(pipeline, byRef, stage, code, decisions))) {
         const run = await runAgain.mutateAsync(pipeline.id);
         return showRun(pipeline.id, run.id, show);
       }
@@ -49,7 +56,8 @@ export function useStageSave(pipeline: PipelineVersion, byRef: Map<string, Opera
       const found = await split.mutateAsync(request.cells);
       const made = versionFromSplit(edits.base, byRef, request, found);
       setNotes([...converted, ...made.notes]);
-      const version = newStepsIn(made.version, pipeline, stage);
+      const home = stageNotebooks(pipeline, byRef, decisions).find((s) => s.stage === stage)?.home ?? "Unknown";
+      const version = newStepsIn(made.version, pipeline, home);
       const run = await saveAndRun.mutateAsync(version);
       showRun(version.id, run.id, show);
     } catch (e) {
