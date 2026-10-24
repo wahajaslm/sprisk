@@ -98,9 +98,7 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("split.method".to_owned(), at("split")),
             ("cleaning.missingness_strategy".to_owned(), at("fill")),
             // Question rules on the model measure its train rows, so they follow the fill.
-            ("question.class_balance".to_owned(), at("model")),
             ("question.error_costs".to_owned(), at("model")),
-            ("question.task_type".to_owned(), at("model")),
             ("cleaning.outlier_strategy".to_owned(), None),
             ("features.scaling_strategy".to_owned(), at("model")),
             ("features.skew_transform".to_owned(), at("model")),

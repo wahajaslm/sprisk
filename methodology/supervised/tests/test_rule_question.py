@@ -6,8 +6,6 @@ from typing import Any
 import pytest
 from rule_harness import alternative, decide
 
-from sprisk_workers.errors import RuleError
-
 Facts = dict[str, tuple[str, str]]
 
 
@@ -77,80 +75,6 @@ def test_target_is_used_when_confirmed_asked_when_guessed_and_never_built() -> N
     assert alternative(d, "column")["applicability"] == "needs_fact"
     d = decide("common/target_definition", facts=ask(task="regression"))
     assert states(d)["column"] == "needs_fact" and states(d)["no_target"] == "needs_fact"
-
-
-def test_task_type_sets_the_model_steps_task_from_the_target_values() -> None:
-    profile = {"target.data_type": "Int64", "target.distinct": 2}
-    d = decide("common/task_type", facts=guessed("task", "undetermined"), profile=profile)
-    assert alternative(d, "classification")["params"] == {"task": "classification"}
-    many = {"target.data_type": "Float64", "target.distinct": 300}
-    assert (
-        decide("common/task_type", facts={}, profile=many)["recommended_alternative_id"]
-        == "regression"
-    )
-
-
-def test_task_type_asks_about_few_numbers_many_texts_a_contradiction_and_a_constant() -> None:
-    grades = decide(
-        "common/task_type", facts={}, profile={"target.data_type": "Float64", "target.distinct": 5}
-    )
-    assert set(states(grades).values()) == {"needs_fact"}
-    assert "5 numeric values" in alternative(grades, "classification")["reason"]
-    texts = decide(
-        "common/task_type",
-        facts={},
-        profile={"target.data_type": "String", "target.distinct": 5000},
-    )
-    assert set(states(texts).values()) == {"needs_fact"}
-    clash = decide(
-        "common/task_type",
-        facts=ask(task="regression"),
-        profile={"target.data_type": "Int64", "target.distinct": 2},
-    )
-    assert clash["recommended_alternative_id"] == "regression"
-    assert "reads as classification" in alternative(clash, "regression")["reason"]
-    one = decide(
-        "common/task_type", facts={}, profile={"target.data_type": "Int64", "target.distinct": 1}
-    )
-    assert "nothing to predict" in alternative(one, "regression")["reason"]
-
-
-def test_task_type_without_the_target_type_is_an_error_not_a_guess() -> None:
-    with pytest.raises(RuleError, match="target.data_type"):
-        decide("common/task_type", facts={}, profile={"target.distinct": 2})
-
-
-def test_class_balance_compares_the_rarest_class_with_an_even_share() -> None:
-    rare = decide(
-        "common/class_balance",
-        facts=task("classification"),
-        profile={"target.distinct": 2, "target.rarest_share": 0.04},
-    )
-    assert states(rare) == {"unbalanced": "applicable", "balanced": "not_applicable"}
-    assert [e["value"] for e in rare["evidence"] if e["kind"] == "profile_fact"] == ["4.0%", "2"]
-    even = decide(
-        "common/class_balance",
-        facts=task("classification"),
-        profile={"target.distinct": 15, "target.rarest_share": 0.066},
-    )
-    assert even["recommended_alternative_id"] == "balanced"
-    two = decide(
-        "common/class_balance",
-        facts=task("classification"),
-        profile={"target.distinct": 2, "target.rarest_share": 0.3},
-    )
-    assert two["recommended_alternative_id"] == "balanced"
-
-
-def test_class_balance_asks_with_too_many_classes_and_skips_regression() -> None:
-    many = decide(
-        "common/class_balance", facts=task("classification"), profile={"target.distinct": 40}
-    )
-    assert set(states(many).values()) == {"needs_fact"}
-    numbers = decide(
-        "common/class_balance", facts=task("regression"), profile={"target.distinct": 300}
-    )
-    assert set(states(numbers).values()) == {"not_applicable"}
 
 
 COSTS = {"question.costs.positive": ("bad", "explicit")}

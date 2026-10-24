@@ -11,7 +11,9 @@ KIND = "data.spelling_variants"
 
 
 def variants(
-    columns: list[str], identifier_like: list[str] | None = None, accent_only: list[str] | None = None
+    columns: list[str],
+    identifier_like: list[str] | None = None,
+    accent_only: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     return {
         KIND: {

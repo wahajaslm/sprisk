@@ -2428,7 +2428,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 63);
+    assert_eq!(rules.len(), 61);
     // The words people read go with each rule (ADR-0045 amendment).
     let clustering = rules
         .iter()
@@ -3143,8 +3143,8 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     );
     assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
 
-    // The step's first rule, in workflow order, is a question rule: the target's classes are
-    // checked before inputs are prepared (ADR-0059). It measures the train rows, so the flow
+    // The step's first rule, in workflow order, is a question rule: what each mistake costs is
+    // asked before inputs are prepared (ADR-0059). It measures the train rows, so the flow
     // runs first.
     let mut csv = String::from("age,returned_within_30d\n");
     for age in 20..80 {
@@ -3155,7 +3155,7 @@ async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step
     assert_eq!(run["status"], "succeeded", "{run}");
     let (status, first) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{first}");
-    assert_eq!(first["rule"], "methodology.common.class_balance@1.0.0");
+    assert_eq!(first["rule"], "methodology.common.error_costs@1.0.0");
 }
 
 #[tokio::test]
@@ -4850,9 +4850,7 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
         ("data.missing_markers", "waiting"),
         ("data.type_repair", "waiting"),
         // The split is a method's decision, made in the walk's look (ADR-0063).
-        ("question.class_balance", "waiting"),
         ("question.error_costs", "waiting"),
-        ("question.task_type", "waiting"),
         ("cleaning.outlier_strategy", "no_subject"),
         ("features.scaling_strategy", "no_subject"),
         ("features.skew_transform", "no_subject"),
@@ -5105,41 +5103,38 @@ async fn rows_copied_in_the_data_are_dropped_before_the_split() {
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }
 
-/// ADR-0059: the question rules on a model step read its target on the train rows.
+/// ADR-0063 slice 6: the target is measured on the train rows in the look, so the task and the
+/// class balance are settled before any rule acts, and the task's promise is checked.
 #[tokio::test(flavor = "multi_thread")]
-async fn after_a_run_the_target_on_the_train_rows_settles_the_task_and_class_balance() {
+async fn the_look_settles_the_task_and_class_balance_from_the_train_rows() {
     let api = api().await;
-    forest_flow(&api).await;
-    let (run, _) = run_version(&api, BASE).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+    let mut request = walk_request(&[&api.csv], "walk-target");
+    request["max_actions"] = json!(12);
 
-    let task = propose_for(&api, BASE, "model", "question.task_type").await;
-    assert_eq!(
-        task["recommended_alternative_id"], "classification",
-        "{task}"
-    );
-    assert_eq!(
-        recommended_effect(&task)["params"]["task"],
-        "classification"
-    );
-    let balance = propose_for(&api, BASE, "model", "question.class_balance").await;
-    assert_eq!(
-        balance["recommended_alternative_id"], "balanced",
-        "{balance}"
-    );
+    let detail = walk_to_end(&api, request).await;
+    let steps = detail["steps"].as_array().unwrap();
+    let decided = |key: &str| steps.iter().find(|s| s["decides"] == key).cloned();
+    let task = decided("question.task_type").expect("the task is decided in the look");
+    assert_eq!(task["option"], "classification", "{detail}");
+    assert_eq!(task["promises"], json!(["labels_are_classes"]), "{detail}");
+    let balance = decided("question.class_balance").expect("the balance is decided in the look");
+    assert_eq!(balance["option"], "balanced", "{detail}");
     assert!(
-        balance["evidence"]
-            .to_string()
-            .contains("Rarest class share"),
-        "{balance}"
+        balance["reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("The rarest class holds"),
+        "{detail}"
     );
-    let statuses = statuses(&review(&api).await);
-    for decides in ["question.task_type", "question.class_balance"] {
-        assert!(
-            statuses.contains(&(decides.to_owned(), "settled".to_owned())),
-            "{decides}: {statuses:?}"
-        );
-    }
+    let checked = steps
+        .iter()
+        .filter(|s| s["action"] == "verify")
+        .flat_map(|s| s["verifications"].as_array().unwrap().clone())
+        .find(|c| c["verification"] == "labels_are_classes")
+        .expect("the task's promise is checked");
+    assert_eq!(checked["result"], "pass", "{detail}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5455,11 +5450,14 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "measure",
             "run",
             "decide data.text_spelling keep",
+            "decide question.task_type classification",
+            "verify",
             "decide data.repeated_items independent_rows",
             "decide split.method stratified_random",
             "measure",
             "run",
             "verify",
+            "decide question.class_balance balanced",
             "apply data.column_roles drop_identifiers",
             "run",
             "verify",
@@ -5468,20 +5466,27 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "verify",
             "apply features.text_representation vectorize_words",
             "run",
-            "stop"
+            "compare modeling.estimator_selection",
+            "apply modeling.estimator_selection ml_linear_model",
+            "run",
+            "score",
+            "stop",
         ],
         "{detail}"
     );
     // The title and the description are free text, so they become words learnt from the
-    // train rows (ADR-0058); empty descriptions give rows of zeros. The run succeeds, and the
-    // walk stops for what only a person can say before models are compared.
+    // train rows (ADR-0058); empty descriptions give rows of zeros. Everything a person must
+    // say was said up front, so the walk compares models, applies the best and scores the
+    // test rows once.
     let stop = &detail["walk"]["stop"];
-    assert_eq!(stop["reason"], "needs_person", "{detail}");
-    let open = stop["detail"].as_str().unwrap();
-    // The bar and the constraints were stated up front; the task type is asked only once the
-    // model's train rows show 27 classes, an old rule not yet converted (ADR-0063 slice 6).
-    assert!(!open.contains("question.hard_constraints"), "{open}");
-    assert!(open.contains("question.task_type"), "{open}");
+    assert_eq!(stop["reason"], "complete", "{detail}");
+    assert!(
+        stop["detail"]
+            .as_str()
+            .unwrap()
+            .contains("Test rows, scored once"),
+        "{detail}"
+    );
     // No column is named as the title, so repeated titles are not measured, and the
     // decision says so.
     let steps = detail["steps"].as_array().unwrap();
@@ -5497,9 +5502,10 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
         "{detail}"
     );
     let head = &detail["walk"]["head_pipeline_version_id"];
+    let scored = steps.iter().find(|s| s["action"] == "score").unwrap();
     assert_eq!(
-        *head, steps[15]["made_pipeline_version_id"],
-        "the head is the version the last apply made"
+        *head, scored["made_pipeline_version_id"],
+        "the head is the version that scores the test rows"
     );
     let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
     let (_, flow) = call(&api.app, "GET", &uri, None).await;
@@ -5548,12 +5554,21 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     assert_eq!(status, StatusCode::OK, "{again}");
     assert_eq!(again["id"], detail["walk"]["id"]);
 
-    // Same question and file, a new walk: the same decisions in the same order.
+    // Same question and file, a new walk: the same decisions in the same order, but the test
+    // rows the first walk scored are not scored again.
     let second = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0002")).await;
-    assert_eq!(trail(&second), trail(&detail), "{second}");
-    assert_eq!(
-        second["walk"]["stop"]["reason"],
-        detail["walk"]["stop"]["reason"]
+    let first_trail: Vec<String> = trail(&detail)
+        .into_iter()
+        .filter(|s| s != "score")
+        .collect();
+    assert_eq!(trail(&second), first_trail, "{second}");
+    assert_eq!(second["walk"]["stop"]["reason"], "limitation", "{second}");
+    assert!(
+        second["walk"]["stop"]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("not scored again"),
+        "{second}"
     );
 }
 
@@ -5649,6 +5664,9 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             "measure",
             "run",
             "decide data.text_spelling keep",
+            "decide question.task_type classification",
+            "verify",
+            "decide question.class_balance balanced",
             "stop"
         ],
         "{detail}"
@@ -5693,12 +5711,14 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     let detail = walk_to_end(&api, request).await;
     let walked = trail(&detail);
     assert_eq!(
-        walked[..9],
+        walked[..11],
         [
             "build",
             "measure",
             "run",
             "decide data.text_spelling keep",
+            "decide question.task_type classification",
+            "verify",
             "decide data.repeated_items group_by_title",
             "decide split.method item_groups",
             "measure",
@@ -5714,23 +5734,23 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let steps = detail["steps"].as_array().unwrap();
     // The answer binds the item to the group column the producer adds, confirmed by a person.
-    assert_eq!(steps[4]["assurance"], "confirmed", "{detail}");
+    assert_eq!(steps[6]["assurance"], "confirmed", "{detail}");
     assert_eq!(
-        steps[4]["bindings"],
+        steps[6]["bindings"],
         json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_identity",
                  "source": { "column": "item_group", "step": "near_duplicates" },
                  "set_by": { "assurance": "confirmed",
                              "method": "methodology.common.repeated_items@1.0.0" } }])
     );
     // The split method replaces the split through a patch, and promises what it keeps.
-    assert_eq!(steps[5]["assurance"], "rule", "{detail}");
+    assert_eq!(steps[7]["assurance"], "rule", "{detail}");
     assert_eq!(
-        steps[5]["promises"],
+        steps[7]["promises"],
         json!(["no_group_overlap"]),
         "{detail}"
     );
     assert_eq!(
-        steps[5]["effects"],
+        steps[7]["effects"],
         json!([
             { "kind": "replace_node", "node_id": "split",
               "operator": "sprisk.validation.group_split@1.0.0",
@@ -5740,15 +5760,23 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
         ])
     );
     // The promise is checked on what the split wrote: no item is on both sides.
-    let checks = steps[8]["verifications"].as_array().unwrap();
-    assert_eq!(checks.len(), 1, "{detail}");
-    assert_eq!(checks[0]["verification"], "no_group_overlap", "{detail}");
-    assert_eq!(checks[0]["result"], "pass", "{detail}");
-    assert_eq!(checks[0]["step"], "group_overlap", "{detail}");
-    assert_eq!(steps[8]["run_id"], steps[7]["run_id"], "{detail}");
+    let checks = steps[10]["verifications"].as_array().unwrap();
+    let names: Vec<&str> = checks
+        .iter()
+        .map(|c| c["verification"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        ["labels_are_classes", "no_group_overlap"],
+        "{detail}"
+    );
+    let overlap = &checks[1];
+    assert_eq!(overlap["result"], "pass", "{detail}");
+    assert_eq!(overlap["step"], "group_overlap", "{detail}");
+    assert_eq!(steps[10]["run_id"], steps[9]["run_id"], "{detail}");
     // The promise's producer reads what the split wrote, whatever code wrote it.
     assert_eq!(
-        steps[6]["effects"],
+        steps[8]["effects"],
         json!([{ "kind": "add_node", "node_id": "group_overlap",
                  "operator": "sprisk.validation.group_overlap@1.0.0",
                  "params": { "group_column": "item_group" },
@@ -6281,8 +6309,9 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
 
     let detail = walk_to_end(&api, walk_request(&[&x, &y], "walk-rakuten-files")).await;
     // The look's run fails at the split, which finds no target in the listings; the methods
-    // decide the split and the join rule reads both loads all the same. Then the walk goes on
-    // as with one joined file.
+    // decide the split and the join rule reads both loads all the same. The target's shape is
+    // measured once the codes are joined, so the task and the class balance are decided then.
+    // Then the walk goes on as with one joined file, to the test rows' score.
     assert_eq!(
         trail(&detail),
         [
@@ -6298,6 +6327,9 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "apply data.join_sources join_on_key",
             "run",
             "verify",
+            "decide question.task_type classification",
+            "verify",
+            "decide question.class_balance balanced",
             "apply data.column_roles drop_identifiers",
             "run",
             "verify",
@@ -6306,11 +6338,15 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "verify",
             "apply features.text_representation vectorize_words",
             "run",
-            "stop"
+            "compare modeling.estimator_selection",
+            "apply modeling.estimator_selection ml_linear_model",
+            "run",
+            "score",
+            "stop",
         ],
         "{detail}"
     );
-    assert_eq!(detail["walk"]["stop"]["reason"], "needs_person", "{detail}");
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
 }
 
 /// A small table a model can learn and a featureless baseline cannot: `dose` sets `outcome`,
