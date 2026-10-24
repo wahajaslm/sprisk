@@ -5135,6 +5135,38 @@ async fn the_look_settles_the_task_and_class_balance_from_the_train_rows() {
         .find(|c| c["verification"] == "labels_are_classes")
         .expect("the task's promise is checked");
     assert_eq!(checked["result"], "pass", "{detail}");
+    // What the balance rests on: the target's shape, measured on the train rows (ADR-0064).
+    let read = &balance["evidence"][0];
+    assert_eq!(read["kind"], "target.shape", "{balance}");
+    assert_eq!(read["step"], "target_shape", "{balance}");
+    assert!(read["fields"]["rarest_share"].is_number(), "{balance}");
+    let id = balance["methodology_decision_id"].as_str().unwrap();
+    let (_, record) = call(
+        &api.app,
+        "GET",
+        &format!("/methodology_decisions/{id}"),
+        None,
+    )
+    .await;
+    assert_eq!(record["evidence"], balance["evidence"], "{record}");
+    let version = balance["pipeline_version_id"].as_str().unwrap();
+    let uri = format!("/pipeline_versions/{version}/decisions");
+    let (status, flow) = call(&api.app, "GET", &uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{flow}");
+    let listed = flow["decisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["decides"] == "question.class_balance")
+        .expect("the balance is listed");
+    assert_eq!(listed["evidence"], balance["evidence"], "{flow}");
+    assert!(
+        listed["steps"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("target_shape")),
+        "{flow}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5603,6 +5635,8 @@ async fn a_person_s_answer_is_taken_even_where_the_method_would_choose_another()
     // The method would stratify by class; the person's answer is applied instead.
     assert_eq!(split["option"], "simple_random", "{detail}");
     assert_eq!(split["assurance"], "confirmed", "{detail}");
+    // A person's answer rests on the person, not on evidence the method read.
+    assert!(split.get("evidence").is_none(), "{split}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

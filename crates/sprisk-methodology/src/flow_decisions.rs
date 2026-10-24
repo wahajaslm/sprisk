@@ -80,7 +80,8 @@ pub fn flow_decisions(
                 checks
                     .iter()
                     .filter_map(|c| c.step.as_ref().map(|s| s.to_string())),
-            );
+            )
+            .chain(decided.evidence.iter().map(|e| e.step.to_string()));
         for step in touched {
             if !shaped.contains(&step) {
                 shaped.push(step);
@@ -104,6 +105,9 @@ pub fn flow_decisions(
         });
         if !decided.bindings.is_empty() {
             decision["bindings"] = json!(decided.bindings);
+        }
+        if !decided.evidence.is_empty() {
+            decision["evidence"] = json!(decided.evidence);
         }
         decisions.push(decision);
     }

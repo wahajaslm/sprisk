@@ -325,6 +325,11 @@
           "description": "The verifications a decide step's option promises, by name. Absent: none.",
           "items": { "$ref": "#/$defs/VerificationName" }
         },
+        "evidence": {
+          "type": "array",
+          "description": "What a decide step's method read, when it chose by itself. Absent: a person answered, or it read no evidence.",
+          "items": { "$ref": "#/$defs/UsedEvidence" }
+        },
         "verifications": {
           "type": "array",
           "description": "What a verify step found, one item per promise the walk's decisions made. Absent for every other action.",
@@ -364,6 +369,17 @@
       "description": "pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.",
       "enum": ["pass", "fail", "inconclusive", "not_evaluated"]
     },
+    "UsedEvidence": {
+      "type": "object",
+      "description": "Evidence a method read when it decided by itself: its kind, the step that measured it and the fields it saw (ADR-0064). Recorded with the decision, so a person can see what it rested on.",
+      "additionalProperties": false,
+      "required": ["kind", "step", "fields"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/EvidenceKind" },
+        "step": { "$ref": "#/$defs/NodeId", "description": "The producer step that measured it." },
+        "fields": { "type": "object", "additionalProperties": true, "description": "The fields as the method saw them." }
+      }
+    },
     "FlowDecisions": {
       "title": "FlowDecisions",
       "description": "What decided a flow version, for people (ADR-0063 slice 5): the decisions of the walk that made the version or its nearest ancestor, each with the steps it shaped and the status of its promises on this version. Read only; worked out from the walk's steps.",
@@ -390,8 +406,13 @@
         "label": { "type": "string", "minLength": 1, "description": "The option, for people." },
         "reason": { "type": "string", "minLength": 1, "description": "Why it was taken, from the decide step." },
         "assurance": { "$ref": "#/$defs/MethodAssurance" },
-        "steps": { "type": "array", "description": "The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises.", "items": { "$ref": "#/$defs/NodeId" } },
+        "steps": { "type": "array", "description": "The steps it shaped or rested on: those its patch changed, those its bindings read, those that measured its promises, and those that measured the evidence it read.", "items": { "$ref": "#/$defs/NodeId" } },
         "bindings": { "type": "array", "description": "The bindings it made. Absent: none.", "items": { "$ref": "#/$defs/Binding" } },
+        "evidence": {
+          "type": "array",
+          "description": "What the method read, with the step that measured it. Absent: none.",
+          "items": { "$ref": "#/$defs/UsedEvidence" }
+        },
         "promises": { "type": "array", "items": { "$ref": "#/$defs/PromiseStatus" } }
       }
     },

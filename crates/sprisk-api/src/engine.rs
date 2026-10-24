@@ -432,6 +432,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
                 option: answer.option.to_string(),
                 assurance: MethodAssurance::Confirmed,
                 reason: format!("A person answered: {label}."),
+                evidence: Vec::new(),
             };
             return record_decide(state, walk, round, &read, taking).await;
         }
@@ -448,6 +449,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             option: decided.option.to_string(),
             assurance: MethodAssurance::Rule,
             reason: decided.reason.to_string(),
+            evidence: used_evidence(method, &measured),
         };
         return record_decide(state, walk, round, &read, taking).await;
     }
@@ -683,6 +685,21 @@ struct Taking<'m> {
     option: String,
     assurance: MethodAssurance,
     reason: String,
+    /// What the method read when it chose by itself; empty when a person answered.
+    evidence: Vec<Value>,
+}
+
+/// The evidence `method` needs, as its producers measured it, with the step of each.
+fn used_evidence(method: &Method, measured: &Measured) -> Vec<Value> {
+    method
+        .needs
+        .evidence
+        .iter()
+        .filter_map(|kind| {
+            let (step, fields) = measured.get(kind.as_str())?;
+            Some(json!({ "kind": kind, "step": step, "fields": fields }))
+        })
+        .collect()
 }
 
 /// What a round read before a method decides: the head, the bindings in force, the
@@ -729,6 +746,9 @@ async fn record_decide(
     }
     if !applied.promises.is_empty() {
         decision["promises"] = json!(applied.promises);
+    }
+    if !taking.evidence.is_empty() {
+        decision["evidence"] = json!(taking.evidence);
     }
     let made = if applied.effects.is_empty() {
         None
@@ -803,6 +823,7 @@ async fn record_decided(
         ("bindings", json!(decision.bindings)),
         ("promises", json!(decision.promises)),
         ("effects", json!(decision.effects)),
+        ("evidence", json!(decision.evidence)),
     ] {
         if value.as_array().is_some_and(|a| !a.is_empty()) {
             made[field] = value;

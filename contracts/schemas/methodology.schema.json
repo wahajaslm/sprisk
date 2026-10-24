@@ -720,6 +720,7 @@
         "effects": { "type": "array", "items": { "$ref": "#/$defs/GraphEffect" }, "description": "The patch the option applied, in order. Absent: it changed no step." },
         "bindings": { "type": "array", "items": { "$ref": "#/$defs/Binding" }, "description": "The bindings the option made. Absent: none." },
         "promises": { "type": "array", "items": { "$ref": "#/$defs/VerificationName" }, "description": "The verifications the option promises, by name. Absent: none." },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/UsedEvidence" }, "description": "What the method read when it chose by itself. Absent: a person answered, or it read none." },
         "created_at": { "$ref": "#/$defs/Timestamp" }
       }
     },

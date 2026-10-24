@@ -2208,7 +2208,30 @@ export interface MethodologyDecisionByMethod {
    * The verifications the option promises, by name. Absent: none.
    */
   promises?: VerificationName[];
+  /**
+   * What the method read when it chose by itself. Absent: a person answered, or it read none.
+   */
+  evidence?: UsedEvidence[];
   created_at: Timestamp;
+}
+/**
+ * Evidence a method read when it decided by itself: its kind, the step that measured it and the fields it saw (ADR-0064). Recorded with the decision, so a person can see what it rested on.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "UsedEvidence".
+ */
+export interface UsedEvidence {
+  kind: EvidenceKind;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  step: string;
+  /**
+   * The fields as the method saw them.
+   */
+  fields: {
+    [k: string]: unknown;
+  };
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -3484,6 +3507,10 @@ export interface WalkStep {
    */
   promises?: VerificationName[];
   /**
+   * What a decide step's method read, when it chose by itself. Absent: a person answered, or it read no evidence.
+   */
+  evidence?: UsedEvidence[];
+  /**
    * What a verify step found, one item per promise the walk's decisions made. Absent for every other action.
    */
   verifications?: PromiseCheck[];
@@ -3562,13 +3589,17 @@ export interface FlowDecision {
   reason: string;
   assurance: MethodAssurance;
   /**
-   * The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises.
+   * The steps it shaped or rested on: those its patch changed, those its bindings read, those that measured its promises, and those that measured the evidence it read.
    */
   steps: NodeId[];
   /**
    * The bindings it made. Absent: none.
    */
   bindings?: Binding[];
+  /**
+   * What the method read, with the step that measured it. Absent: none.
+   */
+  evidence?: UsedEvidence[];
   promises: PromiseStatus[];
 }
 /**
