@@ -1,0 +1,4 @@
+{
+  "answer": "refused",
+  "error": "repeated_items reads evidence data.x without declaring it"
+}

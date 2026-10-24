@@ -38,6 +38,8 @@ export interface Entities {
   RuleObservation: C.RuleObservation;
   RuleRequest: C.RuleRequest;
   RuleAnswer: C.RuleAnswer;
+  MethodRequest: C.MethodRequest;
+  MethodAnswer: C.MethodAnswer;
   RuleDecision: C.RuleDecision;
   FigureSet: C.FigureSet;
   LoadedTable: C.LoadedTable;

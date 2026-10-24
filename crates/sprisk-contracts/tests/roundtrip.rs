@@ -10,13 +10,13 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
     CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet, KeyMatches,
-    LoadedTable, Method, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
-    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
-    NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
-    NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
-    PipelineVersion, Problem, QuestionVersion, RuleAnswer, RuleDecision, RuleObservation,
-    RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial, Walk, WalkDetail,
-    WalkStep, WorkerMessage, parse,
+    LoadedTable, Method, MethodAnswer, MethodRequest, MethodologyCheck, MethodologyDecision,
+    MethodologyReview, MethodologyRule, MethodologyRuleSource, ModelSelection, NotebookCode,
+    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
+    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
+    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
+    RuleAnswer, RuleDecision, RuleObservation, RuleRequest, Run, SelectionDecision, Study,
+    StudyDetail, TablePage, Trial, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -80,6 +80,8 @@ const ENTITIES: &[&str] = &[
     "key_matches",
     "loaded_table",
     "method",
+    "method_answer",
+    "method_request",
     "methodology_check",
     "methodology_decision",
     "methodology_review",
@@ -281,6 +283,16 @@ fn rule_request() {
 #[test]
 fn rule_answer() {
     check::<RuleAnswer>("rule_answer");
+}
+
+#[test]
+fn method_request() {
+    check::<MethodRequest>("method_request");
+}
+
+#[test]
+fn method_answer() {
+    check::<MethodAnswer>("method_answer");
 }
 
 #[test]

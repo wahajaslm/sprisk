@@ -146,8 +146,7 @@
       ],
       "properties": {
         "id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          "$ref": "#/$defs/MethodOptionId"
         },
         "label": {
           "type": "string",
@@ -160,8 +159,7 @@
           "type": "array",
           "description": "The verifications this option promises, by name.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+            "$ref": "#/$defs/VerificationName"
           }
         }
       }
@@ -224,6 +222,178 @@
         }
       }
     },
+    "MethodRequest": {
+      "title": "MethodRequest",
+      "description": "Rust to the method session (`python -m sprisk_workers.method`), one JSON line per decision (ADR-0063): the method module Rust picked from the loaded catalog, and only what its needs declare. decide() may read nothing else.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "module",
+        "method",
+        "needs",
+        "options",
+        "task",
+        "evidence",
+        "decisions",
+        "bound"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.method_request/v1"
+          ]
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored."
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "needs": {
+          "$ref": "#/$defs/MethodNeeds"
+        },
+        "options": {
+          "type": "array",
+          "description": "The ids of the method's options: decide() chooses or asks for one of them.",
+          "items": {
+            "$ref": "#/$defs/MethodOptionId"
+          }
+        },
+        "task": {
+          "$ref": "#/$defs/TaskType"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceSet",
+          "description": "Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names."
+        },
+        "decisions": {
+          "type": "object",
+          "description": "Each needed decision, by its key: the option chosen.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/MethodOptionId"
+          }
+        },
+        "bound": {
+          "type": "array",
+          "description": "The needed concepts a stated, confirmed or method-made binding names. Never a column name.",
+          "items": {
+            "$ref": "#/$defs/ConceptId"
+          }
+        }
+      }
+    },
+    "MethodOptionId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "VerificationName": {
+      "type": "string",
+      "description": "A verification a method declares, the name of its verify_<name>() function.",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "MethodAssurance": {
+      "type": "string",
+      "description": "How a method's option was taken: confirmed, a person answered the method's ask; rule, the method chose it unasked.",
+      "enum": [
+        "confirmed",
+        "rule"
+      ]
+    },
+    "MethodAnswer": {
+      "title": "MethodAnswer",
+      "description": "The method session's one JSON line per MethodRequest, tagged by `answer`: what decide() returned, or why the method refused its request. Any other failure ends the session.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MethodDecided"
+        },
+        {
+          "$ref": "#/$defs/MethodRefused"
+        }
+      ]
+    },
+    "MethodDecided": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "method",
+        "outcome",
+        "option",
+        "reason"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "decided"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "choose",
+            "ask"
+          ],
+          "description": "choose: the method applies the option. ask: a person confirms the option, or picks another, before anything relies on it."
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why, for a person. For ask, the question itself."
+        }
+      }
+    },
+    "MethodRefused": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "error"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "refused"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The method's own error (an undeclared read, an unknown option). It may name local paths, so it goes to the log, not to a client."
+        }
+      }
+    },
+    "DecisionAnswer": {
+      "type": "object",
+      "description": "A person's answer to a method's ask (ADR-0063 amendment): the option to apply for the decision. The walk applies it with assurance confirmed.",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "option"
+      ],
+      "properties": {
+        "decides": {
+          "$ref": "#/$defs/DecisionKey"
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        }
+      }
+    },
     "ConceptSet": {
       "title": "ConceptSet",
       "description": "A pack's concepts.yaml (ADR-0063): the meanings its methods and operators may ask for. Served by GET /concepts with the concepts of every loaded pack.",
@@ -277,11 +447,12 @@
     },
     "ConceptKind": {
       "type": "string",
-      "description": "label: what a model predicts; an all-rows step may never read it. text: free text. entity_identifier: groups rows of one real-world thing.",
+      "description": "label: what a model predicts; an all-rows step may never read it. text: free text. entity_identifier: groups rows of one real-world thing. time: when a row's event happened.",
       "enum": [
         "label",
         "text",
-        "entity_identifier"
+        "entity_identifier",
+        "time"
       ]
     },
     "BindingSourceKind": {
@@ -497,11 +668,7 @@
       ],
       "properties": {
         "assurance": {
-          "type": "string",
-          "enum": [
-            "confirmed",
-            "rule"
-          ]
+          "$ref": "#/$defs/MethodAssurance"
         },
         "method": {
           "$ref": "#/$defs/MethodRef"

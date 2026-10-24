@@ -1,0 +1,7 @@
+{
+  "answer": "decided",
+  "method": "methodology.common.repeated_items@1.0.0",
+  "outcome": "ask",
+  "option": "group_by_title",
+  "reason": "201 of 596 rows share a title with another row (83 groups, largest 4). Are rows with matching titles the same item?"
+}

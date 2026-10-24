@@ -1,0 +1,33 @@
+{
+  "schema_version": "sprisk.method_request/v1",
+  "module": "/packs/common/methods/repeated_items/method.py",
+  "method": "methodology.common.repeated_items@1.0.0",
+  "needs": {
+    "concepts": [
+      "common.item_title"
+    ],
+    "evidence": [
+      "data.near_duplicate_groups"
+    ],
+    "decisions": []
+  },
+  "options": [
+    "group_by_title",
+    "independent_rows"
+  ],
+  "task": "classification",
+  "evidence": {
+    "data.near_duplicate_groups": {
+      "rows": 596,
+      "groups": 83,
+      "rows_in_groups": 201,
+      "largest_group": 4
+    }
+  },
+  "decisions": {
+    "data.x": "Group By"
+  },
+  "bound": [
+    "common.item_title"
+  ]
+}

@@ -373,10 +373,6 @@ class MethodNeeds(StrictModel):
     decisions: list[DecisionKey]
 
 
-class VerifyItem(RootModel[str]):
-    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
-
-
 class MethodBind(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -402,10 +398,75 @@ class MethodVerification(StrictModel):
     ] = None
 
 
+class MethodOptionId(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+
+
+class VerificationName(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description="A verification a method declares, the name of its verify_<name>() function.",
+            pattern="^[a-z][a-z0-9_]{0,62}$",
+        ),
+    ]
+
+
+class MethodAssurance(StrEnum):
+    confirmed = "confirmed"
+    rule = "rule"
+
+
+class Outcome(StrEnum):
+    choose = "choose"
+    ask = "ask"
+
+
+class MethodDecided(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["decided"]
+    method: MethodRef
+    outcome: Annotated[
+        Outcome,
+        Field(
+            description="choose: the method applies the option. ask: a person confirms the option, or picks another, before anything relies on it."
+        ),
+    ]
+    option: MethodOptionId
+    reason: Annotated[
+        str, Field(description="Why, for a person. For ask, the question itself.", min_length=1)
+    ]
+
+
+class MethodRefused(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["refused"]
+    error: Annotated[
+        str,
+        Field(
+            description="The method's own error (an undeclared read, an unknown option). It may name local paths, so it goes to the log, not to a client.",
+            min_length=1,
+        ),
+    ]
+
+
+class DecisionAnswer(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    decides: DecisionKey
+    option: MethodOptionId
+
+
 class ConceptKind(StrEnum):
     label = "label"
     text = "text"
     entity_identifier = "entity_identifier"
+    time = "time"
 
 
 class BindingSourceKind(StrEnum):
@@ -490,16 +551,11 @@ class BindingStated(StrictModel):
     assurance: Literal["stated"]
 
 
-class Assurance(StrEnum):
-    confirmed = "confirmed"
-    rule = "rule"
-
-
 class BindingByMethod(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    assurance: Assurance
+    assurance: MethodAssurance
     method: MethodRef
 
 
@@ -1259,6 +1315,14 @@ class WalkStatus(StrEnum):
     stopped = "stopped"
 
 
+class WalkAskOption(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: MethodOptionId
+    label: Annotated[str, Field(min_length=1)]
+
+
 class WalkStopReason(StrEnum):
     complete = "complete"
     needs_person = "needs_person"
@@ -1277,6 +1341,7 @@ class WalkAction(StrEnum):
     apply = "apply"
     compare = "compare"
     measure = "measure"
+    decide = "decide"
     score = "score"
     stop = "stop"
 
@@ -1702,6 +1767,16 @@ class MethodAction(StrictModel):
     )
     bind: MethodBind | None = None
     replace: MethodReplace | None = None
+
+
+class MethodAnswer(RootModel[MethodDecided | MethodRefused]):
+    root: Annotated[
+        MethodDecided | MethodRefused,
+        Field(
+            description="The method session's one JSON line per MethodRequest, tagged by `answer`: what decide() returned, or why the method refused its request. Any other failure ends the session.",
+            title="MethodAnswer",
+        ),
+    ]
 
 
 class Concept(StrictModel):
@@ -2426,62 +2501,31 @@ class CreateWalk(StrictModel):
     ]
 
 
-class WalkStop(StrictModel):
+class WalkAsk(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    reason: WalkStopReason
-    detail: Annotated[
-        str, Field(description="What is open, for a person to read. Never parsed.", min_length=1)
-    ]
-
-
-class WalkStep(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    schema_version: Literal["sprisk.walk_step/v1"]
-    walk_id: WalkId
-    round: Annotated[int, Field(description="Its place in the trail, from 0.", ge=0)]
-    action: WalkAction
-    pipeline_version_id: Annotated[
-        PipelineVersionId | None, Field(description="The version it reviewed. Absent for build.")
-    ] = None
-    rule: Annotated[
-        CheckRef | None, Field(description="The rule it acted for. Absent for build and run.")
-    ] = None
     decides: Annotated[
-        str | None,
+        DecisionKey,
         Field(
-            description="What the rule decides. Absent for build, run and stop.",
-            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+            description="The decision it holds back: a method's or a rule's key, such as data.repeated_items, or the question fact to state, such as question.success_bar."
         ),
-    ] = None
-    subject_node_id: Annotated[
-        NodeId | None,
-        Field(description="The step the rule decided. Absent for build, run and stop."),
-    ] = None
-    alternative_id: Annotated[
-        str | None,
-        Field(description="The alternative it applied.", pattern="^[a-z][a-z0-9_]{0,62}$"),
-    ] = None
-    methodology_decision_id: Annotated[
-        MethodologyDecisionId | None, Field(description="The decision an apply recorded.")
-    ] = None
-    made_pipeline_version_id: Annotated[
-        PipelineVersionId | None, Field(description="The version a build, apply or measure made.")
-    ] = None
-    effects: Annotated[
-        list[GraphEffect] | None,
-        Field(
-            description="The patch a measure step applied, in order (ADR-0063). Absent for every other action."
-        ),
-    ] = None
-    run_id: Annotated[RunId | None, Field(description="The run a run step started.")] = None
-    reason: Annotated[
-        str, Field(description="Why, from the review item it acted on.", min_length=1)
     ]
-    created_at: Timestamp
+    question: Annotated[str, Field(description="The question, for a person.", min_length=1)]
+    method: Annotated[
+        MethodRef | None,
+        Field(description="The method that asks. Absent: a rule or the engine asks."),
+    ] = None
+    option: Annotated[
+        MethodOptionId | None,
+        Field(description="The option the method would take, once a person confirms it."),
+    ] = None
+    options: Annotated[
+        list[WalkAskOption] | None,
+        Field(
+            description="Every option of the method, for the person to pick from. Present exactly when method is."
+        ),
+    ] = None
 
 
 class LeaseAttempt(StrictModel):
@@ -2673,11 +2717,12 @@ class MethodOption(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    id: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
+    id: MethodOptionId
     label: Annotated[str, Field(min_length=1)]
     action: MethodAction | None = None
     verify: Annotated[
-        list[VerifyItem], Field(description="The verifications this option promises, by name.")
+        list[VerificationName],
+        Field(description="The verifications this option promises, by name."),
     ]
 
 
@@ -3018,43 +3063,93 @@ class CandidateResult(StrictModel):
     ] = None
 
 
-class Walk(StrictModel):
+class WalkStop(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["sprisk.walk/v1"]
-    id: WalkId
-    project_id: ProjectId
-    question_version_id: QuestionVersionId
-    sources: WalkSources
-    source_hashes: Annotated[
-        list[ContentHash] | None,
+    reason: WalkStopReason
+    detail: Annotated[
+        str, Field(description="What is open, for a person to read. Never parsed.", min_length=1)
+    ]
+    asks: Annotated[
+        list[WalkAsk] | None,
         Field(
-            description="Each source's SHA-256 when the walk began, in the order of `sources`. Every round checks them: a source that changed stops the walk. Absent on walks made before they were recorded, and on one that stopped before building anything."
+            description="Every question the walk's look found open, as one list (ADR-0063 amendment). Absent: the walk stopped for another reason."
         ),
     ] = None
-    max_actions: Annotated[int, Field(ge=0)]
-    max_wall_seconds: Annotated[int, Field(ge=0)]
-    status: WalkStatus
-    head_pipeline_version_id: Annotated[
+
+
+class WalkStep(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.walk_step/v1"]
+    walk_id: WalkId
+    round: Annotated[int, Field(description="Its place in the trail, from 0.", ge=0)]
+    action: WalkAction
+    pipeline_version_id: Annotated[
+        PipelineVersionId | None, Field(description="The version it reviewed. Absent for build.")
+    ] = None
+    rule: Annotated[
+        CheckRef | None, Field(description="The rule it acted for. Absent for build and run.")
+    ] = None
+    decides: Annotated[
+        str | None,
+        Field(
+            description="What the rule decides. Absent for build, run and stop.",
+            pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+        ),
+    ] = None
+    subject_node_id: Annotated[
+        NodeId | None,
+        Field(description="The step the rule decided. Absent for build, run and stop."),
+    ] = None
+    alternative_id: Annotated[
+        str | None,
+        Field(description="The alternative it applied.", pattern="^[a-z][a-z0-9_]{0,62}$"),
+    ] = None
+    methodology_decision_id: Annotated[
+        MethodologyDecisionId | None, Field(description="The decision an apply recorded.")
+    ] = None
+    made_pipeline_version_id: Annotated[
         PipelineVersionId | None,
         Field(
-            description="The latest version the walk made. Absent when it stopped before building one."
+            description="The version a build, apply, measure or decide made. Absent for a decide whose option changes no step."
         ),
     ] = None
-    stop: Annotated[WalkStop | None, Field(description="Why it stopped. Present once stopped.")] = (
-        None
-    )
+    effects: Annotated[
+        list[GraphEffect] | None,
+        Field(
+            description="The patch a measure or decide step applied, in order (ADR-0063). Absent for every other action."
+        ),
+    ] = None
+    method: Annotated[
+        MethodRef | None, Field(description="The method a decide step decided for.")
+    ] = None
+    option: Annotated[
+        MethodOptionId | None,
+        Field(
+            description="The option a decide step took. A decide step always has method, decides, option and assurance."
+        ),
+    ] = None
+    assurance: Annotated[
+        MethodAssurance | None, Field(description="How a decide step's option was taken.")
+    ] = None
+    bindings: Annotated[
+        list[Binding] | None,
+        Field(description="The bindings a decide step's option made. Absent: none."),
+    ] = None
+    promises: Annotated[
+        list[VerificationName] | None,
+        Field(
+            description="The verifications a decide step's option promises, by name. Absent: none."
+        ),
+    ] = None
+    run_id: Annotated[RunId | None, Field(description="The run a run step started.")] = None
+    reason: Annotated[
+        str, Field(description="Why, from the review item it acted on.", min_length=1)
+    ]
     created_at: Timestamp
-    finished_at: Annotated[Timestamp | None, Field(description="Set once stopped.")] = None
-
-
-class WalkDetail(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    walk: Walk
-    steps: list[WalkStep]
 
 
 class WorkerMessage(
@@ -3148,6 +3243,48 @@ class Method(StrictModel):
     ]
 
 
+class MethodRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.method_request/v1"]
+    module: Annotated[
+        str,
+        Field(
+            description="Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored.",
+            min_length=1,
+        ),
+    ]
+    method: MethodRef
+    needs: MethodNeeds
+    options: Annotated[
+        list[MethodOptionId],
+        Field(
+            description="The ids of the method's options: decide() chooses or asks for one of them."
+        ),
+    ]
+    task: TaskType
+    evidence: Annotated[
+        EvidenceSet,
+        Field(
+            description="Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names."
+        ),
+    ]
+    decisions: Annotated[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")],
+            MethodOptionId,
+        ],
+        Field(description="Each needed decision, by its key: the option chosen."),
+    ]
+    bound: Annotated[
+        list[ConceptId],
+        Field(
+            description="The needed concepts a stated, confirmed or method-made binding names. Never a column name."
+        ),
+    ]
+
+
 class RuleAnswer(RootModel[RuleDecided | RuleRefused]):
     root: Annotated[
         RuleDecided | RuleRefused,
@@ -3233,6 +3370,12 @@ class QuestionVersion(StrictModel):
             description="Which column means each concept the packs ask for, in this project (ADR-0063). One binding per concept. Absent: none stated."
         ),
     ] = None
+    answers: Annotated[
+        list[DecisionAnswer] | None,
+        Field(
+            description="A person's answers to the methods' asks, one per decision key (ADR-0063 amendment). Absent: none given."
+        ),
+    ] = None
     created_at: Timestamp
 
 
@@ -3301,3 +3444,42 @@ class SelectionDecision(StrictModel):
             description="Earlier comparisons of the same version and step, started on the same folds before this one, whether or not they finished (ADR-0052). Absent: none."
         ),
     ] = None
+
+
+class Walk(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.walk/v1"]
+    id: WalkId
+    project_id: ProjectId
+    question_version_id: QuestionVersionId
+    sources: WalkSources
+    source_hashes: Annotated[
+        list[ContentHash] | None,
+        Field(
+            description="Each source's SHA-256 when the walk began, in the order of `sources`. Every round checks them: a source that changed stops the walk. Absent on walks made before they were recorded, and on one that stopped before building anything."
+        ),
+    ] = None
+    max_actions: Annotated[int, Field(ge=0)]
+    max_wall_seconds: Annotated[int, Field(ge=0)]
+    status: WalkStatus
+    head_pipeline_version_id: Annotated[
+        PipelineVersionId | None,
+        Field(
+            description="The latest version the walk made. Absent when it stopped before building one."
+        ),
+    ] = None
+    stop: Annotated[WalkStop | None, Field(description="Why it stopped. Present once stopped.")] = (
+        None
+    )
+    created_at: Timestamp
+    finished_at: Annotated[Timestamp | None, Field(description="Set once stopped.")] = None
+
+
+class WalkDetail(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    walk: Walk
+    steps: list[WalkStep]

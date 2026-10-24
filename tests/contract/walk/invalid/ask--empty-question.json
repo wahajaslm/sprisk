@@ -1,0 +1,41 @@
+{
+  "schema_version": "sprisk.walk/v1",
+  "id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "sources": [
+    "/data/x_train.csv"
+  ],
+  "max_actions": 40,
+  "max_wall_seconds": 3600,
+  "status": "stopped",
+  "head_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "created_at": "2026-10-22T10:00:00Z",
+  "stop": {
+    "reason": "needs_person",
+    "detail": "Answer these before the walk goes on: data.repeated_items: Are rows with matching titles the same item? question.success_bar: State the success bar.",
+    "asks": [
+      {
+        "decides": "data.repeated_items",
+        "question": "201 of 596 rows share a title with another row (83 groups, largest 4). Are rows with matching titles the same item?",
+        "method": "methodology.common.repeated_items@1.0.0",
+        "option": "group_by_title",
+        "options": [
+          {
+            "id": "group_by_title",
+            "label": "Treat rows with matching titles as one item"
+          },
+          {
+            "id": "independent_rows",
+            "label": "Treat every row as its own item"
+          }
+        ]
+      },
+      {
+        "decides": "question.success_bar",
+        "question": ""
+      }
+    ]
+  },
+  "finished_at": "2026-10-22T10:05:00Z"
+}
