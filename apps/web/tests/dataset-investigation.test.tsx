@@ -223,11 +223,11 @@ describe("a dataset's investigation (ADR-0065)", () => {
     const observed: FlowDecision = {
       ...unchanged,
       steps: ["target_shape"],
-      evidence: [{ kind: "target.shape", step: "target_shape", fields: { rows: 484, rarest_share: 0.0888, numeric: false, labels: ["10", "40"] } }],
+      evidence: [{ kind: "target.shape", step: "target_shape", fields: { rows: 484, rarest_share: 0.09166666666666666, numeric: false, labels: ["10", "40"], columns: [] } }],
     };
     serve({ ...decided, decisions: [observed] });
     await openInvestigation();
     const card = await screen.findByRole("article", { name: "Are some classes much rarer than others?" });
-    expect(within(card).getByText("rows 484 · rarest share 0.0888 · numeric no · labels 10, 40")).toBeInTheDocument();
+    expect(within(card).getByText("rows 484 · rarest share 0.0917 · numeric no · labels 10, 40 · columns none")).toBeInTheDocument();
   });
 });

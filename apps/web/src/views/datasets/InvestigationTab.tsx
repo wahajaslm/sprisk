@@ -237,11 +237,19 @@ function AnalysisChart({ attempt, port }: { attempt: Attempt | undefined; port: 
   );
 }
 
-/** Evidence fields as the method saw them: "rows 484 · rarest share 0.0888". */
+/** Evidence fields as the method saw them: "rows 484 · rarest share 0.0917 · columns none". */
 function fieldWords(fields: Record<string, unknown>): string {
   return Object.entries(fields)
-    .map(([name, value]) => `${name.replaceAll("_", " ")} ${Array.isArray(value) ? value.join(", ") : typeof value === "boolean" ? (value ? "yes" : "no") : String(value)}`)
+    .map(([name, value]) => `${name.replaceAll("_", " ")} ${valueWords(value)}`)
     .join(" · ");
+}
+
+function valueWords(value: unknown): string {
+  if (Array.isArray(value)) return value.length === 0 ? "none" : value.join(", ");
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  // Shares arrive with every digit a float has; three significant ones say the same.
+  if (typeof value === "number" && !Number.isInteger(value)) return String(Number(value.toPrecision(3)));
+  return String(value);
 }
 
 /** Which rows an evidence producer read, from its manifest. A step that is not a producer has
