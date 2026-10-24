@@ -36,7 +36,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const ALL_ITEMS: PaletteItem[] = useMemo(
     () => [
       ...(flow?.nodes ?? []).map((node): PaletteItem => {
-        const { title, subject } = stepLabel(node);
+        const { title, subject } = stepLabel(node, operators.data?.find((o) => o.id === node.operator));
         return {
           id: `step-${node.id}`,
           category: "Steps",
@@ -53,7 +53,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         (op): PaletteItem => ({
           id: `op-${op.id}`,
           category: "Operators",
-          title: stepTitle(op.id),
+          title: stepTitle(op.id, op),
           meta: op.id,
           onSelect: () => {
             setNav("Flow");

@@ -121,7 +121,7 @@ describe("step library", () => {
   it("groups registered operators by stage", async () => {
     renderWithApi(<StepLibrary />);
     const clean = await screen.findByRole("region", { name: "Clean" });
-    expect(within(clean).getByText("Impute")).toBeInTheDocument();
+    expect(within(clean).getByText("Imputation")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Model" })).getByText("Linear model")).toBeInTheDocument();
   });
 
@@ -139,9 +139,9 @@ describe("step library", () => {
     const heading = within(clean).getByRole("button", { name: /Clean/ });
     await userEvent.click(heading);
     expect(heading).toHaveAttribute("aria-expanded", "false");
-    expect(within(clean).queryByText("Impute")).toBeNull();
+    expect(within(clean).queryByText("Imputation")).toBeNull();
     await userEvent.click(heading);
-    expect(within(clean).getByText("Impute")).toBeInTheDocument();
+    expect(within(clean).getByText("Imputation")).toBeInTheDocument();
   });
 
   it("lists only the newest version of an operator", async () => {
@@ -162,7 +162,7 @@ describe("step library", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined });
     renderWithApi(<StepLibrary />);
 
-    expect(await screen.findByRole("button", { name: /^Impute.*Issue$/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Imputation.*Issue$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Random split$/ })).toBeInTheDocument();
     expect(screen.queryByText("Queued")).toBeNull();
   });
@@ -222,7 +222,7 @@ describe("step library", () => {
     await screen.findByRole("region", { name: "Clean" });
     await userEvent.type(screen.getByRole("searchbox", { name: "Search steps" }), "split");
     expect(screen.getByText("Random split")).toBeInTheDocument();
-    expect(screen.queryByText("Impute")).toBeNull();
+    expect(screen.queryByText("Imputation")).toBeNull();
   });
 });
 

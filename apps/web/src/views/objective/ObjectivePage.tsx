@@ -4,7 +4,7 @@ import { ulid } from "ulid";
 
 import { useLoadedTables } from "../../api/datasets.ts";
 import { useConcepts } from "../../api/methodology.ts";
-import { usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
+import { useOperators, usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
 import { useQuestionVersions, useSaveQuestionVersion } from "../../api/questions.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -55,6 +55,7 @@ export function ObjectivePage() {
   const questionsQuery = useQuestionVersions();
   const pipelinesQuery = usePipelineVersions();
   const tablesQuery = useLoadedTables();
+  const operatorsQuery = useOperators();
   const conceptsQuery = useConcepts();
   const saveQuestion = useSaveQuestionVersion();
   const savePipeline = useSavePipelineVersion();
@@ -496,7 +497,7 @@ export function ObjectivePage() {
                     <div key={t.artifact.id} className="from-data-row">
                       <span className="from-data-k">{t.name}</span>
                       <span className="from-data-v">
-                        {t.total_rows.toLocaleString()} rows · {t.total_columns} columns · {stepTitle(t.operator)}
+                        {t.total_rows.toLocaleString()} rows · {t.total_columns} columns · {stepTitle(t.operator, operatorsQuery.data?.find((o) => o.id === t.operator))}
                       </span>
                     </div>
                   ))}

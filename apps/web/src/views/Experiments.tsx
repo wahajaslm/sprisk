@@ -188,10 +188,11 @@ function whatChanged(run: Run, byId: Map<string, PipelineVersion>): string {
 /** The run's steps in flow order, each with its latest attempt's state; a failed step says why. */
 function Monitor({ run, version }: { run: Run; version: PipelineVersion | undefined }) {
   const attempts = useRunAttempts(run.pipeline_version_id, run.id);
+  const operators = useOperators();
   if (attempts.isError) return <p role="alert" className="error pad">{attempts.error.message}</p>;
   if (attempts.isPending) return <Loading text="Loading the run's steps…" pad />;
   const latest = (node: string) => attempts.data.filter((a) => a.node_id === node).sort((a, b) => b.number - a.number)[0];
-  const steps = (version?.nodes ?? []).map((n) => ({ id: n.id, title: stepLabel(n).title, attempt: latest(n.id) }));
+  const steps = (version?.nodes ?? []).map((n) => ({ id: n.id, title: stepLabel(n, operators.data?.find((o) => o.id === n.operator)).title, attempt: latest(n.id) }));
   const failed = steps.filter((s) => s.attempt?.state === "failed");
   const done = steps.filter((s) => s.attempt !== undefined && FINISHED.has(s.attempt.state)).length;
   return (
