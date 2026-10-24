@@ -55,7 +55,6 @@ Remove an item when it is done; link the commit or ADR.
 ## Engine (from the ADR-0064 proof of concept)
 | Item | Source | Milestone |
 | --- | --- | --- |
-| A preparation a rule adds after the model is chosen (scaling after a linear winner) leaves the loop-back rule waiting for a comparison the walk never starts: the walk stops as uncovered | ADR-0064 step 3 proof | M4 |
 | A failed promise stops the walk with no remedy: the walk cannot reopen the decision that made it | ADR-0063, ADR-0064 | M4 |
 | `no_row_in_both` compares every column but the target, so it relies on the column-roles rule dropping identifiers before the split | ADR-0064 methodology review | M4 |
 | The temporal option does not check its purging (`no_group_overlap` would block every temporal walk without an item column) | ADR-0064 methodology review | M4 |
