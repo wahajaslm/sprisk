@@ -2,6 +2,8 @@ from typing import Any
 
 import polars as pl
 
+from .group_sizes import records_per_item
+
 GROUP = "item_group"
 KIND = "data.near_duplicate_groups"
 
@@ -43,4 +45,5 @@ def near_duplicates(data: pl.DataFrame, title_column: str) -> dict[str, Any]:
                 "largest_group": max(sizes.to_list(), default=0),
             }
         },
+        "figures": records_per_item(sizes, f"Rows per title group ({title_column})"),
     }

@@ -12,7 +12,7 @@ produces:
   data.near_duplicate_groups:
     fields: { rows: integer, groups: integer, rows_in_groups: integer, largest_group: integer }
 inputs: [{ name: data, kind: table }]
-outputs: [{ name: data, kind: table }, { name: evidence, kind: report }]
+outputs: [{ name: data, kind: table }, { name: evidence, kind: report }, { name: figures, kind: figure }]
 params_schema:
   type: object
   additionalProperties: false

@@ -5,7 +5,7 @@ activity: Repeated observations
 question: Does the same item appear in more than one row?
 needs:
   concepts: [common.item_title, common.item_identity]
-  evidence: [data.near_duplicate_groups]
+  evidence: [data.near_duplicate_groups, data.identity_frequency]
   decisions: []
 options:
   - id: group_by_title

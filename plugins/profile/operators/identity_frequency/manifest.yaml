@@ -1,0 +1,24 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.identity_frequency@1.0.0
+title: Records per item
+capability_class: analyzer
+description: Counts the records each stated item has, the items seen more than once, and the rows with no identifier, and draws how many items have each number of records (ADR-0065).
+entrypoint: sprisk_profile.identity_frequency:identity_frequency
+# Every row, before the split: it reads the identifier, never the label.
+scope: all
+attach: { role: split, side: input }
+concepts: { item_column: common.item_identity }
+produces:
+  data.identity_frequency:
+    fields: { rows: integer, items: integer, repeated_items: integer, rows_in_repeated: integer, largest_item: integer, missing: integer }
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: evidence, kind: report }, { name: figures, kind: figure }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [item_column]
+  properties:
+    item_column: { type: string, minLength: 1, x-sprisk-column: true, description: "The column that says which item each row describes." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

@@ -24,6 +24,15 @@ def test_titles_matching_once_case_accents_and_punctuation_go_share_a_group() ->
     }
 
 
+def test_the_chart_shows_how_many_title_groups_have_each_number_of_rows() -> None:
+    data = pl.DataFrame({"designation": ["Lampe", "lampe", "Tasse", "Pot"]})
+    figure = near_duplicates(data, title_column="designation")["figures"]
+
+    bars = {trace.name: dict(zip(trace.x, trace.y, strict=True)) for trace in figure.data}
+    assert bars == {"One record": {"1": 2}, "Repeated": {"2": 1}}
+    assert figure.layout.title.text == "Rows per title group (designation)"
+
+
 def test_rows_with_no_title_are_each_their_own_item() -> None:
     data = pl.DataFrame({"designation": [None, None, "", "Lampe"]})
     found = near_duplicates(data, title_column="designation")

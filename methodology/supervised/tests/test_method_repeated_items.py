@@ -36,3 +36,28 @@ def test_a_stated_item_column_is_kept_and_titles_never_replace_it() -> None:
     # rows of one stated item could then land on both sides.
     d = decide(METHOD, evidence=groups(83), bound=["common.item_title", "common.item_identity"])
     assert (d["outcome"], d["option"]) == ("choose", "stated_items")
+
+
+def frequency(missing: int = 0, repeated: int = 40) -> dict[str, dict[str, int]]:
+    return {
+        "data.identity_frequency": {
+            "rows": 1000,
+            "items": 700,
+            "repeated_items": repeated,
+            "rows_in_repeated": 230 if repeated else 0,
+            "largest_item": 9 if repeated else 1,
+            "missing": missing,
+        }
+    }
+
+
+def test_a_stated_item_column_reports_how_many_rows_share_an_item() -> None:
+    d = decide(METHOD, evidence=frequency(), bound=["common.item_identity"])
+    assert (d["outcome"], d["option"]) == ("choose", "stated_items")
+    assert "230 of 1000 rows share an item with another row (40 items, largest 9)" in d["reason"]
+
+
+def test_rows_with_no_identifier_are_named_because_the_item_split_refuses_them() -> None:
+    d = decide(METHOD, evidence=frequency(missing=12), bound=["common.item_identity"])
+    assert (d["outcome"], d["option"]) == ("choose", "stated_items")
+    assert "12 rows have no item identifier" in d["reason"]

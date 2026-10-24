@@ -66,6 +66,7 @@
 | [0062](0062-decision-centered-methodology-and-edit-aware-verification.md) | Decision-centered methodology and edit-aware verification | Proposed |
 | [0063](0063-methods-need-evidence-operators-produce-it.md) | Methods need evidence, operators produce it | Accepted |
 | [0064](0064-validate-the-architecture-before-the-libraries.md) | Validate the architecture before the method and operator libraries | Accepted |
+| [0065](0065-understand-a-dataset-in-the-dataset-tab.md) | Understand a dataset in the Dataset tab | Accepted |
 
 ## Open questions (arch doc §17)
 
