@@ -432,7 +432,8 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
                 option: answer.option.to_string(),
                 assurance: MethodAssurance::Confirmed,
                 reason: format!("A person answered: {label}."),
-                evidence: Vec::new(),
+                // What raised the question stays with the answer.
+                evidence: used_evidence(method, &measured),
             };
             return record_decide(state, walk, round, &read, taking).await;
         }
@@ -685,7 +686,7 @@ struct Taking<'m> {
     option: String,
     assurance: MethodAssurance,
     reason: String,
-    /// What the method read when it chose by itself; empty when a person answered.
+    /// What the method read, which a person's answer rests on too.
     evidence: Vec<Value>,
 }
 

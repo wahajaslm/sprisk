@@ -3125,7 +3125,7 @@ class MethodologyDecisionByMethod(StrictModel):
     evidence: Annotated[
         list[UsedEvidence] | None,
         Field(
-            description="What the method read when it chose by itself. Absent: a person answered, or it read none."
+            description="What the method read, whether it chose or a person answered. Absent: it read none."
         ),
     ] = None
     created_at: Timestamp
@@ -3433,7 +3433,7 @@ class WalkStep(StrictModel):
     evidence: Annotated[
         list[UsedEvidence] | None,
         Field(
-            description="What a decide step's method read, when it chose by itself. Absent: a person answered, or it read no evidence."
+            description="What a decide step's method read, whether it chose or a person answered. Absent: it read no evidence."
         ),
     ] = None
     verifications: Annotated[
