@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 /** The two parts of a cell that fold on their own, as in VS Code. */
-export type CellPart = "input" | "output";
+export type CellPart = "output";
 
 export type Folded = Partial<Record<CellPart, boolean>>;
 

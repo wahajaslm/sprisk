@@ -1118,7 +1118,6 @@ p { margin: 0; }
 .flow-card.selected { background: var(--gray-6); border-color: var(--alpha-14); box-shadow: 0 0 0 1px var(--alpha-05), 0 8px 24px var(--black-alpha-75); }
 .flow-card.bad { border-color: var(--danger-border); }
 
-/* Compact canvas: 184x52 rectangular pill node matching Flow Studio specification */
 /* A step on the canvas, as the design's main screen draws it: no box, a 30px disc with the
    kind icon and a state dot, the name, and one measured fact. */
 .flow-round {
@@ -1147,21 +1146,19 @@ p { margin: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.055);
-  color: #a3a3a3;
-  transition: background var(--dur-fast);
+  color: var(--muted);
 }
 
 /* The disc's fill is drawn behind the icon, so its shape can say where the step comes from
    (ADR-0063): a circle for an operator step as written, a diamond for a step a method chose,
    a rounded square for a step measuring evidence for a method. */
-.flow-round .round-icon { background: transparent; isolation: isolate; }
+.flow-round .round-icon { isolation: isolate; }
 .flow-round .round-icon::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: rgba(255, 255, 255, 0.055); transition: background var(--dur-fast); }
 .flow-round.shape-decided .round-icon::before { inset: 4px; border-radius: 4px; transform: rotate(45deg); }
 .flow-round.shape-measures .round-icon::before { inset: 1px; border-radius: 7px; }
 .flow-round:hover .round-icon::before { background: rgba(255, 255, 255, 0.09); }
 .flow-round.selected .round-icon::before { background: rgba(255, 255, 255, 0.14); }
-.flow-round.selected .round-icon { color: #f5f5f5; }
+.flow-round.selected .round-icon { color: var(--ink); }
 .flow-round.bad .round-icon::before { background: rgba(255, 92, 92, 0.14); }
 .flow-round.bad .round-icon { color: #ff5c5c; }
 
@@ -1502,19 +1499,10 @@ p { margin: 0; }
 .method-choice { margin: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .method-choice > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .method-choice h3 { margin: 2px 0 6px; }
-.method-evidence { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 12px 0; }
-.method-evidence strong { width: 100%; }
-.method-evidence span { padding: 4px 7px; border-radius: 4px; background: var(--raised); }
-.method-alternatives { display: grid; gap: 7px; }
-.method-alternative { display: flex; gap: 9px; padding: 9px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
-.method-alternative.needs_fact, .method-alternative.not_applicable { opacity: .62; cursor: default; }
-.method-alternative span { display: grid; gap: 3px; }
-.method-alternative small { color: var(--muted); }
 .method-preview { margin: 10px 0; padding: 10px; background: var(--raised); border-radius: 6px; }
 .method-preview p { margin: 6px 0; }
 .method-preview pre { overflow: auto; margin: 0; font-size: 14px; }
 .method-reason { display: grid; gap: 5px; margin-top: 10px; }
-.ledger-tag { margin-left: auto; color: var(--kind-decision); font-size: var(--text-xs); }
 
 /* Datasets (ADR-0038): the tables flows load, then one table's profile. */
 .datasets { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; background: var(--canvas); overflow: hidden; }
@@ -1678,7 +1666,7 @@ p { margin: 0; }
 
 .stage-step-count {
   font-size: 11.5px;
-  color: #737373;
+  color: var(--faint);
   white-space: nowrap;
 }
 
@@ -1695,7 +1683,7 @@ p { margin: 0; }
   margin: 0;
   font-size: 14px;
   font-weight: 500;
-  color: #f5f5f5;
+  color: var(--ink);
   line-height: 1.2;
   text-align: left;
   white-space: nowrap;
@@ -1705,7 +1693,7 @@ p { margin: 0; }
   margin: 0;
   text-align: left;
   font-size: 11.5px;
-  color: #959595;
+  color: var(--ink-5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1844,10 +1832,8 @@ p { margin: 0; }
 .nb-editor { overflow: hidden; }
 /* A ready-made step's cell in a stage notebook (ADR-0055): its form in place of code. */
 .nb-step { padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: 4px; background: var(--raised); }
-.nb-step .settings-grid { max-width: 640px; }
 /* A step's result is a preview in the notebook; the Data tab has the whole table. */
 .nb-step-output { max-height: 320px; overflow: auto; }
-.flow-step-names { margin: 2px 0 var(--space-2); font-family: var(--mono); font-size: var(--text-xs); }
 /* The cell's tools float on its top edge, as VS Code's cell toolbar. */
 .nb-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: 3px; background: transparent; color: var(--soft); cursor: pointer; }
 .nb-icon:hover, .nb-icon.on { background: var(--node-hover); color: var(--ink); }
@@ -1859,12 +1845,15 @@ p { margin: 0; }
 .nb-output .figure, .nb-output .plotly-figure, .nb-output .vega-figure { width: 100%; max-width: 760px; }
 .nb-output .peek { width: 100%; overflow: auto; }
 .nb-text { margin: 0; color: var(--soft); }
-/* A table as plain notebook output (ADR-0035): names, values, its size; no frame, no tools. */
-.nb-table { max-width: 100%; overflow-x: auto; font: var(--text-xs) var(--mono); color: var(--soft); }
-.nb-table table { border-collapse: collapse; }
-.nb-table th { padding: 2px var(--space-3) 4px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 600; color: var(--ink); white-space: nowrap; }
-.nb-table td { padding: 2px var(--space-3) 2px 0; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
-.nb-table-size { margin: var(--space-1) 0 0; color: var(--faint); }
+/* The one plain table: notebook outputs and the Datasets preview (ADR-0035, ADR-0038). Names,
+   values, numbers on the right, its size; no frame, no tools. */
+.plain-table { max-width: 100%; overflow-x: auto; font: var(--text-xs) var(--mono); color: var(--soft); }
+.plain-table table { border-collapse: collapse; }
+.plain-table th { padding: 2px var(--space-3) 4px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.plain-table td { padding: 2px var(--space-3) 2px 0; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.plain-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.plain-table .row-number { color: var(--faint); }
+.plain-table-size { margin: var(--space-1) 0 0; color: var(--faint); }
 .nb-no-code { margin: 0; padding: var(--space-2) var(--space-3); font: var(--text-xs) var(--mono); color: var(--faint); }
 .nb-text.stderr { width: 100%; padding: var(--space-1) var(--space-2); background: var(--alert-wash); }
 .nb-error { width: 100%; margin: 0; padding: var(--space-2) var(--space-3); background: var(--alert-wash); color: var(--alert); }
@@ -7888,30 +7877,29 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
    per rule (rule and pick, the evidence, the alternatives, the thresholds), then the checks. */
 .method-tab { display: flex; flex-direction: column; gap: var(--space-4); padding: 16px 20px; }
 .rule-decision { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; padding-bottom: var(--space-4); border-bottom: 1px solid var(--line-soft); }
-.rd-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12.5px; color: #d4d4d4; }
+.rd-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12.5px; color: var(--dim); }
 .rd-col p { margin: 0; line-height: 1.45; }
-.rd-label { margin-bottom: 4px !important; font-size: 11.5px; color: #959595; }
-.rd-title { margin: 0; font-size: 13.5px; font-weight: 500; color: #f5f5f5; }
-.rd-tag { align-self: flex-start; margin-top: 4px; font-size: 11px; color: #737373; }
+.rd-col .rd-label { margin-bottom: 4px; font-size: 11.5px; color: var(--ink-5); }
+.rd-title { margin: 0; font-size: 13.5px; font-weight: 500; color: var(--ink); }
+.rd-tag { align-self: flex-start; margin-top: 4px; font-size: 11px; color: var(--faint); }
 .rd-facts { display: flex; flex-direction: column; margin: 0; }
 .rd-facts > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
-.rd-facts dt { color: #a3a3a3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rd-facts dd { margin: 0; color: #f5f5f5; font-variant-numeric: tabular-nums; text-align: right; }
+.rd-facts dt { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-facts dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
 .rd-alternatives { display: flex; flex-direction: column; gap: 2px; }
 .rd-alternative { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
 .rd-alternative.selected { background: rgba(255, 255, 255, 0.06); }
-.rd-alternative input { margin: 2px 0 0; accent-color: #f5f5f5; }
+.rd-alternative input { margin: 2px 0 0; accent-color: var(--ink); }
 .rd-alternative > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.rd-alt-label { color: #f5f5f5; }
-.rd-alternative small { font-size: 11.5px; color: #737373; }
+.rd-alt-label { color: var(--ink); }
+.rd-alternative small { font-size: 11.5px; color: var(--faint); }
 .rd-actions { display: flex; gap: 8px; margin-top: 6px; }
-.rd-source { margin-top: 8px !important; font-size: 11.5px; }
+.rd-col .rd-source { margin-top: 8px; font-size: 11.5px; }
 
-/* A table's first rows on the Datasets page, as the design draws them: plain rows, row numbers,
-   numbers on the right (ADR-0038 amendment). */
-.ds-preview { padding: 18px 24px; overflow-x: auto; }
-.ds-preview table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.ds-preview th { padding: 0 12px 10px; border-bottom: 1px solid var(--line-soft); text-align: left; font-weight: 400; color: #959595; white-space: nowrap; }
-.ds-preview td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); color: #e5e5e5; white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 12px; }
-.ds-preview .ds-num { text-align: right; font-variant-numeric: tabular-nums; }
-.ds-preview .ds-row { color: #737373; width: 1%; }
+/* The Datasets preview: the plain table at page size, rows spaced as the design draws them. */
+.ds-preview { padding: 18px 24px; }
+.ds-preview .plain-table table { width: 100%; font-size: 12px; }
+.ds-preview .plain-table th { padding: 0 12px 10px; border-bottom-color: var(--line-soft); font-family: var(--sans); font-weight: 400; color: var(--faint); }
+.ds-preview .plain-table td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); color: var(--ink); }
+.ds-preview .plain-table .row-number { width: 1%; }
+.ds-preview .plain-table-size { display: none; }

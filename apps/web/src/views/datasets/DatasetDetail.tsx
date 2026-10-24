@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 
 import { useDatasetProfile } from "../../api/datasets.ts";
 import { useTablePage } from "../../api/hooks.ts";
+import { PlainTable } from "../notebook/CellOutputs.tsx";
 import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { BodySection, RowItem, RowList } from "../../components/ui/RowList.tsx";
@@ -19,36 +20,15 @@ export type Use = { label: string; use: LoadedTable["used_by"][number] };
 /** Rows a preview shows: one page from the server, never the table (ADR-0038 amendment). */
 const PREVIEW_ROWS = 50;
 
-/** The table's first rows, as the design shows them: row numbers, values, numbers on the right,
- * a missing value as a dash. */
+/** The table's first rows, as the design shows them, in the one plain table. */
 export function PreviewTab({ dataset }: { dataset: LoadedTable }) {
   const page = useTablePage(dataset.artifact.id, 0, PREVIEW_ROWS);
   if (page.isError) return <p role="alert" className="error">The rows could not be read: {page.error.message}</p>;
   if (page.isPending) return <Loading text="Reading the first rows…" />;
-  const numeric = page.data.columns.map((c) => /^(U?Int|Float|Decimal)/.test(c.data_type));
   return (
     <div className="ds-preview">
-      <table aria-label={`First rows of ${dataset.name}`}>
-        <thead>
-          <tr>
-            <th scope="col" className="ds-num">#</th>
-            {page.data.columns.map((c, i) => (
-              <th key={c.name} scope="col" className={numeric[i] ? "ds-num" : undefined}>{c.name}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {page.data.rows.map((row, r) => (
-            <tr key={r}>
-              <td className="ds-num ds-row">{r + 1}</td>
-              {row.values.map((value, col) => (
-                <td key={col} className={numeric[col] ? "ds-num" : undefined}>{row.missing.includes(col) ? "—" : String(value)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="ds-note">{`First ${page.data.rows.length} of ${page.data.total_rows.toLocaleString()} rows. Includes held-out test rows; for looking only.`}</p>
+      <PlainTable page={page.data} label={`First rows of ${dataset.name}`} rowNumbers />
+      <p className="ds-note">{`First ${page.data.rows.length} rows. Includes held-out test rows; for looking only.`}</p>
     </div>
   );
 }

@@ -44,7 +44,7 @@ import {
   STAGE_HEAD_HEIGHT,
   STAGE_PAD_X,
 } from "../flow/layout.ts";
-import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, STAGES, type Stage, stepLabel, type StepOrigin, stepOrigin } from "../flow/stages.ts";
+import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, type Stage, stepLabel, type StepOrigin, stepOrigin } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -143,7 +143,7 @@ const ORIGIN_TEXT: Record<StepOrigin, string> = {
   written: "operator step",
 };
 
-const purposeOf = (name: string) => (STAGES as readonly string[]).includes(name) ? STAGE_PURPOSE[name as Stage] : "";
+const purposeOf = (name: string) => STAGE_PURPOSE[name as Stage] ?? "";
 
 /** An edge into or out of the selected step is drawn brighter; failed gate is dashed red. */
 type FlowEdgeData = { active: boolean; failed?: boolean };
@@ -317,7 +317,7 @@ function metricsPortOf(op: Operator): { metricsPort?: string } {
   return port === undefined ? {} : { metricsPort: String(port) };
 }
 
-/** Width of the round icon in Compact (.round-icon) - 34px disc node glyph. */
+/** Width of the round icon in Compact (.round-icon); lines run down from its centre. */
 const ROUND_ICON = 30;
 
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */

@@ -147,9 +147,10 @@ describe("datasets", () => {
     const preview = await screen.findByRole("table", { name: "First rows of iris.csv" });
     expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
     expect(limit).toBe("50");
-    expect(within(preview).getByRole("cell", { name: "0.2" })).toHaveClass("ds-num");
+    expect(within(preview).getByRole("cell", { name: "0.2" })).toHaveClass("num");
     expect(within(preview).getByRole("cell", { name: "—" })).toBeInTheDocument();
-    expect(screen.getByText(/First 2 of 120 rows/)).toBeInTheDocument();
+    expect(screen.getByText(/First 2 rows\./)).toBeInTheDocument();
+    expect(screen.getByText("120 rows × 2 columns")).toBeInTheDocument();
   });
 
   it("says no column has missing values instead of drawing an empty chart", async () => {
@@ -224,5 +225,11 @@ describe("datasets", () => {
     serve(undefined, () => HttpResponse.json({ errors: [{ code: "profile_timeout", message: "took too long" }] }, { status: 422 }));
     await openProfile();
     expect(await screen.findByRole("alert")).toHaveTextContent("profile_timeout");
+  });
+
+  it("says why the preview's rows could not be read", async () => {
+    server.use(http.get("/api/artifacts/:id/rows", () => HttpResponse.json({ errors: [{ code: "not_found", message: "no such artifact" }] }, { status: 404 })));
+    serve();
+    expect(await screen.findByRole("alert")).toHaveTextContent("The rows could not be read: not_found");
   });
 });

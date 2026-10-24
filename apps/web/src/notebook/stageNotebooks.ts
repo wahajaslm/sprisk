@@ -52,12 +52,3 @@ function outputPorts(node: Node, operators: Operators): string[] {
   const declared = (operator?.outputs ?? []).filter((o) => o.kind !== "diagnostics").map((o) => String(o.name));
   return [...declared, ...namedPorts(operator, node.params, "output")];
 }
-
-/** The names a step's cell reads from cells above and gives to cells below. */
-export function stepNames(pipeline: PipelineVersion, operators: Operators, nodeId: string): { reads: string[]; gives: string[] } {
-  const node = nodeOf(pipeline, nodeId);
-  const into = pipeline.edges.filter((e) => stepOf(e.to) === nodeId);
-  const reads = isCodeOperator(node.operator) ? into.map((e) => portOf(e.to)) : into.map((e) => outputName(pipeline, e.from));
-  const gives = outputPorts(node, operators).map((port) => outputName(pipeline, `${nodeId}.${port}`));
-  return { reads: [...new Set(reads)], gives };
-}

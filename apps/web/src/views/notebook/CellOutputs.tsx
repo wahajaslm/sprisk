@@ -1,6 +1,7 @@
 import type { DisplayItem, NotebookExecution, TablePage } from "@sprisk/contracts";
 
 import { useTablePage } from "../../api/hooks.ts";
+import { isNumeric } from "../RowsTable.tsx";
 import { FigureView } from "../inspector/FiguresTab.tsx";
 
 /** Whether a run left anything to show: outputs, an error, or a time limit hit. */
@@ -46,29 +47,33 @@ export function ArtifactTable({ artifactId }: { artifactId: string }) {
   return page.data ? <PlainTable page={page.data} /> : null;
 }
 
-/** A table as plain notebook output: column names, values, and its size. No types, no tools. */
-export function PlainTable({ page }: { page: TablePage }) {
+/** A table as plain output: column names, values (numbers on the right, a missing value as a
+ * dash), then its size. No types, no tools. Row numbers when asked. */
+export function PlainTable({ page, label, rowNumbers = false }: { page: TablePage; label?: string; rowNumbers?: boolean }) {
+  const numeric = page.columns.map((c) => isNumeric(c.data_type));
   return (
-    <div className="nb-table">
-      <table>
+    <div className="plain-table">
+      <table aria-label={label}>
         <thead>
           <tr>
-            {page.columns.map((c) => (
-              <th key={c.name} scope="col">{c.name}</th>
+            {rowNumbers && <th scope="col" className="num">#</th>}
+            {page.columns.map((c, i) => (
+              <th key={c.name} scope="col" className={numeric[i] ? "num" : undefined}>{c.name}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {page.rows.slice(0, SHOWN_ROWS).map((row, r) => (
+          {page.rows.map((row, r) => (
             <tr key={r}>
+              {rowNumbers && <td className="num row-number">{page.offset + r + 1}</td>}
               {row.values.map((value, col) => (
-                <td key={col}>{row.missing.includes(col) ? "null" : String(value)}</td>
+                <td key={col} className={numeric[col] ? "num" : undefined}>{row.missing.includes(col) ? "—" : String(value)}</td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="nb-table-size">{`${page.total_rows} rows × ${page.total_columns} columns`}</p>
+      <p className="plain-table-size">{`${page.total_rows.toLocaleString()} rows × ${page.total_columns} columns`}</p>
     </div>
   );
 }

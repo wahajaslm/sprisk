@@ -16,6 +16,7 @@ import {
 import { formatMetric, headlineMetric } from "./NodeFact.tsx";
 import { FigureView } from "./inspector/FiguresTab.tsx";
 import { MAX_FIGURE_BYTES, useFirstFigure } from "../api/figures.ts";
+import { isNumeric, isText } from "./RowsTable.tsx";
 
 /** Thumbnails are only read when small; bigger figures stay in the Inspector. */
 const MAX_THUMB_SOURCE_BYTES = 1024 * 1024;
@@ -377,7 +378,7 @@ function TypeChips({ page }: { page: TablePage }) {
   );
 }
 
-const typeGlyph = (t: string) => (/Float|Int|Decimal/.test(t) ? "#" : /Utf8|String|Categorical|Dictionary/.test(t) ? "Aa" : /Date|Time/.test(t) ? "◷" : "·");
+const typeGlyph = (t: string) => (isNumeric(t) ? "#" : isText(t) ? "Aa" : /Date|Time/.test(t) ? "◷" : "·");
 
 function MiniConfusion({ matrix }: { matrix: number[][] }) {
   if (!matrix || matrix.length < 2) return null;

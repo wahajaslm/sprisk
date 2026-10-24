@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { StepLibrary } from "../src/views/StepLibrary.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
-import { PV, RUN, pipeline } from "./fixtures.ts";
+import { PV, RUN, operators, pipeline } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
 import { server } from "./server.ts";
 
@@ -30,5 +30,14 @@ describe("the Flow sidebar's Info on the selected step", () => {
   it("calls an operator step as written by its kind", async () => {
     const info = await typeOf("load");
     expect(await info.findByText("Source")).toBeInTheDocument();
+  });
+
+  it("calls a step measuring evidence for a method Evidence", async () => {
+    const measuring = operators.map((o) =>
+      o.id === "sprisk.profile.summarize@1.0.0" ? { ...o, produces: { "data.rows": { fields: { rows: "integer" as const } } } } : o,
+    );
+    server.use(http.get("/api/operators", () => HttpResponse.json(measuring)));
+    const info = await typeOf("profile");
+    expect(await info.findByText("Evidence")).toBeInTheDocument();
   });
 });
