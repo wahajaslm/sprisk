@@ -810,8 +810,6 @@ p { margin: 0; }
   font-weight: var(--fw-medium);
 }
 .copilot-context { flex: 1; min-width: 0; text-align: right; font-size: var(--fs-12-5); color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.copilot-run { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--alpha-06); font-size: var(--fs-13); color: var(--text-secondary); }
-.copilot-run-label { font-size: var(--fs-12-5); color: var(--text-label); }
 
 .copilot-body {
   flex: 1;

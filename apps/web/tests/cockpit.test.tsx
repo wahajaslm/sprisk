@@ -1590,7 +1590,7 @@ describe("cached steps", () => {
     server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(cachedAttempts())));
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done · 1 cached")).toBeInTheDocument();
+    expect(await screen.findByText("This run: 6 of 7 step attempts done · 1 cached.")).toBeInTheDocument();
   });
 });
 
@@ -1610,7 +1610,7 @@ describe("a run that finishes between polls", () => {
     );
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done", {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(await screen.findByText("This run: 6 of 7 step attempts done.", {}, { timeout: 4000 })).toBeInTheDocument();
   });
 });
 
@@ -1637,8 +1637,20 @@ describe("copilot", () => {
   it("summarises the run's step attempts, without the gate", async () => {
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done")).toBeInTheDocument();
+    expect(await screen.findByText(/^This run: 6 of 7 step attempts done\.$/)).toBeInTheDocument();
     expect(run.status).toBe("succeeded");
+  });
+
+  it("says why the selected step failed, from its own attempt", async () => {
+    const error = { code: "invalid_input", message: "description, designation are not numbers" };
+    server.use(
+      http.get(`/api/runs/${RUN}/attempts`, () =>
+        HttpResponse.json(attempts.map((a) => (a.node_id === "model" ? { ...a, state: "failed", error } : a))),
+      ),
+    );
+    renderWithApi(<Copilot />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "model" });
+    expect(await screen.findByText("model failed: description, designation are not numbers")).toBeInTheDocument();
   });
 
   it("shows an attempts error", async () => {
