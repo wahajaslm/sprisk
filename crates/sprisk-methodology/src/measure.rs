@@ -15,7 +15,7 @@ use sprisk_contracts::{
 use crate::compare::upstream;
 use crate::deciding::Made;
 use crate::decision::free_id;
-use crate::{ResolveError, RuleCatalog, methods, patch};
+use crate::{ResolveError, RuleCatalog, methods, patch, verifying};
 
 /// The patch that puts every needed producer in place.
 #[derive(Debug)]
@@ -59,7 +59,10 @@ pub fn measure(
             )
         })
     });
-    let promised = promised_evidence(catalog, made)?;
+    let promised = verifying::promises(catalog, made)?.into_iter().map(|p| {
+        let need = format!("{} promises {}", p.method.decides.as_str(), p.name);
+        (p.method, p.needs, need)
+    });
     for (method, kind, need) in needed.chain(promised) {
         let producer = methods::producer_of(&kind, &by_id)?;
         match bound_params(producer, bindings) {
@@ -84,46 +87,6 @@ pub fn measure(
         }
     }
     Ok(placing.measuring)
-}
-
-/// The evidence the promises of each option in `made` need, with its method and why.
-fn promised_evidence<'c>(
-    catalog: &'c RuleCatalog,
-    made: &[Made],
-) -> Result<Vec<(&'c Method, String, String)>, ResolveError> {
-    let mut found = Vec::new();
-    for decided in made {
-        let Some(method) = catalog
-            .methods()
-            .find(|m| m.decides.as_str() == decided.decides)
-        else {
-            return Err(ResolveError::NotInsertable(format!(
-                "no method decides {}",
-                decided.decides
-            )));
-        };
-        let option = method
-            .options
-            .iter()
-            .find(|o| o.id.as_str() == decided.option)
-            .ok_or_else(|| ResolveError::UndeclaredOption {
-                method: method.id.to_string(),
-                option: decided.option.clone(),
-            })?;
-        for name in &option.verify {
-            // Checked when packs load: an option promises only verifications its method declares.
-            let Some(verification) = method
-                .verifications
-                .iter()
-                .find_map(|(k, v)| (k.as_str() == name.as_str()).then_some(v))
-            else {
-                continue;
-            };
-            let need = format!("{} promises {}", method.decides.as_str(), name.as_str());
-            found.push((method, verification.needs.as_str().to_owned(), need));
-        }
-    }
-    Ok(found)
 }
 
 /// The methods that apply to a question of `task`, in decision order.

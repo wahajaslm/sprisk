@@ -1,0 +1,18 @@
+{
+  "schema_version": "sprisk.walk_step/v1",
+  "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "round": 7,
+  "action": "verify",
+  "reason": "A walk records what it checked; stale is worked out later, against a newer version.",
+  "created_at": "2026-10-22T10:05:00Z",
+  "verifications": [
+    {
+      "decides": "split.method",
+      "method": "methodology.supervised.split_method@1.0.0",
+      "verification": "no_group_overlap",
+      "promise": "No item has rows in both train and test.",
+      "result": "stale",
+      "detail": "The split changed."
+    }
+  ]
+}

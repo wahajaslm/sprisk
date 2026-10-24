@@ -1337,6 +1337,7 @@ class WalkStopReason(StrEnum):
     source_changed = "source_changed"
     run_failed = "run_failed"
     stale = "stale"
+    unverified = "unverified"
     budget_exhausted = "budget_exhausted"
     error = "error"
 
@@ -1349,7 +1350,15 @@ class WalkAction(StrEnum):
     measure = "measure"
     decide = "decide"
     score = "score"
+    verify = "verify"
     stop = "stop"
+
+
+class PromiseResult(StrEnum):
+    pass_ = "pass"
+    fail = "fail"
+    inconclusive = "inconclusive"
+    not_evaluated = "not_evaluated"
 
 
 class Handshake(StrictModel):
@@ -2537,6 +2546,27 @@ class WalkAsk(StrictModel):
     ] = None
 
 
+class PromiseCheck(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    decides: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")]
+    method: MethodRef
+    verification: VerificationName
+    promise: Annotated[
+        str, Field(description="What holds when it passes, from method.yaml.", min_length=1)
+    ]
+    step: Annotated[
+        NodeId | None,
+        Field(description="The step that measured the evidence. Absent when not_evaluated."),
+    ] = None
+    result: PromiseResult
+    detail: Annotated[
+        str,
+        Field(description="What the evidence showed, or why nothing measured it.", min_length=1),
+    ]
+
+
 class LeaseAttempt(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3187,7 +3217,18 @@ class WalkStep(StrictModel):
             description="The verifications a decide step's option promises, by name. Absent: none."
         ),
     ] = None
-    run_id: Annotated[RunId | None, Field(description="The run a run step started.")] = None
+    verifications: Annotated[
+        list[PromiseCheck] | None,
+        Field(
+            description="What a verify step found, one item per promise the walk's decisions made. Absent for every other action."
+        ),
+    ] = None
+    run_id: Annotated[
+        RunId | None,
+        Field(
+            description="The run a run step started, or the run whose evidence a verify step read."
+        ),
+    ] = None
     reason: Annotated[
         str, Field(description="Why, from the review item it acted on.", min_length=1)
     ]

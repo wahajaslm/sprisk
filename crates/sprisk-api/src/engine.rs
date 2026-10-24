@@ -20,8 +20,10 @@ use sprisk_methodology::engine::{
     start, with_test_scoring,
 };
 use sprisk_methodology::measure::{Measuring, fitting, measure};
+use sprisk_methodology::verifying::{Checking, checked, checking, fresh, sealed_by};
 use sprisk_registry::evidence::EVIDENCE_PORT;
 
+use crate::method_session::MethodSession;
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
     check_local_paths, claim_selection, compile, decision_of, drive_run, id, propose, queued_run,
@@ -344,6 +346,24 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         notes = measuring.left_out;
     }
     let evidence = evidence(state, &steps, &head, &pipeline).await?;
+    let promised = checking(&state.rules, &made, &evidence).map_err(resolve_error)?;
+    let mut session = state.method_runner.session();
+    // A run that failed after the split still measured what the split wrote.
+    if head_run != HeadRun::NotRun
+        && !promised.is_empty()
+        && !checks_hold(state, &steps, &pipeline, &promised).await?
+    {
+        return record_verify(
+            state,
+            walk,
+            round,
+            &steps,
+            &pipeline,
+            &promised,
+            &mut session,
+        )
+        .await;
+    }
     let readiness = ready(
         &state.rules,
         &question,
@@ -356,7 +376,6 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     let mut asks = readiness.asks;
     // A method that asks is asked again each round until a person answers: the one list is
     // built from the methods' current asks, never from a stored copy.
-    let mut session = state.method_runner.session();
     for Ready { method, request } in readiness.ready {
         // A person's answer is taken whatever the method would choose (ADR-0063 amendment).
         if let Some(answer) = question
@@ -472,6 +491,22 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
                     undecided.join(" ")
                 ));
                 return record_stop(state, walk, round, WalkStopReason::Uncovered, &detail).await;
+            }
+            if !promised.is_empty() {
+                let held = match last_verify(&steps) {
+                    Some(verified) if checks_hold(state, &steps, &pipeline, &promised).await? => {
+                        sealed_by(&verified.verifications)
+                    }
+                    _ => Some(
+                        "The test rows stay sealed: the promises were not checked on this flow."
+                            .to_owned(),
+                    ),
+                };
+                if let Some(held) = held {
+                    let detail = noted(format!("{detail} {held}"));
+                    return record_stop(state, walk, round, WalkStopReason::Unverified, &detail)
+                        .await;
+                }
             }
             score_test_rows(state, walk, round, &head, deadline, &detail).await
         }
@@ -693,6 +728,106 @@ async fn record_decide(
     walk.head_pipeline_version_id = Some(made.id.clone());
     state.store.record_walk_version(&walk, &step, &made).await?;
     Ok(WalkStatus::Walking)
+}
+
+/// The walk's last verify step, if it checked any promise.
+fn last_verify(steps: &[WalkStep]) -> Option<&WalkStep> {
+    steps.iter().rev().find(|s| s.action == WalkAction::Verify)
+}
+
+/// Whether the last verify step checked the promises in `promised` and each check still
+/// holds for `head`: nothing before the evidence it read changed.
+async fn checks_hold(
+    state: &AppState,
+    steps: &[WalkStep],
+    head: &PipelineVersion,
+    promised: &[Checking<'_>],
+) -> Result<bool, ApiError> {
+    let Some(last) = last_verify(steps) else {
+        return Ok(false);
+    };
+    let checked: Vec<(&str, &str)> = last
+        .verifications
+        .iter()
+        .map(|c| (c.decides.as_str(), c.verification.as_str()))
+        .collect();
+    let promises: Vec<(&str, &str)> = promised
+        .iter()
+        .map(|c| (c.promise.method.decides.as_str(), c.promise.name.as_str()))
+        .collect();
+    if checked != promises {
+        return Ok(false);
+    }
+    let on = last.pipeline_version_id.as_ref().ok_or_else(|| {
+        ApiError::Internal(format!("verify step {} names no version", last.round))
+    })?;
+    let verified = state.store.get_pipeline_version(on).await?;
+    Ok(last.verifications.iter().all(|c| fresh(&verified, head, c)))
+}
+
+/// Checks each promise on the evidence the head's run measured, and records what each check
+/// found as a verify step.
+async fn record_verify(
+    state: &AppState,
+    walk: Walk,
+    round: usize,
+    steps: &[WalkStep],
+    head: &PipelineVersion,
+    promised: &[Checking<'_>],
+    session: &mut MethodSession,
+) -> Result<WalkStatus, ApiError> {
+    let mut checks = Vec::new();
+    for promise in promised {
+        let Some(request) = &promise.request else {
+            checks.push(promise.not_evaluated().map_err(resolve_error)?);
+            continue;
+        };
+        let verified = session.verify(request).await.map_err(|e| {
+            ApiError::Internal(format!(
+                "method {}: {e}",
+                promise.promise.method.id.as_str()
+            ))
+        })?;
+        let step = producer_step(state, head, &promise.promise.needs)?;
+        checks.push(checked(promise, step, &verified).map_err(resolve_error)?);
+    }
+    let made = json!({ "pipeline_version_id": head.id,
+                       "run_id": head_run_id(steps, &head.id), "verifications": checks });
+    let reason = "Checks what the decisions promise, on the evidence this run measured.";
+    let step = step(
+        state,
+        walk.id.as_str(),
+        round,
+        WalkAction::Verify,
+        reason,
+        made,
+    )?;
+    state.store.record_walk_step(&walk, &step).await?;
+    Ok(WalkStatus::Walking)
+}
+
+/// The step of `pipeline` that produces evidence `kind`.
+fn producer_step<'p>(
+    state: &AppState,
+    pipeline: &'p PipelineVersion,
+    kind: &str,
+) -> Result<&'p str, ApiError> {
+    pipeline
+        .nodes
+        .iter()
+        .find(|n| {
+            state
+                .registry
+                .get(n.operator.as_str())
+                .is_some_and(|o| o.produces.keys().any(|k| k.as_str() == kind))
+        })
+        .map(|n| n.id.as_str())
+        .ok_or_else(|| {
+            ApiError::Internal(format!(
+                "version {} measured {kind}, but no step produces it",
+                pipeline.id.as_str()
+            ))
+        })
 }
 
 fn resolve_error(error: sprisk_methodology::ResolveError) -> ApiError {

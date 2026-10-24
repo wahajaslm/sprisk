@@ -1,0 +1,29 @@
+{
+  "schema_version": "sprisk.walk_step/v1",
+  "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "round": 7,
+  "action": "verify",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "run_id": "run_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "reason": "Checks what the decisions promise, on the rows this run's split wrote.",
+  "created_at": "2026-10-22T10:05:00Z",
+  "verifications": [
+    {
+      "decides": "split.method",
+      "method": "methodology.supervised.split_method@1.0.0",
+      "verification": "no_group_overlap",
+      "promise": "No item has rows in both train and test.",
+      "step": "group_overlap",
+      "result": "pass",
+      "detail": "No item is in both sides (332 train, 83 test items)."
+    },
+    {
+      "decides": "split.method",
+      "method": "methodology.supervised.split_method@1.0.0",
+      "verification": "class_shares_kept",
+      "promise": "Each class has about the same share of rows in train and test.",
+      "result": "not_evaluated",
+      "detail": "Nothing measured evaluation.class_shares: no column is bound to common.target."
+    }
+  ]
+}

@@ -525,7 +525,7 @@ export type WalkSources = string[];
  */
 export type WalkStatus = "walking" | "stopped";
 /**
- * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.
+ * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. unverified: every rule is settled, but a promise a decision made did not pass on the head's run, so the test rows stay sealed. error: the engine could not take its next step; the detail says why.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkStopReason".
@@ -538,15 +538,23 @@ export type WalkStopReason =
   | "source_changed"
   | "run_failed"
   | "stale"
+  | "unverified"
   | "budget_exhausted"
   | "error";
 /**
- * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. stop: ended the walk.
+ * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. verify: checked each promise the walk's decisions made, on the evidence the head's run measured (ADR-0063). stop: ended the walk.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkAction".
  */
-export type WalkAction = "build" | "run" | "apply" | "compare" | "measure" | "decide" | "score" | "stop";
+export type WalkAction = "build" | "run" | "apply" | "compare" | "measure" | "decide" | "score" | "verify" | "stop";
+/**
+ * pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseResult".
+ */
+export type PromiseResult = "pass" | "fail" | "inconclusive" | "not_evaluated";
 /**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *
@@ -3280,7 +3288,11 @@ export interface WalkStep {
    */
   promises?: VerificationName[];
   /**
-   * The run a run step started.
+   * What a verify step found, one item per promise the walk's decisions made. Absent for every other action.
+   */
+  verifications?: PromiseCheck[];
+  /**
+   * The run a run step started, or the run whose evidence a verify step read.
    */
   run_id?: string;
   /**
@@ -3288,6 +3300,30 @@ export interface WalkStep {
    */
   reason: string;
   created_at: Timestamp;
+}
+/**
+ * One promise checked on the evidence a run measured (ADR-0063).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseCheck".
+ */
+export interface PromiseCheck {
+  decides: string;
+  method: MethodRef;
+  verification: VerificationName;
+  /**
+   * What holds when it passes, from method.yaml.
+   */
+  promise: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  step?: string;
+  result: PromiseResult;
+  /**
+   * What the evidence showed, or why nothing measured it.
+   */
+  detail: string;
 }
 /**
  * A walk and its trail, oldest step first. A walk takes at most max_actions steps, so the trail is bounded.
