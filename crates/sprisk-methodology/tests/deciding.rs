@@ -17,11 +17,9 @@ fn fixture() -> PathBuf {
 
 fn operators() -> Vec<Operator> {
     let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
-    let plugins = Registry::load_dir(&plugins).unwrap();
-    let producers = Registry::load_dir(&fixture().join("operators")).unwrap();
-    plugins
+    Registry::load_dir(&plugins)
+        .unwrap()
         .operators()
-        .chain(producers.operators())
         .cloned()
         .collect()
 }
@@ -205,7 +203,7 @@ fn a_request_carries_only_what_the_method_declares() {
     assert_eq!(request["bound"], json!(["common.item_title"]));
     assert_eq!(
         request["options"],
-        json!(["group_by_title", "independent_rows"])
+        json!(["group_by_title", "independent_rows", "stated_items"])
     );
     assert_eq!(request["task"], "classification");
     assert!(

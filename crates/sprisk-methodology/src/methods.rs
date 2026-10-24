@@ -289,6 +289,14 @@ pub(crate) fn producer<'a>(
     }
 }
 
+/// `producer`, as the walk's error: a pack that loaded has one for every kind it needs.
+pub(crate) fn producer_of<'a>(
+    kind: &str,
+    operators: &BTreeMap<String, &'a Operator>,
+) -> Result<&'a Operator, crate::ResolveError> {
+    producer(kind, operators).map_err(|p| crate::ResolveError::Rules(CatalogError::Evidence(p)))
+}
+
 fn in_decision_order(methods: Vec<MethodEntry>) -> Result<Vec<MethodEntry>, CatalogError> {
     let mut graph = DiGraph::<usize, ()>::new();
     let nodes: Vec<_> = (0..methods.len()).map(|i| graph.add_node(i)).collect();

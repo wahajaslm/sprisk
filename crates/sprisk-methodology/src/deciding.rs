@@ -11,7 +11,7 @@ use sprisk_contracts::{
 };
 
 use crate::measure::fitting;
-use crate::{CatalogError, ResolveError, RuleCatalog, methods, patch};
+use crate::{ResolveError, RuleCatalog, methods};
 
 /// The question facts that act as bindings until slice 6 removes the fixed facts: a stated
 /// or confirmed one binds its concept; a guessed one is asked first (ADR-0059).
@@ -137,7 +137,11 @@ pub fn ready<'c>(
             .collect();
         if !guessed.is_empty() {
             for fact in guessed {
-                found.asks.push(guess_ask(method, fact)?);
+                // Two methods reading one guess ask it once.
+                let ask = guess_ask(method, fact)?;
+                if !found.asks.iter().any(|a| a.decides == ask.decides) {
+                    found.asks.push(ask);
+                }
             }
             continue;
         }
@@ -147,8 +151,7 @@ pub fn ready<'c>(
                 evidence.insert(kind.to_string(), fields.clone());
                 continue;
             }
-            let producer = methods::producer(kind.as_str(), &by_id)
-                .map_err(|p| ResolveError::Rules(CatalogError::Evidence(p)))?;
+            let producer = methods::producer_of(kind.as_str(), &by_id)?;
             if producer
                 .concepts
                 .values()
@@ -207,7 +210,7 @@ pub struct Applied {
 
 /// The bindings and patch of `option` on `pipeline`. A param a concept fills reads its
 /// binding's column; a column a step adds makes the replaced step read that step's output
-/// of the same name. The patch is checked against the flow before it is returned.
+/// of the same name. The caller applies the patch with `patch::apply`, which checks it.
 pub fn apply_option(
     method: &Method,
     option: &str,
@@ -235,8 +238,7 @@ pub fn apply_option(
         return Ok(applied);
     };
     if let Some(bind) = &action.bind {
-        let producer = methods::producer(bind.evidence.as_str(), &by_id)
-            .map_err(|p| ResolveError::Rules(CatalogError::Evidence(p)))?;
+        let producer = methods::producer_of(bind.evidence.as_str(), &by_id)?;
         let step = one_step(
             pipeline,
             |n| n.operator == producer.id,
@@ -317,7 +319,6 @@ pub fn apply_option(
             }
         }
     }
-    patch::apply(pipeline, &applied.effects, |o| by_id.get(o).copied())?;
     Ok(applied)
 }
 

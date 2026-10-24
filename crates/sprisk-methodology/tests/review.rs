@@ -12,10 +12,10 @@ use sprisk_methodology::review::{
 use sprisk_registry::Registry;
 
 mod repo;
-use repo::repo_catalog;
+use repo::rules_with_example_split;
 
 fn catalog() -> RuleCatalog {
-    repo_catalog()
+    rules_with_example_split()
 }
 
 fn flow(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> PipelineVersion {

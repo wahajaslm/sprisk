@@ -14,15 +14,12 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/split_decision")
 }
 
-/// The registered plugins, the near-duplicates producer among them, and the fixture's
-/// manifest-only producers.
+/// The registered plugins, the evidence producers among them.
 fn operators() -> Vec<Operator> {
     let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
-    let plugins = Registry::load_dir(&plugins).unwrap();
-    let producers = Registry::load_dir(&fixture().join("operators")).unwrap();
-    plugins
+    Registry::load_dir(&plugins)
+        .unwrap()
         .operators()
-        .chain(producers.operators())
         .cloned()
         .collect()
 }

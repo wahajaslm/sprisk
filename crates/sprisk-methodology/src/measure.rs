@@ -12,7 +12,7 @@ use sprisk_contracts::{
 };
 
 use crate::decision::free_id;
-use crate::{CatalogError, ResolveError, RuleCatalog, methods, patch};
+use crate::{ResolveError, RuleCatalog, methods, patch};
 
 /// The patch that puts every needed producer in place.
 #[derive(Debug)]
@@ -47,8 +47,7 @@ pub fn measure(
     };
     for method in fitting(catalog, question.task.value) {
         for kind in &method.needs.evidence {
-            let producer = methods::producer(kind.as_str(), &by_id)
-                .map_err(|p| ResolveError::Rules(CatalogError::Evidence(p)))?;
+            let producer = methods::producer_of(kind.as_str(), &by_id)?;
             let need = format!("{} needs {}", method.decides.as_str(), kind.as_str());
             match bound_params(producer, bindings) {
                 Ok(params) => {
@@ -174,9 +173,11 @@ impl Placing<'_> {
         let feeds_anchor = wanted
             .values()
             .any(|from| from.split_once('.').is_some_and(|(s, _)| s == step));
-        let moves: Vec<Value> = wanted
+        let moves: Vec<Value> = if feeds_anchor {
+            Vec::new()
+        } else {
+            wanted
             .iter()
-            .filter(|_| !feeds_anchor)
             .filter(|(port, from)| {
                 let reads = self
                     .flow
@@ -188,7 +189,8 @@ impl Placing<'_> {
             .map(|(port, from)| {
                 json!({ "kind": "set_input", "node_id": step, "port": port, "from": from })
             })
-            .collect();
+            .collect()
+        };
         let reset = serde_json::to_value(&placed.params)? != params;
         for moved in moves {
             let change = format!("Moves {step} onto the rows {anchor} reads now.");

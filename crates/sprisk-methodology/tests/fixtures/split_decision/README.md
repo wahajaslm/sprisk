@@ -1,4 +1,5 @@
-The split decision in the ADR-0063 shape, ported from the spike as a catalog fixture.
-Packs load it beside the old rules; no engine decides with it yet (slice 4 does).
-`operators/` holds manifest-only producers for evidence no plugin measures yet; the
-near-duplicates evidence comes from the registered `sprisk.profile.near_duplicates` plugin.
+The split decision in the ADR-0063 shape, ported from the spike as a catalog fixture. Its
+producers are the registered plugins: `sprisk.profile.near_duplicates` before the split,
+`sprisk.validation.group_overlap` and `sprisk.validation.class_shares` after it. The real
+methods live in `methodology/common` and `methodology/supervised`; this copy lets tests edit
+them without touching the packs.
