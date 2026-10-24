@@ -11,6 +11,7 @@ use sprisk_contracts::{
     TaskType, parse,
 };
 
+use crate::compare::upstream;
 use crate::decision::free_id;
 use crate::{ResolveError, RuleCatalog, methods, patch};
 
@@ -169,10 +170,9 @@ impl Placing<'_> {
             return self.add(added, change).map(|()| None);
         };
         let step = placed.id.to_string();
-        // The anchor reads what the producer adds: the producer already sits on its rows.
-        let feeds_anchor = wanted
-            .values()
-            .any(|from| from.split_once('.').is_some_and(|(s, _)| s == step));
+        // The anchor reads rows that passed through the producer: it already sits on them, and
+        // moving it onto what the anchor reads would make a cycle.
+        let feeds_anchor = upstream(&self.flow, &anchor).contains(step.as_str());
         let moves: Vec<Value> = if feeds_anchor {
             Vec::new()
         } else {

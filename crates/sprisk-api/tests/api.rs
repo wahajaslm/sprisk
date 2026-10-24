@@ -5610,6 +5610,7 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
         detail["walk"]["stop"].get("asks").is_none(),
         "nothing is asked again: {detail}"
     );
+    assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let steps = detail["steps"].as_array().unwrap();
     // The answer binds the item to the group column the producer adds, confirmed by a person.
     assert_eq!(steps[3]["assurance"], "confirmed", "{detail}");

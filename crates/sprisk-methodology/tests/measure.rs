@@ -311,3 +311,25 @@ fn a_producer_the_split_reads_from_stays_where_it_is() {
     let measured = measure(&catalog(&ops), &flow(nodes, edges), &q, &q.bindings, &ops).unwrap();
     assert!(measured.effects.is_empty(), "{:?}", measured.effects);
 }
+
+#[test]
+fn a_producer_upstream_of_the_split_stays_when_a_step_is_added_after_it() {
+    // A rule adds a step between the producer and the split; the split still reads rows that
+    // passed through the producer, so moving it onto them would make a cycle.
+    let ops = operators();
+    let nodes = json!([
+        { "id": "load", "operator": LOAD, "params": { "path": "standin.csv", "format": "csv" } },
+        { "id": "near_duplicates", "operator": PRODUCER, "params": { "title_column": "designation" } },
+        { "id": "exact_duplicates", "operator": DROP_DUPLICATES, "params": {} },
+        { "id": "split", "operator": "sprisk.validation.group_split@1.0.0",
+          "params": { "group_column": "item_group", "test_fraction": 0.2, "seed": 42 } },
+    ]);
+    let edges = json!([
+        { "from": "load.data", "to": "near_duplicates.data" },
+        { "from": "near_duplicates.data", "to": "exact_duplicates.data" },
+        { "from": "exact_duplicates.data", "to": "split.data" },
+    ]);
+    let q = titled();
+    let measured = measure(&catalog(&ops), &flow(nodes, edges), &q, &q.bindings, &ops).unwrap();
+    assert!(measured.effects.is_empty(), "{:?}", measured.effects);
+}
