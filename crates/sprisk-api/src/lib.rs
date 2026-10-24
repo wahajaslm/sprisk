@@ -7,6 +7,7 @@ mod bounded;
 mod engine;
 mod figures;
 mod kernel;
+mod line_session;
 mod notebook_code;
 mod profile;
 mod rules;
