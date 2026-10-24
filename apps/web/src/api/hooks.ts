@@ -106,6 +106,21 @@ export function useRunAgain(onScreen: string | undefined) {
   });
 }
 
+/** Run a saved version from one step: that step and every step after it run again, even
+ * unchanged; the steps before it are reused from `onScreen` (ADR-0026 amendment). */
+export function useRunFrom(onScreen: string | undefined) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pipelineVersionId, nodeId }: { pipelineVersionId: string; nodeId: string }) =>
+      postOne("Run", "/runs", {
+        pipeline_version_id: pipelineVersionId,
+        run_from_node_id: nodeId,
+        ...(onScreen ? { reuse_run_id: onScreen } : {}),
+      }),
+    onSuccess: (run) => client.invalidateQueries({ queryKey: ["runs", run.pipeline_version_id] }),
+  });
+}
+
 /** Save an edited flow as a new pipeline version, then run it. Rust compiles and checks
  * the version; the UI never does (rule 3). */
 /** Save a new version without running it: a flow made from someone's notebook runs only when

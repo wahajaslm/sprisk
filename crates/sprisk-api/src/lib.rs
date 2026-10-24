@@ -2713,16 +2713,35 @@ async fn create_run(
         .store
         .get_pipeline_version(&request.pipeline_version_id)
         .await?;
-    let run = start_run(&state, pipeline, request.reuse_run_id).await?;
+    if let Some(from) = &request.run_from_node_id
+        && !pipeline.nodes.iter().any(|n| n.id == *from)
+    {
+        return Err(ApiError::BadRequest {
+            code: "unknown_step",
+            message: format!(
+                "run from {}: version {} has no such step",
+                from.as_str(),
+                pipeline.id.as_str()
+            ),
+        });
+    }
+    let run = start_run(
+        &state,
+        pipeline,
+        request.reuse_run_id,
+        request.run_from_node_id,
+    )
+    .await?;
     Ok((StatusCode::ACCEPTED, Json(run)))
 }
 
 /// Queues a run of `pipeline` and runs it in the background, reusing `reuse` up to the first
-/// changed step (ADR-0026).
+/// changed step, or up to `from` (ADR-0026 and its amendment).
 async fn start_run(
     state: &AppState,
     pipeline: PipelineVersion,
     reuse: Option<RunId>,
+    from: Option<sprisk_contracts::NodeId>,
 ) -> Result<Run, ApiError> {
     // Checked again: the files or the configured roots may have changed since submit.
     let plan = run_plan(state, &pipeline).await?;
@@ -2748,6 +2767,9 @@ async fn start_run(
     });
     if let Some(reuse) = &reuse {
         doc["reuse_run_id"] = json!(reuse);
+    }
+    if let Some(from) = &from {
+        doc["run_from_node_id"] = json!(from);
     }
     let run: Run = parse(&doc.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?;
     state.store.insert_run(&run).await?;
@@ -2859,6 +2881,10 @@ async fn drive_run(
     }
     if let Some(reuse) = reuse {
         scheduler = scheduler.reusing(reuse);
+    }
+    // Read from the stored run, so every way a run is driven runs from the same step.
+    if let Some(from) = state.store.get_run(run_id).await?.run_from_node_id {
+        scheduler = scheduler.running_from(from.as_str());
     }
     if let Some(deadline) = deadline {
         scheduler = scheduler.until(deadline, state.clock.clone());

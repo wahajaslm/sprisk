@@ -14,6 +14,7 @@
         "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
         "status": { "$ref": "#/$defs/RunStatus" },
         "reuse_run_id": { "$ref": "#/$defs/RunId", "description": "The run whose unchanged results this run reused (ADR-0026). Omitted when it ran from the start." },
+        "run_from_node_id": { "$ref": "#/$defs/NodeId", "description": "The step this run ran again from, with every step after it (ADR-0026 amendment). Omitted when only changed steps ran." },
         "created_at": { "$ref": "#/$defs/Timestamp" },
         "finished_at": {
           "$ref": "#/$defs/Timestamp",
