@@ -126,7 +126,8 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
 const walkState = (walk: Walk) => (walk.stop ? walk.stop.reason.replaceAll("_", " ") : "walking");
 
 /** One decision as the specification's connected analysis: the chart its producer drew first,
- * then which rows were read, the interpretation, the decision and its promises. */
+ * then which rows were read, what was observed, the interpretation, the decision and its
+ * promises. */
 function Analysis({
   decision,
   investigation,
@@ -170,6 +171,18 @@ function Analysis({
               {read.map((r) => (
                 <span key={r} className="ds-line">
                   {r}
+                </span>
+              ))}
+            </dd>
+          </div>
+        )}
+        {decision.evidence && decision.evidence.length > 0 && (
+          <div>
+            <dt>Observed</dt>
+            <dd>
+              {decision.evidence.map((e) => (
+                <span key={`${e.step}:${e.kind}`} className="ds-line mono">
+                  {fieldWords(e.fields)}
                 </span>
               ))}
             </dd>
@@ -222,6 +235,13 @@ function AnalysisChart({ attempt, port }: { attempt: Attempt | undefined; port: 
       <FigurePort attempt={attempt} port={port} />
     </figure>
   );
+}
+
+/** Evidence fields as the method saw them: "rows 484 · rarest share 0.0888". */
+function fieldWords(fields: Record<string, unknown>): string {
+  return Object.entries(fields)
+    .map(([name, value]) => `${name.replaceAll("_", " ")} ${Array.isArray(value) ? value.join(", ") : typeof value === "boolean" ? (value ? "yes" : "no") : String(value)}`)
+    .join(" · ");
 }
 
 /** Which rows an evidence producer read, from its manifest. A step that is not a producer has
