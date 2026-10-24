@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use sprisk_contracts::{
-    Concept, ContractError, Method, MethodologyRule, MethodologyRuleSelection,
+    Concept, ContractError, Method, MethodFiles, MethodologyRule, MethodologyRuleSelection,
     MethodologyRuleSource, MethodologyRuleStatus, MethodologyStage, Operator, RuleActionType,
 };
 
@@ -73,6 +73,8 @@ pub enum CatalogError {
     },
     #[error("unknown methodology rule {0}")]
     UnknownRule(String),
+    #[error("method {0} is in no loaded pack")]
+    UnknownMethod(String),
     #[error("methodology rule {0} has no rule.py")]
     NoModule(String),
 }
@@ -213,6 +215,15 @@ impl RuleCatalog {
 
     pub fn source(&self, rule_ref: &str) -> Result<&MethodologyRuleSource, CatalogError> {
         self.entry(rule_ref).map(|e| &e.source)
+    }
+
+    /// A method's method.yaml and method.py, as the packs loaded them.
+    pub fn method_files(&self, method_ref: &str) -> Result<&MethodFiles, CatalogError> {
+        self.methods
+            .iter()
+            .find(|e| e.method.id.as_str() == method_ref)
+            .map(|e| &e.files)
+            .ok_or_else(|| CatalogError::UnknownMethod(method_ref.to_owned()))
     }
 
     fn insert(&mut self, entry: Entry) -> Result<(), CatalogError> {
@@ -358,7 +369,7 @@ fn check_status(rule: &MethodologyRule, has_module: bool) -> Result<(), String> 
     Ok(())
 }
 
-fn read(path: &Path) -> Result<String, CatalogError> {
+pub(crate) fn read(path: &Path) -> Result<String, CatalogError> {
     std::fs::read_to_string(path).map_err(|source| CatalogError::Io {
         path: path.to_owned(),
         source,

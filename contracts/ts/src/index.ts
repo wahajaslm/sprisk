@@ -60,6 +60,7 @@ export interface Entities {
   Walk: C.Walk;
   WalkDetail: C.WalkDetail;
   FlowDecisions: C.FlowDecisions;
+  MethodFiles: C.MethodFiles;
   WalkStep: C.WalkStep;
   Trial: C.Trial;
   Method: C.Method;

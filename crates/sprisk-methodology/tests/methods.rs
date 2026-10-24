@@ -85,6 +85,38 @@ fn the_split_decision_loads_in_decision_order() {
 }
 
 #[test]
+fn a_method_s_files_are_its_manifest_and_module_as_loaded() {
+    let pack = split_decision();
+    let catalog = load(pack.path()).unwrap();
+
+    let files = catalog
+        .method_files("methodology.core.split_method@1.0.0")
+        .unwrap();
+    let paths: Vec<&str> = files.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["method.yaml", "method.py"]);
+    assert!(
+        files.files[0]
+            .text
+            .contains("decides: evaluation.split_method")
+    );
+    assert!(files.files[1].text.contains("def verify_no_group_overlap"));
+
+    // Read when the packs load: the files shown are the files that run.
+    edit(
+        pack.path(),
+        "methodology/core/methods/split_method/method.py",
+        "def decide",
+        "def decide_later",
+    );
+    let shown = catalog
+        .method_files("methodology.core.split_method@1.0.0")
+        .unwrap();
+    assert!(shown.files[1].text.contains("def decide(ctx"));
+
+    assert!(catalog.method_files("methodology.core.gone@1.0.0").is_err());
+}
+
+#[test]
 fn methods_load_beside_the_old_rules() {
     let pack = split_decision();
     write(

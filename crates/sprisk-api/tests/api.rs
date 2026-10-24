@@ -2470,6 +2470,31 @@ async fn a_methodology_rule_source_is_its_files() {
 }
 
 #[tokio::test]
+async fn a_method_s_files_are_its_manifest_and_module() {
+    let api = api().await;
+    let uri = "/methods/methodology.supervised.split_method@1.0.0/files";
+    let (status, files) = call(&api.app, "GET", uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{files}");
+    assert_eq!(files["files"][0]["path"], "method.yaml");
+    assert_eq!(files["files"][1]["path"], "method.py");
+    assert!(
+        files["files"][1]["text"]
+            .as_str()
+            .unwrap()
+            .contains("def verify_no_group_overlap")
+    );
+
+    let (status, _) = call(
+        &api.app,
+        "GET",
+        "/methods/methodology.pack.none@1.0.0/files",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn a_data_rule_refuses_train_rows_that_did_not_come_from_a_split() {
     let api = api().await;
     let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);

@@ -10,14 +10,14 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
     CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet,
-    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodRequest, MethodologyCheck,
-    MethodologyDecision, MethodologyReview, MethodologyRule, MethodologyRuleSource, ModelSelection,
-    NotebookCode, NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent,
-    NotebookKernelRequest, NotebookSettings, NotebookSettingsRequest, NotebookVariables,
-    NotebookVersion, Operator, OperatorSource, PipelineVersion, Problem, QuestionVersion,
-    RuleAnswer, RuleDecision, RuleObservation, RuleRequest, Run, SelectionDecision, Study,
-    StudyDetail, TablePage, Trial, VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage,
-    parse,
+    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
+    MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
+    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
+    NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
+    NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
+    PipelineVersion, Problem, QuestionVersion, RuleAnswer, RuleDecision, RuleObservation,
+    RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial, VerificationRequest,
+    Walk, WalkDetail, WalkStep, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -83,6 +83,7 @@ const ENTITIES: &[&str] = &[
     "loaded_table",
     "method",
     "method_answer",
+    "method_files",
     "method_request",
     "methodology_check",
     "methodology_decision",
@@ -296,6 +297,11 @@ fn method_request() {
 #[test]
 fn method_answer() {
     check::<MethodAnswer>("method_answer");
+}
+
+#[test]
+fn method_files() {
+    check::<MethodFiles>("method_files");
 }
 
 #[test]

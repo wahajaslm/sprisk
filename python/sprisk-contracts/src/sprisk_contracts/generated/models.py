@@ -398,6 +398,34 @@ class MethodVerification(StrictModel):
     ] = None
 
 
+class Language(StrEnum):
+    yaml = "yaml"
+    python = "python"
+
+
+class File(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    path: Annotated[
+        str,
+        Field(
+            description="Relative to the method folder, e.g. method.yaml. Never an absolute path.",
+            pattern="^[A-Za-z0-9_][A-Za-z0-9_./-]*$",
+        ),
+    ]
+    language: Language
+    text: str
+
+
+class MethodFiles(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    method: MethodRef
+    files: list[File]
+
+
 class MethodOptionId(RootModel[str]):
     root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,62}$")]
 
@@ -691,12 +719,7 @@ class Verification(StrictModel):
     invariant: Annotated[str, Field(min_length=1)]
 
 
-class Language(StrEnum):
-    yaml = "yaml"
-    python = "python"
-
-
-class File(StrictModel):
+class File1(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -716,7 +739,7 @@ class MethodologyRuleSource(StrictModel):
         extra="forbid",
     )
     rule: MethodologyRuleRef
-    files: Annotated[list[File], Field(min_length=1)]
+    files: Annotated[list[File1], Field(min_length=1)]
 
 
 class Kind2(StrEnum):

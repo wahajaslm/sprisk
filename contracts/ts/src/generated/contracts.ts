@@ -1501,6 +1501,23 @@ export interface Params3 {
   [k: string]: unknown;
 }
 /**
+ * Read-only files of one method folder (ADR-0063): its method.yaml and method.py, as the packs loaded them, so a person sees the code that decides and checks a step. Served by GET /methods/{id}/source; the API reads only files inside the method's folder.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodFiles".
+ */
+export interface MethodFiles {
+  method: MethodRef;
+  files: {
+    /**
+     * Relative to the method folder, e.g. method.yaml. Never an absolute path.
+     */
+    path: string;
+    language: "yaml" | "python";
+    text: string;
+  }[];
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodDecided".
  */

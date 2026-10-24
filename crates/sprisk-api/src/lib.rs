@@ -36,7 +36,7 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, BindingSourceKind,
     CapabilityClass, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, DatasetProfile,
     DecisionProposal, FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse,
-    MethodologyAlternativeApplicability, MethodologyDecision, MethodologyDecisionId,
+    MethodFiles, MethodologyAlternativeApplicability, MethodologyDecision, MethodologyDecisionId,
     MethodologyProposalId, MethodologyReview, MethodologyRule, MethodologyRuleSelection,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookSettings,
@@ -137,6 +137,7 @@ pub fn router(state: AppState) -> Router {
             "/methodology_rules/{id}/source",
             get(get_methodology_rule_source),
         )
+        .route("/methods/{id}/files", get(get_method_files))
         .route("/operators", get(list_operators))
         .route("/operators/{id}/source", get(get_operator_source))
         .route("/operators/{id}/notebook_code", post(write_notebook_code))
@@ -314,9 +315,10 @@ impl ApiError {
                 StatusCode::TOO_MANY_REQUESTS,
                 vec![("code_busy", self.to_string())],
             ),
-            ApiError::Rules(sprisk_methodology::CatalogError::UnknownRule(_)) => {
-                (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
-            }
+            ApiError::Rules(
+                sprisk_methodology::CatalogError::UnknownRule(_)
+                | sprisk_methodology::CatalogError::UnknownMethod(_),
+            ) => (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())]),
             ApiError::Store(StoreError::NotFound { .. }) => {
                 (StatusCode::NOT_FOUND, vec![("not_found", self.to_string())])
             }
@@ -561,6 +563,13 @@ async fn get_methodology_rule_source(
     Path(rule_ref): Path<String>,
 ) -> Result<Json<MethodologyRuleSource>, ApiError> {
     Ok(Json(state.rules.source(&rule_ref)?.clone()))
+}
+
+async fn get_method_files(
+    State(state): State<AppState>,
+    Path(method_ref): Path<String>,
+) -> Result<Json<MethodFiles>, ApiError> {
+    Ok(Json(state.rules.method_files(&method_ref)?.clone()))
 }
 
 async fn list_operators(State(state): State<AppState>) -> Json<Vec<Operator>> {

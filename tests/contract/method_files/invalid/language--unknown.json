@@ -1,0 +1,4 @@
+{
+  "method": "methodology.supervised.split_method@1.0.0",
+  "files": [{ "path": "method.yaml", "language": "toml", "text": "" }]
+}

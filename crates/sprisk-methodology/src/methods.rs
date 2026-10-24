@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 
 use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
+use serde_json::json;
 use sprisk_contracts::{
-    Concept, ConceptKind, ConceptSet, Method, MethodReplace, Operator, OperatorScope,
+    Concept, ConceptKind, ConceptSet, Method, MethodFiles, MethodReplace, Operator, OperatorScope,
 };
 
-use crate::catalog::{CatalogError, parse_yaml};
+use crate::catalog::{CatalogError, parse_yaml, read};
 use sprisk_registry::evidence::EVIDENCE_PORT;
 
 pub(crate) const METHOD: &str = "method.yaml";
@@ -21,6 +22,8 @@ pub(crate) const CONCEPTS: &str = "concepts.yaml";
 pub(crate) struct MethodEntry {
     pub method: Method,
     pub path: PathBuf,
+    /// method.yaml and method.py as they loaded: the files shown are the files that run.
+    pub files: MethodFiles,
 }
 
 #[derive(Debug)]
@@ -31,12 +34,23 @@ pub(crate) struct ConceptEntry {
 
 pub(crate) fn read_method(path: &Path) -> Result<MethodEntry, CatalogError> {
     let method: Method = parse_yaml(path)?;
-    if !path.with_file_name(METHOD_MODULE).is_file() {
+    let module = path.with_file_name(METHOD_MODULE);
+    if !module.is_file() {
         return Err(method_error(path, "a method needs its method.py"));
     }
+    let files = json!({ "method": method.id, "files": [
+        { "path": METHOD, "language": "yaml", "text": read(path)? },
+        { "path": METHOD_MODULE, "language": "python", "text": read(&module)? },
+    ] });
+    let files =
+        sprisk_contracts::parse(&files.to_string()).map_err(|source| CatalogError::Invalid {
+            path: path.to_owned(),
+            source,
+        })?;
     Ok(MethodEntry {
         method,
         path: path.to_owned(),
+        files,
     })
 }
 

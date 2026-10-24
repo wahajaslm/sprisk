@@ -32,6 +32,7 @@ const entities: [keyof Entities, string][] = [
   ["RuleRequest", "rule_request"],
   ["RuleAnswer", "rule_answer"],
   ["MethodRequest", "method_request"],
+  ["MethodFiles", "method_files"],
   ["MethodAnswer", "method_answer"],
   ["VerificationRequest", "verification_request"],
   ["RuleDecision", "rule_decision"],
