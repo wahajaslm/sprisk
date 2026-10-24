@@ -31,7 +31,8 @@ import { hasOutputs, latestByNode, statusOf } from "../flow/latest.ts";
 import { DETAIL_LEVELS, type DetailLevel, NODE_SIZE, useCanvasDetail } from "../workbench/detail.ts";
 import { NodeVisual } from "./NodeVisual.tsx";
 import { CardFigure } from "./CardFigure.tsx";
-import { addCodeStep, readersOf, removeStep } from "../flow/edit.ts";
+import { addCodeStep, readersOf } from "../flow/edit.ts";
+import { useCanvasNotice, useStepActions } from "./flow/useStepActions.ts";
 import {
   flowPositions,
   GROUP_HEAD,
@@ -50,7 +51,8 @@ import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
 import { useSelection } from "../workbench/selection.ts";
 import { useNotebooks } from "../api/notebooks.ts";
-import { KindIcon, NotebookIcon, PlayIcon, RedoIcon, RestartIcon, StopIcon, TrashIcon, UndoIcon } from "./Icons.tsx";
+import { KindIcon, NotebookIcon, PlayIcon, RedoIcon, RestartIcon, TrashIcon, UndoIcon } from "./Icons.tsx";
+import { Button } from "../components/ui/Button.tsx";
 import { Loading } from "../components/ui/Loading.tsx";
 import { useEscape } from "../hooks/useEscape.ts";
 import { stageGroups } from "../notebook/stageNotebooks.ts";
@@ -154,40 +156,14 @@ function StepNode(props: NodeProps<Node<StepData>>) {
 
 function CardNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
-  const { pipelineVersionId, runId } = useSelection();
+  const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
   const versions = usePipelineVersions();
   const pipeline = versions.data?.find((v) => v.id === pipelineVersionId);
-  const saveAndRun = useSaveAndRun(runId);
-  const startRun = useStartRun();
+  const actions = useStepActions(pipeline);
 
   const status = statusOf(data.state);
   const isLive = status.tone === "live";
   const { width, height } = NODE_SIZE[data.level];
-
-  const handleRunFromNode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (pipelineVersionId) {
-      startRun.mutate(pipelineVersionId);
-    }
-  };
-
-  const showRun = useSelection((s) => s.showRun);
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!pipeline) return;
-    const readers = readersOf(pipeline, data.id);
-    if (readers.length > 0) {
-      alert(`Step "${data.id}" cannot be deleted because it is read by: ${readers.join(", ")}`);
-      return;
-    }
-    const next = removeStep(pipeline, data.id);
-    saveAndRun.mutate(next, {
-      onSuccess: (r) => {
-        select(undefined);
-        showRun(next.id, r.id);
-      },
-    });
-  };
 
   return (
     <button
@@ -197,9 +173,6 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
       aria-label={`${data.id}, ${data.title}, ${status.text}`}
       title={data.operatorRef}
       onClick={() => select(data.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Delete" || e.key === "Backspace") handleDelete(e as any);
-      }}
       onContextMenu={(e) => {
         e.preventDefault();
         select(data.id);
@@ -217,38 +190,7 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
           {data.edited && " · edited"}
         </span>
         <span className={`node-hover-actions${isLive ? " has-live" : ""}`}>
-          <span
-            role="button"
-            tabIndex={0}
-            className={`node-hover-btn run${isLive ? " live" : ""}`}
-            title={isLive ? `Stop ${data.id}` : `Run from ${data.id} and connected downstream steps`}
-            onClick={handleRunFromNode}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                handleRunFromNode(e as any);
-              }
-            }}
-            aria-label={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
-          >
-            {isLive ? <StopIcon /> : <PlayIcon />}
-          </span>
-          <span
-            role="button"
-            tabIndex={0}
-            className="node-hover-btn del"
-            title={`Delete step ${data.id}`}
-            onClick={handleDelete}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                handleDelete(e as any);
-              }
-            }}
-            aria-label={`Delete ${data.id}`}
-          >
-            <TrashIcon />
-          </span>
+          <StepButtons id={data.id} live={isLive} actions={actions} />
         </span>
       </span>
       <span className="card-body">
@@ -283,6 +225,52 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
 
 /** What a card shows of a step that drew no figure: a fact about its output and a small
  * picture of it. */
+/** A step's hover buttons. No route stops a run, so a live step only says it is running. */
+function StepButtons({ id, live, actions }: { id: string; live: boolean; actions: ReturnType<typeof useStepActions> }) {
+  const readers = actions.readers(id);
+  const press = (act: () => void) => ({
+    onClick: (e: React.MouseEvent) => {
+      e.stopPropagation();
+      act();
+    },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.stopPropagation();
+      act();
+    },
+  });
+  const runLabel = live ? `${id} is running` : `Run from ${id}`;
+  const deleteTitle = readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : `Delete step ${id}`;
+  return (
+    <>
+      <span
+        role="button"
+        tabIndex={0}
+        className={`node-hover-btn run${live ? " live" : ""}`}
+        title={live ? runLabel : `${runLabel}: reuses the finished steps before it`}
+        aria-label={runLabel}
+        aria-disabled={live}
+        {...press(() => {
+          if (!live) actions.runFrom();
+        })}
+      >
+        <PlayIcon />
+      </span>
+      <span
+        role="button"
+        tabIndex={0}
+        className="node-hover-btn del"
+        title={deleteTitle}
+        aria-label={`Delete ${id}`}
+        aria-disabled={readers.length > 0}
+        {...press(() => actions.remove(id))}
+      >
+        <TrashIcon />
+      </span>
+    </>
+  );
+}
+
 function CardSummary({ data }: { data: StepData }) {
   return (
     <div className="card-summary">
@@ -323,40 +311,14 @@ const ROUND_ICON = 30;
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
   const select = useSelection((s) => s.selectNode);
-  const { pipelineVersionId, runId } = useSelection();
+  const pipelineVersionId = useSelection((s) => s.pipelineVersionId);
   const versions = usePipelineVersions();
   const pipeline = versions.data?.find((v) => v.id === pipelineVersionId);
-  const saveAndRun = useSaveAndRun(runId);
-  const startRun = useStartRun();
+  const actions = useStepActions(pipeline);
 
   const status = statusOf(data.state);
   const isLive = status.tone === "live";
   const bad = status.tone === "bad" || data.concerns > 0;
-
-  const handleRunFromNode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (pipelineVersionId) {
-      startRun.mutate(pipelineVersionId);
-    }
-  };
-
-  const showRun = useSelection((s) => s.showRun);
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!pipeline) return;
-    const readers = readersOf(pipeline, data.id);
-    if (readers.length > 0) {
-      alert(`Step "${data.id}" cannot be deleted because it is read by: ${readers.join(", ")}`);
-      return;
-    }
-    const next = removeStep(pipeline, data.id);
-    saveAndRun.mutate(next, {
-      onSuccess: (r) => {
-        select(undefined);
-        showRun(next.id, r.id);
-      },
-    });
-  };
 
   return (
     <button
@@ -365,9 +327,6 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       aria-label={`${data.id}, ${data.title}, ${ORIGIN_TEXT[data.origin]}, ${status.text}`}
       title={`${data.operatorRef} · ${ORIGIN_TEXT[data.origin]}`}
       onClick={() => select(data.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Delete" || e.key === "Backspace") handleDelete(e as any);
-      }}
       onContextMenu={(e) => {
         e.preventDefault();
         select(data.id);
@@ -395,38 +354,7 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         {data.concerns > 0 && <span className="round-state tone-bad">⚠ {checkCount(data.concerns)}</span>}
       </span>
       <span className={`compact-hover-actions${isLive ? " has-live" : ""}`}>
-        <span
-          role="button"
-          tabIndex={0}
-          className={`node-hover-btn run${isLive ? " live" : ""}`}
-          title={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
-          onClick={handleRunFromNode}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-              handleRunFromNode(e as any);
-            }
-          }}
-          aria-label={isLive ? `Stop ${data.id}` : `Run from ${data.id}`}
-        >
-          {isLive ? <StopIcon /> : <PlayIcon />}
-        </span>
-        <span
-          role="button"
-          tabIndex={0}
-          className="node-hover-btn del"
-          title={`Delete step ${data.id}`}
-          onClick={handleDelete}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-              handleDelete(e as any);
-            }
-          }}
-          aria-label={`Delete ${data.id}`}
-        >
-          <TrashIcon />
-        </span>
+        <StepButtons id={data.id} live={isLive} actions={actions} />
       </span>
       {/* The node is as wide as its label, so outgoing lines start right after the text. */}
       <Handle id="out" type="source" position={Position.Right} isConnectable={false} />
@@ -631,6 +559,7 @@ export function FlowCanvas() {
       {/* A new layout means new positions: start the canvas afresh. */}
       <Canvas computed={computed} level={level} pipeline={pipeline} />
       <StepMenu pipeline={pipeline} operators={byRef} />
+      <CanvasNotice />
     </div>
   );
 }
@@ -683,9 +612,7 @@ type CanvasSnapshot = {
 function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edges: Edge[] }; level: DetailLevel; pipeline?: PipelineVersion }) {
   const selectNode = useSelection((s) => s.selectNode);
   const selectedNodeId = useSelection((s) => s.nodeId);
-  const runId = useSelection((s) => s.runId);
-  const showRun = useSelection((s) => s.showRun);
-  const saveAndRun = useSaveAndRun(runId);
+  const stepActions = useStepActions(pipeline);
   const [nodes, setNodes] = useState<Node[]>(() => encapsulateStages(computed.nodes));
   const nodesRef = useRef<Node[]>(nodes);
   nodesRef.current = nodes;
@@ -878,24 +805,13 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedNodeId && pipeline) {
           e.preventDefault();
-          const readers = readersOf(pipeline, selectedNodeId);
-          if (readers.length > 0) {
-            alert(`Step "${selectedNodeId}" cannot be deleted because it is read by: ${readers.join(", ")}`);
-            return;
-          }
-          const next = removeStep(pipeline, selectedNodeId);
-          saveAndRun.mutate(next, {
-            onSuccess: (r) => {
-              selectNode(undefined);
-              showRun(next.id, r.id);
-            },
-          });
+          stepActions.remove(selectedNodeId);
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNodeId, pipeline, saveAndRun, selectNode, showRun]);
+  }, [selectedNodeId, pipeline, stepActions]);
 
   const onPaneClick = () => {
     selectNode(undefined);
@@ -1036,17 +952,33 @@ const OPEN_TABS: [InspectorTab, string][] = [
 ];
 
 /** Right-click actions on a step. Escape or a click elsewhere closes it. */
+/** Why a step action was refused or failed, until it is dismissed or the next action. */
+function CanvasNotice() {
+  const { notice, say } = useCanvasNotice();
+  if (!notice) return null;
+  return (
+    <p role="alert" className="error canvas-error">
+      {notice}{" "}
+      <Button variant="ghost" size="sm" onClick={() => say(undefined)}>
+        Dismiss
+      </Button>
+    </p>
+  );
+}
+
 function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operators: Map<string, Operator> }) {
   const { at, set } = useStepMenu();
   const dock = useWorkbench((s) => s.dock);
   const { selectNode, showRun } = useSelection();
   const saveAndRun = useSaveAndRun(useSelection((s) => s.runId));
+  const actions = useStepActions(pipeline);
+  const say = useCanvasNotice((s) => s.say);
   const first = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (at) first.current?.focus();
   }, [at]);
   useEscape(() => set(undefined), at !== undefined);
-  if (!at) return saveAndRun.isError ? <p role="alert" className="error canvas-error">{saveAndRun.error.message}</p> : null;
+  if (!at) return null;
   const node = pipeline.nodes.find((n) => n.id === at.nodeId);
   const tablePort = node ? operators.get(node.operator)?.outputs.find((o) => o.kind === "table")?.name : undefined;
   const readers = readersOf(pipeline, at.nodeId);
@@ -1080,7 +1012,10 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
             disabled={saveAndRun.isPending}
             onClick={act(() => {
               const { version, nodeId } = addCodeStep(pipeline, at.nodeId, String(tablePort));
-              saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id, nodeId) });
+              saveAndRun.mutate(version, {
+                onSuccess: (r) => showRun(version.id, r.id, nodeId),
+                onError: (error) => say(error.message),
+              });
             })}
           >
             Explore in code
@@ -1095,10 +1030,7 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
           role="menuitem"
           disabled={saveAndRun.isPending || readers.length > 0}
           title={readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : undefined}
-          onClick={act(() => {
-            const version = removeStep(pipeline, at.nodeId);
-            saveAndRun.mutate(version, { onSuccess: (r) => showRun(version.id, r.id) });
-          })}
+          onClick={act(() => actions.remove(at.nodeId))}
         >
           Remove step
         </button>
