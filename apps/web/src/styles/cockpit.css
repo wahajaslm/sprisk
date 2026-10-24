@@ -1119,68 +1119,56 @@ p { margin: 0; }
 .flow-card.bad { border-color: var(--danger-border); }
 
 /* Compact canvas: 184x52 rectangular pill node matching Flow Studio specification */
+/* A step on the canvas, as the design's main screen draws it: no box, a 30px disc with the
+   kind icon and a state dot, the name, and one measured fact. */
 .flow-round {
   position: relative;
-  width: 184px;
-  height: 52px;
+  width: 176px;
+  height: 40px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 8px 0 9px;
-  border-radius: 12px;
-  background: #1c1c1c;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   text-align: left;
   cursor: pointer;
   user-select: none;
-  transition: all var(--dur-fast);
-}
-
-.flow-round:hover {
-  background: #202020;
-  border-color: rgba(255, 255, 255, 0.16);
-}
-
-.flow-round.selected {
-  background: #222222;
-  border-color: rgba(255, 255, 255, 0.32);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 8px 24px rgba(0, 0, 0, 0.6);
-}
-
-.flow-round.bad {
-  border-color: rgba(255, 92, 92, 0.45);
 }
 
 .flow-round .round-icon {
   position: relative;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.055);
+  color: #a3a3a3;
+  transition: background var(--dur-fast);
 }
 
-.flow-round:hover .round-icon {
-  background: rgba(255, 255, 255, 0.09);
-  color: #f2f2f2;
-}
+.flow-round:hover .round-icon { background: rgba(255, 255, 255, 0.09); }
+.flow-round.selected .round-icon { background: rgba(255, 255, 255, 0.14); color: #f5f5f5; }
+.flow-round.bad .round-icon { background: rgba(255, 92, 92, 0.14); color: #ff5c5c; }
 
-.flow-round.selected .round-icon {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+.flow-round .round-icon .state-dot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  height: 6px;
+  box-shadow: 0 0 0 2px var(--bg-canvas);
 }
 
 .round-text {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
 }
@@ -1189,18 +1177,20 @@ p { margin: 0; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
-  color: #f2f2f2;
+  color: #f5f5f5;
   line-height: 1.2;
 }
+
+.flow-round .round-sub .node-fact { font-family: inherit; font-size: inherit; color: inherit; }
 
 .flow-round .round-sub {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
-  color: #858585;
+  font-size: 11.5px;
+  color: #737373;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1635,60 +1625,51 @@ p { margin: 0; }
   pointer-events: auto;
 }
 
+/* A stage, as the design's main screen draws it: a filled card with no border or shadow, its
+   name and step count, and one line saying what the stage is for. */
 .stage-card {
   position: relative;
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: rgba(18, 18, 18, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  background: #171717;
+  border: 1px solid transparent;
+  border-radius: 10px;
   overflow: hidden;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.stage-card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+  transition: border-color 0.15s ease;
 }
 
 .stage-card.selected,
-.stage-card.active {
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.6);
-}
+.stage-card.active { border-color: rgba(255, 255, 255, 0.14); }
 
-/* Stage Card Header: 36px sleek bar */
 .stage-card-header {
-  height: 36px;
-  padding: 0 12px;
+  padding: 12px 12px 0;
   display: flex;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  flex-direction: column;
+  gap: 4px;
   pointer-events: all;
   cursor: grab;
   user-select: none;
   box-sizing: border-box;
 }
 
-.stage-card-header:active {
-  cursor: grabbing;
-}
+.stage-card-header:active { cursor: grabbing; }
+/* The header is also the drag handle (.stage-head); it keeps its column of left-aligned lines. */
+.stage-card-header.stage-head { display: flex; align-items: stretch; }
 
 .stage-title-row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
 }
 
 .stage-step-count {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: #5f5f5f;
+  font-size: 11.5px;
+  color: #737373;
   white-space: nowrap;
 }
 
@@ -1703,31 +1684,20 @@ p { margin: 0; }
 
 .stage-name {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
-  letter-spacing: -0.01em;
-  color: #d4d4d4;
+  color: #f5f5f5;
   line-height: 1.2;
   text-align: left;
   white-space: nowrap;
 }
 
-.stage-card.active .stage-name,
-.stage-card.selected .stage-name {
-  color: #ffffff;
-}
-
-.stage-description {
-  margin: 6px 0 0 0;
-  font-size: var(--text-xs);
-  line-height: 1.45;
-  color: var(--ink-4);
-  font-weight: 400;
+.stage-purpose {
+  margin: 0;
   text-align: left;
-  max-width: 96%;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  font-size: 11.5px;
+  color: #959595;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }

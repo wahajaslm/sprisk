@@ -1522,13 +1522,15 @@ describe("node detail switch", () => {
     expect(screen.queryByRole("region", { name: "Table · train" })).toBeNull();
   });
 
-  it("shows round steps with name and state in Compact and full cards in Detail; there is no Summary", async () => {
+  it("shows round steps with name, state and one measured fact in Compact, and full cards in Detail", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     await userEvent.click(await screen.findByRole("radio", { name: "Compact" }));
     expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Compact", "Detail"]);
     const score = await screen.findByRole("button", { name: /^score/ });
-    expect(score).toHaveTextContent(/^Evaluate\s*score$/);
+    // Once it ran, the line under its name is a measured fact, as the design shows: its score.
+    expect(score.querySelector(".node-title")).toHaveTextContent("Evaluate");
+    expect(await within(score).findByText("accuracy 0.947")).toBeInTheDocument();
     expect(score.querySelector(".state-dot.tone-done")).not.toBeNull();
     expect(score.querySelector(".round-icon")).not.toBeNull();
 

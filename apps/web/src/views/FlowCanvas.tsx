@@ -44,7 +44,7 @@ import {
   STAGE_HEAD_HEIGHT,
   STAGE_PAD_X,
 } from "../flow/layout.ts";
-import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, stepLabel } from "../flow/stages.ts";
+import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, STAGES, type Stage, stepLabel } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -128,10 +128,13 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
           </h3>
           <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
         </div>
+        <p className="stage-purpose">{purposeOf(data.name)}</p>
       </div>
     </div>
   );
 }
+
+const purposeOf = (name: string) => (STAGES as readonly string[]).includes(name) ? STAGE_PURPOSE[name as Stage] : "";
 
 /** An edge into or out of the selected step is drawn brighter; failed gate is dashed red. */
 type FlowEdgeData = { active: boolean; failed?: boolean };
@@ -306,7 +309,7 @@ function metricsPortOf(op: Operator): { metricsPort?: string } {
 }
 
 /** Width of the round icon in Compact (.round-icon) - 34px disc node glyph. */
-const ROUND_ICON = 34;
+const ROUND_ICON = 30;
 
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
@@ -370,7 +373,12 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
       <span className="round-text">
         <span className="node-title">{data.title}</span>
         <span className="round-sub">
-          {data.subject}
+          {/* Once the step ran, one measured fact about its output, as the design shows. */}
+          {data.attemptId ? (
+            <NodeFact attemptId={data.attemptId} operator={data.operatorRef} metricsPort={data.metricsPort} status={data.subject} />
+          ) : (
+            data.subject
+          )}
           {data.edited && " · edited"}
         </span>
         {/* Only what needs attention gets words; a finished step is just its dot. */}
@@ -920,7 +928,7 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
       colorMode="dark"
     >
       {/* React Flow sizes a dot by its diameter; the design's 1px-radius dots are 2px across. */}
-      <Background variant={BackgroundVariant.Dots} gap={18} size={2} color="rgba(255,255,255,0.07)" />
+      <Background variant={BackgroundVariant.Dots} gap={16} size={2} color="rgba(255,255,255,0.06)" />
       <Panel position="bottom-left" className="canvas-controls">
         <ZoomControl
           tidy={tidy}

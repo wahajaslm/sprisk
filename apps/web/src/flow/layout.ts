@@ -10,19 +10,19 @@ export type Point = { x: number; y: number };
 export type Group = { id: string; count: number } & Point & Size;
 
 /** Room above a group's steps for its card header. */
-export const STAGE_PAD_X = 20;
-export const STAGE_HEAD_HEIGHT = 44;
-export const STAGE_FOOTER_HEIGHT = 44;
-export const MIN_STAGE_CARD_WIDTH = 216;
+export const STAGE_PAD_X = 10;
+export const STAGE_HEAD_HEIGHT = 64;
+export const STAGE_FOOTER_HEIGHT = 12;
+export const MIN_STAGE_CARD_WIDTH = 196;
 export const MIN_STAGE_CARD_HEIGHT = 110;
 export const GROUP_HEAD = STAGE_HEAD_HEIGHT;
 
 const LAYERED = {
   "elk.algorithm": "layered",
   "elk.direction": "RIGHT",
-  // Flow Studio design: columns 216px wide, 36px apart.
+  // Flow Studio design: columns 196px wide, 36px apart.
   "elk.layered.spacing.nodeNodeBetweenLayers": "36",
-  "elk.spacing.nodeNode": "14",
+  "elk.spacing.nodeNode": "10",
   "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
 };
 

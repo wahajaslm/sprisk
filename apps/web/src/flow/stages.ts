@@ -8,6 +8,17 @@ import { stepOf } from "./ports.ts";
 export const STAGES = ["Load", "Split", "Explore", "Clean", "Model", "Evaluate", "Unknown"] as const;
 export type Stage = (typeof STAGES)[number];
 
+/** What each stage is for, in a few words, under its name on the canvas. */
+export const STAGE_PURPOSE: Record<Stage, string> = {
+  Load: "Read the source files",
+  Split: "Set the test rows aside",
+  Explore: "Measure the training rows",
+  Clean: "Columns, duplicates, gaps, text",
+  Model: "Fit and compare models",
+  Evaluate: "Score on the test rows",
+  Unknown: "Steps with no stage yet",
+};
+
 /** Studio node kinds: they pick the icon and its tint. */
 export type NodeKind = "source" | "recipe" | "view" | "decision" | "model";
 
