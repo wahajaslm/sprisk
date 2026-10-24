@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { clampHeight, FlowInspector } from "../src/views/flow/FlowInspector.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
+import { LAYOUT_KEY, LAYOUT_VERSION } from "../src/workbench/layout.ts";
 import { useWorkbench } from "../src/workbench/workbench.ts";
 import { PV, RUN } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
@@ -45,7 +46,6 @@ describe("FlowInspector", () => {
   });
 
   it("remembers its tabs: a tab closed stays closed when the page opens again", async () => {
-    localStorage.clear();
     const first = renderWithApi(<FlowInspector />);
     const tab = { selector: ".dock-tab" };
     fireEvent(await screen.findByText("History", tab), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
@@ -55,7 +55,29 @@ describe("FlowInspector", () => {
     renderWithApi(<FlowInspector />);
     expect(await screen.findByText("Code", tab)).toBeInTheDocument();
     expect(screen.queryByText("History", tab)).toBeNull();
-    localStorage.clear();
+  });
+
+  it("opens on the default tabs when the saved layout cannot be read", async () => {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ version: LAYOUT_VERSION, dock: { grid: "broken", panels: {} } }));
+    renderWithApi(<FlowInspector />);
+    expect(await screen.findByText("History", { selector: ".dock-tab" })).toBeInTheDocument();
+  });
+
+  it("shows a saved tab this version does not know as a placeholder", async () => {
+    // Closing a tab saves the layout.
+    const first = renderWithApi(<FlowInspector />);
+    fireEvent(await screen.findByText("Performance", { selector: ".dock-tab" }), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    await waitFor(() => expect(localStorage.getItem(LAYOUT_KEY)).not.toBeNull());
+    first.unmount();
+    const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY)!) as { dock: { panels: Record<string, { params: { tab: string } }> } };
+    saved.dock.panels["step-history"]!.params.tab = "telepathy";
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(saved));
+
+    renderWithApi(<FlowInspector />);
+    // Only the open tab draws its content.
+    const [placeholderTab] = (await screen.findAllByText("History")).filter((e) => e.closest('[role="menu"]') === null);
+    await userEvent.click(placeholderTab!);
+    expect(await screen.findByText("This tab is no longer available. Close it, and reopen tabs from +.")).toBeInTheDocument();
   });
 
   it("keeps a dragged height between 120 and 620 pixels", () => {

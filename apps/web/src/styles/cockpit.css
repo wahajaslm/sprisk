@@ -152,7 +152,6 @@
   --danger: #ff5c5c;
   --danger-wash: rgba(255, 92, 92, 0.16);
   --danger-wash-soft: rgba(255, 92, 92, 0.08);
-  --danger-wash-open: rgba(255, 92, 92, 0.14);
   --danger-wash-subtle: rgba(255, 92, 92, 0.02);
   --danger-border: rgba(255, 92, 92, 0.40);
   --danger-border-hover: rgba(255, 92, 92, 0.70);
@@ -4138,9 +4137,6 @@ p { margin: 0; }
   border-bottom: none;
 }
 
-.ledger-table tr.row-open {
-  background: none;
-}
 
 .ledger-table .entry-key {
   font-weight: 400;

@@ -71,6 +71,8 @@ beforeEach(() => {
   useCanvasDetail.setState({ level: "detail" });
   useResultLayout.setState({ layout: "inline" });
   useCanvasNotice.setState({ notice: undefined });
+  // Saved UI preferences (the dock layout) never carry from one test to the next.
+  localStorage.clear();
 });
 afterEach(() => {
   cleanup();

@@ -346,7 +346,7 @@ export function ObjectivePage() {
                   </tr>
 
                   {/* Target */}
-                  <tr className={!question.target ? "row-open" : ""}>
+                  <tr>
                     <td className="entry-key">Target</td>
                     <td className="entry-value">
                       {question.target ? (
@@ -364,7 +364,7 @@ export function ObjectivePage() {
                   </tr>
 
                   {/* Unit of analysis */}
-                  <tr className={!question.unit_of_analysis ? "row-open" : ""}>
+                  <tr>
                     <td className="entry-key">Unit of Analysis</td>
                     <td className="entry-value">
                       {question.unit_of_analysis ? (
@@ -382,7 +382,7 @@ export function ObjectivePage() {
                   </tr>
 
                   {/* Prediction horizon */}
-                  <tr className={!question.prediction_horizon ? "row-open" : ""}>
+                  <tr>
                     <td className="entry-key">Horizon</td>
                     <td className="entry-value">
                       {question.prediction_horizon ? (
@@ -413,7 +413,7 @@ export function ObjectivePage() {
 
                   {/* Unknowns */}
                   {question.unknowns.map((u, i) => (
-                    <tr key={`unknown-${i}`} className="row-open">
+                    <tr key={`unknown-${i}`}>
                       <td className="entry-key">{i === 0 ? "Unknown" : ""}</td>
                       <td className="entry-value">
                         <span className="val-open-title">{u.question}</span>
