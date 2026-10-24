@@ -144,3 +144,13 @@ export function newestVersions(operators: Operator[]): Operator[] {
   }
   return [...best.values()];
 }
+
+/** Where a step on the canvas comes from, so its shape says it (ADR-0063): a method's decision
+ * placed or set it, it measures evidence for a method, or it was written as it stands. */
+export type StepOrigin = "decided" | "measures" | "written";
+
+export function stepOrigin(node: Node, operator: Operator | undefined): StepOrigin {
+  if (node.methodology_decision_id !== undefined) return "decided";
+  if (Object.keys(operator?.produces ?? {}).length > 0) return "measures";
+  return "written";
+}

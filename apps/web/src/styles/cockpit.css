@@ -1152,9 +1152,18 @@ p { margin: 0; }
   transition: background var(--dur-fast);
 }
 
-.flow-round:hover .round-icon { background: rgba(255, 255, 255, 0.09); }
-.flow-round.selected .round-icon { background: rgba(255, 255, 255, 0.14); color: #f5f5f5; }
-.flow-round.bad .round-icon { background: rgba(255, 92, 92, 0.14); color: #ff5c5c; }
+/* The disc's fill is drawn behind the icon, so its shape can say where the step comes from
+   (ADR-0063): a circle for an operator step as written, a diamond for a step a method chose,
+   a rounded square for a step measuring evidence for a method. */
+.flow-round .round-icon { background: transparent; isolation: isolate; }
+.flow-round .round-icon::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: rgba(255, 255, 255, 0.055); transition: background var(--dur-fast); }
+.flow-round.shape-decided .round-icon::before { inset: 4px; border-radius: 4px; transform: rotate(45deg); }
+.flow-round.shape-measures .round-icon::before { inset: 1px; border-radius: 7px; }
+.flow-round:hover .round-icon::before { background: rgba(255, 255, 255, 0.09); }
+.flow-round.selected .round-icon::before { background: rgba(255, 255, 255, 0.14); }
+.flow-round.selected .round-icon { color: #f5f5f5; }
+.flow-round.bad .round-icon::before { background: rgba(255, 92, 92, 0.14); }
+.flow-round.bad .round-icon { color: #ff5c5c; }
 
 .flow-round .round-icon .state-dot {
   position: absolute;

@@ -44,7 +44,7 @@ import {
   STAGE_HEAD_HEIGHT,
   STAGE_PAD_X,
 } from "../flow/layout.ts";
-import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, STAGES, type Stage, stepLabel } from "../flow/stages.ts";
+import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, STAGES, type Stage, stepLabel, type StepOrigin, stepOrigin } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -76,6 +76,8 @@ type StepData = {
   role: string;
   /** The step runs its own code in this flow, not the built-in (ADR-0028). */
   edited: boolean;
+  /** Where the step comes from, shown by its shape (ADR-0063). */
+  origin: StepOrigin;
   state: string;
   attemptId?: string;
   /** The output port holding the step's figures, if it draws any. */
@@ -133,6 +135,13 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
     </div>
   );
 }
+
+/** What a step's shape means, in its tooltip and for screen readers. */
+const ORIGIN_TEXT: Record<StepOrigin, string> = {
+  decided: "chosen by a method",
+  measures: "measures evidence for a method",
+  written: "operator step",
+};
 
 const purposeOf = (name: string) => (STAGES as readonly string[]).includes(name) ? STAGE_PURPOSE[name as Stage] : "";
 
@@ -352,9 +361,9 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
   return (
     <button
       type="button"
-      className={`flow-round${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
-      aria-label={`${data.id}, ${data.title}, ${status.text}`}
-      title={data.operatorRef}
+      className={`flow-round shape-${data.origin}${data.selected ? " selected" : ""}${bad ? " bad" : ""}`}
+      aria-label={`${data.id}, ${data.title}, ${ORIGIN_TEXT[data.origin]}, ${status.text}`}
+      title={`${data.operatorRef} · ${ORIGIN_TEXT[data.origin]}`}
       onClick={() => select(data.id)}
       onKeyDown={(e) => {
         if (e.key === "Delete" || e.key === "Backspace") handleDelete(e as any);
@@ -525,6 +534,7 @@ export function flowGraph(
         kind: op ? kindOf(op) : "recipe",
         role: op ? roleOf(op) : "Step",
         edited: node.code !== undefined,
+        origin: stepOrigin(node, op),
         state: latest.get(id)?.state ?? "not run",
         ...(hasOutputs(latest.get(id)) ? { attemptId: latest.get(id)?.id } : {}),
         ...(op && figurePortOf(op) ? { figurePort: figurePortOf(op) } : {}),
