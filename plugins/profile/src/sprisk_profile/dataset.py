@@ -107,8 +107,8 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
         column.update(_shape(s))
     if s.dtype == pl.String:
         column.update(_conversion(s))
-        column.update(_spelling(s))
-        column.update(_words(s))
+        column.update(spelling(s))
+        column.update(words(s))
         column.update(_html(s))
     histogram = _bins(bins, s.name) if numeric else _top_values(s)
     if histogram is not None:
@@ -177,7 +177,7 @@ def _conversion(s: pl.Series) -> dict[str, Any]:
     }
 
 
-def _spelling(s: pl.Series) -> dict[str, int]:
+def spelling(s: pl.Series) -> dict[str, int]:
     """For the text spelling rule: how many distinct values merge with another once spaces and
     case are ignored, and how many more once accents are too (OpenRefine's key collision).
     Blank values are left out: they are gaps, not spellings. NFD splits only accents off, so
@@ -192,7 +192,7 @@ def _spelling(s: pl.Series) -> dict[str, int]:
     }
 
 
-def _words(s: pl.Series) -> dict[str, float]:
+def words(s: pl.Series) -> dict[str, float]:
     """For the column-roles rule: the share of a text column's present values holding more
     than one word once trimmed. Codes and identifiers hold one; titles and descriptions more."""
     present = s.drop_nulls()
