@@ -6320,6 +6320,37 @@ async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_question_s_walks_are_found_by_the_question_newest_first() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let mut made = Vec::new();
+    for key in ["walk-found-1", "walk-found-2"] {
+        let mut request = walk_request(&[&api.csv], key);
+        request["max_actions"] = json!(1);
+        let (status, walk) = call(&api.app, "POST", "/walks", Some(request)).await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{walk}");
+        made.push(walk["id"].clone());
+    }
+
+    let uri = "/walks?question_version_id=qv_01JABCDEFGHJKMNPQRSTVWXYZ0&limit=1";
+    let (status, page) = call(&api.app, "GET", uri, None).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let ids: Vec<&Value> = page.as_array().unwrap().iter().map(|w| &w["id"]).collect();
+    assert_eq!(ids, vec![&made[1]]);
+    let (_, other) = call(
+        &api.app,
+        "GET",
+        "/walks?question_version_id=qv_01JABCDEFGHJKMNPQRSTVWXYZ9",
+        None,
+    )
+    .await;
+    assert_eq!(other, json!([]));
+    let (status, bad) = call(&api.app, "GET", "/walks?question_version_id=nope", None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_restarted_walk_takes_up_the_method_decision_it_saved_before_its_step() {
     let api = api().await;
     std::fs::write(&api.csv, rakuten_like_listings()).unwrap();

@@ -496,6 +496,25 @@ impl SqliteStore {
         Ok((walk.clone(), true))
     }
 
+    /// Newest first, at most `limit`, optionally only one question's and before a walk id.
+    pub async fn list_walks(
+        &self,
+        question: Option<&QuestionVersionId>,
+        before: Option<&WalkId>,
+        limit: u32,
+    ) -> Result<Vec<Walk>, StoreError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM walks WHERE (?1 IS NULL OR question_version_id = ?1) \
+             AND (?2 IS NULL OR id < ?2) ORDER BY id DESC LIMIT ?3",
+        )
+        .bind(question.map(|q| q.as_str()))
+        .bind(before.map(|w| w.as_str()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        parse_all(rows, "walk")
+    }
+
     pub async fn get_walk(&self, id: &WalkId) -> Result<Walk, StoreError> {
         let body: Option<String> = sqlx::query_scalar("SELECT body FROM walks WHERE id = ?")
             .bind(id.as_str())

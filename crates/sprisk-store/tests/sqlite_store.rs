@@ -1324,6 +1324,43 @@ async fn a_walk_key_gives_its_walk_to_the_same_request_and_refuses_another() {
 }
 
 #[tokio::test]
+async fn a_question_s_walks_are_listed_newest_first_and_paged() {
+    let (store, walk, request, _, build) = walk_parts().await;
+    let other: sprisk_contracts::QuestionVersion = fixture_with(
+        "question_version",
+        "classification-all-fields.json",
+        serde_json::json!({"id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ1"}),
+    );
+    store.insert_question_version(&other).await.unwrap();
+    let mut walks = Vec::new();
+    for (n, question) in [
+        (1, &walk.question_version_id),
+        (2, &other.id),
+        (3, &walk.question_version_id),
+    ] {
+        let mut made = walk.clone();
+        made.id = format!("wlk_01JABCDEFGHJKMNPQRSTVWXYZ{n}").parse().unwrap();
+        made.question_version_id = question.clone();
+        let mut asked = request.clone();
+        asked.idempotency_key = format!("walk-list-{n}").parse().unwrap();
+        let mut step = build.clone();
+        step.walk_id = made.id.clone();
+        store.insert_walk(&made, &asked, None, &step).await.unwrap();
+        walks.push(made);
+    }
+    let question = Some(&walk.question_version_id);
+
+    let page = store.list_walks(question, None, 1).await.unwrap();
+    assert_eq!(page, vec![walks[2].clone()]);
+    let next = store
+        .list_walks(question, Some(&walks[2].id), 10)
+        .await
+        .unwrap();
+    assert_eq!(next, vec![walks[0].clone()]);
+    assert_eq!(store.list_walks(None, None, 10).await.unwrap().len(), 3);
+}
+
+#[tokio::test]
 async fn a_walk_step_is_kept_once_per_round_with_the_walk_it_leaves() {
     let (store, walk, request, first, build) = walk_parts().await;
     store

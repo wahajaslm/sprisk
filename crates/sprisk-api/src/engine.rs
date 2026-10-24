@@ -11,8 +11,8 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, Method,
     MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodologyDecision,
     MethodologyDecisionByRule, MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId,
-    RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId, WalkStatus, WalkStep,
-    WalkStopReason, parse,
+    QuestionVersionId, RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId, WalkStatus,
+    WalkStep, WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::deciding::{Effective, Made, Ready, apply_option, bindings, ready};
@@ -27,9 +27,9 @@ use sprisk_registry::evidence::EVIDENCE_PORT;
 
 use crate::method_session::MethodSession;
 use crate::{
-    ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
-    check_local_paths, cite_decision, claim_selection, compile, decision_of, drive_run, id,
-    propose, queued_run, review_methodology, run_plan,
+    ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, Query, apply_methodology, body,
+    check_local_paths, cite_decision, claim_selection, compile, decision_of, drive_run, id, limit,
+    optional_id, propose, queued_run, review_methodology, run_plan,
 };
 
 /// What the loop-back rule decides; its `max_looks` caps the walk's comparisons too, so the
@@ -122,6 +122,20 @@ fn check_budget(request: &CreateWalk) -> Result<(), ApiError> {
         });
     }
     Ok(())
+}
+
+/// A question's walks, newest first and paged (ADR-0064), so a person finds them again.
+pub(crate) async fn list_walks(
+    State(state): State<AppState>,
+    query: Query,
+) -> Result<Json<Vec<Walk>>, ApiError> {
+    let question: Option<QuestionVersionId> = optional_id(&query, "question_version_id")?;
+    let before: Option<WalkId> = optional_id(&query, "before")?;
+    let walks = state
+        .store
+        .list_walks(question.as_ref(), before.as_ref(), limit(&query)?)
+        .await?;
+    Ok(Json(walks))
 }
 
 pub(crate) async fn get_walk(
