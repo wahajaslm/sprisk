@@ -2,7 +2,7 @@ import type { GraphEffect, MethodologyRule, PipelineVersion } from "@sprisk/cont
 import { useState } from "react";
 
 import type { RunChecks } from "../../api/checks.ts";
-import { useApplyMethodology, useMethodologyRules, useStepProposal } from "../../api/methodology.ts";
+import { useApplyMethodology, useMethodologyRules, useResolveStep } from "../../api/methodology.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useSelection } from "../../workbench/selection.ts";
 import { ChecksTab } from "./ChecksTab.tsx";
@@ -41,7 +41,8 @@ function inWorkflowOrder(a: MethodologyRule, b: MethodologyRule): number {
 }
 
 /** One rule's decision for a step, in four columns: the rule and its pick, the evidence it
- * decided on, the alternatives, and the thresholds it decided with. Nothing changes until Apply. */
+ * decided on, the alternatives, and the thresholds it decided with. A person asks for the
+ * decision (resolving stores a proposal); nothing in the flow changes until Apply. */
 export function RuleDecision({ pipeline, nodeId, rule }: {
   pipeline: PipelineVersion;
   nodeId: string;
@@ -50,7 +51,7 @@ export function RuleDecision({ pipeline, nodeId, rule }: {
   const current = pipeline.nodes.find((node) => node.id === nodeId);
   const isSplit = current?.operator.includes("split@") ?? false;
   const linked = pipeline.question_version_id !== undefined;
-  const proposal = useStepProposal(linked ? pipeline.id : undefined, nodeId, rule.decides, isSplit);
+  const proposal = useResolveStep();
   const apply = useApplyMethodology();
   const selectPipeline = useSelection((state) => state.selectPipelineVersion);
   const openExperiments = useSelection((state) => state.openExperiments);
@@ -85,6 +86,10 @@ export function RuleDecision({ pipeline, nodeId, rule }: {
         <p className="rd-label">Decision</p>
         {!linked ? (
           <p role="alert" className="error">Link a question revision on the Objective page before a rule can decide.</p>
+        ) : proposal.isIdle ? (
+          <button type="button" className="page-btn rd-review" onClick={() => proposal.mutate({ pipelineId: pipeline.id, nodeId, decides: rule.decides, isSplit })}>
+            Review choices
+          </button>
         ) : proposal.isPending ? (
           <Loading />
         ) : proposal.isError ? (

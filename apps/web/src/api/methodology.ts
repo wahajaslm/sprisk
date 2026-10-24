@@ -4,12 +4,11 @@ import { ulid } from "ulid";
 
 import { getList, getOne, postOne } from "./client.ts";
 
-/** A step's proposal for one decision (ADR-0053). A flow version never changes, so it is resolved
- * once per version, step and decision; the resolver changes nothing in the flow. */
-export const useStepProposal = (pipelineId: string | undefined, nodeId: string, decides: string, isSplit: boolean) =>
-  useQuery({
-    queryKey: ["step_proposal", pipelineId, nodeId, decides],
-    queryFn: () =>
+/** Resolves a step's proposal for one decision (ADR-0053). Resolving stores a proposal, so it
+ * runs only when a person asks; it changes nothing in the flow. */
+export function useResolveStep() {
+  return useMutation({
+    mutationFn: ({ pipelineId, nodeId, decides, isSplit }: { pipelineId: string; nodeId: string; decides: string; isSplit: boolean }) =>
       postOne(
         "DecisionProposal",
         isSplit
@@ -17,10 +16,8 @@ export const useStepProposal = (pipelineId: string | undefined, nodeId: string, 
           : `/pipeline_versions/${pipelineId}/methodology/proposals/${nodeId}/${decides}`,
         {},
       ),
-    enabled: pipelineId !== undefined,
-    staleTime: Infinity,
-    retry: false,
   });
+}
 
 export function useApplyMethodology() {
   const client = useQueryClient();

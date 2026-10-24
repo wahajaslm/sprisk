@@ -54,10 +54,11 @@ const proposal = parse("DecisionProposal", {
   ],
 });
 
-/** Opens the panel; it resolves its proposal by itself. */
+/** Opens the panel and asks for the rule's decision. */
 async function review() {
   server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () => HttpResponse.json(proposal, { status: 201 })));
   renderWithApi(<RuleDecision pipeline={pipeline} nodeId="scale" rule={rule} />);
+    await userEvent.click(screen.getByRole("button", { name: "Review choices" }));
 }
 
 describe("methodology choice preview", () => {
@@ -89,6 +90,7 @@ describe("an adding choice", () => {
     const model: PipelineVersion = { ...pipeline, nodes: [{ id: "model", operator: "sprisk.ml.random_forest@2.0.0", params: { target: "y", task: "classification" } }] };
     server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () => HttpResponse.json(parse("DecisionProposal", encodingBeforeModel), { status: 201 })));
     renderWithApi(<RuleDecision pipeline={model} nodeId="model" rule={rule} />);
+    await userEvent.click(screen.getByRole("button", { name: "Review choices" }));
     await userEvent.click(await screen.findByRole("radio", { name: /One-Hot Encoding/ }));
     expect(screen.getByText(/^Add/)).toHaveTextContent("Add categories (sprisk.clean.encode@1.0.0) before model.");
     expect(screen.getByText(/"purpose"/)).toBeInTheDocument();
@@ -117,6 +119,7 @@ describe("a rule's panel", () => {
       return HttpResponse.json(threshold, { status: 201 });
     }));
     renderWithApi(<RuleDecision pipeline={model} nodeId="model" rule={{ ...rule, name: "Decision Threshold", decides: "evaluation.decision_threshold" }} />);
+    await userEvent.click(screen.getByRole("button", { name: "Review choices" }));
     await userEvent.click(await screen.findByRole("radio", { name: /Cost-Optimal Threshold/ }));
     expect(asked).toEqual(["model/evaluation.decision_threshold"]);
     expect(screen.getByRole("region", { name: "Decision Threshold" })).toBeInTheDocument();
@@ -151,6 +154,7 @@ describe("model shortlist", () => {
   it("tags the shortlisted models and asks why when one is chosen without comparing", async () => {
     server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () => HttpResponse.json(shortlist, { status: 201 })));
     renderWithApi(<RuleDecision pipeline={modelPipeline} nodeId="model" rule={rule} />);
+    await userEvent.click(screen.getByRole("button", { name: "Review choices" }));
 
     expect(await screen.findByRole("radio", { name: /dummy_baseline@1.0.0\s*Shortlisted/ })).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: /random_forest@1.1.0\s*Shortlisted/ })).not.toBeInTheDocument();
@@ -163,6 +167,7 @@ describe("model shortlist", () => {
     useSelection.setState({ nav: "Flow" });
     server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () => HttpResponse.json(shortlist, { status: 201 })));
     renderWithApi(<RuleDecision pipeline={modelPipeline} nodeId="model" rule={rule} />);
+    await userEvent.click(screen.getByRole("button", { name: "Review choices" }));
 
     expect(await screen.findByText(/Sprisk cross-validates the shortlisted models on its own/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Compare shortlisted models" })).not.toBeInTheDocument();
@@ -181,5 +186,50 @@ describe("a rule's decision, as the design lays it out", () => {
     expect(within(panel).getByRole("radio", { name: /No Scaling Step.*Rule's pick/ })).toBeChecked();
     expect(within(panel).getByText("ask above share")).toBeInTheDocument();
     expect(within(panel).getByText("0.05")).toBeInTheDocument();
+  });
+});
+
+describe("asking for a decision", () => {
+  it("sends nothing to the server until a person asks, since resolving stores a proposal", async () => {
+    const posted: string[] = [];
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", ({ request }) => {
+      posted.push(request.url);
+      return HttpResponse.json(proposal, { status: 201 });
+    }));
+    renderWithApi(<RuleDecision pipeline={pipeline} nodeId="scale" rule={rule} />);
+    expect(screen.getByRole("button", { name: "Review choices" })).toBeInTheDocument();
+    expect(posted).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: "Review choices" }));
+    await screen.findByRole("radio", { name: /No Scaling Step/ });
+    expect(posted).toHaveLength(1);
+  });
+
+  it("says why it cannot decide when the flow has no question revision", () => {
+    const { question_version_id: _q, ...unlinked } = pipeline;
+    renderWithApi(<RuleDecision pipeline={unlinked} nodeId="scale" rule={rule} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Link a question revision");
+    expect(screen.queryByRole("button", { name: "Review choices" })).not.toBeInTheDocument();
+  });
+
+  it("shows why the resolver refused", async () => {
+    server.use(http.post("/api/pipeline_versions/:id/methodology/proposals/:node/:decides", () =>
+      HttpResponse.json({ errors: [{ code: "question_required", message: "link a question" }] }, { status: 400 })));
+    renderWithApi(<RuleDecision pipeline={pipeline} nodeId="scale" rule={rule} />);
+    await userEvent.click(screen.getByRole("button", { name: "Review choices" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("question_required");
+  });
+
+  it("applies another alternative with the person's reason", async () => {
+    let applied: Record<string, unknown> | undefined;
+    server.use(http.post("/api/methodology_proposals/:id/apply", async ({ request }) => {
+      applied = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ errors: [{ code: "stop", message: "stop here" }] }, { status: 409 });
+    }));
+    await review();
+    await userEvent.click(await screen.findByRole("radio", { name: /Robust Scaling/ }));
+    await userEvent.type(screen.getByLabelText(/Reason for choosing another method/), "outliers matter");
+    await userEvent.click(screen.getByRole("button", { name: "Apply to new flow version" }));
+    await screen.findByText(/stop here/);
+    expect(applied).toMatchObject({ alternative_id: "robust_scaling", reason: "outliers matter" });
   });
 });
