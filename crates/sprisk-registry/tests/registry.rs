@@ -162,7 +162,7 @@ fn malformed_yaml_names_the_file() {
 fn every_core_plugin_manifest_is_valid() {
     let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
     let registry = Registry::load_dir(&plugins).unwrap();
-    assert_eq!(registry.len(), 43);
+    assert_eq!(registry.len(), 45);
     assert!(
         registry
             .get("sprisk.validation.group_overlap@1.0.0")
@@ -170,7 +170,7 @@ fn every_core_plugin_manifest_is_valid() {
     );
     assert!(
         registry
-            .get("sprisk.validation.class_shares@1.0.0")
+            .get("sprisk.validation.class_shares@2.0.0")
             .is_some()
     );
     assert!(registry.get("sprisk.ml.linear_model@3.0.0").is_some());

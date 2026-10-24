@@ -74,6 +74,25 @@ def test_tables_and_params_arrive_by_name_and_the_return_value_is_the_output(
     assert pl.read_parquet(out.path)["x"].to_list() == [3, 6]
 
 
+def test_a_column_a_setting_marks_excluded_never_reaches_the_step(tmp_path: Path) -> None:
+    # A check on the test rows names the target only to drop it (ADR-0064): the worker drops it.
+    op_ = operator(
+        "[{ name: data, kind: table }]",
+        "[{ name: data, kind: table }]",
+        "{ target: { type: string, x-sprisk-excluded: true } }",
+    )
+    seen: list[list[str]] = []
+
+    def op(data: pl.DataFrame, target: str) -> pl.DataFrame:
+        seen.append(data.columns)
+        return data
+
+    table = pl.DataFrame({"x": [1, 2], "y": ["a", "b"]})
+    adapt(op, op_)({"target": "y"}, {"data": parquet(tmp_path, table)}, staging(tmp_path))
+
+    assert seen == [["x"]]
+
+
 def test_several_outputs_are_returned_as_a_dict_by_port(tmp_path: Path) -> None:
     def op(data: pl.DataFrame) -> dict[str, pl.DataFrame]:
         return {"train": data.head(1), "test": data.tail(1)}

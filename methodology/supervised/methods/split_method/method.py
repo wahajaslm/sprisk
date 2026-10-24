@@ -34,10 +34,17 @@ def verify_no_group_overlap(evidence: dict[str, Any], settings: dict[str, Any]) 
     )
 
 
-def verify_class_shares_kept(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
-    gap = evidence["largest_gap"]
-    # One row more or less moves a class's share by 1/test_rows: drift that small is rounding.
-    allowed = max(settings["max_gap"], 1 / evidence["test_rows"])
-    if gap > allowed:
-        return "fail", f"A class's share differs by {gap:.1%} between train and test."
-    return "pass", f"Class shares differ by at most {gap:.1%} between train and test."
+def verify_no_row_in_both(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
+    if evidence["in_both"]:
+        return "fail", (
+            f"{evidence['in_both']} test rows have the same features as a train row: the model "
+            "is scored on rows it learned. Treat repeated rows as one item."
+        )
+    return "pass", f"No test row repeats a train row ({evidence['test_rows']} test rows)."
+
+
+def verify_test_after_train(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:
+    latest = evidence["latest_train"]
+    if evidence["not_later_test_rows"]:
+        return "fail", f"{evidence['not_later_test_rows']} test rows are not later than {latest}."
+    return "pass", f"Every test row is later than {latest}, the latest train row."

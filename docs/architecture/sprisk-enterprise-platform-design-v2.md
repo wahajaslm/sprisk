@@ -319,8 +319,9 @@ The compiled graph produces a serializable `ExecutionPlan` with stable node/port
 | Frozen `transform` / `predict` | Possibly | No | Yes | No | No |
 | Validation `score` | — | — | Predictions derived from X | Yes | No |
 | Final authorized `score` | — | — | Final predictions | No | Yes |
+| Promise verification on split outputs (ADR-0064) | Yes | Yes | Yes (features) | No | No |
 
-A score reads labels legitimately; a fit cannot use held-out labels. The same preprocessing is fitted independently inside each CV training fold. Cross-fitting-specific methods require a registered certified adapter; otherwise mark unavailable, not silently treat as generic transformation.
+A score reads labels legitimately; a fit cannot use held-out labels. A producer that checks a split's promise may read the test rows' features, never their labels; the catalog refuses one that maps a label concept, unless the param only names a column it drops. How far the class shares moved is measured with the final score. The same preprocessing is fitted independently inside each CV training fold. Cross-fitting-specific methods require a registered certified adapter; otherwise mark unavailable, not silently treat as generic transformation.
 
 # 10. Graph compiler, workers and execution modes
 

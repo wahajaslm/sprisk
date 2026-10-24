@@ -4,7 +4,8 @@ use serde_json::{Value, json};
 use sprisk_contracts::{MethodologyReview, QuestionVersion, WalkStopReason, parse};
 use sprisk_methodology::RuleCatalog;
 use sprisk_methodology::engine::{
-    Action, HeadRun, Start, look_asks, next_action, start, unconfirmed_reads, with_test_scoring,
+    Action, HeadRun, SHARES_NODE, Start, look_asks, next_action, start, unconfirmed_reads,
+    with_test_scoring,
 };
 
 mod repo;
@@ -527,6 +528,50 @@ fn the_test_rows_are_scored_as_the_model_s_train_rows_were_prepared_with_its_wor
             "text.test_words -> score_test.words",
         ]
     );
+}
+
+/// A random split straight into a model of `task`.
+fn split_into_model(task: &str) -> sprisk_contracts::PipelineVersion {
+    flow(
+        json!([
+            { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {} },
+            { "id": "model", "operator": "sprisk.ml.random_forest@3.0.0",
+              "params": { "target": "y", "task": task } },
+        ]),
+        json!([{ "from": "split.train", "to": "model.train" }]),
+    )
+}
+
+#[test]
+fn a_classifier_s_score_measures_the_class_shares_of_its_train_and_test_rows() {
+    let (nodes, edges) = with_test_scoring(&split_into_model("classification")).unwrap();
+
+    let shares = nodes.iter().find(|n| n.id.as_str() == SHARES_NODE).unwrap();
+    assert_eq!(
+        shares.operator.as_str(),
+        "sprisk.validation.class_shares@2.0.0"
+    );
+    assert_eq!(
+        serde_json::to_value(&shares.params).unwrap(),
+        json!({ "target": "y" })
+    );
+    let added: Vec<String> = edges_of(&edges)
+        .into_iter()
+        .filter(|e| e.contains(SHARES_NODE))
+        .collect();
+    assert_eq!(
+        added,
+        [
+            "split.test -> class_shares.test",
+            "split.train -> class_shares.train"
+        ]
+    );
+}
+
+#[test]
+fn a_regression_s_score_has_no_class_shares() {
+    let (nodes, _) = with_test_scoring(&split_into_model("regression")).unwrap();
+    assert!(nodes.iter().all(|n| n.id.as_str() != SHARES_NODE));
 }
 
 #[test]

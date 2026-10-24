@@ -346,6 +346,48 @@ fn an_all_rows_diagnostic_reading_a_label_is_refused() {
     );
 }
 
+const GROUP_OVERLAP: &str = "operators/group_overlap/manifest.yaml";
+
+/// The fixture with the group overlap producer reading the target instead of the item.
+fn overlap_reading_the_target() -> TempDir {
+    let pack = split_decision();
+    let producer = fs::read_to_string(repo(
+        "plugins/validation/operators/group_overlap/manifest.yaml",
+    ))
+    .unwrap();
+    write(pack.path(), GROUP_OVERLAP, &producer);
+    edit(
+        pack.path(),
+        GROUP_OVERLAP,
+        "common.item_identity",
+        "common.target",
+    );
+    pack
+}
+
+#[test]
+fn a_producer_on_the_split_s_test_rows_reading_a_label_is_refused() {
+    let pack = overlap_reading_the_target();
+    assert!(
+        refused(pack.path())
+            .contains("reads the test rows, so it may not read the label common.target"),
+        "{}",
+        refused(pack.path())
+    );
+}
+
+#[test]
+fn a_producer_on_the_test_rows_may_name_the_label_as_a_column_it_drops() {
+    let pack = overlap_reading_the_target();
+    edit(
+        pack.path(),
+        GROUP_OVERLAP,
+        "x-sprisk-column: true,",
+        "x-sprisk-column: true, x-sprisk-excluded: true,",
+    );
+    load(pack.path()).unwrap();
+}
+
 #[test]
 fn an_option_naming_an_unregistered_operator_is_refused() {
     let pack = split_decision();

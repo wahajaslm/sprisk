@@ -6593,6 +6593,31 @@ async fn a_complete_walk_ends_in_a_report_whose_claims_link_to_their_records() {
         !report["limitations"].as_array().unwrap().is_empty(),
         "{report}"
     );
+    // The seal (ADR-0064): the split's promise is checked on features, and the class shares,
+    // which read the test labels, come only with the score.
+    let checked: Vec<&Value> = steps
+        .iter()
+        .filter(|s| s["action"] == "verify")
+        .flat_map(|s| s["verifications"].as_array().unwrap())
+        .collect();
+    assert!(
+        checked
+            .iter()
+            .any(|c| c["verification"] == "no_row_in_both"),
+        "{detail}"
+    );
+    let mut placed = steps
+        .iter()
+        .filter_map(|s| s["effects"].as_array())
+        .flatten()
+        .map(|e| e["operator"].as_str().unwrap_or(""));
+    assert!(placed.all(|o| !o.contains("class_shares")), "{detail}");
+    assert!(
+        claims
+            .iter()
+            .any(|c| c["statement"].as_str().unwrap().starts_with("Class shares")),
+        "{report}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -6694,7 +6719,7 @@ async fn a_promise_that_fails_keeps_the_test_rows_sealed() {
         why.contains("The test rows stay sealed until every promise passes."),
         "{why}"
     );
-    assert!(why.contains("class_shares_kept"), "{why}");
+    assert!(why.contains("no_row_in_both"), "{why}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

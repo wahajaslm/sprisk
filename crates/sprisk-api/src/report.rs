@@ -24,6 +24,8 @@ pub struct Scored<'a> {
     pub answer: &'a str,
     pub run: &'a RunId,
     pub flow: &'a PipelineVersionId,
+    /// What the score's class shares step measured; None for a regression.
+    pub shares: Option<&'a Value>,
 }
 
 /// The report of `scored`, as `id` at `at`. A claim with no record under it is a broken
@@ -43,6 +45,12 @@ pub fn build(scored: &Scored<'_>, id: &str, at: &str) -> Result<Report, String> 
     {
         claims.extend(promise_claims(verified));
     }
+    let mut limitations: Vec<String> = LIMITATIONS.iter().map(|l| (*l).to_owned()).collect();
+    if let Some(shares) = scored.shares {
+        let (claim, drift) = shares_claim(shares, scored.run)?;
+        claims.push(claim);
+        limitations.extend(drift);
+    }
     let answer = json!({
         "statement": scored.answer,
         "evidence": [{ "run": scored.run }, { "pipeline_version": scored.flow }],
@@ -51,9 +59,42 @@ pub fn build(scored: &Scored<'_>, id: &str, at: &str) -> Result<Report, String> 
         "schema_version": "sprisk.report/v1", "id": id, "walk_id": scored.walk,
         "question_version_id": scored.question.id,
         "question": scored.question.objective.value, "answer": answer, "claims": claims,
-        "limitations": LIMITATIONS, "created_at": at,
+        "limitations": limitations, "created_at": at,
     });
     parse(&report.to_string()).map_err(|e| e.to_string())
+}
+
+/// How far a class's share moved between the train and test rows, read with the score, and
+/// a limitation when the measure found it drifted.
+fn shares_claim(shares: &Value, run: &RunId) -> Result<(Value, Option<String>), String> {
+    let field = |name: &str| {
+        shares
+            .get(name)
+            .ok_or_else(|| format!("the class shares have no {name}"))
+    };
+    let gap = field("largest_gap")?
+        .as_f64()
+        .ok_or("largest_gap is not a number")?;
+    let class = field("class")?.as_str().ok_or("class is not text")?;
+    let drifted = field("drifted")?
+        .as_bool()
+        .ok_or("drifted is not true or false")?;
+    let statement = format!(
+        "Class shares, train against test: the largest difference is {:.1}% (class {class}), \
+         on {} train and {} labelled test rows.",
+        gap * 100.0,
+        field("train_rows")?,
+        field("labelled_test_rows")?
+    );
+    let drift = drifted.then(|| {
+        format!(
+            "The test rows' class shares differ from the train rows' by {:.1}% for class \
+             {class}, so the score weighs the classes differently than training did.",
+            gap * 100.0
+        )
+    });
+    let claim = json!({ "statement": statement, "evidence": [{ "run": run }] });
+    Ok((claim, drift))
 }
 
 /// What a decide or apply step chose and why, on its decision and its step.
@@ -120,6 +161,10 @@ mod tests {
     }
 
     fn report_of(steps: &[WalkStep]) -> Result<Report, String> {
+        report_with(steps, None)
+    }
+
+    fn report_with(steps: &[WalkStep], shares: Option<&Value>) -> Result<Report, String> {
         let question: QuestionVersion =
             fixture("question_version", "classification-all-fields.json");
         let walk = steps[0].walk_id.clone();
@@ -132,6 +177,7 @@ mod tests {
             answer: "Test rows, scored once.",
             run: &run,
             flow: &flow,
+            shares,
         };
         build(
             &scored,
@@ -182,5 +228,47 @@ mod tests {
         let err = report_of(&[decided]).unwrap_err();
 
         assert!(err.contains("step 4"), "{err}");
+    }
+
+    #[test]
+    fn class_shares_that_drift_are_a_claim_and_a_limitation_of_the_score() {
+        let applied: WalkStep = fixture("walk_step", "apply.json");
+        let measured = |gap: f64, drifted: bool| {
+            json!({ "largest_gap": gap, "class": "2583", "drifted": drifted, "train_rows": 800,
+                    "labelled_test_rows": 200 })
+        };
+        let (drifted, kept) = (measured(0.12, true), measured(0.004, false));
+
+        let report = report_with(std::slice::from_ref(&applied), Some(&drifted)).unwrap();
+        let claims = serde_json::to_value(&report.claims).unwrap();
+        let last = &claims[claims.as_array().unwrap().len() - 1];
+        assert!(
+            last["statement"]
+                .as_str()
+                .unwrap()
+                .contains("12.0% (class 2583)"),
+            "{last}"
+        );
+        assert_eq!(
+            last["evidence"],
+            json!([{ "run": "run_01JABCDEFGHJKMNPQRSTVWXYZ0" }])
+        );
+        assert!(
+            report.limitations.iter().any(|l| l.contains("class 2583")),
+            "{:?}",
+            report.limitations
+        );
+
+        let report = report_with(&[applied], Some(&kept)).unwrap();
+        assert!(!report.limitations.iter().any(|l| l.contains("class 2583")));
+    }
+
+    #[test]
+    fn class_shares_missing_a_field_are_refused_and_named() {
+        let applied: WalkStep = fixture("walk_step", "apply.json");
+
+        let err = report_with(&[applied], Some(&json!({ "class": "a" }))).unwrap_err();
+
+        assert!(err.contains("no largest_gap"), "{err}");
     }
 }

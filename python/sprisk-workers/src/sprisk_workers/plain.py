@@ -108,6 +108,13 @@ def adapt(
         if isinstance(v, Mapping) and v.get("x-sprisk-local-path") is True
     }
     _check_paths(fn, operator.id.root, files)
+    # A setting marked excluded names a column the step must never read, such as the target on
+    # a check of the test rows (ADR-0064): the column is dropped before the step runs.
+    excluded = {
+        k
+        for k, v in properties.items()
+        if isinstance(v, Mapping) and v.get("x-sprisk-excluded") is True
+    }
     # A code step's ports can be variable names listed in its params (ADR-0031).
     named_in, named_out = named_ports(operator, "input"), named_ports(operator, "output")
 
@@ -120,6 +127,10 @@ def adapt(
             port: _read(paths[port], kind) if port in paths else None
             for port, kind in inputs.items()
         }
+        dropped = [params[k] for k in excluded if k in params]
+        for port, value in values.items():
+            if isinstance(value, pl.DataFrame):
+                values[port] = value.drop(dropped, strict=False)
         named = named_port_names(operator, params, "output")
         expected = dict(outputs) | {name: "table" for name in named}
         try:
