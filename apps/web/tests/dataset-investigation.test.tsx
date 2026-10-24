@@ -1,4 +1,4 @@
-import type { Attempt, AttemptOutput, FlowDecision, FlowDecisions, LoadedTable, PipelineVersion, Report, Walk } from "@sprisk/contracts";
+import type { Attempt, AttemptOutput, FlowDecision, FlowDecisions, LoadedTable, PipelineVersion, Report, Walk, WalkStep } from "@sprisk/contracts";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -81,13 +81,34 @@ const unchanged: FlowDecision = {
   promises: [],
 };
 
+/** The walk's trail: built, ran its look, one decide step per method decision, a rule's
+ * apply, and the score. */
+function trailOf(decisions: FlowDecision[]): WalkStep[] {
+  const at = { schema_version: "sprisk.walk_step/v1" as const, walk_id: walk.id, created_at: "2026-10-24T10:00:00Z" };
+  return [
+    { ...at, round: 0, action: "build", reason: "Load, Split and a baseline model." },
+    { ...at, round: 1, action: "run", reason: "The look." },
+    ...decisions.map((d, i): WalkStep => ({ ...at, round: 2 + i, action: "decide", reason: d.reason, decides: d.decides, option: d.option, assurance: d.assurance })),
+    { ...at, round: 50, action: "apply", reason: "id holds a different value in every row: it names rows, so leave it out.", decides: "data.column_roles", alternative_id: "drop_identifiers" },
+    { ...at, round: 51, action: "run", reason: "Runs again." },
+    { ...at, round: 52, action: "score", reason: "Scored once." },
+  ];
+}
+
+const withEvidence: FlowDecisions = {
+  ...decided,
+  decisions: decided.decisions.map((d) =>
+    d.decides === "data.repeated_items" ? { ...d, evidence: [{ kind: "data.near_duplicate_groups", step: "near_duplicates", fields: { rows: 600, groups: 84, rows_in_groups: 206, largest_group: 6 } }] } : d,
+  ),
+};
+
 function serve(decisions: FlowDecisions = decided, theWalk: Walk = walk) {
   server.use(
     http.get("/api/loaded_tables", () => HttpResponse.json([table])),
     http.get("/api/pipeline_versions", () => HttpResponse.json([flow])),
     http.get("/api/operators", () => HttpResponse.json([...operators, nearDuplicates])),
     http.get(`/api/pipeline_versions/${PV}/decisions`, () => HttpResponse.json(decisions)),
-    http.get(`/api/walks/${walk.id}`, () => HttpResponse.json({ walk: theWalk, steps: [] })),
+    http.get(`/api/walks/${walk.id}`, () => HttpResponse.json({ walk: theWalk, steps: trailOf(decisions.decisions) })),
     http.get(`/api/walks/${walk.id}/report`, () => HttpResponse.json(report)),
     http.get("/api/runs", () => HttpResponse.json([{ schema_version: "sprisk.run/v1", id: RUN, project_id: flow.project_id, pipeline_version_id: PV, status: "succeeded", created_at: flow.created_at }])),
     http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json([measured])),
@@ -110,34 +131,76 @@ describe("a dataset's investigation (ADR-0065)", () => {
     expect(await within(context).findByText((report as Report).question)).toBeInTheDocument();
   });
 
-  it("shows each decision as one analysis: question, interpretation, decision and how it was taken", async () => {
+  it("opens with a summary of what the walk did and what it found", async () => {
     serve();
     await openInvestigation();
-    const card = await screen.findByRole("article", { name: "Does the same item appear in more than one row?" });
-    expect(within(card).getByText("A person answered: Treat rows with matching titles as one item.")).toBeInTheDocument();
-    expect(within(card).getByText("Treat rows with matching titles as one item")).toBeInTheDocument();
-    expect(within(card).getByText("Confirmed by a person")).toBeInTheDocument();
+    const summary = await screen.findByRole("region", { name: "Summary" });
+    expect(summary).toHaveTextContent("asked you 1 question, made 3 decisions and ran the flow 2 times");
+    expect(summary).toHaveTextContent("It then scored the model on the held-out test rows, once.");
+    expect(within(summary).getByText((report as Report).answer.statement)).toBeInTheDocument();
   });
 
-  it("draws the chart the evidence's producer drew, beside the decision", async () => {
+  it("shows the walk at a glance: set up, first look, asked, decided, checked, scored", async () => {
+    serve();
+    await openInvestigation();
+    const glance = await screen.findByRole("list", { name: "The walk at a glance" });
+    expect(within(glance).getAllByRole("listitem").map((i) => i.textContent)).toEqual([
+      "Set upLoad, split, baseline",
+      "First look0 measurements",
+      "Asked you1 question",
+      "Decided3 decisions",
+      "Checked0 of 1 promise hold",
+      "Scoredonce, on test rows",
+    ]);
+  });
+
+  it("tells each decision in walk order: what was found, what was decided, and by whom", async () => {
+    serve();
+    await openInvestigation();
+    const findings = await screen.findByRole("region", { name: "Findings and decisions" });
+    const cards = within(findings).getAllByRole("article");
+    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual([
+      "Does the same item appear in more than one row?",
+      "How are rows divided into training and test so the score is fair?",
+      "Column roles",
+    ]);
+    expect(cards[0]).toHaveTextContent("You answered");
+    expect(within(cards[0]!).getByText("A person answered: Treat rows with matching titles as one item.")).toBeInTheDocument();
+    expect(within(cards[0]!).getByText("Treat rows with matching titles as one item")).toBeInTheDocument();
+    expect(cards[1]).toHaveTextContent("The method decided");
+    expect(cards[2]).toHaveTextContent("A rule decided");
+    expect(within(cards[2]!).getByText("drop identifiers")).toBeInTheDocument();
+  });
+
+  it("draws the chart the evidence's producer drew, large, in its decision", async () => {
     serve();
     await openInvestigation();
     const card = await screen.findByRole("article", { name: "Does the same item appear in more than one row?" });
     expect(await within(card).findByRole("img", { name: "Rows per title group (designation)" })).toBeInTheDocument();
   });
 
-  it("says which rows the producer read", async () => {
-    serve();
+  it("says what the first look measured, for which question, and which rows it read", async () => {
+    serve(withEvidence);
+    await openInvestigation();
+    const looked = await screen.findByRole("region", { name: "What the first look measured" });
+    expect(within(looked).getByText("Does the same item appear in more than one row?")).toBeInTheDocument();
+    expect(await within(looked).findByText("Duplicate titles (normalized) read every row, before the split.")).toBeInTheDocument();
+  });
+
+  it("lists what the method measured, field by field", async () => {
+    serve(withEvidence);
     await openInvestigation();
     const card = await screen.findByRole("article", { name: "Does the same item appear in more than one row?" });
-    expect(await within(card).findByText("Duplicate titles (normalized) read every row, before the split.")).toBeInTheDocument();
+    const table = within(card).getByRole("table", { name: "Measured" });
+    expect(within(table).getByRole("row", { name: "rows in groups 206" })).toBeInTheDocument();
+    expect(within(table).getByRole("row", { name: "largest group 6" })).toBeInTheDocument();
   });
 
   it("never shows a stale promise as holding", async () => {
     serve();
     await openInvestigation();
-    const card = await screen.findByRole("article", { name: "How are rows divided into training and test so the score is fair?" });
-    expect(within(card).getByRole("listitem", { name: "No item has rows in both train and test." })).toHaveTextContent("Stale");
+    const checks = await screen.findByRole("region", { name: "Checks" });
+    expect(within(checks).getByRole("listitem", { name: "No item has rows in both train and test." })).toHaveTextContent("Stale");
   });
 
   it("shows a decision that changed nothing, so a finding is not lost", async () => {
@@ -195,7 +258,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
       ),
       http.get(`/api/pipeline_versions/${OLDER}/decisions`, () => HttpResponse.json({ ...decided, pipeline_version_id: OLDER, decisions: decided.decisions.slice(0, 1) })),
       http.get(`/api/pipeline_versions/${OTHER}/decisions`, () => HttpResponse.json({ ...decided, pipeline_version_id: OTHER, walk_id: newer, decisions: [unchanged] })),
-      http.get(`/api/walks/${newer}`, () => HttpResponse.json({ walk: { ...walk, id: newer, stop: { reason: "needs_person", detail: "One question is open." } }, steps: [] })),
+      http.get(`/api/walks/${newer}`, () => HttpResponse.json({ walk: { ...walk, id: newer, stop: { reason: "needs_person", detail: "One question is open." } }, steps: trailOf([unchanged]) })),
     );
     await openInvestigation();
     const walks = await screen.findByRole("list", { name: "Investigations" });
@@ -214,20 +277,9 @@ describe("a dataset's investigation (ADR-0065)", () => {
     server.use(http.get(`/api/attempts/${measured.id}/outputs`, () => HttpResponse.json([])));
     await openInvestigation();
     const card = await screen.findByRole("article", { name: "Does the same item appear in more than one row?" });
-    await within(card).findByText("Duplicate titles (normalized) read every row, before the split.");
+    await within(card).findByText("A person answered: Treat rows with matching titles as one item.");
     expect(within(card).queryByRole("img")).toBeNull();
     expect(within(card).queryByText(/Edit and run it/)).toBeNull();
   });
 
-  it("shows what the method observed, field by field, from the evidence it read", async () => {
-    const observed: FlowDecision = {
-      ...unchanged,
-      steps: ["target_shape"],
-      evidence: [{ kind: "target.shape", step: "target_shape", fields: { rows: 484, rarest_share: 0.09166666666666666, numeric: false, labels: ["10", "40"], columns: [] } }],
-    };
-    serve({ ...decided, decisions: [observed] });
-    await openInvestigation();
-    const card = await screen.findByRole("article", { name: "Are some classes much rarer than others?" });
-    expect(within(card).getByText("rows 484 · rarest share 0.0917 · numeric no · labels 10, 40 · columns none")).toBeInTheDocument();
-  });
 });

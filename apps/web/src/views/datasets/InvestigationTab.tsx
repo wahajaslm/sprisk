@@ -11,9 +11,9 @@ import { BodySection } from "../../components/ui/RowList.tsx";
 import { latestByNode } from "../../flow/latest.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { FigurePort } from "../inspector/FiguresTab.tsx";
-import { TAKEN } from "../inspector/MethodDecision.tsx";
 import { PromiseList } from "../PromiseList.tsx";
 import { when } from "../when.ts";
+import { type DecidedBy, type StoryDecision, walkStory } from "./walkStory.ts";
 
 /** Flow versions whose decisions are read for one table. */
 const MAX_VERSIONS = 20;
@@ -96,6 +96,18 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
     const node = pipeline?.nodes.find((n) => n.id === step);
     return node ? operators.data?.get(node.operator) : undefined;
   };
+  if (walk.isError) return <p role="alert" className="error">The walk could not be read: {walk.error.message}</p>;
+  if (!walk.data) return <Loading text="Reading the walk…" />;
+  const story = walkStory(walk.data.steps, investigation.decisions);
+  const promises = investigation.decisions.flatMap((d) => d.promises.map((p) => ({ ...p, question: d.question })));
+  const holding = promises.filter((p) => p.status === "pass").length;
+  const looked = investigation.decisions.flatMap((d) =>
+    (d.evidence ?? []).flatMap((e) => {
+      const operator = operatorOf(e.step);
+      const scope = operator && scopeWords(operator);
+      return operator && scope ? [{ key: `${d.decides}:${e.step}`, question: d.question, text: `${operator.title} ${scope}` }] : [];
+    }),
+  );
   return (
     <>
       <dl role="group" aria-label="Investigation context" className="ds-context">
@@ -104,20 +116,76 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
           <dd>{dataset.name}</dd>
         </div>
         <div>
-          <dt>Investigation</dt>
+          <dt>Question</dt>
           <dd>{question ?? `Walk ${investigation.walkId.slice(-6)}`}</dd>
         </div>
         <div>
           <dt>Walk</dt>
-          <dd>{stopped ? walkState(stopped) : "…"}</dd>
+          <dd>{walkState(walk.data.walk)}</dd>
         </div>
       </dl>
-      {walk.isError && <p role="alert" className="error">The walk could not be read: {walk.error.message}</p>}
-      <BodySection title="Analyses" note="One per question a method answered: what it read, how it was interpreted, what was decided, and whether its promises hold on this version.">
-        {investigation.decisions.map((d) => (
-          <Analysis key={d.decides} decision={d} investigation={investigation} operatorOf={operatorOf} latest={latest} />
+
+      <section className="ds-story-summary" aria-label="Summary">
+        <p>
+          {`The walk read ${dataset.name} (${dataset.total_rows.toLocaleString()} rows) to answer this question. It looked at the data once before deciding anything, asked you ${count(story.asked, "question")}, made ${count(story.decisions.length, "decision")} and ran the flow ${count(story.runs, "time")}. `}
+          {story.scored ? "It then scored the model on the held-out test rows, once." : "It has not scored the test rows."}
+        </p>
+        {report.data ? <p className="ds-result">{report.data.answer.statement}</p> : walk.data.walk.stop && <p className="ds-result muted">{walk.data.walk.stop.detail}</p>}
+      </section>
+
+      <ol className="ds-glance" aria-label="The walk at a glance">
+        <li>
+          <strong>Set up</strong>
+          <span>Load, split, baseline</span>
+        </li>
+        <li>
+          <strong>First look</strong>
+          <span>{count(looked.length, "measurement")}</span>
+        </li>
+        <li>
+          <strong>Asked you</strong>
+          <span>{count(story.asked, "question")}</span>
+        </li>
+        <li>
+          <strong>Decided</strong>
+          <span>{count(story.decisions.length, "decision")}</span>
+        </li>
+        <li>
+          <strong>Checked</strong>
+          <span>{promises.length === 0 ? "no promises" : `${holding} of ${count(promises.length, "promise")} hold`}</span>
+        </li>
+        <li>
+          <strong>Scored</strong>
+          <span>{story.scored ? "once, on test rows" : "not yet"}</span>
+        </li>
+      </ol>
+
+      {looked.length > 0 && (
+        <BodySection title="What the first look measured" note="Before deciding anything, the walk ran the flow once and measured what each question needs.">
+          <ul className="ds-looked">
+            {looked.map((l) => (
+              <li key={l.key}>
+                <span className="ds-looked-question">{l.question}</span>
+                <span className="muted">{l.text}</span>
+              </li>
+            ))}
+          </ul>
+        </BodySection>
+      )}
+
+      <BodySection title="Findings and decisions" note="In the order the walk made them. Each says what was found, what was measured, and what was decided, by whom.">
+        {story.decisions.length === 0 && <p className="muted">The walk made no decision yet.</p>}
+        {story.decisions.map((d, i) => (
+          <Finding key={d.round} number={i + 1} entry={d} investigation={investigation} operatorOf={operatorOf} latest={latest} />
         ))}
       </BodySection>
+
+      {promises.length > 0 && (
+        <BodySection title="Checks" note="What the decisions promised, checked on what the flow actually wrote. Stale is never shown as holding.">
+          <PromiseList promises={promises} />
+        </BodySection>
+      )}
+
       <ReportSection walk={stopped} report={report.data} failure={report.error?.message} />
     </>
   );
@@ -125,101 +193,88 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
 
 const walkState = (walk: Walk) => (walk.stop ? walk.stop.reason.replaceAll("_", " ") : "walking");
 
-/** One decision as the specification's connected analysis: the chart its producer drew first,
- * then which rows were read, what was observed, the interpretation, the decision and its
- * promises. */
-function Analysis({
-  decision,
+const count = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
+
+const BY: Record<DecidedBy, string> = { person: "You answered", method: "The method decided", rule: "A rule decided" };
+
+/** One decision of the walk: the chart its evidence drew, large, then what was found, what was
+ * measured and what was decided, by whom. */
+function Finding({
+  number,
+  entry,
   investigation,
   operatorOf,
   latest,
 }: {
-  decision: FlowDecision;
+  number: number;
+  entry: StoryDecision;
   investigation: Investigation;
   operatorOf: (step: string) => Operator | undefined;
   latest: Map<string, Attempt>;
 }) {
   const showRun = useSelection((s) => s.showRun);
   const setNav = useSelection((s) => s.setNav);
-  const charts = decision.steps.flatMap((step) =>
-    (operatorOf(step)?.outputs ?? []).filter((o) => o.kind === "figure").map((o) => ({ step, port: o.name })),
-  );
-  const read = decision.steps.flatMap((step) => {
-    const operator = operatorOf(step);
-    const words = operator && scopeWords(operator);
-    return words ? [`${operator.title} ${words}`] : [];
-  });
-  const first = decision.steps[0];
+  const decision = entry.decision;
+  const producers = [...new Set([...(decision?.evidence ?? []).map((e) => e.step), ...(decision?.steps ?? [])])];
+  const charts = producers.flatMap((step) => (operatorOf(step)?.outputs ?? []).filter((o) => o.kind === "figure").map((o) => ({ step, port: o.name })));
+  const measured = (decision?.evidence ?? []).flatMap((e) => Object.entries(e.fields).map(([name, value]) => ({ key: `${e.step}:${name}`, name: name.replaceAll("_", " "), value: valueWords(value) })));
+  const first = decision?.steps[0];
   return (
-    <article className="ds-analysis" aria-label={decision.question}>
-      <header className="ds-analysis-head">
-        <p className="rd-label">{decision.activity}</p>
-        <h3 className="rd-title">{decision.question}</h3>
+    <article className="ds-finding" aria-label={entry.title}>
+      <header className="ds-finding-head">
+        <span className="ds-finding-number">{number}</span>
+        <div>
+          <h3 className="ds-finding-title">{entry.title}</h3>
+          <p className="ds-finding-by">
+            {BY[entry.by]}
+            {decision?.activity ? ` · ${decision.activity}` : ""}
+          </p>
+        </div>
       </header>
       {charts.length > 0 && (
-        <div className="ds-analysis-charts">
+        <div className="ds-finding-charts">
           {charts.map((c) => (
             <AnalysisChart key={`${c.step}:${c.port}`} attempt={latest.get(c.step)} port={c.port} />
           ))}
         </div>
       )}
-      <dl className="ds-analysis-facts">
-        {read.length > 0 && (
+      <div className="ds-finding-body">
+        <div>
+          <p className="rd-label">Found</p>
+          <p>{entry.finding}</p>
+        </div>
+        {measured.length > 0 && (
           <div>
-            <dt>Read</dt>
-            <dd>
-              {read.map((r) => (
-                <span key={r} className="ds-line">
-                  {r}
-                </span>
-              ))}
-            </dd>
-          </div>
-        )}
-        {decision.evidence && decision.evidence.length > 0 && (
-          <div>
-            <dt>Observed</dt>
-            <dd>
-              {decision.evidence.map((e) => (
-                <span key={`${e.step}:${e.kind}`} className="ds-line mono">
-                  {fieldWords(e.fields)}
-                </span>
-              ))}
-            </dd>
+            <p className="rd-label">Measured</p>
+            <table className="ds-measured" aria-label="Measured">
+              <tbody>
+                {measured.map((m) => (
+                  <tr key={m.key}>
+                    <th scope="row">{m.name}</th>
+                    <td className="mono">{m.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
         <div>
-          <dt>Interpretation</dt>
-          <dd>{decision.reason}</dd>
+          <p className="rd-label">Decided</p>
+          <p className="ds-choice">{entry.choice || "—"}</p>
+          {decision && decision.steps.length === 0 && <p className="muted">Leaves the flow unchanged.</p>}
+          {first && (
+            <Button
+              size="sm"
+              onClick={() => {
+                showRun(investigation.pipelineVersionId, investigation.runId, first);
+                setNav("Flow");
+              }}
+            >
+              Open in flow
+            </Button>
+          )}
         </div>
-        <div>
-          <dt>Decision</dt>
-          <dd>
-            <span className="ds-line">{decision.label}</span>
-            <span className="rd-tag">{TAKEN[decision.assurance]}</span>
-          </dd>
-        </div>
-        {decision.steps.length === 0 && (
-          <div>
-            <dt>Effect</dt>
-            <dd>Leaves the flow unchanged.</dd>
-          </div>
-        )}
-      </dl>
-      <PromiseList promises={decision.promises} />
-      {first && (
-        <div className="ds-analysis-actions">
-          <Button
-            size="sm"
-            onClick={() => {
-              showRun(investigation.pipelineVersionId, investigation.runId, first);
-              setNav("Flow");
-            }}
-          >
-            Open in flow
-          </Button>
-        </div>
-      )}
+      </div>
     </article>
   );
 }
@@ -237,18 +292,12 @@ function AnalysisChart({ attempt, port }: { attempt: Attempt | undefined; port: 
   );
 }
 
-/** Evidence fields as the method saw them: "rows 484 · rarest share 0.0917 · columns none". */
-function fieldWords(fields: Record<string, unknown>): string {
-  return Object.entries(fields)
-    .map(([name, value]) => `${name.replaceAll("_", " ")} ${valueWords(value)}`)
-    .join(" · ");
-}
-
 function valueWords(value: unknown): string {
   if (Array.isArray(value)) return value.length === 0 ? "none" : value.join(", ");
   if (typeof value === "boolean") return value ? "yes" : "no";
   // Shares arrive with every digit a float has; three significant ones say the same.
   if (typeof value === "number" && !Number.isInteger(value)) return String(Number(value.toPrecision(3)));
+  if (typeof value === "number") return value.toLocaleString();
   return String(value);
 }
 

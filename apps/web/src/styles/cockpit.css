@@ -1534,21 +1534,38 @@ p { margin: 0; }
 .ds-context div { display: flex; gap: var(--space-2); min-width: 0; }
 .ds-context dt { color: var(--muted); }
 .ds-context dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
-.ds-analysis { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); grid-template-areas: "head head" "charts facts" "charts promises" "actions actions"; gap: var(--space-3) var(--space-5); padding: var(--space-4); margin-bottom: var(--space-3); border: 1px solid var(--alpha-05); border-radius: 4px; }
-.ds-analysis:not(:has(.ds-analysis-charts figure)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "facts" "promises" "actions"; }
-.ds-analysis-head { grid-area: head; display: grid; gap: var(--space-1); }
-.ds-analysis-charts { grid-area: charts; display: grid; gap: var(--space-3); align-content: start; min-width: 0; }
-.ds-analysis-charts .plotly-figure { min-height: 300px; }
-.ds-analysis-facts { grid-area: facts; display: grid; gap: var(--space-3); margin: 0; align-content: start; }
-.ds-analysis-facts dt { color: var(--muted); font-size: var(--text-xs); }
-.ds-analysis-facts dd { margin: 0; display: grid; gap: var(--space-1); color: var(--soft); }
-.ds-analysis > .promise-list, .ds-analysis > .muted { grid-area: promises; }
-.ds-analysis-actions { grid-area: actions; }
+.ds-story-summary { display: grid; gap: var(--space-3); max-width: 1200px; }
+.ds-story-summary p { margin: 0; color: var(--soft); line-height: 1.6; }
+.ds-result { padding: var(--space-3) var(--space-4); border-left: 2px solid var(--ink-0); background: var(--alpha-04); color: var(--ink) !important; }
+.ds-glance { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; margin: 0; padding: 0; list-style: none; max-width: 1200px; counter-reset: glance; }
+.ds-glance li { display: grid; gap: var(--space-1); padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4); border: 1px solid var(--alpha-05); border-left: 0; counter-increment: glance; }
+.ds-glance li:first-child { border-left: 1px solid var(--alpha-05); }
+.ds-glance strong { font-weight: 500; color: var(--ink); font-size: var(--text-sm); }
+.ds-glance strong::before { content: counter(glance) "  "; color: var(--muted); font-family: var(--mono); }
+.ds-glance span { color: var(--muted); font-size: var(--text-xs); }
+.ds-looked { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.ds-looked li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); padding: var(--space-2) 0; border-bottom: 1px solid var(--alpha-04); }
+.ds-looked-question { color: var(--ink); }
+.ds-finding { display: grid; gap: var(--space-4); padding: var(--space-5); margin-bottom: var(--space-4); border: 1px solid var(--alpha-05); border-radius: 4px; }
+.ds-finding-head { display: flex; gap: var(--space-3); align-items: flex-start; }
+.ds-finding-number { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border: 1px solid var(--alpha-08); border-radius: 50%; font-family: var(--mono); font-size: var(--text-xs); color: var(--soft); }
+.ds-finding-title { margin: 0; font-size: var(--text-lg); font-weight: 500; color: var(--ink); }
+.ds-finding-by { margin: var(--space-1) 0 0; font-size: var(--text-xs); color: var(--muted); }
+.ds-finding-charts { display: grid; gap: var(--space-3); }
+.ds-finding-charts .plotly-figure { min-height: 420px; }
+.ds-finding-body { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+.ds-finding-body p { margin: 0 0 var(--space-2); color: var(--soft); line-height: 1.55; }
+.ds-choice { color: var(--ink) !important; }
+.ds-measured { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+.ds-measured th { text-align: left; font-weight: 400; color: var(--muted); padding: 3px var(--space-3) 3px 0; }
+.ds-measured td { text-align: right; color: var(--ink); padding: 3px 0; }
+.ds-measured tr + tr { border-top: 1px solid var(--alpha-04); }
 .ds-line { display: block; }
 .ds-answer { margin: 0 0 var(--space-3); color: var(--ink); }
 .ds-claims, .ds-limitations { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding-left: var(--space-4); color: var(--soft); }
-@media (max-width: 760px) {
-  .ds-analysis { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "charts" "facts" "promises" "actions"; }
+@media (max-width: 900px) {
+  .ds-glance { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ds-finding-body, .ds-looked li { grid-template-columns: minmax(0, 1fr); }
 }
 .status-failed { color: var(--alert); }
 .metric-cell { display: inline-flex; align-items: center; gap: var(--space-2); font: var(--text-sm) var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
