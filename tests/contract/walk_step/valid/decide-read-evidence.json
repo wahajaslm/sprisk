@@ -1,0 +1,47 @@
+{
+  "schema_version": "sprisk.walk_step/v1",
+  "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "round": 4,
+  "action": "decide",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "made_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "effects": [
+    {
+      "kind": "replace_node",
+      "node_id": "split",
+      "operator": "sprisk.validation.group_split@1.0.0",
+      "params": {
+        "group_column": "item_group",
+        "test_fraction": 0.2,
+        "seed": 42
+      }
+    },
+    {
+      "kind": "set_input",
+      "node_id": "split",
+      "port": "data",
+      "from": "near_duplicates.data"
+    }
+  ],
+  "reason": "Rows of one item stay on one side, so no item is scored on rows the model saw.",
+  "created_at": "2026-10-22T10:02:00Z",
+  "method": "methodology.supervised.split_method@1.0.0",
+  "decides": "split.method",
+  "option": "item_groups",
+  "assurance": "rule",
+  "promises": [
+    "no_group_overlap"
+  ],
+  "evidence": [
+    {
+      "kind": "evaluation.group_overlap",
+      "step": "group_overlap",
+      "fields": {
+        "overlapping": 0,
+        "overlapping_groups": [],
+        "train_groups": 332,
+        "test_groups": 83
+      }
+    }
+  ]
+}

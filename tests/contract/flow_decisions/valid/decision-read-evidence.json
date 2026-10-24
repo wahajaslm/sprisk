@@ -1,0 +1,58 @@
+{
+  "schema_version": "sprisk.flow_decisions/v1",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "decisions": [
+    {
+      "decides": "data.repeated_items",
+      "method": "methodology.common.repeated_items@1.0.0",
+      "activity": "Repeated observations",
+      "question": "Does the same item appear in more than one row?",
+      "option": "group_by_title",
+      "label": "Treat rows with matching titles as one item",
+      "reason": "Rows with matching titles are the same item.",
+      "assurance": "rule",
+      "steps": [
+        "near_duplicates",
+        "group_overlap"
+      ],
+      "promises": [],
+      "evidence": [
+        {
+          "kind": "evaluation.group_overlap",
+          "step": "group_overlap",
+          "fields": {
+            "overlapping": 0,
+            "overlapping_groups": [],
+            "train_groups": 332,
+            "test_groups": 83
+          }
+        }
+      ]
+    },
+    {
+      "decides": "split.method",
+      "method": "methodology.supervised.split_method@1.0.0",
+      "activity": "Fair evaluation",
+      "question": "How are rows divided into training and test so the score is fair?",
+      "option": "item_groups",
+      "label": "Keep each item's rows on one side",
+      "reason": "Rows of one item stay on one side, so no item is scored on rows the model saw.",
+      "assurance": "rule",
+      "steps": [
+        "split",
+        "group_overlap"
+      ],
+      "promises": [
+        {
+          "verification": "no_group_overlap",
+          "promise": "No item has rows in both train and test.",
+          "status": "stale",
+          "detail": "The split, or a step before it, changed since this was checked. Last time: No item is in both sides (332 train, 83 test items).",
+          "step": "group_overlap",
+          "last_result": "pass"
+        }
+      ]
+    }
+  ]
+}

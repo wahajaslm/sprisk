@@ -1427,6 +1427,15 @@ class PromiseResult(StrEnum):
     not_evaluated = "not_evaluated"
 
 
+class UsedEvidence(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: EvidenceKind
+    step: Annotated[NodeId, Field(description="The producer step that measured it.")]
+    fields: Annotated[dict[str, Any], Field(description="The fields as the method saw them.")]
+
+
 class PromiseStanding(StrEnum):
     pass_ = "pass"
     fail = "fail"
@@ -3113,6 +3122,12 @@ class MethodologyDecisionByMethod(StrictModel):
         list[VerificationName] | None,
         Field(description="The verifications the option promises, by name. Absent: none."),
     ] = None
+    evidence: Annotated[
+        list[UsedEvidence] | None,
+        Field(
+            description="What the method read when it chose by itself. Absent: a person answered, or it read none."
+        ),
+    ] = None
     created_at: Timestamp
 
 
@@ -3415,6 +3430,12 @@ class WalkStep(StrictModel):
             description="The verifications a decide step's option promises, by name. Absent: none."
         ),
     ] = None
+    evidence: Annotated[
+        list[UsedEvidence] | None,
+        Field(
+            description="What a decide step's method read, when it chose by itself. Absent: a person answered, or it read no evidence."
+        ),
+    ] = None
     verifications: Annotated[
         list[PromiseCheck] | None,
         Field(
@@ -3455,11 +3476,15 @@ class FlowDecision(StrictModel):
     steps: Annotated[
         list[NodeId],
         Field(
-            description="The steps it shaped: those its patch changed, those its bindings read, and those that measured its promises."
+            description="The steps it shaped or rested on: those its patch changed, those its bindings read, those that measured its promises, and those that measured the evidence it read."
         ),
     ]
     bindings: Annotated[
         list[Binding] | None, Field(description="The bindings it made. Absent: none.")
+    ] = None
+    evidence: Annotated[
+        list[UsedEvidence] | None,
+        Field(description="What the method read, with the step that measured it. Absent: none."),
     ] = None
     promises: list[PromiseStatus]
 
