@@ -257,6 +257,7 @@ function StepButtons({ id, live, actions }: { id: string; live: boolean; actions
       act();
     },
   });
+  // `nodrag`: pressing a step's button never starts dragging the step (React Flow).
   const runLabel = live ? `${id} is running` : `Run from ${id}`;
   const deleteTitle = readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : `Delete step ${id}`;
   return (
@@ -264,7 +265,7 @@ function StepButtons({ id, live, actions }: { id: string; live: boolean; actions
       <span
         role="button"
         tabIndex={0}
-        className={`node-hover-btn run${live ? " live" : ""}`}
+        className={`node-hover-btn nodrag run${live ? " live" : ""}`}
         title={live ? runLabel : `${runLabel}: it and every step after it run again`}
         aria-label={runLabel}
         aria-disabled={live}
@@ -277,7 +278,7 @@ function StepButtons({ id, live, actions }: { id: string; live: boolean; actions
       <span
         role="button"
         tabIndex={0}
-        className="node-hover-btn del"
+        className="node-hover-btn nodrag del"
         title={deleteTitle}
         aria-label={`Delete ${id}`}
         aria-disabled={readers.length > 0}
