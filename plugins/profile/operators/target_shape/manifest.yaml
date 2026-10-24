@@ -1,0 +1,23 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.target_shape@1.0.0
+title: Target shape
+capability_class: analyzer
+description: Measures the target on the train rows - how many labels, numbers or not, whole numbers or not, and the rarest label's share (ADR-0063).
+entrypoint: sprisk_profile.target_shape:target_shape
+# The train rows the split writes, never the test rows.
+attach: { role: split, side: output }
+concepts: { target: common.target }
+produces:
+  target.shape:
+    fields: { rows: integer, distinct: integer, numeric: boolean, whole_numbers: boolean, rarest_share: number }
+inputs: [{ name: train, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [target]
+  properties:
+    target: { type: string, minLength: 1, x-sprisk-column: true, description: "The column the model predicts." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }
