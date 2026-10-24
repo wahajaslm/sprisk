@@ -2,13 +2,14 @@ import { useState, useMemo } from "react";
 import type { Fact, QuestionVersion, TaskType, Unknown } from "@sprisk/contracts";
 import { ulid } from "ulid";
 
-import { useLoadedTables } from "../../api/datasets.ts";
+import { useLoadedTables, useDatasetProfile } from "../../api/datasets.ts";
 import { usePipelineVersions, useSavePipelineVersion } from "../../api/hooks.ts";
 import { useQuestionVersions, useSaveQuestionVersion } from "../../api/questions.ts";
+import { inferQuestionLedger } from "../../api/copilot.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Tag } from "../../components/ui/Tag.tsx";
-import { SendIcon } from "../Icons.tsx";
+import { SendIcon, SparkIcon } from "../Icons.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { stepTitle } from "../../flow/stages.ts";
 import { timestamp } from "../../flow/edit.ts";
@@ -40,10 +41,15 @@ export function ObjectivePage() {
   const [formFalseNegative, setFormFalseNegative] = useState("");
   const [formFalsePositive, setFormFalsePositive] = useState("");
   const [formError, setFormError] = useState<string>();
+  const [isInferring, setIsInferring] = useState(false);
+  const [copilotClarification, setCopilotClarification] = useState<string>();
 
   const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
   const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
   const tables = useMemo(() => tablesQuery.data ?? [], [tablesQuery.data]);
+
+  const activeTable = tables[0];
+  const profileQuery = useDatasetProfile(activeTable?.artifact.id);
 
   const currentPipeline = useMemo(
     () => pipelines.find((p) => p.id === pipelineVersionId),
@@ -56,6 +62,28 @@ export function ObjectivePage() {
     }
     return questions[0];
   }, [questions, currentPipeline]);
+
+  const handleInferLedger = async (reqText: string) => {
+    if (!reqText.trim()) return;
+    setIsInferring(true);
+    setFormError(undefined);
+    try {
+      const res = await inferQuestionLedger({
+        userRequest: reqText,
+        datasetProfile: profileQuery.data,
+        investigationId: currentQuestion?.investigation_id,
+      });
+      setCopilotClarification(res.copilotClarification);
+      openEditor(res.question);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to infer ledger with Copilot.";
+      setFormError(msg);
+      openEditor();
+      setFormObjective(reqText);
+    } finally {
+      setIsInferring(false);
+    }
+  };
 
   const openEditor = (base?: QuestionVersion) => {
     if (base) {
@@ -157,14 +185,22 @@ export function ObjectivePage() {
 
   // Empty state when no question versions exist at the backend yet
   if (questions.length === 0 && !isEditing) {
+    if (isInferring) {
+      return (
+        <div className="single-panel-layout objective-page-layout">
+          <main className="center-screen objective-empty-screen">
+            <Loading text="Copilot is analyzing dataset profile and formulating the question ledger with Qwen 2.5…" pad />
+          </main>
+        </div>
+      );
+    }
     return (
       <div className="single-panel-layout objective-page-layout">
         <main className="center-screen objective-empty-screen">
           <div className="objective-empty-card">
             <h1 className="objective-empty-title">What do you want to find out?</h1>
             <p className="objective-empty-sub">
-              Describe the investigation goal in your own words. Sprisk records the question as an immutable revision
-              that guides methodology decisions and flow design.
+              Describe the investigation goal in your own words. Sprisk Copilot extracts your objective, identifies target and entity columns grounded by the dataset profile, and drafts the question ledger.
             </p>
 
             <div className="objective-input-box">
@@ -178,22 +214,25 @@ export function ObjectivePage() {
                 className="objective-textarea"
                 value={formObjective}
                 onChange={(e) => setFormObjective(e.target.value)}
-                placeholder="e.g. Predict which customers will churn within the next 90 days."
+                placeholder="e.g. Predict product category (prdtypecode) from title and description."
                 rows={3}
               />
               <div className="objective-input-foot">
-                <div className="objective-input-actions">
+                <div className="objective-input-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Tag tone="default">Objective</Tag>
+                  {activeTable && (
+                    <span style={{ fontSize: "var(--fs-12)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 4 }}>
+                      <SparkIcon size={12} />
+                      Grounded by {activeTable.name} profile
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
                   className="objective-send-btn"
-                  disabled={!formObjective.trim()}
-                  onClick={() => {
-                    openEditor();
-                    setFormObjective(formObjective);
-                  }}
-                  title="Continue to question specification"
+                  disabled={!formObjective.trim() || isInferring}
+                  onClick={() => handleInferLedger(formObjective)}
+                  title="Infer ledger with Copilot"
                 >
                   <SendIcon />
                 </button>
@@ -228,6 +267,18 @@ export function ObjectivePage() {
             </button>
           </div>
           <div className="subtabs-right" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {activeTable && (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={isInferring}
+                onClick={() => handleInferLedger(currentQuestion?.objective.value || "")}
+                title="Use Qwen 2.5 Copilot to re-infer ledger facts from current objective and data profile"
+              >
+                <SparkIcon size={13} style={{ marginRight: 4 }} />
+                {isInferring ? "Inferring…" : "Infer with Copilot"}
+              </Button>
+            )}
             <Button variant="secondary" size="sm" onClick={() => openEditor(currentQuestion)}>
               Revise question
             </Button>
@@ -239,6 +290,29 @@ export function ObjectivePage() {
 
         {activeTab === "ledger" && currentQuestion ? (
           <div className="objective-scroll-body">
+            {copilotClarification && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: "12px 16px",
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-panel)",
+                  borderRadius: "var(--radius-sm)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fs-12-5)", color: "var(--accent-primary)", fontWeight: "var(--fw-medium)" }}>
+                  <SparkIcon size={14} />
+                  <span>Copilot Grounded Clarification</span>
+                </div>
+                <div style={{ fontSize: "var(--fs-13)", color: "var(--text-secondary)", lineHeight: 1.45 }}>
+                  {copilotClarification}
+                </div>
+              </div>
+            )}
+
             {/* Headline Box */}
             <div className="objective-headline-box">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -486,6 +560,29 @@ export function ObjectivePage() {
                 <div className="ds-error-banner" role="alert" style={{ margin: "16px 20px 0" }}>
                   <span style={{ fontSize: 14 }}>⚠</span>
                   <div style={{ flex: 1 }}>{formError}</div>
+                </div>
+              )}
+
+              {copilotClarification && (
+                <div
+                  style={{
+                    margin: "14px 20px 0",
+                    padding: "10px 14px",
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-panel)",
+                    borderRadius: "var(--radius-sm)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fs-12-5)", color: "var(--accent-primary)", fontWeight: "var(--fw-medium)" }}>
+                    <SparkIcon size={14} />
+                    <span>Copilot Grounded Proposal</span>
+                  </div>
+                  <div style={{ fontSize: "var(--fs-13)", color: "var(--text-secondary)", lineHeight: 1.45 }}>
+                    {copilotClarification}
+                  </div>
                 </div>
               )}
 

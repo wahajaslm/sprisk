@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Attempt } from "@sprisk/contracts";
 
 import { useRunAttempts } from "../api/hooks.ts";
+import { askCopilot } from "../api/copilot.ts";
 import { hasOutputs, isGateNode } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
@@ -16,6 +17,7 @@ export function Copilot() {
   const attempts = useRunAttempts(pipelineVersionId, runId);
   const { copilotOpen, toggleCopilot } = useWorkbench();
   const [inputText, setInputText] = useState("");
+  const [isSending, setIsSending] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ role: "assistant" | "user"; text: string }[]>([]);
 
   if (!copilotOpen) {
@@ -53,31 +55,38 @@ export function Copilot() {
         ? "German Credit · 7 steps"
         : `${nav} · Context`;
 
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || isSending) return;
+    const userMsg = { role: "user" as const, text };
+    const nextMessages = [...chatMessages, userMsg];
+    setChatMessages(nextMessages);
+    setIsSending(true);
+    try {
+      const reply = await askCopilot(
+        nextMessages.map((m) => ({ role: m.role, content: m.text })),
+        contextText,
+      );
+      setChatMessages([...nextMessages, { role: "assistant", text: reply }]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error contacting Copilot";
+      setChatMessages([
+        ...nextMessages,
+        { role: "assistant", text: `Sorry, I couldn't reach local Qwen 2.5: ${msg}` },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const handleSend = () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || isSending) return;
     const text = inputText;
     setInputText("");
-    setChatMessages((prev) => [...prev, { role: "user", text }]);
-    setTimeout(() => {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: `Analyzing ${contextText.toLowerCase()}: "${text}". Studio recommendation updated for the pipeline graph.`,
-        },
-      ]);
-    }, 400);
+    void sendMessage(text);
   };
 
   const handleChipClick = (suggestion: string) => {
-    setChatMessages((prev) => [
-      ...prev,
-      { role: "user", text: suggestion },
-      {
-        role: "assistant",
-        text: `Executing "${suggestion}" for ${contextText.toLowerCase()}. Parameters and lineage verified.`,
-      },
-    ]);
+    void sendMessage(suggestion);
   };
 
   return (
@@ -196,6 +205,13 @@ export function Copilot() {
               {m.text}
             </CopilotMessage>
           ))
+        )}
+        {isSending && (
+          <CopilotMessage role="assistant">
+            <span style={{ fontStyle: "italic", color: "var(--text-secondary)" }}>
+              Copilot is thinking with Qwen 2.5…
+            </span>
+          </CopilotMessage>
         )}
       </div>
 
