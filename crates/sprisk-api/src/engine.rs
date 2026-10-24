@@ -377,6 +377,12 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     )
     .map_err(resolve_error)?;
     let mut asks = readiness.asks;
+    let read = Read {
+        head: &pipeline,
+        effective: &effective,
+        operators: &operators,
+        measured: &fields,
+    };
     // A method that asks is asked again each round until a person answers: the one list is
     // built from the methods' current asks, never from a stored copy.
     for Ready { method, request } in readiness.ready {
@@ -397,10 +403,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
                 assurance: MethodAssurance::Confirmed,
                 reason: format!("A person answered: {label}."),
             };
-            return record_decide(
-                state, walk, round, &pipeline, &effective, &operators, taking,
-            )
-            .await;
+            return record_decide(state, walk, round, &read, taking).await;
         }
         let decided = session
             .decide(&request)
@@ -416,10 +419,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             assurance: MethodAssurance::Rule,
             reason: decided.reason.to_string(),
         };
-        return record_decide(
-            state, walk, round, &pipeline, &effective, &operators, taking,
-        )
-        .await;
+        return record_decide(state, walk, round, &read, taking).await;
     }
     if looking {
         asks.extend(look_asks(&review, &question, &state.rules).map_err(resolve_error)?);
@@ -655,24 +655,33 @@ struct Taking<'m> {
     reason: String,
 }
 
-/// Records the decide step of `taking` on `head`: the bindings it made, its promises and its
+/// What a round read before a method decides: the head, the bindings in force, the
+/// registered operators and what the head's run measured, by evidence kind.
+struct Read<'r> {
+    head: &'r PipelineVersion,
+    effective: &'r Effective,
+    operators: &'r [Operator],
+    measured: &'r BTreeMap<String, Value>,
+}
+
+/// Records the decide step of `taking` on the head: the bindings it made, its promises and its
 /// patch. A patch is stored as a new version the walk's head moves to.
 async fn record_decide(
     state: &AppState,
     mut walk: Walk,
     round: usize,
-    head: &PipelineVersion,
-    effective: &Effective,
-    operators: &[Operator],
+    read: &Read<'_>,
     taking: Taking<'_>,
 ) -> Result<WalkStatus, ApiError> {
+    let head = read.head;
     let applied = apply_option(
         taking.method,
         &taking.option,
         taking.assurance,
-        &effective.bindings,
+        &read.effective.bindings,
         head,
-        operators,
+        read.operators,
+        read.measured,
     )
     .map_err(resolve_error)?;
     let mut decided = json!({

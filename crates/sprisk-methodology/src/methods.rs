@@ -8,7 +8,8 @@ use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
 use serde_json::json;
 use sprisk_contracts::{
-    Concept, ConceptKind, ConceptSet, Method, MethodFiles, MethodReplace, Operator, OperatorScope,
+    Concept, ConceptKind, ConceptSet, Method, MethodFiles, MethodInsert, MethodReplace, Operator,
+    OperatorScope,
 };
 
 use crate::catalog::{CatalogError, parse_yaml, read};
@@ -202,6 +203,58 @@ fn check_method(
         if let Some(replace) = &action.replace {
             check_replace(replace, provided).map_err(in_option)?;
         }
+        if let Some(insert) = &action.insert {
+            check_insert(insert, method, provided).map_err(in_option)?;
+        }
+    }
+    Ok(())
+}
+
+/// The operator is registered and has every param the option sets, and each param read from
+/// evidence names a field of evidence the method needs.
+fn check_insert(insert: &MethodInsert, method: &Method, provided: &Provided) -> Result<(), String> {
+    let id = insert.operator.to_string();
+    let operator = provided
+        .operators
+        .get(&id)
+        .ok_or_else(|| format!("{id} is not registered"))?;
+    let named = insert
+        .settings
+        .iter()
+        .flat_map(|s| s.keys().map(String::as_str))
+        .chain(insert.from_evidence.keys().map(|k| k.as_str()))
+        .chain(insert.concepts.keys().map(|k| k.as_str()));
+    for name in named {
+        if param_schema(operator, name).is_none() {
+            return Err(format!("{id} has no param {name}"));
+        }
+    }
+    for (name, value) in insert.settings.iter().flat_map(|s| s.iter()) {
+        if let Some(schema) = param_schema(operator, name)
+            && !jsonschema::is_valid(schema, value)
+        {
+            return Err(format!("{id} does not accept {name} {value}"));
+        }
+    }
+    for path in insert.from_evidence.values() {
+        let path = path.as_str();
+        // `<area>.<evidence>.<field>`: the schema checks the shape.
+        let (kind, field) = path.rsplit_once('.').unwrap_or((path, ""));
+        if !method.needs.evidence.iter().any(|k| k.as_str() == kind) {
+            return Err(format!("reads {kind}, which the method does not need"));
+        }
+        let made = producer(kind, &provided.operators)?;
+        let declared = made
+            .produces
+            .iter()
+            .find(|(k, _)| k.as_str() == kind)
+            .is_some_and(|(_, p)| p.fields.keys().any(|f| f.as_str() == field));
+        if !declared {
+            return Err(format!("{kind} has no field {field}"));
+        }
+    }
+    for concept in insert.concepts.values() {
+        known_concept(concept.as_str(), provided)?;
     }
     Ok(())
 }

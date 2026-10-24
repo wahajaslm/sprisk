@@ -270,6 +270,7 @@ fn a_bind_option_binds_its_concept_to_the_column_the_producer_adds() {
         &effective.bindings,
         &measured_flow(),
         &ops,
+        &BTreeMap::new(),
     )
     .unwrap();
     assert!(applied.effects.is_empty());
@@ -304,6 +305,7 @@ fn a_group_split_reads_the_step_that_adds_its_group_column() {
         &effective.bindings,
         &flow,
         &ops,
+        &BTreeMap::new(),
     )
     .unwrap();
     assert_eq!(
@@ -346,6 +348,7 @@ fn a_stratified_split_reads_the_target_from_its_binding() {
         &effective.bindings,
         &measured_flow(),
         &ops,
+        &BTreeMap::new(),
     )
     .unwrap();
     assert_eq!(
@@ -372,7 +375,79 @@ fn an_option_the_method_does_not_have_is_refused() {
         &[],
         &measured_flow(),
         &ops,
+        &BTreeMap::new(),
     )
     .unwrap_err();
     assert!(refused.to_string().contains("shuffled"), "{refused}");
+}
+
+#[test]
+fn an_insert_option_adds_its_step_before_the_split_with_settings_from_evidence() {
+    let ops = operators();
+    let catalog = RuleCatalog::load_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/text_spelling/methodology"),
+        &ops,
+    )
+    .unwrap();
+    let method = catalog.methods().next().unwrap();
+    let q = question(json!({}));
+    let effective = bindings(&q, &[]).unwrap();
+    let measured = BTreeMap::from([(
+        "data.spelling_variants".to_owned(),
+        json!({ "columns": ["city", "colour"], "identifier_like": [], "accent_only": [], "text_columns": 3 }),
+    )]);
+    let flow = measured_flow();
+    let applied = apply_option(
+        method,
+        "normalise",
+        MethodAssurance::Rule,
+        &effective.bindings,
+        &flow,
+        &ops,
+        &measured,
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&applied.effects).unwrap(),
+        json!([{ "kind": "insert_node", "node_id": "text_spelling", "before": "split",
+                 "operator": "sprisk.clean.clean_text@1.0.0",
+                 "params": { "lowercase": true, "empty_to_null": false,
+                             "columns": ["city", "colour"], "exclude": ["prdtypecode"] } }])
+    );
+    let (nodes, edges) = patch::apply(&flow, &applied.effects, |id| {
+        ops.iter().find(|o| o.id.as_str() == id)
+    })
+    .unwrap();
+    assert!(nodes.iter().any(|n| n.id.as_str() == "text_spelling"));
+    assert!(
+        edges
+            .iter()
+            .any(|e| e.from.as_str() == "text_spelling.data" && e.to.as_str() == "split.data")
+    );
+}
+
+#[test]
+fn an_insert_whose_evidence_was_not_measured_is_refused() {
+    let ops = operators();
+    let catalog = RuleCatalog::load_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/text_spelling/methodology"),
+        &ops,
+    )
+    .unwrap();
+    let method = catalog.methods().next().unwrap();
+    let effective = bindings(&question(json!({})), &[]).unwrap();
+    let refused = apply_option(
+        method,
+        "normalise",
+        MethodAssurance::Rule,
+        &effective.bindings,
+        &measured_flow(),
+        &ops,
+        &BTreeMap::new(),
+    )
+    .unwrap_err();
+    assert!(
+        refused.to_string().contains("data.spelling_variants"),
+        "{refused}"
+    );
 }

@@ -529,3 +529,95 @@ fn a_producer_with_no_attach_is_refused() {
     );
     assert!(refused(pack.path()).contains("produces evidence, so it needs an attach"));
 }
+
+/// A copy of the text-spelling fixture: a method whose option inserts a step.
+fn text_spelling() -> TempDir {
+    let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/text_spelling");
+    let to = tempfile::tempdir().unwrap();
+    for entry in WalkDir::new(&from) {
+        let entry = entry.unwrap();
+        let target = to.path().join(entry.path().strip_prefix(&from).unwrap());
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target).unwrap();
+        } else {
+            fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+    // No operator copies: the registered plugins are the operators.
+    fs::create_dir_all(to.path().join("operators")).unwrap();
+    to
+}
+
+const SPELLING: &str = "methodology/core/methods/text_spelling/method.yaml";
+
+#[test]
+fn a_method_inserting_a_step_loads() {
+    let pack = text_spelling();
+    let catalog = load(pack.path()).unwrap();
+    assert_eq!(catalog.methods().count(), 1);
+}
+
+#[test]
+fn an_insert_of_an_unregistered_operator_is_refused() {
+    let pack = text_spelling();
+    edit(
+        pack.path(),
+        SPELLING,
+        "sprisk.clean.clean_text@1.0.0",
+        "sprisk.clean.gone@1.0.0",
+    );
+    assert!(
+        refused(pack.path()).contains("sprisk.clean.gone@1.0.0 is not registered"),
+        "{}",
+        refused(pack.path())
+    );
+}
+
+#[test]
+fn an_insert_reading_evidence_the_method_does_not_need_is_refused() {
+    let pack = text_spelling();
+    edit(
+        pack.path(),
+        SPELLING,
+        "columns: data.spelling_variants.columns",
+        "columns: data.near_duplicate_groups.groups",
+    );
+    assert!(
+        refused(pack.path())
+            .contains("reads data.near_duplicate_groups, which the method does not need"),
+        "{}",
+        refused(pack.path())
+    );
+}
+
+#[test]
+fn an_insert_reading_a_field_its_producer_does_not_write_is_refused() {
+    let pack = text_spelling();
+    edit(
+        pack.path(),
+        SPELLING,
+        "data.spelling_variants.columns }",
+        "data.spelling_variants.colums }",
+    );
+    assert!(
+        refused(pack.path()).contains("data.spelling_variants has no field colums"),
+        "{}",
+        refused(pack.path())
+    );
+}
+
+#[test]
+fn an_insert_setting_a_param_its_operator_lacks_is_refused() {
+    let pack = text_spelling();
+    edit(
+        pack.path(),
+        SPELLING,
+        "{ lowercase: true,",
+        "{ upper: true,",
+    );
+    assert!(
+        refused(pack.path()).contains("sprisk.clean.clean_text@1.0.0 has no param upper"),
+        "{}",
+        refused(pack.path())
+    );
+}

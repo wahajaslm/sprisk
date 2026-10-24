@@ -10,6 +10,7 @@ use sprisk_contracts::{
     QuestionVersion, WalkAsk, parse,
 };
 
+use crate::decision::free_id;
 use crate::measure::fitting;
 use crate::{ResolveError, RuleCatalog, methods};
 
@@ -210,7 +211,8 @@ pub struct Applied {
 
 /// The bindings and patch of `option` on `pipeline`. A param a concept fills reads its
 /// binding's column; a column a step adds makes the replaced step read that step's output
-/// of the same name. The caller applies the patch with `patch::apply`, which checks it.
+/// of the same name; a param read from evidence takes the field's value in `measured`. The
+/// caller applies the patch with `patch::apply`, which checks it.
 pub fn apply_option(
     method: &Method,
     option: &str,
@@ -218,6 +220,7 @@ pub fn apply_option(
     effective: &[Binding],
     pipeline: &PipelineVersion,
     operators: &[Operator],
+    measured: &BTreeMap<String, Value>,
 ) -> Result<Applied, ResolveError> {
     let taken = method
         .options
@@ -318,6 +321,67 @@ pub fn apply_option(
                 }
             }
         }
+    }
+    if let Some(insert) = &action.insert {
+        let operator = by_id
+            .get(insert.operator.as_str())
+            .ok_or_else(|| ResolveError::UnknownOperator(insert.operator.to_string()))?;
+        let role = insert.before;
+        let before = one_step(
+            pipeline,
+            |n| {
+                by_id
+                    .get(n.operator.as_str())
+                    .is_some_and(|o| o.role == Some(role))
+            },
+            &format!("the role {role}"),
+        )?;
+        let mut params: Map<String, Value> = insert
+            .settings
+            .iter()
+            .flat_map(|s| s.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        for (param, path) in &insert.from_evidence {
+            let path = path.as_str();
+            // `<area>.<evidence>.<field>`, checked when the packs load.
+            let (kind, field) = path.rsplit_once('.').unwrap_or((path, ""));
+            let value = measured
+                .get(kind)
+                .and_then(|fields| fields.get(field))
+                .ok_or_else(|| {
+                    ResolveError::NotInsertable(format!(
+                        "{} reads {path}, which was not measured",
+                        method.id.as_str()
+                    ))
+                })?;
+            params.insert(param.to_string(), value.clone());
+        }
+        for (param, concept) in &insert.concepts {
+            // An unbound concept leaves its param out; compiling refuses a required one.
+            let Some(binding) = effective
+                .iter()
+                .chain(&applied.bindings)
+                .find(|b| b.concept.as_str() == concept.as_str())
+            else {
+                continue;
+            };
+            let column = json!(binding.source.column);
+            let listed = operator
+                .params_schema
+                .get("properties")
+                .and_then(|p| p.get(param.as_str()))
+                .is_some_and(|schema| schema["type"] == "array");
+            params.insert(
+                param.to_string(),
+                if listed { json!([column]) } else { column },
+            );
+        }
+        applied.effects.push(parse(
+            &json!({ "kind": "insert_node", "node_id": free_id(&pipeline.nodes, insert.node_id.as_str()),
+                     "operator": operator.id, "params": params, "before": before })
+            .to_string(),
+        )?);
     }
     Ok(applied)
 }
