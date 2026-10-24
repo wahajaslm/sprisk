@@ -318,6 +318,7 @@ pub fn input_facts(profile: &DatasetProfile) -> Map<String, Value> {
         for (measure, share) in [
             ("numeric_share", column.numeric_share),
             ("word_share", column.word_share),
+            ("html_share", column.html_share),
         ] {
             if let Some(share) = share {
                 facts.insert(key(measure), json!(share));

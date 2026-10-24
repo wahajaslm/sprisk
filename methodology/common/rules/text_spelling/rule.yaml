@@ -4,6 +4,7 @@ name: "Text spelling"
 stage: data
 decides: data.text_spelling
 status: active
+question: "Should text that differs only in spaces or case be merged?"
 applies_to: [sprisk.validation.random_split, sprisk.validation.group_split, sprisk.validation.temporal_split]
 reads: [question.target, question.entity_column, question.time_column, input.rows, input.column.*.data_type, input.column.*.distinct, input.column.*.case_variants, input.column.*.accent_variants]
 
@@ -31,6 +32,7 @@ alternatives:
   - id: normalise
     label: "Trim and lowercase"
     description: "Text columns whose values differ only in spaces or case are trimmed and lowercased, in a step added before the split."
+    when: "a feature column, not an ID, has values differing only in spaces or case"
     rationale: "These differences are typing, not meaning; one value per category gives a model one signal."
     action:
       type: insert_step
@@ -40,6 +42,7 @@ alternatives:
   - id: keep
     label: "Keep the spelling"
     description: "Leave the text as it is."
+    when: "no feature column, other than IDs, differs only in spaces or case"
     rationale: "No text column has values that differ only in spaces or case."
     action:
       type: pass_through

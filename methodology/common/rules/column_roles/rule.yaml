@@ -4,6 +4,7 @@ name: "Column roles"
 stage: data
 decides: data.column_roles
 status: active
+question: "Which columns only name rows and should be left out?"
 applies_to: [sprisk.validation.random_split, sprisk.validation.group_split, sprisk.validation.temporal_split]
 reads: [input.rows, input.duplicate_rows, input.column.*.data_type, input.column.*.distinct, input.column.*.word_share, question.target, question.entity_column, question.time_column]
 
@@ -34,6 +35,7 @@ alternatives:
   - id: drop_identifiers
     label: "Leave identifiers out"
     description: "Keep every column but the identifiers, in a step added before the split."
+    when: "a whole-number or one-word column differs in every row"
     rationale: "A unique code per row carries no pattern, only identity."
     action:
       type: insert_step
@@ -43,6 +45,7 @@ alternatives:
   - id: keep_all
     label: "No identifiers"
     description: "No column is an identifier, so every column stays."
+    when: "no column is an identifier, or there are under {min_rows} rows"
     rationale: "Nothing to leave out."
     action:
       type: pass_through

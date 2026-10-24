@@ -4,6 +4,7 @@ name: "Hard constraints"
 stage: question
 decides: question.hard_constraints
 status: active
+question: "How far must a person be able to follow each prediction?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [question.interpretability]
 
@@ -22,6 +23,7 @@ alternatives:
   - id: stated
     label: "Constraints stated"
     description: "The question states how far a person must follow each prediction."
+    when: "the question states how interpretable the model must be"
     rationale: "Constraints settle choices before scores are seen."
     action:
       type: pass_through

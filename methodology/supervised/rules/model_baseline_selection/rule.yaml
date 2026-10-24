@@ -7,6 +7,7 @@ name: "Model Shortlist"
 stage: models
 decides: modeling.estimator_selection
 status: active
+question: "Which models are worth comparing?"
 selection: shortlist
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [question.task, question.interpretability, rows, column.*.data_type, candidate.*.family]

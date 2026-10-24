@@ -4,6 +4,7 @@ name: "Class balance"
 stage: question
 decides: question.class_balance
 status: active
+question: "Is the target's class mix unbalanced?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest, sprisk.ml.dummy_baseline]
 reads: [step.task, target.distinct, target.rarest_share]
 
@@ -29,12 +30,14 @@ alternatives:
   - id: balanced
     label: "Balanced enough"
     description: "The rarest class holds at least a fifth of the share an even class would."
+    when: "the rarest class holds at least {min_share_of_even} of an even class's share"
     rationale: "Plain metrics and splits are fine."
     action:
       type: pass_through
   - id: unbalanced
     label: "Unbalanced"
     description: "A class is rare: stratify the split, avoid accuracy, and try imbalance handling."
+    when: "the rarest class holds under {min_share_of_even} of an even class's share"
     rationale: "Rare classes or unequal costs change what a good model is."
     action:
       type: pass_through

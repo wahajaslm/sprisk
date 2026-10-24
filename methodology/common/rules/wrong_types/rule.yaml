@@ -4,6 +4,7 @@ name: "Wrong types"
 stage: data
 decides: data.type_repair
 status: active
+question: "Are any text columns really numbers?"
 applies_to: [sprisk.validation.random_split, sprisk.validation.group_split, sprisk.validation.temporal_split]
 reads: [input.column.*.data_type, input.column.*.numeric_share, input.column.*.leading_zero_values, input.column.*.unconverted]
 
@@ -29,6 +30,7 @@ alternatives:
   - id: cast
     label: "Read as numbers"
     description: "Text columns whose every present value reads as a number are cast to numbers, in a step added before the split."
+    when: "every value in a text column reads as a number, with no leading zeros"
     rationale: "The values are numbers stored as text; as text a model treats each one as a category."
     action:
       type: insert_step
@@ -38,6 +40,7 @@ alternatives:
   - id: keep
     label: "Types are right"
     description: "Leave the columns as they are."
+    when: "no text column reads fully as numbers, apart from codes with leading zeros"
     rationale: "No text column is numbers stored as text."
     action:
       type: pass_through

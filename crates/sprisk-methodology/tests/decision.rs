@@ -293,7 +293,7 @@ fn input_facts_give_the_structure_of_every_column_and_no_statistics() {
                   "missing_by_band": [], "skewness": 2.5 },
                 { "name": "age", "data_type": "String", "missing": 0, "distinct": 40,
                   "missing_by_band": [], "numeric_share": 0.98, "leading_zero_values": 0,
-                  "word_share": 0.25,
+                  "word_share": 0.25, "html_share": 0.5,
                   "case_variants": 3, "accent_variants": 1,
                   "unconverted": ["?", "n/a"] }
             ],
@@ -309,6 +309,7 @@ fn input_facts_give_the_structure_of_every_column_and_no_statistics() {
     assert_eq!(facts["input.column.income.data_type"], "Float64");
     assert_eq!(facts["input.column.age.numeric_share"], 0.98);
     assert_eq!(facts["input.column.age.word_share"], 0.25);
+    assert_eq!(facts["input.column.age.html_share"], 0.5);
     assert_eq!(facts["input.column.age.unconverted"], json!(["?", "n/a"]));
     assert_eq!(facts["input.column.age.leading_zero_values"], 0);
     assert_eq!(facts["input.column.age.distinct"], 40);
@@ -1008,7 +1009,7 @@ fn a_step_that_makes_words_feeds_them_to_the_model_and_its_evaluation() {
         ],
     );
     let step = parse(
-        &json!({ "id": "text", "operator": "sprisk.clean.vectorize_text@1.0.0",
+        &json!({ "id": "text", "operator": "sprisk.clean.vectorize_text@1.1.0",
                  "params": { "columns": ["title"] } })
         .to_string(),
     )
@@ -1033,7 +1034,7 @@ fn a_step_that_makes_words_feeds_them_to_the_model_and_its_evaluation() {
 fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some() {
     let words = |id: &str| -> Node {
         parse(
-            &json!({ "id": id, "operator": "sprisk.clean.vectorize_text@1.0.0",
+            &json!({ "id": id, "operator": "sprisk.clean.vectorize_text@1.1.0",
                      "params": { "columns": ["title"] } })
             .to_string(),
         )
@@ -1045,7 +1046,7 @@ fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some(
     let pipeline = flow(
         &[
             ("split", "validation.random_split"),
-            ("old", "clean.vectorize_text"),
+            ("old", "clean.vectorize_text@1.1.0"),
             ("rf", "ml.random_forest@3.0.0"),
         ],
         &[
@@ -1063,7 +1064,7 @@ fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some(
     let scored = flow(
         &[
             ("split", "validation.random_split"),
-            ("old", "clean.vectorize_text"),
+            ("old", "clean.vectorize_text@1.1.0"),
             ("rf", "ml.random_forest@3.0.0"),
             ("eval", "ml.evaluate@2.0.0"),
         ],
@@ -2663,7 +2664,7 @@ fn worded_flow(words: Option<&str>) -> PipelineVersion {
         &[
             ("load", "io.file_source"),
             ("split", "validation.random_split"),
-            ("text", "clean.vectorize_text"),
+            ("text", "clean.vectorize_text@1.1.0"),
             ("model", "ml.linear_model@3.0.0"),
             ("eval", "ml.evaluate@2.0.0"),
         ],
@@ -2687,7 +2688,7 @@ fn a_comparison_refits_the_words_the_model_reads_and_only_those() {
         .collect();
     assert!(!prepares.is_empty());
     for prepare in prepares {
-        assert_eq!(prepare[0]["operator"], "sprisk.clean.vectorize_text@1.0.0");
+        assert_eq!(prepare[0]["operator"], "sprisk.clean.vectorize_text@1.1.0");
     }
 
     // Folds would join words the flow's model never reads, or score test words as train.

@@ -67,23 +67,8 @@ impl BoundedProcess {
 
     async fn run_once(&self, extra: &[String], input: Vec<u8>) -> Result<String, ProcessError> {
         let failed = |e: std::io::Error| ProcessError::Failed(e.to_string());
-        let (program, args) = self
-            .command
-            .split_first()
-            .ok_or_else(|| ProcessError::Failed("no command configured".into()))?;
-        let mut child = Command::new(program)
-            .args(args)
+        let mut child = cleared_command(&self.command)?
             .args(extra)
-            .env_clear()
-            .envs(
-                PASSED_ENV
-                    .iter()
-                    .filter_map(|k| Some((k, std::env::var_os(k)?))),
-            )
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
             .spawn()
             .map_err(failed)?;
         let (Some(mut stdin), Some(stdout), Some(stderr)) =
@@ -113,6 +98,28 @@ impl BoundedProcess {
         written.and(read_out).and(read_err).map_err(failed)?;
         String::from_utf8(out).map_err(|e| ProcessError::Failed(e.to_string()))
     }
+}
+
+/// `command` with piped stdio, killed when dropped, and only `PASSED_ENV` from the server's
+/// environment: the process reads untrusted input, so the server's keys and tokens stay out.
+pub(crate) fn cleared_command(command: &[String]) -> Result<Command, ProcessError> {
+    let (program, args) = command
+        .split_first()
+        .ok_or_else(|| ProcessError::Failed("no command configured".into()))?;
+    let mut cleared = Command::new(program);
+    cleared
+        .args(args)
+        .env_clear()
+        .envs(
+            PASSED_ENV
+                .iter()
+                .filter_map(|k| Some((k, std::env::var_os(k)?))),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    Ok(cleared)
 }
 
 #[cfg(test)]

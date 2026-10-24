@@ -26,7 +26,7 @@ SETTINGS: dict[str, dict[str, Any]] = {
     "sprisk.clean.group_rare@1.0.0": {"columns": ["t"], "min_share": 0.2},
     "sprisk.clean.date_parts@1.0.0": {"columns": ["d"]},
     "sprisk.clean.power_transform@1.0.0": {"columns": ["x"]},
-    "sprisk.clean.vectorize_text@1.0.0": {"columns": ["s"]},
+    "sprisk.clean.vectorize_text@1.1.0": {"columns": ["s"]},
 }
 TRAIN_PORTS = ("train", "train_words")
 

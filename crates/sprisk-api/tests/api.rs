@@ -2371,11 +2371,24 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 64);
+    assert_eq!(rules.len(), 65);
     assert!(
         rules
             .iter()
             .any(|r| r["id"] == "methodology.supervised.data_split@1.0.0" && r["stage"] == "split")
+    );
+    // The words people read go with each rule (ADR-0045 amendment).
+    let split = rules
+        .iter()
+        .find(|r| r["id"] == "methodology.supervised.data_split@1.0.0")
+        .unwrap();
+    assert_eq!(
+        split["question"],
+        "How should the rows be split into train and test?"
+    );
+    assert_eq!(
+        split["alternatives"][0]["when"],
+        "a time column is confirmed"
     );
 }
 
@@ -4733,6 +4746,7 @@ async fn before_a_run_the_review_puts_the_split_first_and_the_rules_that_measure
         ("data.join_sources", "settled"),
         ("data.column_roles", "needs_run"),
         // They wait: column roles may still change the table they measure.
+        ("data.html_text", "waiting"),
         ("question.unit_of_prediction", "waiting"),
         ("data.exact_duplicates", "waiting"),
         ("data.missing_markers", "waiting"),
@@ -5213,18 +5227,19 @@ const PRODUCT_WORDS: [&str; 27] = [
 ];
 
 /// A synthetic stand-in shaped like Rakuten's listings joined to their codes (ADR-0060): a
-/// nameless id column, a title, an often empty description, product and image ids, and the
-/// product type. Titles and descriptions carry a word of their class, never the code. Rows are
+/// nameless id column, a title, an often empty description, some of it HTML, product and image
+/// ids, and the product type. Titles and descriptions carry a word of their class, never the code. Rows are
 /// shuffled with a fixed seed before ids are given, so no id tells the class. No challenge row
 /// is used: its data is confidential.
 fn rakuten_like_listings() -> String {
     let mut rows = Vec::new();
     for (rank, (code, word)) in PRODUCT_TYPES.iter().zip(PRODUCT_WORDS).enumerate() {
         for n in 0..(40 - rank as u32) {
-            let description = if n % 3 == 0 {
-                String::new()
-            } else {
-                format!("{word} neuf taille {}", n % 5)
+            // Scraped descriptions keep their markup, as Rakuten's do.
+            let description = match n % 3 {
+                0 => String::new(),
+                1 => format!("{word} <b>neuf</b> &eacute;tat {}<br />", n % 5),
+                _ => format!("{word} neuf taille {}", n % 5),
             };
             rows.push((format!("{word} modele {n}"), description, *code));
         }
@@ -5330,6 +5345,8 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
+            "apply data.html_text strip",
+            "run",
             "apply features.text_representation vectorize_words",
             "run",
             "stop"
@@ -5347,7 +5364,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     let steps = detail["steps"].as_array().unwrap();
     let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
-        *head, steps[5]["made_pipeline_version_id"],
+        *head, steps[7]["made_pipeline_version_id"],
         "the head is the version the last apply made"
     );
     let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
@@ -5367,6 +5384,23 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     assert!(
         edges.contains(&"text_words.train_words -> model.words".to_owned()),
         "{edges:?}"
+    );
+    // Only the description holds markup; it is stripped on all rows, in front of the split.
+    assert!(
+        edges.contains(&"html_text.data -> split.data".to_owned()),
+        "{edges:?}"
+    );
+    let strip = flow["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "html_text")
+        .unwrap();
+    assert_eq!(strip["operator"], "sprisk.clean.strip_html@1.0.0");
+    assert_eq!(
+        strip["params"]["columns"],
+        json!(["description"]),
+        "{strip}"
     );
 
     // Same key: the same walk, nothing started.
@@ -5806,6 +5840,8 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "run",
             "apply data.column_roles drop_identifiers",
             "run",
+            "apply data.html_text strip",
+            "run",
             "apply features.text_representation vectorize_words",
             "run",
             "stop"
@@ -5868,6 +5904,12 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
     assert!(why.contains("Test rows, scored once"), "{why}");
     assert!(why.contains("the success bar of 0.2"), "{why}");
     assert!(why.contains("expected cost"), "{why}");
+    // The floor on the same rows: what the score is worth.
+    let floor = why
+        .split("the baseline on the same rows: ")
+        .nth(1)
+        .unwrap_or("");
+    assert!(floor.contains("expected cost 0."), "{why}");
     let head = detail["walk"]["head_pipeline_version_id"].as_str().unwrap();
     let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
     assert!(
@@ -5888,6 +5930,38 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
     assert_eq!(
         body["errors"][0]["code"], "test_rows_scored",
         "{status} {body}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_walk_on_the_same_files_never_scores_their_test_rows_again() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+    let first = walk_to_end(&api, walk_request(&[&api.csv], "walk-scored")).await;
+    assert_eq!(first["walk"]["stop"]["reason"], "complete", "{first}");
+
+    // The same rows, from a copy at another path: a second score would be a second look.
+    let copy = api.csv.with_file_name("copy.csv");
+    std::fs::copy(&api.csv, &copy).unwrap();
+    let second = walk_to_end(&api, walk_request(&[&copy], "walk-again")).await;
+
+    let trail = trail(&second);
+    assert!(!trail.iter().any(|s| s == "score"), "{second}");
+    assert_eq!(second["walk"]["stop"]["reason"], "limitation", "{second}");
+    let why = second["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(why.contains(first["walk"]["id"].as_str().unwrap()), "{why}");
+    assert!(why.contains("Test rows, scored once"), "{why}");
+    // Nothing of the refused scoring is kept: the head is the flow the rules settled.
+    let head = second["walk"]["head_pipeline_version_id"].as_str().unwrap();
+    let (_, flow) = call(&api.app, "GET", &format!("/pipeline_versions/{head}"), None).await;
+    assert!(
+        !flow["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n["id"] == "score_test"),
+        "{flow}"
     );
 }
 
@@ -6198,7 +6272,7 @@ async fn word_features_run_from_load_to_evaluate_and_are_refit_in_each_fold() {
     flow["nodes"].as_array_mut().unwrap().extend([
         json!({"id": "split", "operator": "sprisk.validation.random_split@1.0.0",
                "params": {"test_fraction": 0.25, "seed": 42, "stratify": "prdtypecode"}}),
-        json!({"id": "words", "operator": "sprisk.clean.vectorize_text@1.0.0",
+        json!({"id": "words", "operator": "sprisk.clean.vectorize_text@1.1.0",
                "params": {"columns": ["designation", "description"]}}),
         json!({"id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
                "params": {"target": "prdtypecode", "task": "classification", "exclude": ids}}),
@@ -6234,4 +6308,26 @@ async fn word_features_run_from_load_to_evaluate_and_are_refit_in_each_fold() {
     let decision = output(&api, &attempts, "select_model", "decision").await;
     assert!(decision["winner"].is_string(), "{decision}");
     assert_ne!(decision["winner"], "ml_dummy_baseline", "{decision}");
+
+    // Scored as a walk scores it: the baseline beside the model, with the same words. Its table
+    // holds only the target and left-out ids, so without the words it could not be scored.
+    let base_id: sprisk_contracts::PipelineVersionId =
+        parse("\"plv_01JABCDEFGHJKMNPQRSTVWXYZ0\"").unwrap();
+    let base = api.store.get_pipeline_version(&base_id).await.unwrap();
+    let (nodes, edges) = sprisk_methodology::engine::with_test_scoring(&base).unwrap();
+    let mut scored = serde_json::to_value(&base).unwrap();
+    scored["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
+    scored["parent_id"] = json!(base_id);
+    scored["nodes"] = json!(nodes);
+    scored["edges"] = json!(edges);
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(scored)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (run, attempts) = run_version(&api, "plv_01JABCDEFGHJKMNPQRSTVWXYZ5").await;
+    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    let model = output(&api, &attempts, "score_test", "metrics").await;
+    let floor = output(&api, &attempts, "score_baseline", "metrics").await;
+    assert!(
+        floor["weighted_f1"].as_f64().unwrap() < model["weighted_f1"].as_f64().unwrap(),
+        "{floor} {model}"
+    );
 }

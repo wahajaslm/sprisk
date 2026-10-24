@@ -7,6 +7,7 @@ name: "Outlier Treatment Strategy"
 stage: cleaning
 decides: cleaning.outlier_strategy
 status: active
+question: "Should extreme values be clipped?"
 applies_to: [sprisk.clean.clip_outliers]
 reads: [flow.model_families, flow.models_hidden, flow.other_readers, question.target, question.task, column.*.data_type, column.*.outlier_share, column.*.iqr]
 
@@ -33,6 +34,7 @@ alternatives:
   - id: none_tree_or_clean
     label: Retain Outliers (Natural Variation / Tree Invariance)
     description: Keep all extreme values without capping or dropping.
+    when: few outliers, or no model downstream is pulled by them
     rationale: The outlier rate is within natural limits, or the models downstream are not pulled by
       outlying features. Trees split on rank order; DBSCAN marks isolated rows as noise, and clipping
       would pile them onto the fence; a dummy baseline ignores its features. Outliers in a regression
@@ -42,6 +44,7 @@ alternatives:
   - id: clip_iqr_fence
     label: Clip to the Train IQR Fences
     description: Cap each feature value at the train fences Q1 - k IQR and Q3 + k IQR. The target, and any column with a zero IQR, are left as they are.
+    when: at least a {outlier_fraction_threshold} share of a column's values are outliers, and a model is pulled
     rationale: Limits extreme leverage points without dropping rows. The fences come from the train
       quartiles, which outliers barely move, so the cap does not drift with the values it caps.
     action:
@@ -51,6 +54,7 @@ alternatives:
     label: Multivariate Isolation Forest (Train Filtering)
     description: Identify and filter multi-dimensional anomalies in the training set using random partition
       isolation trees.
+    when: never yet, since no step does this
     rationale: 'Not available: no isolation forest filter operator exists.'
     action:
       type: insert_step

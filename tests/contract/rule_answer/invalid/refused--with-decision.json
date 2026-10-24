@@ -1,0 +1,40 @@
+{
+  "answer": "refused",
+  "error": "x",
+  "decision": {
+    "schema_version": "sprisk.rule_decision/v1",
+    "rule": "methodology.supervised.model_baseline_selection@2.0.0",
+    "shortlist": [
+      "ml_dummy_baseline",
+      "ml_linear_model"
+    ],
+    "alternatives": [
+      {
+        "id": "ml_dummy_baseline",
+        "applicability": "applicable",
+        "reason": "The floor.",
+        "params": {}
+      },
+      {
+        "id": "ml_linear_model",
+        "applicability": "applicable",
+        "reason": "Few rows.",
+        "params": {}
+      },
+      {
+        "id": "ml_random_forest",
+        "applicability": "applicable",
+        "reason": "Left off: too few rows.",
+        "params": {}
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "profile_fact",
+        "label": "Train rows",
+        "value": "30",
+        "origin": "measured"
+      }
+    ]
+  }
+}

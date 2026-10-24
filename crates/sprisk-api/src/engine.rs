@@ -12,7 +12,8 @@ use sprisk_contracts::{
 };
 use sprisk_core::time::format;
 use sprisk_methodology::engine::{
-    Action, HeadRun, MODEL_NODE, SCORE_NODE, Start, next_action, start, with_test_scoring,
+    Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, Start, next_action, start,
+    with_test_scoring,
 };
 
 use crate::{
@@ -330,7 +331,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
 /// score and ends the walk. No rule reads it.
 async fn score_test_rows(
     state: &AppState,
-    mut walk: Walk,
+    walk: Walk,
     round: usize,
     head: &PipelineVersionId,
     deadline: jiff::Timestamp,
@@ -378,15 +379,53 @@ async fn score_test_rows(
         &reason,
         made,
     )?;
-    walk.head_pipeline_version_id = Some(scored.id.clone());
-    state
+    let mut scoring = walk.clone();
+    scoring.head_pipeline_version_id = Some(scored.id.clone());
+    // A walk saved before sources were hashed cannot say which rows it spends.
+    if walk.source_hashes.is_empty() {
+        state
+            .store
+            .record_walk_run(&scoring, &step, &queued, Some(&scored))
+            .await?;
+    } else if let Some(earlier) = state
         .store
-        .record_walk_run(&walk, &step, &queued, Some(&scored))
-        .await?;
+        .record_walk_score(&scoring, &step, &queued, &scored)
+        .await?
+    {
+        let detail = spent_detail(state, &earlier, settled).await?;
+        return record_stop(state, walk, round, WalkStopReason::Limitation, &detail).await;
+    }
     drive_run(state, &queued.id, &scored, &plan, None, Some(deadline))
         .await
         .map_err(|e| ApiError::Internal(format!("run {}: {e}", queued.id.as_str())))?;
     Ok(WalkStatus::Walking)
+}
+
+/// Why a walk whose test rows were already scored stops: a second score would be a second
+/// look at them, and choosing after it would choose by them.
+async fn spent_detail(
+    state: &AppState,
+    earlier: &WalkId,
+    settled: &str,
+) -> Result<String, ApiError> {
+    let walk = state.store.get_walk(earlier).await?;
+    // A scoring run that failed may still have read the test rows: they stay spent.
+    let (did, ended) = match &walk.stop {
+        Some(stop) if stop.reason == WalkStopReason::Complete => {
+            ("scored", format!(" It ended: {}", stop.detail.as_str()))
+        }
+        Some(stop) => (
+            "began scoring",
+            format!(" It ended: {}", stop.detail.as_str()),
+        ),
+        None => ("is scoring", String::new()),
+    };
+    Ok(format!(
+        "{settled} Walk {} {did} the test rows of a file this walk reads, so they are not \
+         scored again: a flow changed after that score would be chosen by it. To check a \
+         changed flow, score it on new rows from another file.{ended}",
+        earlier.as_str()
+    ))
 }
 
 /// Ends the walk on the score of its test rows: complete with the scores, or why not.
@@ -415,7 +454,14 @@ async fn finish_scoring(
             return record_stop(state, walk, round, WalkStopReason::RunFailed, &detail).await;
         }
     }
-    let metrics = run_metrics(state, &run_id).await?;
+    let metrics = run_metrics(state, &run_id, SCORE_NODE).await?;
+    let floor = scores(&run_metrics(state, &run_id, SCORE_BASELINE_NODE).await?);
+    if floor.is_empty() {
+        return Err(ApiError::Internal(format!(
+            "run {} reports no baseline score",
+            run_id.as_str()
+        )));
+    }
     let question = state
         .store
         .get_question_version(&walk.question_version_id)
@@ -443,30 +489,43 @@ async fn finish_scoring(
         .unwrap_or_default();
     let detail = format!(
         "Every rule that fits the question is settled. Test rows, scored once ({n_rows} rows): \
-         {bar}{reported}."
+         {bar}{reported}; the baseline on the same rows: {floor}."
     );
     record_stop(state, walk, round, WalkStopReason::Complete, &detail).await
 }
 
 /// The metrics the score step of `run_id` wrote: its own run's, never another run's.
-async fn run_metrics(state: &AppState, run_id: &RunId) -> Result<Value, ApiError> {
+async fn run_metrics(state: &AppState, run_id: &RunId, node: &str) -> Result<Value, ApiError> {
     let attempt = state
         .store
         .list_attempts(run_id)
         .await?
         .into_iter()
-        .find(|a| a.node_id.as_str() == SCORE_NODE && a.state == AttemptState::Succeeded)
-        .ok_or_else(|| ApiError::Internal(format!("run {} scored nothing", run_id.as_str())))?;
+        // A step identical to one already run takes its outputs from the cache: a flow whose
+        // model is itself the baseline, as a restarted walk's test sets up, scores it twice.
+        .find(|a| {
+            a.node_id.as_str() == node
+                && matches!(a.state, AttemptState::Succeeded | AttemptState::CacheHit)
+        })
+        .ok_or_else(|| {
+            ApiError::Internal(format!("run {} scored nothing at {node}", run_id.as_str()))
+        })?;
     let (_, artifact) = state
         .store
         .outputs(&attempt.id)
         .await?
         .into_iter()
         .find(|(port, _)| port == "metrics")
-        .ok_or_else(|| ApiError::Internal(format!("run {} wrote no metrics", run_id.as_str())))?;
+        .ok_or_else(|| {
+            ApiError::Internal(format!(
+                "run {} wrote no metrics at {node}",
+                run_id.as_str()
+            ))
+        })?;
     let bytes = state.artifacts.get(artifact.content_hash.as_str()).await?;
-    serde_json::from_slice(&bytes)
-        .map_err(|e| ApiError::Internal(format!("the test rows' metrics: {e}")))
+    serde_json::from_slice(&bytes).map_err(|e| {
+        ApiError::Internal(format!("metrics of {node} in run {}: {e}", run_id.as_str()))
+    })
 }
 
 /// The success bar's metric on the test rows, and whether it reaches the bar. Lower is better

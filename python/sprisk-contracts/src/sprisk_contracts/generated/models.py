@@ -357,6 +357,20 @@ class Alternative(StrictModel):
     ] = None
 
 
+class RuleRefused(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["refused"]
+    error: Annotated[
+        str,
+        Field(
+            description="The rule's own error (a broken observation, a module with no decide). It may name local paths, so it goes to the log, not to a client.",
+            min_length=1,
+        ),
+    ]
+
+
 class MethodologyRuleRef(RootModel[str]):
     root: Annotated[
         str,
@@ -1561,6 +1575,21 @@ class RuleObservation(StrictModel):
     ]
 
 
+class RuleRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.rule_request/v1"]
+    module: Annotated[
+        str,
+        Field(
+            description="Path of the rule's rule.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the rule process on the same machine, never stored.",
+            min_length=1,
+        ),
+    ]
+    observation: RuleObservation
+
+
 class Action(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1600,6 +1629,13 @@ class Alternative1(StrictModel):
         str | None,
         Field(
             description="A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045)."
+        ),
+    ] = None
+    when: Annotated[
+        str | None,
+        Field(
+            description="In a few words, when the rule takes this route, e.g. the column is skewed. Shown beside the example that picks it; nothing that decides reads it. Required on an active rule's alternatives (ADR-0045 amendment).",
+            min_length=1,
         ),
     ] = None
     rationale: Annotated[str, Field(min_length=1)]
@@ -2306,6 +2342,14 @@ class ColumnProfile(StrictModel):
             le=1.0,
         ),
     ] = None
+    html_share: Annotated[
+        float | None,
+        Field(
+            description="Of a text column's present values, the share holding an HTML tag (<br />) or entity (&eacute;): markup, not words (ADR-0059). Absent for other columns.",
+            ge=0.0,
+            le=1.0,
+        ),
+    ] = None
     leading_zero_values: Annotated[
         int | None,
         Field(
@@ -2383,6 +2427,14 @@ class RuleDecision(StrictModel):
     evidence: list[MethodologyEvidence]
 
 
+class RuleDecided(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["decided"]
+    decision: RuleDecision
+
+
 class MethodologyRule(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2419,6 +2471,13 @@ class MethodologyRule(StrictModel):
         list[RuleExample] | None,
         Field(
             description="Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045)."
+        ),
+    ] = None
+    question: Annotated[
+        str | None,
+        Field(
+            description="The decision as a person asks it, e.g. How should missing values be filled? Shown on the Methodology page; nothing that decides reads it. Required on an active rule (ADR-0045 amendment).",
+            min_length=1,
         ),
     ] = None
     decides: Annotated[
@@ -2706,6 +2765,16 @@ class DatasetProfile(StrictModel):
     ] = None
     columns: list[ColumnProfile]
     correlation: Correlation
+
+
+class RuleAnswer(RootModel[RuleDecided | RuleRefused]):
+    root: Annotated[
+        RuleDecided | RuleRefused,
+        Field(
+            description="The rule session's one JSON line per RuleRequest, tagged by `answer`: the rule's decision, or why the rule refused its observation. Any other failure ends the session.",
+            title="RuleAnswer",
+        ),
+    ]
 
 
 class AppliedMethodologyDecision(StrictModel):

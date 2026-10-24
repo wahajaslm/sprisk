@@ -4,6 +4,7 @@ name: "Loop back"
 stage: evaluation
 decides: evaluation.loop_back
 status: active
+question: "Is the model good enough to score the test rows, or should the flow go back?"
 applies_to: [sprisk.ml.linear_model, sprisk.ml.random_forest]
 reads: [cv.metric, cv.score, cv.baseline_score, cv.beats_baseline, cv.selected, cv.looks, question.success_bar.metric, question.success_bar.score]
 
@@ -31,6 +32,7 @@ alternatives:
   - id: proceed
     label: "Meets the bar: score the test rows once"
     description: "Move on to the single score on the test rows and the report."
+    when: the chosen model beats the baseline and meets the success bar
     rationale: "The flow is done; the test rows give the honest final number."
     action:
       type: pass_through
@@ -38,6 +40,7 @@ alternatives:
   - id: reopen
     label: "Below the bar: reopen the features"
     description: "The chosen model beats the baseline but misses the success bar. Change the features, then compare the models again as a new flow version."
+    when: the chosen model misses the success bar, under {max_looks} looks taken
     rationale: "Fix where the weakness is, judged on cross-validation only."
     action:
       type: reopen
@@ -47,6 +50,7 @@ alternatives:
   - id: reopen_models
     label: "Not the chosen model: reopen the model choice"
     description: "The model selection chose another model, or none, since this one lost or failed a guardrail. Choose again."
+    when: the model selection chose another model, under {max_looks} looks taken
     rationale: "A model the comparison did not choose has not earned the test rows."
     action:
       type: reopen
@@ -56,6 +60,7 @@ alternatives:
   - id: stop
     label: "No lift, or out of looks: stop and report"
     description: "Report the result as it stands, with the number of looks it took."
+    when: no lift over the baseline, or {max_looks} looks already taken
     rationale: "Further looping would fit the folds. A null result is a result: it says no lift for these models and features, not that no signal exists."
     action:
       type: emit_methodology_limitation

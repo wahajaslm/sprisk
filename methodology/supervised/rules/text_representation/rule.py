@@ -26,6 +26,7 @@ TEXT_TYPES = ("String", "Utf8")
 def decide(observation: RuleObservation) -> RuleDecision:
     limit = observation.settings["high_cardinality_threshold"]
     least = observation.settings["free_text_word_share"]
+    min_rows = observation.settings["min_word_rows"]
     texts = [
         c
         for c in step_columns(observation)
@@ -43,8 +44,9 @@ def decide(observation: RuleObservation) -> RuleDecision:
         words = applicable(
             "vectorize_words",
             f"{', '.join(free)}: more than {limit} values, most of several words, so free "
-            "text. Its words and their weights are learnt from the train rows.",
-            {"columns": free},
+            "text. Its words and their weights are learnt from the train rows; a word in fewer "
+            f"than {min_rows} of them is left out.",
+            {"columns": free, "min_df": min_rows},
         )
         none = not_applicable("no_free_text", f"{', '.join(free)} holds free text.")
     else:

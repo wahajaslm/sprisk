@@ -137,6 +137,13 @@ export type WorkerId = string;
  */
 export type MethodologyRuleRef = string;
 /**
+ * The rule session's one JSON line per RuleRequest, tagged by `answer`: the rule's decision, or why the rule refused its observation. Any other failure ends the session.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuleAnswer".
+ */
+export type RuleAnswer = RuleDecided | RuleRefused;
+/**
  * Stages in decision order (ADR-0059): the split comes before cleaning, since cleaning rules measure train rows.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -703,6 +710,10 @@ export interface ColumnProfile {
    */
   word_share?: number;
   /**
+   * Of a text column's present values, the share holding an HTML tag (<br />) or entity (&eacute;): markup, not words (ADR-0059). Absent for other columns.
+   */
+  html_share?: number;
+  /**
    * Of a text column's present values, how many read as numbers but start with a zero before a digit, like the code 01234. Absent for other columns.
    */
   leading_zero_values?: number;
@@ -1246,6 +1257,39 @@ export interface MethodologyEvidence {
   artifact_id?: ArtifactId;
 }
 /**
+ * Rust to the rule session (`python -m sprisk_workers.rule`), one JSON line per decision (ADR-0059): the rule module Rust picked from the loaded catalog, and its observation. One session serves a whole review.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuleRequest".
+ */
+export interface RuleRequest {
+  schema_version: "sprisk.rule_request/v1";
+  /**
+   * Path of the rule's rule.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the rule process on the same machine, never stored.
+   */
+  module: string;
+  observation: RuleObservation;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuleDecided".
+ */
+export interface RuleDecided {
+  answer: "decided";
+  decision: RuleDecision;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuleRefused".
+ */
+export interface RuleRefused {
+  answer: "refused";
+  /**
+   * The rule's own error (a broken observation, a module with no decide). It may name local paths, so it goes to the log, not to a client.
+   */
+  error: string;
+}
+/**
  * The declarative manifest of one methodology rule package (ADR-0042), loaded from methodology/<pack>/rules/<rule>/rule.yaml. Served read-only by GET /methodology_rules.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1276,6 +1320,10 @@ export interface MethodologyRule {
    * Inputs and the alternative decide() picks for them. Run as tests and shown in place of conditions (ADR-0045).
    */
   examples?: RuleExample[];
+  /**
+   * The decision as a person asks it, e.g. How should missing values be filled? Shown on the Methodology page; nothing that decides reads it. Required on an active rule (ADR-0045 amendment).
+   */
+  question?: string;
   /**
    * The one decision this rule owns; unique across loaded packs.
    */
@@ -1318,6 +1366,10 @@ export interface MethodologyRule {
      * A draft rule's design note on when this applies. An active rule has none: its decide() is the logic, shown by its examples (ADR-0045).
      */
     condition?: string;
+    /**
+     * In a few words, when the rule takes this route, e.g. the column is skewed. Shown beside the example that picks it; nothing that decides reads it. Required on an active rule's alternatives (ADR-0045 amendment).
+     */
+    when?: string;
     rationale: string;
     /**
      * JSON Schema for this alternative's settings.

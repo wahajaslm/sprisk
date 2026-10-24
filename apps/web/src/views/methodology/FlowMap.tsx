@@ -6,6 +6,7 @@ import { useMemo } from "react";
 
 import { type Chapter, type FlowNode, SIZE, stageFlow } from "./flowGraph.ts";
 import { STATUS_LABEL } from "./MethodologyMap.tsx";
+import { lookedAt } from "./ruleTree.ts";
 
 type Props = {
   chapter: Chapter;
@@ -78,8 +79,9 @@ function DecisionNode({ data, selected }: NodeProps<Extract<FlowNode, { type: "d
       <span className="mth-flow-diamond" />
       <span className="mth-flow-side">
         <span className="mth-flow-name">
-          <span className="mth-node-code">{data.code}</span> {rule.name}
+          <span className="mth-node-code">{data.code}</span> {rule.question ?? rule.name}
         </span>
+        {lookedAt(rule).length > 0 && <span className="mth-flow-looks">looks at {lookedAt(rule).join(", ")}</span>}
         <span className="mth-flow-meta">
           {rule.decides}
           {rule.status === "draft" && " · draft"}

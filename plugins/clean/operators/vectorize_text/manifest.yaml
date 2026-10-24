@@ -1,7 +1,7 @@
 schema_version: sprisk.operator/v1
-id: sprisk.clean.vectorize_text@1.0.0
+id: sprisk.clean.vectorize_text@1.1.0
 capability_class: transform
-description: Free text becomes word features, TF-IDF weighted, learnt from the train rows only (ADR-0058). Each text column leaves the tables and becomes words in a sparse matrix, named after its column. A word seen only in test rows is ignored; missing text gives a row of zeros.
+description: Free text becomes word features, TF-IDF weighted, learnt from the train rows only (ADR-0058). Each text column leaves the tables and becomes words in a sparse matrix, named after its column. A word seen only in test rows, or in fewer train rows than min_df, is ignored; missing text gives a row of zeros.
 entrypoint: sprisk_clean.vectorize_text:vectorize_text
 notebook_code: sprisk_clean.vectorize_text:as_code
 fits_on_train: true
@@ -18,6 +18,7 @@ params_schema:
   properties:
     columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Text columns to turn into words." }
     ngram_range: { type: array, items: { type: integer, minimum: 1, maximum: 3 }, minItems: 2, maxItems: 2, default: [1, 1], description: "Shortest and longest run of words that is a feature: [1, 1] single words, [1, 2] words and word pairs." }
+    min_df: { type: integer, minimum: 1, default: 1, description: "Fewest train rows a word must appear in to be a feature. 2 leaves out words of one row, which shrinks the vocabulary. A whole number: 1.0 is refused." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 4096, gpu: none, timeout_seconds: 1800 }

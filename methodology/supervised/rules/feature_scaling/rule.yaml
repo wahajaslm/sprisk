@@ -7,6 +7,7 @@ name: "Feature Scaling Strategy"
 stage: features
 decides: features.scaling_strategy
 status: active
+question: "How should numeric inputs be scaled for the models?"
 applies_to: [sprisk.clean.scale, sprisk.ml.linear_model]
 reads: [question.task, step.task, flow.model_families, flow.models_hidden, flow.other_readers, flow.scaled_columns, column.*.data_type, column.*.kurtosis, column.*.outlier_share, column.*.iqr]
 
@@ -36,6 +37,7 @@ alternatives:
   - id: no_scaling
     label: No Scaling Step (Models Downstream Do Not Need It)
     description: Leave the features as they are; scaling here would not change the models downstream.
+    when: "a Scale step feeds only trees, baselines or least-squares regressions"
     rationale: Trees split on rank order, which scaling keeps, and a model that ignores its features
       is unchanged by it. Scaling here adds work with no effect.
     action:
@@ -43,6 +45,7 @@ alternatives:
   - id: robust_scaling
     label: Robust Scaling (Median & IQR)
     description: Center using the median and scale using the interquartile range (IQR).
+    when: "a Scale step feeds a model scaling changes, and an input has heavy tails"
     rationale: Heavy-tailed distributions detected (excess kurtosis > 3.0). RobustScaler prevents extreme outliers
       from compressing regular feature distances.
     action:
@@ -51,6 +54,7 @@ alternatives:
   - id: standard_scaling
     label: Standard Scaling (Z-Score Normalization)
     description: Center to zero mean and scale to unit variance.
+    when: "a Scale step feeds a model scaling changes, and all tails are light"
     rationale: Light tails and few outliers, so the mean and SD describe the spread. It matters for
       models that take their inputs as they are, such as distance-based clustering.
     action:
@@ -59,6 +63,7 @@ alternatives:
   - id: leave_inputs
     label: Leave the Model's Inputs as They Are
     description: No Scale step is added before this model.
+    when: "the linear model is a regression, or its inputs are already scaled"
     rationale: Its inputs are already scaled, or it is a plain least-squares regression, whose
       predictions do not depend on the scale of its inputs.
     action:
@@ -66,6 +71,7 @@ alternatives:
   - id: insert_robust_scaling
     label: Add Robust Scaling Before the Model
     description: A Scale step using median and IQR, fit on the train rows, is added before the model.
+    when: "the linear model predicts classes, and an unscaled input has heavy tails"
     rationale: The model is a penalised logistic regression and some inputs have heavy tails or
       outliers; median and IQR resist them.
     action:
@@ -76,6 +82,7 @@ alternatives:
   - id: insert_standard_scaling
     label: Add Standard Scaling Before the Model
     description: A Scale step using mean and SD, fit on the train rows, is added before the model.
+    when: "the linear model predicts classes, and its unscaled inputs have light tails"
     rationale: The model is a penalised logistic regression, whose penalty depends on the scale
       of its inputs; their tails are light, so mean and SD describe them.
     action:
@@ -87,6 +94,7 @@ alternatives:
     label: MaxAbs Scaling (Sparsity Preserving)
     description: Scale each feature by its maximum absolute value without centering, preserving sparse zero
       structure.
+    when: "never yet: the Scale step has no max-abs method"
     rationale: 'Not available: the scale step has no max-abs method.'
     action:
       type: replace_node

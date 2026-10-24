@@ -17,7 +17,7 @@ pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use notebook_code::CodeWriter;
 use profile::Profiles;
 pub use profile::{KeyMatcher, Profiler};
-pub use rules::RuleRunner;
+pub use rules::{RuleRunner, RuleSession};
 pub use split::{SplitError, Splitter};
 
 use axum::body::Bytes;
@@ -1166,6 +1166,7 @@ async fn review_methodology(
     let mut items = Vec::with_capacity(planned.len());
     let mut open = Vec::with_capacity(planned.len());
     let mut profiles = Profiles::default();
+    let mut rules = state.rule_runner.session();
     for (at, planned_rule) in planned.iter().enumerate() {
         let outcome = if let Some(on) = review::waits_on(&pipeline, &planned, at, &open) {
             Outcome::Waiting { on: on.to_owned() }
@@ -1182,6 +1183,7 @@ async fn review_methodology(
                 node,
                 planned_rule.rule,
                 &mut profiles,
+                &mut rules,
             )
             .await
             {
@@ -1368,6 +1370,7 @@ async fn propose(
         node,
         rule,
         &mut Profiles::default(),
+        &mut state.rule_runner.session(),
     )
     .await?;
     state.store.insert_methodology_proposal(&proposal).await?;
@@ -1383,6 +1386,7 @@ async fn decide(
     node: &sprisk_contracts::Node,
     rule: &MethodologyRule,
     profiles: &mut Profiles,
+    rules: &mut RuleSession,
 ) -> Result<DecisionProposal, ApiError> {
     let node_id = node.id.as_str();
     let rule_ref = rule.id.to_string();
@@ -1425,8 +1429,7 @@ async fn decide(
     }
     let observation =
         sprisk_methodology::observation(rule, question, flow, profile).map_err(resolve)?;
-    let decision = state
-        .rule_runner
+    let decision = rules
         .decide(state.rules.module(rule_ref)?, &observation)
         .await
         .map_err(ApiError::Rule)?;

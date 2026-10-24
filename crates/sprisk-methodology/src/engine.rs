@@ -87,16 +87,30 @@ pub fn start(question: &QuestionVersion, sources: &[String]) -> Result<Start, Re
 pub const MODEL_NODE: &str = "model";
 /// The step that scores the model on the test rows, once, when the walk is complete.
 pub const SCORE_NODE: &str = "score_test";
+/// The featureless baseline fit on the model's train rows, and its score on the same test rows.
+pub const TEST_BASELINE_NODE: &str = "test_baseline";
+pub const SCORE_BASELINE_NODE: &str = "score_baseline";
+/// The model settings the baseline shares: what it reads and what its mistakes cost.
+const BASELINE_SETTINGS: [&str; 5] = ["target", "task", "features", "exclude", "costs"];
 
 /// `pipeline` with an Evaluate step scoring the model on the test rows (ADR-0060): the rows
 /// of the step whose train rows the model fits on, so they are prepared the same way, and the
-/// test words of the step whose train words it reads. Refused when the flow already has it.
+/// test words of the step whose train words it reads. The featureless baseline is fit on the
+/// same train rows and scored on the same test rows beside it, so the score has its floor.
+/// Refused when the flow already has it.
 pub fn with_test_scoring(
     pipeline: &PipelineVersion,
 ) -> Result<(Vec<Node>, Vec<Edge>), ResolveError> {
     let refuse = |why: String| ResolveError::NotInsertable(why);
-    if pipeline.nodes.iter().any(|n| n.id.as_str() == SCORE_NODE) {
-        return Err(refuse(format!("the flow already has a {SCORE_NODE} step")));
+    if let Some(taken) = pipeline
+        .nodes
+        .iter()
+        .find(|n| [SCORE_NODE, TEST_BASELINE_NODE, SCORE_BASELINE_NODE].contains(&n.id.as_str()))
+    {
+        return Err(refuse(format!(
+            "the flow already has a {} step",
+            taken.id.as_str()
+        )));
     }
     let model = pipeline
         .nodes
@@ -116,6 +130,10 @@ pub fn with_test_scoring(
     let mut edges = vec![
         json!({ "from": format!("{MODEL_NODE}.model"), "to": format!("{SCORE_NODE}.model") }),
         json!({ "from": format!("{rows}.test"), "to": format!("{SCORE_NODE}.test") }),
+        json!({ "from": format!("{rows}.train"), "to": format!("{TEST_BASELINE_NODE}.train") }),
+        json!({ "from": format!("{TEST_BASELINE_NODE}.model"),
+                "to": format!("{SCORE_BASELINE_NODE}.model") }),
+        json!({ "from": format!("{rows}.test"), "to": format!("{SCORE_BASELINE_NODE}.test") }),
     ];
     if let Some((words, port)) = feeding("words") {
         if port != "train_words" {
@@ -123,17 +141,37 @@ pub fn with_test_scoring(
                 "{MODEL_NODE} reads {words}.{port}, not train words"
             )));
         }
-        edges.push(json!({
-            "from": format!("{words}.test_words"), "to": format!("{SCORE_NODE}.words")
-        }));
+        // The baseline reads the same words: a words-only flow leaves its table no columns.
+        for (port, to) in [
+            ("test_words", SCORE_NODE),
+            ("train_words", TEST_BASELINE_NODE),
+            ("test_words", SCORE_BASELINE_NODE),
+        ] {
+            edges.push(json!({ "from": format!("{words}.{port}"), "to": format!("{to}.words") }));
+        }
     }
     let params = |name: &str| model.params.get(name).cloned();
-    let score = json!({
-        "id": SCORE_NODE, "operator": "sprisk.ml.evaluate@2.0.0",
-        "params": { "target": params("target"), "task": params("task") },
+    let evaluate = |id: &str| {
+        json!({
+            "id": id, "operator": "sprisk.ml.evaluate@2.0.0",
+            "params": { "target": params("target"), "task": params("task") },
+        })
+    };
+    let shared: serde_json::Map<String, serde_json::Value> = BASELINE_SETTINGS
+        .iter()
+        .filter_map(|name| Some(((*name).to_owned(), params(name)?)))
+        .collect();
+    let baseline = json!({
+        "id": TEST_BASELINE_NODE, "operator": "sprisk.ml.dummy_baseline@3.0.0", "params": shared,
     });
     let mut nodes = pipeline.nodes.clone();
-    nodes.push(parse(&score.to_string())?);
+    for node in [
+        evaluate(SCORE_NODE),
+        baseline,
+        evaluate(SCORE_BASELINE_NODE),
+    ] {
+        nodes.push(parse(&node.to_string())?);
+    }
     let mut all = pipeline.edges.clone();
     for e in edges {
         all.push(parse(&e.to_string())?);

@@ -113,7 +113,7 @@ function RuleNode({ data, selected }: NodeProps<Extract<TreeNode, { type: "rule"
       <span className="mth-rule-dot" />
       <span className="mth-rule-text">
         <span className="mth-rule-name">
-          <span className="mth-node-code">{data.code}</span> {rule.name}
+          <span className="mth-node-code">{data.code}</span> {rule.question ?? rule.name}
         </span>
         <span className="mth-rule-meta" title={rule.decides}>
           {activation(rule) ?? rule.decides}
