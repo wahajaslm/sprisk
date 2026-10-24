@@ -919,7 +919,8 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
     >
-      <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="rgba(255,255,255,0.07)" />
+      {/* React Flow sizes a dot by its diameter; the design's 1px-radius dots are 2px across. */}
+      <Background variant={BackgroundVariant.Dots} gap={18} size={2} color="rgba(255,255,255,0.07)" />
       <Panel position="bottom-left" className="canvas-controls">
         <ZoomControl
           tidy={tidy}
