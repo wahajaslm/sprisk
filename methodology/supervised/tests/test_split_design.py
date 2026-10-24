@@ -176,6 +176,16 @@ def test_a_split_changed_after_its_decision_fails_and_says_so() -> None:
     assert result.methodology_decision_id is not None
 
 
+def test_a_split_a_method_decided_is_judged_on_the_question_alone() -> None:
+    raw = json.loads(
+        (CONTRACT / "methodology_decision/valid/by-method-changes-steps.json").read_text()
+    )
+    by_method = MethodologyDecision.model_validate_json(json.dumps({**raw, "id": DECISION_ID}))
+    result = check(TEMPORAL, question(**CONFIRMED_TIME), (by_method,), decided=True)
+    assert result.verdict == "pass"
+    assert result.methodology_decision_id is None
+
+
 # The concept each confirmed question fact binds (ADR-0063 amendment).
 FACT_CONCEPTS = {"time_column": "common.event_time", "entity_column": "common.item_identity"}
 METHOD = Path(__file__).parents[1] / "methods" / "split_method" / "method.yaml"

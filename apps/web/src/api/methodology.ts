@@ -1,4 +1,10 @@
-import type { AppliedMethodologyDecision, ApplyMethodologyDecision, PipelineVersion } from "@sprisk/contracts";
+import type {
+  AppliedMethodologyDecision,
+  ApplyMethodologyDecision,
+  MethodologyDecision,
+  MethodologyDecisionByRule,
+  PipelineVersion,
+} from "@sprisk/contracts";
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ulid } from "ulid";
 
@@ -72,6 +78,10 @@ export const useMethodologyReview = (pipelineVersionId: string | undefined) =>
     enabled: pipelineVersionId !== undefined,
     placeholderData: keepPreviousData,
   });
+
+/** A rule's decision comes from a proposal; a method's does not (ADR-0064). */
+export const byRule = (decision: MethodologyDecision | undefined): decision is MethodologyDecisionByRule =>
+  decision !== undefined && "proposal_id" in decision;
 
 /** A decision never changes once applied (ADR-0042). */
 export const useMethodologyDecision = (id: string | undefined) =>

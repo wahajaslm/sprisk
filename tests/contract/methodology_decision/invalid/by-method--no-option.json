@@ -1,0 +1,27 @@
+{
+  "schema_version": "sprisk.methodology_decision/v1",
+  "id": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ2",
+  "method": "methodology.supervised.split_method@1.0.0",
+  "decides": "split.method",
+  "assurance": "rule",
+  "reason": "Rows of one item stay on one side, so no item is scored on rows the model saw.",
+  "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "base_pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+  "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
+  "effects": [
+    {
+      "kind": "replace_node",
+      "node_id": "split",
+      "operator": "sprisk.validation.group_split@1.0.0",
+      "params": {
+        "group_column": "item_group",
+        "test_fraction": 0.2,
+        "seed": 42
+      }
+    }
+  ],
+  "promises": [
+    "no_group_overlap"
+  ],
+  "created_at": "2026-10-22T10:02:00Z"
+}

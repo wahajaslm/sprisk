@@ -36,14 +36,14 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, BindingSourceKind,
     CapabilityClass, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, DatasetProfile,
     DecisionProposal, FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse,
-    MethodFiles, MethodologyAlternativeApplicability, MethodologyDecision, MethodologyDecisionId,
-    MethodologyProposalId, MethodologyReview, MethodologyRule, MethodologyRuleSelection,
-    MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
-    NotebookExecution, NotebookExecutionEvent, NotebookId, NotebookSettings,
-    NotebookSettingsRequest, NotebookVariables, NotebookVersion, NotebookVersionId, Operator,
-    OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId, Problem, QuestionVersion,
-    QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study, StudyDetail, StudyId,
-    StudyStatus, TaskType, Trial, parse,
+    MethodFiles, MethodologyAlternativeApplicability, MethodologyDecision,
+    MethodologyDecisionByRule, MethodologyDecisionId, MethodologyProposalId, MethodologyReview,
+    MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
+    NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
+    NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
+    NotebookVersionId, Operator, OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId,
+    Problem, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study,
+    StudyDetail, StudyId, StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -1243,10 +1243,14 @@ async fn review_methodology(
     let decided = |node: &sprisk_contracts::Node, rule: &MethodologyRule| {
         let subject = node.id.as_str();
         review::carries_decision(&pipeline, subject, |step| {
-            applied.iter().any(|d| {
-                step.methodology_decision_id.as_ref() == Some(&d.id)
-                    && d.rule.as_str() == rule.id.as_str()
-                    && review::decided_for(subject, step.id.as_str(), d)
+            // A method's decision never settles a rule's item.
+            applied.iter().any(|d| match d {
+                MethodologyDecision::Rule(d) => {
+                    step.methodology_decision_id.as_ref() == Some(&d.id)
+                        && d.rule.as_str() == rule.id.as_str()
+                        && review::decided_for(subject, step.id.as_str(), d)
+                }
+                MethodologyDecision::Method(_) => false,
             })
         })
     };
@@ -1721,7 +1725,10 @@ async fn chosen_by(
         .await?;
     let Some(selection) = decisions
         .into_iter()
-        .find(|d| d.pipeline_version_id == pipeline.id)
+        .find_map(|d| match d {
+            MethodologyDecision::Rule(d) if d.pipeline_version_id == pipeline.id => Some(d),
+            _ => None,
+        })
         .and_then(|d| d.selection_id)
     else {
         return Ok(None);
@@ -1813,7 +1820,7 @@ async fn apply_methodology(
         .methodology_decision_by_key(request.idempotency_key.as_str())
         .await?
     {
-        sprisk_store::replays(
+        let replayed = sprisk_store::replays(
             &saved,
             request.idempotency_key.as_str(),
             &proposal.id,
@@ -1822,7 +1829,7 @@ async fn apply_methodology(
         )?;
         let saved_pipeline = state
             .store
-            .get_pipeline_version(&saved.pipeline_version_id)
+            .get_pipeline_version(&replayed.pipeline_version_id)
             .await?;
         return Ok((
             StatusCode::OK,
@@ -1942,16 +1949,18 @@ async fn apply_methodology(
     if !seen.is_empty() {
         decision_json["test_rows_seen_by"] = json!(seen);
     }
-    let decision: MethodologyDecision =
+    let decision: MethodologyDecisionByRule =
         parse(&decision_json.to_string()).map_err(|error| ApiError::Internal(error.to_string()))?;
+    let key = request.idempotency_key.as_str();
     let saved = state
         .store
-        .apply_methodology_decision(&decision, &pipeline, request.idempotency_key.as_str())
+        .apply_methodology_decision(&decision.into(), Some(&pipeline), key)
         .await?;
-    let saved_pipeline = state
-        .store
-        .get_pipeline_version(&saved.pipeline_version_id)
-        .await?;
+    // A rule's decision always makes a version; a saved one under this key is a rule's too.
+    let made = saved.pipeline_version_id().ok_or_else(|| {
+        ApiError::Internal(format!("decision {} made no version", saved.id().as_str()))
+    })?;
+    let saved_pipeline = state.store.get_pipeline_version(made).await?;
     Ok((
         StatusCode::CREATED,
         Json(AppliedMethodologyDecision {
@@ -2641,16 +2650,7 @@ fn materialize_effect(
                     message: other.to_string(),
                 },
             })?;
-    // The step the decision changed or added carries it, so the review knows it is decided.
-    if let GraphEffect::ReplaceNode { node_id, .. } | GraphEffect::InsertNode { node_id, .. } =
-        &effect
-        && let Some(node) = nodes.iter_mut().find(|n| n.id == *node_id)
-    {
-        node.methodology_decision_id = Some(
-            parse(&json!(decision_id).to_string())
-                .map_err(|error| ApiError::Internal(error.to_string()))?,
-        );
-    }
+    cite_decision(&mut nodes, &effect, decision_id)?;
     let mut value =
         serde_json::to_value(base).map_err(|error| ApiError::Internal(error.to_string()))?;
     value["id"] = json!(pipeline_id);
@@ -2659,6 +2659,25 @@ fn materialize_effect(
     value["nodes"] = json!(nodes);
     value["edges"] = json!(edges);
     parse(&value.to_string()).map_err(|error| ApiError::Internal(error.to_string()))
+}
+
+/// The step a decision changed or added carries it, so the review and the trail know what
+/// decided it.
+fn cite_decision(
+    nodes: &mut [sprisk_contracts::Node],
+    effect: &GraphEffect,
+    decision_id: &str,
+) -> Result<(), ApiError> {
+    if let GraphEffect::ReplaceNode { node_id, .. } | GraphEffect::InsertNode { node_id, .. } =
+        effect
+        && let Some(node) = nodes.iter_mut().find(|n| n.id == *node_id)
+    {
+        node.methodology_decision_id = Some(
+            parse(&json!(decision_id).to_string())
+                .map_err(|error| ApiError::Internal(error.to_string()))?,
+        );
+    }
+    Ok(())
 }
 
 async fn list_methodology_decisions(

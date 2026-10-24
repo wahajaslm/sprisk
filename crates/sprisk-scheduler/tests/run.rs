@@ -988,7 +988,7 @@ async fn seed_decision(store: &SqliteStore) {
     let decision: sprisk_contracts::MethodologyDecision =
         fixture_with("methodology_decision", "applied.json", json!({}));
     store
-        .apply_methodology_decision(&decision, &applied, "key-0001")
+        .apply_methodology_decision(&decision, Some(&applied), "key-0001")
         .await
         .unwrap();
 }

@@ -3218,7 +3218,19 @@
     },
     "MethodologyDecision": {
       "title": "MethodologyDecision",
-      "description": "Immutable record of an alternative atomically applied to a new pipeline version.",
+      "description": "Immutable record of one decision made through Apply: a rule's alternative, or a method's option (ADR-0064).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MethodologyDecisionByRule"
+        },
+        {
+          "$ref": "#/$defs/MethodologyDecisionByMethod"
+        }
+      ]
+    },
+    "MethodologyDecisionByRule": {
+      "title": "MethodologyDecisionByRule",
+      "description": "A rule's alternative atomically applied to a new pipeline version.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -3283,6 +3295,85 @@
             "$ref": "#/$defs/PipelineVersionId"
           },
           "description": "Earlier versions applied from the same proposal whose runs had already scored the test rows (arch doc §11). Absent when none had."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "MethodologyDecisionByMethod": {
+      "title": "MethodologyDecisionByMethod",
+      "description": "A method's option taken through the same Apply as a rule's (ADR-0064): keyed per walk round, refused on a changed base, and cited by every step it changed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "method",
+        "decides",
+        "option",
+        "assurance",
+        "reason",
+        "question_version_id",
+        "base_pipeline_version_id",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {
+          "enum": [
+            "sprisk.methodology_decision/v1"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/MethodologyDecisionId"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "decides": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "assurance": {
+          "$ref": "#/$defs/MethodAssurance"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_version_id": {
+          "$ref": "#/$defs/QuestionVersionId"
+        },
+        "base_pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId"
+        },
+        "pipeline_version_id": {
+          "$ref": "#/$defs/PipelineVersionId",
+          "description": "The version the option made. Absent when it changed no step."
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphEffect"
+          },
+          "description": "The patch the option applied, in order. Absent: it changed no step."
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          },
+          "description": "The bindings the option made. Absent: none."
+        },
+        "promises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VerificationName"
+          },
+          "description": "The verifications the option promises, by name. Absent: none."
         },
         "created_at": {
           "$ref": "#/$defs/Timestamp"

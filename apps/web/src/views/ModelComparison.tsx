@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client.ts";
 import { isLive, useOperatorsByRef, useOperatorSource, useRuns } from "../api/hooks.ts";
-import { useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
+import { byRule, useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
 import { useSelection } from "../workbench/selection.ts";
@@ -352,10 +352,11 @@ function ChoiceCautions({ head }: { head: PipelineVersion }) {
 /** What a choice cost: test rows already scored by another branch, guardrails it missed. */
 function ChoiceCaution({ decisionId }: { decisionId: string }) {
   const decision = useMethodologyDecision(decisionId);
-  const seen = decision.data?.test_rows_seen_by ?? [];
-  const missed = decision.data?.missed_guardrails ?? [];
+  const ruled = byRule(decision.data) ? decision.data : undefined;
+  const seen = ruled?.test_rows_seen_by ?? [];
+  const missed = ruled?.missed_guardrails ?? [];
   if (seen.length === 0 && missed.length === 0) return null;
-  const step = decision.data?.subject_node_id;
+  const step = ruled?.subject_node_id;
   return (
     <div className="cautions pad">
       {seen.length > 0 && (

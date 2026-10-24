@@ -885,7 +885,7 @@ impl<'a, W: Workers> Scheduler<'a, W> {
             .collect();
         let ids: Vec<_> = cited.iter().map(|(d, _)| d.clone()).collect();
         let found = self.store.methodology_decisions(&ids).await?;
-        cited.retain(|(d, _)| !found.iter().any(|f| f.id == *d));
+        cited.retain(|(d, _)| !found.iter().any(|f| f.id() == d));
         if let Some((decision, node)) = cited.first() {
             return Err(SchedulerError::UnknownDecision {
                 node: node.id.as_str().to_owned(),

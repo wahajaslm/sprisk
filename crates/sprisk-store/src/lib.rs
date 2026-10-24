@@ -6,10 +6,10 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, ArtifactId, Attempt, AttemptId, AttemptState, CreateStudy, CreateWalk,
-    DecisionProposal, InvestigationId, MethodologyDecision, MethodologyDecisionId,
-    MethodologyProposalId, NodeId, NotebookId, NotebookVersion, NotebookVersionId, PipelineVersion,
-    PipelineVersionId, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, Study, StudyId,
-    StudyStatus, Timestamp, Walk, WalkId, WalkStep, WorkerId,
+    DecisionProposal, InvestigationId, MethodologyDecision, MethodologyDecisionByRule,
+    MethodologyDecisionId, MethodologyProposalId, NodeId, NotebookId, NotebookVersion,
+    NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId, Run,
+    RunId, RunStatus, Study, StudyId, StudyStatus, Timestamp, Walk, WalkId, WalkStep, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -728,7 +728,7 @@ impl SqliteStore {
     pub async fn decisions_of(
         &self,
         proposal: &MethodologyProposalId,
-    ) -> Result<Vec<MethodologyDecision>, StoreError> {
+    ) -> Result<Vec<MethodologyDecisionByRule>, StoreError> {
         let bodies: Vec<String> = sqlx::query_scalar(
             "SELECT body FROM methodology_decisions WHERE proposal_id = ? ORDER BY id",
         )
@@ -865,12 +865,13 @@ impl SqliteStore {
             .map_err(StoreError::from)
     }
 
-    /// Commits the applied graph and its decision in one transaction. A repeated key returns
-    /// the original decision, so a lost HTTP response cannot create a second graph version.
+    /// Commits the decision and the version it made, if any, in one transaction. A repeated
+    /// key returns the original decision, so a lost HTTP response or a repeated walk round
+    /// cannot create a second graph version.
     pub async fn apply_methodology_decision(
         &self,
         decision: &MethodologyDecision,
-        pipeline: &PipelineVersion,
+        made: Option<&PipelineVersion>,
         idempotency_key: &str,
     ) -> Result<MethodologyDecision, StoreError> {
         let mut tx = self.pool.begin().await?;
@@ -882,24 +883,25 @@ impl SqliteStore {
         if let Some(body) = existing {
             tx.rollback().await?;
             let saved: MethodologyDecision = serde_json::from_str(&body)?;
-            replays(
-                &saved,
-                idempotency_key,
-                &decision.proposal_id,
-                decision.alternative_id.as_str(),
-                decision.reason.as_ref().map(|r| r.as_str()),
-            )?;
+            same_request(&saved, idempotency_key, decision)?;
             return Ok(saved);
         }
-        sqlx::query("INSERT INTO pipeline_versions (id, project_id, body) VALUES (?, ?, ?)")
-            .bind(pipeline.id.as_str())
-            .bind(pipeline.project_id.as_str())
-            .bind(to_json(pipeline)?)
-            .execute(&mut *tx)
-            .await?;
+        if let Some(pipeline) = made {
+            sqlx::query("INSERT INTO pipeline_versions (id, project_id, body) VALUES (?, ?, ?)")
+                .bind(pipeline.id.as_str())
+                .bind(pipeline.project_id.as_str())
+                .bind(to_json(pipeline)?)
+                .execute(&mut *tx)
+                .await?;
+        }
+        let proposal = match decision {
+            MethodologyDecision::Rule(d) => Some(d.proposal_id.as_str()),
+            MethodologyDecision::Method(_) => None,
+        };
         sqlx::query("INSERT INTO methodology_decisions (id, proposal_id, pipeline_version_id, idempotency_key, body) VALUES (?, ?, ?, ?, ?)")
-            .bind(decision.id.as_str()).bind(decision.proposal_id.as_str())
-            .bind(decision.pipeline_version_id.as_str()).bind(idempotency_key).bind(to_json(decision)?)
+            .bind(decision.id().as_str()).bind(proposal)
+            .bind(decision.pipeline_version_id().map(|v| v.as_str())).bind(idempotency_key)
+            .bind(to_json(decision)?)
             .execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(decision.clone())
@@ -1509,23 +1511,64 @@ fn from_json<T: DeserializeOwned>(
 /// Whether a request under idempotency `key` asks for what `saved` already chose: a retry gets
 /// that decision; the same key with another proposal, choice or reason is a conflict, never
 /// answered with the first (arch doc SCI-07).
-pub fn replays(
-    saved: &MethodologyDecision,
+pub fn replays<'a>(
+    saved: &'a MethodologyDecision,
     key: &str,
     proposal: &MethodologyProposalId,
     alternative: &str,
     reason: Option<&str>,
-) -> Result<(), StoreError> {
-    let same = &saved.proposal_id == proposal
-        && saved.alternative_id.as_str() == alternative
-        && saved.reason.as_ref().map(|r| r.as_str()) == reason;
-    if same {
-        return Ok(());
+) -> Result<&'a MethodologyDecisionByRule, StoreError> {
+    if let MethodologyDecision::Rule(rule) = saved
+        && &rule.proposal_id == proposal
+        && rule.alternative_id.as_str() == alternative
+        && rule.reason.as_ref().map(|r| r.as_str()) == reason
+    {
+        return Ok(rule);
     }
-    Err(StoreError::Conflict(format!(
-        "idempotency key {key} was used for another request: decision {} chose {} from proposal {}",
-        saved.id.as_str(),
-        saved.alternative_id.as_str(),
-        saved.proposal_id.as_str()
-    )))
+    Err(reused(saved, key))
+}
+
+/// Refuses a key reused for a different decision. A method's decision is the same request
+/// when it takes the same option of the same method on the same base, with the same patch.
+pub fn same_request(
+    saved: &MethodologyDecision,
+    key: &str,
+    asked: &MethodologyDecision,
+) -> Result<(), StoreError> {
+    match (saved, asked) {
+        (_, MethodologyDecision::Rule(rule)) => replays(
+            saved,
+            key,
+            &rule.proposal_id,
+            rule.alternative_id.as_str(),
+            rule.reason.as_ref().map(|r| r.as_str()),
+        )
+        .map(|_| ()),
+        (MethodologyDecision::Method(had), MethodologyDecision::Method(wants))
+            if had.method == wants.method
+                && had.option == wants.option
+                && had.base_pipeline_version_id == wants.base_pipeline_version_id
+                && had.effects == wants.effects =>
+        {
+            Ok(())
+        }
+        _ => Err(reused(saved, key)),
+    }
+}
+
+fn reused(saved: &MethodologyDecision, key: &str) -> StoreError {
+    let chose = match saved {
+        MethodologyDecision::Rule(d) => format!(
+            "chose {} from proposal {}",
+            d.alternative_id.as_str(),
+            d.proposal_id.as_str()
+        ),
+        MethodologyDecision::Method(d) => {
+            format!("took {} of {}", d.option.as_str(), d.method.as_str())
+        }
+    };
+    StoreError::Conflict(format!(
+        "idempotency key {key} was used for another request: decision {} {chose}",
+        saved.id().as_str()
+    ))
 }

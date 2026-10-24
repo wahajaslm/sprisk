@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import splitProposal from "../../../tests/contract/decision_proposal/valid/split.json";
 import appliedDecision from "../../../tests/contract/methodology_decision/valid/applied.json";
+import methodDecision from "../../../tests/contract/methodology_decision/valid/by-method-changes-steps.json";
 import multicollinearity from "../../../tests/contract/methodology_rule/valid/multicollinearity.json";
 import { FlowCanvas } from "../src/views/FlowCanvas.tsx";
 import { Inspector } from "./inspector.tsx";
@@ -618,6 +619,20 @@ describe("inspector failures and checks", () => {
     );
     const evidence = await within(chosen!).findByRole("list", { name: "Evidence the decision weighed" });
     expect(evidence).toHaveTextContent("Time column: order_date (explicit)");
+  });
+
+  it("says which option a method took when its decision set the step", async () => {
+    const cited = { ...JSON.parse(checksJson)[0], methodology_decision_id: methodDecision.id };
+    server.use(
+      http.get("/api/artifacts/:id/content", () => HttpResponse.text(JSON.stringify([cited]))),
+      http.get("/api/methodology_decisions/:id", () => HttpResponse.json(methodDecision)),
+    );
+    renderWithApi(<Inspector />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "split" });
+    await userEvent.click(await screen.findByRole("tab", { name: "Methodology" }));
+    expect(await screen.findByText(/Decision took item_groups/)).toHaveTextContent(
+      `Decision took item_groups: ${methodDecision.reason}`,
+    );
   });
 
   it("says so when the decision a verdict cites cannot be loaded", async () => {

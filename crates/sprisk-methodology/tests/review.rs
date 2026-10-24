@@ -563,7 +563,7 @@ fn rules_measuring_the_split_s_table_come_after_the_rules_that_shape_its_columns
 
 #[test]
 fn a_step_upstream_settles_a_subject_only_with_a_decision_made_for_that_subject() {
-    let decision = |subject: &str| -> sprisk_contracts::MethodologyDecision {
+    let decision = |subject: &str| -> sprisk_contracts::MethodologyDecisionByRule {
         let mut d: Value = serde_json::from_str(include_str!(
             "../../../tests/contract/methodology_decision/valid/applied.json"
         ))

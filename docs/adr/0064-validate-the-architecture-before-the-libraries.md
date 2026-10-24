@@ -12,7 +12,7 @@ A validation of the ADR-0063 architecture against the project's goals and the Fl
 - **No end and no way back.** Nothing records the answer to the question, and a walk cannot be found again from its question.
 
 ## Decision
-- **One write path.** A method's decision is a `MethodologyDecision` made by the same Apply as a rule's: idempotency key per walk round, stale base refused, the nodes it changes carry its id. `MethodologyDecision` gains the method, option, promises and bindings (ADR-0063 said it would).
+- **One write path.** A method's decision is a `MethodologyDecision` made by the same Apply as a rule's: idempotency key per walk round, stale base refused, the nodes it changes carry its id. `MethodologyDecision` gains the method, option, promises and bindings (ADR-0063 said it would). It stays `sprisk.methodology_decision/v1`: the method shape is added beside the rule shape, so stored records still parse; a reader must accept both shapes.
 - **No verification reads test labels.** A producer that attaches to a split's outputs may read the test rows' features, never the target. `class_shares_kept` leaves the split's promises; the class shares of train and test are reported with the final score, where §9.4 allows reading them.
 - **Every split option promises something.** `temporal` promises `test_after_train` (no test row is earlier than the latest train row), measured on the time column. `simple_random` promises `no_row_in_both`. An option with nothing to check says why in its method.
 - **Roles, not names.** Core code finds operators by manifest `role` and declared capability, never by id:

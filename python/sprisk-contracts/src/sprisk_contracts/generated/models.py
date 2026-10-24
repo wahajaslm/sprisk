@@ -2144,7 +2144,7 @@ class MethodologyReviewItem(StrictModel):
     ] = None
 
 
-class MethodologyDecision(StrictModel):
+class MethodologyDecisionByRule(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -3041,6 +3041,37 @@ class MethodologyReview(StrictModel):
     ]
 
 
+class MethodologyDecisionByMethod(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.methodology_decision/v1"]
+    id: MethodologyDecisionId
+    method: MethodRef
+    decides: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")]
+    option: MethodOptionId
+    assurance: MethodAssurance
+    reason: Annotated[str, Field(min_length=1)]
+    question_version_id: QuestionVersionId
+    base_pipeline_version_id: PipelineVersionId
+    pipeline_version_id: Annotated[
+        PipelineVersionId | None,
+        Field(description="The version the option made. Absent when it changed no step."),
+    ] = None
+    effects: Annotated[
+        list[GraphEffect] | None,
+        Field(description="The patch the option applied, in order. Absent: it changed no step."),
+    ] = None
+    bindings: Annotated[
+        list[Binding] | None, Field(description="The bindings the option made. Absent: none.")
+    ] = None
+    promises: Annotated[
+        list[VerificationName] | None,
+        Field(description="The verifications the option promises, by name. Absent: none."),
+    ] = None
+    created_at: Timestamp
+
+
 class NotebookVersion(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3480,6 +3511,16 @@ class RuleAnswer(RootModel[RuleDecided | RuleRefused]):
         Field(
             description="The rule session's one JSON line per RuleRequest, tagged by `answer`: the rule's decision, or why the rule refused its observation. Any other failure ends the session.",
             title="RuleAnswer",
+        ),
+    ]
+
+
+class MethodologyDecision(RootModel[MethodologyDecisionByRule | MethodologyDecisionByMethod]):
+    root: Annotated[
+        MethodologyDecisionByRule | MethodologyDecisionByMethod,
+        Field(
+            description="Immutable record of one decision made through Apply: a rule's alternative, or a method's option (ADR-0064).",
+            title="MethodologyDecision",
         ),
     ]
 

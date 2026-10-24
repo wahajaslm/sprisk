@@ -10,8 +10,9 @@ use std::collections::BTreeMap;
 use sprisk_contracts::{
     AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, Method,
     MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodologyDecision,
-    MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId, RunId, RunStatus, Walk,
-    WalkAction, WalkAsk, WalkDetail, WalkId, WalkStatus, WalkStep, WalkStopReason, parse,
+    MethodologyDecisionByRule, MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId,
+    RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId, WalkStatus, WalkStep,
+    WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::deciding::{Effective, Made, Ready, apply_option, bindings, ready};
@@ -27,8 +28,8 @@ use sprisk_registry::evidence::EVIDENCE_PORT;
 use crate::method_session::MethodSession;
 use crate::{
     ApiError, AppState, Claimed, NOT_COMPARED, NOTHING_TO_COMPARE, apply_methodology, body,
-    check_local_paths, claim_selection, compile, decision_of, drive_run, id, propose, queued_run,
-    review_methodology, run_plan,
+    check_local_paths, cite_decision, claim_selection, compile, decision_of, drive_run, id,
+    propose, queued_run, review_methodology, run_plan,
 };
 
 /// What the loop-back rule decides; its `max_looks` caps the walk's comparisons too, so the
@@ -266,6 +267,10 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             .methodology_decision_by_key(&apply_key(&walk, round))
             .await?
         {
+            let decision = match decision {
+                MethodologyDecision::Rule(decision) => decision,
+                method => return record_decided(state, walk, round, &method).await,
+            };
             let proposal = state
                 .store
                 .get_methodology_proposal(&decision.proposal_id)
@@ -664,11 +669,12 @@ struct Read<'r> {
     measured: &'r BTreeMap<String, Value>,
 }
 
-/// Records the decide step of `taking` on the head: the bindings it made, its promises and its
-/// patch. A patch is stored as a new version the walk's head moves to.
+/// Takes `taking`'s option through the same Apply as a rule's (ADR-0064): keyed by the walk
+/// and round, refused when the head changed under the round, and cited by every step it
+/// changed. A patch is stored as a new version the walk's head moves to.
 async fn record_decide(
     state: &AppState,
-    mut walk: Walk,
+    walk: Walk,
     round: usize,
     read: &Read<'_>,
     taking: Taking<'_>,
@@ -684,56 +690,112 @@ async fn record_decide(
         read.measured,
     )
     .map_err(resolve_error)?;
-    let mut decided = json!({
-        "pipeline_version_id": head.id, "decides": taking.method.decides,
-        "method": taking.method.id, "option": taking.option, "assurance": taking.assurance,
+    let decision_id = format!("mdc_{}", ulid::Ulid::new());
+    let at = format((state.clock)());
+    let mut decision = json!({
+        "schema_version": "sprisk.methodology_decision/v1", "id": decision_id,
+        "method": taking.method.id, "decides": taking.method.decides, "option": taking.option,
+        "assurance": taking.assurance, "reason": taking.reason,
+        "question_version_id": head.question_version_id, "base_pipeline_version_id": head.id,
+        "created_at": at,
     });
     if !applied.bindings.is_empty() {
-        decided["bindings"] = json!(applied.bindings);
+        decision["bindings"] = json!(applied.bindings);
     }
     if !applied.promises.is_empty() {
-        decided["promises"] = json!(applied.promises);
+        decision["promises"] = json!(applied.promises);
     }
-    let walk_id = walk.id.to_string();
-    if applied.effects.is_empty() {
-        let step = step(
-            state,
-            &walk_id,
-            round,
-            WalkAction::Decide,
-            &taking.reason,
-            decided,
-        )?;
-        state.store.record_walk_step(&walk, &step).await?;
-        return Ok(WalkStatus::Walking);
+    let made = if applied.effects.is_empty() {
+        None
+    } else {
+        let (mut nodes, edges) =
+            sprisk_methodology::patch::apply(head, &applied.effects, |o| state.registry.get(o))
+                .map_err(resolve_error)?;
+        for effect in &applied.effects {
+            cite_decision(&mut nodes, effect, &decision_id)?;
+        }
+        let made: PipelineVersion = internal(parse(
+            &json!({
+                "schema_version": "sprisk.pipeline_version/v1",
+                "id": format!("plv_{}", ulid::Ulid::new()),
+                "project_id": head.project_id, "parent_id": head.id,
+                "question_version_id": head.question_version_id,
+                "nodes": nodes, "edges": edges, "created_at": at,
+            })
+            .to_string(),
+        ))?;
+        compile(&made, &state.registry).map_err(ApiError::Compile)?;
+        decision["effects"] = json!(applied.effects);
+        decision["pipeline_version_id"] = json!(made.id);
+        Some(made)
+    };
+    let decision: MethodologyDecision = internal(parse(&decision.to_string()))?;
+    let key = apply_key(&walk, round);
+    let saved = match state.store.methodology_decision_by_key(&key).await? {
+        Some(saved) => {
+            sprisk_store::same_request(&saved, &key, &decision)?;
+            saved
+        }
+        None if state.store.has_pipeline_child(&head.id).await? => {
+            let detail = format!(
+                "Version {} gained a version while the walk decided {}.",
+                head.id.as_str(),
+                taking.method.decides.as_str()
+            );
+            return record_stop(state, walk, round, WalkStopReason::Stale, &detail).await;
+        }
+        None => {
+            state
+                .store
+                .apply_methodology_decision(&decision, made.as_ref(), &key)
+                .await?
+        }
+    };
+    record_decided(state, walk, round, &saved).await
+}
+
+/// Records the decide step of a method's decision and moves the walk's head to the version it
+/// made, if any.
+async fn record_decided(
+    state: &AppState,
+    mut walk: Walk,
+    round: usize,
+    decision: &MethodologyDecision,
+) -> Result<WalkStatus, ApiError> {
+    let MethodologyDecision::Method(decision) = decision else {
+        return Err(ApiError::Internal(format!(
+            "walk {} round {round}: decision {} is a rule's, not a method's",
+            walk.id.as_str(),
+            decision.id().as_str()
+        )));
+    };
+    let mut made = json!({
+        "pipeline_version_id": decision.base_pipeline_version_id, "decides": decision.decides,
+        "method": decision.method, "option": decision.option, "assurance": decision.assurance,
+        "methodology_decision_id": decision.id,
+    });
+    for (field, value) in [
+        ("bindings", json!(decision.bindings)),
+        ("promises", json!(decision.promises)),
+        ("effects", json!(decision.effects)),
+    ] {
+        if value.as_array().is_some_and(|a| !a.is_empty()) {
+            made[field] = value;
+        }
     }
-    let (nodes, edges) =
-        sprisk_methodology::patch::apply(head, &applied.effects, |o| state.registry.get(o))
-            .map_err(resolve_error)?;
-    let made: PipelineVersion = internal(parse(
-        &json!({
-            "schema_version": "sprisk.pipeline_version/v1",
-            "id": format!("plv_{}", ulid::Ulid::new()),
-            "project_id": head.project_id, "parent_id": head.id,
-            "question_version_id": head.question_version_id,
-            "nodes": nodes, "edges": edges,
-            "created_at": format((state.clock)()),
-        })
-        .to_string(),
-    ))?;
-    compile(&made, &state.registry).map_err(ApiError::Compile)?;
-    decided["effects"] = json!(applied.effects);
-    decided["made_pipeline_version_id"] = json!(made.id);
+    if let Some(version) = &decision.pipeline_version_id {
+        made["made_pipeline_version_id"] = json!(version);
+        walk.head_pipeline_version_id = Some(version.clone());
+    }
     let step = step(
         state,
-        &walk_id,
+        walk.id.as_str(),
         round,
         WalkAction::Decide,
-        &taking.reason,
-        decided,
+        decision.reason.as_str(),
+        made,
     )?;
-    walk.head_pipeline_version_id = Some(made.id.clone());
-    state.store.record_walk_version(&walk, &step, &made).await?;
+    state.store.record_walk_step(&walk, &step).await?;
     Ok(WalkStatus::Walking)
 }
 
@@ -1309,7 +1371,16 @@ async fn apply(
     )
     .await;
     let decision = match applied {
-        Ok((_, Json(AppliedMethodologyDecision { decision, .. }))) => decision,
+        Ok((_, Json(AppliedMethodologyDecision { decision, .. }))) => match decision {
+            MethodologyDecision::Rule(decision) => decision,
+            MethodologyDecision::Method(method) => {
+                return Err(ApiError::Internal(format!(
+                    "the apply key of walk {} round {round} names method decision {}",
+                    walk.id.as_str(),
+                    method.id.as_str()
+                )));
+            }
+        },
         // Someone changed the head while this round reviewed it.
         Err(ApiError::BadRequest {
             code: "stale_proposal",
@@ -1332,7 +1403,7 @@ async fn record_apply(
     state: &AppState,
     mut walk: Walk,
     round: usize,
-    decision: &MethodologyDecision,
+    decision: &MethodologyDecisionByRule,
     reason: &str,
 ) -> Result<WalkStatus, ApiError> {
     let decides = state

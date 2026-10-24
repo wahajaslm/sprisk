@@ -351,6 +351,13 @@ export type CheckRef = string;
 export type MethodologyReviewStatus =
   "settled" | "proposal" | "needs_fact" | "needs_run" | "waiting" | "no_subject" | "not_applicable" | "reopen";
 /**
+ * Immutable record of one decision made through Apply: a rule's alternative, or a method's option (ADR-0064).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyDecision".
+ */
+export type MethodologyDecision = MethodologyDecisionByRule | MethodologyDecisionByMethod;
+/**
  * Stable within a notebook across versions, as in Jupyter's nbformat 4.5.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2087,12 +2094,12 @@ export interface ApplyMethodologyDecision {
   idempotency_key: string;
 }
 /**
- * Immutable record of an alternative atomically applied to a new pipeline version.
+ * A rule's alternative atomically applied to a new pipeline version.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "MethodologyDecision".
+ * via the `definition` "MethodologyDecisionByRule".
  */
-export interface MethodologyDecision {
+export interface MethodologyDecisionByRule {
   schema_version: "sprisk.methodology_decision/v1";
   id: MethodologyDecisionId;
   proposal_id: MethodologyProposalId;
@@ -2136,6 +2143,40 @@ export interface GuardrailResult {
    * Whether `mean` is at least `at_least`.
    */
   passed: boolean;
+}
+/**
+ * A method's option taken through the same Apply as a rule's (ADR-0064): keyed per walk round, refused on a changed base, and cited by every step it changed.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodologyDecisionByMethod".
+ */
+export interface MethodologyDecisionByMethod {
+  schema_version: "sprisk.methodology_decision/v1";
+  id: MethodologyDecisionId;
+  method: MethodRef;
+  decides: string;
+  option: MethodOptionId;
+  assurance: MethodAssurance;
+  reason: string;
+  question_version_id: QuestionVersionId;
+  base_pipeline_version_id: PipelineVersionId;
+  /**
+   * The version the option made. Absent when it changed no step.
+   */
+  pipeline_version_id?: string;
+  /**
+   * The patch the option applied, in order. Absent: it changed no step.
+   */
+  effects?: GraphEffect[];
+  /**
+   * The bindings the option made. Absent: none.
+   */
+  bindings?: Binding[];
+  /**
+   * The verifications the option promises, by name. Absent: none.
+   */
+  promises?: VerificationName[];
+  created_at: Timestamp;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

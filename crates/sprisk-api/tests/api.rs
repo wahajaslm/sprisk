@@ -5605,6 +5605,64 @@ async fn a_person_s_answer_is_taken_even_where_the_method_would_choose_another()
     assert_eq!(split["assurance"], "confirmed", "{detail}");
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_method_s_decision_is_a_record_made_through_apply_and_cited_by_the_steps_it_changed() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let mut request = walk_request(&[&api.csv], "walk-method-records");
+    request["max_actions"] = json!(6);
+
+    let detail = walk_to_end(&api, request).await;
+    let steps = detail["steps"].as_array().unwrap();
+    let split = steps
+        .iter()
+        .find(|s| s["decides"] == "split.method")
+        .expect("the split is decided");
+    let id = split["methodology_decision_id"].as_str().expect("{detail}");
+    let (status, decision) = call(
+        &api.app,
+        "GET",
+        &format!("/methodology_decisions/{id}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{decision}");
+    assert_eq!(decision["method"], split["method"], "{decision}");
+    assert_eq!(decision["option"], split["option"], "{decision}");
+    assert_eq!(decision["promises"], split["promises"], "{decision}");
+    assert_eq!(
+        decision["base_pipeline_version_id"],
+        split["pipeline_version_id"]
+    );
+    let made = split["made_pipeline_version_id"]
+        .as_str()
+        .expect("the split step changes");
+    assert_eq!(decision["pipeline_version_id"], made);
+    let (_, version) = call(&api.app, "GET", &format!("/pipeline_versions/{made}"), None).await;
+    let node = version["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "split")
+        .unwrap();
+    assert_eq!(node["methodology_decision_id"], id, "{version}");
+    // A decision that changed no step is a record too.
+    let binds = steps
+        .iter()
+        .find(|s| s["action"] == "decide" && s.get("made_pipeline_version_id").is_none())
+        .expect("a decide step that changes no step");
+    let id = binds["methodology_decision_id"].as_str().expect("{binds}");
+    let (_, decision) = call(
+        &api.app,
+        "GET",
+        &format!("/methodology_decisions/{id}"),
+        None,
+    )
+    .await;
+    assert!(decision.get("pipeline_version_id").is_none(), "{decision}");
+}
+
 /// Rakuten-shaped listings where each title is written twice, the second time in capitals,
 /// as sellers relist one product.
 fn rakuten_like_relistings() -> String {
@@ -6258,6 +6316,55 @@ async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
         steps[1]["methodology_decision_id"], applied["decision"]["id"],
         "{detail}"
     );
+    assert_ne!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restarted_walk_takes_up_the_method_decision_it_saved_before_its_step() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (walk, head) = walk_left_walking(&api).await;
+    // Round 1 took a method's option through Apply, and the server stopped before it
+    // recorded the step.
+    let base = api
+        .store
+        .get_pipeline_version(&parse(&json!(head).to_string()).unwrap())
+        .await
+        .unwrap();
+    let mut made = base.clone();
+    made.id = parse("\"plv_01JABCDEFGHJKMNPQRSTVWXYZ8\"").unwrap();
+    made.parent_id = Some(base.id.clone());
+    let decision: sprisk_contracts::MethodologyDecision = parse(
+        &json!({
+            "schema_version": "sprisk.methodology_decision/v1",
+            "id": "mdc_01JABCDEFGHJKMNPQRSTVWXYZ8",
+            "method": "methodology.supervised.split_method@1.0.0", "decides": "split.method",
+            "option": "stratified_random", "assurance": "rule", "reason": "Each class keeps its share.",
+            "question_version_id": "qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "base_pipeline_version_id": head, "pipeline_version_id": made.id,
+            "created_at": stamp_now(),
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let key = format!("{}-round-1", walk.id.as_str());
+    api.store
+        .apply_methodology_decision(&decision, Some(&made), &key)
+        .await
+        .unwrap();
+
+    assert_eq!(resume_walks(&api.state).await.unwrap(), 1);
+    let detail = stopped(&api, &serde_json::to_value(&walk).unwrap()).await;
+
+    // Not stale: the version its head gained is the one its own round made.
+    let steps = detail["steps"].as_array().unwrap();
+    assert_eq!(steps[1]["action"], "decide", "{detail}");
+    assert_eq!(
+        steps[1]["methodology_decision_id"],
+        "mdc_01JABCDEFGHJKMNPQRSTVWXYZ8"
+    );
+    assert_eq!(steps[1]["made_pipeline_version_id"], made.id.as_str());
     assert_ne!(detail["walk"]["stop"]["reason"], "stale", "{detail}");
 }
 

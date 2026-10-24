@@ -3,7 +3,7 @@
 
 use serde_json::json;
 use sprisk_contracts::{
-    DecisionProposal, GraphEffect, MethodologyAlternativeApplicability, MethodologyDecision,
+    DecisionProposal, GraphEffect, MethodologyAlternativeApplicability, MethodologyDecisionByRule,
     MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule, MethodologyRuleStatus,
     MethodologyStage, Node, Operator, PipelineVersion, RuleActionType, TaskType, parse,
 };
@@ -352,7 +352,7 @@ pub fn fits_task<'a>(
 /// and an upstream step's only when it was made for `subject`. A rule that adds a step records
 /// its decision there, for the subject; a person's own step decided for itself says nothing
 /// about what else reaches the subject.
-pub fn decided_for(subject: &str, step: &str, decision: &MethodologyDecision) -> bool {
+pub fn decided_for(subject: &str, step: &str, decision: &MethodologyDecisionByRule) -> bool {
     step == subject || decision.subject_node_id.as_str() == subject
 }
 

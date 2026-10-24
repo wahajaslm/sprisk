@@ -4,7 +4,10 @@ use std::fs;
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
-use sprisk_contracts::{Artifact, Attempt, AttemptState, NotebookVersion, Run, RunStatus, parse};
+use sprisk_contracts::{
+    Artifact, Attempt, AttemptState, MethodologyDecision, MethodologyDecisionByMethod,
+    MethodologyDecisionByRule, NotebookVersion, Run, RunStatus, parse,
+};
 use sprisk_store::{SqliteStore, StoreError};
 
 const NOW: &str = "2026-10-15T10:00:30Z";
@@ -668,7 +671,7 @@ fn fixture_with<T: DeserializeOwned>(entity: &str, name: &str, fields: serde_jso
 }
 
 /// A store holding one question, a base pipeline, a proposal for it and the applied decision.
-async fn store_with_decision() -> (SqliteStore, sprisk_contracts::MethodologyDecision) {
+async fn store_with_decision() -> (SqliteStore, MethodologyDecisionByRule) {
     let store = SqliteStore::in_memory().await.unwrap();
     let question: sprisk_contracts::QuestionVersion = fixture_with(
         "question_version",
@@ -689,10 +692,9 @@ async fn store_with_decision() -> (SqliteStore, sprisk_contracts::MethodologyDec
         "single-node-no-parent.json",
         serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1"}),
     );
-    let decision: sprisk_contracts::MethodologyDecision =
-        fixture("methodology_decision", "applied.json");
+    let decision: MethodologyDecisionByRule = fixture("methodology_decision", "applied.json");
     store
-        .apply_methodology_decision(&decision, &applied, "key-0001")
+        .apply_methodology_decision(&decision.clone().into(), Some(&applied), "key-0001")
         .await
         .unwrap();
     (store, decision)
@@ -709,7 +711,7 @@ async fn methodology_decisions_are_found_by_their_ids_and_unknown_ids_are_left_o
         .await
         .unwrap();
 
-    assert_eq!(found, vec![decision]);
+    assert_eq!(found, vec![decision.into()]);
 }
 
 #[tokio::test]
@@ -832,15 +834,15 @@ async fn an_apply_key_gives_its_decision_to_the_same_choice_and_refuses_another(
     retry.pipeline_version_id = applied.id.clone();
 
     let kept = store
-        .apply_methodology_decision(&retry, &applied, "key-0001")
+        .apply_methodology_decision(&retry.clone().into(), Some(&applied), "key-0001")
         .await
         .unwrap();
-    assert_eq!(kept, decision);
+    assert_eq!(kept, decision.into());
 
     let mut other = retry;
     other.alternative_id = "stratified_random".parse().unwrap();
     let err = store
-        .apply_methodology_decision(&other, &applied, "key-0001")
+        .apply_methodology_decision(&other.into(), Some(&applied), "key-0001")
         .await
         .unwrap_err();
     assert!(matches!(err, StoreError::Conflict(_)), "{err}");
@@ -851,9 +853,77 @@ async fn an_apply_key_gives_its_decision_to_the_same_choice_and_refuses_another(
     );
 }
 
+/// The store of `store_with_decision`, and a method's decision on its base, not stored yet.
+async fn store_with_method_decision(name: &str) -> (SqliteStore, MethodologyDecisionByMethod) {
+    let (store, _) = store_with_decision().await;
+    (store, fixture("methodology_decision", name))
+}
+
+#[tokio::test]
+async fn a_method_decision_that_changed_no_step_is_kept_without_a_version() {
+    let (store, decision) = store_with_method_decision("by-method-binds-only.json").await;
+    let decision: MethodologyDecision = decision.into();
+
+    let kept = store
+        .apply_methodology_decision(&decision, None, "wlk-round-3")
+        .await
+        .unwrap();
+
+    assert_eq!(kept, decision);
+    let id = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ3".parse().unwrap();
+    assert_eq!(
+        store.methodology_decisions(&[id]).await.unwrap(),
+        vec![decision]
+    );
+}
+
+#[tokio::test]
+async fn a_method_decision_is_saved_with_the_version_it_made() {
+    let (store, decision) = store_with_method_decision("by-method-changes-steps.json").await;
+    let made: sprisk_contracts::PipelineVersion = fixture_with(
+        "pipeline_version",
+        "single-node-no-parent.json",
+        serde_json::json!({"id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ5"}),
+    );
+    let mut decision = decision;
+    decision.pipeline_version_id = Some(made.id.clone());
+
+    store
+        .apply_methodology_decision(&decision.into(), Some(&made), "wlk-round-4")
+        .await
+        .unwrap();
+
+    assert_eq!(store.get_pipeline_version(&made.id).await.unwrap(), made);
+}
+
+#[tokio::test]
+async fn a_walk_round_s_key_gives_its_method_decision_to_the_same_option_and_refuses_another() {
+    let (store, decision) = store_with_method_decision("by-method-binds-only.json").await;
+    store
+        .apply_methodology_decision(&decision.clone().into(), None, "wlk-round-3")
+        .await
+        .unwrap();
+    let mut retry = decision.clone();
+    retry.id = "mdc_01JABCDEFGHJKMNPQRSTVWXYZ8".parse().unwrap();
+
+    let kept = store
+        .apply_methodology_decision(&retry.clone().into(), None, "wlk-round-3")
+        .await
+        .unwrap();
+    assert_eq!(kept, decision.into());
+
+    let mut other = retry;
+    other.option = "keep_rows".parse().unwrap();
+    let err = store
+        .apply_methodology_decision(&other.into(), None, "wlk-round-3")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Conflict(_)), "{err}");
+}
+
 /// A study of the decision's base version, its comparison and its run, none stored yet.
 fn study_parts(
-    decision: &sprisk_contracts::MethodologyDecision,
+    decision: &MethodologyDecisionByRule,
 ) -> (
     sprisk_contracts::Study,
     sprisk_contracts::CreateStudy,
@@ -981,8 +1051,7 @@ async fn two_studies_stored_at_once_with_one_key_keep_one() {
     store.insert_pipeline_version(&base).await.unwrap();
     let proposal: sprisk_contracts::DecisionProposal = fixture("decision_proposal", "split.json");
     store.insert_methodology_proposal(&proposal).await.unwrap();
-    let decision: sprisk_contracts::MethodologyDecision =
-        fixture("methodology_decision", "applied.json");
+    let decision: MethodologyDecisionByRule = fixture("methodology_decision", "applied.json");
     let (study, request, comparison, run) = study_parts(&decision);
     let (again, again_comparison, again_run) = rebuilt(&study, &comparison, &run);
 
