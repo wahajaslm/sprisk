@@ -5635,8 +5635,6 @@ async fn a_person_s_answer_is_taken_even_where_the_method_would_choose_another()
     // The method would stratify by class; the person's answer is applied instead.
     assert_eq!(split["option"], "simple_random", "{detail}");
     assert_eq!(split["assurance"], "confirmed", "{detail}");
-    // A person's answer rests on the person, not on evidence the method read.
-    assert!(split.get("evidence").is_none(), "{split}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -5827,6 +5825,15 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     let steps = detail["steps"].as_array().unwrap();
     // The answer binds the item to the group column the producer adds, confirmed by a person.
     assert_eq!(steps[6]["assurance"], "confirmed", "{detail}");
+    // The answer keeps what raised the question: the groups of matching titles.
+    assert_eq!(
+        steps[6]["evidence"][0]["kind"], "data.near_duplicate_groups",
+        "{detail}"
+    );
+    assert_eq!(
+        steps[6]["evidence"][0]["step"], "near_duplicates",
+        "{detail}"
+    );
     assert_eq!(
         steps[6]["bindings"],
         json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_identity",

@@ -33,7 +33,7 @@ params_schema:
     time_column: { type: string, minLength: 1, description: "After a time split: folds follow this column, each validating on later rows than it fits on." }
     group_column: { type: string, minLength: 1, description: "After a group split: no value of this column is on both sides of a fold." }
     folds: { type: integer, minimum: 2, maximum: 20, description: "Number of folds. Every candidate in a comparison uses the same." }
-    repeats: { type: integer, minimum: 1, maximum: 20, description: "How many times the rows are shuffled into folds; every candidate in a comparison uses the same (ADR-0050)." }
+    repeats: { type: integer, minimum: 1, maximum: 20, description: "At most how many times the rows are shuffled into folds. A large train set is shuffled fewer times, about 100,000 validated rows in all and never under 2, a project convention (ADR-0064). Every candidate in a comparison uses the same (ADR-0050)." }
     seed: { type: integer, minimum: 0, description: "Shuffles the rows into folds, so every candidate gets the same folds." }
     metric: { type: string, enum: [balanced_accuracy, expected_cost, rmse, weighted_f1], description: "Fixed before any score is seen: expected_cost when the candidate states costs, else the metric a person stated with the success bar (weighted_f1 or the task's), else balanced_accuracy for classification, rmse for regression." }
     inner_folds: { type: integer, minimum: 2, maximum: 10, description: "A study's trial: folds within each outer fold's training rows, and within all train rows, that its settings are chosen on (ADR-0052)." }

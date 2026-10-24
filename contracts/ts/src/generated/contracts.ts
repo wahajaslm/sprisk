@@ -2209,13 +2209,13 @@ export interface MethodologyDecisionByMethod {
    */
   promises?: VerificationName[];
   /**
-   * What the method read when it chose by itself. Absent: a person answered, or it read none.
+   * What the method read, whether it chose or a person answered. Absent: it read none.
    */
   evidence?: UsedEvidence[];
   created_at: Timestamp;
 }
 /**
- * Evidence a method read when it decided by itself: its kind, the step that measured it and the fields it saw (ADR-0064). Recorded with the decision, so a person can see what it rested on.
+ * Evidence a method read: its kind, the step that measured it and the fields it saw (ADR-0064). Recorded with the decision, whether the method chose or a person answered its question, so a person can see what it rested on.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "UsedEvidence".
@@ -3507,7 +3507,7 @@ export interface WalkStep {
    */
   promises?: VerificationName[];
   /**
-   * What a decide step's method read, when it chose by itself. Absent: a person answered, or it read no evidence.
+   * What a decide step's method read, whether it chose or a person answered. Absent: it read no evidence.
    */
   evidence?: UsedEvidence[];
   /**

@@ -803,3 +803,55 @@ def test_words_are_made_in_each_fold_from_its_own_rows_and_reach_the_model() -> 
     assert result["scores"]["score"].min() == 1.0
     importance = result["importance"]
     assert importance["feature"].to_list()[0] == "title"
+
+
+def repeats_run(n: int) -> int:
+    scored = cross_validate(
+        rows(n, seed=3),
+        lambda task: FitRecorder(),
+        CLASSIFY,
+        folds=5,
+        seed=0,
+        metric="balanced_accuracy",
+        repeats=10,
+        prepare=[],
+    )["scores"]
+    return int(scored["repeat"].max())
+
+
+def test_many_train_rows_are_folded_fewer_times_but_at_least_twice() -> None:
+    # 40,000 train rows need 3 shuffles, not 10; past 100,000 rows the floor is 2.
+    assert repeats_run(40_000) == 3
+    assert repeats_run(200_000) == 2
+
+
+def test_an_empty_train_set_is_refused() -> None:
+    empty = rows(10, seed=3).head(0)
+    with pytest.raises(ValueError, match="no train rows"):
+        cross_validate(
+            empty,
+            lambda task: FitRecorder(),
+            CLASSIFY,
+            folds=5,
+            seed=0,
+            metric="balanced_accuracy",
+            repeats=10,
+            prepare=[],
+        )
+
+
+def test_few_train_rows_are_folded_as_often_as_asked() -> None:
+    assert repeats_run(500) == 10
+
+
+def test_the_forest_grows_on_every_core_and_the_same_trees_as_on_one() -> None:
+    forest = random_forest_estimator("classification", n_estimators=20, seed=3)
+    train = rows(300, seed=4)
+    x, y = train.select("x", "c").to_numpy(), train["y"].to_numpy()
+
+    many = forest.fit(x, y).predict_proba(x)
+    one = forest.set_params(n_jobs=1).fit(x, y).predict_proba(x)
+
+    assert random_forest_estimator("classification").n_jobs == -1
+    # The trees are the same; the threads may add their votes in another order.
+    np.testing.assert_allclose(many, one, rtol=0, atol=1e-12)
