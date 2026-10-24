@@ -28,7 +28,7 @@ describe("a table as plain notebook output", () => {
     expect(screen.getByRole("columnheader", { name: "designation" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "Jeu vidéo pro 0000" })).toBeInTheDocument();
     // One missing-value marker everywhere a table is shown.
-    expect(screen.getByRole("cell", { name: "—" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "—" })).toHaveClass("missing");
     expect(screen.getByRole("cell", { name: "40" })).toHaveClass("num");
     expect(screen.getByText("600 rows × 2 columns")).toBeInTheDocument();
     expect(screen.queryByText("Int64")).not.toBeInTheDocument();

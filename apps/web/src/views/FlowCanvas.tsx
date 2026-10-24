@@ -223,8 +223,6 @@ function CardNode({ data }: NodeProps<Node<StepData>>) {
   );
 }
 
-/** What a card shows of a step that drew no figure: a fact about its output and a small
- * picture of it. */
 /** A step's hover buttons. No route stops a run, so a live step only says it is running. */
 function StepButtons({ id, live, actions }: { id: string; live: boolean; actions: ReturnType<typeof useStepActions> }) {
   const readers = actions.readers(id);
@@ -239,7 +237,8 @@ function StepButtons({ id, live, actions }: { id: string; live: boolean; actions
       act();
     },
   });
-  const runLabel = live ? `${id} is running` : `Run from ${id}`;
+  // No route runs from one step: the run reuses every finished step, so only what is not done runs.
+  const runLabel = live ? `${id} is running` : "Run steps not done";
   const deleteTitle = readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : `Delete step ${id}`;
   return (
     <>
@@ -247,11 +246,11 @@ function StepButtons({ id, live, actions }: { id: string; live: boolean; actions
         role="button"
         tabIndex={0}
         className={`node-hover-btn run${live ? " live" : ""}`}
-        title={live ? runLabel : `${runLabel}: reuses the finished steps before it`}
+        title={live ? runLabel : `${runLabel}: finished steps are reused`}
         aria-label={runLabel}
         aria-disabled={live}
         {...press(() => {
-          if (!live) actions.runFrom();
+          if (!live) actions.runUnfinished();
         })}
       >
         <PlayIcon />
@@ -271,6 +270,8 @@ function StepButtons({ id, live, actions }: { id: string; live: boolean; actions
   );
 }
 
+/** What a card shows of a step that drew no figure: a fact about its output and a small
+ * picture of it. */
 function CardSummary({ data }: { data: StepData }) {
   return (
     <div className="card-summary">
@@ -622,6 +623,8 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
   const selectNode = useSelection((s) => s.selectNode);
   const selectedNodeId = useSelection((s) => s.nodeId);
   const stepActions = useStepActions(pipeline);
+  const stepActionsRef = useRef(stepActions);
+  stepActionsRef.current = stepActions;
   const [nodes, setNodes] = useState<Node[]>(() => encapsulateStages(computed.nodes));
   const nodesRef = useRef<Node[]>(nodes);
   nodesRef.current = nodes;
@@ -814,13 +817,13 @@ function Canvas({ computed, level, pipeline }: { computed: { nodes: Node[]; edge
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedNodeId && pipeline) {
           e.preventDefault();
-          stepActions.remove(selectedNodeId);
+          stepActionsRef.current.remove(selectedNodeId);
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNodeId, pipeline, stepActions]);
+  }, [selectedNodeId, pipeline]);
 
   const onPaneClick = () => {
     selectNode(undefined);
@@ -959,7 +962,6 @@ const OPEN_TABS: [InspectorTab, string][] = [
   ["parameters", "Open parameters"],
 ];
 
-/** Right-click actions on a step. Escape or a click elsewhere closes it. */
 /** Why a step action was refused or failed, until it is dismissed or the next action. */
 function CanvasNotice() {
   const { notice, say } = useCanvasNotice();
@@ -974,6 +976,7 @@ function CanvasNotice() {
   );
 }
 
+/** Right-click actions on a step. Escape or a click elsewhere closes it. */
 function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operators: Map<string, Operator> }) {
   const { at, set } = useStepMenu();
   const dock = useWorkbench((s) => s.dock);
@@ -1036,7 +1039,7 @@ function StepMenu({ pipeline, operators }: { pipeline: PipelineVersion; operator
         <button
           type="button"
           role="menuitem"
-          disabled={saveAndRun.isPending || readers.length > 0}
+          disabled={actions.pending || readers.length > 0}
           title={readers.length > 0 ? `Read by ${readers.join(", ")}: remove those first` : undefined}
           onClick={act(() => actions.remove(at.nodeId))}
         >

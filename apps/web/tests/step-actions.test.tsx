@@ -15,7 +15,7 @@ const NEW_RUN = "run_01JABCDEFGHJKMNPQRSTVWXYZ8";
 describe("a step's own actions on the canvas", () => {
   beforeEach(() => useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: undefined }));
 
-  it("Run from here reuses the finished steps of the run on screen, then shows the new run", async () => {
+  it("a step's run button reuses the finished steps of the run on screen, then shows the new run", async () => {
     let sent: Record<string, unknown> | undefined;
     server.use(
       http.post("/api/runs", async ({ request }) => {
@@ -25,7 +25,8 @@ describe("a step's own actions on the canvas", () => {
     );
     renderWithApi(<FlowCanvas />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Run from impute" }));
+    const [first] = await screen.findAllByRole("button", { name: "Run steps not done" });
+    await userEvent.click(first!);
 
     await waitFor(() => expect(sent).toEqual({ pipeline_version_id: PV, reuse_run_id: RUN }));
     await waitFor(() => expect(useSelection.getState().runId).toBe(NEW_RUN));
