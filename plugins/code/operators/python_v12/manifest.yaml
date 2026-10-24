@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.code.python@1.2.0
+title: Python code
 capability_class: analyzer
 description: Your Python code on the input table. Shows what it prints, its last value and its figures; finds settings you can expose and values you can pass on (ADR-0021).
 entrypoint: sprisk_code.python_step:python_step_v12

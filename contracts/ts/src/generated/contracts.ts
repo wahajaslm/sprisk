@@ -2444,6 +2444,10 @@ export interface Operator {
   id: OperatorRef;
   capability_class: CapabilityClass;
   model?: OperatorModel;
+  /**
+   * The step's name for people: the standard term for what it does (Group split, Imputation). Shown by the UI, CLI and notebooks; the description explains it in plain words. Absent: the operator's name stands in.
+   */
+  title?: string;
   description?: string;
   /**
    * Python `module:function` the worker calls.

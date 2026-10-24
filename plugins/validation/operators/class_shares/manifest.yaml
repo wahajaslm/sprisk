@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.validation.class_shares@1.0.0
+title: Stratification check
 capability_class: analyzer
 description: Measures how far each class's share of rows differs between train and test, the evidence that a stratified split kept the shares (ADR-0063).
 entrypoint: sprisk_validation.split_evidence:class_shares

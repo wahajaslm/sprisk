@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.clip_outliers@1.0.0
+title: Outlier clipping (IQR)
 capability_class: transform
 description: Clip values to the train IQR fence. Rows are never dropped. Fit on train only.
 entrypoint: sprisk_clean.clip_outliers:clip_outliers

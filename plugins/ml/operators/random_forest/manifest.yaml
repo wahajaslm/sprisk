@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.random_forest@3.0.0
+title: Random forest
 capability_class: estimator
 model: { family: tree_ensemble, tasks: [classification, regression], estimator: "sprisk_ml.models:random_forest_estimator", complexity: 2,
   search: [{ name: min_samples_leaf, values: [1, 5, 20] }, { name: max_features, values: [0.3, 0.6, 1.0] }] }

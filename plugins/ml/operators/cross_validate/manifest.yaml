@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.ml.cross_validate@4.0.0
+title: Cross-validation
 capability_class: estimator
 description: Score one candidate model by k-fold cross-validation of the split's train rows, refitting its whole pipeline in every fold (ADR-0044). One row per fold, plus out-of-fold predictions, permutation importance on held-out folds and their figures, all from train rows (ADR-0050). After a random split, stratified folds for classification; after a time or group split, folds that keep time order or whole groups. A study's trial also scores inner folds of each outer fold's training rows, and may score the recall of named classes for guardrails (ADR-0052). A candidate with misclassification costs tunes its cut-off inside each fold and is scored by expected cost (ADR-0053).
 entrypoint: sprisk_ml.compare:cross_validate

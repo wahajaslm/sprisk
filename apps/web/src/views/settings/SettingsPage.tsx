@@ -161,7 +161,7 @@ function Plugins({ operators }: { operators: Operator[] }) {
           .map((op) => (
             <RowItem
               key={op.id}
-              name={stepTitle(op.id)}
+              name={stepTitle(op.id, op)}
               meta={`${op.capability_class} · ${op.inputs.length} in · ${op.outputs.length} out`}
               open={open === op.id}
               onToggle={() => setOpen(open === op.id ? undefined : op.id)}

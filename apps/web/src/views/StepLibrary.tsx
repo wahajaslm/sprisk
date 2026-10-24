@@ -67,7 +67,7 @@ export function StepLibrary() {
           if (!needle) return true;
           return (
             node.id.toLowerCase().includes(needle) ||
-            stepTitle(node.operator).toLowerCase().includes(needle)
+            stepTitle(node.operator, opMap.get(node.operator)).toLowerCase().includes(needle)
           );
         });
 
@@ -127,7 +127,7 @@ export function StepLibrary() {
                 return (
                   <ListRow
                     key={node.id}
-                    title={stepTitle(node.operator)}
+                    title={stepTitle(node.operator, op)}
                     icon={<KindIcon kind={kind} size={12} />}
                     selected={node.id === nodeId}
                     onClick={() => selectNode(node.id)}
@@ -139,13 +139,13 @@ export function StepLibrary() {
           ))
         ))}
       {tab === "Operators" &&
-        STAGES.map((stage) => newestVersions(operators).filter((op) => stageOf(op) === stage && (needle === "" || `${op.id} ${stepTitle(op.id)}`.toLowerCase().includes(needle))))
+        STAGES.map((stage) => newestVersions(operators).filter((op) => stageOf(op) === stage && (needle === "" || `${op.id} ${stepTitle(op.id, op)}`.toLowerCase().includes(needle))))
           .map((inStage, i) => ({ stage: STAGES[i]!, inStage }))
           .filter(({ inStage }) => inStage.length > 0)
           .map(({ stage, inStage }, i) => (
             <SideGroup key={stage} num={i + 1} label={stage} meta={inStage.length}>
               {inStage.map((op) => (
-                <ListRow key={op.id} title={stepTitle(op.id)} meta={op.capability_class} icon={<KindIcon kind={kindOf(op)} size={12} />} hint={op.description ? `${op.description}\n${op.id}` : op.id} />
+                <ListRow key={op.id} title={stepTitle(op.id, op)} meta={op.capability_class} icon={<KindIcon kind={kindOf(op)} size={12} />} hint={op.description ? `${op.description}\n${op.id}` : op.id} />
               ))}
             </SideGroup>
           ))}

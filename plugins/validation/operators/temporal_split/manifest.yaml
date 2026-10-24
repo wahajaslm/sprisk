@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.validation.temporal_split@1.0.0
+title: Temporal split
 capability_class: transform
 role: split
 description: Split by time. Every train row is strictly earlier than every test row.

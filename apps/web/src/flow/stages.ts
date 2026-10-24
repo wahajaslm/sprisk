@@ -80,15 +80,18 @@ export const figurePortOf = (operator: Operator): string | undefined =>
 export const shortName = (ref: string) => ref.split("@")[0]?.split(".").at(-1) ?? ref;
 
 /** "sprisk.ml.linear_model@1.0.0" → "Linear model": the name a person reads in a list. */
-export function stepTitle(ref: string): string {
+/** A step's name for people: its manifest's title, the standard term for what it does; the
+ * operator's name stands in for one without a title. */
+export function stepTitle(ref: string, operator?: Operator): string {
+  if (operator?.title) return operator.title;
   const words = shortName(ref).replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /** How a step reads to people (ADR-0055): its kind as the title (Box plot, Random split), and
  * what it is about, from its id, below. */
-export function stepLabel(node: Node): { title: string; subject: string } {
-  const title = node.title ?? (isCodeOperator(node.operator) ? "Python code" : stepTitle(node.operator));
+export function stepLabel(node: Node, operator?: Operator): { title: string; subject: string } {
+  const title = node.title ?? (isCodeOperator(node.operator) ? "Python code" : stepTitle(node.operator, operator));
   return { title, subject: node.id.replaceAll("_", " ") };
 }
 

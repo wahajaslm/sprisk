@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.clean_text@1.0.0
+title: Text normalization
 capability_class: transform
 description: Tidy text columns. Trim and collapse spaces, optionally lowercase; blank text becomes missing.
 entrypoint: sprisk_clean.clean_text:clean_text

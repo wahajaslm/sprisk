@@ -1,5 +1,6 @@
 schema_version: sprisk.operator/v1
 id: sprisk.clean.mark_missing@1.0.0
+title: Missing-value recoding
 capability_class: transform
 description: Text that stands for a gap, such as "?" or "n/a", becomes a missing value in the named columns. Whole values only.
 entrypoint: sprisk_clean.columns:mark_missing

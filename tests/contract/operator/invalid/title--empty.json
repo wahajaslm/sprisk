@@ -1,0 +1,48 @@
+{
+  "schema_version": "sprisk.operator/v1",
+  "id": "sprisk.validation.temporal_split@1.0.0",
+  "capability_class": "transform",
+  "description": "Split rows by time into train, validation and sealed holdout.",
+  "entrypoint": "sprisk_validation.temporal_split:temporal_split",
+  "inputs": [
+    {
+      "name": "data",
+      "kind": "table"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "train",
+      "kind": "table"
+    },
+    {
+      "name": "validation",
+      "kind": "table"
+    },
+    {
+      "name": "holdout",
+      "kind": "table",
+      "description": "Sealed. Not readable during model selection."
+    }
+  ],
+  "params_schema": {
+    "type": "object",
+    "required": [
+      "time_column"
+    ],
+    "properties": {
+      "time_column": {
+        "type": "string"
+      }
+    }
+  },
+  "effects": "pure",
+  "network": "none",
+  "resources": {
+    "cpu_cores": 1,
+    "memory_mb": 2048,
+    "gpu": "none",
+    "timeout_seconds": 600
+  },
+  "title": ""
+}
