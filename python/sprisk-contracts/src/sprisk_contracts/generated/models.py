@@ -454,6 +454,12 @@ class MethodRefused(StrictModel):
     ]
 
 
+class VerificationOutcome(StrEnum):
+    pass_ = "pass"
+    fail = "fail"
+    inconclusive = "inconclusive"
+
+
 class DecisionAnswer(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1331,6 +1337,7 @@ class WalkStopReason(StrEnum):
     source_changed = "source_changed"
     run_failed = "run_failed"
     stale = "stale"
+    unverified = "unverified"
     budget_exhausted = "budget_exhausted"
     error = "error"
 
@@ -1343,7 +1350,15 @@ class WalkAction(StrEnum):
     measure = "measure"
     decide = "decide"
     score = "score"
+    verify = "verify"
     stop = "stop"
+
+
+class PromiseResult(StrEnum):
+    pass_ = "pass"
+    fail = "fail"
+    inconclusive = "inconclusive"
+    not_evaluated = "not_evaluated"
 
 
 class Handshake(StrictModel):
@@ -1769,13 +1784,16 @@ class MethodAction(StrictModel):
     replace: MethodReplace | None = None
 
 
-class MethodAnswer(RootModel[MethodDecided | MethodRefused]):
-    root: Annotated[
-        MethodDecided | MethodRefused,
-        Field(
-            description="The method session's one JSON line per MethodRequest, tagged by `answer`: what decide() returned, or why the method refused its request. Any other failure ends the session.",
-            title="MethodAnswer",
-        ),
+class MethodVerified(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    answer: Literal["verified"]
+    method: MethodRef
+    verification: VerificationName
+    result: VerificationOutcome
+    detail: Annotated[
+        str, Field(description="What the evidence showed, for a person.", min_length=1)
     ]
 
 
@@ -2528,6 +2546,27 @@ class WalkAsk(StrictModel):
     ] = None
 
 
+class PromiseCheck(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    decides: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")]
+    method: MethodRef
+    verification: VerificationName
+    promise: Annotated[
+        str, Field(description="What holds when it passes, from method.yaml.", min_length=1)
+    ]
+    step: Annotated[
+        NodeId | None,
+        Field(description="The step that measured the evidence. Absent when not_evaluated."),
+    ] = None
+    result: PromiseResult
+    detail: Annotated[
+        str,
+        Field(description="What the evidence showed, or why nothing measured it.", min_length=1),
+    ]
+
+
 class LeaseAttempt(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2723,6 +2762,39 @@ class MethodOption(StrictModel):
     verify: Annotated[
         list[VerificationName],
         Field(description="The verifications this option promises, by name."),
+    ]
+
+
+class VerificationRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.verification_request/v1"]
+    module: Annotated[
+        str,
+        Field(
+            description="Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored.",
+            min_length=1,
+        ),
+    ]
+    method: MethodRef
+    verification: VerificationName
+    evidence: Annotated[
+        EvidenceFields, Field(description="The fields of the evidence kind the verification needs.")
+    ]
+    settings: Annotated[
+        Params,
+        Field(description="The verification's settings from method.yaml; empty when it has none."),
+    ]
+
+
+class MethodAnswer(RootModel[MethodDecided | MethodRefused | MethodVerified]):
+    root: Annotated[
+        MethodDecided | MethodRefused | MethodVerified,
+        Field(
+            description="The method session's one JSON line per request, tagged by `answer`: what decide() returned, what verify_<name>() found, or why the method refused its request. Any other failure ends the session.",
+            title="MethodAnswer",
+        ),
     ]
 
 
@@ -3145,7 +3217,18 @@ class WalkStep(StrictModel):
             description="The verifications a decide step's option promises, by name. Absent: none."
         ),
     ] = None
-    run_id: Annotated[RunId | None, Field(description="The run a run step started.")] = None
+    verifications: Annotated[
+        list[PromiseCheck] | None,
+        Field(
+            description="What a verify step found, one item per promise the walk's decisions made. Absent for every other action."
+        ),
+    ] = None
+    run_id: Annotated[
+        RunId | None,
+        Field(
+            description="The run a run step started, or the run whose evidence a verify step read."
+        ),
+    ] = None
     reason: Annotated[
         str, Field(description="Why, from the review item it acted on.", min_length=1)
     ]

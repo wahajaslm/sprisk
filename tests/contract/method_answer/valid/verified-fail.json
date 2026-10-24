@@ -1,0 +1,7 @@
+{
+  "answer": "verified",
+  "method": "methodology.supervised.split_method@1.0.0",
+  "verification": "class_shares_kept",
+  "result": "fail",
+  "detail": "A class's share differs by 7.5% between train and test."
+}

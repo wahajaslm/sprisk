@@ -23,6 +23,7 @@ const STOPPED: Record<WalkStopReason, string> = {
   run_failed: "A run failed",
   stale: "The flow changed outside the walk",
   budget_exhausted: "Out of budget",
+  unverified: "A promise did not pass",
   error: "Stopped by an error",
 };
 

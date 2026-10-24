@@ -12,6 +12,7 @@ mod methods;
 pub mod patch;
 pub mod review;
 pub mod search;
+pub mod verifying;
 pub use catalog::{CatalogError, RuleCatalog, decides, reopened_stage};
 pub use compare::{
     Comparison, FOLDS, INNER_FOLDS, REPEATS, SEED, SELECT_NODE, Scoring, StudySearch, TrialStep,

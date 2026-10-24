@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use sprisk_contracts::{Operator, PipelineVersion, QuestionVersion, parse};
+use sprisk_methodology::deciding::Made;
 use sprisk_methodology::measure::{Measuring, measure};
 use sprisk_methodology::{RuleCatalog, patch};
 use sprisk_registry::Registry;
@@ -108,7 +109,15 @@ fn a_needed_producer_is_added_on_the_rows_the_split_reads() {
     let ops = operators();
     let (nodes, edges) = load_split();
     let start = flow(nodes, edges);
-    let measured = measure(&catalog(&ops), &start, &titled(), &titled().bindings, &ops).unwrap();
+    let measured = measure(
+        &catalog(&ops),
+        &start,
+        &titled(),
+        &titled().bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
 
     assert_eq!(
         effects_of(&measured),
@@ -146,10 +155,26 @@ fn a_producer_in_place_changes_nothing() {
     let ops = operators();
     let (nodes, edges) = load_split();
     let start = flow(nodes, edges);
-    let first = measure(&catalog(&ops), &start, &titled(), &titled().bindings, &ops).unwrap();
+    let first = measure(
+        &catalog(&ops),
+        &start,
+        &titled(),
+        &titled().bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
     let placed = applied(&start, &first, &ops);
 
-    let again = measure(&catalog(&ops), &placed, &titled(), &titled().bindings, &ops).unwrap();
+    let again = measure(
+        &catalog(&ops),
+        &placed,
+        &titled(),
+        &titled().bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
     assert!(again.effects.is_empty(), "{:?}", again.effects);
     assert!(again.changes.is_empty(), "{:?}", again.changes);
 }
@@ -169,7 +194,15 @@ fn a_producer_follows_a_step_added_before_the_split() {
         { "from": "load.data", "to": "near_duplicates.data" },
     ]);
     let start = flow(nodes, edges);
-    let measured = measure(&catalog(&ops), &start, &titled(), &titled().bindings, &ops).unwrap();
+    let measured = measure(
+        &catalog(&ops),
+        &start,
+        &titled(),
+        &titled().bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
 
     assert_eq!(
         effects_of(&measured),
@@ -198,6 +231,7 @@ fn a_producer_whose_concept_is_unbound_is_not_added_and_says_what_to_state() {
         &question(json!([])),
         &[],
         &ops,
+        &[],
     )
     .unwrap();
 
@@ -221,6 +255,7 @@ fn a_producer_with_no_step_of_its_attach_role_is_left_out_with_a_note() {
         &titled(),
         &titled().bindings,
         &ops,
+        &[],
     )
     .unwrap();
 
@@ -250,6 +285,7 @@ fn a_producer_with_two_steps_of_its_attach_role_is_left_out_with_a_note() {
         &titled(),
         &titled().bindings,
         &ops,
+        &[],
     )
     .unwrap();
 
@@ -267,14 +303,30 @@ fn a_rebound_concept_resets_the_producer_s_column() {
     let ops = operators();
     let (nodes, edges) = load_split();
     let start = flow(nodes, edges);
-    let first = measure(&catalog(&ops), &start, &titled(), &titled().bindings, &ops).unwrap();
+    let first = measure(
+        &catalog(&ops),
+        &start,
+        &titled(),
+        &titled().bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
     let placed = applied(&start, &first, &ops);
     let retitled = question(
         json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_title",
         "source": { "column": "titre" }, "set_by": { "assurance": "stated" } }]),
     );
 
-    let again = measure(&catalog(&ops), &placed, &retitled, &retitled.bindings, &ops).unwrap();
+    let again = measure(
+        &catalog(&ops),
+        &placed,
+        &retitled,
+        &retitled.bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
     assert_eq!(
         effects_of(&again),
         json!([{ "kind": "replace_node", "node_id": "near_duplicates", "operator": PRODUCER,
@@ -308,7 +360,15 @@ fn a_producer_the_split_reads_from_stays_where_it_is() {
         { "from": "near_duplicates.data", "to": "split.data" },
     ]);
     let q = titled();
-    let measured = measure(&catalog(&ops), &flow(nodes, edges), &q, &q.bindings, &ops).unwrap();
+    let measured = measure(
+        &catalog(&ops),
+        &flow(nodes, edges),
+        &q,
+        &q.bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
     assert!(measured.effects.is_empty(), "{:?}", measured.effects);
 }
 
@@ -330,6 +390,123 @@ fn a_producer_upstream_of_the_split_stays_when_a_step_is_added_after_it() {
         { "from": "exact_duplicates.data", "to": "split.data" },
     ]);
     let q = titled();
-    let measured = measure(&catalog(&ops), &flow(nodes, edges), &q, &q.bindings, &ops).unwrap();
+    let measured = measure(
+        &catalog(&ops),
+        &flow(nodes, edges),
+        &q,
+        &q.bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
     assert!(measured.effects.is_empty(), "{:?}", measured.effects);
+}
+
+fn group_split() -> (Value, Value) {
+    (
+        json!([
+            { "id": "load", "operator": LOAD, "params": { "path": "standin.csv", "format": "csv" } },
+            { "id": "near_duplicates", "operator": PRODUCER, "params": { "title_column": "designation" } },
+            { "id": "split", "operator": "sprisk.validation.group_split@1.0.0",
+              "params": { "group_column": "item_group", "test_fraction": 0.2, "seed": 42 } },
+        ]),
+        json!([
+            { "from": "load.data", "to": "near_duplicates.data" },
+            { "from": "near_duplicates.data", "to": "split.data" },
+        ]),
+    )
+}
+
+fn grouped() -> Made {
+    Made {
+        decides: "evaluation.split_method".into(),
+        option: "item_groups".into(),
+        bindings: Vec::new(),
+    }
+}
+
+fn item_groups_bound() -> Vec<sprisk_contracts::Binding> {
+    let mut bound = titled().bindings;
+    bound.push(
+        parse(
+            &json!({ "schema_version": "sprisk.binding/v1", "concept": "common.item_identity",
+                     "source": { "column": "item_group", "step": "near_duplicates" },
+                     "set_by": { "assurance": "rule", "method": "methodology.core.repeated_items@1.0.0" } })
+            .to_string(),
+        )
+        .unwrap(),
+    );
+    bound
+}
+
+#[test]
+fn a_promise_s_producer_is_added_on_the_split_s_outputs() {
+    let ops = operators();
+    let (nodes, edges) = group_split();
+    let start = flow(nodes, edges);
+    let q = titled();
+    let measured = measure(
+        &catalog(&ops),
+        &start,
+        &q,
+        &item_groups_bound(),
+        &ops,
+        &[grouped()],
+    )
+    .unwrap();
+
+    assert_eq!(
+        effects_of(&measured),
+        json!([{ "kind": "add_node", "node_id": "group_overlap",
+                 "operator": "sprisk.validation.group_overlap@1.0.0",
+                 "params": { "group_column": "item_group" },
+                 "inputs": { "test": "split.test", "train": "split.train" } }])
+    );
+    assert_eq!(
+        measured.changes,
+        [
+            "Adds group_overlap on the rows split writes: evaluation.split_method promises no_group_overlap."
+        ]
+    );
+    let again = measure(
+        &catalog(&ops),
+        &applied(&start, &measured, &ops),
+        &q,
+        &item_groups_bound(),
+        &ops,
+        &[grouped()],
+    )
+    .unwrap();
+    assert!(again.effects.is_empty(), "{:?}", again.effects);
+}
+
+#[test]
+fn a_promise_s_producer_reading_an_unbound_concept_is_left_out_with_a_note() {
+    let ops = operators();
+    let (nodes, edges) = load_split();
+    let q = titled();
+    let stratified = Made {
+        decides: "evaluation.split_method".into(),
+        option: "stratified_random".into(),
+        bindings: Vec::new(),
+    };
+    let measured = measure(
+        &catalog(&ops),
+        &flow(nodes, edges),
+        &q,
+        &[],
+        &ops,
+        &[stratified],
+    )
+    .unwrap();
+
+    assert!(measured.effects.is_empty(), "{:?}", measured.effects);
+    assert!(
+        measured
+            .left_out
+            .iter()
+            .any(|n| n.starts_with("evaluation.split_method needs common.target")),
+        "{:?}",
+        measured.left_out
+    );
 }

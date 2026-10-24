@@ -1,8 +1,8 @@
-"""Run methods' decide(ctx) (ADR-0063), one session per walk round.
+"""Run methods' decide(ctx) and verify_<name>() (ADR-0063), one session per walk round.
 
-Run as `python -m sprisk_workers.method`: one MethodRequest per line on stdin, one MethodAnswer
-per line on stdout, until stdin closes. Rust picks each module from the loaded catalog and
-sends only what the method's needs declare; ctx refuses any other read.
+Run as `python -m sprisk_workers.method`: one MethodRequest or VerificationRequest per line on
+stdin, one MethodAnswer per line on stdout, until stdin closes. Rust picks each module from the
+loaded catalog and sends only what the method's needs declare; ctx refuses any other read.
 """
 
 import importlib.util
@@ -12,11 +12,11 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, get_args
 
 from pydantic import ValidationError
 
-from sprisk_contracts import MethodAnswer, MethodRequest
+from sprisk_contracts import MethodAnswer, MethodRequest, VerificationOutcome, VerificationRequest
 from sprisk_workers.errors import MethodError
 
 
@@ -74,17 +74,21 @@ class Context:
 
 Decide = Callable[[Context], Any]
 
+# What a verification may find; stale is the control plane's word, never a method's.
+OUTCOMES = {o.value for o in VerificationOutcome}
+(VERIFY,) = get_args(VerificationRequest.model_fields["schema_version"].annotation)
 
-def load_decide(module_path: Path) -> Decide:
+
+def load_function(module_path: Path, name: str) -> Callable[..., Any]:
     spec = importlib.util.spec_from_file_location("sprisk_method", module_path)
     if spec is None or spec.loader is None:
         raise MethodError(f"cannot load method module {module_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    decide = getattr(module, "decide", None)
-    if not callable(decide):
-        raise MethodError(f"{module_path} has no decide(ctx) function")
-    return decide  # type: ignore[no-any-return]
+    found = getattr(module, name, None)
+    if not callable(found):
+        raise MethodError(f"{module_path} has no {name}() function")
+    return found  # type: ignore[no-any-return]
 
 
 def answer(request: MethodRequest) -> MethodAnswer:
@@ -92,7 +96,7 @@ def answer(request: MethodRequest) -> MethodAnswer:
     ends the session."""
     method = request.method.root
     try:
-        outcome = load_decide(Path(request.module))(Context(request))
+        outcome = load_function(Path(request.module), "decide")(Context(request))
         if not isinstance(outcome, Outcome):
             raise MethodError(f"{method}: decide() must return ctx.choose or ask")
     except MethodError as e:
@@ -110,14 +114,61 @@ def answer(request: MethodRequest) -> MethodAnswer:
     )
 
 
+def verify(request: VerificationRequest) -> MethodAnswer:
+    """What verify_<name>() found on the evidence, or the method's own refusal."""
+    sent = request.model_dump(mode="json")
+    method, name = sent["method"], sent["verification"]
+    try:
+        found = load_function(Path(request.module), f"verify_{name}")(
+            sent["evidence"], sent["settings"]
+        )
+        if not (
+            isinstance(found, tuple)
+            and len(found) == 2
+            and found[0] in OUTCOMES
+            and isinstance(found[1], str)
+            and found[1]
+        ):
+            raise MethodError(
+                f"{method}: verify_{name}() must return (result, detail), the result one of "
+                + ", ".join(sorted(OUTCOMES))
+            )
+    except MethodError as e:
+        return MethodAnswer.model_validate_json(json.dumps({"answer": "refused", "error": str(e)}))
+    result, detail = found
+    return MethodAnswer.model_validate_json(
+        json.dumps(
+            {
+                "answer": "verified",
+                "method": method,
+                "verification": name,
+                "result": result,
+                "detail": detail,
+            }
+        )
+    )
+
+
+def respond(line: str) -> MethodAnswer:
+    """The answer to one request line, picked by its schema_version."""
+    request: MethodRequest | VerificationRequest
+    try:
+        sent = json.loads(line)
+        if isinstance(sent, dict) and sent.get("schema_version") == VERIFY:
+            request = VerificationRequest.model_validate_json(line)
+        else:
+            request = MethodRequest.model_validate_json(line)
+    except (ValidationError, ValueError) as e:
+        raise MethodError(f"invalid method request: {e}") from e
+    if isinstance(request, VerificationRequest):
+        return verify(request)
+    return answer(request)
+
+
 def serve(requests: TextIO, answers: TextIO) -> None:
     """One answer line per request line, until the requests end."""
     for line in requests:
-        try:
-            request = MethodRequest.model_validate_json(line)
-        except ValidationError as e:
-            raise MethodError(f"invalid method request: {e}") from e
-        answers.write(answer(request).model_dump_json(exclude_none=True) + "\n")
+        answers.write(respond(line).model_dump_json(exclude_none=True) + "\n")
         answers.flush()
 
 

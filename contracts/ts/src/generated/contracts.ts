@@ -196,12 +196,19 @@ export type EvidenceValue = number | boolean | string | string[];
  */
 export type MethodAssurance = "confirmed" | "rule";
 /**
- * The method session's one JSON line per MethodRequest, tagged by `answer`: what decide() returned, or why the method refused its request. Any other failure ends the session.
+ * The method session's one JSON line per request, tagged by `answer`: what decide() returned, what verify_<name>() found, or why the method refused its request. Any other failure ends the session.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodAnswer".
  */
-export type MethodAnswer = MethodDecided | MethodRefused;
+export type MethodAnswer = MethodDecided | MethodRefused | MethodVerified;
+/**
+ * What verify_<name>() found. pass: the promise holds. fail: it does not. inconclusive: the evidence cannot say, such as one side with no groups. Never stale: only the control plane knows what changed since.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "VerificationOutcome".
+ */
+export type VerificationOutcome = "pass" | "fail" | "inconclusive";
 /**
  * label: what a model predicts; an all-rows step may never read it. text: free text. entity_identifier: groups rows of one real-world thing. time: when a row's event happened.
  *
@@ -518,7 +525,7 @@ export type WalkSources = string[];
  */
 export type WalkStatus = "walking" | "stopped";
 /**
- * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.
+ * complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. unverified: every rule is settled, but a promise a decision made did not pass on the head's run, so the test rows stay sealed. error: the engine could not take its next step; the detail says why.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkStopReason".
@@ -531,15 +538,23 @@ export type WalkStopReason =
   | "source_changed"
   | "run_failed"
   | "stale"
+  | "unverified"
   | "budget_exhausted"
   | "error";
 /**
- * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. stop: ended the walk.
+ * build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. verify: checked each promise the walk's decisions made, on the evidence the head's run measured (ADR-0063). stop: ended the walk.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "WalkAction".
  */
-export type WalkAction = "build" | "run" | "apply" | "compare" | "measure" | "decide" | "score" | "stop";
+export type WalkAction = "build" | "run" | "apply" | "compare" | "measure" | "decide" | "score" | "verify" | "stop";
+/**
+ * pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseResult".
+ */
+export type PromiseResult = "pass" | "fail" | "inconclusive" | "not_evaluated";
 /**
  * Local worker protocol message (arch doc §11). Tagged by `type`.
  *
@@ -1446,6 +1461,35 @@ export interface EvidenceFields {
   [k: string]: EvidenceValue;
 }
 /**
+ * Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "VerificationRequest".
+ */
+export interface VerificationRequest {
+  schema_version: "sprisk.verification_request/v1";
+  /**
+   * Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored.
+   */
+  module: string;
+  method: MethodRef;
+  verification: VerificationName;
+  evidence: EvidenceFields1;
+  settings: Params3;
+}
+/**
+ * The fields of the evidence kind the verification needs.
+ */
+export interface EvidenceFields1 {
+  [k: string]: EvidenceValue;
+}
+/**
+ * The verification's settings from method.yaml; empty when it has none.
+ */
+export interface Params3 {
+  [k: string]: unknown;
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodDecided".
  */
@@ -1472,6 +1516,20 @@ export interface MethodRefused {
    * The method's own error (an undeclared read, an unknown option). It may name local paths, so it goes to the log, not to a client.
    */
   error: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodVerified".
+ */
+export interface MethodVerified {
+  answer: "verified";
+  method: MethodRef;
+  verification: VerificationName;
+  result: VerificationOutcome;
+  /**
+   * What the evidence showed, for a person.
+   */
+  detail: string;
 }
 /**
  * A person's answer to a method's ask (ADR-0063 amendment): the option to apply for the decision. The walk applies it with assurance confirmed.
@@ -1649,13 +1707,13 @@ export interface RuleDecision {
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params3;
+      params?: Params4;
     },
     ...{
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params3;
+      params?: Params4;
     }[]
   ];
   evidence: MethodologyEvidence[];
@@ -1663,7 +1721,7 @@ export interface RuleDecision {
 /**
  * Concrete params for the manifest action's operator; present when applicable.
  */
-export interface Params3 {
+export interface Params4 {
   [k: string]: unknown;
 }
 /**
@@ -3020,7 +3078,7 @@ export interface Trial {
    * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
    */
   operator: string;
-  settings: Params4;
+  settings: Params5;
   state: TrialState;
   /**
    * Its attempts, oldest first.
@@ -3034,7 +3092,7 @@ export interface Trial {
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  */
-export interface Params4 {
+export interface Params5 {
   [k: string]: unknown;
 }
 /**
@@ -3230,7 +3288,11 @@ export interface WalkStep {
    */
   promises?: VerificationName[];
   /**
-   * The run a run step started.
+   * What a verify step found, one item per promise the walk's decisions made. Absent for every other action.
+   */
+  verifications?: PromiseCheck[];
+  /**
+   * The run a run step started, or the run whose evidence a verify step read.
    */
   run_id?: string;
   /**
@@ -3238,6 +3300,30 @@ export interface WalkStep {
    */
   reason: string;
   created_at: Timestamp;
+}
+/**
+ * One promise checked on the evidence a run measured (ADR-0063).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "PromiseCheck".
+ */
+export interface PromiseCheck {
+  decides: string;
+  method: MethodRef;
+  verification: VerificationName;
+  /**
+   * What holds when it passes, from method.yaml.
+   */
+  promise: string;
+  /**
+   * Node name, unique within a pipeline version.
+   */
+  step?: string;
+  result: PromiseResult;
+  /**
+   * What the evidence showed, or why nothing measured it.
+   */
+  detail: string;
 }
 /**
  * A walk and its trail, oldest step first. A walk takes at most max_actions steps, so the trail is bounded.

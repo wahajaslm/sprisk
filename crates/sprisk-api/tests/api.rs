@@ -5374,7 +5374,8 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0001")).await;
     // Built from the question and the file. The look runs it once and the methods decide the
     // split; then each rule's change is applied, and the flow is run again for the rules that
-    // measure its rows.
+    // measure its rows. Each run that changed the rows before the split checks the split's
+    // promise again; vectorizing acts after the split, so its run does not.
     assert_eq!(
         trail(&detail),
         [
@@ -5382,11 +5383,15 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "run",
             "decide data.repeated_items independent_rows",
             "decide split.method stratified_random",
+            "measure",
             "run",
+            "verify",
             "apply data.column_roles drop_identifiers",
             "run",
+            "verify",
             "apply data.html_text strip",
             "run",
+            "verify",
             "apply features.text_representation vectorize_words",
             "run",
             "stop"
@@ -5411,7 +5416,7 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
     let steps = detail["steps"].as_array().unwrap();
     let head = &detail["walk"]["head_pipeline_version_id"];
     assert_eq!(
-        *head, steps[9]["made_pipeline_version_id"],
+        *head, steps[13]["made_pipeline_version_id"],
         "the head is the version the last apply made"
     );
     let uri = format!("/pipeline_versions/{}", head.as_str().unwrap());
@@ -5595,14 +5600,16 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     let detail = walk_to_end(&api, request).await;
     let walked = trail(&detail);
     assert_eq!(
-        walked[..6],
+        walked[..8],
         [
             "build",
             "measure",
             "run",
             "decide data.repeated_items group_by_title",
             "decide split.method item_groups",
-            "run"
+            "measure",
+            "run",
+            "verify"
         ],
         "{detail}"
     );
@@ -5637,6 +5644,22 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             { "kind": "set_input", "node_id": "split", "port": "data",
               "from": "near_duplicates.data" },
         ])
+    );
+    // The promise is checked on what the split wrote: no item is on both sides.
+    let checks = steps[7]["verifications"].as_array().unwrap();
+    assert_eq!(checks.len(), 1, "{detail}");
+    assert_eq!(checks[0]["verification"], "no_group_overlap", "{detail}");
+    assert_eq!(checks[0]["result"], "pass", "{detail}");
+    assert_eq!(checks[0]["step"], "group_overlap", "{detail}");
+    assert_eq!(steps[7]["run_id"], steps[6]["run_id"], "{detail}");
+    // The promise's producer reads what the split wrote, whatever code wrote it.
+    assert_eq!(
+        steps[5]["effects"],
+        json!([{ "kind": "add_node", "node_id": "group_overlap",
+                 "operator": "sprisk.validation.group_overlap@1.0.0",
+                 "params": { "group_column": "item_group" },
+                 "inputs": { "test": "split.test", "train": "split.train" } }]),
+        "{detail}"
     );
 
     // The split reads rows that passed through the producer, which stays on the rows it
@@ -6110,13 +6133,18 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "run",
             "decide data.repeated_items independent_rows",
             "decide split.method stratified_random",
+            "measure",
             "run",
+            "verify",
             "apply data.join_sources join_on_key",
             "run",
+            "verify",
             "apply data.column_roles drop_identifiers",
             "run",
+            "verify",
             "apply data.html_text strip",
             "run",
+            "verify",
             "apply features.text_representation vectorize_words",
             "run",
             "stop"
@@ -6206,6 +6234,43 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
         body["errors"][0]["code"], "test_rows_scored",
         "{status} {body}"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_promise_that_fails_keeps_the_test_rows_sealed() {
+    let mut api = api().await;
+    // A method session whose every check fails: the stand-in for a split that broke its promise.
+    let failing = "import sprisk_workers.method as m\n\
+        real = m.verify\n\
+        def verify(request):\n\
+        \x20   found = real(request).model_dump_json().replace('\"pass\"', '\"fail\"')\n\
+        \x20   return m.MethodAnswer.model_validate_json(found)\n\
+        m.verify = verify\n\
+        m.main()\n";
+    api.state.method_runner = sprisk_api::MethodRunner::new(
+        vec![
+            root().join(".venv/bin/python").display().to_string(),
+            "-c".into(),
+            failing.into(),
+        ],
+        Duration::from_secs(30),
+        2,
+    );
+    api.app = router(api.state.clone());
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-unverified")).await;
+
+    let trail = trail(&detail);
+    assert_eq!(detail["walk"]["stop"]["reason"], "unverified", "{detail}");
+    assert!(!trail.contains(&"score".to_owned()), "{detail}");
+    let why = detail["walk"]["stop"]["detail"].as_str().unwrap();
+    assert!(
+        why.contains("The test rows stay sealed until every promise passes."),
+        "{why}"
+    );
+    assert!(why.contains("class_shares_kept"), "{why}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

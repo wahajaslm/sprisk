@@ -1607,6 +1607,47 @@
         }
       }
     },
+    "VerificationRequest": {
+      "title": "VerificationRequest",
+      "description": "Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "module",
+        "method",
+        "verification",
+        "evidence",
+        "settings"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "enum": [
+            "sprisk.verification_request/v1"
+          ]
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the method's method.py, from the catalog Rust loaded; never from a client. A local path, so this message is only for the method process on the same machine, never stored."
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceFields",
+          "description": "The fields of the evidence kind the verification needs."
+        },
+        "settings": {
+          "$ref": "#/$defs/Params",
+          "description": "The verification's settings from method.yaml; empty when it has none."
+        }
+      }
+    },
     "MethodOptionId": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]{0,62}$"
@@ -1626,13 +1667,16 @@
     },
     "MethodAnswer": {
       "title": "MethodAnswer",
-      "description": "The method session's one JSON line per MethodRequest, tagged by `answer`: what decide() returned, or why the method refused its request. Any other failure ends the session.",
+      "description": "The method session's one JSON line per request, tagged by `answer`: what decide() returned, what verify_<name>() found, or why the method refused its request. Any other failure ends the session.",
       "oneOf": [
         {
           "$ref": "#/$defs/MethodDecided"
         },
         {
           "$ref": "#/$defs/MethodRefused"
+        },
+        {
+          "$ref": "#/$defs/MethodVerified"
         }
       ]
     },
@@ -1694,6 +1738,48 @@
           "description": "The method's own error (an undeclared read, an unknown option). It may name local paths, so it goes to the log, not to a client."
         }
       }
+    },
+    "MethodVerified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer",
+        "method",
+        "verification",
+        "result",
+        "detail"
+      ],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "enum": [
+            "verified"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "result": {
+          "$ref": "#/$defs/VerificationOutcome"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the evidence showed, for a person."
+        }
+      }
+    },
+    "VerificationOutcome": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive"
+      ],
+      "description": "What verify_<name>() found. pass: the promise holds. fail: it does not. inconclusive: the evidence cannot say, such as one side with no groups. Never stale: only the control plane knows what changed since."
     },
     "DecisionAnswer": {
       "type": "object",
@@ -5330,7 +5416,7 @@
     },
     "WalkStopReason": {
       "type": "string",
-      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. error: the engine could not take its next step; the detail says why.",
+      "description": "complete: nothing is open. needs_person: only facts a person must state are open. limitation: a rule's recommended route reports a limit, such as no lift over the baseline. uncovered: an open item has no engine action yet. source_changed: a source file no longer holds what it held when the walk began. run_failed: the head's run failed and no rule can act on what it produced. stale: the head gained a version the walk did not make. budget_exhausted: the walk used its actions or its time. unverified: every rule is settled, but a promise a decision made did not pass on the head's run, so the test rows stay sealed. error: the engine could not take its next step; the detail says why.",
       "enum": [
         "complete",
         "needs_person",
@@ -5339,13 +5425,14 @@
         "source_changed",
         "run_failed",
         "stale",
+        "unverified",
         "budget_exhausted",
         "error"
       ]
     },
     "WalkAction": {
       "type": "string",
-      "description": "build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. stop: ended the walk.",
+      "description": "build: made the first version from the question and sources. run: ran a version. apply: applied a rule's recommended alternative. compare: compared a Try's routes on fixed folds. measure: added or moved the steps that measure the evidence methods need, where each one attaches (ADR-0063). decide: a method chose an option, or applied a person's answer, and patched the flow by it. score: once every rule was settled, added one Evaluate on the test rows and ran it, once; no rule reads its score. verify: checked each promise the walk's decisions made, on the evidence the head's run measured (ADR-0063). stop: ended the walk.",
       "enum": [
         "build",
         "run",
@@ -5354,6 +5441,7 @@
         "measure",
         "decide",
         "score",
+        "verify",
         "stop"
       ]
     },
@@ -5451,9 +5539,16 @@
             "$ref": "#/$defs/VerificationName"
           }
         },
+        "verifications": {
+          "type": "array",
+          "description": "What a verify step found, one item per promise the walk's decisions made. Absent for every other action.",
+          "items": {
+            "$ref": "#/$defs/PromiseCheck"
+          }
+        },
         "run_id": {
           "$ref": "#/$defs/RunId",
-          "description": "The run a run step started."
+          "description": "The run a run step started, or the run whose evidence a verify step read."
         },
         "reason": {
           "type": "string",
@@ -5464,6 +5559,58 @@
           "$ref": "#/$defs/Timestamp"
         }
       }
+    },
+    "PromiseCheck": {
+      "type": "object",
+      "description": "One promise checked on the evidence a run measured (ADR-0063).",
+      "additionalProperties": false,
+      "required": [
+        "decides",
+        "method",
+        "verification",
+        "promise",
+        "result",
+        "detail"
+      ],
+      "properties": {
+        "decides": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "promise": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What holds when it passes, from method.yaml."
+        },
+        "step": {
+          "$ref": "#/$defs/NodeId",
+          "description": "The step that measured the evidence. Absent when not_evaluated."
+        },
+        "result": {
+          "$ref": "#/$defs/PromiseResult"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the evidence showed, or why nothing measured it."
+        }
+      }
+    },
+    "PromiseResult": {
+      "type": "string",
+      "description": "pass, fail, inconclusive: what verify_<name>() found. not_evaluated: no step measured the evidence it needs. Stale is never recorded: it is worked out against a newer version.",
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive",
+        "not_evaluated"
+      ]
     },
     "WalkDetail": {
       "title": "WalkDetail",
