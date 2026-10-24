@@ -39,7 +39,7 @@ export function addCodeStep(base: PipelineVersion, node: string, port: string) {
 
 /** Steps that read any output of `nodeId`. A step they read cannot be removed. */
 export const readersOf = (pipeline: PipelineVersion, nodeId: string) =>
-  pipeline.edges.filter((e) => stepOf(e.from) === nodeId).map((e) => stepOf(e.to));
+  [...new Set(pipeline.edges.filter((e) => stepOf(e.from) === nodeId).map((e) => stepOf(e.to)))];
 
 /** A new version without this step and the edges into it. Only for steps nothing reads. */
 export function removeStep(base: PipelineVersion, nodeId: string): PipelineVersion {

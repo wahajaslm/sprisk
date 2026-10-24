@@ -1,19 +1,17 @@
+import { readTab } from "./inspectorTabs.ts";
+
 /** Saved dock layouts are UI preference only (arch §2A), versioned apart from scientific schemas. */
 // v2: the left panel became the activity sidebar. v3: the Inspector became one dock panel per tab.
-// v4: the Flow panel no longer has a Notebook view; v3 layouts saved with it kept the Inspector
-// hidden (ADR-0036).
-export const LAYOUT_VERSION = 4;
+// v4: the Flow panel no longer has a Notebook view. v5: only the Flow page's bottom panel is a
+// dock, and each of its panels is one Inspector tab.
+export const LAYOUT_VERSION = 5;
 export const LAYOUT_KEY = "sprisk.layout";
-
-/** View types the cockpit can render. Anything else in a saved layout becomes a placeholder. */
-export const VIEW_TYPES = ["sidebar", "flow", "copilot", "step-tab", "placeholder"] as const;
-export type ViewType = (typeof VIEW_TYPES)[number];
-
-/** Studio regions with their own headers; their tab bars stay hidden outside Edit layout. */
-export const HEADED_PANELS = ["sidebar", "flow", "copilot"] as const;
 
 type SavedPanel = { contentComponent: string } & Record<string, unknown>;
 export type SavedDock = { panels: Record<string, SavedPanel> } & Record<string, unknown>;
+
+/** A panel the dock can show: an Inspector tab it knows. Anything else becomes a placeholder. */
+const known = (panel: SavedPanel) => panel.contentComponent === "tab" && readTab(panel["params"]) !== undefined;
 
 function isSavedDock(value: unknown): value is SavedDock {
   return typeof value === "object" && value !== null && "panels" in value && typeof value.panels === "object";
@@ -33,12 +31,12 @@ export function restoreLayout(text: string | null): SavedDock | undefined {
   }
   const dock = "dock" in saved ? saved.dock : undefined;
   if (!isSavedDock(dock)) return undefined;
-  const known: readonly string[] = VIEW_TYPES;
   const panels = Object.fromEntries(
-    Object.entries(dock.panels).map(([id, panel]) => [
-      id,
-      known.includes(panel.contentComponent) ? panel : { ...panel, contentComponent: "placeholder" },
-    ]),
+    Object.entries(dock.panels).map(([id, panel]) => {
+      if (known(panel)) return [id, panel];
+      const { tabComponent: _tab, ...rest } = panel;
+      return [id, { ...rest, contentComponent: "placeholder" }];
+    }),
   );
   return { ...dock, panels };
 }

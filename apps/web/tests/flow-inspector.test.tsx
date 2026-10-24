@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -42,6 +42,20 @@ describe("FlowInspector", () => {
   it("can float its tabs out of the panel", async () => {
     renderWithApi(<FlowInspector />);
     expect(await screen.findByRole("button", { name: "Float panel" })).toBeInTheDocument();
+  });
+
+  it("remembers its tabs: a tab closed stays closed when the page opens again", async () => {
+    localStorage.clear();
+    const first = renderWithApi(<FlowInspector />);
+    const tab = { selector: ".dock-tab" };
+    fireEvent(await screen.findByText("History", tab), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    await waitFor(() => expect(screen.queryByText("History", tab)).toBeNull());
+    first.unmount();
+
+    renderWithApi(<FlowInspector />);
+    expect(await screen.findByText("Code", tab)).toBeInTheDocument();
+    expect(screen.queryByText("History", tab)).toBeNull();
+    localStorage.clear();
   });
 
   it("keeps a dragged height between 120 and 620 pixels", () => {

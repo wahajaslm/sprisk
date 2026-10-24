@@ -2,7 +2,7 @@ import type { Attempt } from "@sprisk/contracts";
 
 import { usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { flowName } from "../flow/labels.ts";
-import { hasOutputs, isGateNode } from "../flow/latest.ts";
+import { hasOutputs, isGateNode, latestByNode } from "../flow/latest.ts";
 import { useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { PanelToggleIcon, SendIcon } from "./Icons.tsx";
@@ -67,13 +67,8 @@ export function Copilot() {
       </div>
 
       <div className="copilot-body">
-        {runId && (
-          <section className="copilot-run" aria-label="This run">
-            <span className="copilot-run-label">This run</span>
-            <QueryState query={attempts}>{(data) => <RunSummary attempts={data} />}</QueryState>
-          </section>
-        )}
-        <CopilotMessage role="assistant">
+        {runId && <QueryState query={attempts}>{(data) => <RunNotes attempts={data} nodeId={nodeId} />}</QueryState>}
+        <CopilotMessage>
           Copilot is not connected. No AI model is set up, and data never leaves this machine without your
           consent. Methodology decisions come from the rules, not from Copilot.
         </CopilotMessage>
@@ -91,13 +86,19 @@ export function Copilot() {
   );
 }
 
-function RunSummary({ attempts }: { attempts: Attempt[] }) {
+/** What the run on screen says, in plain sentences: how far it got, and why the selected step
+ * failed, from that step's own attempt. Facts only; nothing is generated. */
+function RunNotes({ attempts, nodeId }: { attempts: Attempt[]; nodeId: string | undefined }) {
   const steps = attempts.filter((a) => !isGateNode(a.node_id));
   const done = steps.filter(hasOutputs).length;
   const cached = steps.filter((a) => a.state === "cache_hit").length;
+  const failed = nodeId ? latestByNode(attempts).get(nodeId)?.error : undefined;
   return (
-    <p className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--text-secondary)", marginTop: 4 }}>
-      {done} of {steps.length} step attempts done{cached > 0 ? ` · ${cached} cached` : ""}
-    </p>
+    <>
+      <CopilotMessage>
+        {`This run: ${done} of ${steps.length} step attempts done${cached > 0 ? ` · ${cached} cached` : ""}.`}
+      </CopilotMessage>
+      {failed && <CopilotMessage>{`${nodeId} failed: ${failed.message}`}</CopilotMessage>}
+    </>
   );
 }

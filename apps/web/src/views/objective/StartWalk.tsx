@@ -56,7 +56,7 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
     });
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 10 }} aria-label="Start a walk">
+    <section className="start-walk" aria-label="Start a walk">
       <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
         <span>Source files</span>
         <textarea

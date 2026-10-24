@@ -383,9 +383,9 @@ describe("flow canvas", () => {
     const { STAGE_FOOTER_HEIGHT, STAGE_PAD_X } = await import("../src/flow/layout.ts");
     const encapsulated = encapsulateStages(testNodes);
     const stage = encapsulated.find((n) => n.id === "stage:Split#split")!;
-    // The child's right edge (350 + 200) and bottom edge (550 + 80), plus the stage's padding.
+    // The child's right edge (350 + 200) and bottom edge (550 + 80), plus the room below it.
     expect(stage.width).toBe(350 + 200 + STAGE_PAD_X);
-    expect(stage.height).toBe(550 + 80 + STAGE_FOOTER_HEIGHT + 24);
+    expect(stage.height).toBe(550 + 80 + STAGE_FOOTER_HEIGHT);
   });
 
   it("right-click on a step opens its actions", async () => {
@@ -1590,7 +1590,7 @@ describe("cached steps", () => {
     server.use(http.get(`/api/runs/${RUN}/attempts`, () => HttpResponse.json(cachedAttempts())));
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done · 1 cached")).toBeInTheDocument();
+    expect(await screen.findByText("This run: 6 of 7 step attempts done · 1 cached.")).toBeInTheDocument();
   });
 });
 
@@ -1610,7 +1610,7 @@ describe("a run that finishes between polls", () => {
     );
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done", {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(await screen.findByText("This run: 6 of 7 step attempts done.", {}, { timeout: 4000 })).toBeInTheDocument();
   });
 });
 
@@ -1637,8 +1637,20 @@ describe("copilot", () => {
   it("summarises the run's step attempts, without the gate", async () => {
     renderWithApi(<Copilot />);
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
-    expect(await screen.findByText("6 of 7 step attempts done")).toBeInTheDocument();
+    expect(await screen.findByText(/^This run: 6 of 7 step attempts done\.$/)).toBeInTheDocument();
     expect(run.status).toBe("succeeded");
+  });
+
+  it("says why the selected step failed, from its own attempt", async () => {
+    const error = { code: "invalid_input", message: "description, designation are not numbers" };
+    server.use(
+      http.get(`/api/runs/${RUN}/attempts`, () =>
+        HttpResponse.json(attempts.map((a) => (a.node_id === "model" ? { ...a, state: "failed", error } : a))),
+      ),
+    );
+    renderWithApi(<Copilot />);
+    useSelection.setState({ pipelineVersionId: PV, runId: RUN, nodeId: "model" });
+    expect(await screen.findByText("model failed: description, designation are not numbers")).toBeInTheDocument();
   });
 
   it("shows an attempts error", async () => {

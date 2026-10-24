@@ -810,8 +810,6 @@ p { margin: 0; }
   font-weight: var(--fw-medium);
 }
 .copilot-context { flex: 1; min-width: 0; text-align: right; font-size: var(--fs-12-5); color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.copilot-run { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--alpha-06); font-size: var(--fs-13); color: var(--text-secondary); }
-.copilot-run-label { font-size: var(--fs-12-5); color: var(--text-label); }
 
 .copilot-body {
   flex: 1;
@@ -3409,8 +3407,8 @@ p { margin: 0; }
 }
 .btn-sm {
   height: 28px;
-  padding: 0 10px;
-  font-size: var(--fs-12);
+  padding: 0 12px;
+  font-size: var(--fs-13);
 }
 .btn-primary {
   background: var(--bg-inverse);
@@ -3448,38 +3446,19 @@ p { margin: 0; }
   border-color: var(--danger-border-hover);
 }
 
-/* Icon Buttons */
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--dur-fast);
+/* Copilot messages: the assistant's as plain text, a person's in a bubble on the right. */
+.copilot-message { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.copilot-message.user { align-items: flex-end; }
+.copilot-message-body {
+  max-width: 94%;
+  border-radius: 10px;
+  color: var(--text-body);
+  font-size: var(--fs-14-5);
+  line-height: var(--lh-relaxed);
+  text-wrap: pretty;
+  white-space: pre-wrap;
 }
-.icon-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-.icon-btn.active {
-  background: var(--bg-selected);
-  color: var(--text-strong);
-}
-.icon-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.icon-btn-md {
-  width: var(--size-control);
-  height: var(--size-control);
-}
-.icon-btn-sm {
-  width: 28px;
-  height: 28px;
-}
+.copilot-message.user .copilot-message-body { padding: 9px 12px; background: var(--gray-7); color: var(--text-primary); }
 
 /* Tags / Chips */
 .tag {
@@ -4092,8 +4071,7 @@ p { margin: 0; }
 .objective-scroll-body {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 32px;
-  max-width: 900px;
+  padding: 24px 22px;
   width: 100%;
 }
 
@@ -4103,17 +4081,17 @@ p { margin: 0; }
 
 .objective-version-meta {
   display: block;
-  font-size: var(--fs-12);
-  color: var(--ink-4);
-  font-family: var(--font-mono);
+  font-size: var(--fs-12-5);
+  color: var(--ink-5);
   margin-bottom: 8px;
 }
 
 .objective-sentence {
-  font-size: 22px;
-  font-weight: 500;
-  line-height: 1.45;
-  color: var(--ink-1);
+  max-width: 720px;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--ink-0);
   letter-spacing: -0.01em;
   margin: 0;
 }
@@ -4129,11 +4107,7 @@ p { margin: 0; }
 }
 
 .ledger-table-wrap {
-  border: 1px solid var(--border-panel);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--bg-surface);
-  margin-bottom: 16px;
+  margin: 0 -22px 16px;
 }
 
 .ledger-table {
@@ -4143,20 +4117,21 @@ p { margin: 0; }
 }
 
 .ledger-table th {
+  height: 32px;
   text-align: left;
-  padding: 9px 14px;
+  padding: 0 22px;
   font-size: var(--fs-12);
-  font-weight: 500;
-  color: var(--ink-4);
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid var(--border-panel);
+  font-weight: 400;
+  color: var(--ink-5);
+  border-bottom: 1px solid var(--alpha-10);
 }
 
 .ledger-table td {
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--border-divider);
-  vertical-align: top;
-  color: var(--ink-2);
+  height: 35px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--alpha-04);
+  vertical-align: middle;
+  color: var(--ink-0);
 }
 
 .ledger-table tbody tr:last-child td {
@@ -4164,12 +4139,12 @@ p { margin: 0; }
 }
 
 .ledger-table tr.row-open {
-  background: var(--danger-wash-subtle);
+  background: none;
 }
 
-.entry-key {
-  font-weight: 500;
-  color: var(--ink-1);
+.ledger-table .entry-key {
+  font-weight: 400;
+  color: var(--ink-3);
   white-space: nowrap;
 }
 
@@ -4211,8 +4186,8 @@ p { margin: 0; }
   color: var(--ink-0);
 }
 
-.entry-src {
-  color: var(--ink-4);
+.ledger-table .entry-src {
+  color: var(--ink-5);
   font-size: var(--fs-12-5);
 }
 
@@ -4221,20 +4196,14 @@ p { margin: 0; }
 }
 
 .status-badge {
-  display: inline-block;
-  font-size: var(--fs-12);
-  font-family: var(--font-mono);
-  padding: 2px 6px;
-  border-radius: 3px;
+  font-size: var(--fs-12-5);
 }
 
 .badge-set {
-  background: var(--alpha-04);
-  color: var(--ink-4);
+  color: var(--ink-5);
 }
 
 .badge-open {
-  background: var(--danger-wash-open);
   color: var(--danger);
 }
 
@@ -4251,50 +4220,47 @@ p { margin: 0; }
 
 .from-data-section {
   margin-top: 24px;
+  max-width: 716px;
 }
 
 .from-data-head {
   font-size: var(--fs-12);
-  font-weight: 500;
-
-  color: var(--ink-4);
-  margin: 0 0 12px;
+  font-weight: 400;
+  color: var(--ink-5);
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--alpha-10);
 }
 
 .from-data-grid {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-panel);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  overflow: hidden;
 }
 
 .from-data-row {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-divider);
-  font-size: var(--fs-13);
+  height: 33px;
+  border-bottom: 1px solid var(--alpha-04);
+  font-size: var(--fs-13-5);
 }
 
-.from-data-row:last-child {
-  border-bottom: none;
-}
 
 .from-data-k {
-  min-width: 180px;
+  width: 118px;
   flex-shrink: 0;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--fs-12-5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
 }
 
+/* Starting a walk sits under the objective, apart from it. */
+.start-walk { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+
 .from-data-v {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-12-5);
+  color: var(--ink-0);
 }
 
 .objective-history-body {
@@ -7897,9 +7863,15 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .rd-col .rd-source { margin-top: 8px; font-size: 11.5px; }
 
 /* The Datasets preview: the plain table at page size, rows spaced as the design draws them. */
-.ds-preview { padding: 18px 24px; }
-.ds-preview .plain-table table { width: 100%; font-size: 12px; }
-.ds-preview .plain-table th { padding: 0 12px 10px; border-bottom-color: var(--line-soft); font-family: var(--sans); font-weight: 400; color: var(--faint); }
-.ds-preview .plain-table td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); color: var(--ink); }
-.ds-preview .plain-table .row-number { width: 1%; }
+/* The page body pads it, as every page section. */
+.ds-preview { padding: 0; }
+/* Values are read as text, in the UI font with even-width digits; only code uses the mono font. */
+.ds-preview .plain-table { font: var(--fs-13) var(--sans); font-variant-numeric: tabular-nums; }
+.ds-preview .plain-table table { width: 100%; }
+.ds-preview .plain-table th { height: 32px; padding: 0 10px; border-bottom: 1px solid var(--alpha-10); font-size: 12px; font-weight: 400; color: var(--ink-5); }
+.ds-preview .plain-table td { height: 34px; padding: 0 10px; border-bottom: 1px solid var(--alpha-04); color: var(--ink); }
+.ds-preview .plain-table tbody tr:hover { background: var(--alpha-03); }
+.ds-preview .plain-table .row-number { width: 40px; text-align: left; color: var(--ink); }
+.ds-preview .plain-table thead .num:first-child { text-align: left; }
+.ds-preview .plain-table .missing { color: var(--ink-7); }
 .ds-preview .plain-table-size { display: none; }

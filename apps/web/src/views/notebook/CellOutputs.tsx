@@ -67,7 +67,11 @@ export function PlainTable({ page, label, rowNumbers = false }: { page: TablePag
             <tr key={r}>
               {rowNumbers && <td className="num row-number">{page.offset + r + 1}</td>}
               {row.values.map((value, col) => (
-                <td key={col} className={numeric[col] ? "num" : undefined}>{row.missing.includes(col) ? "—" : String(value)}</td>
+                row.missing.includes(col) ? (
+                  <td key={col} className={numeric[col] ? "num missing" : "missing"}>—</td>
+                ) : (
+                  <td key={col} className={numeric[col] ? "num" : undefined}>{String(value)}</td>
+                )
               ))}
             </tr>
           ))}
