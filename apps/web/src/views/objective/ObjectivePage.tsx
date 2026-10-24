@@ -337,7 +337,7 @@ export function ObjectivePage() {
                   <tr>
                     <td className="entry-key">Task</td>
                     <td className="entry-value">
-                      <span className="mono">{question.task.value}</span>
+                      <span>{question.task.value}</span>
                     </td>
                     <td className="entry-src">{question.task.origin}</td>
                     <td className="entry-st">
@@ -350,7 +350,7 @@ export function ObjectivePage() {
                     <td className="entry-key">Target</td>
                     <td className="entry-value">
                       {question.target ? (
-                        <span className="mono">{question.target.value}</span>
+                        <span>{question.target.value}</span>
                       ) : (
                         <span className="val-open-title">Target variable not specified</span>
                       )}
@@ -368,7 +368,7 @@ export function ObjectivePage() {
                     <td className="entry-key">Unit of Analysis</td>
                     <td className="entry-value">
                       {question.unit_of_analysis ? (
-                        <span className="mono">{question.unit_of_analysis.value}</span>
+                        <span>{question.unit_of_analysis.value}</span>
                       ) : (
                         <span className="val-open-title">Unit not specified</span>
                       )}
@@ -386,7 +386,7 @@ export function ObjectivePage() {
                     <td className="entry-key">Horizon</td>
                     <td className="entry-value">
                       {question.prediction_horizon ? (
-                        <span className="mono">{question.prediction_horizon.value}</span>
+                        <span>{question.prediction_horizon.value}</span>
                       ) : (
                         <span className="val-open-title">Horizon not specified</span>
                       )}
@@ -458,7 +458,7 @@ export function ObjectivePage() {
                       <td className="entry-key">{i === 0 ? "Column" : ""}</td>
                       <td className="entry-value">
                         <span>{conceptsQuery.data?.concepts[b.concept]?.description ?? b.concept}</span> ·{" "}
-                        <span className="mono">{b.source.column}</span>
+                        <span>{b.source.column}</span>
                       </td>
                       <td className="entry-src">{b.set_by.assurance}</td>
                       <td className="entry-st">
@@ -471,7 +471,7 @@ export function ObjectivePage() {
                     <tr key={`answer-${a.decides}`}>
                       <td className="entry-key">{i === 0 ? "Answer" : ""}</td>
                       <td className="entry-value">
-                        <span className="mono">{a.decides}</span> · <span className="mono">{a.option}</span>
+                        <span>{a.decides}</span> · <span>{a.option}</span>
                       </td>
                       <td className="entry-src">answered</td>
                       <td className="entry-st">
