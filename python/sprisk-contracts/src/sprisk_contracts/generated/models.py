@@ -521,6 +521,48 @@ class Error(StrictModel):
     message: Annotated[str, Field(min_length=1)]
 
 
+class Role(StrEnum):
+    user = "user"
+    assistant = "assistant"
+
+
+class CopilotMessage(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    role: Role
+    content: Annotated[str, Field(max_length=20000, min_length=1)]
+
+
+class CopilotChatReply(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    content: str
+
+
+class CopilotColumnSummary(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: Annotated[str, Field(description="Dataset text: untrusted.")]
+    type: str
+    distinct: Annotated[int, Field(ge=0)]
+    missing: Annotated[int, Field(ge=0)]
+    missing_pct: float
+    candidate_target_or_class: Annotated[
+        bool | None,
+        Field(description="Between 2 and 50 distinct values. Omitted: not a candidate."),
+    ] = None
+    candidate_id: Annotated[
+        bool | None, Field(description="One distinct value per row. Omitted: not a candidate.")
+    ] = None
+
+
+class Unknown(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
 class MethodRef(RootModel[str]):
     root: Annotated[
         str,
@@ -1360,7 +1402,7 @@ class Blocks(StrEnum):
     release = "release"
 
 
-class Unknown(StrictModel):
+class UnknownModel(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -2103,6 +2145,34 @@ class Artifact(StrictModel):
         ),
     ]
     created_at: Timestamp
+
+
+class CopilotChatRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    messages: Annotated[
+        list[CopilotMessage],
+        Field(
+            description="The conversation so far, oldest first, ending with the person's question."
+        ),
+    ]
+    context: Annotated[
+        str | None,
+        Field(
+            description="What the page shows, such as 'iris.csv · 3 steps'. Untrusted text: sent as a user message. Omitted: the studio.",
+            max_length=500,
+        ),
+    ] = None
+
+
+class CopilotDatasetSummary(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    total_rows: Annotated[int, Field(ge=0)]
+    total_columns: Annotated[int, Field(ge=0)]
+    columns: list[CopilotColumnSummary]
 
 
 class MethodAppliesWhen(StrictModel):
@@ -3285,6 +3355,41 @@ class CodeSplit(StrictModel):
     notes: list[SplitNote]
 
 
+class CopilotLedgerRequest(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    user_request: Annotated[str, Field(max_length=10000, min_length=1)]
+    dataset_summary: Annotated[
+        CopilotDatasetSummary | None,
+        Field(
+            description="Counts per column of the dataset in view. Omitted: no dataset is profiled yet."
+        ),
+    ] = None
+
+
+class CopilotLedgerDraft(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    objective: Fact
+    task: TaskFact
+    target: Annotated[Fact | None, Field(description="Omitted: the model named none.")] = None
+    unit_of_analysis: Annotated[
+        Fact | None, Field(description="Omitted: the model named none.")
+    ] = None
+    prediction_horizon: Annotated[
+        Fact | None, Field(description="Omitted: the model named none.")
+    ] = None
+    costs: Annotated[
+        CostsFact | None, Field(description="Only costs the person stated. Omitted: none stated.")
+    ] = None
+    clarification: Annotated[
+        str, Field(description="The model's note to the person: what it found and what it asks.")
+    ]
+    unknowns: list[Unknown]
+
+
 class MethodStatements(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -4086,7 +4191,7 @@ class QuestionVersion(StrictModel):
         ),
     ] = None
     assumptions: list[Fact]
-    unknowns: list[Unknown]
+    unknowns: list[UnknownModel]
     acceptance_criteria: list[Fact]
     costs: Annotated[
         CostsFact | None,

@@ -1,0 +1,7 @@
+{
+  "objective": { "value": "Predict fraud", "origin": "explicit" },
+  "task": { "value": "classification", "origin": "inferred" },
+  "costs": { "value": { "positive": "fraud", "false_negative": 10.0, "false_positive": 1.0 }, "origin": "inferred" },
+  "clarification": "x",
+  "unknowns": []
+}

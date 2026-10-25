@@ -1,0 +1,10 @@
+{
+  "objective": { "value": "Predict the product type", "origin": "explicit" },
+  "task": { "value": "classification", "origin": "inferred" },
+  "target": { "value": "species", "origin": "inferred" },
+  "unit_of_analysis": { "value": "id", "origin": "inferred" },
+  "prediction_horizon": { "value": "next order", "origin": "explicit" },
+  "costs": { "value": { "positive": "fraud", "false_negative": 10.0, "false_positive": 1.0 }, "origin": "explicit" },
+  "clarification": "I found a three-class column, species.",
+  "unknowns": ["Which metric matters most?"]
+}

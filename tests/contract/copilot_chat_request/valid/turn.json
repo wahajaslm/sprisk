@@ -1,0 +1,8 @@
+{
+  "messages": [
+    { "role": "user", "content": "Which methodology rules apply here?" },
+    { "role": "assistant", "content": "The split rules apply." },
+    { "role": "user", "content": "Why?" }
+  ],
+  "context": "iris.csv · 3 steps"
+}

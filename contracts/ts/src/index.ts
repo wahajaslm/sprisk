@@ -28,6 +28,10 @@ export interface Entities {
   CodeInterface: C.CodeInterface;
   CodeSplitRequest: C.CodeSplitRequest;
   CodeSplit: C.CodeSplit;
+  CopilotChatRequest: C.CopilotChatRequest;
+  CopilotChatReply: C.CopilotChatReply;
+  CopilotLedgerRequest: C.CopilotLedgerRequest;
+  CopilotLedgerDraft: C.CopilotLedgerDraft;
   NotebookCodeRequest: C.NotebookCodeRequest;
   NotebookSettings: C.NotebookSettings;
   NotebookSettingsRequest: C.NotebookSettingsRequest;

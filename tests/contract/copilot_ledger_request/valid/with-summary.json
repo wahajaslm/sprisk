@@ -1,0 +1,11 @@
+{
+  "user_request": "Predict the product type",
+  "dataset_summary": {
+    "total_rows": 150,
+    "total_columns": 2,
+    "columns": [
+      { "name": "species", "type": "String", "distinct": 3, "missing": 0, "missing_pct": 0.0, "candidate_target_or_class": true },
+      { "name": "id", "type": "Int64", "distinct": 150, "missing": 2, "missing_pct": 1.3, "candidate_id": true }
+    ]
+  }
+}

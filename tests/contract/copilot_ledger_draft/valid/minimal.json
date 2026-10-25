@@ -1,0 +1,6 @@
+{
+  "objective": { "value": "Explore sales", "origin": "explicit" },
+  "task": { "value": "exploration", "origin": "inferred" },
+  "clarification": "Here is the drafted Question Ledger.",
+  "unknowns": []
+}

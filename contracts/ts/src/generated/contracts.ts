@@ -144,6 +144,11 @@ export type RunId = string;
  */
 export type WorkerId = string;
 /**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TaskType".
+ */
+export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
+/**
  * methodology.<pack>.<method>@<semver>
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -157,11 +162,6 @@ export type MethodRef = string;
  * via the `definition` "DecisionKey".
  */
 export type DecisionKey = string;
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "TaskType".
- */
-export type TaskType = "exploration" | "classification" | "regression" | "undetermined";
 /**
  * <pack>.<concept>, a meaning defined in a pack's concepts.yaml.
  *
@@ -1776,6 +1776,174 @@ export interface Params {
   [k: string]: unknown;
 }
 /**
+ * A chat turn. Body of POST /copilot/chat. The server writes the system prompt; a client cannot send one.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CopilotChatRequest".
+ */
+export interface CopilotChatRequest {
+  /**
+   * The conversation so far, oldest first, ending with the person's question.
+   */
+  messages: CopilotMessage[];
+  /**
+   * What the page shows, such as 'iris.csv · 3 steps'. Untrusted text: sent as a user message. Omitted: the studio.
+   */
+  context?: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CopilotMessage".
+ */
+export interface CopilotMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+/**
+ * The model's answer to a chat turn. It can be wrong.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CopilotChatReply".
+ */
+export interface CopilotChatReply {
+  content: string;
+}
+/**
+ * A person's request, to draft a question ledger from. Body of POST /copilot/ledger.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CopilotLedgerRequest".
+ */
+export interface CopilotLedgerRequest {
+  user_request: string;
+  dataset_summary?: CopilotDatasetSummary;
+}
+/**
+ * Counts per column of the dataset in view. Omitted: no dataset is profiled yet.
+ */
+export interface CopilotDatasetSummary {
+  total_rows: number;
+  total_columns: number;
+  columns: CopilotColumnSummary[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CopilotColumnSummary".
+ */
+export interface CopilotColumnSummary {
+  /**
+   * Dataset text: untrusted.
+   */
+  name: string;
+  type: string;
+  distinct: number;
+  missing: number;
+  missing_pct: number;
+  /**
+   * Between 2 and 50 distinct values. Omitted: not a candidate.
+   */
+  candidate_target_or_class?: boolean;
+  /**
+   * One distinct value per row. Omitted: not a candidate.
+   */
+  candidate_id?: boolean;
+}
+/**
+ * Column names, types and counts only: no rows and no values (ADR-0014 level 2).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CopilotDatasetSummary".
+ */
+export interface CopilotDatasetSummary1 {
+  total_rows: number;
+  total_columns: number;
+  columns: CopilotColumnSummary[];
+}
+/**
+ * The model's draft of a question ledger. A draft only: the person edits and saves it as a QuestionVersion.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CopilotLedgerDraft".
+ */
+export interface CopilotLedgerDraft {
+  objective: Fact;
+  task: TaskFact;
+  target?: Fact1;
+  unit_of_analysis?: Fact2;
+  prediction_horizon?: Fact3;
+  costs?: CostsFact;
+  /**
+   * The model's note to the person: what it found and what it asks.
+   */
+  clarification: string;
+  unknowns: string[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Fact".
+ */
+export interface Fact {
+  value: string;
+  origin: Origin;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TaskFact".
+ */
+export interface TaskFact {
+  value: TaskType;
+  origin: Origin;
+}
+/**
+ * Omitted: the model named none.
+ */
+export interface Fact1 {
+  value: string;
+  origin: Origin;
+}
+/**
+ * Omitted: the model named none.
+ */
+export interface Fact2 {
+  value: string;
+  origin: Origin;
+}
+/**
+ * Omitted: the model named none.
+ */
+export interface Fact3 {
+  value: string;
+  origin: Origin;
+}
+/**
+ * Only costs the person stated. Omitted: none stated.
+ */
+export interface CostsFact {
+  value: Costs;
+  /**
+   * Costs are never inferred or measured.
+   */
+  origin: "explicit" | "confirmed";
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Costs".
+ */
+export interface Costs {
+  /**
+   * The class whose miss costs, as text.
+   */
+  positive: string;
+  /**
+   * Cost of predicting another class for a `positive` row. Positive; the API refuses others.
+   */
+  false_negative: number;
+  /**
+   * Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing.
+   */
+  false_positive: number;
+}
+/**
  * A method's method.yaml (ADR-0063): the decision it owns, what it needs, its options and what each option promises. Its method.py holds decide() and one verify_<name>() per verification.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1980,24 +2148,6 @@ export interface MethodStatements {
   costs?: Costs;
   interpretability?: Interpretability;
   success_bar?: SuccessBar;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Costs".
- */
-export interface Costs {
-  /**
-   * The class whose miss costs, as text.
-   */
-  positive: string;
-  /**
-   * Cost of predicting another class for a `positive` row. Positive; the API refuses others.
-   */
-  false_negative: number;
-  /**
-   * Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing.
-   */
-  false_positive: number;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -2308,14 +2458,6 @@ export interface RuleObservation {
   settings: {
     [k: string]: unknown;
   };
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Fact".
- */
-export interface Fact {
-  value: string;
-  origin: Origin;
 }
 /**
  * What a rule's decide() returns (ADR-0042). Rust builds graph effects from it with the manifest's actions; it never runs as code.
@@ -3316,15 +3458,15 @@ export interface QuestionVersion {
   parent_id?: string;
   objective: Fact;
   task: TaskFact;
-  target?: Fact1;
+  target?: Fact4;
   unit_of_analysis?: Fact;
-  entity_column?: Fact2;
+  entity_column?: Fact5;
   time_column?: Fact;
-  prediction_horizon?: Fact3;
+  prediction_horizon?: Fact6;
   assumptions: Fact[];
   unknowns: Unknown[];
   acceptance_criteria: Fact[];
-  costs?: CostsFact;
+  costs?: CostsFact1;
   interpretability?: InterpretabilityFact;
   success_bar?: SuccessBarFact;
   /**
@@ -3338,31 +3480,23 @@ export interface QuestionVersion {
   created_at: Timestamp;
 }
 /**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "TaskFact".
- */
-export interface TaskFact {
-  value: TaskType;
-  origin: Origin;
-}
-/**
  * Target column. Absent when there is no legitimate supervised target.
  */
-export interface Fact1 {
+export interface Fact4 {
   value: string;
   origin: Origin;
 }
 /**
  * Column whose values identify the unit or group that must not cross an entity-aware split.
  */
-export interface Fact2 {
+export interface Fact5 {
   value: string;
   origin: Origin;
 }
 /**
  * How far after prediction time the outcome is observed, preferably an ISO-8601 duration such as P30D.
  */
-export interface Fact3 {
+export interface Fact6 {
   value: string;
   origin: Origin;
 }
@@ -3380,7 +3514,7 @@ export interface Unknown {
 /**
  * What each wrong prediction costs, for a two-class classification question (ADR-0053). Only a person can state it. Absent: unknown, so both mistakes are treated as costing the same.
  */
-export interface CostsFact {
+export interface CostsFact1 {
   value: Costs;
   /**
    * Costs are never inferred or measured.
@@ -3433,7 +3567,7 @@ export interface InterpretabilityFact1 {
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "CostsFact".
  */
-export interface CostsFact1 {
+export interface CostsFact2 {
   value: Costs;
   /**
    * Costs are never inferred or measured.

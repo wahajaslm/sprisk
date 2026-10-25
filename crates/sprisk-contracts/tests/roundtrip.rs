@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, ClassificationReport, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    ConceptSet, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet,
+    ConceptSet, CopilotChatReply, CopilotChatRequest, CopilotLedgerDraft, CopilotLedgerRequest, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet,
     FigureSet, FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles,
     MethodRequest, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
@@ -72,6 +72,10 @@ const ENTITIES: &[&str] = &[
     "code_split",
     "code_split_request",
     "concept_set",
+    "copilot_chat_reply",
+    "copilot_chat_request",
+    "copilot_ledger_draft",
+    "copilot_ledger_request",
     "create_run",
     "create_study",
     "create_walk",
@@ -330,6 +334,26 @@ fn verification_request() {
 #[test]
 fn code_interface() {
     check::<CodeInterface>("code_interface");
+}
+
+#[test]
+fn copilot_chat_request() {
+    check::<CopilotChatRequest>("copilot_chat_request");
+}
+
+#[test]
+fn copilot_chat_reply() {
+    check::<CopilotChatReply>("copilot_chat_reply");
+}
+
+#[test]
+fn copilot_ledger_request() {
+    check::<CopilotLedgerRequest>("copilot_ledger_request");
+}
+
+#[test]
+fn copilot_ledger_draft() {
+    check::<CopilotLedgerDraft>("copilot_ledger_draft");
 }
 
 #[test]

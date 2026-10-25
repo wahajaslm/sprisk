@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "The Copilot's API (ADR-0066). The model and its address are set by the server, never by a request.",
+  "$defs": {
+    "CopilotChatRequest": {
+      "title": "CopilotChatRequest",
+      "description": "A chat turn. Body of POST /copilot/chat. The server writes the system prompt; a client cannot send one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messages"],
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CopilotMessage" },
+          "description": "The conversation so far, oldest first, ending with the person's question."
+        },
+        "context": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "What the page shows, such as 'iris.csv · 3 steps'. Untrusted text: sent as a user message. Omitted: the studio."
+        }
+      }
+    },
+    "CopilotMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "content"],
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string", "minLength": 1, "maxLength": 20000 }
+      }
+    },
+    "CopilotChatReply": {
+      "title": "CopilotChatReply",
+      "description": "The model's answer to a chat turn. It can be wrong.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content"],
+      "properties": {
+        "content": { "type": "string" }
+      }
+    },
+    "CopilotLedgerRequest": {
+      "title": "CopilotLedgerRequest",
+      "description": "A person's request, to draft a question ledger from. Body of POST /copilot/ledger.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_request"],
+      "properties": {
+        "user_request": { "type": "string", "minLength": 1, "maxLength": 10000 },
+        "dataset_summary": {
+          "$ref": "#/$defs/CopilotDatasetSummary",
+          "description": "Counts per column of the dataset in view. Omitted: no dataset is profiled yet."
+        }
+      }
+    },
+    "CopilotDatasetSummary": {
+      "description": "Column names, types and counts only: no rows and no values (ADR-0014 level 2).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_rows", "total_columns", "columns"],
+      "properties": {
+        "total_rows": { "type": "integer", "minimum": 0 },
+        "total_columns": { "type": "integer", "minimum": 0 },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/CopilotColumnSummary" } }
+      }
+    },
+    "CopilotColumnSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "distinct", "missing", "missing_pct"],
+      "properties": {
+        "name": { "type": "string", "description": "Dataset text: untrusted." },
+        "type": { "type": "string" },
+        "distinct": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "missing_pct": { "type": "number" },
+        "candidate_target_or_class": { "type": "boolean", "description": "Between 2 and 50 distinct values. Omitted: not a candidate." },
+        "candidate_id": { "type": "boolean", "description": "One distinct value per row. Omitted: not a candidate." }
+      }
+    },
+    "CopilotLedgerDraft": {
+      "title": "CopilotLedgerDraft",
+      "description": "The model's draft of a question ledger. A draft only: the person edits and saves it as a QuestionVersion.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objective", "task", "clarification", "unknowns"],
+      "properties": {
+        "objective": { "$ref": "#/$defs/Fact" },
+        "task": { "$ref": "#/$defs/TaskFact" },
+        "target": { "$ref": "#/$defs/Fact", "description": "Omitted: the model named none." },
+        "unit_of_analysis": { "$ref": "#/$defs/Fact", "description": "Omitted: the model named none." },
+        "prediction_horizon": { "$ref": "#/$defs/Fact", "description": "Omitted: the model named none." },
+        "costs": { "$ref": "#/$defs/CostsFact", "description": "Only costs the person stated. Omitted: none stated." },
+        "clarification": { "type": "string", "description": "The model's note to the person: what it found and what it asks." },
+        "unknowns": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}

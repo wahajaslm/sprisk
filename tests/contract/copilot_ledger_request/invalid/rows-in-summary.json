@@ -1,0 +1,8 @@
+{
+  "user_request": "Predict",
+  "dataset_summary": {
+    "total_rows": 1,
+    "total_columns": 1,
+    "columns": [{ "name": "a", "type": "String", "distinct": 1, "missing": 0, "missing_pct": 0.0, "top_values": ["alice@example.com"] }]
+  }
+}

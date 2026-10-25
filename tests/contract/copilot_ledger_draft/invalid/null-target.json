@@ -1,0 +1,7 @@
+{
+  "objective": { "value": "Predict fraud", "origin": "explicit" },
+  "task": { "value": "classification", "origin": "inferred" },
+  "target": null,
+  "clarification": "x",
+  "unknowns": []
+}
