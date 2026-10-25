@@ -317,12 +317,15 @@ describe("datasets", () => {
     expect(asked).toContain(`/api/artifacts/${penguins.artifact.id}/profile`);
   });
 
-  it("asks for one page of rows and the profile, nothing more (ADR-0038)", async () => {
+  it("asks for one page of rows and counts, never a whole table (ADR-0038)", async () => {
     const asked = serve();
     await screen.findByRole("table", { name: "Rows of iris.csv" });
     await screen.findByRole("region", { name: "Read one column" });
     expect(asked.filter((p) => p.endsWith("/rows"))).toEqual([`/api/artifacts/${iris.artifact.id}/rows`]);
-    expect(asked.every((p) => p === "/api/loaded_tables" || p.endsWith("/profile") || p.endsWith("/rows") || p === "/api/pipeline_versions")).toBe(true);
+    // Besides the rows: the profile, and where the flow's split step put its train and test rows.
+    const counts = (p: string) => p.endsWith("/profile") || p.endsWith("/rows") || p.endsWith("/shift") || p.endsWith("/attempts") || p.endsWith("/outputs");
+    expect(asked.every((p) => p === "/api/loaded_tables" || p === "/api/pipeline_versions" || p === "/api/runs" || counts(p))).toBe(true);
+    expect(asked.some((p) => p.endsWith("/content"))).toBe(false);
   });
 
   it("opens the step that loads it in the flow", async () => {

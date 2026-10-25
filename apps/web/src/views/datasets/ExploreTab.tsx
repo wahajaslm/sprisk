@@ -1,8 +1,9 @@
 import type { ColumnProfile, DatasetProfile, LabelProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
 import { type CSSProperties, useState } from "react";
 
-import { useDatasetProfile } from "../../api/datasets.ts";
-import { useTablePage } from "../../api/hooks.ts";
+import { useDatasetProfile, useTableShift } from "../../api/datasets.ts";
+import { useOutputs, usePipelineVersions, useRunAttempts, useTablePage } from "../../api/hooks.ts";
+import { latestByNode } from "../../flow/latest.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { BodySection } from "../../components/ui/RowList.tsx";
@@ -19,6 +20,8 @@ const MAX_VALUES = 12;
 /** Pairs in the strongest-pairs list, and columns in "moves most with". */
 const TOP_PAIRS = 12;
 const MOVES_WITH = 3;
+/** A KS statistic this large means the test rows look different from the train rows. */
+const SHIFT_KS = 0.2;
 /** A column this strong with the label may be built from it: the design marks it "Leak?". */
 const LEAK_R = 0.8;
 /** A group whose label rate is this far from the overall rate is drawn red. */
@@ -72,6 +75,7 @@ export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?:
       <MissingOrExtreme profile={p} picked={column?.name} onPick={pick} />
       <MissingAlongRows profile={p} />
       {(p.correlation.columns.length >= 2 || (p.label?.numbers.length ?? 0) > 0) && <RelateColumns profile={p} picked={column?.name} />}
+      <SplitShift dataset={dataset} />
       {p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
       <ValuesPerColumn profile={p} />
       <WhatStandsOut findings={p.findings ?? []} />
@@ -562,6 +566,90 @@ function Matrix({ columns, pairs, picked }: { columns: string[]; pairs: DatasetP
         </>
       )}
     </>
+  );
+}
+
+/** The train and test tables of the split step in the flow that loads `dataset`, once that
+ * step has run. */
+function useSplitTables(dataset: LoadedTable): { train: string; test: string } | undefined {
+  const use = dataset.used_by[0];
+  const version = usePipelineVersions().data?.find((v) => v.id === use?.pipeline_version_id);
+  const split = version?.nodes.find((n) => n.operator.startsWith("sprisk.validation.") && n.operator.includes("_split@"));
+  const attempts = useRunAttempts(use?.pipeline_version_id, split ? use?.run_id : undefined).data;
+  const attempt = split && attempts ? latestByNode(attempts).get(split.id) : undefined;
+  const outputs = useOutputs(attempt?.state === "succeeded" || attempt?.state === "cache_hit" ? attempt.id : undefined).data;
+  const train = outputs?.find((o) => o.port === "train")?.artifact.id;
+  const test = outputs?.find((o) => o.port === "test")?.artifact.id;
+  return train && test ? { train, test } : undefined;
+}
+
+/** The design's split check: how far each numeric column's test rows sit from its train rows
+ * (KS), red where they differ, and the picked column's train and test shares overlaid. */
+function SplitShift({ dataset }: { dataset: LoadedTable }) {
+  const tables = useSplitTables(dataset);
+  const shift = useTableShift(tables?.train, tables?.test);
+  const [picked, setPicked] = useState<string>();
+  if (!tables) return null;
+  const note = "Train and test should look alike: a column that differs between them is scored on rows unlike the ones the model learned from.";
+  if (shift.isError) return <BodySection title="Check the split" note={note}><p role="alert" className="error">{shift.error.message}</p></BodySection>;
+  if (shift.isPending) return <BodySection title="Check the split" note={note}><Loading text="Comparing the train and test rows…" /></BodySection>;
+  const { columns, rows, other_rows } = shift.data;
+  if (columns.length === 0) return <BodySection title="Check the split" note={note}><p className="muted">The split's tables share no numeric column to compare.</p></BodySection>;
+  const top = Math.max(...columns.map((c) => c.ks), Number.MIN_VALUE);
+  const shown = columns.find((c) => c.column === picked) ?? columns[0]!;
+  const shifted = columns.filter((c) => c.ks >= SHIFT_KS);
+  const share = (counts: number[]) => {
+    const n = counts.reduce((a, b) => a + b, 0);
+    return counts.map((c) => (n === 0 ? 0 : c / n));
+  };
+  const train = share(shown.counts);
+  const test = share(shown.other_counts);
+  const peak = Math.max(...train, ...test, Number.MIN_VALUE);
+  return (
+    <BodySection title="Check the split" note={note}>
+      <div className="sv-split">
+        <div className="sv-chart">
+          <span className="sv-caption">{`Train vs test shift · KS statistic · ${rows.toLocaleString()} / ${other_rows.toLocaleString()} rows`}</span>
+          <ul className="ex-shift" aria-label="Train vs test shift">
+            {columns.map((c) => (
+              <li key={c.column} className={`${c.ks >= SHIFT_KS ? "warn" : ""}${c.column === shown.column ? " picked" : ""}`}>
+                <button type="button" onClick={() => setPicked(c.column)}>
+                  <span className="ex-pair">{c.column}</span>
+                  <span className="ex-shift-track">
+                    <i style={{ width: `${(c.ks / top) * 100}%` }} />
+                  </span>
+                  <span className="ex-r">{c.ks.toFixed(2)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="ex-summary">
+            {shifted.length === 0
+              ? `No column is shifted: every KS stays under ${SHIFT_KS}.`
+              : `${shifted.map((c) => c.column).join(", ")} ${shifted.length === 1 ? "is" : "are"} shifted in the test rows (KS ${shifted.map((c) => c.ks.toFixed(2)).join(", ")}). Every other column stays under ${SHIFT_KS}.`}
+          </p>
+        </div>
+        <div className="sv-chart">
+          <span className="sv-caption">{`${shown.column} · train vs test, normalised · KS ${shown.ks.toFixed(2)}`}</span>
+          <div className="ex-overlay" role="img" aria-label={`${shown.column} · train vs test`}>
+            {train.map((t, i) => (
+              <div key={i}>
+                <i style={{ height: `${(t / peak) * 100}%` }} />
+                <b style={{ height: `${((test[i] ?? 0) / peak) * 100}%` }} />
+              </div>
+            ))}
+          </div>
+          <div className="ex-axis">
+            <span>{num(shown.lower)}</span>
+            <span>{num(shown.upper)}</span>
+          </div>
+          <div className="ex-legend ex-legend-split">
+            <span>train</span>
+            <span className="hollow">test</span>
+          </div>
+        </div>
+      </div>
+    </BodySection>
   );
 }
 

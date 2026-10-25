@@ -21,3 +21,14 @@ export const useDatasetProfile = (artifactId: string | undefined, target?: strin
 
 /** The profiles of several tables, one query each, in the order given. */
 export const useDatasetProfiles = (artifactIds: string[]) => useQueries({ queries: artifactIds.map((id) => profileQuery(id)) });
+
+/** How a table's numeric columns differ from another's, such as a split's train rows from its
+ * test rows (ADR-0065). Both tables never change, so neither does the answer. */
+export const useTableShift = (artifactId: string | undefined, against: string | undefined) =>
+  useQuery({
+    queryKey: ["table-shift", artifactId, against],
+    queryFn: () => getOne("TableShift", `/artifacts/${artifactId}/shift?against=${against}`),
+    enabled: artifactId !== undefined && against !== undefined,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
