@@ -1,7 +1,7 @@
-import type { ColumnProfile, DatasetProfile, LabelProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
+import type { ColumnProfile, DatasetProfile, LabelProfile, LoadedTable, ProfileFinding, ProfilePlan } from "@sprisk/contracts";
 import { type CSSProperties, useState } from "react";
 
-import { useDatasetProfile, useTableShift } from "../../api/datasets.ts";
+import { useDatasetProfile, useProfilePlan, useTableShift } from "../../api/datasets.ts";
 import { useOutputs, usePipelineVersions, useRunAttempts, useTablePage } from "../../api/hooks.ts";
 import { latestByNode } from "../../flow/latest.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -48,8 +48,9 @@ const TOPICS: Record<ProfileFinding["topic"], string> = {
  * in its header, one column read closely, every column's gaps and outliers on one axis, how the
  * numbers move together, and what stands out. The profile is computed by Python and stored; the
  * page asks for one page of rows at a time (ADR-0038). */
-export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?: string | undefined }) {
+export function ExploreTab({ dataset, target, questionVersionId }: { dataset: LoadedTable; target?: string | undefined; questionVersionId?: string | undefined }) {
   const profile = useDatasetProfile(dataset.artifact.id, target);
+  const plan = useProfilePlan(dataset.artifact.id, questionVersionId);
   const [picked, setPicked] = useState<number>();
   if (profile.isError) return <p role="alert" className="error">{profile.error.message}</p>;
   if (profile.isPending) return <Loading text="Profiling the table…" />;
@@ -62,6 +63,7 @@ export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?:
   const column = p.columns[at];
   return (
     <div className="ds-profile ds-explore">
+      {plan.data && <WhyTheseViews plan={plan.data} />}
       {(p.profiled_rows < p.total_rows || p.columns.length < p.total_columns) && (
         <p className="ds-overview">
           {p.profiled_rows < p.total_rows && `Profiled the first ${p.profiled_rows.toLocaleString()} of ${p.total_rows.toLocaleString()} rows. `}
@@ -82,6 +84,23 @@ export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?:
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
       <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
     </div>
+  );
+}
+
+/** The plan comes from the API with the exact ledger/profile fact that selected every view. */
+function WhyTheseViews({ plan }: { plan: ProfilePlan }) {
+  return (
+    <BodySection title="Why these views" note="Selected deterministically from the question ledger and the stored dataset profile.">
+      <ol className="ex-view-plan">
+        {plan.sections.map((section) => (
+          <li key={section.id}>
+            <strong>{section.title}</strong>
+            <span>{section.reason}</span>
+          </li>
+        ))}
+      </ol>
+      {plan.limitations.map((limitation) => <p key={limitation} className="ds-note">{limitation}</p>)}
+    </BodySection>
   );
 }
 

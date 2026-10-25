@@ -82,7 +82,7 @@ export function DatasetsPage() {
       ) : tab === "Investigation" ? (
         <InvestigationTab key={current.artifact.id} dataset={current} versions={versions.data ?? []} />
       ) : (
-        <ExploreTab key={current.artifact.id} dataset={current} target={labelOf(current, versions.data ?? [])} />
+        <ExploreTab key={current.artifact.id} dataset={current} target={labelOf(current, versions.data ?? [])} questionVersionId={questionOf(current, versions.data ?? [])} />
       ))}
     </PageFrame>
   );
@@ -118,6 +118,16 @@ function labelOf(dataset: LoadedTable, versions: PipelineVersion[]): string | un
     const version = versions.find((v) => v.id === use.pipeline_version_id);
     const target = version?.nodes.map((n) => n.params["target"]).find((t) => typeof t === "string");
     if (typeof target === "string") return target;
+  }
+  return undefined;
+}
+
+/** The loaded table may be used by more than one flow; use the first version that pins a
+ * question ledger revision, matching the existing target selection rule above. */
+function questionOf(dataset: LoadedTable, versions: PipelineVersion[]): string | undefined {
+  for (const use of dataset.used_by) {
+    const question = versions.find((version) => version.id === use.pipeline_version_id)?.question_version_id;
+    if (question) return question;
   }
   return undefined;
 }

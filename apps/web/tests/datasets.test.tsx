@@ -1,4 +1,4 @@
-import type { DatasetProfile, LoadedTable } from "@sprisk/contracts";
+import type { DatasetProfile, LoadedTable, ProfilePlan } from "@sprisk/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -57,13 +57,28 @@ const labelled: DatasetProfile = {
   },
 };
 
+const profilePlan: ProfilePlan = {
+  schema_version: "sprisk.profile_plan/v1",
+  artifact_id: iris.artifact.id,
+  scope: "input",
+  sections: [
+    { id: "overview", title: "Overview", purpose: "Establish the size and bounds of the descriptive profile.", evidence_scope: "input", reason: "Every table starts with a bounded descriptive overview." },
+    { id: "text", title: "Text exploration", purpose: "Show text length, blankness and markup indicators for observed text fields.", evidence_scope: "input", reason: "At least one stored column profile has the observed role 'text'." },
+  ],
+  limitations: ["Input-scope views are descriptive and must not be used to fit preparation or choose a model."],
+};
+
 /** Serves the datasets and a profile; returns every path the page asked for. */
 function serve(datasets: () => Response = () => HttpResponse.json([iris, penguins]), profiled: () => Response = () => HttpResponse.json(profile)) {
   const asked: string[] = [];
   server.events.on("request:start", ({ request }) => {
     asked.push(new URL(request.url).pathname);
   });
-  server.use(http.get("/api/loaded_tables", datasets), http.get("/api/artifacts/:id/profile", profiled));
+  server.use(
+    http.get("/api/loaded_tables", datasets),
+    http.get("/api/artifacts/:id/profile", profiled),
+    http.get("/api/artifacts/:id/profile_plan", ({ params }) => HttpResponse.json({ ...profilePlan, artifact_id: params.id })),
+  );
   renderWithApi(<DatasetsPage />);
   return asked;
 }
@@ -107,6 +122,13 @@ describe("datasets", () => {
     const header = within(table).getByRole("columnheader", { name: /sepal_length/ });
     expect(header).toHaveTextContent("Float64 · 5% missing");
     expect(await within(header).findByRole("img", { name: "Distribution of sepal_length" })).toBeInTheDocument();
+  });
+
+  it("shows the API's deterministic reasons for the selected Explore views", async () => {
+    serve();
+    const why = await screen.findByRole("region", { name: "Why these views" });
+    expect(within(why).getByText("Text exploration")).toBeInTheDocument();
+    expect(within(why).getByText("At least one stored column profile has the observed role 'text'.")).toBeInTheDocument();
   });
 
   it("shows a page of rows, numbers on the right, a missing value as a dash and a value outside the fences in red", async () => {
@@ -323,7 +345,7 @@ describe("datasets", () => {
     await screen.findByRole("region", { name: "Read one column" });
     expect(asked.filter((p) => p.endsWith("/rows"))).toEqual([`/api/artifacts/${iris.artifact.id}/rows`]);
     // Besides the rows: the profile, and where the flow's split step put its train and test rows.
-    const counts = (p: string) => p.endsWith("/profile") || p.endsWith("/rows") || p.endsWith("/shift") || p.endsWith("/attempts") || p.endsWith("/outputs");
+    const counts = (p: string) => p.endsWith("/profile") || p.endsWith("/profile_plan") || p.endsWith("/rows") || p.endsWith("/shift") || p.endsWith("/attempts") || p.endsWith("/outputs");
     expect(asked.every((p) => p === "/api/loaded_tables" || p === "/api/pipeline_versions" || p === "/api/runs" || counts(p))).toBe(true);
     expect(asked.some((p) => p.endsWith("/content"))).toBe(false);
   });
