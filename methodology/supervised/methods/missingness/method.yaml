@@ -1,0 +1,33 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.missingness@2.0.0
+decides: cleaning.missingness_strategy
+name: Missing value imputation
+activity: Features
+question: How are the gaps the model would refuse filled?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  evidence: [features.gaps]
+  # Read for order: rare categories keep a gap, so gaps are filled after grouping.
+  decisions: [features.rare_categories]
+options:
+  - id: fill_before_model
+    label: Fill from the train rows
+    action:
+      # Numbers get the train rows' median or mean; a text gap becomes a category of its own.
+      # Fit on the train rows only.
+      insert:
+        before: model
+        operator: sprisk.clean.impute@1.0.0
+        node_id: fill_gaps
+        settings: { text_gap: missing }
+        from_evidence: { columns: features.gaps.columns, method: features.gaps.method }
+    verify: []
+  - id: no_gaps
+    label: No gaps
+    verify: []
+  - id: gaps_left
+    label: Gaps no step can fill
+    verify: []
+verifications: {}
+source: "van Buuren (2018), Flexible Imputation of Missing Data, 2nd ed., §1.3: single imputation by the mean or median, learnt on training rows; the median when the distribution is skewed."

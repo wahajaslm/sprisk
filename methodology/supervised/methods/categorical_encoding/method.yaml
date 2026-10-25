@@ -1,0 +1,29 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.categorical_encoding@4.0.0
+decides: features.encoding_strategy
+name: Categorical encoding
+activity: Features
+question: How do categories reaching the model become numbers?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  evidence: [features.encoding]
+  # Read for order: wide categories are left out first, so every category left is encoded.
+  decisions: [features.wide_categories]
+options:
+  - id: one_hot_encoding
+    label: One-hot encoding
+    action:
+      # One 0/1 column per category, learnt from the train rows; a category seen only in test
+      # rows gets zeros.
+      insert:
+        before: model
+        operator: sprisk.clean.encode@1.0.0
+        node_id: encode
+        from_evidence: { columns: features.encoding.few }
+    verify: []
+  - id: no_encoding
+    label: No encoding
+    verify: []
+verifications: {}
+source: "Hastie, Tibshirani & Friedman (2009), Elements of Statistical Learning §9.2.4: a category is coded as one indicator per level, which invents no order."
