@@ -3460,6 +3460,9 @@ class FlowDecision(StrictModel):
     )
     decides: Annotated[str, Field(pattern="^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$")]
     method: MethodRef
+    name: Annotated[
+        str, Field(description="The method's name, for the decision's title.", min_length=1)
+    ]
     activity: Annotated[
         str,
         Field(
@@ -3847,6 +3850,13 @@ class Method(StrictModel):
     schema_version: Literal["sprisk.method/v1"]
     id: MethodRef
     decides: DecisionKey
+    name: Annotated[
+        str,
+        Field(
+            description="The decision's professional name, for titles (\"Duplicate analysis\"); `question` explains it. A rule's `name` means the same.",
+            min_length=1,
+        ),
+    ]
     activity: Annotated[
         str,
         Field(

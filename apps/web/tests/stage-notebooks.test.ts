@@ -56,6 +56,7 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
 const decision = (activity: string, steps: string[]): FlowDecision => ({
   decides: "split.method",
   method: "methodology.supervised.split_method@1.0.0",
+  name: "Train/test split",
   activity,
   question: "How are rows divided into training and test so the score is fair?",
   option: "item_groups",

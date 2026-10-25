@@ -1347,6 +1347,10 @@ export interface Method {
   id: MethodRef;
   decides: DecisionKey;
   /**
+   * The decision's professional name, for titles ("Duplicate analysis"); `question` explains it. A rule's `name` means the same.
+   */
+  name: string;
+  /**
    * The group this decision is shown in: one stage card on the canvas, one notebook section.
    */
   activity: string;
@@ -3570,6 +3574,10 @@ export interface FlowDecisions {
 export interface FlowDecision {
   decides: string;
   method: MethodRef;
+  /**
+   * The method's name, for the decision's title.
+   */
+  name: string;
   /**
    * The method's activity: one stage card, one notebook section.
    */

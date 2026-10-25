@@ -98,7 +98,7 @@ pub fn flow_decisions(
             })
             .collect::<Result<_, _>>()?;
         let mut decision = json!({
-            "decides": decides, "method": method_id, "activity": method.activity,
+            "decides": decides, "method": method_id, "name": method.name, "activity": method.activity,
             "question": method.question, "option": option, "label": label,
             "reason": decided.reason, "assurance": decided.assurance, "steps": shaped,
             "promises": promises,

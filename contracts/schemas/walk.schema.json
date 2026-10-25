@@ -396,10 +396,11 @@
     "FlowDecision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["decides", "method", "activity", "question", "option", "label", "reason", "assurance", "steps", "promises"],
+      "required": ["decides", "method", "name", "activity", "question", "option", "label", "reason", "assurance", "steps", "promises"],
       "properties": {
         "decides": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
         "method": { "$ref": "#/$defs/MethodRef" },
+        "name": { "type": "string", "minLength": 1, "description": "The method's name, for the decision's title." },
         "activity": { "type": "string", "minLength": 1, "description": "The method's activity: one stage card, one notebook section." },
         "question": { "type": "string", "minLength": 1, "description": "The question the method answers." },
         "option": { "$ref": "#/$defs/MethodOptionId" },

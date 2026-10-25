@@ -5926,6 +5926,7 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
         .find(|d| d["decides"] == "split.method")
         .unwrap();
     assert_eq!(by_split["activity"], "Fair evaluation", "{decided}");
+    assert_eq!(by_split["name"], "Train/test split", "{decided}");
     assert_eq!(by_split["promises"][0]["status"], "pass", "{decided}");
 
     // A person edits the split's seed in a child version: the promise is stale there.
@@ -6586,6 +6587,7 @@ fn copy_tree(from: &Path, to: &Path) {
 const SHUFFLE_METHOD: &str = r#"schema_version: sprisk.method/v1
 id: methodology.supervised.shuffle_split@1.0.0
 decides: split.method
+name: Train/test split
 activity: Fair evaluation
 question: How are rows divided into training and test so the score is fair?
 applies_when: { task: [classification, regression] }

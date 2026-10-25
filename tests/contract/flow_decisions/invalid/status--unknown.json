@@ -6,6 +6,7 @@
     {
       "decides": "split.method",
       "method": "methodology.supervised.split_method@1.0.0",
+      "name": "Train/test split",
       "activity": "Fair evaluation",
       "question": "How are rows divided?",
       "option": "item_groups",

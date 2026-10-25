@@ -11,6 +11,7 @@
         "schema_version",
         "id",
         "decides",
+        "name",
         "activity",
         "question",
         "needs",
@@ -30,6 +31,11 @@
         },
         "decides": {
           "$ref": "#/$defs/DecisionKey"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The decision's professional name, for titles (\"Duplicate analysis\"); `question` explains it. A rule's `name` means the same."
         },
         "activity": {
           "type": "string",

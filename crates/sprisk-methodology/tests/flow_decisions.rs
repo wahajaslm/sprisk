@@ -117,6 +117,7 @@ fn each_decision_says_its_activity_its_option_and_the_steps_it_shaped() {
     assert_eq!(view["walk_id"], WALK);
     let decisions = view["decisions"].as_array().unwrap();
     assert_eq!(decisions.len(), 2);
+    assert_eq!(decisions[0]["name"], "Duplicate analysis");
     assert_eq!(decisions[0]["activity"], "Repeated observations");
     assert_eq!(
         decisions[0]["label"],

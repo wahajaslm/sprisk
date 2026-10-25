@@ -167,7 +167,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
   it("a cell added to an activity's section is saved in its first step's stage (ADR-0063)", async () => {
     const sent = withApi();
     const fair: FlowDecision = {
-      decides: "split.method", method: "methodology.supervised.split_method@1.0.0", activity: "Fair evaluation",
+      decides: "split.method", method: "methodology.supervised.split_method@1.0.0", name: "Train/test split", activity: "Fair evaluation",
       question: "How are rows divided?", option: "item_groups", label: "Keep each item's rows on one side",
       reason: "Why.", assurance: "rule", steps: ["split"], promises: [],
     };

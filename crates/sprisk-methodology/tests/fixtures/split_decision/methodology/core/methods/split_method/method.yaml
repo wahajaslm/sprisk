@@ -1,6 +1,7 @@
 schema_version: sprisk.method/v1
 id: methodology.core.split_method@1.0.0
 decides: evaluation.split_method
+name: Train/test split
 activity: Fair evaluation
 question: How are rows divided into training and test so the score is fair?
 applies_when: { task: [classification, regression] }
