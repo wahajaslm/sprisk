@@ -330,7 +330,7 @@ describe("flow canvas", () => {
     const byRef = new Map(operators.map((o) => [o.id, o]));
     const groups = [{ id: "Clean#clean", count: 1, x: 100, y: 20, width: 200, height: 90 }];
     const { nodes } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), new Map([["impute", { x: 110, y: 50 }]]), groups);
-    expect(nodes.find((n) => n.id === "stage:Clean#clean")!.data).toMatchObject({ name: "Data cleaning", purpose: "Columns, duplicates, gaps, text" });
+    expect(nodes.find((n) => n.id === "stage:Clean#clean")!.data).toMatchObject({ name: "Data cleaning", purpose: "Fix columns, duplicates and text before the split" });
   });
 
   it("gives every compact card the Flow Studio size, whatever its title (ADR-0061)", async () => {

@@ -16,16 +16,18 @@ const STAGE_OF_NODE: Record<NonNullable<Node["stage"]>, Stage> = {
   evaluate: "Evaluate",
 };
 
-/** Each step's stage (ADR-0055): the one it keeps, else the one its operator implies, but
- * never before a stage it reads from. A look at the loaded rows is in Explore, before the split;
- * a look at what the split wrote stays with the split. */
+/** Each step's stage (ADR-0055, ADR-0065): the one it keeps, else the one its operator implies,
+ * but never before a stage it reads from. A look at the loaded rows is in Explore; a look at
+ * what the split wrote stays with the split; a transform that reads the split's rows is fitted
+ * on the training rows, so it is feature work, not cleaning. */
 export function stagesOf(pipeline: PipelineVersion, operators: Operators): Map<string, Stage> {
   const placed = new Map<string, Stage>();
   for (const node of notebookOrder(pipeline)) {
     const operator = operators.get(node.operator);
     const read = pipeline.edges.filter((e) => stepOf(e.to) === node.id).map((e) => placed.get(stepOf(e.from)) ?? "Load");
     const own = node.stage ? STAGE_OF_NODE[node.stage] : operator ? stageOf(operator) : "Explore";
-    placed.set(node.id, latest([own, ...read]));
+    const at = latest([own, ...read]);
+    placed.set(node.id, at === "Split" && (own === "Clean" || own === "Features") ? "Features" : at);
   }
   return placed;
 }

@@ -27,7 +27,7 @@ describe("a stage's cells (ADR-0055)", () => {
       { id: "split", kind: "code", source: "" },
       { id: "split-after-0", kind: "markdown", source: "Test rows stay unread." },
     ]);
-    expect(stageCells(section("Clean"))).toEqual([
+    expect(stageCells(section("Features"))).toEqual([
       { id: "impute", kind: "code", source: "" },
       { id: "rate", kind: "code", source: "rate = impute_train.height" },
     ]);
@@ -62,16 +62,16 @@ describe("editing a ready-made step's plain Python", () => {
 
 describe("saving a stage's cells", () => {
   it("puts edited code into its step", () => {
-    const cells = stageCells(section("Clean")).map((c) => (c.id === "rate" ? { ...c, source: "rate = impute_train.height * 2" } : c));
-    const done = stageEdits(flow, byRef, "Clean", cells);
+    const cells = stageCells(section("Features")).map((c) => (c.id === "rate" ? { ...c, source: "rate = impute_train.height * 2" } : c));
+    const done = stageEdits(flow, byRef, "Features", cells);
     if ("refused" in done) throw new Error(done.refused);
     const step = done.steps.find((s) => s.nodeId === "rate");
     expect(step).toEqual({ kind: "cells", nodeId: "rate", cells: ["rate = impute_train.height * 2"] });
   });
 
   it("puts a new code cell right after the step above it", () => {
-    const cells = [...stageCells(section("Clean")).slice(0, 1), { id: "new1", kind: "code" as const, source: "n = len(impute_train)" }, ...stageCells(section("Clean")).slice(1)];
-    const done = stageEdits(flow, byRef, "Clean", cells);
+    const cells = [...stageCells(section("Features")).slice(0, 1), { id: "new1", kind: "code" as const, source: "n = len(impute_train)" }, ...stageCells(section("Features")).slice(1)];
+    const done = stageEdits(flow, byRef, "Features", cells);
     if ("refused" in done) throw new Error(done.refused);
     const at = done.steps.findIndex((s) => s.nodeId === "impute");
     expect(done.steps[at + 1]).toEqual({ kind: "cells", nodeId: undefined, cells: ["n = len(impute_train)"] });

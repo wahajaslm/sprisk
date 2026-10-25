@@ -13,19 +13,36 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
       ["Load", ["load"]],
       ["Explore", ["profile"]],
       ["Split", ["split"]],
-      ["Clean", ["impute"]],
+      ["Features", ["impute"]],
       ["Model", ["model"]],
       ["Evaluate", ["score"]],
     ]);
   });
 
+  it("puts cleaning that reads the loaded rows before the split, and the split after it", () => {
+    const flow = {
+      ...pipeline,
+      edges: [
+        ...pipeline.edges.filter((e) => e.to !== "split.data" && !e.to.startsWith("impute.") && !e.from.startsWith("impute.")),
+        { from: "load.data", to: "impute.train" },
+        { from: "impute.train", to: "split.data" },
+      ],
+    };
+    expect(ids(flow).slice(0, 4)).toEqual([
+      ["Load", ["load"]],
+      ["Explore", ["profile"]],
+      ["Clean", ["impute"]],
+      ["Split", ["split"]],
+    ]);
+  });
+
   it("puts a step where its own stage says", () => {
     const flow = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "profile" ? { ...n, stage: "clean" as const } : n)) };
-    expect(ids(flow)[2]).toEqual(["Clean", ["profile", "impute"]]);
+    expect(ids(flow)[1]).toEqual(["Clean", ["profile"]]);
   });
 
   it("puts a look at the loaded rows in Data exploration, before the split", () => {
-    expect(stageNotebooks(pipeline, byRef).map((s) => s.title)).toEqual(["Data loading", "Data exploration", "Train/test split", "Data cleaning", "Modeling", "Evaluation"]);
+    expect(stageNotebooks(pipeline, byRef).map((s) => s.title)).toEqual(["Data loading", "Data exploration", "Train/test split", "Feature engineering", "Modeling", "Evaluation"]);
   });
 
   it("puts a look at what the split wrote with the split, never before it", () => {
@@ -35,12 +52,12 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
 
   it("never puts a step in an earlier stage than a step it reads", () => {
     const flow = { ...pipeline, edges: [...pipeline.edges.filter((e) => e.to !== "profile.data"), { from: "impute.train", to: "profile.data" }] };
-    expect(ids(flow)[2]).toEqual(["Clean", ["impute", "profile"]]);
+    expect(ids(flow)[2]).toEqual(["Features", ["impute", "profile"]]);
   });
 
   it("puts a step whose operator is not installed after the steps it reads", () => {
     const flow = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "model" ? { ...n, operator: "sprisk.ml.gone@9.0.0" } : n)) };
-    expect(ids(flow).find((entry) => (entry[1] as string[]).includes("model"))?.[0]).toBe("Clean");
+    expect(ids(flow).find((entry) => (entry[1] as string[]).includes("model"))?.[0]).toBe("Features");
   });
 
   it("never puts a step before a stage it reads, even when the step keeps its own", () => {
@@ -49,7 +66,7 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
       nodes: pipeline.nodes.map((n) => (n.id === "profile" ? { ...n, stage: "explore" as const } : n)),
       edges: [...pipeline.edges.filter((e) => e.to !== "profile.data"), { from: "impute.train", to: "profile.data" }],
     };
-    expect(ids(flow)[2]).toEqual(["Clean", ["impute", "profile"]]);
+    expect(ids(flow)[2]).toEqual(["Features", ["impute", "profile"]]);
   });
 
   it("leaves out a stage with no steps", () => {
@@ -81,7 +98,7 @@ describe("a decision's steps stay in their stage (ADR-0065)", () => {
       ["Load", ["load"]],
       ["Explore", ["profile"]],
       ["Split", ["split"]],
-      ["Clean", ["impute"]],
+      ["Features", ["impute"]],
       ["Model", ["model"]],
       ["Evaluate", ["score"]],
     ]);

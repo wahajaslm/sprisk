@@ -4,9 +4,9 @@ import { stepOf } from "./ports.ts";
 
 /** Presentation grouping only (rule 9: layout is not provenance). */
 /** The standard stages, in working order (ADR-0055, ADR-0065): read the data, look at all of it,
- * set the test rows aside, clean, build features, model and evaluate. A method's activity is a
- * label inside a stage, never a stage of its own. */
-export const STAGES = ["Load", "Explore", "Split", "Clean", "Features", "Model", "Evaluate", "Unknown"] as const;
+ * clean what needs no fitting, set the test rows aside, build features fitted on the training
+ * rows, model and evaluate. A method's activity is a label inside a stage, never a stage. */
+export const STAGES = ["Load", "Explore", "Clean", "Split", "Features", "Model", "Evaluate", "Unknown"] as const;
 export type Stage = (typeof STAGES)[number];
 
 /** Each stage's name for people. */
@@ -25,9 +25,9 @@ export const STAGE_TITLE: Record<Stage, string> = {
 export const STAGE_PURPOSE: Record<Stage, string> = {
   Load: "Read the source files",
   Explore: "Look at every row before deciding",
+  Clean: "Fix columns, duplicates and text before the split",
   Split: "Set the test rows aside and check what was written",
-  Clean: "Columns, duplicates, gaps, text",
-  Features: "Turn columns into model inputs",
+  Features: "Fitted on the training rows: impute, encode, scale, vectorize",
   Model: "Fit and compare models",
   Evaluate: "Score once on the test rows",
   Unknown: "Steps with no stage yet",

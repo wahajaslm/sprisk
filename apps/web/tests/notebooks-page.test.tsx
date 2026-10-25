@@ -215,7 +215,7 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     const posts = noNotebooks();
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
     const items = within(await stages()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Data loading1 step", "Data exploration1 step", "Train/test split1 step", "Data cleaning1 step", "Modeling1 step", "Evaluation1 step"]);
+    expect(items).toEqual(["Data loading1 step", "Data exploration1 step", "Train/test split1 step", "Feature engineering1 step", "Modeling1 step", "Evaluation1 step"]);
     expect(await screen.findByRole("heading", { name: "Data loading" })).toBeInTheDocument();
     // Loading holds only the load step; the look at the loaded rows is Data exploration.
     expect(screen.getAllByRole("group", { name: /^Cell / })).toHaveLength(1);
