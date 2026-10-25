@@ -224,7 +224,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
   });
 
   it("says when no investigation has used the table", async () => {
-    serve({ schema_version: "sprisk.flow_decisions/v1", pipeline_version_id: PV, decisions: [] });
+    serve({ schema_version: "sprisk.flow_decisions/v2", pipeline_version_id: PV, decisions: [] });
     await openInvestigation();
     expect(await screen.findByText(/No investigation has used this table yet/)).toBeInTheDocument();
   });
