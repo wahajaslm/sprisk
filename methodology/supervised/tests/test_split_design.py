@@ -39,7 +39,7 @@ GROUP = (
 )
 
 
-def question(**facts: dict[str, str]) -> QuestionVersion:
+def question(**facts: Any) -> QuestionVersion:
     raw = json.loads((CONTRACT / "question_version/valid/exploration-no-target.json").read_text())
     for key in ("time_column", "entity_column"):
         raw.pop(key, None)
