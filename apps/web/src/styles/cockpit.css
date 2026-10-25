@@ -1535,22 +1535,36 @@ p { margin: 0; }
 .ds-findings li.warn .ds-finding-level { color: var(--alert); }
 .ds-example { display: block; margin-top: var(--space-1); font-size: var(--text-xs); color: var(--muted); }
 .ds-example q { color: var(--soft); overflow-wrap: anywhere; }
-.ds-column { display: grid; gap: var(--space-3); padding: var(--space-5) 0; border-top: 1px solid var(--alpha-04); }
-.ds-column-head { display: flex; align-items: baseline; gap: var(--space-3); }
-.ds-column-head h3 { margin: 0; font-size: var(--text-lg); font-weight: 500; color: var(--ink); }
+.ds-column { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5) 0; border-top: 1px solid var(--alpha-04); }
 .ds-role { padding: 1px var(--space-2); border: 1px solid var(--alpha-08); border-radius: 3px; font-size: var(--text-xs); color: var(--soft); }
 .ds-column-facts { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: 0; }
 .ds-column-facts div { display: grid; gap: 2px; }
 .ds-column-facts dt { font-size: var(--text-xs); color: var(--muted); }
 .ds-column-facts dd { margin: 0; color: var(--ink); }
 .ds-profile .plotly-figure { min-height: 0; }
+.ds-column-side { display: grid; gap: var(--space-2); align-content: start; }
+.ds-column-side h3 { margin: 0; font-size: var(--text-lg); font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.ds-column-side p { margin: 0; }
+.ds-column-charts { display: grid; gap: var(--space-5); align-content: start; min-width: 0; }
+.ds-columns tr.warn td:first-child, .ds-columns tr.warn td:nth-child(4) .mono { color: var(--alert); }
+.ds-spark { width: 140px; }
+.ds-missing { display: flex; align-items: center; gap: var(--space-2); }
+.ds-missing-bar { width: 96px; height: 4px; border-radius: 2px; background: var(--alpha-08); overflow: hidden; }
+.ds-missing-bar span { display: block; height: 100%; background: var(--ink-3); }
+.ds-missing-bar .warn { background: var(--alert); }
+/* The design's data visuals (§07): title, a grey line under it, a red note on the right, the
+   chart, then a dot legend. No box: the page is one surface. */
+.studio-chart { display: grid; gap: var(--space-3); margin: 0; min-width: 0; }
+.studio-chart-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px var(--space-3); }
+.studio-chart-title { font-size: 14px; font-weight: 500; color: var(--ink); }
+.studio-chart-sub { flex: 1; font-size: var(--text-sm); color: var(--muted); }
+.studio-chart-note { font-size: var(--text-sm); color: var(--alert); }
+.studio-canvas { display: block; width: 100%; }
+.studio-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); color: var(--soft); }
+.studio-legend li::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 7px; border-radius: 50%; vertical-align: middle; background: var(--ink-0); }
+.studio-legend li.tone-secondary::before { background: var(--ink-3); }
+.studio-legend li.tone-red::before { background: var(--alert); }
 .ds-profile .result-tile.plot { margin: 0 0 var(--space-3); }
-.ds-glance-charts, .ds-column-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-3); }
-.ds-tiles { display: flex; flex-wrap: wrap; gap: 0; margin: 0 0 var(--space-4); }
-.ds-tiles div { display: grid; gap: 2px; padding: 0 var(--space-6, 28px) 0 0; margin-right: var(--space-5); border-right: 1px solid var(--alpha-05); }
-.ds-tiles div:last-child { border-right: 0; }
-.ds-tiles dd { margin: 0; font-size: var(--text-lg); color: var(--ink); font-variant-numeric: tabular-nums; }
-.ds-tiles dt { font-size: var(--text-xs); color: var(--muted); }
 /* Investigation (ADR-0065): the chart leads each analysis; the words sit beside it. */
 .ds-investigation { display: grid; gap: var(--space-4); }
 .ds-investigations { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); }

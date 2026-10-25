@@ -91,40 +91,37 @@ describe("datasets", () => {
     expect(within(list).getByRole("button", { name: /^penguins\.csv/ })).toBeInTheDocument();
   });
 
-  it("opens the profile with the table's size and its columns grouped by role", async () => {
-    serve();
+  it("draws the missing share per column, emptiest first, and says how many cross the threshold", async () => {
+    const gappy = { ...profile, columns: profile.columns.map((c) => (c.name === "sepal_length" ? { ...c, missing: 30 } : c)) };
+    serve(undefined, () => HttpResponse.json(gappy));
     await openProfile();
-    const tiles = await screen.findByLabelText("Table in numbers");
-    expect(tiles).toHaveTextContent("120rows");
-    expect(tiles).toHaveTextContent("4columns");
-    expect(tiles).toHaveTextContent("blank text cells");
-    const roles = screen.getByLabelText("Columns by role");
-    expect(roles).toHaveTextContent("1 free textnote");
-    expect(roles).toHaveTextContent("1 categoryspecies");
-    expect(roles).toHaveTextContent("2 numberssepal_length, petal_width");
+    const chart = await screen.findByRole("figure", { name: "Missing share per column" });
+    expect(within(chart).getByRole("img", { name: "Missing share per column" })).toBeInTheDocument();
+    expect(chart).toHaveTextContent("1 column at or above 20%");
+    expect(chart).toHaveTextContent("sepal_length first");
   });
 
-  it("lists what stands out, warnings first, with the column and an example from the data", async () => {
+  it("lists every column in one profile table: role, type, missing share, unique, median", async () => {
+    serve();
+    await openProfile();
+    const table = await screen.findByRole("table", { name: "Column profile" });
+    const sepal = within(table).getByRole("row", { name: /sepal_length/ });
+    expect(sepal).toHaveTextContent("number");
+    expect(sepal).toHaveTextContent("Float64");
+    expect(sepal).toHaveTextContent("5%");
+    expect(sepal).toHaveTextContent("35");
+    expect(sepal).toHaveTextContent("5.8");
+    expect(within(table).getByRole("img", { name: "Distribution of sepal_length" })).toBeInTheDocument();
+    expect(screen.getByText("1 free text · 1 category · 2 numbers")).toBeInTheDocument();
+  });
+
+  it("lists what stands out, warnings first, with an example from the data", async () => {
     serve();
     await openProfile();
     const findings = within(await screen.findByRole("region", { name: "Findings" })).getAllByRole("listitem");
     expect(findings[0]).toHaveClass("warn");
     expect(findings[0]).toHaveTextContent("Warningnote holds blank text in 12 of 120 rows");
     expect(findings[1]).toHaveTextContent("Example: same note");
-  });
-
-  it("draws missing and blank values per column", async () => {
-    serve();
-    await openProfile();
-    expect(await screen.findByRole("img", { name: "Missing and blank values (of 120 rows)" })).toBeInTheDocument();
-  });
-
-  it("shows every column at a glance and where values are missing along the rows", async () => {
-    serve();
-    await openProfile();
-    const glance = await screen.findByRole("region", { name: "At a glance" });
-    expect(within(glance).getByRole("img", { name: "Every column at a glance" })).toBeInTheDocument();
-    expect(within(glance).getByRole("img", { name: "Where values are missing, by row band" })).toBeInTheDocument();
   });
 
   it("shows warnings and a few notes first, and every finding on request", async () => {
@@ -137,45 +134,49 @@ describe("datasets", () => {
     expect(within(findings).getAllByRole("listitem")).toHaveLength(9);
   });
 
-  it("says every column is filled instead of drawing an empty chart", async () => {
-    const full = { ...profile, columns: profile.columns.map((c) => ({ ...c, missing: 0, blank: 0 })) };
-    serve(undefined, () => HttpResponse.json(full));
-    await openProfile();
-    expect(await screen.findByText("Every column is filled in every row.")).toBeInTheDocument();
-  });
-
-  it("gives each column a card with its role, its facts and the chart its role calls for", async () => {
+  it("draws each column's values by its role: a category's common values, a text's words and repeats, a number's spread", async () => {
     serve();
     await openProfile();
-    const sepal = await screen.findByRole("article", { name: "sepal_length" });
-    expect(sepal).toHaveTextContent("number");
-    expect(sepal).toHaveTextContent("filled95%");
+    const species = await screen.findByRole("article", { name: "species" });
+    expect(within(species).getByRole("img", { name: "Most common values of species" })).toBeInTheDocument();
+    const note = screen.getByRole("article", { name: "note" });
+    expect(within(note).getByRole("img", { name: "Words per value in note" })).toBeInTheDocument();
+    expect(within(note).getByRole("img", { name: "Most repeated values of note" })).toBeInTheDocument();
+    const sepal = screen.getByRole("article", { name: "sepal_length" });
+    expect(within(sepal).getByRole("img", { name: "Distribution of sepal_length" })).toBeInTheDocument();
     expect(sepal).toHaveTextContent("median5.8");
-    expect(within(sepal).getByRole("img", { name: "Distribution" })).toBeInTheDocument();
-    const species = screen.getByRole("article", { name: "species" });
-    expect(within(species).getByRole("img", { name: "Most common values" })).toBeInTheDocument();
   });
 
-  it("shows a text column's words per value and only the values that repeat, with its own findings", async () => {
+  it("draws where values are missing along the rows", async () => {
     serve();
     await openProfile();
-    const note = await screen.findByRole("article", { name: "note" });
-    expect(within(note).getByRole("img", { name: "Words per value" })).toBeInTheDocument();
-    expect(within(note).getByRole("img", { name: "Most repeated values" })).toBeInTheDocument();
-    expect(within(note).getAllByRole("listitem")).toHaveLength(2);
+    expect(await screen.findByRole("img", { name: "Where values are missing" })).toBeInTheDocument();
   });
 
-  it("draws a correlation field only for three or more measured numbers", async () => {
+  it("draws a correlation matrix only for three or more measured numbers", async () => {
     serve();
     await openProfile();
-    await screen.findByRole("article", { name: "sepal_length" });
-    expect(screen.queryByRole("img", { name: "Correlation field (Pearson)" })).not.toBeInTheDocument();
+    await screen.findByRole("table", { name: "Column profile" });
+    expect(screen.queryByRole("img", { name: "Correlation matrix" })).toBeNull();
   });
 
-  it("draws the correlation field for three measured numbers", async () => {
+  it("draws the correlation matrix for three measured numbers", async () => {
     serve(undefined, () => HttpResponse.json({ ...profile, correlation: { ...profile.correlation, columns: ["sepal_length", "petal_width", "petal_length"] } }));
     await openProfile();
-    expect(await screen.findByRole("img", { name: "Correlation field (Pearson)" })).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "Correlation matrix" })).toBeInTheDocument();
+  });
+
+  it("puts the table's numbers in the Info dock, not in a row under the header", async () => {
+    serve(undefined, () => HttpResponse.json({ ...profile, duplicate_rows: 3 }));
+    expect(await screen.findByText("Duplicate rows")).toBeInTheDocument();
+    expect(screen.getByText("Empty cells")).toBeInTheDocument();
+  });
+
+  it("says when a large table was profiled only in part", async () => {
+    serve(undefined, () => HttpResponse.json({ ...profile, total_rows: 5_000_000, profiled_rows: 1_000_000, total_columns: 250 }));
+    await openProfile();
+    expect(await screen.findByText(/Profiled the first 1,000,000 of 5,000,000 rows\./)).toBeInTheDocument();
+    expect(screen.getByText(/Showing the first 4 of 250 columns\./)).toBeInTheDocument();
   });
 
   it("says the profile includes held-out rows and is for looking, not for choosing", async () => {
@@ -184,12 +185,6 @@ describe("datasets", () => {
     expect(await screen.findByText(/including held-out test rows/)).toHaveTextContent("not to choose features, transforms or models");
   });
 
-  it("says when a large table was profiled only in part", async () => {
-    serve(undefined, () => HttpResponse.json({ ...profile, total_rows: 5_000_000, profiled_rows: 1_000_000, total_columns: 250 }));
-    await openProfile();
-    expect(await screen.findByText(/Profiled the first 1,000,000 rows\./)).toBeInTheDocument();
-    expect(screen.getByText(/Showing the first 4 columns\./)).toBeInTheDocument();
-  });
 
   it("shows another dataset's profile when it is picked", async () => {
     const asked = serve();
@@ -203,7 +198,7 @@ describe("datasets", () => {
     const asked = serve();
     await screen.findByRole("table", { name: "First rows of iris.csv" });
     await openProfile();
-    await screen.findAllByRole("img", { name: "Distribution" });
+    await screen.findByRole("table", { name: "Column profile" });
     const rows = asked.filter((p) => p.endsWith("/rows"));
     expect(rows).toEqual([`/api/artifacts/${iris.artifact.id}/rows`]);
     expect(asked.every((p) => p === "/api/loaded_tables" || p.endsWith("/profile") || p.endsWith("/rows") || p === "/api/pipeline_versions")).toBe(true);

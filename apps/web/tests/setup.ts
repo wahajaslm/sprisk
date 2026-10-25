@@ -31,6 +31,10 @@ Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true
 
 // Monaco needs a real browser (workers, layout). Tests drive a plain textbox with the same
 // contract; the real editor is checked in the browser.
+// jsdom has no canvas: the design's charts (views/charts) draw nothing here. Tests check what
+// is drawn and its label; Chrome checks the drawing.
+Object.defineProperty(HTMLCanvasElement.prototype, "getContext", { configurable: true, value: () => null });
+
 // plotly.js needs a real browser (canvas, layout). Tests check what is drawn; Chrome checks the drawing.
 vi.mock("../src/views/PlotlyFigure.tsx", () => ({
   default: ({ label }: { label: string }) => createElement("div", { role: "img", "aria-label": label }),
