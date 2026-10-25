@@ -248,6 +248,55 @@ describe("datasets", () => {
     expect(bars[1]).toHaveClass("warn");
   });
 
+  it("keeps the missing share per column and lists each column with a gap, red from the threshold", async () => {
+    const gappy = { ...profile, columns: profile.columns.map((c) => (c.name === "sepal_length" ? { ...c, missing: 30 } : c)) };
+    serve(undefined, () => HttpResponse.json(gappy));
+    const section = await screen.findByRole("region", { name: "Missing values" });
+    expect(within(section).getByRole("img", { name: "Missing share per column" })).toBeInTheDocument();
+    expect(section).toHaveTextContent("1 column at or above 20% empty");
+    const rows = within(within(section).getByRole("list", { name: "Missing per column" })).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("sepal_length25.0%");
+    expect(rows[0]).toHaveClass("warn");
+  });
+
+  it("keeps every column in one profile table: role, type, missing share, unique, median", async () => {
+    serve();
+    const table = await screen.findByRole("table", { name: "Column profile" });
+    const sepal = within(table).getByRole("row", { name: /sepal_length/ });
+    expect(sepal).toHaveTextContent("number");
+    expect(sepal).toHaveTextContent("Float64");
+    expect(sepal).toHaveTextContent("5%");
+    expect(sepal).toHaveTextContent("35");
+    expect(sepal).toHaveTextContent("5.8");
+    expect(screen.getByText("1 free text · 1 category · 2 numbers")).toBeInTheDocument();
+  });
+
+  it("keeps every column's values by its role: a category's common values, a text's words and repeats, a number's spread", async () => {
+    serve();
+    const species = await screen.findByRole("article", { name: "species" });
+    expect(within(species).getByRole("list", { name: "Most common values of species" })).toHaveTextContent("setosa40 · 33.3%");
+    const note = screen.getByRole("article", { name: "note" });
+    expect(within(note).getByRole("img", { name: "Words per value in note" })).toBeInTheDocument();
+    const sepal = screen.getByRole("article", { name: "sepal_length" });
+    expect(sepal).toHaveTextContent("median5.8");
+  });
+
+  it("keeps where values are missing along the rows", async () => {
+    serve();
+    expect(await screen.findByRole("img", { name: "Where sepal_length is missing" })).toBeInTheDocument();
+  });
+
+  it("hides and shows a column of the rows", async () => {
+    serve();
+    const rows = await screen.findByRole("region", { name: "Look at the rows" });
+    const table = await within(rows).findByRole("table", { name: "Rows of iris.csv" });
+    expect(within(table).getByRole("columnheader", { name: /species/ })).toBeInTheDocument();
+    await userEvent.click(within(rows).getByRole("checkbox", { name: "species" }));
+    expect(within(table).queryByRole("columnheader", { name: /species/ })).toBeNull();
+    await userEvent.click(within(rows).getByRole("checkbox", { name: "species" }));
+    expect(within(table).getByRole("columnheader", { name: /species/ })).toBeInTheDocument();
+  });
+
   it("puts the table's numbers in the Info dock, not in a row under the header", async () => {
     serve(undefined, () => HttpResponse.json({ ...profile, duplicate_rows: 3 }));
     expect(await screen.findByText("Duplicate rows")).toBeInTheDocument();

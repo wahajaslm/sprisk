@@ -8,11 +8,10 @@ import { Loading } from "../../components/ui/Loading.tsx";
 import { BodySection } from "../../components/ui/RowList.tsx";
 import { MeterRows, SolidBars } from "../../components/ui/StudioVisuals.tsx";
 import { isNumeric } from "../RowsTable.tsx";
+import { ColumnProfileTable, MISSING_WARN, MissingAlongRows, MissingShare, shapeOf, ValuesPerColumn } from "./ProfileSections.tsx";
 
 /** Rows on one page of the table: one request each, never the table (ADR-0038 amendment). */
 export const PREVIEW_ROWS = 50;
-/** A column this empty or more is a warning (the design's missing threshold). */
-const MISSING_WARN = 0.2;
 /** A correlation this strong or more is drawn red: two columns that say the same thing. */
 const STRONG_R = 0.9;
 /** Values a category's chart lists; long titles make more unreadable. */
@@ -67,10 +66,14 @@ export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?:
         </p>
       )}
       <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />
+      <ColumnProfileTable profile={p} />
       {column && <ReadOneColumn profile={p} at={at} onMove={setPicked} />}
+      <MissingShare profile={p} />
       <MissingOrExtreme profile={p} picked={column?.name} onPick={pick} />
+      <MissingAlongRows profile={p} />
       {(p.correlation.columns.length >= 2 || (p.label?.numbers.length ?? 0) > 0) && <RelateColumns profile={p} picked={column?.name} />}
       {p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
+      <ValuesPerColumn profile={p} />
       <WhatStandsOut findings={p.findings ?? []} />
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
       <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
@@ -106,22 +109,23 @@ const binOutside = (c: ColumnProfile, bar: { lower?: number; upper?: number }) =
   return f !== undefined && bar.lower !== undefined && bar.upper !== undefined && (bar.lower > f.high || bar.upper < f.low);
 };
 
-/** The counts a header's sparkline draws: a number's bins, a category's most common values, a
- * text column's words per value. An identifier has none worth drawing. */
-function shapeOf(c: ColumnProfile): number[] {
-  if (c.role === "identifier" || c.role === "constant" || c.role === "empty") return [];
-  if (c.role === "text") return (c.word_counts?.bars ?? []).map((b) => b.count);
-  return (c.histogram?.bars ?? []).map((b) => b.count);
-}
-
 function LookAtRows({ dataset, profile, picked, onPick }: { dataset: LoadedTable; profile: DatasetProfile; picked: string | undefined; onPick: (name: string) => void }) {
   const [offset, setOffset] = useState(0);
   const [goTo, setGoTo] = useState("");
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const page = useTablePage(dataset.artifact.id, offset, PREVIEW_ROWS);
   const note = `All ${profile.total_columns.toLocaleString()} columns. Each header shows its distribution and how much is missing. Click a header to read that column.`;
   if (page.isError) return <BodySection title="Look at the rows" note={note}><p role="alert" className="error">The rows could not be read: {page.error.message}</p></BodySection>;
   if (page.isPending) return <BodySection title="Look at the rows" note={note}><Loading text="Reading the first rows…" /></BodySection>;
-  const { total_rows: total, columns, rows } = page.data;
+  const { total_rows: total, columns: all, rows } = page.data;
+  const columns = all.map((c, at) => ({ ...c, at })).filter((c) => !hidden.has(c.name));
+  const toggle = (name: string) =>
+    setHidden((was) => {
+      const now = new Set(was);
+      if (now.has(name)) now.delete(name);
+      else now.add(name);
+      return now;
+    });
   const last = Math.min(page.data.offset + rows.length, total);
   const jump = () => {
     const row = Number(goTo);
@@ -132,6 +136,15 @@ function LookAtRows({ dataset, profile, picked, onPick }: { dataset: LoadedTable
   const of = (name: string) => profile.columns.find((c) => c.name === name);
   return (
     <BodySection title="Look at the rows" note={note}>
+      <fieldset className="ds-preview-columns">
+        <legend>Columns</legend>
+        {all.map((c) => (
+          <label key={c.name}>
+            <input type="checkbox" checked={!hidden.has(c.name)} onChange={() => toggle(c.name)} />
+            <span className="mono">{c.name}</span>
+          </label>
+        ))}
+      </fieldset>
       <div className="ex-rows">
         <table aria-label={`Rows of ${dataset.name}`}>
           <thead>
@@ -165,10 +178,10 @@ function LookAtRows({ dataset, profile, picked, onPick }: { dataset: LoadedTable
             {rows.map((row, r) => (
               <tr key={page.data.offset + r}>
                 <td className="ex-index">{page.data.offset + r + 1}</td>
-                {columns.map((c, i) => {
+                {columns.map((c) => {
                   const numeric = isNumeric(c.data_type);
-                  const value = row.values[i];
-                  if (row.missing.includes(i)) return <td key={c.name} className={numeric ? "num missing" : "missing"}>—</td>;
+                  const value = row.values[c.at];
+                  if (row.missing.includes(c.at)) return <td key={c.name} className={numeric ? "num missing" : "missing"}>—</td>;
                   const p = of(c.name);
                   const red = numeric && p !== undefined && outside(p, Number(value));
                   return (
