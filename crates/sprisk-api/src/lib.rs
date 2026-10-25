@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 mod bounded;
+mod copilot;
 mod decisions;
 mod engine;
 mod figures;
@@ -16,6 +17,7 @@ mod report;
 mod rules;
 mod split;
 pub use bounded::ProcessError;
+pub use copilot::{Copilot, CopilotConfigError};
 pub use engine::resume_walks;
 pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use method_session::{MethodRunner, MethodSession};
@@ -35,11 +37,12 @@ use serde_json::json;
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, ArtifactId, AttemptId, BindingSourceKind,
-    CapabilityClass, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun, DatasetProfile,
-    DecisionProposal, FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse,
-    MethodFiles, MethodologyAlternativeApplicability, MethodologyDecision,
-    MethodologyDecisionByRule, MethodologyDecisionId, MethodologyProposalId, MethodologyReview,
-    MethodologyRule, MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
+    CapabilityClass, CodeSplit, CodeSplitRequest, ConceptSet, CopilotChatReply, CopilotChatRequest,
+    CopilotLedgerDraft, CopilotLedgerRequest, CreateRun, DatasetProfile, DecisionProposal,
+    FigureSet, GraphEffect, InvestigationId, LoadedTable, LoadedTableUse, MethodFiles,
+    MethodologyAlternativeApplicability, MethodologyDecision, MethodologyDecisionByRule,
+    MethodologyDecisionId, MethodologyProposalId, MethodologyReview, MethodologyRule,
+    MethodologyRuleSelection, MethodologyRuleSource, ModelSelection, NotebookCode,
     NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
     NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
     NotebookVersionId, Operator, OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId,
@@ -87,6 +90,8 @@ pub struct AppState {
     pub method_runner: MethodRunner,
     /// One live Python kernel per notebook being explored (ADR-0036).
     pub kernels: Kernels,
+    /// Asks the local model for the Copilot (ADR-0066). None: AI is off.
+    pub copilot: Option<Copilot>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -149,6 +154,8 @@ pub fn router(state: AppState) -> Router {
             post(read_notebook_settings),
         )
         .route("/code/split", post(split_code))
+        .route("/copilot/chat", post(copilot_chat))
+        .route("/copilot/ledger", post(copilot_ledger))
         .route("/pipeline_versions/{id}", get(get_pipeline_version))
         .route("/runs", post(create_run).get(list_runs))
         .route("/runs/{id}", get(get_run))
@@ -279,6 +286,10 @@ enum ApiError {
     NoPlainCode(String),
     #[error("writing the step's plain code {0}")]
     Code(ProcessError),
+    #[error("AI is off on this server")]
+    AiOff,
+    #[error("asking the local model {0}")]
+    Copilot(ProcessError),
     #[error("{0}")]
     Internal(String),
 }
@@ -319,6 +330,19 @@ impl ApiError {
             ApiError::Code(ProcessError::Busy) => (
                 StatusCode::TOO_MANY_REQUESTS,
                 vec![("code_busy", self.to_string())],
+            ),
+            ApiError::AiOff => (StatusCode::FORBIDDEN, vec![("ai_off", self.to_string())]),
+            ApiError::Copilot(ProcessError::Timeout(_)) => (
+                StatusCode::GATEWAY_TIMEOUT,
+                vec![("copilot_timeout", self.to_string())],
+            ),
+            ApiError::Copilot(ProcessError::Busy) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                vec![("copilot_busy", self.to_string())],
+            ),
+            ApiError::Copilot(ProcessError::Failed(_)) => (
+                StatusCode::BAD_GATEWAY,
+                vec![("copilot_failed", self.to_string())],
             ),
             ApiError::Rules(
                 sprisk_methodology::CatalogError::UnknownRule(_)
@@ -886,6 +910,31 @@ async fn write_notebook_code(
         .await
         .map_err(ApiError::Code)?;
     Ok(Json(code))
+}
+
+async fn copilot_chat(
+    State(state): State<AppState>,
+    text: String,
+) -> Result<Json<CopilotChatReply>, ApiError> {
+    let copilot = state.copilot.as_ref().ok_or(ApiError::AiOff)?;
+    let request: CopilotChatRequest = body(&text)?;
+    Ok(Json(
+        copilot.chat(&request).await.map_err(ApiError::Copilot)?,
+    ))
+}
+
+async fn copilot_ledger(
+    State(state): State<AppState>,
+    text: String,
+) -> Result<Json<CopilotLedgerDraft>, ApiError> {
+    let copilot = state.copilot.as_ref().ok_or(ApiError::AiOff)?;
+    let request: CopilotLedgerRequest = body(&text)?;
+    Ok(Json(
+        copilot
+            .draft_ledger(&request)
+            .await
+            .map_err(ApiError::Copilot)?,
+    ))
 }
 
 /// Refuses settings `operator` does not allow, naming the rules they break.

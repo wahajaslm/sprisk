@@ -28,6 +28,12 @@ enum Command {
         /// Directory pipelines may read data files from. Repeat for more than one.
         #[arg(long = "data-root", default_value = ".")]
         data_roots: Vec<PathBuf>,
+        /// Turn the Copilot's local model off (ADR-0066).
+        #[arg(long)]
+        no_ai: bool,
+        /// Address of the local Ollama the Copilot asks. Must be on this machine.
+        #[arg(long, default_value = sprisk_cli::DEFAULT_OLLAMA)]
+        ollama: String,
     },
     /// Submit a pipeline file, run it, and print the result.
     Run {
@@ -65,11 +71,14 @@ async fn main() -> anyhow::Result<()> {
             data_dir,
             repo,
             data_roots,
+            no_ai,
+            ollama,
         } => {
             let listener = tokio::net::TcpListener::bind(sprisk_cli::loopback_addr(&addr)?).await?;
             eprintln!("sprisk API on http://{addr}");
             let config = ServeConfig {
                 data_roots,
+                ollama: (!no_ai).then_some(ollama),
                 ..ServeConfig::for_repo(&repo, &data_dir, &repo)
             };
             serve_on(listener, config).await

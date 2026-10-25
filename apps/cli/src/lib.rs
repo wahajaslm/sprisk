@@ -33,6 +33,11 @@ pub fn pipeline_from_yaml(text: &str, now: &str) -> anyhow::Result<PipelineVersi
     parse(&value.to_string()).context("pipeline file is not a valid pipeline version")
 }
 
+/// The local Ollama the Copilot asks unless told otherwise (ADR-0066).
+pub const DEFAULT_OLLAMA: &str = "http://127.0.0.1:11434";
+/// The model the Copilot asks.
+const COPILOT_MODEL: &str = "qwen2.5:7b";
+
 /// Where `serve` keeps data and finds operators.
 pub struct ServeConfig {
     pub data_dir: PathBuf,
@@ -41,6 +46,8 @@ pub struct ServeConfig {
     pub python: PathBuf,
     /// Directories pipelines may read local files from.
     pub data_roots: Vec<PathBuf>,
+    /// The local Ollama the Copilot asks (ADR-0066). None: AI is off.
+    pub ollama: Option<String>,
 }
 
 impl ServeConfig {
@@ -52,6 +59,7 @@ impl ServeConfig {
             plugins: root.join("plugins"),
             methodology: root.join("methodology"),
             python: root.join(".venv/bin/python"),
+            ollama: Some(DEFAULT_OLLAMA.into()),
         }
     }
 }
@@ -118,6 +126,24 @@ pub async fn serve_on(
     // A notebook's kernel runs where workers run, so a relative path in a cell reads the same
     // file in the session and in the node made from it (ADR-0036).
     let kernel_dir = std::env::current_dir().context("read the working directory")?;
+    // A local 7B model on a laptop CPU can take a minute; Python gives up at 100 s.
+    let copilot = config
+        .ollama
+        .as_deref()
+        .map(|ollama| {
+            sprisk_api::Copilot::local(
+                vec![
+                    config.python.display().to_string(),
+                    "-m".into(),
+                    "sprisk_workers.copilot".into(),
+                ],
+                ollama,
+                COPILOT_MODEL,
+                std::time::Duration::from_secs(120),
+                2,
+            )
+        })
+        .transpose()?;
     let kernels = sprisk_api::Kernels::new(
         vec![
             config.python.display().to_string(),
@@ -215,6 +241,7 @@ pub async fn serve_on(
         ),
         data_roots,
         kernels: kernels.clone(),
+        copilot,
     };
     tokio::spawn(async move {
         let mut every = tokio::time::interval(std::time::Duration::from_secs(60));

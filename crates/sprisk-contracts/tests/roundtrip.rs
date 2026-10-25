@@ -9,9 +9,10 @@ use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, ClassificationReport, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
-    ConceptSet, CopilotChatReply, CopilotChatRequest, CopilotLedgerDraft, CopilotLedgerRequest, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet,
-    FigureSet, FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles,
-    MethodRequest, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
+    ConceptSet, CopilotChatReply, CopilotChatRequest, CopilotLedgerDraft, CopilotLedgerRequest,
+    CreateRun, CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet,
+    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
+    MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
     NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
