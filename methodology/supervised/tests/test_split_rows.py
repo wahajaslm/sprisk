@@ -112,3 +112,21 @@ def test_a_missing_value_in_a_confirmed_column_is_bad_input(
     tables[side] = tables[side].with_columns(pl.lit(None).alias(column))
     with pytest.raises(CheckInputError, match=column):
         check(tables["train"], tables["test"], question(**facts))
+
+
+def test_a_bound_item_is_checked_like_a_confirmed_entity_fact() -> None:
+    raw = json.loads((CONTRACT / "question_version/valid/exploration-no-target.json").read_text())
+    for key in ("time_column", "entity_column"):
+        raw.pop(key, None)
+    raw["bindings"] = [
+        {
+            "schema_version": "sprisk.binding/v1",
+            "concept": "common.item_identity",
+            "source": {"column": "patient"},
+            "set_by": {"assurance": "stated"},
+        }
+    ]
+    asked = QuestionVersion.model_validate_json(json.dumps(raw))
+    result = check(rows([1, 2], ["a", "b"]), rows([3, 4], ["b", "c"]), asked)
+    assert result.verdict == "fail"
+    assert "patient" in result.rationale

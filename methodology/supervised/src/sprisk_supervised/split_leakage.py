@@ -5,7 +5,13 @@ from typing import Any
 import networkx as nx
 
 from sprisk_contracts import MethodologyCheck, Operator, PipelineVersion
-from sprisk_contracts.generated.models import CapabilityClass, OperatorRole, PortKind, Verdict
+from sprisk_contracts.generated.models import (
+    CapabilityClass,
+    OperatorRole,
+    PortKind,
+    Side,
+    Verdict,
+)
 
 CHECK = "supervised.split_leakage@1.0.0"
 
@@ -33,6 +39,20 @@ def is_baseline(op: Operator) -> bool:
     """Baseline models are reference points, not candidates: a supervised model with no
     family, as the comparison treats it."""
     return op.model is not None and bool(op.model.tasks) and op.model.family is None
+
+
+def measures_split(op: Operator) -> bool:
+    """An evidence producer the engine adds on a split's output: it reads train and test to
+    measure the split, and writes only a report, so nothing downstream can score on them."""
+    attach = op.attach
+    return (
+        attach is not None
+        and attach.role == OperatorRole.split
+        and attach.side == Side.output
+        and op.capability_class == CapabilityClass.analyzer
+        and all(port.kind != PortKind.model for port in op.inputs)
+        and all(port.kind == PortKind.report for port in op.outputs)
+    )
 
 
 def fits_on_train(op: Operator) -> bool:
@@ -105,7 +125,9 @@ def split_leakage(
         n for n, op in op_of.items() if op.capability_class == CapabilityClass.evaluator
     )
     if not evaluators and holdouts and estimators:
-        readers = sorted({str(n) for h in holdouts for n in graph.successors(h)})
+        all_readers = {str(n) for h in holdouts for n in graph.successors(h)}
+        measuring = sorted(n for n in all_readers if measures_split(op_of[n]))
+        readers = sorted(all_readers - set(measuring))
         if readers:
             read = next(h for h in sorted(holdouts) if graph.has_edge(h, readers[0]))
             rationale = (
@@ -113,11 +135,16 @@ def split_leakage(
                 "is not an evaluator, so this check cannot tell whether it compares models on it."
             )
             return _result(pipeline, check_id, now, Verdict.not_assessed, rationale, readers)
+        read = (
+            f"only steps that measure the split read it ({', '.join(measuring)})"
+            if measuring
+            else "no step reads the test set"
+        )
         rationale = (
             f"No model learns from the test set ({', '.join(sorted(holdouts))}) or from rows "
-            "that were never split, and no step reads the test set."
+            f"that were never split, and {read}."
         )
-        cited = sorted({*estimators, *(h.split(".")[0] for h in holdouts)})
+        cited = sorted({*estimators, *measuring, *(h.split(".")[0] for h in holdouts)})
         return _result(pipeline, check_id, now, Verdict.pass_, rationale, cited)
     if not evaluators:
         return _result(pipeline, check_id, now, Verdict.not_assessed, "No evaluator nodes.", [])

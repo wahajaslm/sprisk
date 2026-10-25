@@ -12,7 +12,7 @@ from sprisk_contracts import MethodologyCheck, QuestionVersion
 from sprisk_contracts.generated.models import MethodologyCoverage, MethodologyPhase, Verdict
 from sprisk_supervised.split_design import CHECK
 from sprisk_supervised.split_leakage import CheckInputError
-from sprisk_workers.rule import authoritative
+from sprisk_workers.rule import EVENT_TIME, ITEM_IDENTITY, bound_column
 
 LIMITATIONS = "Reads only the train and test rows of this step, not rows a later step adds."
 
@@ -39,8 +39,8 @@ def split_rows(
             f"split {node_id} gave {train.height} train and {test.height} test rows; "
             "an empty side cannot be checked"
         )
-    time = authoritative(question.time_column)
-    entity = authoritative(question.entity_column)
+    time = bound_column(question, EVENT_TIME, question.time_column)
+    entity = bound_column(question, ITEM_IDENTITY, question.entity_column)
     if not time and not entity:
         facts = (question.time_column, question.entity_column)
         unconfirmed = [f.value for f in facts if f is not None]
