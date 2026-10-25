@@ -1792,6 +1792,8 @@ export interface CopilotChatRequest {
   context?: string;
 }
 /**
+ * One chat message. An assistant message comes from the client too: chat history is untrusted, like the rest of the request.
+ *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "CopilotMessage".
  */

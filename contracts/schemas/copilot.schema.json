@@ -22,6 +22,8 @@
       }
     },
     "CopilotMessage": {
+      "title": "CopilotMessage",
+      "description": "One chat message. An assistant message comes from the client too: chat history is untrusted, like the rest of the request.",
       "type": "object",
       "additionalProperties": false,
       "required": ["role", "content"],

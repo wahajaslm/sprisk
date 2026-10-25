@@ -56,7 +56,7 @@ LEDGER_SYSTEM = (
     "rows).\n"
     "   - Do NOT invent business costs, interpretability constraints, or success "
     "thresholds if not specified; leave them null.\n"
-    "2. In 'copilot_clarification': Provide a brief, professional response directly "
+    "2. In 'clarification': Provide a brief, professional response directly "
     "to the user summarizing what you detected from their dataset and asking any "
     "essential clarification questions.\n"
     "3. In 'unknowns': Up to 3 concise questions on genuinely missing requirements "
@@ -93,7 +93,8 @@ _COSTS = {
     "required": ["positive", "false_negative", "false_positive"],
 }
 
-# The shape Ollama constrains the model's answer to. Costs are never inferred.
+# The shape Ollama constrains the model's answer to: CopilotLedgerDraft's fields, with null for
+# an unnamed fact and only the origins a model may give. Costs are never inferred.
 LEDGER_FORMAT: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -105,26 +106,20 @@ LEDGER_FORMAT: dict[str, Any] = {
             }
         ),
         "target": _optional(_fact(_TEXT)),
-        "entity_column": _optional(_fact(_TEXT)),
-        "time_column": _optional(_fact(_TEXT)),
+        "unit_of_analysis": _optional(_fact(_TEXT)),
         "prediction_horizon": _optional(_fact(_TEXT)),
         "costs": _optional(_fact(_COSTS, {"type": "string", "enum": ["explicit"]})),
-        "interpretability": _optional(_fact(_TEXT)),
-        "success_bar": _optional(_fact(_TEXT)),
-        "copilot_clarification": _TEXT,
+        "clarification": _TEXT,
         "unknowns": {"type": "array", "items": _TEXT, "maxItems": 3},
     },
     "required": [
         "objective",
         "task",
         "target",
-        "entity_column",
-        "time_column",
+        "unit_of_analysis",
         "prediction_horizon",
         "costs",
-        "interpretability",
-        "success_bar",
-        "copilot_clarification",
+        "clarification",
         "unknowns",
     ],
     "additionalProperties": False,
@@ -132,10 +127,14 @@ LEDGER_FORMAT: dict[str, Any] = {
 
 
 def chat(request: CopilotChatRequest, ollama: str, model: str) -> CopilotChatReply:
-    context = request.context or "Studio"
+    context = (
+        [{"role": "user", "content": f"Current context: {request.context}"}]
+        if request.context
+        else []
+    )
     messages = [
         {"role": "system", "content": CHAT_SYSTEM},
-        {"role": "user", "content": f"Current context: {context}"},
+        *context,
         *({"role": m.role, "content": m.content} for m in request.messages),
     ]
     payload = {
@@ -173,18 +172,8 @@ def draft_ledger(request: CopilotLedgerRequest, ollama: str, model: str) -> Copi
         raise CopilotError(f"the model's ledger is not JSON: {e}") from e
     if not isinstance(answer, dict):
         raise CopilotError("the model's ledger is not an object")
-    draft = {
-        "objective": answer.get("objective"),
-        "task": answer.get("task"),
-        "target": answer.get("target"),
-        "unit_of_analysis": answer.get("entity_column"),
-        "prediction_horizon": answer.get("prediction_horizon"),
-        "costs": answer.get("costs"),
-        "clarification": answer.get("copilot_clarification"),
-        "unknowns": answer.get("unknowns"),
-    }
     # The wire has no nulls: a fact the model left null is omitted.
-    present = {key: value for key, value in draft.items() if value is not None}
+    present = {key: value for key, value in answer.items() if value is not None}
     try:
         return CopilotLedgerDraft.model_validate_json(json.dumps(present))
     except ValidationError as e:

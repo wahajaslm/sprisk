@@ -25,6 +25,8 @@ Arch doc sections: §4 (principles), §14.4 (no customer data to external LLMs b
 - Good: one path for everyone; works without the dev server; AI can be switched off in one place.
 - Good: an Ollama timeout or crash is a typed API error, not a hung browser fetch.
 - Bad: a Python start per message adds about half a second.
+- The local model is on by default (ADR-0014: local is the default). A loopback port forwarded to another machine would send the column summary there; `--no-ai` turns the Copilot off.
+- Chat history, including assistant turns, comes from the client and is untrusted. Its length is bounded only by the request size limit; the model's context window cuts the rest.
 - Not yet: the audit log and PII scan of ADR-0014 rule 4. They are needed before any external provider.
 
 ## Validation

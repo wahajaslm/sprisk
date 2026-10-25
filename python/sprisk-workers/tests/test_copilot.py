@@ -84,13 +84,9 @@ def test_ledger_drafts_only_stated_facts_and_drops_nulls(ollama: FakeOllama) -> 
             "objective": {"value": "Predict species", "origin": "explicit"},
             "task": {"value": "classification", "origin": "inferred"},
             "target": {"value": "species", "origin": "inferred"},
-            "entity_column": None,
-            "time_column": None,
             "prediction_horizon": None,
             "costs": None,
-            "interpretability": None,
-            "success_bar": None,
-            "copilot_clarification": "I found species.",
+            "clarification": "I found species.",
             "unknowns": ["Which metric?"],
         }
     )
@@ -130,13 +126,13 @@ def test_ledger_drafts_only_stated_facts_and_drops_nulls(ollama: FakeOllama) -> 
     )
 
 
-def test_ledger_entity_column_becomes_the_unit_of_analysis(ollama: FakeOllama) -> None:
+def test_ledger_reads_the_unit_of_analysis(ollama: FakeOllama) -> None:
     ollama.content = json.dumps(
         {
             "objective": {"value": "x", "origin": "explicit"},
             "task": {"value": "exploration", "origin": "inferred"},
-            "entity_column": {"value": "customer_id", "origin": "inferred"},
-            "copilot_clarification": "",
+            "unit_of_analysis": {"value": "customer_id", "origin": "inferred"},
+            "clarification": "",
             "unknowns": [],
         }
     )
@@ -177,3 +173,9 @@ def test_no_ollama_is_an_error() -> None:
 
 def test_copilot_errors_are_worker_errors() -> None:
     assert issubclass(CopilotError, WorkerError)
+
+
+def test_chat_without_context_sends_no_made_up_context(ollama: FakeOllama) -> None:
+    ollama.content = "Hi."
+    chat(CHAT_HI, ollama.url, MODEL)
+    assert [m["role"] for m in ollama.sent[0]["messages"]] == ["system", "user"]
