@@ -52,7 +52,7 @@ export function Experiments() {
   const [search, setSearch] = useState("");
   const [swapped, setSwapped] = useState(false);
   const studies = useStudies(flow?.head.id);
-  const selection = useLatestSelection(flow?.ids ?? [], all);
+  const selection = useLatestSelection(flow?.ids ?? [], all, new Set((studies.data ?? []).map((s) => s.comparison_id)));
   const [versus, setVersus] = useState<[string, string]>();
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;

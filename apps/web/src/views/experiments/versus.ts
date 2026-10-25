@@ -16,7 +16,10 @@ export function defaultVersus(decision: SelectionDecision): [string, string] {
   const lower = LOWER_IS_BETTER.has(decision.metric);
   const ranked = [...decision.candidates].sort((x, y) => (lower ? x.mean - y.mean : y.mean - x.mean));
   const first = decision.winner ?? ranked[0]?.id ?? "";
-  const other = ranked.find((c) => c.id !== first && c.id !== decision.baseline)?.id ?? ranked.find((c) => c.id !== first)?.id ?? first;
+  const scores = (id: string) => JSON.stringify(decision.candidates.find((c) => c.id === id)?.fold_scores);
+  // A runner-up with the same score on every fold shows nothing; the baseline shows the gain.
+  const rival = ranked.find((c) => c.id !== first && c.id !== decision.baseline && scores(c.id) !== scores(first))?.id;
+  const other = rival ?? decision.baseline ?? ranked.find((c) => c.id !== first)?.id ?? first;
   return [first, other];
 }
 

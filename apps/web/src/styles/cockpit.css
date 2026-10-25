@@ -8050,3 +8050,6 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .exp-pickers select { height: 28px; padding: 0 var(--space-2); border: 1px solid var(--alpha-08); border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); font: var(--fs-13) var(--mono); }
 .exp-side-by-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-6); }
 .exp-side-by-side h3 { margin: 0 0 var(--space-2); font-size: var(--fs-15); font-weight: 500; color: var(--text-primary); }
+.exp-compare td { white-space: normal; line-height: 1.5; padding-top: var(--space-2) !important; padding-bottom: var(--space-2) !important; height: auto !important; vertical-align: top; }
+.exp-compare { table-layout: fixed; }
+.exp-compare th:first-child, .exp-compare td:first-child { width: 28%; }

@@ -10,10 +10,10 @@ import { formatMetric } from "../NodeFact.tsx";
 import { foldsWon, METRIC_WORDS, versusRows } from "./versus.ts";
 
 /** The flow's newest model selection: its comparison version, proposal and decision, once the
- * comparison run has decided. */
-export function useLatestSelection(flowIds: string[], versions: PipelineVersion[]) {
+ * comparison run has decided. A study's comparisons are its own (`studied`), shown in Sweep. */
+export function useLatestSelection(flowIds: string[], versions: PipelineVersion[], studied: ReadonlySet<string>) {
   const mine = versions
-    .filter((v) => v.compares !== undefined)
+    .filter((v) => v.compares !== undefined && !studied.has(v.id))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const proposal = useMethodologyProposal(mine.find(() => true)?.compares);
   const comparison = mine.find((v) => v.compares === proposal.data?.id && flowIds.includes(proposal.data?.pipeline_version_id ?? ""));

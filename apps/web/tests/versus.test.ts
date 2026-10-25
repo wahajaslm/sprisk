@@ -35,4 +35,9 @@ describe("two models on the same folds (design: Compare)", () => {
     const b = decision.candidates.find((c) => c.id === "ml_dummy_baseline")!.fold_scores;
     expect(foldsWon(decision, "ml_linear_model", "ml_dummy_baseline")).toEqual({ a: a.filter((v, i) => v > b[i]!).length, b: a.filter((v, i) => v < b[i]!).length, folds: a.length });
   });
+
+  it("compares the recommendation with the baseline when the best other model scored the same on every fold", () => {
+    const same = { ...decision, candidates: decision.candidates.map((c) => (c.id === "ml_random_forest" ? { ...c, fold_scores: decision.candidates.find((x) => x.id === "ml_linear_model")!.fold_scores } : c)) };
+    expect(defaultVersus(same)).toEqual(["ml_linear_model", "ml_dummy_baseline"]);
+  });
 });
