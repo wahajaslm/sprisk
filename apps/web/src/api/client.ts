@@ -27,7 +27,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 /** An ApiError from a Problem body, or with `fallback` when the body is not one. */
 export function problemError(status: number, body: unknown, fallback: string): ApiError {
-  const problem = asProblem(body);
+  const problem = parseIf("Problem", body);
   if (!problem) return new ApiError(status, fallback, []);
   const text = problem.errors.map((e) => `${e.code}: ${e.message}`).join("\n");
   return new ApiError(status, text, problem.errors);
@@ -53,9 +53,10 @@ export async function* jsonLines(response: Response): AsyncGenerator<unknown> {
   if (buffered.trim() !== "") yield JSON.parse(buffered);
 }
 
-function asProblem(body: unknown): Entities["Problem"] | undefined {
+/** The entity when the JSON is one; undefined when it is not. Other errors still throw. */
+export function parseIf<K extends keyof Entities>(entity: K, json: unknown): Entities[K] | undefined {
   try {
-    return parse("Problem", body);
+    return parse(entity, json);
   } catch (e) {
     if (e instanceof ContractError) return undefined;
     throw e;

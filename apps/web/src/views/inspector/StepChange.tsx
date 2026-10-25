@@ -1,6 +1,5 @@
 import type { Attempt, PipelineVersion } from "@sprisk/contracts";
 import { useQueries } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
 
 import { useDatasetProfiles } from "../../api/datasets.ts";
 import { outputsQuery } from "../../api/hooks.ts";
@@ -8,9 +7,9 @@ import { PARQUET } from "../../api/media.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { stepOf } from "../../flow/ports.ts";
+import { PlotTile } from "../PlotTile.tsx";
+import { tokenColor } from "../tokenColor.ts";
 import { columnsChange, missingBeforeAfter, type PortTable, rowsInOut } from "./stepChange.ts";
-
-const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
 /** The tables a step read (by its own input port) and wrote, as artifact ids. */
 function useStepTables(pipeline: PipelineVersion, nodeId: string, attempts: Attempt[]) {
@@ -60,8 +59,8 @@ export function StepChange({ pipeline, nodeId, attempts }: { pipeline: PipelineV
     <section className="step-change" aria-label="What this step did">
       <h3 className="rd-label">What this step did</h3>
       <div className="step-change-charts">
-        {drawn(rowsInOut(inputs, outputs, tokenColor))}
-        {missing && drawn(missing)}
+        <PlotTile figure={rowsInOut(inputs, outputs, tokenColor)} label="Rows in and out" />
+        {missing && <PlotTile figure={missing} label="Missing values before and after" />}
       </div>
       {(change.added.length > 0 || change.removed.length > 0) && (
         <dl className="step-change-columns">
@@ -81,19 +80,4 @@ export function StepChange({ pipeline, nodeId, attempts }: { pipeline: PipelineV
       )}
     </section>
   );
-}
-
-function drawn(figure: ReturnType<typeof rowsInOut>) {
-  const label = String((figure.layout.title as { text: string }).text);
-  return (
-    <figure key={label} className="result-tile plot" style={figure.layout.height ? { height: figure.layout.height, minHeight: 0 } : undefined}>
-      <Suspense fallback={<Loading text="Loading figure…" />}>
-        <PlotlyFigure json={JSON.stringify(figure)} label={label} />
-      </Suspense>
-    </figure>
-  );
-}
-
-function tokenColor(token: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(token).trim();
 }

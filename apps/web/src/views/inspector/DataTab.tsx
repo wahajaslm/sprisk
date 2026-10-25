@@ -2,6 +2,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import type { Attempt, AttemptOutput, CodeInterface, DisplayItem } from "@sprisk/contracts";
 import { type ReactNode, useState } from "react";
 
+import { parseIf } from "../../api/client.ts";
 import type { Read } from "../../api/code.ts";
 import { useArtifactText, useOutputs } from "../../api/hooks.ts";
 import { MAX_INLINE_BYTES, PARQUET } from "../../api/media.ts";
@@ -13,6 +14,8 @@ import { TablePeek } from "../TablePeek.tsx";
 import { Variables } from "./Variables.tsx";
 import { ShownTable } from "./VisualsTab.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
+import { MetricTile } from "./MetricTile.tsx";
+import { ModelResults } from "./ModelResults.tsx";
 
 export type Explore = ((port: string) => void) | undefined;
 
@@ -257,6 +260,9 @@ function MetricTiles({ text, previous }: { text: string | undefined; previous: R
     return <pre className="code">{text}</pre>; // not JSON metrics; show it as written
   }
   if (typeof raw !== "object" || raw === null) return <pre className="code">{text}</pre>;
+  // Older runs wrote plain metrics; they keep the plain tiles.
+  const report = parseIf("ClassificationReport", raw);
+  if (report) return <ModelResults report={report} previous={previous} />;
   const entries = Object.entries(raw as Record<string, unknown>);
   const tiles = entries.filter((e): e is [string, number] => typeof e[1] === "number" && e[0] !== "n_rows");
   const rows = (raw as Record<string, unknown>).n_rows;
@@ -264,19 +270,9 @@ function MetricTiles({ text, previous }: { text: string | undefined; previous: R
   return (
     <div className="metrics">
       <div className="metric-tiles">
-        {tiles.map(([name, value]) => {
-          const before = previous?.[name];
-          const delta = before === undefined ? undefined : value - before;
-          return (
-            <div key={name} className="metric-tile" role="group" aria-label={name}>
-              <span className="metric-name">{name.replaceAll("_", " ")}</span>
-              <span className="metric-value">{formatMetric(value)}</span>
-              <span className="metric-delta">
-                {delta === undefined ? "first run" : delta === 0 ? "same as last run" : `${delta > 0 ? "▲" : "▼"} ${formatMetric(Math.abs(delta))} vs last run`}
-              </span>
-            </div>
-          );
-        })}
+        {tiles.map(([name, value]) => (
+          <MetricTile key={name} name={name.replaceAll("_", " ")} value={value} before={previous?.[name]} />
+        ))}
       </div>
       {(typeof rows === "number" || typeof estimator === "string") && (
         <p className="metric-caption">

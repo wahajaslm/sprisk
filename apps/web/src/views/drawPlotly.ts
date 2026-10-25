@@ -1,6 +1,7 @@
 import Plotly from "plotly.js-dist-min";
 
 import { thumbnail, themed } from "./plotlyTheme.ts";
+import { tokenColor } from "./tokenColor.ts";
 
 export type PlotlyFigureJson = { data: Plotly.Data[]; layout?: Partial<Plotly.Layout> };
 
@@ -8,9 +9,7 @@ export type PlotlyFigureJson = { data: Plotly.Data[]; layout?: Partial<Plotly.La
  * one is a still picture for a canvas card. Returns the cleanup, which frees the chart and
  * its resize watcher (ADR-0024). */
 export function drawPlotly(node: HTMLElement, figure: PlotlyFigureJson, small = false): () => void {
-  const css = getComputedStyle(document.documentElement);
-  const color = (token: string) => css.getPropertyValue(token).trim();
-  const layout = { ...themed(figure.layout ?? {}, color), autosize: true };
+  const layout = { ...themed(figure.layout ?? {}, tokenColor), autosize: true };
   if (small) {
     const still = thumbnail({ data: figure.data, layout });
     void Plotly.react(node, still.data, still.layout, { staticPlot: true, responsive: true });
