@@ -336,34 +336,48 @@ fn check_search(operator: &Operator) -> Result<(), String> {
 /// sha256 over the manifest and every file under the pack's `src/`, by relative path.
 /// The pack is the nearest ancestor of the manifest holding a `pyproject.toml`.
 fn implementation_digest(manifest: &Path) -> Result<String, RegistryError> {
-    let read = |path: &Path| {
-        std::fs::read(path).map_err(|source| RegistryError::Io {
-            path: path.to_owned(),
-            source,
-        })
-    };
     let mut hasher = Sha256::new();
     hasher.update(read(manifest)?);
     if let Some(src) = pack_src(manifest) {
-        let files = WalkDir::new(&src)
-            .sort_by_file_name()
-            .into_iter()
-            .filter_entry(|e| e.file_name() != "__pycache__");
-        for entry in files {
-            let entry = entry.map_err(|source| RegistryError::Walk {
-                root: src.clone(),
-                source,
-            })?;
-            if entry.file_type().is_file() {
-                let rel = entry.path().strip_prefix(&src).unwrap_or(entry.path());
-                let bytes = read(entry.path())?;
-                // Length-prefixed, so file boundaries cannot shift between packs.
-                hasher.update(rel.to_string_lossy().as_bytes());
-                hasher.update([0]);
-                hasher.update((bytes.len() as u64).to_le_bytes());
-                hasher.update(bytes);
-            }
-        }
+        hash_source(&mut hasher, &src)?;
     }
     Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
+}
+
+/// sha256 over every file under `src`, by relative path, bytecode caches left out: changes
+/// exactly when the code there does. The API keys stored profiles by the profiler's (ADR-0065).
+pub fn source_digest(src: &Path) -> Result<String, RegistryError> {
+    let mut hasher = Sha256::new();
+    hash_source(&mut hasher, src)?;
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
+}
+
+fn hash_source(hasher: &mut Sha256, src: &Path) -> Result<(), RegistryError> {
+    let files = WalkDir::new(src)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|e| e.file_name() != "__pycache__");
+    for entry in files {
+        let entry = entry.map_err(|source| RegistryError::Walk {
+            root: src.to_owned(),
+            source,
+        })?;
+        if entry.file_type().is_file() {
+            let rel = entry.path().strip_prefix(src).unwrap_or(entry.path());
+            let bytes = read(entry.path())?;
+            // Length-prefixed, so file boundaries cannot shift between packs.
+            hasher.update(rel.to_string_lossy().as_bytes());
+            hasher.update([0]);
+            hasher.update((bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        }
+    }
+    Ok(())
+}
+
+fn read(path: &Path) -> Result<Vec<u8>, RegistryError> {
+    std::fs::read(path).map_err(|source| RegistryError::Io {
+        path: path.to_owned(),
+        source,
+    })
 }

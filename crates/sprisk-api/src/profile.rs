@@ -9,23 +9,33 @@ use sprisk_contracts::{DatasetProfile, KeyMatches, parse};
 use crate::bounded::{BoundedProcess, ProcessError};
 
 /// The command that profiles a table (`python -m sprisk_profile.dataset`), how long it may
-/// take, and how many may run at once.
+/// take, how many may run at once, and the digest of its code: a stored profile is kept under
+/// it, so new profiler code profiles each table again (ADR-0065).
 #[derive(Clone, Debug)]
-pub struct Profiler(BoundedProcess);
+pub struct Profiler {
+    process: BoundedProcess,
+    code: String,
+}
 
 impl Profiler {
-    pub fn new(command: Vec<String>, timeout: Duration, at_once: usize) -> Self {
-        Self(BoundedProcess::new(
-            "dataset profiler",
-            command,
-            timeout,
-            at_once,
-        ))
+    pub fn new(command: Vec<String>, timeout: Duration, at_once: usize, code: String) -> Self {
+        Self {
+            process: BoundedProcess::new("dataset profiler", command, timeout, at_once),
+            code,
+        }
+    }
+
+    /// The digest of the profiler's code.
+    pub fn code(&self) -> &str {
+        &self.code
     }
 
     /// The profile of the Parquet file at `path`, checked against the contract.
     pub async fn profile(&self, path: &Path) -> Result<DatasetProfile, ProcessError> {
-        let text = self.0.run(path.display().to_string().into_bytes()).await?;
+        let text = self
+            .process
+            .run(path.display().to_string().into_bytes())
+            .await?;
         parse(&text).map_err(|e| ProcessError::Failed(format!("invalid profile: {e}")))
     }
 }
@@ -83,7 +93,12 @@ mod tests {
     use super::*;
 
     fn profiler(command: &[&str], timeout: Duration) -> Profiler {
-        Profiler::new(command.iter().map(|s| s.to_string()).collect(), timeout, 1)
+        Profiler::new(
+            command.iter().map(|s| s.to_string()).collect(),
+            timeout,
+            1,
+            "sha256:test".into(),
+        )
     }
 
     #[tokio::test]

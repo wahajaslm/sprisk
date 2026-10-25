@@ -38,6 +38,9 @@ const KERNEL_LIMITS: KernelLimits = KernelLimits {
     at_once: 2,
 };
 
+/// The test profiler's code digest: stored profiles are kept under it.
+const PROFILER_CODE: &str = "sha256:test-profiler";
+
 async fn api() -> Api {
     api_with_python(root().join(".venv/bin/python")).await
 }
@@ -169,6 +172,7 @@ async fn api_with_clock(
             ],
             Duration::from_secs(30),
             2,
+            PROFILER_CODE.into(),
         ),
         key_matcher: KeyMatcher::new(
             vec![
@@ -1512,6 +1516,62 @@ async fn the_tables_flows_load_are_listed_and_one_is_profiled() {
     assert_eq!(body["columns"][0]["name"], "x");
     assert_eq!(body["correlation"]["columns"], json!(["x", "y"]));
     assert_eq!(body["profiled_rows"], 2);
+}
+
+/// A table never changes, so its profile is made once and then read from the store (ADR-0065).
+#[tokio::test]
+async fn a_table_is_profiled_once_and_its_profile_kept() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (finished, _) = run_to_end(&api).await;
+    assert_eq!(finished["status"], "succeeded", "{finished}");
+    let (_, datasets) = call(&api.app, "GET", "/loaded_tables", None).await;
+    let artifact = &datasets[0]["artifact"];
+    let content = artifact["content_hash"].as_str().unwrap();
+    let path = format!("/artifacts/{}/profile", artifact["id"].as_str().unwrap());
+
+    let (status, made) = call(&api.app, "GET", &path, None).await;
+    assert_eq!(status, StatusCode::OK, "{made}");
+    let kept = api
+        .store
+        .stored_profile(content, PROFILER_CODE)
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(kept.unwrap()).unwrap(), made);
+
+    // A stored profile is served as it is: the profiler does not run again.
+    let mut marked = api
+        .store
+        .stored_profile(content, PROFILER_CODE)
+        .await
+        .unwrap()
+        .unwrap();
+    marked.total_rows = 999;
+    let other = format!("sha256:{}", "b".repeat(64));
+    api.store
+        .save_profile(&other, PROFILER_CODE, &marked)
+        .await
+        .unwrap();
+    let mut copy: sprisk_contracts::Artifact = serde_json::from_value(artifact.clone()).unwrap();
+    copy.id = "art_01JABCDEFGHJKMNPQRSTVWXY99".parse().unwrap();
+    copy.content_hash = other.parse().unwrap();
+    api.store.insert_artifact(&copy).await.unwrap();
+    let (status, served) = call(
+        &api.app,
+        "GET",
+        "/artifacts/art_01JABCDEFGHJKMNPQRSTVWXY99/profile",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{served}");
+    assert_eq!(served["total_rows"], 999);
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -166,6 +166,7 @@ pub async fn serve_on(
             ],
             std::time::Duration::from_secs(60),
             2,
+            sprisk_registry::source_digest(&config.plugins.join("profile/src"))?,
         ),
         key_matcher: sprisk_api::KeyMatcher::new(
             vec![

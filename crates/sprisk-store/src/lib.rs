@@ -6,11 +6,11 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, ArtifactId, Attempt, AttemptId, AttemptState, CreateStudy, CreateWalk,
-    DecisionProposal, InvestigationId, MethodologyDecision, MethodologyDecisionByRule,
-    MethodologyDecisionId, MethodologyProposalId, NodeId, NotebookId, NotebookVersion,
-    NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion, QuestionVersionId,
-    Report, Run, RunId, RunStatus, Study, StudyId, StudyStatus, Timestamp, Walk, WalkId, WalkStep,
-    WorkerId,
+    DatasetProfile, DecisionProposal, InvestigationId, MethodologyDecision,
+    MethodologyDecisionByRule, MethodologyDecisionId, MethodologyProposalId, NodeId, NotebookId,
+    NotebookVersion, NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion,
+    QuestionVersionId, Report, Run, RunId, RunStatus, Study, StudyId, StudyStatus, Timestamp, Walk,
+    WalkId, WalkStep, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -698,6 +698,42 @@ impl SqliteStore {
             .execute(&mut *tx)
             .await?;
         tx.commit().await?;
+        Ok(())
+    }
+
+    /// The profile of the table whose content hash is `content`, as the profiler whose code
+    /// hashes to `profiler` made it; None when it has not profiled that table yet.
+    pub async fn stored_profile(
+        &self,
+        content: &str,
+        profiler: &str,
+    ) -> Result<Option<DatasetProfile>, StoreError> {
+        let body: Option<String> = sqlx::query_scalar(
+            "SELECT body FROM profiles WHERE content_hash = ? AND profiler_digest = ?",
+        )
+        .bind(content)
+        .bind(profiler)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(body.map(|b| serde_json::from_str(&b)).transpose()?)
+    }
+
+    /// Keeps a profile. Two requests may profile one table at once; the first one kept wins,
+    /// and both made the same profile.
+    pub async fn save_profile(
+        &self,
+        content: &str,
+        profiler: &str,
+        profile: &DatasetProfile,
+    ) -> Result<(), StoreError> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO profiles (content_hash, profiler_digest, body) VALUES (?, ?, ?)",
+        )
+        .bind(content)
+        .bind(profiler)
+        .bind(to_json(profile)?)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 

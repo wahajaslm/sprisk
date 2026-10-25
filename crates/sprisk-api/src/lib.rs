@@ -3059,8 +3059,8 @@ async fn get_artifact_figures(
     Ok(Json(set))
 }
 
-/// A descriptive profile of one table, computed by Python (ADR-0038). The browser gets
-/// counts and shares, never rows.
+/// A descriptive profile of one table, computed by Python (ADR-0038) once and then read from
+/// the store (ADR-0065). The browser gets counts and shares, never rows.
 async fn get_artifact_profile(
     State(state): State<AppState>,
     Path(raw): Path<String>,
@@ -3076,9 +3076,15 @@ async fn get_artifact_profile(
             ),
         });
     }
-    Ok(Json(
-        state.profiler.profile(&local_table(&artifact)?).await?,
-    ))
+    // A table never changes, so its profile is made once per profiler code and kept.
+    let content = artifact.content_hash.as_str();
+    let code = state.profiler.code();
+    if let Some(kept) = state.store.stored_profile(content, code).await? {
+        return Ok(Json(kept));
+    }
+    let made = state.profiler.profile(&local_table(&artifact)?).await?;
+    state.store.save_profile(content, code, &made).await?;
+    Ok(Json(made))
 }
 
 /// The local file behind a table artifact; only local tables can be profiled yet.

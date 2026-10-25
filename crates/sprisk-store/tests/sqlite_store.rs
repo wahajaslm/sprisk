@@ -1620,3 +1620,55 @@ async fn a_walk_without_source_hashes_cannot_spend_test_rows() {
         .unwrap_err();
     assert!(matches!(err, StoreError::Conflict(_)), "{err}");
 }
+
+fn profile(rows: i64) -> sprisk_contracts::DatasetProfile {
+    parse(
+        &serde_json::json!({
+            "total_rows": rows, "total_columns": 0, "profiled_rows": rows, "band_rows": 0,
+            "columns": [], "correlation": {"columns": [], "pairs": []}
+        })
+        .to_string(),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_profile_is_kept_by_its_table_and_its_profiler_code() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    assert_eq!(
+        store.stored_profile("sha256:t", "sha256:p1").await.unwrap(),
+        None
+    );
+
+    store
+        .save_profile("sha256:t", "sha256:p1", &profile(5))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.stored_profile("sha256:t", "sha256:p1").await.unwrap(),
+        Some(profile(5))
+    );
+    // New profiler code profiles the table again.
+    assert_eq!(
+        store.stored_profile("sha256:t", "sha256:p2").await.unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn saving_a_profile_twice_keeps_the_first() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    store
+        .save_profile("sha256:t", "sha256:p", &profile(5))
+        .await
+        .unwrap();
+    store
+        .save_profile("sha256:t", "sha256:p", &profile(6))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.stored_profile("sha256:t", "sha256:p").await.unwrap(),
+        Some(profile(5))
+    );
+}

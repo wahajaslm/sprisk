@@ -513,3 +513,26 @@ fn a_search_the_model_cannot_take_is_refused_naming_the_file_and_why() {
         assert!(text.contains(why), "{search}: {text}");
     }
 }
+
+#[test]
+fn source_digest_follows_the_code_and_ignores_bytecode_caches() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "src/pack/a.py", "x = 1\n");
+    let first = sprisk_registry::source_digest(&dir.path().join("src")).unwrap();
+
+    write(
+        dir.path(),
+        "src/pack/__pycache__/a.cpython-314.pyc",
+        "cache",
+    );
+    assert_eq!(
+        sprisk_registry::source_digest(&dir.path().join("src")).unwrap(),
+        first
+    );
+
+    write(dir.path(), "src/pack/a.py", "x = 2\n");
+    assert_ne!(
+        sprisk_registry::source_digest(&dir.path().join("src")).unwrap(),
+        first
+    );
+}
