@@ -19,7 +19,7 @@ import { flowName } from "../flow/labels.ts";
 import { EXPERIMENTS_TABS, type ExperimentsTab, useSelection } from "../workbench/selection.ts";
 import { useStudies } from "../api/studies.ts";
 import { ModelComparisons } from "./ModelComparison.tsx";
-import { RunComparison } from "./experiments/CompareTab.tsx";
+import { CompareRuns } from "./experiments/CompareTab.tsx";
 import { ModelVersus, useLatestSelection } from "./experiments/ModelVersus.tsx";
 import { defaultVersus, foldsWon } from "./experiments/versus.ts";
 import { Studies } from "./Studies.tsx";
@@ -75,8 +75,9 @@ export function Experiments() {
   const shownAt = shown ? runs.indexOf(shown) : -1;
   const picked = compare.filter((id) => runs.some((r) => r.id === id));
   const pair = (picked.length === 2 ? picked : runs.slice(0, 2).map((r) => r.id)).map((id) => runs.findIndex((r) => r.id === id));
-  // Older run first, so changes read "before → after"; Swap reads them the other way.
-  const [olderAt, newerAt] = [...pair].sort((a, b) => b - a) as [number, number];
+  // The reference first: the one picked first, else the older run, so changes read "before →
+  // after"; Swap reads them the other way.
+  const [olderAt, newerAt] = (picked.length === 2 ? pair : [...pair].sort((a, b) => b - a)) as [number, number];
   const [firstAt, secondAt] = swapped ? [newerAt, olderAt] : [olderAt, newerAt];
   const models = selection ? (versus ?? defaultVersus(selection.decision)) : undefined;
   const pairWon = selection && models ? foldsWon(selection.decision, models[0], models[1]) : undefined;
@@ -89,17 +90,11 @@ export function Experiments() {
           title: shown ? sentence(shown.status) : "No runs yet",
           description: shown ? whatChanged(shown, byId) : "Run the flow to see each step here.",
         }
-      : experimentsTab === "Compare" && models && pairWon
-        ? {
-            eyebrow: `Compare · ${flowName(flow.head)} · model selection`,
-            title: `${models[0]} vs ${models[1]}`,
-            description: `Same ${pairWon.folds} folds of the train rows. ${models[0]} scored better on ${pairWon.a}, ${models[1]} on ${pairWon.b}.`,
-          }
-        : experimentsTab === "Compare"
+      : experimentsTab === "Compare"
         ? {
             eyebrow: `Compare · ${flowName(flow.head)}`,
-            title: runs.length < 2 ? "Compare runs" : `Run ${label(runs[firstAt]!)} vs run ${label(runs[secondAt]!)}`,
-            description: runs.length < 2 ? "Run the flow twice to compare two runs." : compareLine(runs[firstAt]!, runs[secondAt]!, byId),
+            title: "Compare runs",
+            description: runs.length < 2 ? "Run the flow twice to compare two runs." : `Reference run ${label(runs[firstAt]!)}. Select a run to see what changed and whether it can replace run ${label(runs[firstAt]!)}. ${compareLine(runs[firstAt]!, runs[secondAt]!, byId)}`,
           }
         : {
             eyebrow: latestStudy ? `Sweep · ${latestStudy.node_id} · up to ${latestStudy.max_trials} trials` : `Sweep · ${flowName(flow.head)}`,
@@ -147,9 +142,7 @@ export function Experiments() {
       }
       header={{
         ...header,
-        ...(experimentsTab === "Compare" && models
-          ? { actions: <Button onClick={() => setVersus([models[1], models[0]])}>Swap</Button> }
-          : experimentsTab === "Compare" && runs.length >= 2
+        ...(experimentsTab === "Compare" && runs.length >= 2
             ? { actions: <Button onClick={() => setSwapped(!swapped)}>Swap</Button> }
             : {}),
         ...(experimentsTab === "Monitor" && shown
@@ -167,8 +160,27 @@ export function Experiments() {
       {experimentsTab === "Monitor" && shown && <Monitor run={shown} version={byId.get(shown.pipeline_version_id)} />}
       {experimentsTab === "Compare" && (
         <div className="exp-body">
-          {selection && models ? (
+          {runs.length < 2 ? (
+            <p className="muted">Run the flow again, or change a setting and run it, to compare two runs.</p>
+          ) : (
+            <CompareRuns
+              runs={runs}
+              older={runs[firstAt]!}
+              newer={runs[secondAt]!}
+              olderNodes={nodes[firstAt] ?? {}}
+              newerNodes={nodes[secondAt] ?? {}}
+              byId={byId}
+              evaluators={evaluators}
+              labelOf={label}
+              onPick={(reference, run) => {
+                setSwapped(false);
+                setCompare([reference, run]);
+              }}
+            />
+          )}
+          {selection && models && pairWon && (
             <>
+              <BodySection title="Compare models" note={`${models[0]} vs ${models[1]} on the same ${pairWon.folds} folds of the train rows. ${models[0]} scored better on ${pairWon.a}, ${models[1]} on ${pairWon.b}.`}>
               <div className="exp-pickers" role="group" aria-label="Models to compare">
                 {(["A", "B"] as const).map((side, i) => (
                   <label key={side}>
@@ -182,21 +194,11 @@ export function Experiments() {
                     </select>
                   </label>
                 ))}
+                <Button onClick={() => setVersus([models[1], models[0]])}>Swap models</Button>
               </div>
+              </BodySection>
               <ModelVersus decision={selection.decision} attempts={selection.attempts} proposal={selection.proposal} a={models[0]} b={models[1]} />
             </>
-          ) : runs.length < 2 ? (
-            <p className="muted">Run the flow again, or change a setting and run it, to compare two runs.</p>
-          ) : (
-            <RunComparison
-              older={runs[firstAt]!}
-              newer={runs[secondAt]!}
-              olderNodes={nodes[firstAt] ?? {}}
-              newerNodes={nodes[secondAt] ?? {}}
-              byId={byId}
-              evaluators={evaluators}
-              labelOf={label}
-            />
           )}
           <BodySection title="Runs" note="Every run of this flow. Tick two runs to compare their scores and settings.">
             <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />

@@ -58,7 +58,10 @@ describe("experiments", () => {
     twoVersions();
     useSelection.setState({ experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
-    expect(await screen.findByRole("heading", { name: "Run #1 vs run #2" })).toBeInTheDocument();
+    const window = await screen.findByRole("region", { name: "Compare runs" });
+    expect(within(window).getByRole("combobox", { name: "Reference run" })).toHaveDisplayValue("Run #1");
+    expect(within(window).getByRole("combobox", { name: "Run" })).toHaveDisplayValue("Run #2");
+    await waitFor(() => expect(within(window).getByRole("status")).toHaveTextContent("Run #2 was scored on different test rows (the split changed), so its accuracy of 0.9 cannot be weighed against 0.947."));
     const metrics = await screen.findByRole("table", { name: "Metrics" });
     await waitFor(() => expect(within(metrics).getByRole("row", { name: /accuracy/ })).toHaveTextContent("0.9470.9−0.047"));
     expect(within(metrics).getByRole("cell", { name: "−0.047" })).toHaveClass("worse");
@@ -71,7 +74,17 @@ describe("experiments", () => {
     useSelection.setState({ experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
     await userEvent.click(await screen.findByRole("button", { name: "Swap" }));
-    expect(await screen.findByRole("heading", { name: "Run #2 vs run #1" })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Reference run" })).toHaveDisplayValue("Run #2");
+  });
+
+  it("picks the reference run and the run to weigh against it", async () => {
+    twoVersions();
+    useSelection.setState({ experimentsTab: "Compare", compare: [] });
+    renderWithApi(<Experiments />);
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Reference run" }), "Run #2");
+    expect(screen.getByRole("combobox", { name: "Reference run" })).toHaveDisplayValue("Run #2");
+    expect(screen.getByRole("combobox", { name: "Run" })).toHaveDisplayValue("Run #1");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Compare runs");
   });
 
   it("opens a run in the Flow view", async () => {

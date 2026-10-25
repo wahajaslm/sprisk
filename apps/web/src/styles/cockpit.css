@@ -8245,3 +8245,7 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .ds-findings li:first-child { border-top: 0; }
 .ds-finding-level { font-size: 12.5px; color: var(--text-label); }
 .ds-column-head h3 { font-size: 15px; font-weight: 550; letter-spacing: -0.01em; font-family: var(--mono); }
+/* Compare runs: whether the picked run can replace the reference, in one line. */
+.exp-verdict { margin: 0; font-size: 13.5px; color: var(--text-primary); text-wrap: pretty; }
+.exp-verdict.warn { color: #ff5c5c; }
+.exp-verdict.muted { color: var(--text-muted, #ababab); }

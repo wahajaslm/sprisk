@@ -5,9 +5,7 @@ import type { NodeInRun } from "../../api/runs.ts";
 import { BodySection } from "../../components/ui/RowList.tsx";
 import { settingChanges, showValue } from "../../flow/diff.ts";
 import { formatMetric } from "../NodeFact.tsx";
-
-/** Metrics where a lower value is better: their change reads red when it goes up. */
-const LOWER_IS_BETTER = new Set(["rmse", "mae", "mse", "log_loss", "calibration_error", "brier"]);
+import { canReplace, LOWER_IS_BETTER } from "./runDiff.ts";
 
 export type ComparedRuns = {
   older: Run;
@@ -18,6 +16,44 @@ export type ComparedRuns = {
   evaluators: string[];
   labelOf: (run: Run) => string;
 };
+
+/** The design's Compare runs window: a reference run and the run picked against it, whether
+ * that run can replace the reference, then their metrics and the decisions that differ. */
+export function CompareRuns(props: ComparedRuns & { runs: Run[]; onPick: (reference: string, run: string) => void }) {
+  const { runs, older, newer, olderNodes, newerNodes, byId, evaluators, labelOf, onPick } = props;
+  const a = byId.get(older.pipeline_version_id);
+  const b = byId.get(newer.pipeline_version_id);
+  const changes = a && b ? settingChanges(a, b) : [];
+  const metricsOf = (nodes: Record<string, NodeInRun>) => Object.assign({}, ...evaluators.map((e) => nodes[e]?.metrics ?? {})) as Record<string, number>;
+  const verdict = canReplace(metricsOf(olderNodes), metricsOf(newerNodes), splitChanged(older, changes.map((c) => c.node), byId), { reference: labelOf(older), run: labelOf(newer) });
+  const picker = (label: string, value: string, set: (id: string) => void) => (
+    <label>
+      <span>{label}</span>
+      <select value={value} onChange={(e) => set(e.target.value)}>
+        {runs.map((r) => (
+          <option key={r.id} value={r.id}>
+            {`Run ${labelOf(r)}`}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  return (
+    <>
+      <BodySection title="Compare runs" note="Pick the run to keep as the reference and a run to weigh against it.">
+        <div className="exp-pickers" role="group" aria-label="Runs to compare">
+          {/* Picking the other side's run swaps the two. */}
+          {picker("Reference run", older.id, (id) => onPick(id, id === newer.id ? older.id : newer.id))}
+          {picker("Run", newer.id, (id) => onPick(id === older.id ? newer.id : older.id, id))}
+        </div>
+        <p className={`exp-verdict${verdict.verdict === "replaces" ? "" : verdict.verdict === "same" || verdict.verdict === "no_metrics" ? " muted" : " warn"}`} role="status">
+          {verdict.text}
+        </p>
+      </BodySection>
+      <RunComparison {...props} />
+    </>
+  );
+}
 
 /** Two runs side by side, as the design's Compare screen: their metrics with the change, then
  * the decisions (settings) that differ. */
@@ -102,19 +138,24 @@ function Cautions({ older, olderNodes, newerNodes, byId, evaluators, changed }: 
   evaluators: string[];
   changed: string[];
 }) {
-  const nodes = byId.get(older.pipeline_version_id)?.nodes ?? [];
-  const splitChanged = changed.some((id) => nodes.find((n) => n.id === id)?.operator.includes(".validation."));
+  const split = splitChanged(older, changed, byId);
   const rows = evaluators
     .flatMap((e) => [olderNodes[e]?.metrics?.n_rows, newerNodes[e]?.metrics?.n_rows])
     .filter((n): n is number => n !== undefined && n > 0);
   const fewest = rows.length > 0 ? Math.min(...rows) : undefined;
-  if (!splitChanged && (fewest === undefined || fewest >= 200)) return null;
+  if (!split && (fewest === undefined || fewest >= 200)) return null;
   return (
     <ul className="exp-cautions">
-      {splitChanged && <li className="warn">The split changed, so the two runs were scored on different test rows. Their metrics are not a like-for-like comparison.</li>}
+      {split && <li className="warn">The split changed, so the two runs were scored on different test rows. Their metrics are not a like-for-like comparison.</li>}
       {fewest !== undefined && fewest < 200 && <li>Scored on {fewest} rows. One test row moves accuracy by about {formatMetric(1 / fewest)}, so small changes may be noise.</li>}
     </ul>
   );
+}
+
+/** Whether a changed step is the split: the two runs were then scored on different test rows. */
+function splitChanged(older: Run, changed: string[], byId: Map<string, PipelineVersion>): boolean {
+  const nodes = byId.get(older.pipeline_version_id)?.nodes ?? [];
+  return changed.some((id) => nodes.find((n) => n.id === id)?.operator.includes(".validation."));
 }
 
 const words = (metric: string) => metric.replaceAll("_", " ");
