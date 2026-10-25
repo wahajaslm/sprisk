@@ -147,6 +147,8 @@ export function keepDragged<T extends { id: string; position: Point }>(computed:
 
 /** Flow Studio design: compact steps 40px tall, 50px apart. */
 const STAGE_GAP = 10;
+/** Room between a stage's columns, for the lines from a step to the steps it feeds. */
+const STAGE_COLUMN_GAP = 48;
 
 /** A stage's steps in one column: each below the steps it reads, otherwise in flow order.
  * Compact and predictable, whatever the steps' size. */
@@ -165,14 +167,28 @@ function column(steps: Node[], links: { from: string; to: string }[], sizeOf: (n
     placed.add(next.id);
     order.push(next);
   }
-  const at = new Map<string, Point>();
-  let y = 0;
-  let width = 0;
+  // A chain stays in one column. A step that feeds two or more steps of its stage puts them in
+  // the next column, side by side: in one column the line to the second would pass behind the
+  // first and read as if they were linked.
+  const fanOut = new Map(ids.map((id) => [id, links.filter((l) => l.from === id && inside.has(l.to)).length]));
+  const depth = new Map<string, number>();
   for (const step of order) {
-    const size = sizeOf(step);
-    at.set(step.id, { x: 0, y });
-    y += size.height + STAGE_GAP;
-    width = Math.max(width, size.width);
+    const parents = [...(before.get(step.id) ?? [])];
+    depth.set(step.id, Math.max(0, ...parents.map((p) => (depth.get(p) ?? 0) + ((fanOut.get(p) ?? 0) > 1 ? 1 : 0))));
   }
-  return { at, width, height: Math.max(0, y - STAGE_GAP) };
+  const columns = Math.max(0, ...depth.values()) + 1;
+  const widths = Array.from({ length: columns }, (_, d) => Math.max(0, ...order.filter((s) => depth.get(s.id) === d).map((s) => sizeOf(s).width)));
+  const left = widths.map((_, d) => widths.slice(0, d).reduce((sum, w) => sum + w + STAGE_COLUMN_GAP, 0));
+  // A fed column starts one row down: the line from the feeding step to the next stage leaves
+  // along its own row and must not pass behind a step.
+  const row = order[0] ? sizeOf(order[0]).height + STAGE_GAP : 0;
+  const below = Array.from({ length: columns }, (_, d) => (d === 0 ? 0 : row));
+  const at = new Map<string, Point>();
+  for (const step of order) {
+    const d = depth.get(step.id) ?? 0;
+    at.set(step.id, { x: left[d] ?? 0, y: below[d] ?? 0 });
+    below[d] = (below[d] ?? 0) + sizeOf(step).height + STAGE_GAP;
+  }
+  const width = (left.at(-1) ?? 0) + (widths.at(-1) ?? 0);
+  return { at, width, height: Math.max(0, ...below.map((y) => y - STAGE_GAP)) };
 }

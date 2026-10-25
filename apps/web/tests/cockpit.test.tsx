@@ -322,7 +322,7 @@ describe("flow canvas", () => {
     const at = new Map([["split", { x: 110, y: 50 }]]);
     const { nodes } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), at, groups, [fair]);
     const stage = nodes.find((n) => n.id === "stage:Split#split")!;
-    expect(stage.data).toMatchObject({ name: "Train/test split", purpose: "Train/test split", promises: [promise] });
+    expect(stage.data).toMatchObject({ name: "Train/test split", purpose: "Set the test rows aside and check what was written", promises: [promise] });
   });
 
   it("says what a stage is for when no decision was made in it", async () => {

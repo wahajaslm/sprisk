@@ -43,3 +43,33 @@ describe("the compact canvas layout, as the design's main screen draws it", () =
     expect(Math.min(...groups.map((g) => g.y))).toBe(0);
   });
 });
+
+describe("steps inside one stage", () => {
+  // split feeds two checks in its own stage: drawn in one column, the line to the second would
+  // pass behind the first and read as if they were linked.
+  const fanned = {
+    ...pipeline,
+    nodes: [...pipeline.nodes, { id: "overlap", operator: "sprisk.profile.summarize@1.0.0", params: {} }, { id: "shape", operator: "sprisk.profile.summarize@1.0.0", params: {} }],
+    edges: [...pipeline.edges, { from: "split.train", to: "shape.data" }, { from: "split.test", to: "overlap.data" }],
+  };
+  const stage = (id: string) => ({ ...STAGE, shape: "Split", overlap: "Split" })[id];
+
+  it("puts the steps one step feeds side by side in the next column, never under each other's line", async () => {
+    const { nodes } = await flowPositions(fanned, () => NODE_SIZE.compact, stage);
+    const [split, shape, overlap] = ["split", "shape", "overlap"].map((id) => nodes.get(id)!);
+    expect(shape!.x).toBe(overlap!.x);
+    expect(shape!.x).toBeGreaterThan(split!.x + NODE_SIZE.compact.width);
+    expect(shape!.y).not.toBe(overlap!.y);
+  });
+
+  it("starts the fed steps one row lower, so a line leaving the stage from the step passes above them", async () => {
+    const { nodes } = await flowPositions(fanned, () => NODE_SIZE.compact, stage);
+    const split = nodes.get("split")!;
+    for (const id of ["shape", "overlap"]) expect(nodes.get(id)!.y).toBeGreaterThanOrEqual(split.y + NODE_SIZE.compact.height);
+  });
+
+  it("keeps a chain of steps in one column", async () => {
+    const { nodes } = await flowPositions(pipeline, () => NODE_SIZE.compact, (id) => STAGE[id]);
+    expect(nodes.get("score")!.x).toBe(nodes.get("model")!.x);
+  });
+});

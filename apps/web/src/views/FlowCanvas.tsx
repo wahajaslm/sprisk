@@ -138,13 +138,9 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
           </h3>
           {/* The header keeps its height: a stage's promises take the step count's place. */}
           {data.promises.length > 0 ? (
-            <ul className="stage-promises" aria-label="Promises">
-              {data.promises.map((p) => (
-                <li key={p.verification} className={`stage-promise tone-${STANDING[p.status].tone}`} title={`${p.promise} ${p.detail}`}>
-                  {STANDING[p.status].word}
-                </li>
-              ))}
-            </ul>
+            <span className={`stage-promise tone-${STANDING[promiseSummary(data.promises).status].tone}`} title={data.promises.map((p) => `${p.promise} ${STANDING[p.status].word}.`).join(" ")}>
+              {promiseSummary(data.promises).text}
+            </span>
           ) : (
             <span className="stage-step-count">{data.count} {data.count === 1 ? "step" : "steps"}</span>
           )}
@@ -153,6 +149,15 @@ function StageHead({ data, selected }: NodeProps<Node<StageData>>) {
       </div>
     </div>
   );
+}
+
+/** A stage's promises in one badge: "2 hold" when all do, else how many stand worst. The
+ * tooltip lists each one. */
+function promiseSummary(promises: PromiseStatus[]): { status: PromiseStatus["status"]; text: string } {
+  const worst = (["fail", "stale", "inconclusive", "not_evaluated"] as const).find((s) => promises.some((p) => p.status === s));
+  if (!worst) return { status: "pass", text: `${promises.length} hold` };
+  const n = promises.filter((p) => p.status === worst).length;
+  return { status: worst, text: `${n} ${STANDING[worst].word.toLowerCase()}` };
 }
 
 /** What a step's shape means, in its tooltip and for screen readers. */
@@ -452,7 +457,7 @@ export function flowGraph(
       data: {
         name: STAGE_TITLE[stageOfGroup(g.id)],
         // The decisions made here name what the stage did; a stage without one says what it is for.
-        purpose: (decidedIn.get(stageOfGroup(g.id)) ?? []).map((d) => d.name).join(" · ") || STAGE_PURPOSE[stageOfGroup(g.id)],
+        purpose: (decidedIn.get(stageOfGroup(g.id)) ?? []).map((d) => d.name).filter((n) => n !== STAGE_TITLE[stageOfGroup(g.id)]).join(" · ") || STAGE_PURPOSE[stageOfGroup(g.id)],
         promises: (decidedIn.get(stageOfGroup(g.id)) ?? []).flatMap((d) => d.promises),
         count: g.count,
         active: g.id === selectedGroup,
@@ -507,15 +512,16 @@ export function flowGraph(
   const edges: Edge[] = pipeline.edges.map((e) => {
     const source = stepOf(e.from);
     const target = stepOf(e.to);
-    const sameStage = groupOf.has(source) && groupOf.get(source) === groupOf.get(target);
+    // Down only between steps of one column of a stage; into the next column, left to right.
+    const sameColumn = groupOf.has(source) && groupOf.get(source) === groupOf.get(target) && at.get(source)?.x === at.get(target)?.x;
     const isFailed = (concerns.get(target) ?? 0) > 0 || latest.get(target)?.state === "failed";
     return {
       id: `${e.from}->${e.to}`,
       type: "flow",
       source,
       target,
-      sourceHandle: sameStage ? "down" : "out",
-      targetHandle: sameStage ? "top" : "in",
+      sourceHandle: sameColumn ? "down" : "out",
+      targetHandle: sameColumn ? "top" : "in",
       data: {
         active: selectedId !== undefined && (source === selectedId || target === selectedId),
         failed: isFailed,
