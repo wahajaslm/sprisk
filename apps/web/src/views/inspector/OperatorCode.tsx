@@ -78,6 +78,7 @@ function PlainCode({ pipeline, nodeId, byRef, code }: { pipeline: PipelineVersio
   );
 }
 
+/** A step with no plain code yet: its module, as the fallback. */
 function ModuleCode({ pipeline, nodeId, operator }: Props) {
   const builtin = useOperatorSource(operator.id);
   const node = pipeline.nodes.find((n) => n.id === nodeId);
@@ -101,6 +102,7 @@ function ModuleCode({ pipeline, nodeId, operator }: Props) {
   const editing = draft !== undefined;
   return (
     <div className="code-editor">
+      <p className="muted">No plain code for this step yet</p>
       <div className="code-actions">
         <span className="muted">
           <span className="tech">{builtin.data.path}</span>

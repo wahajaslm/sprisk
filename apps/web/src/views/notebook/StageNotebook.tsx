@@ -10,7 +10,7 @@ import { hasOutputs, latestByNode } from "../../flow/latest.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { useCollapsed } from "../../notebook/collapsed.ts";
 import type { Ran } from "../../notebook/outputs.ts";
-import { codeRequest, isReadyMade, stageCells } from "../../notebook/stageCells.ts";
+import { codeRequest, isReadyMade, stageCells, writesPlainCode } from "../../notebook/stageCells.ts";
 import type { Section } from "../../notebook/stageNotebooks.ts";
 import { ViewInstance } from "../../workbench/instance.tsx";
 import { useSelection } from "../../workbench/selection.ts";
@@ -24,6 +24,7 @@ import { useStep } from "../inspector/step.tsx";
 import { ArtifactTable, OutputItems } from "./CellOutputs.tsx";
 import { codeCellIds, NotebookCells, notebookKeys } from "./NotebookCells.tsx";
 import { useCellEditing } from "./useCellEditing.ts";
+import { useCopyScript } from "./useCopyScript.ts";
 import { useStageSave } from "./useStageSave.ts";
 
 const LIVE = new Set<Attempt["state"]>(["created", "validated", "queued", "leased", "running", "uploading"]);
@@ -39,7 +40,7 @@ export function StageNotebook({ pipeline, section }: { pipeline: PipelineVersion
   const byRef = new Map((operators.data ?? []).map((o) => [o.id, o]));
   // Only steps whose manifest names a writer have plain code to ask for.
   const writing = operators.data
-    ? section.nodes.filter((n) => isReadyMade(pipeline, n.id) && byRef.get(n.operator)?.notebook_code !== undefined)
+    ? section.nodes.filter((n) => writesPlainCode(pipeline, byRef, n.id))
     : [];
   const plain = useQueries({ queries: writing.map((n) => plainCodeQuery(n.operator, codeRequest(pipeline, byRef, n.id))) });
   if (operators.isError) return <p role="alert" className="error pad">Steps could not be read: {operators.error.message}</p>;
@@ -61,6 +62,7 @@ function StageEditor({ pipeline, section, byRef, code, unwritten }: {
 }) {
   const runId = useSelection((s) => s.runId);
   const attempts = useRunAttempts(pipeline.id, runId);
+  const copyScript = useCopyScript(pipeline, byRef);
   const stage = section.name;
   const edit = useCellEditing(stageCells(section, code), stage);
   const { cells, active } = edit;
@@ -113,7 +115,14 @@ function StageEditor({ pipeline, section, byRef, code, unwritten }: {
         eyebrow={`Notebook · ${flowName(pipeline)} · pipeline ${busy || runs.running ? "running" : "idle"}`}
         title={section.title}
         description="Each cell is a step of the pipeline. Running a cell runs the pipeline, reusing the steps that did not change."
-        actions={<Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>}
+        actions={
+          <>
+            {copyScript.isError && <span role="alert" className="error">The script could not be copied: {copyScript.error.message}</span>}
+            {copyScript.isSuccess && <span className="muted">Copied</span>}
+            <Button disabled={copyScript.isPending} onClick={() => copyScript.mutate()}>Copy pipeline as script</Button>
+            <Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>
+          </>
+        }
       />
       {section.decisions.map((decision) => (
         <SectionDecision key={decision.decides} decision={decision} />

@@ -37,6 +37,10 @@ export const isReadyMade = (pipeline: PipelineVersion, cellId: string) => {
   return node !== undefined && !isCodeOperator(node.operator);
 };
 
+/** Whether a step's manifest names a plain-code writer: the only steps to ask for plain code. */
+export const writesPlainCode = (pipeline: PipelineVersion, byRef: Operators, nodeId: string) =>
+  isReadyMade(pipeline, nodeId) && byRef.get(nodeOf(pipeline, nodeId).operator)?.notebook_code !== undefined;
+
 /** Ready-made steps whose plain Python (`code`) a person edited in `cells`. */
 export const editedReadyMade = (pipeline: PipelineVersion, cells: NotebookCell[], code: Map<string, string>) =>
   cells.filter((c) => c.kind === "code" && isReadyMade(pipeline, c.id) && code.has(c.id) && c.source !== code.get(c.id));

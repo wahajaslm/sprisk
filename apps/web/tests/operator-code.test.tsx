@@ -71,9 +71,10 @@ describe("a ready-made step's Code tab (ADR-0055)", () => {
     expect(step.params["source"]).toBe("impute_train, impute_test = fill(split_train, split_test, 0)");
   });
 
-  it("shows the step's module while it has no plain code yet", async () => {
+  it("says it has no plain code yet and shows the step's module instead", async () => {
     withApi(false);
     renderWithApi(<OperatorCode pipeline={pipeline} nodeId="impute" operator={impute} />);
+    expect(await screen.findByText("No plain code for this step yet")).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "Code of sprisk_clean/impute.py" })).toHaveValue("def impute(train, test):\n    ...\n");
   });
 });
