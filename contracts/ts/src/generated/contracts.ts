@@ -1343,7 +1343,7 @@ export interface Params {
  * via the `definition` "Method".
  */
 export interface Method {
-  schema_version: "sprisk.method/v1";
+  schema_version: "sprisk.method/v2";
   id: MethodRef;
   decides: DecisionKey;
   /**
@@ -3574,7 +3574,7 @@ export interface PromiseCheck {
  * via the `definition` "FlowDecisions".
  */
 export interface FlowDecisions {
-  schema_version: "sprisk.flow_decisions/v1";
+  schema_version: "sprisk.flow_decisions/v2";
   pipeline_version_id: PipelineVersionId;
   /**
    * The walk that made the version or its nearest ancestor. Absent: no walk did, so nothing decided it.

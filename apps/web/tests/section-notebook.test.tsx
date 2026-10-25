@@ -30,7 +30,7 @@ describe("a notebook section for an activity (ADR-0063)", () => {
   it("opens with the question, the finding, the decision and its promises, then the section's cells", async () => {
     server.use(
       http.get(`/api/pipeline_versions/${pipeline.id}/decisions`, () =>
-        HttpResponse.json({ schema_version: "sprisk.flow_decisions/v1", pipeline_version_id: pipeline.id, decisions: [fair] }),
+        HttpResponse.json({ schema_version: "sprisk.flow_decisions/v2", pipeline_version_id: pipeline.id, decisions: [fair] }),
       ),
     );
     const byRef = new Map(operators.map((o) => [o.id, o]));

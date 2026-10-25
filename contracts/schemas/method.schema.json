@@ -23,7 +23,7 @@
         "schema_version": {
           "type": "string",
           "enum": [
-            "sprisk.method/v1"
+            "sprisk.method/v2"
           ]
         },
         "id": {

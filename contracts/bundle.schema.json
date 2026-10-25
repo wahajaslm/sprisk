@@ -1345,7 +1345,7 @@
         "schema_version": {
           "type": "string",
           "enum": [
-            "sprisk.method/v1"
+            "sprisk.method/v2"
           ]
         },
         "id": {
@@ -6075,7 +6075,7 @@
         "schema_version": {
           "type": "string",
           "enum": [
-            "sprisk.flow_decisions/v1"
+            "sprisk.flow_decisions/v2"
           ]
         },
         "pipeline_version_id": {

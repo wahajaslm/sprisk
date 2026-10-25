@@ -1,5 +1,5 @@
 {
-  "schema_version": "sprisk.flow_decisions/v1",
+  "schema_version": "sprisk.flow_decisions/v2",
   "pipeline_version_id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ1",
   "decisions": [
     {

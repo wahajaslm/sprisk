@@ -3839,7 +3839,7 @@ class FlowDecisions(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["sprisk.flow_decisions/v1"]
+    schema_version: Literal["sprisk.flow_decisions/v2"]
     pipeline_version_id: PipelineVersionId
     walk_id: Annotated[
         WalkId | None,
@@ -3862,7 +3862,7 @@ class Method(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["sprisk.method/v1"]
+    schema_version: Literal["sprisk.method/v2"]
     id: MethodRef
     decides: DecisionKey
     name: Annotated[

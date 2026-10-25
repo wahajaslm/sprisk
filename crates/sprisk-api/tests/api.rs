@@ -6584,7 +6584,7 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
-const SHUFFLE_METHOD: &str = r#"schema_version: sprisk.method/v1
+const SHUFFLE_METHOD: &str = r#"schema_version: sprisk.method/v2
 id: methodology.supervised.shuffle_split@1.0.0
 decides: split.method
 name: Train/test split

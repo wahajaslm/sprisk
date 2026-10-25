@@ -118,7 +118,7 @@ pub fn flow_decisions(
         decisions.push(decision);
     }
     Ok(parse(
-        &json!({ "schema_version": "sprisk.flow_decisions/v1", "pipeline_version_id": asked.id,
+        &json!({ "schema_version": "sprisk.flow_decisions/v2", "pipeline_version_id": asked.id,
                  "walk_id": walk_id, "decisions": decisions })
         .to_string(),
     )?)

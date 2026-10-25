@@ -1,4 +1,4 @@
-schema_version: sprisk.method/v1
+schema_version: sprisk.method/v2
 id: methodology.core.split_method@1.0.0
 decides: evaluation.split_method
 name: Train/test split
