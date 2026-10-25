@@ -3,7 +3,7 @@ import type { FlowDecision, MethodologyRule, WalkStep } from "@sprisk/contracts"
 /** Who settled a decision: a person's answer, a method on its own, or a rule. */
 export type DecidedBy = "person" | "method" | "rule";
 
-/** One decision of a walk, as people read it. A method's carries its decision record (for its
+/** One decision of a walk, as people read it, titled by its method's or rule's name. A method's carries its decision record (for its
  * chart, evidence and promises); a rule's has only its trail step. */
 export type StoryDecision = {
   round: number;
@@ -34,7 +34,7 @@ export function walkStory(steps: WalkStep[], decided: FlowDecision[], rules: Met
     decisions.push({
       round: step.round,
       decides: step.decides,
-      title: record?.activity ?? rule?.name ?? words(step.decides.split(".").at(-1) ?? step.decides, true),
+      title: record?.name ?? rule?.name ?? words(step.decides.split(".").at(-1) ?? step.decides, true),
       ...(question ? { question } : {}),
       finding: step.reason,
       choice: record?.label ?? words(step.alternative_id ?? step.option ?? "", false),

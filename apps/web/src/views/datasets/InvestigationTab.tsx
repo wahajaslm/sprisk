@@ -107,7 +107,7 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
     (d.evidence ?? []).flatMap((e) => {
       const operator = operatorOf(e.step);
       const scope = operator && scopeWords(operator);
-      return operator && scope ? [{ key: `${d.decides}:${e.step}`, name: d.activity, question: d.question, text: `${operator.title} ${scope}` }] : [];
+      return operator && scope ? [{ key: `${d.decides}:${e.step}`, name: d.name, question: d.question, text: `${operator.title} ${scope}` }] : [];
     }),
   );
   return (

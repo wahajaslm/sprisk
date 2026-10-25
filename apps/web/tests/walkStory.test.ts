@@ -18,6 +18,7 @@ const step = (action: WalkStep["action"], reason: string, more: Partial<WalkStep
 const repeated: FlowDecision = {
   decides: "data.repeated_items",
   method: "methodology.common.repeated_items@1.0.0",
+  name: "Duplicate analysis",
   activity: "Repeated observations",
   question: "Does the same item appear in more than one row?",
   option: "group_by_title",
@@ -51,7 +52,7 @@ function trail(): WalkStep[] {
 describe("a walk's trail as a story (ADR-0065)", () => {
   it("lists every decision in walk order, a method's and a rule's, each once, under a name, not a question", () => {
     const story = walkStory(trail(), [repeated], [columnRoles]);
-    expect(story.decisions.map((d) => d.title)).toEqual(["Repeated observations", "Column roles", "Estimator selection"]);
+    expect(story.decisions.map((d) => d.title)).toEqual(["Duplicate analysis", "Column roles", "Estimator selection"]);
   });
 
   it("keeps each decision's question, to explain what it answers", () => {

@@ -76,7 +76,6 @@ class Topic(StrEnum):
     identifier = "identifier"
     repeated_values = "repeated_values"
     constant = "constant"
-    dominant_value = "dominant_value"
     imbalance = "imbalance"
     html = "html"
     spelling = "spelling"

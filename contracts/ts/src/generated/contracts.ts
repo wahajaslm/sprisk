@@ -1031,7 +1031,6 @@ export interface ProfileFinding {
     | "identifier"
     | "repeated_values"
     | "constant"
-    | "dominant_value"
     | "imbalance"
     | "html"
     | "spelling"
