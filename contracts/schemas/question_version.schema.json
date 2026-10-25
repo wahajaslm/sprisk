@@ -89,9 +89,14 @@
       "additionalProperties": false,
       "required": ["value", "origin"],
       "properties": {
-        "value": { "type": "string", "enum": ["high", "medium", "low"] },
+        "value": { "$ref": "#/$defs/Interpretability" },
         "origin": { "type": "string", "enum": ["explicit", "confirmed"], "description": "A constraint is never inferred or measured." }
       }
+    },
+    "Interpretability": {
+      "type": "string",
+      "description": "How far a person must follow each prediction. high: only models a person can read, such as linear ones.",
+      "enum": ["high", "medium", "low"]
     },
     "Origin": {
       "type": "string",

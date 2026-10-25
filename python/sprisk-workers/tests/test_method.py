@@ -94,12 +94,31 @@ def test_a_method_reads_its_decisions_bindings_and_the_task(tmp_path: Path) -> N
     assert answer["reason"] == "kept False classification"
 
 
+def test_a_method_reads_the_statements_it_declares_and_none_for_an_unstated_one(
+    tmp_path: Path,
+) -> None:
+    body = (
+        "return ctx.choose('grouped', "
+        "f\"{ctx.statement('costs')['false_negative']} {ctx.statement('success_bar')}\")"
+    )
+    needs = {
+        "concepts": [],
+        "evidence": [],
+        "decisions": [],
+        "statements": ["costs", "success_bar"],
+    }
+    costs = {"positive": "churned", "false_negative": 5.0, "false_positive": 1.0}
+    answer = decide_with(tmp_path, body, needs=needs, statements={"costs": costs})
+    assert answer["reason"] == "5.0 None"
+
+
 @pytest.mark.parametrize(
     ("body", "names"),
     [
         ("return ctx.evidence('data.other')", "data.other"),
         ("return ctx.decision('data.other')", "data.other"),
         ("return ctx.bound('pack.other')", "pack.other"),
+        ("return ctx.statement('costs')", "costs"),
     ],
 )
 def test_a_read_the_method_did_not_declare_is_refused(

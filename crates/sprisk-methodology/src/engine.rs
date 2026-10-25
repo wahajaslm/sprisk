@@ -423,6 +423,25 @@ pub fn look_asks(
             .to_string(),
         )?);
     }
+    if question.objective.origin == Origin::Inferred {
+        asks.push(parse(
+            &json!({
+                "decides": "question.objective",
+                "question": format!("Confirm the goal: {}", question.objective.value.as_str()),
+            })
+            .to_string(),
+        )?);
+    }
+    if question.interpretability.is_none() {
+        asks.push(parse(
+            &json!({
+                "decides": "question.interpretability",
+                "question": "State how far a person must follow each prediction: high (only \
+                             models a person can read), medium or low.",
+            })
+            .to_string(),
+        )?);
+    }
     Ok(asks)
 }
 

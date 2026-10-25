@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use sprisk_contracts::{MethodAssurance, Operator, PipelineVersion, QuestionVersion, parse};
 use sprisk_methodology::deciding::{
-    Made, apply_option, bindings, made_by, ready, reopened_too_late,
+    Basis, Made, apply_option, bindings, made_by, ready, reopened_too_late,
 };
 use sprisk_methodology::{RuleCatalog, patch};
 use sprisk_registry::Registry;
@@ -489,10 +489,13 @@ fn a_bind_option_binds_its_concept_to_the_column_the_producer_adds() {
         method,
         "group_by_title",
         MethodAssurance::Confirmed,
-        &effective.bindings,
-        &measured_flow(),
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &measured_flow(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap();
     assert!(applied.effects.is_empty());
@@ -524,10 +527,13 @@ fn a_group_split_reads_the_step_that_adds_its_group_column() {
         method,
         "item_groups",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &flow,
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap();
     assert_eq!(
@@ -567,10 +573,13 @@ fn a_stratified_split_reads_the_target_from_its_binding() {
         method,
         "stratified_random",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &measured_flow(),
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &measured_flow(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap();
     assert_eq!(
@@ -594,10 +603,13 @@ fn an_option_the_method_does_not_have_is_refused() {
         method,
         "shuffled",
         MethodAssurance::Confirmed,
-        &[],
-        &measured_flow(),
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &[],
+            pipeline: &measured_flow(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap_err();
     assert!(refused.to_string().contains("shuffled"), "{refused}");
@@ -623,10 +635,13 @@ fn an_insert_option_adds_its_step_before_the_split_with_settings_from_evidence()
         method,
         "normalise",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &flow,
-        &ops,
-        &measured,
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &flow,
+            operators: &ops,
+            measured: &measured,
+            question: &titled(),
+        },
     )
     .unwrap();
     assert_eq!(
@@ -662,10 +677,13 @@ fn an_insert_whose_evidence_was_not_measured_is_refused() {
         method,
         "normalise",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &measured_flow(),
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &measured_flow(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap_err();
     assert!(
@@ -813,10 +831,13 @@ fn a_group_split_moves_its_group_producer_onto_the_rows_the_split_read() {
         method,
         "item_groups",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &flow,
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap();
     assert_eq!(
@@ -895,10 +916,13 @@ fn a_join_reads_the_loaded_table_only_a_producer_reads() {
         method,
         "join_on_key",
         MethodAssurance::Rule,
-        &[],
-        &flow,
-        &ops,
-        &measured,
+        &Basis {
+            bindings: &[],
+            pipeline: &flow,
+            operators: &ops,
+            measured: &measured,
+            question: &titled(),
+        },
     )
     .unwrap();
     assert_eq!(
@@ -1085,4 +1109,222 @@ fn two_methods_inserting_before_one_step_decide_one_at_a_time() {
         1,
         "one changes the model's input before the other measures it: {ready:?}"
     );
+}
+
+#[test]
+fn a_request_carries_the_statements_the_method_needs_and_only_those_the_question_makes() {
+    let ops = operators();
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(&fixture().join("methodology"), packs.path());
+    let manifest = packs.path().join("core/methods/split_method/method.yaml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    std::fs::write(
+        &manifest,
+        text.replace(
+            "  decisions: [",
+            "  statements: [costs, success_bar]\n  decisions: [",
+        ),
+    )
+    .unwrap();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let mut q = serde_json::to_value(titled()).unwrap();
+    q["costs"] = json!({ "value": { "positive": "churned", "false_negative": 5.0,
+                                    "false_positive": 1.0 }, "origin": "explicit" });
+    let q: QuestionVersion = parse(&q.to_string()).unwrap();
+    let done = [made(REPEATED, "independent_rows", json!([]))];
+    let effective = bindings(&q, &done).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &groups(0),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
+    let request = serde_json::to_value(&found.ready[0].request).unwrap();
+    assert_eq!(
+        request["statements"],
+        json!({ "costs": { "positive": "churned", "false_negative": 5.0, "false_positive": 1.0 } })
+    );
+}
+
+#[test]
+fn a_set_option_puts_the_stated_costs_on_the_model_and_keeps_its_other_settings() {
+    let ops = operators();
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(&fixture().join("methodology"), packs.path());
+    let manifest = packs.path().join("core/methods/repeated_items/method.yaml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    let text = text
+        .replace("  decisions: []", "  decisions: []\n  statements: [costs]")
+        .replace(
+            "  - id: independent_rows\n",
+            "  - id: independent_rows\n    action: { set: { role: model, from_statements: { costs: costs } } }\n",
+        );
+    std::fs::write(&manifest, text).unwrap();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let method = catalog
+        .methods()
+        .find(|m| m.decides.as_str() == REPEATED)
+        .unwrap();
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
+                     "params": { "target": "prdtypecode", "task": "classification" } })
+            .to_string(),
+        )
+        .unwrap(),
+    );
+    let mut q = serde_json::to_value(titled()).unwrap();
+    q["costs"] = json!({ "value": { "positive": "a", "false_negative": 5.0, "false_positive": 1.0 },
+                         "origin": "explicit" });
+    let q: QuestionVersion = parse(&q.to_string()).unwrap();
+    let applied = apply_option(
+        method,
+        "independent_rows",
+        MethodAssurance::Rule,
+        &Basis {
+            bindings: &[],
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &q,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&applied.effects).unwrap(),
+        json!([{ "kind": "replace_node", "node_id": "model",
+                 "operator": "sprisk.ml.dummy_baseline@3.0.0",
+                 "params": { "target": "prdtypecode", "task": "classification",
+                             "costs": { "positive": "a", "false_negative": 5.0,
+                                        "false_positive": 1.0 } } }])
+    );
+}
+
+#[test]
+fn a_method_measuring_what_the_split_writes_waits_for_every_step_before_the_split() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &[]).unwrap();
+    let shape = BTreeMap::from([(
+        "target.shape".to_owned(),
+        json!({ "rows": 100, "distinct": 2, "numeric": false, "whole_numbers": false,
+                "rarest_share": 0.3 }),
+    )]);
+    let found = ready(
+        &catalog,
+        &q,
+        &[],
+        &effective,
+        &shape,
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    // The split's train rows change with every step still to be inserted before it.
+    for waits in [
+        "evaluation.decision_threshold",
+        "question.error_costs",
+        "question.class_balance",
+    ] {
+        assert!(!ready.contains(&waits), "{waits}: {ready:?}");
+    }
+}
+
+#[test]
+fn a_method_measuring_what_the_split_writes_waits_for_the_split_method_that_replaces_it() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = titled();
+    // Every step before the split is decided; the split itself is not.
+    let done: Vec<_> = catalog
+        .methods()
+        .filter(|m| m.decides.as_str().starts_with("data."))
+        .map(|m| {
+            made(
+                m.decides.as_str(),
+                m.options.last().unwrap().id.as_str(),
+                json!([]),
+            )
+        })
+        .collect();
+    let effective = bindings(&q, &done).unwrap();
+    let shape = BTreeMap::from([(
+        "target.shape".to_owned(),
+        json!({ "rows": 100, "distinct": 2, "numeric": false, "whole_numbers": false,
+                "rarest_share": 0.3 }),
+    )]);
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &shape,
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    assert!(ready.contains(&"split.method"), "{ready:?}");
+    assert!(!ready.contains(&"question.class_balance"), "{ready:?}");
+}
+
+#[test]
+fn a_set_option_reading_a_statement_the_question_does_not_make_is_refused() {
+    let ops = operators();
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(&fixture().join("methodology"), packs.path());
+    let manifest = packs.path().join("core/methods/repeated_items/method.yaml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    let text = text
+        .replace("  decisions: []", "  decisions: []\n  statements: [costs]")
+        .replace(
+            "  - id: independent_rows\n",
+            "  - id: independent_rows\n    action: { set: { role: model, from_statements: { costs: costs } } }\n",
+        );
+    std::fs::write(&manifest, text).unwrap();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let method = catalog
+        .methods()
+        .find(|m| m.decides.as_str() == REPEATED)
+        .unwrap();
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
+                     "params": { "target": "prdtypecode", "task": "classification" } })
+            .to_string(),
+        )
+        .unwrap(),
+    );
+    let refused = apply_option(
+        method,
+        "independent_rows",
+        MethodAssurance::Confirmed,
+        &Basis {
+            bindings: &[],
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
+    )
+    .unwrap_err();
+    assert!(refused.to_string().contains("costs"), "{refused}");
 }

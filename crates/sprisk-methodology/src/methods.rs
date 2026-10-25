@@ -8,8 +8,8 @@ use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
 use serde_json::json;
 use sprisk_contracts::{
-    Concept, ConceptKind, ConceptSet, Method, MethodFiles, MethodInsert, MethodReplace, Operator,
-    OperatorAttachSide, OperatorRole, OperatorScope,
+    Concept, ConceptKind, ConceptSet, Method, MethodFiles, MethodInsert, MethodReplace, MethodSet,
+    Operator, OperatorAttachSide, OperatorRole, OperatorScope,
 };
 
 use crate::catalog::{CatalogError, parse_yaml, read};
@@ -225,6 +225,39 @@ fn check_method(
         }
         if let Some(insert) = &action.insert {
             check_insert(insert, method, provided).map_err(in_option)?;
+        }
+        if let Some(set) = &action.set {
+            check_set(set, method, provided).map_err(in_option)?;
+        }
+    }
+    Ok(())
+}
+
+/// Every operator with the role has every param the option sets, so the setting holds
+/// whichever model a comparison picks, and each statement it reads is one the method needs.
+fn check_set(set: &MethodSet, method: &Method, provided: &Provided) -> Result<(), String> {
+    for (name, statement) in &set.from_statements {
+        if !method.needs.statements.contains(statement) {
+            return Err(format!(
+                "sets {} from {statement}, which the method does not need",
+                name.as_str()
+            ));
+        }
+    }
+    let named = set
+        .settings
+        .iter()
+        .flat_map(|s| s.keys().map(String::as_str))
+        .chain(set.from_statements.keys().map(|k| k.as_str()));
+    let holders = provided
+        .operators
+        .values()
+        .filter(|o| o.role == Some(set.role));
+    for operator in holders {
+        for name in named.clone() {
+            if param_schema(operator, name).is_none() {
+                return Err(format!("{} has no param {name}", operator.id.as_str()));
+            }
         }
     }
     Ok(())

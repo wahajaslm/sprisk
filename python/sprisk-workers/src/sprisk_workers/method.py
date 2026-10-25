@@ -39,6 +39,7 @@ class Context:
         self._decisions = sent["decisions"]
         self._bound = set(sent["bound"])
         self._ruled_out = {r["option"]: r["detail"] for r in sent.get("ruled_out") or []}
+        self._statements = sent.get("statements") or {}
         self.task: str = sent["task"]
 
     def evidence(self, kind: str) -> dict[str, Any] | None:
@@ -51,6 +52,11 @@ class Context:
         self._declared("decisions", key)
         option: str = self._decisions[key]
         return option
+
+    def statement(self, name: str) -> Any:
+        """What the question states; None when it does not say. Never guessed."""
+        self._declared("statements", name)
+        return self._statements.get(name)
 
     def bound(self, concept: str) -> bool:
         """Whether a binding names the concept. Never which column: decide() reads no names."""
@@ -72,7 +78,7 @@ class Context:
         return Outcome("ask", self._option(option), question)
 
     def _declared(self, kind: str, name: str) -> None:
-        if name not in self._needs[kind]:
+        if name not in (self._needs.get(kind) or []):
             raise MethodError(f"{self._method} reads {kind} {name} without declaring it")
 
     def _option(self, option: str) -> str:

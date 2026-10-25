@@ -21,6 +21,7 @@ def decide(
     decisions: dict[str, str] | None = None,
     bound: list[str] | None = None,
     ruled_out: dict[str, str] | None = None,
+    statements: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The method's answer: outcome, option and reason, or its refusal."""
     pack, method = pack_method.split("/")
@@ -39,6 +40,7 @@ def decide(
                 "evidence": evidence or {},
                 "decisions": decisions or {},
                 "bound": bound or [],
+                **({"statements": statements} if statements is not None else {}),
                 "ruled_out": [
                     {"option": o, "verification": _promise(manifest, o), "detail": d}
                     for o, d in ruled.items()

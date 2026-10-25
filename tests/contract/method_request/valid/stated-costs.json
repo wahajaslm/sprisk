@@ -1,0 +1,43 @@
+{
+  "schema_version": "sprisk.method_request/v1",
+  "module": "/packs/supervised/methods/split_method/method.py",
+  "method": "methodology.supervised.split_method@1.0.0",
+  "needs": {
+    "concepts": [
+      "common.target",
+      "common.event_time",
+      "common.item_identity"
+    ],
+    "evidence": [],
+    "decisions": [
+      "data.repeated_items"
+    ],
+    "statements": [
+      "costs",
+      "success_bar"
+    ]
+  },
+  "options": [
+    "temporal",
+    "item_groups",
+    "stratified_random",
+    "simple_random"
+  ],
+  "task": "regression",
+  "evidence": {},
+  "decisions": {
+    "data.repeated_items": "independent_rows"
+  },
+  "bound": [],
+  "statements": {
+    "costs": {
+      "positive": "churned",
+      "false_negative": 5.0,
+      "false_positive": 1.0
+    },
+    "success_bar": {
+      "metric": "expected_cost",
+      "score": 0.2
+    }
+  }
+}

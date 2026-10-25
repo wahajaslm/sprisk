@@ -9,10 +9,10 @@ use sprisk_methodology::engine::{
 use sprisk_methodology::{Defaults, RuleCatalog};
 
 mod repo;
-use repo::rules_with_example_split;
+use repo::rules_with_retired;
 
 fn catalog() -> RuleCatalog {
-    rules_with_example_split()
+    rules_with_retired()
 }
 
 /// The repo's role defaults, as the API reads them from its registry.
@@ -348,7 +348,8 @@ fn a_shortlist_that_reads_a_guessed_task_is_asked_not_compared() {
 
 /// The success bar a person states, its metric what models are compared by.
 fn barred() -> Value {
-    json!({ "success_bar": { "value": { "metric": "weighted_f1", "score": 0.8 }, "origin": "explicit" } })
+    json!({ "success_bar": { "value": { "metric": "weighted_f1", "score": 0.8 }, "origin": "explicit" },
+            "interpretability": { "value": "low", "origin": "explicit" } })
 }
 
 #[test]
@@ -777,7 +778,8 @@ fn the_look_lists_every_fact_a_person_must_state_and_every_guess_a_rule_reads() 
         [
             "question.hard_constraints",
             "evaluation.decision_threshold",
-            "question.success_bar"
+            "question.success_bar",
+            "question.interpretability"
         ]
     );
     assert!(
@@ -802,4 +804,20 @@ fn the_look_asks_nothing_once_everything_is_stated() {
     ]);
     let asks = look_asks(&review, &question(barred()), &catalog()).unwrap();
     assert!(asks.is_empty(), "{asks:?}");
+}
+
+#[test]
+fn the_look_asks_how_far_a_person_must_follow_a_prediction_when_the_question_does_not_say() {
+    let mut facts = barred();
+    facts.as_object_mut().unwrap().remove("interpretability");
+    let asks = look_asks(&review(vec![]), &question(facts), &catalog()).unwrap();
+    assert_eq!(asked(&asks), ["question.interpretability"]);
+}
+
+#[test]
+fn the_look_asks_to_confirm_a_goal_that_is_only_a_guess() {
+    let mut facts = barred();
+    facts["objective"] = json!({ "value": "Find the churners.", "origin": "inferred" });
+    let asks = look_asks(&review(vec![]), &question(facts), &catalog()).unwrap();
+    assert_eq!(asked(&asks), ["question.objective"]);
 }

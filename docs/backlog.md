@@ -62,6 +62,8 @@ Remove an item when it is done; link the commit or ADR.
 | Column roles drops any whole-number column unique per row with 100+ rows, so epoch seconds or amounts in cents are lost: drop only row-number-like columns, ask about the rest | ADR-0063 slice 6 methodology review (as the old rule) | M4 |
 | The join takes a 0..n row index shared by both files as a key without asking; it is right for Rakuten, wrong for two unrelated tables | ADR-0063 slice 6 methodology review (as the old rule) | M4 |
 | A decision made again does not drop the feature decisions measured after the steps it changes; needs inserts that replace their earlier step first | ADR-0063 slice 6 B1 review | M4 |
+| A walk whose open methods can never become ready (a cycle of waits) falls through to the old rules' action with no report; stop it as `limitation` naming them, once the old format is gone | ADR-0063 slice 6 D1 review | with slice 6 |
+| A method's `set` on the model role assumes one model step; a test-scoring baseline also has the role, so a set after scoring would fail with "several steps" | ADR-0063 slice 6 D1 review | with slice 6 |
 | The temporal option does not check its purging (`no_group_overlap` would block every temporal walk without an item column) | ADR-0064 methodology review | M4 |
 | The build step's Load steps cite no decision record; they come from the walk's sources | ADR-0064 proof of concept | M4 |
 | Name the remaining old-rule operators by role: the scale step (`decision.rs`), the impute zero fill (review flow facts), the code step | ADR-0064 step 3 | with ADR-0063 slice 6 |

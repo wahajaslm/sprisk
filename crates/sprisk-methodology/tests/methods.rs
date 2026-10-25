@@ -664,3 +664,53 @@ fn an_insert_setting_a_param_its_operator_lacks_is_refused() {
         refused(pack.path())
     );
 }
+
+/// The repeated-items fixture with an option that sets the model's costs from the question.
+fn setting_costs(needs_statements: &str) -> TempDir {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        REPEATED,
+        "  decisions: []",
+        &format!("  decisions: []\n{needs_statements}"),
+    );
+    edit(
+        pack.path(),
+        REPEATED,
+        "  - id: independent_rows\n",
+        "  - id: independent_rows\n    action: { set: { role: model, from_statements: { costs: costs } } }\n",
+    );
+    pack
+}
+
+#[test]
+fn an_option_setting_a_step_from_a_statement_the_method_needs_loads() {
+    let pack = setting_costs("  statements: [costs]");
+    load(pack.path()).unwrap();
+}
+
+#[test]
+fn an_option_setting_from_a_statement_the_method_does_not_need_is_refused() {
+    let pack = setting_costs("");
+    assert!(
+        refused(pack.path()).contains("sets costs from costs, which the method does not need"),
+        "{}",
+        refused(pack.path())
+    );
+}
+
+#[test]
+fn an_option_setting_a_param_some_operator_of_the_role_lacks_is_refused() {
+    let pack = setting_costs("  statements: [costs]");
+    edit(
+        pack.path(),
+        REPEATED,
+        "from_statements: { costs: costs }",
+        "from_statements: { price: costs }",
+    );
+    assert!(
+        refused(pack.path()).contains("has no param price"),
+        "{}",
+        refused(pack.path())
+    );
+}

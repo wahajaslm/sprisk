@@ -42,13 +42,13 @@ Legend: **kept** = same behaviour in walks; **changed** = said how; **dropped** 
 
 | Rule | Becomes | What changes |
 |---|---|---|
-| objective | dropped | The Objective page already refuses Start until the goal and success bar are stated (ADR-0060). The rule only re-asked the same thing. |
+| objective | dropped | The Objective page already refuses Start until the goal and success bar are stated (ADR-0060). Kept: the look asks to confirm a goal that is only a guess, and for the success bar, so the API asks what the page asks. |
 | target_definition | dropped | Same: the page requires the target or "exploration". The "derived target" alternative never applied. |
 | hard_constraints | dropped | Same: the page asks for interpretability. The rule only asked; it constrained nothing. |
 | unit_of_prediction | dropped | Repeated items and the split method decide grouping from evidence. This rule only asked, and its "group split" option changed no step. |
 | interpretability_requirement | dropped | The model shortlist already leaves the forest out when interpretability is high. |
 | error_costs | method (D1) | Kept for two-class questions: asks for the two costs if missing. Reads the target's classes from `target.shape`. |
-| decision_threshold | method (D1, D2) | Kept: sets the stated costs on the model, so it predicts at the cheapest threshold. Kept: not applied when rows are ordered in time or by item (inner folds do not keep that order). Changed: reads the task as stated, and also checks there are two classes. |
+| decision_threshold | method (D1, D2) | Kept: sets the stated costs on the model, so it predicts at the cheapest threshold. Kept: not applied when the split keeps time order or whole items (inner folds shuffle rows). Changed: reads the error-costs and split decisions; also checks there are two classes. |
 
 ### Feature rules (the model's train rows)
 

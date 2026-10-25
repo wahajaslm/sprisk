@@ -2428,7 +2428,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 53);
+    assert_eq!(rules.len(), 46);
     // The words people read go with each rule (ADR-0045 amendment).
     let clustering = rules
         .iter()
@@ -3072,92 +3072,6 @@ async fn a_model_step_with_costs_is_compared_by_expected_cost_and_each_candidate
     assert_eq!(decision["metric"], "expected_cost", "{decision}");
     assert!(decision["positive_share"].is_number(), "{decision}");
 }
-
-#[tokio::test]
-async fn the_decision_threshold_rule_puts_the_question_s_costs_on_the_model_step() {
-    let api = api().await;
-    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let facts = q.as_object_mut().unwrap();
-    facts.remove("time_column");
-    facts.remove("entity_column");
-    q["costs"] = json!({
-        "value": { "positive": "1", "false_negative": 5.0, "false_positive": 1.0 },
-        "origin": "explicit"
-    });
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    flow["nodes"].as_array_mut().unwrap().extend([
-        json!({ "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
-                "params":{"test_fraction":0.25,"seed":42,"stratify":"returned_within_30d"} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
-                "params":{"target":"returned_within_30d","features":["age"],"task":"classification","n_estimators":10} }),
-    ]);
-    flow["edges"] = json!([
-        {"from":"load.data","to":"split.data"},
-        {"from":"split.train","to":"model.train"}
-    ]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let uri = format!("/pipeline_versions/{BASE}/methodology/proposals/model");
-
-    let (status, proposal) = call(
-        &api.app,
-        "POST",
-        &format!("{uri}/evaluation.decision_threshold"),
-        Some(json!({})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(
-        proposal["rule"],
-        "methodology.supervised.decision_threshold@1.0.0"
-    );
-    assert_eq!(
-        proposal["recommended_alternative_id"],
-        "cost_optimal_threshold"
-    );
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice =
-        json!({ "alternative_id": "cost_optimal_threshold", "idempotency_key": "threshold-0001" });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    let model = applied["pipeline"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|n| n["id"] == "model")
-        .unwrap();
-    assert_eq!(model["operator"], "sprisk.ml.random_forest@3.0.0");
-    assert_eq!(
-        model["params"]["costs"],
-        json!({ "positive": "1", "false_negative": 5.0, "false_positive": 1.0 })
-    );
-    assert_eq!(
-        model["params"]["n_estimators"], 10,
-        "the step's own settings stay"
-    );
-    assert_eq!(model["methodology_decision_id"], applied["decision"]["id"]);
-
-    // The step's first rule, in workflow order, is a question rule: what each mistake costs is
-    // asked before inputs are prepared (ADR-0059). It measures the train rows, so the flow
-    // runs first.
-    let mut csv = String::from("age,returned_within_30d\n");
-    for age in 20..80 {
-        csv.push_str(&format!("{age},{}\n", u8::from(age >= 50)));
-    }
-    std::fs::write(&api.csv, csv).unwrap();
-    let (run, _) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-    let (status, first) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{first}");
-    assert_eq!(first["rule"], "methodology.common.error_costs@1.0.0");
-}
-
 #[tokio::test]
 async fn only_a_model_step_that_has_run_has_a_model_selection() {
     let api = api().await;
@@ -4496,34 +4410,29 @@ async fn the_encoding_rule_adds_the_encode_step_a_model_needs() {
     assert_eq!(leakage["verdict"], "pass", "{leakage}");
 }
 
-/// Gap 11's German credit case (ADR-0052, ADR-0053). The decision threshold rule reads the
-/// question's costs and puts them on the model step. A study then tunes the forest by random
+/// Gap 11's German credit case (ADR-0052, ADR-0053). A person puts the question's costs on
+/// the model step. A study then tunes the forest by random
 /// search and compares every model by expected cost on the train rows only. The test checks
 /// how the comparison was made, not which model wins.
 #[tokio::test(flavor = "multi_thread")]
-async fn german_credit_study_compares_models_by_the_uci_costs_the_threshold_rule_sets() {
+async fn german_credit_study_compares_models_by_the_uci_costs_on_the_model() {
     let api = api().await;
     german_credit_flow(&api).await;
     let costs = json!({ "positive": "bad", "false_negative": 5.0, "false_positive": 1.0 });
 
-    // The rule, not the test, decides to compare by cost.
-    let uri = format!(
-        "/pipeline_versions/{BASE}/methodology/proposals/model/evaluation.decision_threshold"
-    );
-    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(
-        proposal["recommended_alternative_id"],
-        "cost_optimal_threshold"
-    );
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice = json!({ "alternative_id": "cost_optimal_threshold", "idempotency_key": "credit-cost-0001" });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    let costed = applied["pipeline"]["id"].as_str().unwrap().to_owned();
+    // A person put the costs on the forest, so the comparison is by expected cost.
+    let (_, mut flow) = call(&api.app, "GET", &format!("/pipeline_versions/{BASE}"), None).await;
+    let costed = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8".to_owned();
+    flow["id"] = json!(costed);
+    let model = flow["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|n| n["id"] == "model")
+        .unwrap();
+    model["params"]["costs"] = costs.clone();
+    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
     let (run, attempts) = run_version(&api, &costed).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 
@@ -4835,26 +4744,17 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
 
     let review = review(&api).await;
     let expected: Vec<(String, String)> = [
-        // The question is checked before any run: its constraints on the model step, the
-        // rest on the load step.
-        ("question.hard_constraints", "needs_fact"),
-        ("question.objective", "settled"),
-        ("question.target_definition", "settled"),
-        // The data decisions before the split and the split itself are methods' decisions,
-        // made in the walk's look (ADR-0063).
-        ("question.unit_of_prediction", "needs_run"),
-        ("question.error_costs", "waiting"),
+        // The question, the data before the split and the split are methods' decisions, made
+        // in the walk's look (ADR-0063); the Objective page asks what the question must say.
         ("cleaning.outlier_strategy", "no_subject"),
         ("features.scaling_strategy", "no_subject"),
-        // The data rules may change the rows the model is fit on, so its rules wait for them,
-        // in INPUT_SHAPE order: rare categories, gaps filled, encoding.
-        ("features.rare_categories", "waiting"),
+        // The rules shaping the model's inputs, in INPUT_SHAPE order: rare categories, gaps
+        // filled, encoding.
+        ("features.rare_categories", "needs_run"),
         ("cleaning.missingness_strategy", "waiting"),
         ("features.encoding_strategy", "waiting"),
         ("features.skew_transform", "no_subject"),
-        ("modeling.interpretability_requirement", "settled"),
-        ("modeling.estimator_selection", "waiting"),
-        ("evaluation.decision_threshold", "settled"),
+        ("modeling.estimator_selection", "needs_run"),
         // It reads the model selection's results, so it waits for the model step's rules.
         ("evaluation.loop_back", "waiting"),
     ]
@@ -4862,11 +4762,7 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
     .map(|(d, s)| ((*d).to_owned(), (*s).to_owned()))
     .collect();
     assert_eq!(statuses(&review), expected, "{review}");
-    assert_eq!(
-        review["next"],
-        json!([0, 3]),
-        "state the constraint and run the flow next: {review}"
-    );
+    assert_eq!(review["next"], json!([2, 6]), "run the flow next: {review}");
 }
 
 #[tokio::test]
@@ -4989,37 +4885,6 @@ async fn a_rule_that_measures_train_rows_does_not_apply_to_a_step_before_the_spl
     );
 }
 
-/// The proposal of the rule that makes `decides` for step `node` of `version`.
-async fn propose_for(api: &Api, version: &str, node: &str, decides: &str) -> Value {
-    let uri = format!("/pipeline_versions/{version}/methodology/proposals/{node}/{decides}");
-    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    proposal
-}
-
-/// The flow version that applying `alternative` of `proposal` makes.
-async fn apply_alternative(api: &Api, proposal: &Value, alternative: &str) -> String {
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice = json!({ "alternative_id": alternative, "idempotency_key": format!("key-{alternative}-0001") });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    applied["pipeline"]["id"].as_str().unwrap().to_owned()
-}
-
-fn recommended_effect(proposal: &Value) -> Value {
-    let id = &proposal["recommended_alternative_id"];
-    proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| &a["id"] == id)
-        .map(|a| a["effect"].clone())
-        .unwrap_or_else(|| panic!("{proposal}"))
-}
-
 /// ADR-0063 slice 6: "?" in a number column is marked missing in a step before the split,
 /// then the column is read as numbers, both decided in the walk's look.
 #[tokio::test(flavor = "multi_thread")]
@@ -5110,6 +4975,17 @@ async fn the_look_settles_the_task_and_class_balance_from_the_train_rows() {
     let task = decided("question.task_type").expect("the task is decided in the look");
     assert_eq!(task["option"], "classification", "{detail}");
     assert_eq!(task["promises"], json!(["labels_are_classes"]), "{detail}");
+    // Two classes whose stated mistakes cost the same: the costs go on the model, so models
+    // are compared by expected cost, the success bar's metric.
+    let costs = decided("question.error_costs").expect("the costs are decided");
+    assert_eq!(costs["option"], "equal", "{detail}");
+    let threshold = decided("evaluation.decision_threshold").expect("the threshold is decided");
+    assert_eq!(threshold["option"], "cost_optimal_threshold", "{detail}");
+    assert_eq!(
+        threshold["effects"][0]["params"]["costs"],
+        json!({ "positive": "responds", "false_negative": 1.0, "false_positive": 1.0 }),
+        "{detail}"
+    );
     let balance = decided("question.class_balance").expect("the balance is decided in the look");
     assert_eq!(balance["option"], "balanced", "{detail}");
     assert!(
@@ -5190,34 +5066,6 @@ async fn values_that_differ_only_in_case_are_lowercased_before_the_split() {
                              "columns": ["city"], "exclude": ["outcome"] } }]),
         "{detail}"
     );
-}
-
-/// ADR-0059: high interpretability replaces a forest by a linear model that keeps its target
-/// and task, and leaves forests off the shortlist.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_question_needing_high_interpretability_replaces_the_forest_by_a_linear_model() {
-    let api = api().await;
-    let high = json!({ "interpretability": { "value": "high", "origin": "explicit" } });
-    forest_flow_with(&api, high).await;
-
-    let proposal = propose_for(&api, BASE, "model", "modeling.interpretability_requirement").await;
-    assert_eq!(
-        proposal["recommended_alternative_id"], "interpretable_only",
-        "{proposal}"
-    );
-    let effect = recommended_effect(&proposal);
-    assert_eq!(
-        effect["operator"], "sprisk.ml.linear_model@3.0.0",
-        "{effect}"
-    );
-    assert_eq!(
-        effect["params"],
-        json!({ "target": "returned_within_30d", "task": "classification" }),
-        "the forest's own settings are dropped, its target and task kept"
-    );
-    let linear = apply_alternative(&api, &proposal, "interpretable_only").await;
-    let (run, attempts) = run_version(&api, &linear).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }
 /// Rakuten's 27 product-type codes, rarest last: the challenge's classes are unbalanced.
 const PRODUCT_TYPES: [u32; 27] = [
@@ -5382,8 +5230,6 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "measure",
             "run",
             "decide data.text_spelling keep",
-            "decide question.task_type classification",
-            "verify",
             "decide data.repeated_items independent_rows",
             "decide split.method stratified_random",
             "measure",
@@ -5405,6 +5251,10 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "measure",
             "run",
             "decide features.date_parts no_dates",
+            "decide question.task_type classification",
+            "verify",
+            "decide question.error_costs not_two_classes",
+            "decide evaluation.decision_threshold default_half",
             "decide question.class_balance balanced",
             "compare modeling.estimator_selection",
             "apply modeling.estimator_selection ml_linear_model",
@@ -5665,8 +5515,6 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             "measure",
             "run",
             "decide data.text_spelling keep",
-            "decide question.task_type classification",
-            "verify",
             "decide data.missing_markers keep",
             "decide data.type_repair keep",
             "decide data.join_sources single_source",
@@ -5674,10 +5522,8 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             "decide data.column_roles drop_identifiers",
             "measure",
             "run",
-            "verify",
             "decide data.exact_duplicates keep",
-            "decide question.class_balance balanced",
-            "stop"
+            "stop",
         ],
         "{detail}"
     );
@@ -5727,8 +5573,6 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             "measure",
             "run",
             "decide data.text_spelling keep",
-            "decide question.task_type classification",
-            "verify",
             "decide data.repeated_items group_by_title",
             // The item is bound now, so column roles measures again, holding it out.
             "measure",
@@ -5736,7 +5580,9 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             "decide split.method item_groups",
             "measure",
             "run",
-            "verify"
+            "verify",
+            "decide data.missing_markers keep",
+            "decide data.type_repair keep"
         ],
         "{detail}"
     );
@@ -5747,32 +5593,32 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     assert_ne!(detail["walk"]["stop"]["reason"], "error", "{detail}");
     let steps = detail["steps"].as_array().unwrap();
     // The answer binds the item to the group column the producer adds, confirmed by a person.
-    assert_eq!(steps[6]["assurance"], "confirmed", "{detail}");
+    assert_eq!(steps[4]["assurance"], "confirmed", "{detail}");
     // The answer keeps what raised the question: the groups of matching titles.
     assert_eq!(
-        steps[6]["evidence"][0]["kind"], "data.near_duplicate_groups",
+        steps[4]["evidence"][0]["kind"], "data.near_duplicate_groups",
         "{detail}"
     );
     assert_eq!(
-        steps[6]["evidence"][0]["step"], "near_duplicates",
+        steps[4]["evidence"][0]["step"], "near_duplicates",
         "{detail}"
     );
     assert_eq!(
-        steps[6]["bindings"],
+        steps[4]["bindings"],
         json!([{ "schema_version": "sprisk.binding/v1", "concept": "common.item_identity",
                  "source": { "column": "item_group", "step": "near_duplicates" },
                  "set_by": { "assurance": "confirmed",
                              "method": "methodology.common.repeated_items@1.0.0" } }])
     );
     // The split method replaces the split through a patch, and promises what it keeps.
-    assert_eq!(steps[9]["assurance"], "rule", "{detail}");
+    assert_eq!(steps[7]["assurance"], "rule", "{detail}");
     assert_eq!(
-        steps[9]["promises"],
+        steps[7]["promises"],
         json!(["no_group_overlap"]),
         "{detail}"
     );
     assert_eq!(
-        steps[9]["effects"],
+        steps[7]["effects"],
         json!([
             { "kind": "replace_node", "node_id": "split",
               "operator": "sprisk.validation.group_split@1.0.0",
@@ -5782,22 +5628,19 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
         ])
     );
     // The promise is checked on what the split wrote: no item is on both sides.
-    let checks = steps[12]["verifications"].as_array().unwrap();
+    let checks = steps[10]["verifications"].as_array().unwrap();
     let names: Vec<&str> = checks
         .iter()
         .map(|c| c["verification"].as_str().unwrap())
         .collect();
-    assert_eq!(
-        names,
-        ["labels_are_classes", "no_group_overlap"],
-        "{detail}"
-    );
-    let overlap = &checks[1];
+    // The task is decided once the rows before the split are final, so its promise comes later.
+    assert_eq!(names, ["no_group_overlap"], "{detail}");
+    let overlap = &checks[0];
     assert_eq!(overlap["result"], "pass", "{detail}");
     assert_eq!(overlap["step"], "group_overlap", "{detail}");
-    assert_eq!(steps[12]["run_id"], steps[11]["run_id"], "{detail}");
+    assert_eq!(steps[10]["run_id"], steps[9]["run_id"], "{detail}");
     // The promise's producer reads what the split wrote, whatever code wrote it.
-    let overlap_added = steps[10]["effects"]
+    let overlap_added = steps[8]["effects"]
         .as_array()
         .unwrap()
         .iter()
@@ -6447,8 +6290,6 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "measure",
             "run",
             "verify",
-            "decide question.task_type classification",
-            "verify",
             "decide data.html_text strip",
             "measure",
             "run",
@@ -6462,6 +6303,10 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "measure",
             "run",
             "decide features.date_parts no_dates",
+            "decide question.task_type classification",
+            "verify",
+            "decide question.error_costs not_two_classes",
+            "decide evaluation.decision_threshold default_half",
             "decide question.class_balance balanced",
             "compare modeling.estimator_selection",
             "apply modeling.estimator_selection ml_linear_model",
