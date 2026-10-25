@@ -70,13 +70,15 @@ def _number(
         return None
     values = both["x"].to_numpy()
     labels = both["y"].to_numpy()
-    f, _ = f_classif(values.reshape(-1, 1), labels)
-    if not np.isfinite(f[0]):
+    # No spread inside each class makes F infinite: the number separates the classes fully.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        f, _ = f_classif(values.reshape(-1, 1), labels)
+    if np.isnan(f[0]):
         return None
     # The correlation ratio from the one-way F: eta^2 = F(k-1) / (F(k-1) + n-k). For two classes
     # it is |point-biserial r|; the sign says whether the first class sits higher.
     between = f[0] * (k - 1)
-    eta = float(np.sqrt(between / (between + both.height - k)))
+    eta = 1.0 if np.isinf(between) else float(np.sqrt(between / (between + both.height - k)))
     if k == 2:
         first = values[labels == names[0]].mean()
         rest = values[labels != names[0]].mean()
@@ -94,7 +96,12 @@ def _bins(values: np.ndarray, name: str, edges: list[float]) -> dict[str, Any]:
     if edges[0] == edges[-1]:
         split["counts"] = [int(values.size)]
     else:
-        split["counts"] = [int(n) for n in np.histogram(values, bins=edges)[0]]
+        # DuckDB's own binning (distributions._histogram), so the classes add up to the bars;
+        # numpy.histogram compares with the edges and can put a value on an edge one bin over.
+        bins = len(edges) - 1
+        width = (edges[-1] - edges[0]) / bins
+        at = np.minimum(np.floor((values - edges[0]) / width), bins - 1).astype(int)
+        split["counts"] = [int(n) for n in np.bincount(at, minlength=bins)]
     if values.size:
         q = np.quantile(values, [0, 0.25, 0.5, 0.75, 1])
         split["quartiles"] = dict(

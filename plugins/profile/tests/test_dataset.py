@@ -466,3 +466,25 @@ def profile_of_target(data: pl.DataFrame, target: str) -> DatasetProfile:
     return DatasetProfile.model_validate_json(
         json.dumps(raw_profile(data, target=target), allow_nan=False)
     )
+
+
+def test_class_bins_add_up_to_the_column_bins_even_on_an_edge() -> None:
+    n = 45
+    data = pl.DataFrame(
+        {"x": [float(i) for i in range(n)], "y": ["a" if i % 2 else "b" for i in range(n)]}
+    )
+    p = profile_of_target(data, "y")
+    assert p.label is not None
+    histogram = column(p, "x").histogram
+    assert histogram is not None
+    split = next(n for n in p.label.numbers if n.column == "x").by_class
+    assert split is not None
+    summed = [sum(k.counts[i].root for k in split) for i in range(len(histogram.bars))]
+    assert summed == [b.count for b in histogram.bars]
+
+
+def test_a_number_that_separates_the_classes_perfectly_has_strength_one() -> None:
+    data = pl.DataFrame({"x": [1.0, 1.0, 1.0, 2.0, 2.0, 2.0], "y": list("aaabbb")})
+    label = profile_of_target(data, "y").label
+    assert label is not None
+    assert [(n.column, abs(n.r)) for n in label.numbers] == [("x", 1.0)]
