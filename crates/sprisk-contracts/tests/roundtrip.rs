@@ -15,9 +15,9 @@ use sprisk_contracts::{
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
     NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
-    PipelineVersion, Problem, QuestionVersion, Report, RuleAnswer, RuleDecision, RuleObservation,
-    RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage, TableShift, Trial,
-    VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
+    PipelineVersion, Problem, ProfilePlan, QuestionVersion, Report, RuleAnswer, RuleDecision,
+    RuleObservation, RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage,
+    TableShift, Trial, VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {
@@ -106,6 +106,7 @@ const ENTITIES: &[&str] = &[
     "operator_source",
     "pipeline_version",
     "problem",
+    "profile_plan",
     "question_version",
     "report",
     "rule_answer",
@@ -255,6 +256,11 @@ fn key_matches() {
 #[test]
 fn dataset_profile() {
     check::<DatasetProfile>("dataset_profile");
+}
+
+#[test]
+fn profile_plan() {
+    check::<ProfilePlan>("profile_plan");
 }
 
 #[test]
