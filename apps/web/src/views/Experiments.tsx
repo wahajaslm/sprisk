@@ -58,7 +58,7 @@ export function Experiments() {
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (!flow) {
     return (
-      <PageFrame header={{ eyebrow: "Experiments", title: "No flow selected", description: "Open a flow to see its runs, compare them and follow its studies." }}>
+      <PageFrame header={{ eyebrow: "Experiments", title: "No pipeline selected", description: "Open a pipeline to see its runs, compare them and follow its experiments." }}>
         <div className="empty-state">
           <ExperimentsIcon size={28} />
           <Button variant="primary" onClick={() => setNav("Flow")}>
@@ -88,18 +88,18 @@ export function Experiments() {
       ? {
           eyebrow: shown ? `Run ${label(shown)} · ${flowName(flow.head)} · started ${when(shown.created_at)}` : flowName(flow.head),
           title: shown ? sentence(shown.status) : "No runs yet",
-          description: shown ? whatChanged(shown, byId) : "Run the flow to see each step here.",
+          description: shown ? whatChanged(shown, byId) : "Run the pipeline to see each step here.",
         }
       : experimentsTab === "Compare"
         ? {
             eyebrow: `Compare · ${flowName(flow.head)}`,
             title: "Compare runs",
-            description: runs.length < 2 ? "Run the flow twice to compare two runs." : `Reference run ${label(runs[firstAt]!)}. Select a run to see what changed and whether it can replace run ${label(runs[firstAt]!)}. ${compareLine(runs[firstAt]!, runs[secondAt]!, byId)}`,
+            description: runs.length < 2 ? "Run the pipeline twice to compare two runs." : `Reference run ${label(runs[firstAt]!)}. Select a run to see what changed and whether it can replace run ${label(runs[firstAt]!)}. ${compareLine(runs[firstAt]!, runs[secondAt]!, byId)}`,
           }
         : {
             eyebrow: latestStudy ? `Sweep · ${latestStudy.node_id} · up to ${latestStudy.max_trials} trials` : `Sweep · ${flowName(flow.head)}`,
             title: "Hyperparameter search",
-            description: latestStudy ? "Each study searches a model's settings within a budget, then recommends one. The bright line is the best so far." : "No study yet. Start one to search a model's settings within a budget.",
+            description: latestStudy ? "Each experiment searches a model's settings within a budget, then recommends one. The bright line is the best so far." : "No experiment yet. Start one to search a model's settings within a budget.",
           };
 
   return (
@@ -130,7 +130,7 @@ export function Experiments() {
               {studies.data!.map((study) => (
                 <ListRow
                   key={study.id}
-                  title={`Study of ${study.node_id}`}
+                  title={`Experiment of ${study.node_id}`}
                   meta={`up to ${study.max_trials} trials`}
                   {...(study.status === "running" ? { badge: "Running" } : study.status === "failed" ? { badge: "Issue", warn: true } : {})}
                   onClick={() => setExperimentsTab("Sweep")}
@@ -161,7 +161,7 @@ export function Experiments() {
       {experimentsTab === "Compare" && (
         <div className="exp-body">
           {runs.length < 2 ? (
-            <p className="muted">Run the flow again, or change a setting and run it, to compare two runs.</p>
+            <p className="muted">Run the pipeline again, or change a setting and run it, to compare two runs.</p>
           ) : (
             <CompareRuns
               runs={runs}
@@ -200,7 +200,7 @@ export function Experiments() {
               <ModelVersus decision={selection.decision} attempts={selection.attempts} proposal={selection.proposal} a={models[0]} b={models[1]} />
             </>
           )}
-          <BodySection title="Runs" note="Every run of this flow. Tick two runs to compare their scores and settings.">
+          <BodySection title="Runs" note="Every run of this pipeline. Tick two runs to compare their scores and settings.">
             <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
           </BodySection>
           {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
@@ -213,7 +213,7 @@ export function Experiments() {
       )}
       {experimentsTab === "Sweep" && (
         <>
-          {studies.isError && <p role="alert" className="error pad">The flow's studies cannot be shown: {studies.error.message}</p>}
+          {studies.isError && <p role="alert" className="error pad">The pipeline's experiments cannot be shown: {studies.error.message}</p>}
           {!studies.isPending && <Studies head={flow.head} versions={all} studies={studies.data ?? []} />}
         </>
       )}
@@ -377,7 +377,7 @@ function RunTable({ runs, nodes, evaluators, byId, picked, toggle }: TableProps)
                 <button
                   type="button"
                   className="page-btn"
-                  aria-label="Open in Flow"
+                  aria-label="Open in Pipeline"
                   onClick={() => {
                     selectPipelineVersion(run.pipeline_version_id);
                     selectRun(run.id);

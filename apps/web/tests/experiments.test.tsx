@@ -92,14 +92,14 @@ describe("experiments", () => {
     useSelection.setState({ experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
     const table = await screen.findByRole("table", { name: "Runs" });
-    await userEvent.click(within(table).getAllByRole("button", { name: "Open in Flow" })[1]!);
+    await userEvent.click(within(table).getAllByRole("button", { name: "Open in Pipeline" })[1]!);
     expect(useSelection.getState()).toMatchObject({ nav: "Flow", pipelineVersionId: PV, runId: RUN });
   });
 
   it("says so when the flow has fewer than two runs to compare", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN, experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
-    expect(await screen.findByText(/Run the flow again/)).toBeInTheDocument();
+    expect(await screen.findByText(/Run the pipeline again/)).toBeInTheDocument();
   });
 });
 

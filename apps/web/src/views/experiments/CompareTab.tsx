@@ -101,7 +101,7 @@ export function RunComparison({ older, newer, olderNodes, newerNodes, byId, eval
         )}
         <Cautions older={older} olderNodes={olderNodes} newerNodes={newerNodes} byId={byId} evaluators={evaluators} changed={changes.map((c) => c.node)} />
       </BodySection>
-      <BodySection title="Decision diff" note="The settings that differ between the two runs' flow versions.">
+      <BodySection title="Decision diff" note="The settings that differ between the two runs' pipeline versions.">
         {changes.length === 0 ? (
           <p className="muted">Same settings. Only the run differs.</p>
         ) : (

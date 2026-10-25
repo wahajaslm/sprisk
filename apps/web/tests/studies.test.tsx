@@ -271,14 +271,14 @@ describe("study states and the form", () => {
     expect(created).toHaveLength(0);
   });
 
-  it("shows why the studies cannot be listed", async () => {
+  it("shows why the experiments cannot be listed", async () => {
     studied("running", "running", "running");
     server.use(
       http.get(`/api/pipeline_versions/${PV}/studies`, () =>
         HttpResponse.json({ errors: [{ code: "internal", message: "store down" }] }, { status: 500 }),
       ),
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent("The flow's studies cannot be shown: internal: store down");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The pipeline's experiments cannot be shown: internal: store down");
   });
 });
 

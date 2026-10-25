@@ -115,7 +115,7 @@ export function Copilot() {
           <>
             {/* Facts only: no example card stands in for an answer the model has not given. */}
             <CopilotMessage role="assistant">
-              Ask about this {NAV_LABEL[nav].toLowerCase()}. Answers come from the local model and can be wrong; check them against the evidence.
+              Ask about this page. Answers come from the local model and can be wrong; check them against the evidence.
             </CopilotMessage>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
