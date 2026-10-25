@@ -6,10 +6,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
-    Binding, GraphEffect, Method, MethodAssurance, MethodRequest, Operator, PipelineVersion,
-    PromiseResult, QuestionVersion, RuledOutOption, WalkAction, WalkAsk, WalkStep, parse,
+    Binding, GraphEffect, Method, MethodAssurance, MethodRequest, Operator, OperatorRole,
+    PipelineVersion, PromiseResult, QuestionVersion, RuledOutOption, WalkAction, WalkAsk, WalkStep,
+    parse,
 };
 
+use crate::compare::upstream;
 use crate::decision::{free_id, other_table};
 use crate::measure::{fitting, measurable};
 use crate::{ResolveError, RuleCatalog, methods};
@@ -267,9 +269,10 @@ impl Made {
 }
 
 /// The methods fitting the question that are not decided yet and can decide: every decision
-/// they read is made, no concept they read is only a guess, and each evidence kind they need
-/// is in `measured` or cannot be measured (see `measure::measurable`). One whose
-/// evidence can be measured but is not yet waits for the walk to measure it.
+/// they read is made, no concept they read is only a guess, no undecided method may still
+/// change the rows their evidence is measured on, and each evidence kind they need is in
+/// `measured` or cannot be measured (see `measure::measurable`). One whose evidence can be
+/// measured but is not yet waits for the walk to measure it.
 pub fn ready<'c>(
     catalog: &'c RuleCatalog,
     question: &QuestionVersion,
@@ -292,7 +295,14 @@ pub fn ready<'c>(
         asks: Vec::new(),
         exhausted: Vec::new(),
     };
-    'methods: for method in fitting(catalog, question.task.value) {
+    // The undecided methods and the steps their options may change: a method measuring rows
+    // after one of those steps waits, so it decides on the rows the model will see.
+    let open: Vec<(usize, Vec<Changed>)> = fitting(catalog, question.task.value)
+        .enumerate()
+        .filter(|(_, m)| decided.get(m.decides.as_str()).is_none_or(|d| d.reopened()))
+        .map(|(order, m)| (order, changed_steps(m, pipeline, &by_id)))
+        .collect();
+    'methods: for (order, method) in fitting(catalog, question.task.value).enumerate() {
         let ruled_out: &[RuledOutOption] = match decided.get(method.decides.as_str()) {
             Some(made) if made.reopened() => &made.ruled_out,
             Some(_) => continue,
@@ -335,6 +345,23 @@ pub fn ready<'c>(
             }
             continue;
         }
+        for at in measured_at(method, pipeline, &by_id)? {
+            let before = upstream(pipeline, at);
+            // A step upstream may change; so may the rows `at` reads, when a method earlier in
+            // decision order inserts a step in front of it. Replacing `at` keeps its input.
+            let changed_before = open.iter().any(|(other, steps)| {
+                *other != order
+                    && steps.iter().any(|c| match c {
+                        Changed::Replaced(s) => *s != at && before.contains(s),
+                        Changed::InsertedBefore(s) => {
+                            (*s != at && before.contains(s)) || (*s == at && *other < order)
+                        }
+                    })
+            });
+            if changed_before {
+                continue 'methods;
+            }
+        }
         let mut evidence = Map::new();
         for kind in &method.needs.evidence {
             if let Some(fields) = measured.get(kind.as_str()) {
@@ -368,6 +395,76 @@ pub fn ready<'c>(
         found.ready.push(Ready { method, request });
     }
     Ok(found)
+}
+
+/// A step a method's option changes: one it inserts a step before, or one it replaces.
+enum Changed<'p> {
+    InsertedBefore(&'p str),
+    Replaced(&'p str),
+}
+
+/// The steps `method`'s options insert before or replace, found by role.
+fn changed_steps<'p>(
+    method: &Method,
+    pipeline: &'p PipelineVersion,
+    by_id: &BTreeMap<String, &Operator>,
+) -> Vec<Changed<'p>> {
+    let actions: Vec<_> = method
+        .options
+        .iter()
+        .filter_map(|o| o.action.as_ref())
+        .collect();
+    let inserted: BTreeSet<OperatorRole> = actions
+        .iter()
+        .filter_map(|a| a.insert.as_ref().map(|i| i.before))
+        .collect();
+    let replaced: BTreeSet<OperatorRole> = actions
+        .iter()
+        .filter_map(|a| a.replace.as_ref().map(|r| r.role))
+        .collect();
+    let mut changed: Vec<Changed<'p>> = steps_with(pipeline, by_id, |r| inserted.contains(&r))
+        .into_iter()
+        .map(Changed::InsertedBefore)
+        .collect();
+    changed.extend(
+        steps_with(pipeline, by_id, |r| replaced.contains(&r))
+            .into_iter()
+            .map(Changed::Replaced),
+    );
+    changed
+}
+
+/// The steps where `method`'s evidence is measured: those its producers attach to.
+fn measured_at<'p>(
+    method: &Method,
+    pipeline: &'p PipelineVersion,
+    by_id: &BTreeMap<String, &Operator>,
+) -> Result<Vec<&'p str>, ResolveError> {
+    let mut roles = BTreeSet::new();
+    for kind in &method.needs.evidence {
+        if let Some(attach) = &methods::producer_of(kind.as_str(), by_id)?.attach {
+            roles.insert(attach.role);
+        }
+    }
+    Ok(steps_with(pipeline, by_id, |role| roles.contains(&role)))
+}
+
+fn steps_with<'p>(
+    pipeline: &'p PipelineVersion,
+    by_id: &BTreeMap<String, &Operator>,
+    role: impl Fn(OperatorRole) -> bool,
+) -> Vec<&'p str> {
+    pipeline
+        .nodes
+        .iter()
+        .filter(|n| {
+            by_id
+                .get(n.operator.as_str())
+                .and_then(|o| o.role)
+                .is_some_and(&role)
+        })
+        .map(|n| n.id.as_str())
+        .collect()
 }
 
 fn guess_ask(method: &Method, fact: &str) -> Result<WalkAsk, ResolveError> {

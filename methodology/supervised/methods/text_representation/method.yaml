@@ -1,0 +1,30 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.text_representation@2.0.0
+decides: features.text_representation
+name: Text representation
+activity: Features
+question: Which text reaching the model is free text, and how does it become numbers?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  evidence: [features.free_text]
+  decisions: []
+options:
+  - id: vectorize_words
+    label: TF-IDF on words
+    action:
+      # Words and their weights are learnt from the train rows, in a step before the model,
+      # which reads them beside the table (ADR-0058). A word in fewer than 2 train rows mostly
+      # marks that row, so it is left out.
+      insert:
+        before: model
+        operator: sprisk.clean.vectorize_text@1.1.0
+        node_id: text_words
+        settings: { min_df: 2 }
+        from_evidence: { columns: features.free_text.columns }
+    verify: []
+  - id: no_free_text
+    label: No free text
+    verify: []
+verifications: {}
+source: "Manning, Raghavan & Schütze (2008), Introduction to Information Retrieval §6.2: tf-idf weighting; scikit-learn TfidfVectorizer, fit on training rows only."

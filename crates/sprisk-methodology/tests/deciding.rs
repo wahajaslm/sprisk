@@ -914,15 +914,30 @@ fn a_join_with_no_second_table_decides_without_evidence() {
     let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
     let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
     let q = titled();
-    let effective = bindings(&q, &[]).unwrap();
+    // Every other method that changes the rows the split reads has decided.
+    let done: Vec<_> = catalog
+        .methods()
+        .filter(|m| {
+            m.decides.as_str().starts_with("data.") && m.decides.as_str() != "data.join_sources"
+        })
+        .map(|m| {
+            made(
+                m.decides.as_str(),
+                m.options.last().unwrap().id.as_str(),
+                json!([]),
+            )
+        })
+        .collect();
+    let effective = bindings(&q, &done).unwrap();
+    let flow = measured_flow();
     let found = ready(
         &catalog,
         &q,
-        &[],
+        &done,
         &effective,
         &BTreeMap::new(),
         &ops,
-        &measured_flow(),
+        &flow,
     )
     .unwrap();
     let ready: Vec<&str> = found
@@ -931,6 +946,143 @@ fn a_join_with_no_second_table_decides_without_evidence() {
         .map(|r| r.method.decides.as_str())
         .collect();
     assert!(ready.contains(&"data.join_sources"), "{ready:?}");
-    // Its producer would read every row with no unbound required concept: it waits to measure.
-    assert!(!ready.contains(&"data.html_text"), "{ready:?}");
+}
+
+#[test]
+fn a_method_measuring_the_model_s_rows_waits_for_the_decisions_before_the_split() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &[]).unwrap();
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0", "params": {} })
+                .to_string(),
+        )
+        .unwrap(),
+    );
+    flow.edges
+        .push(parse(&json!({ "from": "split.train", "to": "model.train" }).to_string()).unwrap());
+    let text = BTreeMap::from([(
+        "features.free_text".to_owned(),
+        json!({ "columns": ["designation"], "categories": [], "empty": [] }),
+    )]);
+    let found = ready(&catalog, &q, &[], &effective, &text, &ops, &flow).unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    // HTML text may still add a step before the split, which changes the rows it measured.
+    assert!(
+        !ready.contains(&"features.text_representation"),
+        "{ready:?}"
+    );
+}
+
+/// The look's flow with a model, and every decision before the split made.
+fn after_the_split_decisions(
+    catalog: &RuleCatalog,
+) -> (PipelineVersion, Vec<sprisk_methodology::deciding::Made>) {
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0", "params": {} })
+                .to_string(),
+        )
+        .unwrap(),
+    );
+    flow.edges
+        .push(parse(&json!({ "from": "split.train", "to": "model.train" }).to_string()).unwrap());
+    let before_model: Vec<_> = catalog
+        .methods()
+        .filter(|m| !m.decides.as_str().starts_with("features."))
+        .map(|m| made(m.decides.as_str(), m.options[0].id.as_str(), json!([])))
+        .collect();
+    (flow, before_model)
+}
+
+#[test]
+fn once_the_steps_before_its_rows_are_decided_a_feature_method_decides() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let (flow, done) = after_the_split_decisions(&catalog);
+    let q = titled();
+    let effective = bindings(&q, &done).unwrap();
+    let measured = BTreeMap::from([
+        (
+            "features.free_text".to_owned(),
+            json!({ "columns": ["designation"], "categories": [], "empty": [] }),
+        ),
+        ("features.dates".to_owned(), json!({ "columns": [] })),
+    ]);
+    let found = ready(&catalog, &q, &done, &effective, &measured, &ops, &flow).unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    assert_eq!(
+        ready,
+        ["features.text_representation"],
+        "date parts waits for the words"
+    );
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+#[test]
+fn two_methods_inserting_before_one_step_decide_one_at_a_time() {
+    let ops = operators();
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology"),
+        packs.path(),
+    );
+    // Date parts no longer says it comes after the words.
+    let dates = packs
+        .path()
+        .join("supervised/methods/date_parts/method.yaml");
+    let text = std::fs::read_to_string(&dates).unwrap();
+    std::fs::write(
+        &dates,
+        text.replace("decisions: [features.text_representation]", "decisions: []"),
+    )
+    .unwrap();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let (flow, done) = after_the_split_decisions(&catalog);
+    let q = titled();
+    let effective = bindings(&q, &done).unwrap();
+    let measured = BTreeMap::from([
+        (
+            "features.free_text".to_owned(),
+            json!({ "columns": ["designation"], "categories": [], "empty": [] }),
+        ),
+        ("features.dates".to_owned(), json!({ "columns": ["day"] })),
+    ]);
+    let found = ready(&catalog, &q, &done, &effective, &measured, &ops, &flow).unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    assert_eq!(
+        ready.len(),
+        1,
+        "one changes the model's input before the other measures it: {ready:?}"
+    );
 }

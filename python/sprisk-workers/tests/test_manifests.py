@@ -73,6 +73,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.profile.distributions@1.0.0",
         "sprisk.profile.html_text@1.0.0",
         "sprisk.profile.join_keys@1.0.0",
+        "sprisk.profile.model_inputs@1.0.0",
         "sprisk.profile.near_duplicates@1.0.0",
         "sprisk.profile.number_text@1.0.0",
         "sprisk.profile.spelling_variants@1.0.0",

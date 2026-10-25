@@ -1,0 +1,27 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.model_inputs@1.0.0
+title: Model inputs
+capability_class: analyzer
+description: Names the free text, category text, empty text and date columns of the rows a model learns from (ADR-0063).
+entrypoint: sprisk_profile.model_inputs:model_inputs
+# The model's train rows only.
+scope: train
+attach: { role: model, side: input }
+concepts: { target: common.target }
+produces:
+  features.free_text:
+    fields: { columns: string_list, categories: string_list, empty: string_list }
+  features.dates:
+    fields: { columns: string_list }
+inputs: [{ name: train, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  # Without a bound target the step cannot hold it out, so it is not placed.
+  required: [target]
+  properties:
+    target: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-excluded: true, description: "The target column, dropped before the step runs: it is not an input." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

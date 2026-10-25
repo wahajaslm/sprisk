@@ -2428,7 +2428,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 55);
+    assert_eq!(rules.len(), 53);
     // The words people read go with each rule (ADR-0045 amendment).
     let clustering = rules
         .iter()
@@ -4846,14 +4846,12 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
         ("question.error_costs", "waiting"),
         ("cleaning.outlier_strategy", "no_subject"),
         ("features.scaling_strategy", "no_subject"),
-        ("features.skew_transform", "no_subject"),
         // The data rules may change the rows the model is fit on, so its rules wait for them,
-        // in INPUT_SHAPE order: words, date parts, rare categories, gaps filled, encoding.
-        ("features.text_representation", "waiting"),
-        ("features.date_parts", "waiting"),
+        // in INPUT_SHAPE order: rare categories, gaps filled, encoding.
         ("features.rare_categories", "waiting"),
         ("cleaning.missingness_strategy", "waiting"),
         ("features.encoding_strategy", "waiting"),
+        ("features.skew_transform", "no_subject"),
         ("modeling.interpretability_requirement", "settled"),
         ("modeling.estimator_selection", "waiting"),
         ("evaluation.decision_threshold", "settled"),
@@ -5403,9 +5401,11 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "run",
             "verify",
             "decide data.exact_duplicates keep",
-            "decide question.class_balance balanced",
-            "apply features.text_representation vectorize_words",
+            "decide features.text_representation vectorize_words",
+            "measure",
             "run",
+            "decide features.date_parts no_dates",
+            "decide question.class_balance balanced",
             "compare modeling.estimator_selection",
             "apply modeling.estimator_selection ml_linear_model",
             "run",
@@ -6269,9 +6269,8 @@ async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let uri = format!(
-        "/pipeline_versions/{head}/methodology/proposals/model/features.text_representation"
-    );
+    let uri =
+        format!("/pipeline_versions/{head}/methodology/proposals/model/features.encoding_strategy");
     let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     let apply = format!(
@@ -6459,9 +6458,11 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "run",
             "verify",
             "decide data.exact_duplicates keep",
-            "decide question.class_balance balanced",
-            "apply features.text_representation vectorize_words",
+            "decide features.text_representation vectorize_words",
+            "measure",
             "run",
+            "decide features.date_parts no_dates",
+            "decide question.class_balance balanced",
             "compare modeling.estimator_selection",
             "apply modeling.estimator_selection ml_linear_model",
             "run",

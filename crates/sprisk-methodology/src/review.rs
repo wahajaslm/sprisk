@@ -12,21 +12,12 @@ use crate::{
     ResolveError, RuleCatalog, catalog::decides, compare::upstream, facts, reopened_stage,
 };
 
-/// Decisions that shape the table a split reads, in order: a join adds the other table's
-/// columns, identifiers are left out, then markup is stripped from the text left. Rules
-/// measuring that table wait for them, so they see it final (ADR-0059): duplicate rows, say,
-/// differ by an identifier, and "Caf&eacute;" and "Café" are one spelling.
-pub const TABLE_SHAPE: [&str; 3] = ["data.join_sources", "data.column_roles", "data.html_text"];
-
-/// Order of the decisions that shape a model's input columns:
-/// - words first, so no rule takes free text for categories (ADR-0058);
-/// - date parts, whose gaps become gaps in numbers that can be filled;
+/// Order of the old rules that shape a model's input columns, after the words and date parts
+/// methods (ADR-0063 slice 6):
 /// - rare categories, which keep a gap as its own category;
 /// - gaps filled, since encoding refuses gaps;
 /// - encoding last: first, it would leave out columns grouping makes small enough to encode.
-pub const INPUT_SHAPE: [&str; 5] = [
-    "features.text_representation",
-    "features.date_parts",
+pub const INPUT_SHAPE: [&str; 3] = [
     "features.rare_categories",
     "cleaning.missingness_strategy",
     "features.encoding_strategy",
@@ -110,27 +101,9 @@ pub fn plan<'a>(
 /// step strictly upstream of `later`'s. The split is a method's decision, made in the walk's
 /// look before any rule acts (ADR-0063). A rule reading cross-validation
 /// results also waits for the rules of its own step that do not (ADR-0059): they may change
-/// what was compared. A rule measuring the table a step reads waits for the rules of that step
-/// that shape it (`TABLE_SHAPE`), and the rules shaping a model's inputs go in
-/// `INPUT_SHAPE` order.
+/// what was compared. The rules shaping a model's inputs go in `INPUT_SHAPE` order.
 pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planned) -> bool {
     let same_step = matches!((later.subject, earlier.subject), (Some(l), Some(e)) if l.id == e.id);
-    let shape = |p: &Planned| {
-        TABLE_SHAPE
-            .iter()
-            .position(|d| *d == p.rule.decides.as_str())
-    };
-    if same_step
-        && facts::needs_input_rows(reads(later))
-        && let Some(earlier_at) = shape(earlier)
-    {
-        return match shape(later) {
-            // A rule measuring the table waits for every rule shaping it.
-            None => true,
-            // Shaping rules go in TABLE_SHAPE order.
-            Some(later_at) => later_at > earlier_at,
-        };
-    }
     let input_at = |p: &Planned| {
         INPUT_SHAPE
             .iter()

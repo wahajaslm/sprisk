@@ -95,14 +95,12 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("question.error_costs".to_owned(), at("model")),
             ("cleaning.outlier_strategy".to_owned(), None),
             ("features.scaling_strategy".to_owned(), at("model")),
-            ("features.skew_transform".to_owned(), at("model")),
-            // The steps shaping a model's inputs, in INPUT_SHAPE order: words, date parts,
-            // rare categories (which keep a gap), gaps filled, then encoding, which refuses gaps.
-            ("features.text_representation".to_owned(), at("model")),
-            ("features.date_parts".to_owned(), at("model")),
+            // The steps shaping a model's inputs, in INPUT_SHAPE order: rare categories (which
+            // keep a gap), gaps filled, then encoding, which refuses gaps.
             ("features.rare_categories".to_owned(), at("model")),
             ("cleaning.missingness_strategy".to_owned(), at("model")),
             ("features.encoding_strategy".to_owned(), at("model")),
+            ("features.skew_transform".to_owned(), at("model")),
             ("modeling.interpretability_requirement".to_owned(), None),
             ("modeling.estimator_selection".to_owned(), at("model")),
             ("evaluation.decision_threshold".to_owned(), at("model")),
