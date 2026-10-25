@@ -196,12 +196,49 @@ describe("datasets", () => {
 
   it("asks for one page of rows for the preview, and no rows for the profile (ADR-0038)", async () => {
     const asked = serve();
-    await screen.findByRole("table", { name: "First rows of iris.csv" });
+    await screen.findByRole("table", { name: "Rows of iris.csv" });
     await openProfile();
     await screen.findByRole("table", { name: "Column profile" });
     const rows = asked.filter((p) => p.endsWith("/rows"));
     expect(rows).toEqual([`/api/artifacts/${iris.artifact.id}/rows`]);
     expect(asked.every((p) => p === "/api/loaded_tables" || p.endsWith("/profile") || p.endsWith("/rows") || p === "/api/pipeline_versions")).toBe(true);
+  });
+
+  it("pages through the rows: next shows the following 50, and says which rows are shown", async () => {
+    serve();
+    const preview = await screen.findByRole("region", { name: "Preview" });
+    expect(await within(preview).findByText("Rows 1–50 of 120")).toBeInTheDocument();
+    await userEvent.click(within(preview).getByRole("button", { name: "Next rows" }));
+    expect(await within(preview).findByText("Rows 51–100 of 120")).toBeInTheDocument();
+    expect(within(preview).getByRole("cell", { name: "51" })).toBeInTheDocument();
+    expect(within(preview).getByRole("button", { name: "Previous rows" })).toBeEnabled();
+  });
+
+  it("jumps to the row a person types", async () => {
+    serve();
+    const preview = await screen.findByRole("region", { name: "Preview" });
+    await userEvent.type(await within(preview).findByRole("spinbutton", { name: "Go to row" }), "101{Enter}");
+    expect(await within(preview).findByText("Rows 101–120 of 120")).toBeInTheDocument();
+    expect(within(preview).getByRole("button", { name: "Next rows" })).toBeDisabled();
+  });
+
+  it("hides and shows a column", async () => {
+    serve();
+    const preview = await screen.findByRole("region", { name: "Preview" });
+    const table = await within(preview).findByRole("table", { name: "Rows of iris.csv" });
+    expect(within(table).getByRole("columnheader", { name: /species/ })).toBeInTheDocument();
+    await userEvent.click(within(preview).getByRole("checkbox", { name: "species" }));
+    expect(within(table).queryByRole("columnheader", { name: /species/ })).toBeNull();
+    await userEvent.click(within(preview).getByRole("checkbox", { name: "species" }));
+    expect(within(table).getByRole("columnheader", { name: /species/ })).toBeInTheDocument();
+  });
+
+  it("heads each column with its type and its distribution, as the design's data preview does", async () => {
+    serve();
+    const table = await screen.findByRole("table", { name: "Rows of iris.csv" });
+    const header = within(table).getByRole("columnheader", { name: /sepal_length/ });
+    expect(header).toHaveTextContent("Float64");
+    expect(await within(header).findByRole("img", { name: "Distribution of sepal_length" })).toBeInTheDocument();
   });
 
   it("opens on a preview of the first rows, numbers on the right and a missing value as a dash", async () => {
@@ -213,13 +250,12 @@ describe("datasets", () => {
         rows: [{ values: ["setosa", "0.2"], missing: [] }, { values: ["", ""], missing: [1] }] });
     }));
     serve();
-    const preview = await screen.findByRole("table", { name: "First rows of iris.csv" });
+    const preview = await screen.findByRole("table", { name: "Rows of iris.csv" });
     expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
     expect(limit).toBe("50");
     expect(within(preview).getByRole("cell", { name: "0.2" })).toHaveClass("num");
     expect(within(preview).getByRole("cell", { name: "—" })).toBeInTheDocument();
-    expect(screen.getByText(/First 2 rows\./)).toBeInTheDocument();
-    expect(screen.getByText("120 rows × 2 columns")).toBeInTheDocument();
+    expect(screen.getByText("Rows 1–2 of 120")).toBeInTheDocument();
   });
 
   it("opens the step that loads it in the flow", async () => {

@@ -1548,6 +1548,20 @@ p { margin: 0; }
 .ds-column-charts { display: grid; gap: var(--space-5); align-content: start; min-width: 0; }
 .ds-columns tr.warn td:first-child, .ds-columns tr.warn td:nth-child(4) .mono { color: var(--alert); }
 .ds-spark { width: 140px; }
+.ds-preview { display: grid; gap: var(--space-3); min-width: 0; }
+.ds-preview-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: var(--text-sm); color: var(--soft); }
+.ds-goto { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--muted); }
+.ds-goto input { width: 96px; height: 26px; padding: 0 var(--space-2); border: 1px solid var(--alpha-08); border-radius: 4px; background: transparent; color: var(--ink); font: inherit; }
+.ds-preview-columns { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0; padding: 0 0 var(--space-3); border: 0; border-bottom: 1px solid var(--alpha-04); font-size: var(--text-sm); color: var(--soft); }
+.ds-preview-columns legend { float: left; margin-right: var(--space-3); color: var(--muted); }
+.ds-preview-columns label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.ds-preview-table { overflow-x: auto; }
+.ds-preview-table th { vertical-align: bottom; }
+.ds-col-name { display: block; color: var(--ink); }
+.ds-col-type { display: block; margin-bottom: 4px; font-size: var(--text-xs); color: var(--muted); font-weight: 400; }
+.ds-preview-table th .studio-canvas { width: 96px; margin-left: auto; }
+.ds-preview-table th:not(.num) .studio-canvas { margin-left: 0; }
+.ds-text-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-missing { display: flex; align-items: center; gap: var(--space-2); }
 .ds-missing-bar { width: 96px; height: 4px; border-radius: 2px; background: var(--alpha-08); overflow: hidden; }
 .ds-missing-bar span { display: block; height: 100%; background: var(--ink-3); }

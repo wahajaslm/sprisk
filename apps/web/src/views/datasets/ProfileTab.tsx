@@ -148,7 +148,7 @@ function ProfileTable({ profile }: { profile: DatasetProfile }) {
 
 /** The counts a column's sparkline and chart draw: a number's bins, a category's most common
  * values, a text column's words per value. An identifier has none worth drawing. */
-function shapeOf(c: ColumnProfile): number[] {
+export function shapeOf(c: ColumnProfile): number[] {
   if (c.role === "identifier" || c.role === "constant" || c.role === "empty") return [];
   if (c.role === "text") return (c.word_counts?.bars ?? []).map((b) => b.count);
   return (c.histogram?.bars ?? []).map((b) => b.count);
