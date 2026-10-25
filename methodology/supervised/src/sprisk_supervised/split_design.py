@@ -1,4 +1,4 @@
-"""Does each split step split the way the question's confirmed facts require? (ADR-0042)
+"""Does each split step split the way the question's confirmed facts or bindings require? (ADR-0042)
 
 It began as the verification half of the data split rule and keeps that rule's check id, so
 stored checks stay comparable. The split is now decided by the split_method method, whose
@@ -26,7 +26,7 @@ from sprisk_contracts.generated.models import (
     Verdict,
 )
 from sprisk_supervised.split_leakage import CheckInputError, is_split, operators_by_node
-from sprisk_workers.rule import authoritative
+from sprisk_workers.rule import EVENT_TIME, ITEM_IDENTITY, authoritative, bound_column
 
 CHECK = "methodology.supervised.data_split@1.0.0"
 # How each alternative of the retired data_split rule folded rows, for the decisions it made.
@@ -62,7 +62,8 @@ def split_design(
     results = []
     for node in splits:
         decision = _own_decision(node, sent)
-        verdict, rationale = _judge(node, folds_of[node.id.root], question)
+        by_method = _method_decision(node, sent)
+        verdict, rationale = _judge(node, folds_of[node.id.root], question, by_method)
         if decision is not None and verdict != Verdict.not_assessed:
             drift = _drift(node, folds_of[node.id.root], decision)
             if drift:
@@ -91,6 +92,25 @@ def _own_decision(
     return decision
 
 
+def _method_decision(
+    node: Node, sent: Mapping[str, MethodologyDecisionByRule | MethodologyDecisionByMethod]
+) -> MethodologyDecisionByMethod | None:
+    cited = node.methodology_decision_id
+    decision = None if cited is None else sent.get(cited.root)
+    return decision if isinstance(decision, MethodologyDecisionByMethod) else None
+
+
+def _left_to_promises(node: Node, decision: MethodologyDecisionByMethod) -> str:
+    """A method may split by a column it bound, which the question does not name, so only
+    the method's promises can say whether the rows keep its rule."""
+    promises = ", ".join(p.root for p in decision.promises or []) or "none"
+    return (
+        f"Step {node.id.root} splits as decision {decision.id.root} chose ({decision.option.root} "
+        f"of {decision.method.root}). The question names no time or item column to compare it "
+        f"with; the method's promises check the rows: {promises}."
+    )
+
+
 def _drift(node: Node, folds: SplitFolds | None, decision: MethodologyDecisionByRule) -> str | None:
     """Why the step no longer folds rows as the alternative its decision chose, or None."""
     chose = decision.alternative_id
@@ -103,7 +123,10 @@ def _drift(node: Node, folds: SplitFolds | None, decision: MethodologyDecisionBy
 
 
 def _judge(
-    node: Node, folds: SplitFolds | None, question: QuestionVersion | None
+    node: Node,
+    folds: SplitFolds | None,
+    question: QuestionVersion | None,
+    by_method: MethodologyDecisionByMethod | None,
 ) -> tuple[Verdict, str]:
     step = node.id.root
     if question is None:
@@ -111,34 +134,34 @@ def _judge(
             f"No question is linked, so step {step} has no time or entity fact to follow."
         )
     params: Mapping[str, Any] = node.params.model_extra or {}
-    time = authoritative(question.time_column)
-    entity = authoritative(question.entity_column)
+    time = bound_column(question, EVENT_TIME, question.time_column)
+    entity = bound_column(question, ITEM_IDENTITY, question.entity_column)
     if time:
         if folds == SplitFolds.time and params.get("time_column") == time:
             if entity and params.get("group_column") != entity:
                 return Verdict.fail, (
-                    f"Step {step} orders rows by {time}, but the question also confirms "
+                    f"Step {step} orders rows by {time}, but the question also names "
                     f"{entity} as the entity column. Set group_column to {entity}, so train "
                     f"drops every {entity} that is also in test."
                 )
             purged = f" and no {entity} is in both" if entity else ""
             return Verdict.pass_, (
-                f"Step {step} puts the latest rows by {time}, the confirmed time column, in "
+                f"Step {step} puts the latest rows by {time}, the question's time column, in "
                 f"test{purged}."
             )
         return Verdict.fail, (
-            f"The question confirms {time} as the time column, but step {step} "
+            f"The question names {time} as the time column, but step {step} "
             f"{_describe(folds, params)}. Use a temporal split on {time}, so the model is "
             "tested on rows later than the ones it learned from."
         )
     if entity:
         if folds == SplitFolds.group and params.get("group_column") == entity:
             return Verdict.pass_, (
-                f"Step {step} keeps each {entity}, the confirmed entity column, wholly in "
+                f"Step {step} keeps each {entity}, the question's entity column, wholly in "
                 "train or in test."
             )
         return Verdict.fail, (
-            f"The question confirms {entity} as the entity column, but step {step} "
+            f"The question names {entity} as the entity column, but step {step} "
             f"{_describe(folds, params)}. Use a group split on {entity}, so no entity's rows "
             "are both learned from and tested on."
         )
@@ -149,6 +172,8 @@ def _judge(
             f"Confirm whether {' and '.join(unconfirmed)} orders or groups the rows. Until "
             f"then step {step} cannot be checked against it."
         )
+    if by_method is not None:
+        return Verdict.not_assessed, _left_to_promises(node, by_method)
     return Verdict.pass_, (
         f"The question has no time or entity column, so step {step} may split rows freely."
     )

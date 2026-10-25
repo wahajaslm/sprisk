@@ -170,6 +170,13 @@ export type ConceptId = string;
  */
 export type EvidenceKind = string;
 /**
+ * A statement a person makes on the question, never guessed: what each mistake costs, how far a person must follow a prediction, the score that is good enough.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "QuestionStatement".
+ */
+export type QuestionStatement = "costs" | "interpretability" | "success_bar";
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodOptionId".
  */
@@ -189,6 +196,20 @@ export type OperatorRole =
  * via the `definition` "VerificationName".
  */
 export type VerificationName = string;
+/**
+ * How far a person must follow each prediction. high: only models a person can read, such as linear ones.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Interpretability".
+ */
+export type Interpretability = "high" | "medium" | "low";
+/**
+ * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression. weighted_f1 (higher is better; F1 per class weighted by its share of rows) for classification when a person states it with the success bar (ADR-0059).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SelectionMetric".
+ */
+export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse" | "weighted_f1";
 /**
  * A field's value: a number, a yes or no, a short text, or a list of short texts (string_list).
  *
@@ -470,13 +491,6 @@ export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "densi
  * via the `definition` "Stage".
  */
 export type Stage = "load" | "split" | "explore" | "clean" | "model" | "evaluate";
-/**
- * Fixed before any score is seen: balanced_accuracy (higher is better) for classification, expected_cost per row (lower is better) when the model step states costs (ADR-0053), rmse (lower is better) for regression. weighted_f1 (higher is better; F1 per class weighted by its share of rows) for classification when a person states it with the success bar (ADR-0059).
- *
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "SelectionMetric".
- */
-export type SelectionMetric = "balanced_accuracy" | "expected_cost" | "rmse" | "weighted_f1";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ReportId".
@@ -1666,6 +1680,10 @@ export interface MethodNeeds {
   concepts: ConceptId[];
   evidence: EvidenceKind[];
   decisions: DecisionKey[];
+  /**
+   * The question statements decide() may read (ADR-0063 slice 6). Absent: none.
+   */
+  statements?: QuestionStatement[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1690,6 +1708,7 @@ export interface MethodAction {
   bind?: MethodBind;
   replace?: MethodReplace;
   insert?: MethodInsert;
+  set?: MethodSet;
 }
 /**
  * Binds a concept to a column that the producer of an evidence kind adds.
@@ -1762,6 +1781,28 @@ export interface Params2 {
   [k: string]: unknown;
 }
 /**
+ * Sets settings on the step with this role, keeping its operator and its other settings (ADR-0063 slice 6).
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodSet".
+ */
+export interface MethodSet {
+  role: OperatorRole;
+  settings?: Params3;
+  /**
+   * Settings read from a statement the method needs: setting name to statement. A statement the question does not make leaves its setting out. Absent: none.
+   */
+  from_statements?: {
+    [k: string]: QuestionStatement;
+  };
+}
+/**
+ * Settings that do not depend on the project. Absent: none.
+ */
+export interface Params3 {
+  [k: string]: unknown;
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "MethodVerification".
  */
@@ -1771,13 +1812,53 @@ export interface MethodVerification {
    * What holds when it passes, for people.
    */
   promise: string;
-  settings?: Params3;
+  settings?: Params4;
 }
 /**
  * Values verify_<name>() reads. Absent: none.
  */
-export interface Params3 {
+export interface Params4 {
   [k: string]: unknown;
+}
+/**
+ * Each needed statement the question makes. Left out: not stated.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MethodStatements".
+ */
+export interface MethodStatements {
+  costs?: Costs;
+  interpretability?: Interpretability;
+  success_bar?: SuccessBar;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Costs".
+ */
+export interface Costs {
+  /**
+   * The class whose miss costs, as text.
+   */
+  positive: string;
+  /**
+   * Cost of predicting another class for a `positive` row. Positive; the API refuses others.
+   */
+  false_negative: number;
+  /**
+   * Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing.
+   */
+  false_positive: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "SuccessBar".
+ */
+export interface SuccessBar {
+  metric: SelectionMetric;
+  /**
+   * At least this for balanced_accuracy, at most this for expected_cost and rmse. The API refuses a balanced accuracy outside 0 to 1 and a negative cost or error.
+   */
+  score: number;
 }
 /**
  * Rust to the method session (`python -m sprisk_workers.method`), one JSON line per decision (ADR-0063): the method module Rust picked from the loaded catalog, and only what its needs declare. decide() may read nothing else.
@@ -1813,6 +1894,7 @@ export interface MethodRequest {
    * Options this walk took whose promise then failed, so the decision is made again: they are left out of `options`. Absent: none.
    */
   ruled_out?: RuledOutOption[];
+  statements?: MethodStatements1;
 }
 /**
  * Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names.
@@ -1839,6 +1921,14 @@ export interface RuledOutOption {
   detail: string;
 }
 /**
+ * The needed statements the question makes. Absent: the method needs none.
+ */
+export interface MethodStatements1 {
+  costs?: Costs;
+  interpretability?: Interpretability;
+  success_bar?: SuccessBar;
+}
+/**
  * Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1853,7 +1943,7 @@ export interface VerificationRequest {
   method: MethodRef;
   verification: VerificationName;
   evidence: EvidenceFields1;
-  settings: Params4;
+  settings: Params5;
 }
 /**
  * The fields of the evidence kind the verification needs.
@@ -1864,7 +1954,7 @@ export interface EvidenceFields1 {
 /**
  * The verification's settings from method.yaml; empty when it has none.
  */
-export interface Params4 {
+export interface Params5 {
   [k: string]: unknown;
 }
 /**
@@ -2102,13 +2192,13 @@ export interface RuleDecision {
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params5;
+      params?: Params6;
     },
     ...{
       id: string;
       applicability: "applicable" | "needs_fact" | "not_applicable";
       reason: string;
-      params?: Params5;
+      params?: Params6;
     }[]
   ];
   evidence: MethodologyEvidence[];
@@ -2116,7 +2206,7 @@ export interface RuleDecision {
 /**
  * Concrete params for the manifest action's operator; present when applicable.
  */
-export interface Params5 {
+export interface Params6 {
   [k: string]: unknown;
 }
 /**
@@ -3148,28 +3238,10 @@ export interface CostsFact {
   origin: "explicit" | "confirmed";
 }
 /**
- * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "Costs".
- */
-export interface Costs {
-  /**
-   * The class whose miss costs, as text.
-   */
-  positive: string;
-  /**
-   * Cost of predicting another class for a `positive` row. Positive; the API refuses others.
-   */
-  false_negative: number;
-  /**
-   * Cost of predicting `positive` for another row. Positive; the API refuses others. A correct prediction costs nothing.
-   */
-  false_positive: number;
-}
-/**
  * How far a person must follow each prediction, a hard constraint (ref-v3 0.4). high: only models a person can read, such as linear ones. Only a person can state it. Absent: not stated.
  */
 export interface InterpretabilityFact {
-  value: "high" | "medium" | "low";
+  value: Interpretability;
   /**
    * A constraint is never inferred or measured.
    */
@@ -3187,17 +3259,6 @@ export interface SuccessBarFact {
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
- * via the `definition` "SuccessBar".
- */
-export interface SuccessBar {
-  metric: SelectionMetric;
-  /**
-   * At least this for balanced_accuracy, at most this for expected_cost and rmse. The API refuses a balanced accuracy outside 0 to 1 and a negative cost or error.
-   */
-  score: number;
-}
-/**
- * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "SuccessBarFact".
  */
 export interface SuccessBarFact1 {
@@ -3212,7 +3273,7 @@ export interface SuccessBarFact1 {
  * via the `definition` "InterpretabilityFact".
  */
 export interface InterpretabilityFact1 {
-  value: "high" | "medium" | "low";
+  value: Interpretability;
   /**
    * A constraint is never inferred or measured.
    */
@@ -3591,7 +3652,7 @@ export interface Trial {
    * Pinned operator: dotted name @ semver, e.g. sprisk.eval.binary_classification@1.0.0.
    */
   operator: string;
-  settings: Params6;
+  settings: Params7;
   state: TrialState;
   /**
    * Its attempts, oldest first.
@@ -3605,7 +3666,7 @@ export interface Trial {
 /**
  * Operator parameters. Validated against the operator's params_schema by the compiler, not here.
  */
-export interface Params6 {
+export interface Params7 {
   [k: string]: unknown;
 }
 /**

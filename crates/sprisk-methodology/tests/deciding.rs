@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use sprisk_contracts::{MethodAssurance, Operator, PipelineVersion, QuestionVersion, parse};
 use sprisk_methodology::deciding::{
-    Made, apply_option, bindings, made_by, ready, reopened_too_late,
+    Basis, Made, apply_option, bindings, made_by, ready, reopened_too_late,
 };
 use sprisk_methodology::{RuleCatalog, patch};
 use sprisk_registry::Registry;
@@ -222,7 +222,16 @@ fn a_ruled_out_decision_is_ready_again_without_its_ruled_out_option() {
     let done = made_by(&catalog, &steps).unwrap();
     let q = titled();
     let effective = bindings(&q, &done).unwrap();
-    let found = ready(&catalog, &q, &done, &effective, &groups(0), &ops).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &groups(0),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
     let request = serde_json::to_value(&found.ready[0].request).unwrap();
     assert_eq!(request["method"], "methodology.core.split_method@1.0.0");
     // The other random split makes the same promise, so it is ruled out with it.
@@ -253,7 +262,16 @@ fn a_decision_whose_every_option_is_ruled_out_is_exhausted_not_ready() {
     let done = made_by(&catalog, &steps).unwrap();
     let q = titled();
     let effective = bindings(&q, &done).unwrap();
-    let found = ready(&catalog, &q, &done, &effective, &groups(0), &ops).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &groups(0),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
     assert!(found.ready.is_empty(), "{:?}", found.ready);
     assert_eq!(found.exhausted.len(), 1);
     assert_eq!(found.exhausted[0].decides, SPLIT);
@@ -267,12 +285,20 @@ fn ready_ids(
     ops: &[Operator],
 ) -> Vec<String> {
     let effective = bindings(q, done).unwrap();
-    ready(catalog, q, done, &effective, measured, ops)
-        .unwrap()
-        .ready
-        .iter()
-        .map(|r| r.method.decides.to_string())
-        .collect()
+    ready(
+        catalog,
+        q,
+        done,
+        &effective,
+        measured,
+        ops,
+        &measured_flow(),
+    )
+    .unwrap()
+    .ready
+    .iter()
+    .map(|r| r.method.decides.to_string())
+    .collect()
 }
 
 #[test]
@@ -344,7 +370,16 @@ fn evidence_that_cannot_be_measured_is_left_out_and_the_method_decides_without_i
     let catalog = catalog(&ops);
     let q = question(json!({}));
     let effective = bindings(&q, &[]).unwrap();
-    let found = ready(&catalog, &q, &[], &effective, &BTreeMap::new(), &ops).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &[],
+        &effective,
+        &BTreeMap::new(),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
     let request = serde_json::to_value(&found.ready[0].request).unwrap();
     assert_eq!(request["method"], "methodology.core.repeated_items@1.0.0");
     assert_eq!(request["evidence"], json!({}));
@@ -357,7 +392,16 @@ fn a_request_carries_only_what_the_method_declares() {
     let catalog = catalog(&ops);
     let q = titled();
     let effective = bindings(&q, &[]).unwrap();
-    let found = ready(&catalog, &q, &[], &effective, &groups(83), &ops).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &[],
+        &effective,
+        &groups(83),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
     let request = serde_json::to_value(&found.ready[0].request).unwrap();
     assert_eq!(request["evidence"], json!({ KIND: groups(83)[KIND] }));
     assert_eq!(request["bound"], json!(["common.item_title"]));
@@ -387,7 +431,16 @@ fn a_method_waits_for_the_decisions_it_reads_then_receives_them() {
     );
     let q = titled();
     let effective = bindings(&q, &done).unwrap();
-    let found = ready(&catalog, &q, &done, &effective, &groups(0), &ops).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &groups(0),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
     let request = serde_json::to_value(&found.ready[0].request).unwrap();
     assert_eq!(
         request["decisions"],
@@ -403,7 +456,16 @@ fn a_guessed_fact_a_method_reads_is_asked_before_it_decides() {
     let q = question(json!({ "time_column": { "value": "listed_on", "origin": "inferred" } }));
     let done = [made(REPEATED, "independent_rows", json!([]))];
     let effective = bindings(&q, &done).unwrap();
-    let found = ready(&catalog, &q, &done, &effective, &BTreeMap::new(), &ops).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &BTreeMap::new(),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
     assert!(found.ready.is_empty());
     let asks = serde_json::to_value(&found.asks).unwrap();
     assert_eq!(asks[0]["decides"], "question.time_column");
@@ -427,10 +489,13 @@ fn a_bind_option_binds_its_concept_to_the_column_the_producer_adds() {
         method,
         "group_by_title",
         MethodAssurance::Confirmed,
-        &effective.bindings,
-        &measured_flow(),
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &measured_flow(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap();
     assert!(applied.effects.is_empty());
@@ -462,10 +527,13 @@ fn a_group_split_reads_the_step_that_adds_its_group_column() {
         method,
         "item_groups",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &flow,
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap();
     assert_eq!(
@@ -505,10 +573,13 @@ fn a_stratified_split_reads_the_target_from_its_binding() {
         method,
         "stratified_random",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &measured_flow(),
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &measured_flow(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap();
     assert_eq!(
@@ -532,10 +603,13 @@ fn an_option_the_method_does_not_have_is_refused() {
         method,
         "shuffled",
         MethodAssurance::Confirmed,
-        &[],
-        &measured_flow(),
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &[],
+            pipeline: &measured_flow(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap_err();
     assert!(refused.to_string().contains("shuffled"), "{refused}");
@@ -561,10 +635,13 @@ fn an_insert_option_adds_its_step_before_the_split_with_settings_from_evidence()
         method,
         "normalise",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &flow,
-        &ops,
-        &measured,
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &flow,
+            operators: &ops,
+            measured: &measured,
+            question: &titled(),
+        },
     )
     .unwrap();
     assert_eq!(
@@ -600,10 +677,13 @@ fn an_insert_whose_evidence_was_not_measured_is_refused() {
         method,
         "normalise",
         MethodAssurance::Rule,
-        &effective.bindings,
-        &measured_flow(),
-        &ops,
-        &BTreeMap::new(),
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &measured_flow(),
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
     )
     .unwrap_err();
     assert!(
@@ -657,7 +737,16 @@ fn an_exhausted_decision_names_each_option_and_what_broke_it() {
     let done = made_by(&catalog, &steps).unwrap();
     let q = titled();
     let effective = bindings(&q, &done).unwrap();
-    let found = ready(&catalog, &q, &done, &effective, &groups(0), &ops).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &groups(0),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
     let detail = found.exhausted[0].detail();
     assert!(
         detail.starts_with("evaluation.split_method: every option broke its promise: temporal (no_row_in_both: 12 test rows"),
@@ -702,4 +791,540 @@ fn a_decision_whose_promise_fails_after_a_comparison_is_not_reopened() {
         why.contains("evaluation.split_method broke its promise after"),
         "{why}"
     );
+}
+
+#[test]
+fn a_group_split_moves_its_group_producer_onto_the_rows_the_split_read() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let method = catalog
+        .methods()
+        .find(|m| m.decides.as_str() == SPLIT)
+        .unwrap();
+    let derived = json!([{ "schema_version": "sprisk.binding/v1",
+        "concept": "common.item_identity",
+        "source": { "column": "item_group", "step": "near_duplicates" },
+        "set_by": { "assurance": "confirmed", "method": "methodology.core.repeated_items@1.0.0" } }]);
+    let q = titled();
+    let effective = bindings(&q, &[made(REPEATED, "group_by_title", derived)]).unwrap();
+    // A cleaning step decided before the split sits between the load and the split; the
+    // producer was placed in the look, on the loaded rows.
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "html_text", "operator": "sprisk.clean.strip_html@1.0.0",
+                     "params": { "columns": ["description"] } })
+            .to_string(),
+        )
+        .unwrap(),
+    );
+    flow.edges = parse(
+        &json!([
+            { "from": "load.data", "to": "near_duplicates.data" },
+            { "from": "load.data", "to": "html_text.data" },
+            { "from": "html_text.data", "to": "split.data" },
+        ])
+        .to_string(),
+    )
+    .unwrap();
+    let applied = apply_option(
+        method,
+        "item_groups",
+        MethodAssurance::Rule,
+        &Basis {
+            bindings: &effective.bindings,
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&applied.effects).unwrap(),
+        json!([
+            { "kind": "replace_node", "node_id": "split",
+              "operator": "sprisk.validation.group_split@1.0.0",
+              "params": { "group_column": "item_group", "test_fraction": 0.2, "seed": 42 } },
+            { "kind": "set_input", "node_id": "near_duplicates", "port": "data",
+              "from": "html_text.data" },
+            { "kind": "set_input", "node_id": "split", "port": "data",
+              "from": "near_duplicates.data" },
+        ])
+    );
+    let (_, edges) = patch::apply(&flow, &applied.effects, |id| {
+        ops.iter().find(|o| o.id.as_str() == id)
+    })
+    .unwrap();
+    let edges: Vec<String> = edges
+        .iter()
+        .map(|e| format!("{} -> {}", e.from.as_str(), e.to.as_str()))
+        .collect();
+    assert!(
+        edges.contains(&"html_text.data -> near_duplicates.data".to_owned()),
+        "{edges:?}"
+    );
+    assert!(
+        edges.contains(&"near_duplicates.data -> split.data".to_owned()),
+        "{edges:?}"
+    );
+    assert!(
+        !edges.contains(&"load.data -> near_duplicates.data".to_owned()),
+        "{edges:?}"
+    );
+}
+
+#[test]
+fn a_join_reads_the_loaded_table_only_a_producer_reads() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let method = catalog
+        .methods()
+        .find(|m| m.decides.as_str() == "data.join_sources")
+        .unwrap();
+    let flow: PipelineVersion = parse(
+        &json!({
+            "schema_version": "sprisk.pipeline_version/v1",
+            "id": "plv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "project_id": "prj_01JABCDEFGHJKMNPQRSTVWXYZ0",
+            "nodes": [
+                { "id": "load", "operator": "sprisk.io.file_source@1.0.0",
+                  "params": { "path": "items.csv", "format": "csv" } },
+                { "id": "codes", "operator": "sprisk.io.file_source@1.0.0",
+                  "params": { "path": "codes.csv", "format": "csv" } },
+                { "id": "join_keys", "operator": "sprisk.profile.join_keys@1.0.0", "params": {} },
+                { "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
+                  "params": { "test_fraction": 0.2, "seed": 42 } },
+            ],
+            "edges": [
+                { "from": "load.data", "to": "join_keys.data" },
+                { "from": "codes.data", "to": "join_keys.other" },
+                { "from": "load.data", "to": "split.data" },
+            ],
+            "created_at": "2026-10-25T10:00:00Z",
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let measured = BTreeMap::from([(
+        "data.join_keys".to_owned(),
+        json!({ "unread_tables": 1, "rows": 3, "shared": ["unnamed_0"], "key": "unnamed_0",
+                "matched_rows": 3, "most_rows_per_key": 1 }),
+    )]);
+    let applied = apply_option(
+        method,
+        "join_on_key",
+        MethodAssurance::Rule,
+        &Basis {
+            bindings: &[],
+            pipeline: &flow,
+            operators: &ops,
+            measured: &measured,
+            question: &titled(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&applied.effects).unwrap(),
+        json!([{ "kind": "insert_node", "node_id": "join", "operator": "sprisk.io.join@1.0.0",
+                 "params": { "key": "unnamed_0" }, "before": "split", "other": "codes.data" }])
+    );
+}
+
+#[test]
+fn a_join_with_no_second_table_decides_without_evidence() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = titled();
+    // Every other method that changes the rows the split reads has decided.
+    let done: Vec<_> = catalog
+        .methods()
+        .filter(|m| {
+            m.decides.as_str().starts_with("data.") && m.decides.as_str() != "data.join_sources"
+        })
+        .map(|m| {
+            made(
+                m.decides.as_str(),
+                m.options.last().unwrap().id.as_str(),
+                json!([]),
+            )
+        })
+        .collect();
+    let effective = bindings(&q, &done).unwrap();
+    let flow = measured_flow();
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &BTreeMap::new(),
+        &ops,
+        &flow,
+    )
+    .unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    assert!(ready.contains(&"data.join_sources"), "{ready:?}");
+}
+
+#[test]
+fn a_method_measuring_the_model_s_rows_waits_for_the_decisions_before_the_split() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &[]).unwrap();
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0", "params": {} })
+                .to_string(),
+        )
+        .unwrap(),
+    );
+    flow.edges
+        .push(parse(&json!({ "from": "split.train", "to": "model.train" }).to_string()).unwrap());
+    let text = BTreeMap::from([(
+        "features.free_text".to_owned(),
+        json!({ "columns": ["designation"], "categories": [], "empty": [] }),
+    )]);
+    let found = ready(&catalog, &q, &[], &effective, &text, &ops, &flow).unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    // HTML text may still add a step before the split, which changes the rows it measured.
+    assert!(
+        !ready.contains(&"features.text_representation"),
+        "{ready:?}"
+    );
+}
+
+/// The look's flow with a model, and every decision before the split made.
+fn after_the_split_decisions(
+    catalog: &RuleCatalog,
+) -> (PipelineVersion, Vec<sprisk_methodology::deciding::Made>) {
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0", "params": {} })
+                .to_string(),
+        )
+        .unwrap(),
+    );
+    flow.edges
+        .push(parse(&json!({ "from": "split.train", "to": "model.train" }).to_string()).unwrap());
+    let before_model: Vec<_> = catalog
+        .methods()
+        .filter(|m| !m.decides.as_str().starts_with("features."))
+        .map(|m| made(m.decides.as_str(), m.options[0].id.as_str(), json!([])))
+        .collect();
+    (flow, before_model)
+}
+
+#[test]
+fn once_the_steps_before_its_rows_are_decided_a_feature_method_decides() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let (flow, done) = after_the_split_decisions(&catalog);
+    let q = titled();
+    let effective = bindings(&q, &done).unwrap();
+    let measured = BTreeMap::from([
+        (
+            "features.free_text".to_owned(),
+            json!({ "columns": ["designation"], "categories": [], "empty": [] }),
+        ),
+        ("features.dates".to_owned(), json!({ "columns": [] })),
+    ]);
+    let found = ready(&catalog, &q, &done, &effective, &measured, &ops, &flow).unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    assert_eq!(
+        ready,
+        ["features.text_representation"],
+        "date parts waits for the words"
+    );
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+#[test]
+fn two_methods_inserting_before_one_step_decide_one_at_a_time() {
+    let ops = operators();
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology"),
+        packs.path(),
+    );
+    // Date parts no longer says it comes after the words.
+    let dates = packs
+        .path()
+        .join("supervised/methods/date_parts/method.yaml");
+    let text = std::fs::read_to_string(&dates).unwrap();
+    std::fs::write(
+        &dates,
+        text.replace("decisions: [features.text_representation]", "decisions: []"),
+    )
+    .unwrap();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let (flow, done) = after_the_split_decisions(&catalog);
+    let q = titled();
+    let effective = bindings(&q, &done).unwrap();
+    let measured = BTreeMap::from([
+        (
+            "features.free_text".to_owned(),
+            json!({ "columns": ["designation"], "categories": [], "empty": [] }),
+        ),
+        ("features.dates".to_owned(), json!({ "columns": ["day"] })),
+    ]);
+    let found = ready(&catalog, &q, &done, &effective, &measured, &ops, &flow).unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    assert_eq!(
+        ready.len(),
+        1,
+        "one changes the model's input before the other measures it: {ready:?}"
+    );
+}
+
+#[test]
+fn a_request_carries_the_statements_the_method_needs_and_only_those_the_question_makes() {
+    let ops = operators();
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(&fixture().join("methodology"), packs.path());
+    let manifest = packs.path().join("core/methods/split_method/method.yaml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    std::fs::write(
+        &manifest,
+        text.replace(
+            "  decisions: [",
+            "  statements: [costs, success_bar]\n  decisions: [",
+        ),
+    )
+    .unwrap();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let mut q = serde_json::to_value(titled()).unwrap();
+    q["costs"] = json!({ "value": { "positive": "churned", "false_negative": 5.0,
+                                    "false_positive": 1.0 }, "origin": "explicit" });
+    let q: QuestionVersion = parse(&q.to_string()).unwrap();
+    let done = [made(REPEATED, "independent_rows", json!([]))];
+    let effective = bindings(&q, &done).unwrap();
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &groups(0),
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
+    let request = serde_json::to_value(&found.ready[0].request).unwrap();
+    assert_eq!(
+        request["statements"],
+        json!({ "costs": { "positive": "churned", "false_negative": 5.0, "false_positive": 1.0 } })
+    );
+}
+
+#[test]
+fn a_set_option_puts_the_stated_costs_on_the_model_and_keeps_its_other_settings() {
+    let ops = operators();
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(&fixture().join("methodology"), packs.path());
+    let manifest = packs.path().join("core/methods/repeated_items/method.yaml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    let text = text
+        .replace("  decisions: []", "  decisions: []\n  statements: [costs]")
+        .replace(
+            "  - id: independent_rows\n",
+            "  - id: independent_rows\n    action: { set: { role: model, from_statements: { costs: costs } } }\n",
+        );
+    std::fs::write(&manifest, text).unwrap();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let method = catalog
+        .methods()
+        .find(|m| m.decides.as_str() == REPEATED)
+        .unwrap();
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
+                     "params": { "target": "prdtypecode", "task": "classification" } })
+            .to_string(),
+        )
+        .unwrap(),
+    );
+    let mut q = serde_json::to_value(titled()).unwrap();
+    q["costs"] = json!({ "value": { "positive": "a", "false_negative": 5.0, "false_positive": 1.0 },
+                         "origin": "explicit" });
+    let q: QuestionVersion = parse(&q.to_string()).unwrap();
+    let applied = apply_option(
+        method,
+        "independent_rows",
+        MethodAssurance::Rule,
+        &Basis {
+            bindings: &[],
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &q,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&applied.effects).unwrap(),
+        json!([{ "kind": "replace_node", "node_id": "model",
+                 "operator": "sprisk.ml.dummy_baseline@3.0.0",
+                 "params": { "target": "prdtypecode", "task": "classification",
+                             "costs": { "positive": "a", "false_negative": 5.0,
+                                        "false_positive": 1.0 } } }])
+    );
+}
+
+#[test]
+fn a_method_measuring_what_the_split_writes_waits_for_every_step_before_the_split() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &[]).unwrap();
+    let shape = BTreeMap::from([(
+        "target.shape".to_owned(),
+        json!({ "rows": 100, "distinct": 2, "numeric": false, "whole_numbers": false,
+                "rarest_share": 0.3 }),
+    )]);
+    let found = ready(
+        &catalog,
+        &q,
+        &[],
+        &effective,
+        &shape,
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    // The split's train rows change with every step still to be inserted before it.
+    for waits in [
+        "evaluation.decision_threshold",
+        "question.error_costs",
+        "question.class_balance",
+    ] {
+        assert!(!ready.contains(&waits), "{waits}: {ready:?}");
+    }
+}
+
+#[test]
+fn a_method_measuring_what_the_split_writes_waits_for_the_split_method_that_replaces_it() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = titled();
+    // Every step before the split is decided; the split itself is not.
+    let done: Vec<_> = catalog
+        .methods()
+        .filter(|m| m.decides.as_str().starts_with("data."))
+        .map(|m| {
+            made(
+                m.decides.as_str(),
+                m.options.last().unwrap().id.as_str(),
+                json!([]),
+            )
+        })
+        .collect();
+    let effective = bindings(&q, &done).unwrap();
+    let shape = BTreeMap::from([(
+        "target.shape".to_owned(),
+        json!({ "rows": 100, "distinct": 2, "numeric": false, "whole_numbers": false,
+                "rarest_share": 0.3 }),
+    )]);
+    let found = ready(
+        &catalog,
+        &q,
+        &done,
+        &effective,
+        &shape,
+        &ops,
+        &measured_flow(),
+    )
+    .unwrap();
+    let ready: Vec<&str> = found
+        .ready
+        .iter()
+        .map(|r| r.method.decides.as_str())
+        .collect();
+    assert!(ready.contains(&"split.method"), "{ready:?}");
+    assert!(!ready.contains(&"question.class_balance"), "{ready:?}");
+}
+
+#[test]
+fn a_set_option_reading_a_statement_the_question_does_not_make_is_refused() {
+    let ops = operators();
+    let packs = tempfile::tempdir().unwrap();
+    copy_dir(&fixture().join("methodology"), packs.path());
+    let manifest = packs.path().join("core/methods/repeated_items/method.yaml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    let text = text
+        .replace("  decisions: []", "  decisions: []\n  statements: [costs]")
+        .replace(
+            "  - id: independent_rows\n",
+            "  - id: independent_rows\n    action: { set: { role: model, from_statements: { costs: costs } } }\n",
+        );
+    std::fs::write(&manifest, text).unwrap();
+    let catalog = RuleCatalog::load_dir(packs.path(), &ops).unwrap();
+    let method = catalog
+        .methods()
+        .find(|m| m.decides.as_str() == REPEATED)
+        .unwrap();
+    let mut flow = measured_flow();
+    flow.nodes.push(
+        parse(
+            &json!({ "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
+                     "params": { "target": "prdtypecode", "task": "classification" } })
+            .to_string(),
+        )
+        .unwrap(),
+    );
+    let refused = apply_option(
+        method,
+        "independent_rows",
+        MethodAssurance::Confirmed,
+        &Basis {
+            bindings: &[],
+            pipeline: &flow,
+            operators: &ops,
+            measured: &BTreeMap::new(),
+            question: &titled(),
+        },
+    )
+    .unwrap_err();
+    assert!(refused.to_string().contains("costs"), "{refused}");
 }

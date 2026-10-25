@@ -1,0 +1,26 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.decision_threshold@2.0.0
+decides: evaluation.decision_threshold
+name: Decision threshold
+activity: Evaluation
+question: At which predicted chance does the model call the costly class?
+applies_when: { task: [classification] }
+needs:
+  concepts: [common.target]
+  evidence: [target.shape]
+  # Costs that differ move the threshold; the split says whether the inner folds that pick it
+  # are fair, since they are shuffled rows.
+  decisions: [question.error_costs, split.method]
+  statements: [costs]
+options:
+  - id: cost_optimal_threshold
+    label: Cheapest threshold
+    action:
+      # The model predicts at the threshold that costs least on its training rows.
+      set: { role: model, from_statements: { costs: costs } }
+    verify: []
+  - id: default_half
+    label: Likelier class
+    verify: []
+verifications: {}
+source: "Elkan (2001), The Foundations of Cost-Sensitive Learning, IJCAI: the cost-optimal threshold is c_fp / (c_fp + c_fn) for calibrated probabilities."

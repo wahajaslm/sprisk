@@ -539,3 +539,104 @@ fn a_decided_method_s_evidence_is_not_measured_again() {
     .unwrap();
     assert!(measured.effects.is_empty(), "{:?}", measured.effects);
 }
+
+#[test]
+fn a_concept_param_the_producer_does_not_require_is_left_out_while_unbound() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = question(json!([]));
+    let effective = sprisk_methodology::deciding::bindings(&q, &[]).unwrap();
+    let (nodes, edges) = load_split();
+    let measured = measure(
+        &catalog,
+        &flow(nodes, edges),
+        &q,
+        &effective.bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
+
+    let effects = effects_of(&measured);
+    let roles = effects
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["operator"] == "sprisk.profile.column_roles@1.0.0")
+        .unwrap_or_else(|| panic!("{effects}"));
+    // The target is stated; no item or time column is, so they are left out, not refused.
+    assert_eq!(
+        roles["params"],
+        json!({ "target": "prdtypecode" }),
+        "{effects}"
+    );
+}
+
+#[test]
+fn a_producer_with_an_other_input_reads_the_loaded_table_no_step_reads() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = question(json!([]));
+    let effective = sprisk_methodology::deciding::bindings(&q, &[]).unwrap();
+    let nodes = json!([
+        { "id": "load", "operator": LOAD, "params": { "path": "items.csv", "format": "csv" } },
+        { "id": "codes", "operator": LOAD, "params": { "path": "codes.csv", "format": "csv" } },
+        { "id": "split", "operator": SPLIT, "params": { "test_fraction": 0.2, "seed": 42 } },
+    ]);
+    let edges = json!([{ "from": "load.data", "to": "split.data" }]);
+    let measured = measure(
+        &catalog,
+        &flow(nodes, edges),
+        &q,
+        &effective.bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
+
+    let effects = effects_of(&measured);
+    let keys = effects
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["operator"] == "sprisk.profile.join_keys@1.0.0")
+        .unwrap_or_else(|| panic!("{effects}"));
+    assert_eq!(
+        keys["inputs"],
+        json!({ "data": "load.data", "other": "codes.data" })
+    );
+}
+
+#[test]
+fn a_table_read_through_a_producer_that_writes_rows_is_not_a_second_table() {
+    let ops = operators();
+    let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology");
+    let catalog = RuleCatalog::load_dir(&packs, &ops).unwrap();
+    let q = titled();
+    let effective = sprisk_methodology::deciding::bindings(&q, &[]).unwrap();
+    let nodes = json!([
+        { "id": "load", "operator": LOAD, "params": { "path": "standin.csv", "format": "csv" } },
+        { "id": "near_duplicates", "operator": PRODUCER, "params": { "title_column": "designation" } },
+        { "id": "split", "operator": SPLIT, "params": { "test_fraction": 0.2, "seed": 42 } },
+    ]);
+    let edges = json!([
+        { "from": "load.data", "to": "near_duplicates.data" },
+        { "from": "near_duplicates.data", "to": "split.data" },
+    ]);
+    let measured = measure(
+        &catalog,
+        &flow(nodes, edges),
+        &q,
+        &effective.bindings,
+        &ops,
+        &[],
+    )
+    .unwrap();
+    let effects = effects_of(&measured);
+    assert!(
+        !effects.to_string().contains("sprisk.profile.join_keys"),
+        "{effects}"
+    );
+}

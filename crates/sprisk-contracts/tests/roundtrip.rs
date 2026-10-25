@@ -10,14 +10,14 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
     CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet,
-    FlowDecisions, KeyMatches, TableShift, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
+    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
     MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
     NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
     PipelineVersion, Problem, QuestionVersion, Report, RuleAnswer, RuleDecision, RuleObservation,
-    RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage, Trial, VerificationRequest,
-    Walk, WalkDetail, WalkStep, WorkerMessage, parse,
+    RuleRequest, Run, SelectionDecision, Study, StudyDetail, TablePage, TableShift, Trial,
+    VerificationRequest, Walk, WalkDetail, WalkStep, WorkerMessage, parse,
 };
 
 fn fixtures(entity: &str, kind: &str) -> Vec<PathBuf> {

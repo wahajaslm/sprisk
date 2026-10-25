@@ -14,8 +14,18 @@ use sprisk_contracts::{
 
 use crate::compare::upstream;
 use crate::deciding::Made;
-use crate::decision::free_id;
+use crate::decision::{free_id, unread_sources};
 use crate::{ResolveError, RuleCatalog, methods, patch, verifying};
+
+/// The input a producer reads a second table on.
+const OTHER_PORT: &str = "other";
+
+fn reads_other(producer: &Operator) -> bool {
+    producer
+        .inputs
+        .iter()
+        .any(|p| p.name.as_str() == OTHER_PORT)
+}
 
 /// The patch that puts every needed producer in place.
 #[derive(Debug)]
@@ -101,18 +111,44 @@ pub fn fitting(catalog: &RuleCatalog, task: TaskType) -> impl Iterator<Item = &M
     })
 }
 
-/// The producer's concept params, each the column `bindings` binds to its concept; the
-/// first unbound concept otherwise.
+/// The producer's concept params, each the column `bindings` binds to its concept. A param
+/// its params schema does not require is left out while unbound; the first unbound required
+/// concept otherwise.
 fn bound_params(producer: &Operator, bindings: &[Binding]) -> Result<Value, String> {
     let mut params = Map::new();
     for (param, concept) in &producer.concepts {
-        let binding = bindings
-            .iter()
-            .find(|b| b.concept == *concept)
-            .ok_or_else(|| concept.to_string())?;
+        let Some(binding) = bindings.iter().find(|b| b.concept == *concept) else {
+            if requires(producer, param.as_str()) {
+                return Err(concept.to_string());
+            }
+            continue;
+        };
         params.insert(param.to_string(), json!(binding.source.column));
     }
     Ok(Value::Object(params))
+}
+
+fn requires(producer: &Operator, param: &str) -> bool {
+    producer
+        .params_schema
+        .get("required")
+        .and_then(Value::as_array)
+        .is_some_and(|r| r.iter().any(|p| p == param))
+}
+
+/// Whether the walk can measure what `producer` produces on `pipeline`: every concept it
+/// requires is bound, and a producer reading a second table has exactly one to read.
+pub fn measurable<'a>(
+    producer: &Operator,
+    bound: impl Fn(&str) -> bool,
+    pipeline: &PipelineVersion,
+    operator_of: impl Fn(&str) -> Option<&'a Operator>,
+) -> Result<bool, ResolveError> {
+    let concepts = producer
+        .concepts
+        .iter()
+        .all(|(param, concept)| bound(concept.as_str()) || !requires(producer, param.as_str()));
+    Ok(concepts && (!reads_other(producer) || unread_sources(pipeline, operator_of)?.len() == 1))
 }
 
 /// The patch so far, and the flow as it would stand with it, so a later producer is placed
@@ -173,6 +209,23 @@ impl Placing<'_> {
                 wanted.insert(port.to_owned(), format!("{anchor}.{port}"));
                 continue;
             }
+            // A second table is the one loaded table no step reads (ADR-0059).
+            if port == OTHER_PORT {
+                let operators = self.operators;
+                match unread_sources(&self.flow, |o| operators.get(o).copied())?.as_slice() {
+                    [one] => {
+                        wanted.insert(port.to_owned(), one.to_string());
+                    }
+                    [] => {}
+                    many => {
+                        return Ok(Some(format!(
+                            "{} loaded tables are read by no step; say which to join",
+                            many.len()
+                        )));
+                    }
+                }
+                continue;
+            }
             let Some(feeding) = self
                 .flow
                 .edges
@@ -186,6 +239,10 @@ impl Placing<'_> {
         let rows = if output { "writes" } else { "reads" };
 
         let Some(placed) = self.flow.nodes.iter().find(|n| n.operator == producer.id) else {
+            // With no second table there is nothing to compare: not a gap to report.
+            if reads_other(producer) && !wanted.contains_key(OTHER_PORT) {
+                return Ok(None);
+            }
             let name = id
                 .split('@')
                 .next()

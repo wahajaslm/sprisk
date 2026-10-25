@@ -1,0 +1,36 @@
+schema_version: sprisk.method/v2
+id: methodology.common.wrong_types@2.0.0
+decides: data.type_repair
+name: Type correction
+activity: Data types
+question: Which text columns are numbers stored as text?
+needs:
+  concepts: []
+  evidence: [data.number_text]
+  decisions: [data.missing_markers]
+options:
+  # Casting fits nothing, so it runs before the split, after any marking step. It fails on a
+  # value that does not read as a number, so a column is cast only when every value does.
+  - id: cast
+    label: Read as numbers
+    action:
+      insert:
+        before: split
+        operator: sprisk.clean.cast_types@1.0.0
+        node_id: wrong_types
+        from_evidence: { columns: data.number_text.numbers }
+    verify: []
+  - id: cast_marked
+    label: Read as numbers, placeholders as gaps
+    action:
+      insert:
+        before: split
+        operator: sprisk.clean.cast_types@1.0.0
+        node_id: wrong_types
+        from_evidence: { columns: data.number_text.numbers_once_marked }
+    verify: []
+  - id: keep
+    label: Types are right
+    verify: []
+verifications: {}
+source: "Breck et al. (2019), Data Validation for Machine Learning, SysML: as text, a model treats each number as its own category."

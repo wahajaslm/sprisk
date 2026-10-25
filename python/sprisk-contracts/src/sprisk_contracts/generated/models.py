@@ -500,13 +500,10 @@ class EvidenceKind(RootModel[str]):
     ]
 
 
-class MethodNeeds(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    concepts: list[ConceptId]
-    evidence: list[EvidenceKind]
-    decisions: list[DecisionKey]
+class QuestionStatement(StrEnum):
+    costs = "costs"
+    interpretability = "interpretability"
+    success_bar = "success_bar"
 
 
 FromEvidenceAdditionalProperty = TypeAliasType(
@@ -1242,18 +1239,10 @@ class Origin1(StrEnum):
     confirmed = "confirmed"
 
 
-class Value(StrEnum):
+class Interpretability(StrEnum):
     high = "high"
     medium = "medium"
     low = "low"
-
-
-class InterpretabilityFact(StrictModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    value: Value
-    origin: Annotated[Origin1, Field(description="A constraint is never inferred or measured.")]
 
 
 class Origin(StrEnum):
@@ -2042,6 +2031,41 @@ class MethodAppliesWhen(StrictModel):
     task: list[TaskType]
 
 
+class MethodNeeds(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    concepts: list[ConceptId]
+    evidence: list[EvidenceKind]
+    decisions: list[DecisionKey]
+    statements: Annotated[
+        list[QuestionStatement] | None,
+        Field(
+            description="The question statements decide() may read (ADR-0063 slice 6). Absent: none."
+        ),
+    ] = None
+
+
+class MethodSet(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    role: OperatorRole
+    settings: Annotated[
+        Params | None,
+        Field(description="Settings that do not depend on the project. Absent: none."),
+    ] = None
+    from_statements: Annotated[
+        dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")], QuestionStatement
+        ]
+        | None,
+        Field(
+            description="Settings read from a statement the method needs: setting name to statement. A statement the question does not make leaves its setting out. Absent: none."
+        ),
+    ] = None
+
+
 class MethodInsert(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2656,6 +2680,14 @@ class SuccessBar(StrictModel):
     ]
 
 
+class InterpretabilityFact(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Interpretability
+    origin: Annotated[Origin1, Field(description="A constraint is never inferred or measured.")]
+
+
 class CostsFact(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3134,6 +3166,15 @@ class CodeSplit(StrictModel):
     notes: list[SplitNote]
 
 
+class MethodStatements(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    costs: Costs | None = None
+    interpretability: Interpretability | None = None
+    success_bar: SuccessBar | None = None
+
+
 class MethodAction(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3141,6 +3182,7 @@ class MethodAction(StrictModel):
     bind: MethodBind | None = None
     replace: MethodReplace | None = None
     insert: MethodInsert | None = None
+    set: MethodSet | None = None
 
 
 class VerificationRequest(StrictModel):
@@ -3846,6 +3888,12 @@ class MethodRequest(StrictModel):
         list[RuledOutOption] | None,
         Field(
             description="Options this walk took whose promise then failed, so the decision is made again: they are left out of `options`. Absent: none."
+        ),
+    ] = None
+    statements: Annotated[
+        MethodStatements | None,
+        Field(
+            description="The needed statements the question makes. Absent: the method needs none."
         ),
     ] = None
 

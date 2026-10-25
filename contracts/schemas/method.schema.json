@@ -139,7 +139,29 @@
           "items": {
             "$ref": "#/$defs/DecisionKey"
           }
+        },
+        "statements": {
+          "type": "array",
+          "description": "The question statements decide() may read (ADR-0063 slice 6). Absent: none.",
+          "items": {
+            "$ref": "#/$defs/QuestionStatement"
+          }
         }
+      }
+    },
+    "QuestionStatement": {
+      "type": "string",
+      "description": "A statement a person makes on the question, never guessed: what each mistake costs, how far a person must follow a prediction, the score that is good enough.",
+      "enum": ["costs", "interpretability", "success_bar"]
+    },
+    "MethodStatements": {
+      "type": "object",
+      "description": "Each needed statement the question makes. Left out: not stated.",
+      "additionalProperties": false,
+      "properties": {
+        "costs": { "$ref": "#/$defs/Costs" },
+        "interpretability": { "$ref": "#/$defs/Interpretability" },
+        "success_bar": { "$ref": "#/$defs/SuccessBar" }
       }
     },
     "MethodOption": {
@@ -183,6 +205,25 @@
         },
         "insert": {
           "$ref": "#/$defs/MethodInsert"
+        },
+        "set": {
+          "$ref": "#/$defs/MethodSet"
+        }
+      }
+    },
+    "MethodSet": {
+      "type": "object",
+      "description": "Sets settings on the step with this role, keeping its operator and its other settings (ADR-0063 slice 6).",
+      "additionalProperties": false,
+      "required": ["role"],
+      "properties": {
+        "role": { "$ref": "#/$defs/OperatorRole" },
+        "settings": { "$ref": "#/$defs/Params", "description": "Settings that do not depend on the project. Absent: none." },
+        "from_statements": {
+          "type": "object",
+          "description": "Settings read from a statement the method needs: setting name to statement. A statement the question does not make leaves its setting out. Absent: none.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+          "additionalProperties": { "$ref": "#/$defs/QuestionStatement" }
         }
       }
     },
@@ -330,6 +371,10 @@
           "items": {
             "$ref": "#/$defs/RuledOutOption"
           }
+        },
+        "statements": {
+          "$ref": "#/$defs/MethodStatements",
+          "description": "The needed statements the question makes. Absent: the method needs none."
         }
       }
     },

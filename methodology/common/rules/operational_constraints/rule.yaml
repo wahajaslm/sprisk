@@ -14,7 +14,7 @@ provenance:
     - "The limits are recorded on the question and fixed before any cross-validated score is shown; limits set after seeing scores could be bent to pick a winner."
     - "Limits rule models out; they never rank them. Among models within the limits, the score decides."
     - "Prediction time is measured on train-fold rows, on the machine the flow runs on; production hardware may differ, and the report says so."
-    - "Interpretability is a constraint too, already asked by question.hard_constraints."
+    - "Interpretability is a constraint too, already asked on the Objective page and in the look."
 
 observes:
   - fact: question.max_latency_ms

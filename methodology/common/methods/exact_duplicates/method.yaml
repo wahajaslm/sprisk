@@ -1,0 +1,28 @@
+schema_version: sprisk.method/v2
+id: methodology.common.exact_duplicates@2.0.0
+decides: data.exact_duplicates
+name: Exact duplicate removal
+activity: Repeated observations
+question: Are rows that copy an earlier row dropped before the split?
+needs:
+  concepts: []
+  evidence: [data.duplicate_rows]
+  # Read for order: copies are dropped after markup is stripped and identifiers are left out,
+  # so rows differing only in either are one row.
+  decisions: [data.html_text, data.column_roles]
+options:
+  - id: drop
+    label: Drop exact duplicates
+    action:
+      # A row match fits nothing, so it runs before the split. Every column is compared, the
+      # target too: rows with the same features and different labels are not copies.
+      insert:
+        before: split
+        operator: sprisk.clean.drop_duplicates@1.0.0
+        node_id: exact_duplicates
+    verify: []
+  - id: keep
+    label: Keep every row
+    verify: []
+verifications: {}
+source: "Kapoor & Narayanan (2023), Patterns 4(9): a row copied into train and test is scored on a row the model has seen."

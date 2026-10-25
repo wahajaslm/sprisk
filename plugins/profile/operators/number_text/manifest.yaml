@@ -1,0 +1,25 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.number_text@1.0.0
+title: Numbers in text
+capability_class: analyzer
+description: Names the text columns that hold numbers, the placeholders among them to mark missing, and those to read as numbers (ADR-0063).
+entrypoint: sprisk_profile.number_text:number_text
+# Every row, before the split: it reads text structure, never the label's values.
+scope: all
+attach: { role: split, side: input }
+concepts: { target: common.target }
+produces:
+  data.missing_markers:
+    fields: { columns: string_list, values: string_list, unknown: string_list }
+  data.number_text:
+    fields: { numbers: string_list, numbers_once_marked: string_list, codes: string_list, comma_numbers: string_list }
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  properties:
+    target: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-excluded: true, description: "The target column, dropped before the step runs: never read, never marked or cast." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

@@ -1,0 +1,28 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.date_parts@2.0.0
+decides: features.date_parts
+name: Date features
+activity: Features
+question: Is a date reaching the model split into parts first?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  evidence: [features.dates]
+  # Read for order: the steps shaping a model's inputs go words, then date parts.
+  decisions: [features.text_representation]
+options:
+  - id: date_parts
+    label: Date parts
+    action:
+      # Each row is worked out on its own, so nothing is learnt from test rows.
+      insert:
+        before: model
+        operator: sprisk.clean.date_parts@1.0.0
+        node_id: date_parts
+        from_evidence: { columns: features.dates.columns }
+    verify: []
+  - id: no_dates
+    label: No dates
+    verify: []
+verifications: {}
+source: "Kuhn & Johnson (2019), Feature Engineering and Selection §8.1: a date is split into year, month and weekday, with cyclical parts as sine and cosine."

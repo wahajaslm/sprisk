@@ -14,7 +14,13 @@ from typing import Any, TextIO
 
 from pydantic import ValidationError
 
-from sprisk_contracts import RuleAnswer, RuleDecision, RuleObservation, RuleRequest
+from sprisk_contracts import (
+    QuestionVersion,
+    RuleAnswer,
+    RuleDecision,
+    RuleObservation,
+    RuleRequest,
+)
 from sprisk_contracts.generated.models import Fact, RuleDecided, RuleRefused
 from sprisk_contracts.generated.models import Profile as ProfileValues
 from sprisk_workers.errors import RuleError
@@ -27,6 +33,21 @@ def authoritative(fact: Fact | None) -> str | None:
     if fact is None or fact.origin.value == "inferred":
         return None
     return fact.value
+
+
+# The concepts a question's time and entity facts stand for (ADR-0063 amendment).
+EVENT_TIME = "common.event_time"
+ITEM_IDENTITY = "common.item_identity"
+
+
+def bound_column(question: QuestionVersion, concept: str, fact: Fact | None) -> str | None:
+    """The column the question binds `concept` to, else its fact for it when authoritative. A
+    binding a person stated or confirmed takes the place of a fact, as in the walk; one a
+    method set unasked does not."""
+    for binding in question.bindings or []:
+        if binding.concept.root == concept and binding.set_by.root.assurance != "rule":
+            return binding.source.column
+    return authoritative(fact)
 
 
 def applicable(id: str, reason: str, params: dict[str, Any]) -> dict[str, Any]:

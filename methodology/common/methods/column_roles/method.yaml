@@ -1,0 +1,28 @@
+schema_version: sprisk.method/v2
+id: methodology.common.column_roles@2.0.0
+decides: data.column_roles
+name: Identifier removal
+activity: Column roles
+question: Which columns only name rows, and are left out?
+needs:
+  concepts: []
+  evidence: [data.identifiers]
+  # Read for order only: identifiers are dropped after a join, which may need one as its key.
+  decisions: [data.join_sources]
+options:
+  - id: drop_identifiers
+    label: Leave identifiers out
+    action:
+      # Dropping by name fits nothing, so it runs before the split; a column a step adds,
+      # such as an item group, stays.
+      insert:
+        before: split
+        operator: sprisk.clean.drop_columns@1.0.0
+        node_id: identifiers
+        from_evidence: { columns: data.identifiers.columns }
+    verify: []
+  - id: keep_all
+    label: No identifiers
+    verify: []
+verifications: {}
+source: "Kaufman et al. (2012), Leakage in data mining, ACM TKDD 6(4): a row identifier carries no pattern, only identity, so a model memorises rows by it."

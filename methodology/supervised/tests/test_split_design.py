@@ -39,7 +39,7 @@ GROUP = (
 )
 
 
-def question(**facts: dict[str, str]) -> QuestionVersion:
+def question(**facts: Any) -> QuestionVersion:
     raw = json.loads((CONTRACT / "question_version/valid/exploration-no-target.json").read_text())
     for key in ("time_column", "entity_column"):
         raw.pop(key, None)
@@ -264,3 +264,59 @@ def test_each_split_gets_its_own_check() -> None:
     results = split_design(two, OPERATORS, question(), [], new_ids(), NOW)
     assert [r.cited_nodes[0].root for r in results] == ["split", "split2"]
     assert len({r.id.root for r in results}) == 2
+
+
+def bound(concept: str, column: str) -> dict[str, Any]:
+    return {
+        "schema_version": "sprisk.binding/v1",
+        "concept": concept,
+        "source": {"column": column},
+        "set_by": {"assurance": "stated"},
+    }
+
+
+@pytest.mark.parametrize(("split", "verdict"), [(GROUP, "pass"), (RANDOM, "fail")])
+def test_a_bound_item_counts_like_a_confirmed_entity_fact(
+    split: tuple[str, dict[str, Any]], verdict: str
+) -> None:
+    asked = question(bindings=[bound("common.item_identity", "patient")])
+    assert check(split, asked).verdict == verdict
+
+
+def test_a_binding_takes_the_place_of_the_fact_for_its_concept() -> None:
+    other = {"entity_column": {"value": "ward", "origin": "confirmed"}}
+    asked = question(**other, bindings=[bound("common.item_identity", "patient")])
+    assert check(GROUP, asked).verdict == "pass"
+
+
+def test_a_split_a_method_made_without_a_fact_points_to_the_methods_promises() -> None:
+    raw = json.loads(
+        (CONTRACT / "methodology_decision/valid/by-method-changes-steps.json").read_text()
+    )
+    by_method = MethodologyDecision.model_validate_json(json.dumps({**raw, "id": DECISION_ID}))
+    by_item = (GROUP[0], {**GROUP[1], "group_column": "item_group"})
+    result = check(by_item, question(), (by_method,), decided=True)
+    assert result.verdict == "not_assessed"
+    assert "item_groups" in result.rationale and "no_group_overlap" in result.rationale
+    assert "freely" not in result.rationale
+
+
+@pytest.mark.parametrize(("split", "verdict"), [(GROUP, "pass"), (RANDOM, "fail")])
+def test_a_split_a_method_made_is_still_judged_when_the_question_binds_the_item(
+    split: tuple[str, dict[str, Any]], verdict: str
+) -> None:
+    raw = json.loads(
+        (CONTRACT / "methodology_decision/valid/by-method-changes-steps.json").read_text()
+    )
+    by_method = MethodologyDecision.model_validate_json(json.dumps({**raw, "id": DECISION_ID}))
+    asked = question(bindings=[bound("common.item_identity", "patient")])
+    assert check(split, asked, (by_method,), decided=True).verdict == verdict
+
+
+def test_a_binding_no_person_stated_or_confirmed_does_not_replace_a_fact() -> None:
+    unasked = {
+        **bound("common.item_identity", "patient"),
+        "set_by": {"assurance": "rule", "method": "methodology.common.repeated_items@1.0.0"},
+    }
+    asked = question(entity_column={"value": "ward", "origin": "confirmed"}, bindings=[unasked])
+    assert check(GROUP, asked).verdict == "fail"

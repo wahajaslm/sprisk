@@ -11,12 +11,12 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, Method,
     MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodRequest, MethodologyDecision,
     MethodologyDecisionByRule, MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId,
-    QuestionVersionId, Report, RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId,
-    WalkStatus, WalkStep, WalkStopReason, parse,
+    QuestionVersion, QuestionVersionId, Report, RunId, RunStatus, Walk, WalkAction, WalkAsk,
+    WalkDetail, WalkId, WalkStatus, WalkStep, WalkStopReason, parse,
 };
 use sprisk_core::time::format;
 use sprisk_methodology::deciding::{
-    Effective, Ready, apply_option, bindings, made_by, ready, reopened_too_late,
+    Basis, Effective, Ready, apply_option, bindings, made_by, ready, reopened_too_late,
 };
 use sprisk_methodology::engine::{
     Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, SHARES_NODE, Start, look_asks,
@@ -406,6 +406,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         &effective,
         &fields,
         &operators,
+        &pipeline,
     )
     .map_err(resolve_error)?;
     if let Some(why) = reopened_too_late(&made, &steps) {
@@ -429,6 +430,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         effective: &effective,
         operators: &operators,
         measured: &fields,
+        question: &question,
     };
     // A method that asks is asked again each round until a person answers: the one list is
     // built from the methods' current asks, never from a stored copy.
@@ -728,6 +730,7 @@ struct Read<'r> {
     effective: &'r Effective,
     operators: &'r [Operator],
     measured: &'r BTreeMap<String, Value>,
+    question: &'r QuestionVersion,
 }
 
 /// Takes `taking`'s option through the same Apply as a rule's (ADR-0064): keyed by the walk
@@ -745,10 +748,13 @@ async fn record_decide(
         taking.method,
         &taking.option,
         taking.assurance,
-        &read.effective.bindings,
-        head,
-        read.operators,
-        read.measured,
+        &Basis {
+            bindings: &read.effective.bindings,
+            pipeline: head,
+            operators: read.operators,
+            measured: read.measured,
+            question: read.question,
+        },
     )
     .map_err(resolve_error)?;
     let decision_id = format!("mdc_{}", ulid::Ulid::new());

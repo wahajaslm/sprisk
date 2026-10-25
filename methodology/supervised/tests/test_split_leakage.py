@@ -396,6 +396,46 @@ def test_a_comparison_whose_test_rows_another_step_reads_is_not_assessed() -> No
     assert [n.root for n in result.cited_nodes] == ["profile_test"]
 
 
+@pytest.mark.parametrize(
+    "producer", ["sprisk.validation.group_overlap@1.0.0", "sprisk.validation.row_overlap@1.0.0"]
+)
+def test_a_step_attached_to_the_split_s_output_measures_the_split_not_a_model(
+    producer: str,
+) -> None:
+    nodes, edges = nodes_edges(cross_validated("split.train"))
+    nodes["overlap"] = producer
+    edges += [("split.train", "overlap.train"), ("split.test", "overlap.test")]
+    result = check(pipeline(nodes, edges))
+    assert result.verdict == Verdict.pass_, result.rationale
+
+
+def test_the_pass_names_the_steps_that_measure_the_split() -> None:
+    nodes, edges = nodes_edges(cross_validated("split.train"))
+    nodes["overlap"] = "sprisk.validation.group_overlap@1.0.0"
+    edges += [("split.train", "overlap.train"), ("split.test", "overlap.test")]
+    result = check(pipeline(nodes, edges))
+    assert "overlap" in [n.root for n in result.cited_nodes]
+    assert "only steps that measure the split read" in result.rationale
+
+
+def test_an_attached_step_that_writes_rows_is_still_a_reader_of_the_test_set() -> None:
+    ops = operators()
+    overlap = ops["sprisk.validation.group_overlap@1.0.0"]
+    rows_out = overlap.model_copy(
+        update={
+            "id": overlap.id.model_copy(update={"root": "acme.test.attached_rows@1.0.0"}),
+            "outputs": [o.model_copy(update={"kind": "table"}) for o in overlap.outputs],
+        }
+    )
+    ops["acme.test.attached_rows@1.0.0"] = rows_out
+    nodes, edges = nodes_edges(cross_validated("split.train"))
+    nodes["attached"] = "acme.test.attached_rows@1.0.0"
+    edges += [("split.train", "attached.train"), ("split.test", "attached.test")]
+    result = split_leakage(pipeline(nodes, edges), ops, CHECK_ID, NOW)
+    assert result.verdict == Verdict.not_assessed
+    assert result.rationale.startswith("attached reads the test set")
+
+
 def test_a_model_on_another_dataset_than_the_split_s_is_not_unsplit() -> None:
     nodes, edges = nodes_edges(cross_validated("split.train"))
     nodes |= {"other": SOURCE, "model": LINEAR}

@@ -337,6 +337,24 @@ fn an_all_rows_diagnostic_reading_a_label_is_refused() {
     );
 }
 
+#[test]
+fn an_all_rows_diagnostic_may_name_the_label_as_a_column_it_drops() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        NEAR_DUPLICATES,
+        "common.item_title",
+        "common.target",
+    );
+    edit(
+        pack.path(),
+        NEAR_DUPLICATES,
+        "x-sprisk-column: true,",
+        "x-sprisk-column: true, x-sprisk-excluded: true,",
+    );
+    load(pack.path()).unwrap();
+}
+
 const GROUP_OVERLAP: &str = "operators/group_overlap/manifest.yaml";
 
 /// The fixture with the group overlap producer reading the target instead of the item.
@@ -642,6 +660,56 @@ fn an_insert_setting_a_param_its_operator_lacks_is_refused() {
     );
     assert!(
         refused(pack.path()).contains("sprisk.clean.clean_text@1.0.0 has no param upper"),
+        "{}",
+        refused(pack.path())
+    );
+}
+
+/// The repeated-items fixture with an option that sets the model's costs from the question.
+fn setting_costs(needs_statements: &str) -> TempDir {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        REPEATED,
+        "  decisions: []",
+        &format!("  decisions: []\n{needs_statements}"),
+    );
+    edit(
+        pack.path(),
+        REPEATED,
+        "  - id: independent_rows\n",
+        "  - id: independent_rows\n    action: { set: { role: model, from_statements: { costs: costs } } }\n",
+    );
+    pack
+}
+
+#[test]
+fn an_option_setting_a_step_from_a_statement_the_method_needs_loads() {
+    let pack = setting_costs("  statements: [costs]");
+    load(pack.path()).unwrap();
+}
+
+#[test]
+fn an_option_setting_from_a_statement_the_method_does_not_need_is_refused() {
+    let pack = setting_costs("");
+    assert!(
+        refused(pack.path()).contains("sets costs from costs, which the method does not need"),
+        "{}",
+        refused(pack.path())
+    );
+}
+
+#[test]
+fn an_option_setting_a_param_some_operator_of_the_role_lacks_is_refused() {
+    let pack = setting_costs("  statements: [costs]");
+    edit(
+        pack.path(),
+        REPEATED,
+        "from_statements: { costs: costs }",
+        "from_statements: { price: costs }",
+    );
+    assert!(
+        refused(pack.path()).contains("has no param price"),
         "{}",
         refused(pack.path())
     );
