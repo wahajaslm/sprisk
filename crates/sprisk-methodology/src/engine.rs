@@ -3,12 +3,12 @@
 
 use serde_json::{Value, json};
 use sprisk_contracts::{
-    Edge, MethodologyReview, MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule, Node,
-    Origin, PipelineVersion, QuestionVersion, RuleActionType, TaskType, WalkAsk, WalkStopReason,
-    parse,
+    Edge, MethodologyReview, MethodologyReviewItem, MethodologyReviewStatus, MethodologyRule,
+    MethodologyRuleSelection, Node, Origin, PipelineVersion, QuestionVersion, RuleActionType,
+    TaskType, WalkAsk, WalkStopReason, parse,
 };
 
-use crate::{CatalogError, Defaults, ResolveError, RuleCatalog, compare::SEED};
+use crate::{CatalogError, Defaults, ResolveError, RuleCatalog, compare::SEED, facts};
 
 /// The share of rows the first split holds out. The split rule may change it.
 const TEST_FRACTION: f64 = 0.2;
@@ -245,6 +245,7 @@ pub enum Action<'r> {
     Compare {
         item: &'r MethodologyReviewItem,
         subject: &'r str,
+        reason: String,
     },
     /// Run the head: `reason` is the first rule that measures rows it has not produced.
     Run { reason: String },
@@ -309,14 +310,29 @@ pub fn next_action<'r>(
                         compare.get_or_insert(Action::Compare {
                             item,
                             subject: subject.as_str(),
+                            reason: item.reason.to_string(),
                         });
                     }
                 }
             }
-            MethodologyReviewStatus::NeedsRun if head == HeadRun::NotRun => {
-                run.get_or_insert_with(|| describe(item));
-            }
-            MethodologyReviewStatus::NeedsRun => unrun.push(describe(item)),
+            MethodologyReviewStatus::NeedsRun => match stale_shortlist(review, item, rules)? {
+                // A run never gives cross-validation results: the step changed after its models
+                // were compared, so its shortlist is compared again. A failed run is named first.
+                Some((shortlist, subject)) if head != HeadRun::Failed => {
+                    compare.get_or_insert(Action::Compare {
+                        item: shortlist,
+                        subject,
+                        reason: format!(
+                            "The flow changed after its models were compared: {}",
+                            describe(item)
+                        ),
+                    });
+                }
+                _ if head == HeadRun::NotRun => {
+                    run.get_or_insert_with(|| describe(item));
+                }
+                _ => unrun.push(describe(item)),
+            },
             MethodologyReviewStatus::NeedsFact => asks.push(describe(item)),
             // A stage the results reopen: no engine action yet.
             _ => uncovered.push(describe(item)),
@@ -425,6 +441,32 @@ pub fn unconfirmed_reads(
         .filter(|name| facts.get(*name).and_then(|f| f.get("origin")) == Some(&json!("inferred")))
         .map(|name| format!("question.{name}"))
         .collect())
+}
+
+/// The settled shortlist item of `waiting`'s step, and that step, when `waiting` reads
+/// cross-validation results: the comparison it would read scored the flow before a later change.
+fn stale_shortlist<'r>(
+    review: &'r MethodologyReview,
+    waiting: &MethodologyReviewItem,
+    rules: &RuleCatalog,
+) -> Result<Option<(&'r MethodologyReviewItem, &'r str)>, CatalogError> {
+    let reads = &rules.rule(waiting.rule.as_str())?.reads;
+    if !facts::needs_results(reads.iter().map(|r| r.as_str())) {
+        return Ok(None);
+    }
+    for item in &review.items {
+        let Some(subject) = &item.subject_node_id else {
+            continue;
+        };
+        if item.status == MethodologyReviewStatus::Settled
+            && waiting.subject_node_id.as_ref() == Some(subject)
+            && rules.rule(item.rule.as_str())?.selection
+                == Some(MethodologyRuleSelection::Shortlist)
+        {
+            return Ok(Some((item, subject.as_str())));
+        }
+    }
+    Ok(None)
 }
 
 /// Whether the item's recommended route reports a limit the engine cannot go past.

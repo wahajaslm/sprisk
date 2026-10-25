@@ -238,7 +238,7 @@ fn a_rule_that_leaves_the_choice_open_is_compared_after_changes_and_runs() {
     let only = review(vec![shortlist.clone()]);
     let action = next_action(&only, &asked, HeadRun::Succeeded, &catalog).unwrap();
     assert!(
-        matches!(action, Action::Compare { subject: "split", item } if item.decides.as_str() == "modeling.estimator_selection"),
+        matches!(action, Action::Compare { subject: "split", item, .. } if item.decides.as_str() == "modeling.estimator_selection"),
         "a shortlist is compared: {action:?}"
     );
     let with_change = review(vec![shortlist.clone(), split]);
@@ -258,6 +258,74 @@ fn a_rule_that_leaves_the_choice_open_is_compared_after_changes_and_runs() {
     assert!(
         matches!(action, Action::Run { .. }),
         "the flow is run before a comparison: {action:?}"
+    );
+}
+
+/// A step added after the choice (scaling before a linear winner) leaves the loop-back rule
+/// waiting for results a run never gives: the step's shortlist is compared again.
+#[test]
+fn a_rule_waiting_for_results_of_a_changed_flow_compares_the_shortlist_again() {
+    let review = review(vec![
+        item(SHORTLIST, "modeling.estimator_selection", "settled", None),
+        item(LOOP_BACK, "evaluation.loop_back", "needs_run", None),
+    ]);
+    for head in [HeadRun::NotRun, HeadRun::Succeeded] {
+        let action = next_action(&review, &question(barred()), head, &catalog()).unwrap();
+        let Action::Compare {
+            item,
+            subject,
+            reason,
+        } = action
+        else {
+            panic!("expected a comparison, got {action:?}");
+        };
+        assert_eq!(item.decides.as_str(), "modeling.estimator_selection");
+        assert_eq!(subject, "split");
+        assert!(reason.contains("evaluation.loop_back"), "{reason}");
+    }
+    let (reason, _) =
+        stop(next_action(&review, &question(barred()), HeadRun::Failed, &catalog()).unwrap());
+    assert_eq!(
+        reason,
+        WalkStopReason::RunFailed,
+        "a failed run is named first"
+    );
+}
+
+#[test]
+fn only_a_rule_reading_results_of_a_compared_step_compares_it_again() {
+    let settled = item(SHORTLIST, "modeling.estimator_selection", "settled", None);
+    let rows = item(DUPLICATES, "data.exact_duplicates", "needs_run", None);
+    let review_rows = review(vec![settled.clone(), rows]);
+    let action = next_action(
+        &review_rows,
+        &question(barred()),
+        HeadRun::NotRun,
+        &catalog(),
+    )
+    .unwrap();
+    assert!(
+        matches!(action, Action::Run { .. }),
+        "rows come from a run: {action:?}"
+    );
+
+    let mut elsewhere = settled;
+    elsewhere["subject_node_id"] = json!("other_model");
+    let loop_back = item(LOOP_BACK, "evaluation.loop_back", "needs_run", None);
+    let review_other = review(vec![elsewhere, loop_back]);
+    let (reason, _) = stop(
+        next_action(
+            &review_other,
+            &question(barred()),
+            HeadRun::Succeeded,
+            &catalog(),
+        )
+        .unwrap(),
+    );
+    assert_eq!(
+        reason,
+        WalkStopReason::Uncovered,
+        "no shortlist on its step"
     );
 }
 

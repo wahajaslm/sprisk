@@ -501,8 +501,17 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             };
             apply(state, walk, round, applying).await
         }
-        Action::Compare { item, subject } => {
-            compare(state, walk, round, &head, deadline, item, subject).await
+        Action::Compare {
+            item,
+            subject,
+            reason,
+        } => {
+            let comparing = Comparing {
+                item,
+                subject,
+                reason: &reason,
+            };
+            compare(state, walk, round, &head, deadline, comparing).await
         }
         Action::Run { reason } => run(state, walk, round, &head, deadline, &reason).await,
         Action::Stop {
@@ -1241,6 +1250,13 @@ async fn changed_source(walk: &Walk) -> Result<Option<String>, ApiError> {
     Ok(None)
 }
 
+/// What a comparison compares, on which step, and why.
+struct Comparing<'a> {
+    item: &'a MethodologyReviewItem,
+    subject: &'a str,
+    reason: &'a str,
+}
+
 /// A rule's recommended alternative the walk applies, and the proposal it comes from.
 struct Applying<'a> {
     proposal: &'a DecisionProposal,
@@ -1334,8 +1350,11 @@ async fn compare(
     round: usize,
     head: &PipelineVersionId,
     deadline: jiff::Timestamp,
-    item: &MethodologyReviewItem,
-    subject: &str,
+    Comparing {
+        item,
+        subject,
+        reason,
+    }: Comparing<'_>,
 ) -> Result<WalkStatus, ApiError> {
     // A new comparison is a new look at the folds; past the cap, more looks would fit them.
     let fresh = state
@@ -1381,7 +1400,6 @@ async fn compare(
             "pipeline_version_id": head, "rule": item.rule, "decides": item.decides,
             "subject_node_id": subject, "run_id": run_id,
         });
-        let reason = item.reason.as_str();
         let step = step(
             state,
             walk.id.as_str(),

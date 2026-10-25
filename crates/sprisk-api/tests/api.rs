@@ -7043,6 +7043,43 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
     );
 }
 
+/// A person who must follow each prediction: the shortlist leaves forests off, the linear model
+/// wins, and only then does the scaling rule add a Scale step before it. The comparison scored
+/// the flow without it, so the walk compares again before the loop-back rule judges the model.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_step_added_after_the_model_is_chosen_leads_to_a_new_comparison() {
+    let api = api().await;
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
+    q["target"]["value"] = json!("outcome");
+    q["interpretability"] = json!({ "value": "high", "origin": "explicit" });
+    q["costs"] = json!({ "value": { "positive": "responds", "false_negative": 1.0, "false_positive": 1.0 },
+                         "origin": "explicit" });
+    q["success_bar"] =
+        json!({ "value": { "metric": "expected_cost", "score": 0.2 }, "origin": "explicit" });
+    let facts = q.as_object_mut().unwrap();
+    for gone in ["time_column", "entity_column", "prediction_horizon"] {
+        facts.remove(gone);
+    }
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-rescaled")).await;
+
+    let trail = trail(&detail);
+    let at = |step: &str| trail.iter().position(|s| s.starts_with(step));
+    let chosen = at("apply modeling.estimator_selection ml_linear_model")
+        .unwrap_or_else(|| panic!("the linear model wins: {detail}"));
+    let scaled = at("apply features.scaling_strategy insert_")
+        .unwrap_or_else(|| panic!("a Scale step is added before it: {detail}"));
+    assert!(chosen < scaled, "{detail}");
+    let compared_again = trail[scaled..]
+        .iter()
+        .any(|s| s == "compare modeling.estimator_selection");
+    assert!(compared_again, "the scaled flow is compared: {detail}");
+    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+}
+
 /// The same question on rows where `outcome` does not depend on anything a model sees.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_walk_where_no_model_beats_the_baseline_stops_and_says_so() {
