@@ -2217,11 +2217,6 @@ async fn clustering_methodology_is_resolved_previewed_and_applied_once() {
     );
 }
 
-/// load -> split -> scale on a table whose `age` has one far outlier.
-async fn scaling_flow(api: &Api) {
-    scaling_flow_into(api, &[], &[]).await;
-}
-
 /// The scaling flow with `nodes` and `edges` added after the scale step.
 async fn scaling_flow_into(api: &Api, extra_nodes: &[Value], extra_edges: &[Value]) {
     scaling_flow_barred(api, extra_nodes, extra_edges, "balanced_accuracy").await;
@@ -2281,147 +2276,25 @@ async fn scaling_flow_barred(
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
-async fn propose_scaling(api: &Api) -> (StatusCode, Value) {
-    call(
-        &api.app,
-        "POST",
-        "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/scale",
-        Some(json!({})),
-    )
-    .await
-}
-
 #[tokio::test]
 async fn a_data_rule_asks_for_a_run_before_it_can_measure_the_train_rows() {
     let api = api().await;
-    scaling_flow(&api).await;
+    let model = json!({
+        "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
+        "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}
+    });
+    scaling_flow_into(
+        &api,
+        &[model],
+        &[json!({"from":"scale.train","to":"model.train"})],
+    )
+    .await;
 
-    let (status, body) = propose_scaling(&api).await;
+    let (status, body) = propose_model(&api).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(
         body["errors"][0]["code"],
         "methodology_evidence_unavailable"
-    );
-}
-
-#[tokio::test]
-async fn scaling_is_decided_from_the_profile_of_the_steps_train_rows() {
-    let api = api().await;
-    scaling_flow(&api).await;
-    let (run, _) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-
-    let (status, proposal) = propose_scaling(&api).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(
-        proposal["rule"],
-        "methodology.supervised.feature_scaling@4.0.0"
-    );
-    assert_eq!(proposal["recommended_alternative_id"], "robust_scaling");
-    let robust = proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["id"] == "robust_scaling")
-        .unwrap();
-    assert_eq!(robust["effect"]["params"]["method"], "robust");
-    assert!(
-        proposal["evidence"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|e| e["label"] == "age outlier share" && e["origin"] == "measured"),
-        "{proposal}"
-    );
-}
-
-#[tokio::test]
-async fn a_scale_step_feeding_a_random_forest_is_told_trees_need_no_scaling() {
-    let api = api().await;
-    let forest = json!({
-        "id":"rf", "operator":"sprisk.ml.random_forest@3.0.0",
-        "params":{"target":"returned_within_30d","features":["age"],"task":"classification","seed":0}
-    });
-    scaling_flow_into(
-        &api,
-        &[forest],
-        &[json!({"from":"scale.train","to":"rf.train"})],
-    )
-    .await;
-    let (run, _) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-
-    let (status, proposal) = propose_scaling(&api).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["recommended_alternative_id"], "no_scaling");
-    assert!(
-        proposal["evidence"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|e| e["kind"] == "flow_fact" && e["value"] == "tree_ensemble"),
-        "{proposal}"
-    );
-
-    // Applying it takes the scale step out: the forest reads the split's train rows.
-    let uri = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let request =
-        json!({ "alternative_id": "no_scaling", "idempotency_key": "test-apply-no-scaling" });
-    let (status, applied) = call(&api.app, "POST", &uri, Some(request)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    let pipeline = &applied["pipeline"];
-    assert!(
-        pipeline["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|n| n["id"] != "scale"),
-        "{pipeline}"
-    );
-    assert!(
-        pipeline["edges"]
-            .as_array()
-            .unwrap()
-            .contains(&json!({"from":"split.train","to":"rf.train"})),
-        "{pipeline}"
-    );
-}
-
-#[tokio::test]
-async fn a_zero_fill_between_the_scale_step_and_the_model_keeps_scaling_in_play() {
-    let api = api().await;
-    // Zero means another value once scaled, so the model's own standardising cannot undo it.
-    let nodes = [
-        json!({"id":"fill", "operator":"sprisk.clean.impute@1.0.0",
-               "params":{"columns":["age"],"method":"zero"}}),
-        json!({"id":"lin", "operator":"sprisk.ml.linear_model@3.0.0",
-               "params":{"target":"returned_within_30d","features":["age"],"task":"classification"}}),
-    ];
-    let edges = [
-        json!({"from":"scale.train","to":"fill.train"}),
-        json!({"from":"scale.test","to":"fill.test"}),
-        json!({"from":"fill.train","to":"lin.train"}),
-    ];
-    scaling_flow_into(&api, &nodes, &edges).await;
-    let (run, _) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-
-    let (status, proposal) = propose_scaling(&api).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["recommended_alternative_id"], "robust_scaling");
-    assert!(
-        proposal["evidence"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(
-                |e| e["label"] == "Models downstream behind a step the rules cannot see"
-                    && e["value"] == "all"
-            ),
-        "{proposal}"
     );
 }
 
@@ -2556,7 +2429,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 46);
+    assert_eq!(rules.len(), 40);
     // The words people read go with each rule (ADR-0045 amendment).
     let clustering = rules
         .iter()
@@ -2630,17 +2503,14 @@ async fn a_data_rule_refuses_train_rows_that_did_not_come_from_a_split() {
     let mut flow = pipeline(&api.csv);
     flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
     flow["nodes"].as_array_mut().unwrap().push(json!({
-        "id":"scale", "operator":"sprisk.clean.scale@1.0.0",
-        "params":{"columns":["x"],"method":"z_score"}
+        "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
+        "params":{"target":"y","features":["x"],"task":"classification"}
     }));
-    flow["edges"] = json!([
-        {"from":"load.data","to":"scale.train"},
-        {"from":"load.data","to":"scale.test"}
-    ]);
+    flow["edges"] = json!([{"from":"load.data","to":"model.train"}]);
     let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    let (status, body) = propose_scaling(&api).await;
+    let (status, body) = propose_model(&api).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(
         body["errors"][0]["code"],
@@ -2882,10 +2752,7 @@ async fn a_comparison_is_built_only_by_compare_and_never_edited_by_a_rule() {
 #[tokio::test]
 async fn only_a_shortlist_proposal_can_be_compared() {
     let api = api().await;
-    scaling_flow(&api).await;
-    run_to_end(&api).await;
-    let (status, proposal) = propose_scaling(&api).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
+    let proposal = cluster_proposal(&api).await;
 
     let (status, body) = compare(&api, &proposal).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
@@ -3298,136 +3165,6 @@ async fn two_requests_at_once_share_one_model_selection_and_one_run() {
     assert_eq!(comparisons, 1, "{versions}");
 }
 
-#[tokio::test]
-async fn sprisk_compares_a_preparation_step_by_itself_once_per_version() {
-    let api = api().await;
-    learnable_model_flow(&api).await;
-
-    let (status, selection) = select_model(&api, "scale").await;
-    assert_eq!(status, StatusCode::CREATED, "{selection}");
-    // The linear model takes its inputs as they are and age has light tails (ADR-0056).
-    assert_eq!(
-        selection["proposal"]["recommended_alternative_id"],
-        "standard_scaling"
-    );
-    let select = selection["comparison"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|n| n["id"] == "select_model")
-        .unwrap();
-    assert_eq!(select["params"]["baseline"], "standard_scaling", "{select}");
-    assert_eq!(select["params"]["baseline_role"], "reference");
-
-    let (status, again) = select_model(&api, "scale").await;
-    assert_eq!(status, StatusCode::OK, "{again}");
-    for part in ["proposal", "comparison", "run"] {
-        assert_eq!(again[part]["id"], selection[part]["id"], "{part}");
-    }
-
-    let (run, attempts) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-    let decision = output(&api, &attempts, "select_model", "decision").await;
-    // Ages this easy to separate leave no other choice room to score better.
-    assert_eq!(decision["winner"], "standard_scaling", "{decision}");
-    assert_eq!(decision["baseline_role"], "reference");
-    assert!(
-        decision["reason"]
-            .as_str()
-            .unwrap()
-            .ends_with("standard_scaling stands."),
-        "{decision}"
-    );
-}
-
-#[tokio::test]
-async fn a_preparation_choice_other_than_the_comparisons_needs_a_reason_and_each_is_a_branch() {
-    let api = api().await;
-    learnable_model_flow(&api).await;
-    let (_, selection) = select_model(&api, "scale").await;
-    let (run, _) = wait_run(&api, selection["run"]["id"].as_str().unwrap()).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-    let uri = format!(
-        "/methodology_proposals/{}/apply",
-        selection["proposal"]["id"].as_str().unwrap()
-    );
-
-    let other =
-        json!({ "alternative_id": "robust_scaling", "idempotency_key": "test-prep-robust" });
-    let (status, body) = call(&api.app, "POST", &uri, Some(other)).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "reason_required");
-    assert!(
-        body["errors"][0]["message"]
-            .as_str()
-            .unwrap()
-            .contains("it is not the comparison's recommendation, standard_scaling"),
-        "{body}"
-    );
-
-    let winner =
-        json!({ "alternative_id": "standard_scaling", "idempotency_key": "test-prep-standard" });
-    let (status, standard) = call(&api.app, "POST", &uri, Some(winner)).await;
-    assert_eq!(status, StatusCode::CREATED, "{standard}");
-    assert!(
-        standard["decision"].get("selection_id").is_some(),
-        "{standard}"
-    );
-    let scale = standard["pipeline"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|n| n["id"] == "scale")
-        .unwrap();
-    assert_eq!(scale["params"]["method"], "z_score", "{scale}");
-
-    // A second choice from the same comparison is another branch, not a stale proposal.
-    let other = json!({ "alternative_id": "robust_scaling", "idempotency_key": "test-prep-robust-2",
-                        "reason": "To keep the scaled values for a later step." });
-    let (status, robust) = call(&api.app, "POST", &uri, Some(other)).await;
-    assert_eq!(status, StatusCode::CREATED, "{robust}");
-    assert_eq!(
-        robust["pipeline"]["parent_id"],
-        standard["pipeline"]["parent_id"]
-    );
-}
-
-#[tokio::test]
-async fn two_requests_at_once_share_one_preparation_comparison_and_one_run() {
-    let api = api().await;
-    learnable_model_flow(&api).await;
-
-    let ((one, first), (two, second)) =
-        tokio::join!(select_model(&api, "scale"), select_model(&api, "scale"));
-
-    assert!(one.is_success() && two.is_success(), "{first} {second}");
-    for part in ["proposal", "comparison", "run"] {
-        assert_eq!(first[part]["id"], second[part]["id"], "{part}");
-    }
-    let comparison = first["comparison"]["id"].as_str().unwrap();
-    let (_, runs) = call(
-        &api.app,
-        "GET",
-        &format!("/runs?pipeline_version_id={comparison}"),
-        None,
-    )
-    .await;
-    assert_eq!(runs.as_array().unwrap().len(), 1, "{runs}");
-}
-
-#[tokio::test]
-async fn a_preparation_step_with_nothing_to_compare_says_so() {
-    let api = api().await;
-    // No model after the scale step: there is nothing to measure its choices with.
-    scaling_flow_into(&api, &[], &[]).await;
-    let (run, _) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
-
-    let (status, body) = select_model(&api, "scale").await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "nothing_to_compare", "{body}");
-}
-
 /// The clustering rule's proposal on a flow that loads and clusters: four alternatives,
 /// k-means recommended.
 async fn cluster_proposal(api: &Api) -> Value {
@@ -3532,277 +3269,6 @@ async fn two_applies_at_once_with_one_key_and_different_choices_make_one_decisio
     );
     let (_, decisions) = call(&api.app, "GET", "/methodology_decisions", None).await;
     assert_eq!(decisions.as_array().unwrap().len(), 1, "{decisions}");
-}
-
-/// The cell values of column `name` in a table artifact, as display text; None where missing.
-async fn column(api: &Api, artifact: &str, name: &str) -> Vec<Option<String>> {
-    let (status, page) = call(
-        &api.app,
-        "GET",
-        &format!("/artifacts/{artifact}/rows"),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{page}");
-    assert_eq!(
-        page["total_rows"].as_u64().unwrap() as usize,
-        page["rows"].as_array().unwrap().len(),
-        "the table must fit one page"
-    );
-    let at = page["columns"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .position(|c| c["name"] == name)
-        .unwrap();
-    page["rows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|row| {
-            let missing = row["missing"].as_array().unwrap().contains(&json!(at));
-            (!missing).then(|| row["values"][at].as_str().unwrap().to_owned())
-        })
-        .collect()
-}
-
-/// Rows with a skewed x, its mean far from its median, that has a gap in every fifth row; and
-/// a flow that loads, splits and fills `columns` with the train mean. `y_gap` says which rows
-/// lack the target.
-async fn gappy_flow(api: &Api, columns: &[&str], y_gap: impl Fn(usize) -> bool) {
-    let mut csv = String::from("x,y\n");
-    for i in 0..40 {
-        let x = if i % 5 == 0 {
-            String::new()
-        } else if i % 10 == 3 {
-            "1000".into()
-        } else {
-            (i % 7).to_string()
-        };
-        let y = if y_gap(i) {
-            String::new()
-        } else {
-            (i % 2).to_string()
-        };
-        csv.push_str(&format!("{x},{y}\n"));
-    }
-    std::fs::write(&api.csv, csv).unwrap();
-    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let facts = q.as_object_mut().unwrap();
-    facts.remove("time_column");
-    facts.remove("entity_column");
-    facts.insert(
-        "target".into(),
-        json!({"value": "y", "origin": "confirmed"}),
-    );
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    let nodes = flow["nodes"].as_array_mut().unwrap();
-    nodes.push(
-        json!({ "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
-                       "params": { "test_fraction": 0.25, "seed": 42 } }),
-    );
-    nodes.push(
-        json!({ "id": "impute", "operator": "sprisk.clean.impute@1.0.0",
-                       "params": { "columns": columns, "method": "mean" } }),
-    );
-    flow["edges"] = json!([
-        { "from": "load.data", "to": "split.data" },
-        { "from": "split.train", "to": "impute.train" },
-        { "from": "split.test", "to": "impute.test" }
-    ]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-}
-
-#[tokio::test]
-async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_applied_decision() {
-    // Arch doc §21.2: data -> train-row profile -> missingness finding -> median alternative ->
-    // graph diff -> Apply -> fold-local fit -> check -> result.
-    let api = api().await;
-    gappy_flow(&api, &["x"], |_| false).await;
-    let (run, attempts) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
-
-    // The rule measures the train rows the split gives the step, and finds them skewed.
-    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/impute";
-    let (status, proposal) = call(&api.app, "POST", uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["rule"], "methodology.supervised.missingness@4.0.0");
-    assert_eq!(
-        proposal["recommended_alternative_id"], "impute_median",
-        "{proposal}"
-    );
-    // Dropping rows reads one table, not train and test, so it cannot take this step's place.
-    let drop = proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["id"] == "drop_rows")
-        .unwrap();
-    assert_eq!(drop["applicability"], "not_applicable", "{drop}");
-    assert!(drop.get("effect").is_none(), "{drop}");
-    assert!(
-        drop["reason"]
-            .as_str()
-            .unwrap()
-            .starts_with("Applied to step impute, the flow would not compile: "),
-        "{drop}"
-    );
-    let evidence = proposal["evidence"].to_string();
-    assert!(evidence.contains("x missing share"), "{evidence}");
-    // The preview: the effect Apply would make, and nothing else.
-    let median = proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["id"] == "impute_median")
-        .unwrap();
-    assert_eq!(
-        median["effect"],
-        json!({ "kind": "replace_node", "node_id": "impute", "operator": "sprisk.clean.impute@1.0.0",
-                "params": { "columns": ["x"], "method": "median" } })
-    );
-
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let drop = json!({ "alternative_id": "drop_rows", "idempotency_key": "test-slice-drop",
-                       "reason": "Fewer rows are fine." });
-    let (status, body) = call(&api.app, "POST", &apply, Some(drop)).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "alternative_not_applicable");
-    let request =
-        json!({ "alternative_id": "impute_median", "idempotency_key": "test-slice-median" });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(request.clone())).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    let (status, again) = call(&api.app, "POST", &apply, Some(request)).await;
-    assert_eq!(status, StatusCode::OK, "{again}");
-    assert_eq!(again, applied, "Apply changes the graph exactly once");
-    let version = applied["pipeline"]["id"].as_str().unwrap();
-    assert_eq!(
-        applied["pipeline"]["parent_id"],
-        "plv_01JABCDEFGHJKMNPQRSTVWXYZ0"
-    );
-    let step = &applied["pipeline"]["nodes"][2];
-    assert_eq!(step["params"]["method"], "median");
-    assert_eq!(step["methodology_decision_id"], applied["decision"]["id"]);
-
-    // Then the model and its evaluation join the flow, as an edit of the applied version.
-    // Every model here fills gaps itself, so the rule asked before they were added.
-    let mut edited = applied["pipeline"].clone();
-    edited["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
-    edited["parent_id"] = json!(version);
-    let nodes = edited["nodes"].as_array_mut().unwrap();
-    nodes.push(
-        json!({ "id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
-                       "params": { "target": "y", "features": ["x"], "task": "classification" } }),
-    );
-    nodes.push(
-        json!({ "id": "eval", "operator": "sprisk.ml.evaluate@2.1.0",
-                       "params": { "target": "y", "task": "classification" } }),
-    );
-    let edges = edited["edges"].as_array_mut().unwrap();
-    edges.push(json!({ "from": "impute.train", "to": "model.train" }));
-    edges.push(json!({ "from": "model.model", "to": "eval.model" }));
-    edges.push(json!({ "from": "impute.test", "to": "eval.test" }));
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(edited)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let (run, attempts) = run_version(&api, "plv_01JABCDEFGHJKMNPQRSTVWXYZ5").await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
-
-    // Fold-local fit: every test gap holds the median of the train rows, not of all rows.
-    let train = column(
-        &api,
-        &output_artifact(&api, &attempts, "split", "train").await,
-        "x",
-    )
-    .await;
-    let mut seen: Vec<f64> = train.iter().flatten().map(|v| v.parse().unwrap()).collect();
-    seen.sort_by(f64::total_cmp);
-    let n = seen.len();
-    let train_median = if n % 2 == 1 {
-        seen[n / 2]
-    } else {
-        (seen[n / 2 - 1] + seen[n / 2]) / 2.0
-    };
-    let before = column(
-        &api,
-        &output_artifact(&api, &attempts, "split", "test").await,
-        "x",
-    )
-    .await;
-    let after = column(
-        &api,
-        &output_artifact(&api, &attempts, "impute", "test").await,
-        "x",
-    )
-    .await;
-    let filled: Vec<f64> = before
-        .iter()
-        .zip(&after)
-        .filter(|(b, _)| b.is_none())
-        .map(|(_, a)| a.as_ref().expect("a test gap was left").parse().unwrap())
-        .collect();
-    assert!(!filled.is_empty(), "the test rows have no gap to fill");
-    assert!(
-        filled.iter().all(|v| *v == train_median),
-        "{filled:?} vs {train_median}"
-    );
-
-    // The check: Gate B passes the flow's fits as train-only.
-    let checks = output(&api, &attempts, "gate_b", "checks").await;
-    let leakage = checks
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|c| c["check"].as_str().unwrap().contains("split_leakage"))
-        .unwrap_or_else(|| panic!("no split leakage check: {checks}"));
-    assert_eq!(leakage["verdict"], "pass", "{leakage}");
-    assert_eq!(
-        leakage["pipeline_version_id"],
-        "plv_01JABCDEFGHJKMNPQRSTVWXYZ5"
-    );
-
-    // The result: the model scored once on the test rows, which the median fill reached.
-    let metrics = output(&api, &attempts, "eval", "metrics").await;
-    assert!(metrics["balanced_accuracy"].is_number(), "{metrics}");
-
-    // The record: the decision is listed with the version it made.
-    let (_, decisions) = call(
-        &api.app,
-        "GET",
-        &format!("/methodology_decisions?pipeline_version_id={version}"),
-        None,
-    )
-    .await;
-    assert_eq!(
-        decisions[0]["alternative_id"], "impute_median",
-        "{decisions}"
-    );
-}
-
-#[tokio::test]
-async fn a_rule_pick_that_cannot_take_the_step_s_place_is_no_proposal() {
-    // A target with gaps means dropping rows, which reads one table, not train and test.
-    let api = api().await;
-    gappy_flow(&api, &["x", "y"], |i| i % 9 == 4).await;
-    let (run, attempts) = run_to_end(&api).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
-
-    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ0/methodology/proposals/impute";
-    let (status, body) = call(&api.app, "POST", uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert_eq!(body["errors"][0]["code"], "methodology_not_applicable");
-    assert!(
-        body["errors"][0]["message"].as_str().unwrap().starts_with(
-            "the rule picks drop_rows, but Applied to step impute, the flow would not compile"
-        ),
-        "{body}"
-    );
 }
 
 const BASE: &str = "plv_01JABCDEFGHJKMNPQRSTVWXYZ0";
@@ -4451,93 +3917,6 @@ async fn german_credit_flow(api: &Api) {
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
-/// ADR-0057: from Load, Split and a forest alone, the encoding rule adds the Encode step the
-/// forest needs. Every German credit text column has at most 10 categories, so all 13 are
-/// one-hot encoded on the train rows, and the forest and its evaluation read them.
-#[tokio::test(flavor = "multi_thread")]
-async fn the_encoding_rule_adds_the_encode_step_a_model_needs() {
-    let api = api().await;
-    german_credit_question(&api).await;
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    let nodes = flow["nodes"].as_array_mut().unwrap();
-    nodes.push(json!({
-        "id":"split", "operator":"sprisk.validation.random_split@1.0.0",
-        "params":{"test_fraction":0.25,"seed":42,"stratify":"credit_risk"}
-    }));
-    nodes.push(json!({
-        "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
-        "params":{"target":"credit_risk","task":"classification","n_estimators":50}
-    }));
-    nodes.push(json!({
-        "id":"score", "operator":"sprisk.ml.evaluate@2.1.0",
-        "params":{"target":"credit_risk","task":"classification"}
-    }));
-    flow["edges"] = json!([
-        {"from":"load.data","to":"split.data"},
-        {"from":"split.train","to":"model.train"},
-        {"from":"model.model","to":"score.model"},
-        {"from":"split.test","to":"score.test"}
-    ]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let (run, _) = run_version(&api, BASE).await;
-    assert_eq!(run["status"], "failed", "the forest refuses text: {run}");
-
-    let uri =
-        format!("/pipeline_versions/{BASE}/methodology/proposals/model/features.encoding_strategy");
-    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    assert_eq!(proposal["recommended_alternative_id"], "one_hot_encoding");
-    let one_hot = proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["id"] == "one_hot_encoding")
-        .unwrap();
-    assert_eq!(one_hot["effect"]["kind"], "insert_node", "{one_hot}");
-    assert_eq!(
-        one_hot["effect"]["params"]["columns"]
-            .as_array()
-            .unwrap()
-            .len(),
-        13,
-        "{one_hot}"
-    );
-
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice =
-        json!({ "alternative_id": "one_hot_encoding", "idempotency_key": "credit-encode-0001" });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    let edges = applied["pipeline"]["edges"].as_array().unwrap();
-    for (from, to) in [
-        ("split.train", "categories.train"),
-        ("split.test", "categories.test"),
-        ("categories.train", "model.train"),
-        ("categories.test", "score.test"),
-    ] {
-        assert!(
-            edges.iter().any(|e| e["from"] == from && e["to"] == to),
-            "{from} -> {to}: {applied}"
-        );
-    }
-    let version = applied["pipeline"]["id"].as_str().unwrap().to_owned();
-    let (run, attempts) = run_version(&api, &version).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
-    let checks = output(&api, &attempts, "gate_b", "checks").await;
-    let leakage = checks
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|c| c["check"] == "supervised.split_leakage@1.0.0")
-        .unwrap_or_else(|| panic!("{checks}"));
-    assert_eq!(leakage["verdict"], "pass", "{leakage}");
-}
-
 /// Gap 11's German credit case (ADR-0052, ADR-0053). A person puts the question's costs on
 /// the model step. A study then tunes the forest by random
 /// search and compares every model by expected cost on the train rows only. The test checks
@@ -4874,14 +4253,6 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
     let expected: Vec<(String, String)> = [
         // The question, the data before the split and the split are methods' decisions, made
         // in the walk's look (ADR-0063); the Objective page asks what the question must say.
-        ("cleaning.outlier_strategy", "no_subject"),
-        ("features.scaling_strategy", "no_subject"),
-        // The rules shaping the model's inputs, in INPUT_SHAPE order: rare categories, gaps
-        // filled, encoding.
-        ("features.rare_categories", "needs_run"),
-        ("cleaning.missingness_strategy", "waiting"),
-        ("features.encoding_strategy", "waiting"),
-        ("features.skew_transform", "no_subject"),
         ("modeling.estimator_selection", "needs_run"),
         // It reads the model selection's results, so it waits for the model step's rules.
         ("evaluation.loop_back", "waiting"),
@@ -4890,7 +4261,7 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
     .map(|(d, s)| ((*d).to_owned(), (*s).to_owned()))
     .collect();
     assert_eq!(statuses(&review), expected, "{review}");
-    assert_eq!(review["next"], json!([2, 6]), "run the flow next: {review}");
+    assert_eq!(review["next"], json!([0]), "run the flow next: {review}");
 }
 
 #[tokio::test]
@@ -4972,43 +4343,6 @@ async fn a_step_that_carries_the_rule_s_applied_decision_is_settled() {
             "clustering.algorithm_choice".to_owned(),
             "settled".to_owned()
         )),
-        "{review}"
-    );
-}
-
-#[tokio::test]
-async fn a_rule_that_measures_train_rows_does_not_apply_to_a_step_before_the_split() {
-    let api = api().await;
-    forest_flow(&api).await;
-    let uri = format!("/pipeline_versions/{BASE}");
-    let (_, mut flow) = call(&api.app, "GET", &uri, None).await;
-    flow["id"] = json!("plv_01JABCDEFGHJKMNPQRSTVWXYZ5");
-    flow["parent_id"] = json!(BASE);
-    flow["nodes"].as_array_mut().unwrap().push(json!({ "id":"has_target",
-        "operator":"sprisk.clean.drop_missing@1.0.0", "params":{"columns":["returned_within_30d"]} }));
-    flow["edges"] = json!([
-        {"from":"load.data","to":"has_target.data"},
-        {"from":"has_target.data","to":"split.data"},
-        {"from":"split.train","to":"model.train"}
-    ]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-
-    let uri = "/pipeline_versions/plv_01JABCDEFGHJKMNPQRSTVWXYZ5/methodology/review";
-    let (status, review) = call(&api.app, "GET", uri, None).await;
-    assert_eq!(status, StatusCode::OK, "{review}");
-    let filling = review["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|i| i["decides"] == "cleaning.missingness_strategy")
-        .unwrap();
-    assert_eq!(filling["status"], "not_applicable", "{review}");
-    assert!(
-        filling["reason"]
-            .as_str()
-            .unwrap()
-            .contains("before the split"),
         "{review}"
     );
 }
@@ -5095,7 +4429,7 @@ async fn the_look_settles_the_task_and_class_balance_from_the_train_rows() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
     let mut request = walk_request(&[&api.csv], "walk-target");
-    request["max_actions"] = json!(20);
+    request["max_actions"] = json!(30);
 
     let detail = walk_to_end(&api, request).await;
     let steps = detail["steps"].as_array().unwrap();
@@ -5379,6 +4713,12 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "measure",
             "run",
             "decide features.date_parts no_dates",
+            "decide features.rare_categories keep_categories",
+            "decide cleaning.missingness_strategy no_gaps",
+            "decide features.wide_categories keep",
+            "decide features.encoding_strategy no_encoding",
+            "decide features.skew_transform no_transform",
+            "decide features.scaling_strategy no_scaling",
             "decide question.task_type classification",
             "verify",
             "decide question.error_costs not_two_classes",
@@ -6240,8 +5580,9 @@ async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let uri =
-        format!("/pipeline_versions/{head}/methodology/proposals/model/features.encoding_strategy");
+    let uri = format!(
+        "/pipeline_versions/{head}/methodology/proposals/model/modeling.estimator_selection"
+    );
     let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     let apply = format!(
@@ -6249,8 +5590,9 @@ async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
         proposal["id"].as_str().unwrap()
     );
     let choice = json!({
-        "alternative_id": proposal["recommended_alternative_id"],
+        "alternative_id": proposal["alternatives"][0]["id"],
         "idempotency_key": format!("{}-round-1", walk.id.as_str()),
+        "reason": "Chosen before the comparison ran.",
     });
     let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
     assert_eq!(status, StatusCode::CREATED, "{applied}");
@@ -6431,6 +5773,12 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "measure",
             "run",
             "decide features.date_parts no_dates",
+            "decide features.rare_categories keep_categories",
+            "decide cleaning.missingness_strategy no_gaps",
+            "decide features.wide_categories keep",
+            "decide features.encoding_strategy no_encoding",
+            "decide features.skew_transform no_transform",
+            "decide features.scaling_strategy no_scaling",
             "decide question.task_type classification",
             "verify",
             "decide question.error_costs not_two_classes",
@@ -7013,7 +6361,7 @@ async fn the_engine_fills_gaps_before_the_model_and_walks_on_to_the_comparison()
     let trail = trail(&detail);
     let filled = trail
         .iter()
-        .position(|s| s == "apply cleaning.missingness_strategy fill_before_model")
+        .position(|s| s == "decide cleaning.missingness_strategy fill_before_model")
         .unwrap_or_else(|| panic!("the gaps are filled: {detail}"));
     let compared = trail
         .iter()
@@ -7059,43 +6407,6 @@ async fn the_engine_compares_the_model_shortlist_on_fixed_folds_and_applies_the_
         model["params"]["costs"]["positive"], "responds",
         "compared by the costs the person stated: {flow}"
     );
-}
-
-/// A person who must follow each prediction: the shortlist leaves forests off, the linear model
-/// wins, and only then does the scaling rule add a Scale step before it. The comparison scored
-/// the flow without it, so the walk compares again before the loop-back rule judges the model.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_step_added_after_the_model_is_chosen_leads_to_a_new_comparison() {
-    let api = api().await;
-    std::fs::write(&api.csv, learnable_table()).unwrap();
-    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    q["target"]["value"] = json!("outcome");
-    q["interpretability"] = json!({ "value": "high", "origin": "explicit" });
-    q["costs"] = json!({ "value": { "positive": "responds", "false_negative": 1.0, "false_positive": 1.0 },
-                         "origin": "explicit" });
-    q["success_bar"] =
-        json!({ "value": { "metric": "expected_cost", "score": 0.2 }, "origin": "explicit" });
-    let facts = q.as_object_mut().unwrap();
-    for gone in ["time_column", "entity_column", "prediction_horizon"] {
-        facts.remove(gone);
-    }
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-
-    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-rescaled")).await;
-
-    let trail = trail(&detail);
-    let at = |step: &str| trail.iter().position(|s| s.starts_with(step));
-    let chosen = at("apply modeling.estimator_selection ml_linear_model")
-        .unwrap_or_else(|| panic!("the linear model wins: {detail}"));
-    let scaled = at("apply features.scaling_strategy insert_")
-        .unwrap_or_else(|| panic!("a Scale step is added before it: {detail}"));
-    assert!(chosen < scaled, "{detail}");
-    let compared_again = trail[scaled..]
-        .iter()
-        .any(|s| s == "compare modeling.estimator_selection");
-    assert!(compared_again, "the scaled flow is compared: {detail}");
-    assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
 }
 
 /// The same question on rows where `outcome` does not depend on anything a model sees.
@@ -7144,60 +6455,6 @@ async fn a_walk_where_no_model_beats_the_baseline_stops_and_says_so() {
     assert_eq!(detail["walk"]["stop"]["reason"], "limitation", "{detail}");
 }
 
-/// A model step with its features unset reads every column but the target and the key
-/// columns, so a rule never proposes encoding the question's unit or time column.
-#[tokio::test(flavor = "multi_thread")]
-async fn rules_never_see_the_questions_key_columns_as_features() {
-    let api = api().await;
-    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    flow["nodes"].as_array_mut().unwrap().extend([
-        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
-                "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
-        json!({ "id":"model", "operator":"sprisk.ml.random_forest@3.0.0",
-                "params":{"target":"returned_within_30d","task":"classification","n_estimators":10} }),
-    ]);
-    flow["edges"] = json!([
-        {"from":"load.data","to":"split.data"},
-        {"from":"split.train","to":"model.train"}
-    ]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut csv = String::from("order_id,order_date,city,age,returned_within_30d\n");
-    for i in 0..60 {
-        let city = ["paris", "lyon", "nice"][i % 3];
-        // Days as numbers: the time split orders rows by them.
-        // Five units, each with twelve consecutive rows: few enough values for one-hot.
-        csv.push_str(&format!(
-            "o{},{i},{city},{},{}\n",
-            i / 12,
-            20 + i,
-            u8::from(i % 2 == 0)
-        ));
-    }
-    std::fs::write(&api.csv, csv).unwrap();
-    run_version(&api, BASE).await;
-
-    let uri =
-        format!("/pipeline_versions/{BASE}/methodology/proposals/model/features.encoding_strategy");
-    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    let one_hot = proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["id"] == "one_hot_encoding")
-        .unwrap();
-    assert_eq!(
-        one_hot["effect"]["params"]["columns"],
-        json!(["city"]),
-        "{one_hot}"
-    );
-}
-
 /// The same flow runs: the forest reads every column but the target and the key columns, so
 /// the text unit column order_id and the time column never reach it.
 #[tokio::test(flavor = "multi_thread")]
@@ -7231,75 +6488,6 @@ async fn a_model_reading_every_column_leaves_out_the_key_columns_when_it_runs() 
     }
     std::fs::write(&api.csv, csv).unwrap();
     let (run, attempts) = run_version(&api, BASE).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
-}
-
-/// Logistic regression is penalised, so the scaling rule adds a Scale step before a linear
-/// model for classes that has none, and the flow runs with it (ADR-0057).
-#[tokio::test(flavor = "multi_thread")]
-async fn a_logistic_regression_gets_a_scale_step_before_it() {
-    let api = api().await;
-    let q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    flow["nodes"].as_array_mut().unwrap().extend([
-        json!({ "id":"split", "operator":"sprisk.validation.temporal_split@1.0.0",
-                "params":{"time_column":"order_date","group_column":"order_id","test_fraction":0.25} }),
-        json!({ "id":"model", "operator":"sprisk.ml.linear_model@3.0.0",
-                "params":{"target":"returned_within_30d","task":"classification"} }),
-    ]);
-    flow["edges"] = json!([
-        {"from":"load.data","to":"split.data"},
-        {"from":"split.train","to":"model.train"}
-    ]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut csv = String::from("order_id,order_date,age,income,returned_within_30d\n");
-    for i in 0..60 {
-        csv.push_str(&format!(
-            "o{},{i},{},{},{}\n",
-            i / 12,
-            20 + i,
-            1000 * (i % 7),
-            u8::from(i % 2 == 0)
-        ));
-    }
-    std::fs::write(&api.csv, csv).unwrap();
-    run_version(&api, BASE).await;
-
-    let uri =
-        format!("/pipeline_versions/{BASE}/methodology/proposals/model/features.scaling_strategy");
-    let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
-    assert_eq!(status, StatusCode::CREATED, "{proposal}");
-    let id = proposal["recommended_alternative_id"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    assert!(id.starts_with("insert_"), "{proposal}");
-    let chosen = proposal["alternatives"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["id"] == id.as_str())
-        .unwrap();
-    assert_eq!(chosen["effect"]["kind"], "insert_node", "{chosen}");
-    assert_eq!(chosen["effect"]["before"], "model", "{chosen}");
-    assert_eq!(
-        chosen["effect"]["params"]["columns"],
-        json!(["age", "income"])
-    );
-
-    let apply = format!(
-        "/methodology_proposals/{}/apply",
-        proposal["id"].as_str().unwrap()
-    );
-    let choice = json!({ "alternative_id": id, "idempotency_key": "scale-before-logistic-1" });
-    let (status, applied) = call(&api.app, "POST", &apply, Some(choice)).await;
-    assert_eq!(status, StatusCode::CREATED, "{applied}");
-    let version = applied["pipeline"]["id"].as_str().unwrap().to_owned();
-    let (run, attempts) = run_version(&api, &version).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }
 

@@ -9,13 +9,15 @@ def impute(
     columns: list[str],
     method: str,
     text_fill: dict[str, str] | None = None,
+    text_gap: str | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Fill gaps with a statistic of the train rows, applied to train and test alike.
 
     The statistic comes from train only, so nothing about the test rows leaks into it.
     NaN counts as missing. Each text column's gaps get its `text_fill`: a category of their
-    own, such as "missing", or "" for free text, where a gap is no words. A most-frequent fill
-    would give a gap a value it never had."""
+    own, such as "missing", or "" for free text, where a gap is no words; `text_gap` is the
+    fill of every text column `text_fill` leaves out. A most-frequent fill would give a gap a
+    value it never had."""
     nan_to_null = [pl.col(c).fill_nan(None) for c in columns if train.schema[c].is_float()]
     train, test = train.with_columns(nan_to_null), test.with_columns(nan_to_null)
 
@@ -23,9 +25,9 @@ def impute(
     for c in columns:
         dtype = train.schema[c]
         if dtype in (pl.String, pl.Categorical):
-            fill = (text_fill or {}).get(c)
+            fill = (text_fill or {}).get(c, text_gap)
             if fill is None:
-                raise ValueError(f"{c} is text: give it a text_fill for its gaps")
+                raise ValueError(f"{c} is text: give it a text_fill or a text_gap for its gaps")
             # Empty text already means no words, as a gap filled with "" does.
             if fill and (
                 (train[c].cast(pl.String) == fill).any() or (test[c].cast(pl.String) == fill).any()
@@ -60,6 +62,7 @@ def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str,
     train, test = inputs["train"], inputs["test"]
     train_out, test_out = outputs["train"], outputs["test"]
     columns, text_fill = settings["columns"], settings.get("text_fill", {})
+    text_gap = settings.get("text_gap")
     nan, text = f"{train_out}_nan", f"{train_out}_text_fill"
     fills, filled = f"{train_out}_fills", f"{train_out}_filled"
     method = settings["method"]
@@ -75,7 +78,8 @@ def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str,
         "# Text gaps get a category of their own; number gaps a value from the train rows only.\n"
         f"{text} = {text_fill!r}\n"
         f"{fills} = {{\n"
-        f"    c: {text}[c] if {train_out}.schema[c] in (pl.String, pl.Categorical)\n"
+        f"    c: {text}.get(c, {text_gap!r})\n"
+        f"    if {train_out}.schema[c] in (pl.String, pl.Categorical)\n"
         f"    else {number}\n"
         f"    for c in {columns!r}\n"
         "}\n"

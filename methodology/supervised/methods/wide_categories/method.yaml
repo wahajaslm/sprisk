@@ -1,0 +1,27 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.wide_categories@1.0.0
+decides: features.wide_categories
+name: Wide category removal
+activity: Features
+question: Are category columns too wide for one 0/1 column each left out of the model?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  evidence: [features.encoding]
+  # Read for order: gaps are filled first, so they are not counted as a category.
+  decisions: [cleaning.missingness_strategy]
+options:
+  - id: leave_out
+    label: Leave them out
+    action:
+      insert:
+        before: model
+        operator: sprisk.clean.leave_out@1.0.0
+        node_id: wide_categories
+        from_evidence: { columns: features.encoding.many }
+    verify: []
+  - id: keep
+    label: Keep every column
+    verify: []
+verifications: {}
+source: "Micci-Barreca (2001), SIGKDD Explorations 3(1): high-cardinality categories need target encoding with cross-fitting; with no such step, the column is left out rather than one-hot encoded into a column per value."

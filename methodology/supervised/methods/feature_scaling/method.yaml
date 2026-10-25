@@ -1,0 +1,39 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.feature_scaling@5.0.0
+decides: features.scaling_strategy
+name: Feature scaling
+activity: Features
+question: How are numbers put on one scale before the model?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  evidence: [features.scaling]
+  # Read for order: skewed numbers are transformed first, then scaled.
+  decisions: [features.skew_transform]
+options:
+  - id: robust_scaling
+    label: Robust scaling (median and IQR)
+    action:
+      # Fit on the train rows only. It keeps order, so a tree loses nothing.
+      insert:
+        before: model
+        operator: sprisk.clean.scale@1.0.0
+        node_id: scaling
+        settings: { method: robust }
+        from_evidence: { columns: features.scaling.columns }
+    verify: []
+  - id: z_score_scaling
+    label: Z-score scaling (mean and SD)
+    action:
+      insert:
+        before: model
+        operator: sprisk.clean.scale@1.0.0
+        node_id: scaling
+        settings: { method: z_score }
+        from_evidence: { columns: features.scaling.columns }
+    verify: []
+  - id: no_scaling
+    label: No scaling
+    verify: []
+verifications: {}
+source: "scikit-learn User Guide, Preprocessing data (StandardScaler, RobustScaler); Rousseeuw & Croux (1993), JASA 88(424): median and IQR resist outliers that pull the mean and SD."

@@ -883,7 +883,8 @@ fn leaving_text_out_sets_the_models_exclude_and_keeps_its_other_settings() {
 
 #[test]
 fn an_insert_step_with_no_place_or_id_for_the_step_is_refused_not_ignored() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../methodology/supervised/rules");
+    let root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/retired_rules/supervised/rules");
     for (drop, kept) in [
         ("      node_id: categories\n", "node_id"),
         ("      placement: before\n", "placement"),

@@ -1,0 +1,28 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.skew_transform@2.0.0
+decides: features.skew_transform
+name: Skewed numbers
+activity: Features
+question: Are numbers with a long tail transformed before the model?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  evidence: [features.skew]
+  # Read for order: categories are encoded first, so the transform comes after them.
+  decisions: [features.encoding_strategy]
+options:
+  - id: yeo_johnson
+    label: Yeo-Johnson transform
+    action:
+      # Fit on the train rows only. It keeps order, so a tree loses nothing.
+      insert:
+        before: model
+        operator: sprisk.clean.power_transform@1.0.0
+        node_id: power_transform
+        from_evidence: { columns: features.skew.columns }
+    verify: []
+  - id: no_transform
+    label: No transform
+    verify: []
+verifications: {}
+source: "Yeo & Johnson (2000), Biometrika 87(4): a power transform for zero and negative values; Bulmer (1979), Principles of Statistics: |skewness| over 1 is highly skewed."

@@ -93,13 +93,13 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("cleaning.missingness_strategy".to_owned(), at("fill")),
             // Question rules on the model measure its train rows, so they follow the fill.
             ("question.error_costs".to_owned(), at("model")),
-            ("cleaning.outlier_strategy".to_owned(), None),
-            ("features.scaling_strategy".to_owned(), at("model")),
-            // The steps shaping a model's inputs, in INPUT_SHAPE order: rare categories (which
-            // keep a gap), gaps filled, then encoding, which refuses gaps.
-            ("features.rare_categories".to_owned(), at("model")),
+            // The retired rules shaping a model's inputs have no order among themselves: the
+            // methods replacing them order themselves through the decisions they read.
             ("cleaning.missingness_strategy".to_owned(), at("model")),
+            ("cleaning.outlier_strategy".to_owned(), None),
             ("features.encoding_strategy".to_owned(), at("model")),
+            ("features.scaling_strategy".to_owned(), at("model")),
+            ("features.rare_categories".to_owned(), at("model")),
             ("features.skew_transform".to_owned(), at("model")),
             ("modeling.interpretability_requirement".to_owned(), None),
             ("modeling.estimator_selection".to_owned(), at("model")),

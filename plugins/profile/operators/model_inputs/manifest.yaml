@@ -2,17 +2,28 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.model_inputs@1.0.0
 title: Model inputs
 capability_class: analyzer
-description: Names the free text, category text, empty text and date columns of the rows a model learns from (ADR-0063).
+description: Names what the columns a model learns from are, on its train rows - free text, dates, categories to group or encode, gaps to fill (ADR-0063).
 entrypoint: sprisk_profile.model_inputs:model_inputs
 # The model's train rows only.
 scope: train
 attach: { role: model, side: input }
-concepts: { target: common.target }
+# The item and time columns are filled when a binding names them, and left out otherwise.
+concepts: { target: common.target, item: common.item_identity, time: common.event_time }
 produces:
   features.free_text:
     fields: { columns: string_list, categories: string_list, empty: string_list }
   features.dates:
     fields: { columns: string_list }
+  features.categories:
+    fields: { grouped: string_list, identifiers: string_list }
+  features.gaps:
+    fields: { columns: string_list, method: string, mostly_empty: string_list, unfillable: string_list }
+  features.encoding:
+    fields: { few: string_list, many: string_list, codes: string_list }
+  features.skew:
+    fields: { columns: string_list }
+  features.scaling:
+    fields: { columns: string_list, heavy: boolean }
 inputs: [{ name: train, kind: table }]
 outputs: [{ name: evidence, kind: report }]
 params_schema:
@@ -22,6 +33,8 @@ params_schema:
   required: [target]
   properties:
     target: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-excluded: true, description: "The target column, dropped before the step runs: it is not an input." }
+    item: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-excluded: true, description: "The item column, dropped before the step runs: the model does not read it." }
+    time: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-excluded: true, description: "The time column, dropped before the step runs: the model does not read it." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

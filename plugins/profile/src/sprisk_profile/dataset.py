@@ -151,7 +151,7 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
     if (rarest := _rarest_share(s)) is not None:
         column["rarest_share"] = rarest
     if numeric:
-        column.update(_shape(s))
+        column.update(shape(s))
         if (quartiles := _quartiles(s)) is not None:
             column["quartiles"] = quartiles
     if s.dtype == pl.String:
@@ -179,29 +179,29 @@ def _rarest_share(s: pl.Series) -> float | None:
     return min(counts) / present.len()
 
 
-def _shape(s: pl.Series) -> dict[str, Any]:
+def shape(s: pl.Series) -> dict[str, Any]:
     """Mean, spread, skew, excess kurtosis, the IQR and the 1.5 x IQR fences with the values
     outside them, for scaling and outlier rules. A column without variation has no shape, so it
     gets only its mean."""
     present = s.drop_nulls().cast(pl.Float64)
-    shape: dict[str, Any] = {} if present.is_empty() else {"mean": present.mean()}
+    found: dict[str, Any] = {} if present.is_empty() else {"mean": present.mean()}
     if present.n_unique() < 2:
-        return shape
+        return found
     q1, q3 = present.quantile(0.25, "linear"), present.quantile(0.75, "linear")
-    shape["std"] = present.std()
+    found["std"] = present.std()
     # Unbiased (bias=False), as SciPy reports them: small train partitions are common.
     if (skew := present.skew(bias=False)) is not None and math.isfinite(skew):
-        shape["skewness"] = skew
+        found["skewness"] = skew
     if (kurtosis := present.kurtosis(bias=False)) is not None and math.isfinite(kurtosis):
-        shape["kurtosis"] = kurtosis
+        found["kurtosis"] = kurtosis
     if q1 is not None and q3 is not None:
-        shape["iqr"] = q3 - q1
+        found["iqr"] = q3 - q1
         fence = 1.5 * (q3 - q1)
         outside = int(((present < q1 - fence) | (present > q3 + fence)).sum())
-        shape["outlier_share"] = float(outside) / present.len()
-        shape["fences"] = {"low": q1 - fence, "high": q3 + fence}
-        shape["outliers"] = outside
-    return shape
+        found["outlier_share"] = float(outside) / present.len()
+        found["fences"] = {"low": q1 - fence, "high": q3 + fence}
+        found["outliers"] = outside
+    return found
 
 
 def conversion(s: pl.Series) -> dict[str, Any]:

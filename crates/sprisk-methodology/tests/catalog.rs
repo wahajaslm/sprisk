@@ -6,7 +6,7 @@ use std::path::Path;
 use sprisk_methodology::{CatalogError, RuleCatalog};
 
 mod repo;
-use repo::repo_catalog;
+use repo::{repo_catalog, rules_with_retired};
 
 fn rule_yaml(id: &str, decides: &str) -> String {
     format!(
@@ -77,7 +77,7 @@ fn refused(manifest: &str) -> String {
 #[test]
 fn every_rule_in_the_repo_loads_with_its_manifest_as_source() {
     let catalog = repo_catalog();
-    assert_eq!(catalog.rules().count(), 46);
+    assert_eq!(catalog.rules().count(), 40);
 
     let source = catalog
         .source("methodology.supervised.multicollinearity@1.0.0")
@@ -117,7 +117,7 @@ fn a_python_module_beside_the_manifest_is_served_as_source() {
 
 #[test]
 fn a_step_is_routed_to_the_active_rule_that_applies_to_its_operator() {
-    let catalog = repo_catalog();
+    let catalog = rules_with_retired();
     let rule = catalog
         .rules_for_operator("sprisk.clean.scale@1.0.0")
         .next()

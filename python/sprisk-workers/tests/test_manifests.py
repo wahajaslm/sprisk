@@ -45,6 +45,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.clean.encode@1.0.0",
         "sprisk.clean.group_rare@1.0.0",
         "sprisk.clean.impute@1.0.0",
+        "sprisk.clean.leave_out@1.0.0",
         "sprisk.clean.mark_missing@1.0.0",
         "sprisk.clean.power_transform@1.0.0",
         "sprisk.clean.scale@1.0.0",

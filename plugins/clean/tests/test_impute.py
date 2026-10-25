@@ -93,6 +93,16 @@ def test_plain_code_fills_as_the_step_does(method: str) -> None:
     assert namespace["b"].equals(step["test"])
 
 
+def test_plain_code_fills_a_text_gap_as_the_step_does() -> None:
+    settings: dict[str, Any] = {"columns": ["x", "kind"], "method": "mean", "text_gap": "none"}
+    namespace: dict[str, Any] = {"rows": MIXED, "held_out": MIXED_TEST}
+    names = ({"train": "rows", "test": "held_out"}, {"train": "a", "test": "b"})
+    exec(as_code(settings, *names), namespace)
+    step = impute(MIXED, MIXED_TEST, **settings)
+    assert namespace["a"].equals(step["train"])
+    assert namespace["b"].equals(step["test"])
+
+
 @settings(max_examples=40, deadline=None)
 @given(text=st.text(min_size=1))
 def test_dataset_text_never_becomes_code(code_shape: Callable[[str], str], text: str) -> None:
@@ -108,3 +118,17 @@ def test_an_edited_value_in_the_code_is_read_back_as_the_setting() -> None:
     names = ({"train": "rows", "test": "held_out"}, {"train": "a", "test": "b"})
     edited = as_code(values, *names).replace("['x']", "['y']")
     assert read_settings(as_code, values, *names, edited) == {**values, "columns": ["y"]}
+
+
+def test_a_text_gap_fill_covers_every_text_column_text_fill_leaves_out() -> None:
+    train = pl.DataFrame({"kind": ["a", None], "size": ["s", None], "x": [1.0, None]})
+    out = impute(
+        train,
+        train,
+        columns=["kind", "size", "x"],
+        method="mean",
+        text_fill={"size": "none"},
+        text_gap="missing",
+    )
+    assert out["train"]["kind"].to_list() == ["a", "missing"]
+    assert out["train"]["size"].to_list() == ["s", "none"]

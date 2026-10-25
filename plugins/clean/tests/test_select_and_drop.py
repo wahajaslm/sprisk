@@ -6,6 +6,7 @@ from sprisk_clean.columns import (
     drop_columns,
     drop_duplicates,
     drop_missing,
+    leave_out,
     mark_missing,
     select_columns,
 )
@@ -104,3 +105,16 @@ def test_cast_types_reads_a_column_name_as_a_name_not_a_pattern() -> None:
     data = pl.DataFrame({"^.*$": ["1"], "other": ["x"]})
     out = cast_types(data, columns=["^.*$"])
     assert out.schema["^.*$"] == pl.Int64 and out.schema["other"] == pl.String
+
+
+def test_leave_out_drops_the_columns_from_train_and_test_alike() -> None:
+    train = pl.DataFrame({"sku": ["a"], "x": [1]})
+    test = pl.DataFrame({"sku": ["b"], "x": [2]})
+    out = leave_out(train, test, ["sku"])
+    assert (out["train"].columns, out["test"].columns) == (["x"], ["x"])
+
+
+def test_leave_out_of_a_column_the_rows_lack_is_an_error() -> None:
+    rows = pl.DataFrame({"x": [1]})
+    with pytest.raises(pl.exceptions.ColumnNotFoundError):
+        leave_out(rows, rows, ["sku"])

@@ -1,0 +1,30 @@
+schema_version: sprisk.method/v2
+id: methodology.supervised.rare_categories@2.0.0
+decides: features.rare_categories
+name: Rare category grouping
+activity: Features
+question: Which categories are too rare for a model to learn from, and are grouped?
+applies_when: { task: [classification, regression] }
+needs:
+  concepts: []
+  evidence: [features.categories]
+  # Read for order: words, then date parts, then rare categories.
+  decisions: [features.date_parts]
+options:
+  - id: group_rare
+    label: Group rare categories
+    action:
+      # A category under 1% of the train rows becomes "other", and at most 15 stay, counting
+      # "other", so one-hot encoding can take the column. Counted on the train rows.
+      insert:
+        before: model
+        operator: sprisk.clean.group_rare@1.0.0
+        node_id: rare_categories
+        settings: { min_share: 0.01, max_categories: 15 }
+        from_evidence: { columns: features.categories.grouped }
+    verify: []
+  - id: keep_categories
+    label: Keep the categories
+    verify: []
+verifications: {}
+source: "scikit-learn User Guide §7.3.5: OneHotEncoder(min_frequency, max_categories) groups infrequent categories, learnt from the training rows."
