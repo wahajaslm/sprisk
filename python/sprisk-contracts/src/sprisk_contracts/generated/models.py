@@ -2994,7 +2994,9 @@ class ColumnProfile(StrictModel):
     ] = None
     missing_by_band: Annotated[
         list[float],
-        Field(description="Share of missing cells (0 to 1) in each row band, in row order."),
+        Field(
+            description="Share of gaps (0 to 1) in each row band, in row order: missing cells, and blank text in a text column."
+        ),
     ]
     histogram: Annotated[
         Histogram | None, Field(description="Absent when every value is missing.")
@@ -3682,12 +3684,16 @@ class DatasetProfile(StrictModel):
         Field(description="Profiled rows equal in every column to an earlier one.", ge=0),
     ] = None
     rows_with_gap: Annotated[
-        int | None, Field(description="Profiled rows with at least one missing cell.", ge=0)
+        int | None,
+        Field(
+            description="Profiled rows with at least one gap: a missing cell, or blank text in a text column.",
+            ge=0,
+        ),
     ] = None
     co_missing: Annotated[
         list[CoMissing] | None,
         Field(
-            description="The column pairs most often missing in the same rows, most rows first, at most 5. Pairs that are never missing together are left out."
+            description="The column pairs most often empty in the same rows (a missing cell or blank text), most rows first, at most 5. Pairs never empty together are left out."
         ),
     ] = None
     columns: list[ColumnProfile]

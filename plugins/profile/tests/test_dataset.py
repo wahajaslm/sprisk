@@ -387,3 +387,12 @@ def test_counts_rows_with_a_gap_and_the_columns_missing_together() -> None:
     top = p.co_missing[0]
     assert (top.column_a, top.column_b, top.rows) == ("a", "b", 8)
     assert all(pair.rows > 0 for pair in p.co_missing)
+
+
+def test_blank_text_is_a_gap_in_the_band_map_the_gap_rows_and_the_pairs() -> None:
+    data = pl.DataFrame({"t": ["", "  ", "a", "b"], "n": [None, 1.0, 2.0, 3.0]})
+    p = profile(data)
+    assert column(p, "t").missing_by_band == [1.0, 1.0, 0.0, 0.0]
+    assert p.rows_with_gap == 2
+    assert p.co_missing is not None
+    assert [(c.column_a, c.column_b, c.rows) for c in p.co_missing] == [("t", "n", 1)]

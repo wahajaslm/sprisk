@@ -283,12 +283,12 @@
         "rows_with_gap": {
           "type": "integer",
           "minimum": 0,
-          "description": "Profiled rows with at least one missing cell."
+          "description": "Profiled rows with at least one gap: a missing cell, or blank text in a text column."
         },
         "co_missing": {
           "type": "array",
           "items": { "$ref": "#/$defs/CoMissing" },
-          "description": "The column pairs most often missing in the same rows, most rows first, at most 5. Pairs that are never missing together are left out."
+          "description": "The column pairs most often empty in the same rows (a missing cell or blank text), most rows first, at most 5. Pairs never empty together are left out."
         },
         "columns": {
           "type": "array",
@@ -311,7 +311,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["column_a", "column_b", "rows"],
-      "description": "Two columns and the profiled rows where both are missing.",
+      "description": "Two columns and the profiled rows where both are empty.",
       "properties": {
         "column_a": { "type": "string" },
         "column_b": { "type": "string" },
@@ -411,7 +411,7 @@
           "items": {
             "type": "number"
           },
-          "description": "Share of missing cells (0 to 1) in each row band, in row order."
+          "description": "Share of gaps (0 to 1) in each row band, in row order: missing cells, and blank text in a text column."
         },
         "histogram": {
           "$ref": "#/$defs/Histogram",

@@ -843,11 +843,11 @@ export interface DatasetProfile {
    */
   duplicate_rows?: number;
   /**
-   * Profiled rows with at least one missing cell.
+   * Profiled rows with at least one gap: a missing cell, or blank text in a text column.
    */
   rows_with_gap?: number;
   /**
-   * The column pairs most often missing in the same rows, most rows first, at most 5. Pairs that are never missing together are left out.
+   * The column pairs most often empty in the same rows (a missing cell or blank text), most rows first, at most 5. Pairs never empty together are left out.
    */
   co_missing?: CoMissing[];
   columns: ColumnProfile[];
@@ -860,7 +860,7 @@ export interface DatasetProfile {
   findings?: ProfileFinding[];
 }
 /**
- * Two columns and the profiled rows where both are missing.
+ * Two columns and the profiled rows where both are empty.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "CoMissing".
@@ -970,7 +970,7 @@ export interface ColumnProfile {
    */
   outliers?: number;
   /**
-   * Share of missing cells (0 to 1) in each row band, in row order.
+   * Share of gaps (0 to 1) in each row band, in row order: missing cells, and blank text in a text column.
    */
   missing_by_band: number[];
   histogram?: Histogram1;

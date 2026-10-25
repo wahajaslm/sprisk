@@ -100,20 +100,25 @@ def _duplicates(data: pl.DataFrame, rows: int, columns: int) -> int | None:
     return data.height - data.n_unique() if data.height else 0
 
 
+def _gap(s: pl.Series) -> pl.Series:
+    """A missing cell or blank text: both are gaps a step must fill before a model sees them."""
+    if s.dtype == pl.String:
+        return s.is_null() | (s.str.strip_chars() == "")
+    return s.is_null()
+
+
 def _rows_with_gap(data: pl.DataFrame) -> int:
-    """Rows with a missing cell, from the columns as series: a name is never read as a pattern."""
-    gaps = [s.is_null() for s in data]
+    """Rows with a gap, from the columns as series: a name is never read as a pattern."""
+    gaps = [_gap(s) for s in data]
     return int(reduce(operator.or_, gaps).sum()) if gaps else 0
 
 
 def _co_missing(data: pl.DataFrame) -> list[dict[str, Any]]:
     """The column pairs most often missing in the same rows: gaps that come together usually
     share a cause, such as a source that never filled either."""
-    gappy = sorted((s for s in data if s.null_count() > 0), key=lambda s: -s.null_count())
-    pairs = [
-        (int((a.is_null() & b.is_null()).sum()), a.name, b.name)
-        for a, b in combinations(gappy[:MAX_GAPPY], 2)
-    ]
+    gaps = [(s.name, _gap(s)) for s in data]
+    gappy = sorted((g for g in gaps if g[1].any()), key=lambda g: -int(g[1].sum()))
+    pairs = [(int((a & b).sum()), x, y) for (x, a), (y, b) in combinations(gappy[:MAX_GAPPY], 2)]
     top = sorted((p for p in pairs if p[0] > 0), key=lambda p: -p[0])[:CO_MISSING]
     return [{"column_a": a, "column_b": b, "rows": n} for n, a, b in top]
 
@@ -260,7 +265,7 @@ def _missing_by_band(s: pl.Series, band_rows: int) -> list[float]:
     if band_rows == 0:
         return []
     shares = (
-        pl.DataFrame({"m": s.is_null()})
+        pl.DataFrame({"m": _gap(s)})
         .with_row_index()
         .group_by(pl.col("index") // band_rows, maintain_order=True)
         .agg(pl.col("m").mean())
