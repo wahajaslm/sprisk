@@ -1535,15 +1535,12 @@ p { margin: 0; }
 /* Dataset pages (ADR-0061 rules: one surface, hairlines, plain copy): a section starts with a
    full-width hairline, room above it and a clear title; body text is secondary ink at 13.5px. */
 .ds-profile, .ds-investigation, .exp-body { font-size: var(--fs-13-5); line-height: 1.6; color: var(--text-secondary); }
-.ds-profile .body-section, .ds-investigation .body-section, .exp-body .body-section { max-width: none; margin: 0; padding: var(--space-8) 0 var(--space-6); border-top: 1px solid var(--alpha-08); }
-.ds-profile > .body-section:first-of-type, .ds-investigation > .body-section:first-of-type, .exp-body > .body-section:first-of-type, .exp-body > :first-child { border-top: 0; padding-top: var(--space-2); }
 .ds-profile, .ds-investigation, .exp-body { counter-reset: ds-section; }
 .ds-profile .body-section-title, .ds-investigation .body-section-title, .exp-body .body-section-title { display: flex; align-items: baseline; gap: var(--space-3); font-size: 22px; font-weight: 500; line-height: 1.25; color: var(--text-strong, #ececec); letter-spacing: -0.015em; }
 /* Sections are numbered, as the design system's own pages are: "01 Missing values". */
 .ds-profile .body-section-title::before, .ds-investigation .body-section-title::before, .exp-body .body-section-title::before { counter-increment: ds-section; content: counter(ds-section, decimal-leading-zero); font-size: var(--fs-12-5); font-weight: 400; letter-spacing: 0; color: var(--text-faint); }
-.ds-profile .body-section-note, .ds-investigation .body-section-note, .exp-body .body-section-note { margin: var(--space-2) 0 var(--space-6); font-size: var(--fs-13-5); color: var(--text-muted); }
 .ds-profile .body-section > .btn, .ds-investigation .body-section > .btn { justify-self: start; align-self: flex-start; }
-.ds-findings { display: grid; margin: 0 0 var(--space-3); padding: 0; list-style: none; }
+.ds-findings { display: grid; margin: 0; padding: 0; list-style: none; }
 .ds-findings li { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--alpha-04); color: var(--text-secondary); line-height: 1.6; }
 .ds-findings li:first-child { border-top: 1px solid var(--alpha-04); }
 .ds-finding-level { font-size: var(--fs-12); color: var(--text-muted); padding-top: 2px; }
@@ -1551,8 +1548,6 @@ p { margin: 0; }
 .ds-example { display: block; margin-top: var(--space-1); font-size: var(--fs-12-5); color: var(--text-muted); }
 .ds-example q { color: var(--text-secondary); overflow-wrap: anywhere; }
 /* One column of the table: name and facts across the top, charts side by side, its findings below. */
-.ds-column { display: grid; gap: var(--space-5); padding: var(--space-6) 0 var(--space-7); border-top: 1px solid var(--alpha-05); }
-.ds-column:first-of-type { border-top: 0; padding-top: 0; }
 .ds-column-head { display: flex; align-items: baseline; gap: var(--space-4); }
 .ds-column-head h3 { margin: 0; font-size: 17px; font-weight: 500; color: var(--text-primary); overflow-wrap: anywhere; }
 .ds-column-facts { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-8); margin: 0; }
@@ -1564,7 +1559,6 @@ p { margin: 0; }
 .ds-profile .exp-table th, .ds-profile .exp-table td { padding: 0 var(--space-4); }
 .ds-profile .exp-table td { height: 40px; }
 .ds-profile .exp-table th:first-child, .ds-profile .exp-table td:first-child { padding-left: 0; color: var(--text-primary); }
-.ds-preview { display: grid; gap: var(--space-3); min-width: 0; }
 .ds-preview-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: var(--text-sm); color: var(--soft); }
 .ds-goto { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--muted); }
 .ds-goto input { width: 96px; height: 26px; padding: 0 var(--space-2); border: 1px solid var(--alpha-08); border-radius: 4px; background: transparent; color: var(--ink); font: inherit; }
@@ -1594,7 +1588,6 @@ p { margin: 0; }
 .studio-legend li::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 7px; border-radius: 50%; vertical-align: middle; background: var(--ink-0); }
 .studio-legend li.tone-secondary::before { background: var(--ink-3); }
 .studio-legend li.tone-red::before { background: var(--alert); }
-.ds-profile .result-tile.plot { margin: 0 0 var(--space-3); }
 /* Investigation (ADR-0065): the chart leads each analysis; the words sit beside it. */
 .ds-investigation { display: grid; gap: var(--space-4); }
 .ds-investigations { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); }
@@ -7755,7 +7748,7 @@ p { margin: 0; }
 .page-tab:hover { color: var(--text-primary); }
 .page-tab[data-state="active"] { color: var(--text-primary); box-shadow: inset 0 -1px 0 var(--text-primary); }
 .page-tab:focus-visible { outline: 1px solid var(--border-control-hover); outline-offset: -2px; }
-.page-body { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 18px 24px; outline: none; }
+.page-body { position: relative; flex: 1; min-height: 0; overflow: auto; padding: var(--page-top) 24px var(--section-above); outline: none; }
 
 /* ── Sidebar rows and group labels (design: 34px rows, 30px labels) ── */
 .side-row { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; min-height: 34px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; text-align: left; font: inherit; cursor: pointer; }
@@ -7963,7 +7956,6 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 
 /* The Datasets preview: the plain table at page size, rows spaced as the design draws them. */
 /* The page body pads it, as every page section. */
-.ds-preview { padding: 0; }
 /* Values are read as text, in the UI font with even-width digits; only code uses the mono font. */
 .ds-preview .plain-table { font: var(--fs-13) var(--sans); font-variant-numeric: tabular-nums; }
 .ds-preview .plain-table table { width: 100%; }
@@ -8010,7 +8002,6 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 
 /* Experiments, as the design's Compare and Sweep (ADR-0061): one surface, hairline tables, the
    change red only when a run got worse. */
-.exp-body { display: block; min-width: 0; padding: var(--space-5) 0 var(--space-8); }
 .exp-body .exp-table { width: 100%; }
 .exp-body .body-section { min-width: 0; overflow-x: auto; }
 .exp-body .exp-table th, .exp-body .exp-table td { padding: 0 var(--space-4); }
@@ -8031,8 +8022,6 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .exp-body .compare-col { padding: var(--space-5) var(--space-5) var(--space-5) 0; }
 .exp-body .cautions { padding: 0; background: none; border: 0; color: var(--text-muted); }
 .exp-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-5); }
-.exp-study { display: grid; gap: var(--space-4); padding: var(--space-6) 0; border-top: 1px solid var(--alpha-08); }
-.exp-study:first-of-type { border-top: 0; padding-top: 0; }
 .exp-study-head { display: flex; align-items: baseline; gap: var(--space-4); }
 .exp-study-head h3 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.015em; color: var(--text-strong); }
 .exp-study-head span { font-size: var(--fs-13); color: var(--text-muted); }
@@ -8045,7 +8034,6 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .exp-body .exp-table .changed { max-width: 220px; }
 .exp-body .exp-table td.mono.muted { font-family: var(--sans); }
 .exp-body .exp-table .page-btn { white-space: nowrap; }
-.exp-pickers { display: flex; flex-wrap: wrap; gap: var(--space-5); margin-bottom: var(--space-2); }
 .exp-pickers label { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-13); color: var(--text-muted); }
 .exp-pickers select { height: 28px; padding: 0 var(--space-2); border: 1px solid var(--alpha-08); border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); font: var(--fs-13) var(--mono); }
 .exp-side-by-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-6); }
@@ -8053,3 +8041,27 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .exp-compare td { white-space: normal; line-height: 1.5; padding-top: var(--space-2) !important; padding-bottom: var(--space-2) !important; height: auto !important; vertical-align: top; }
 .exp-compare { table-layout: fixed; }
 .exp-compare th:first-child, .exp-compare td:first-child { width: 28%; }
+
+/* One spacing standard for every page body (ADR-0061): 24px from the tabs to the first content;
+   sections split by a hairline with 40px above it and 32px below; 8px from a title to its note;
+   24px from the note to the content and between blocks; 12px inside a chart. */
+:root { --page-top: 24px; --section-above: 40px; --section-below: 32px; --block-gap: 24px; --title-note: 8px; }
+.ds-profile, .ds-investigation, .exp-body, .ds-preview { display: flex; flex-direction: column; gap: 0; min-width: 0; padding: 0; }
+.ds-profile .body-section, .ds-investigation .body-section, .exp-body .body-section { display: flex; flex-direction: column; gap: var(--block-gap); max-width: none; min-width: 0; margin: var(--section-above) 0 0; padding: var(--section-below) 0 0; border-top: 1px solid var(--alpha-08); }
+.ds-profile > .body-section:first-child, .ds-investigation > .body-section:first-child, .exp-body > .body-section:first-child, .exp-body > :first-child + .body-section { margin-top: 0; padding-top: 0; border-top: 0; }
+.ds-profile .body-section-title + .body-section-note, .ds-investigation .body-section-title + .body-section-note, .exp-body .body-section-title + .body-section-note { margin: calc(var(--title-note) - var(--block-gap)) 0 0; font-size: var(--fs-13-5); color: var(--text-muted); }
+.ds-profile .body-section > *, .ds-investigation .body-section > *, .exp-body .body-section > * { margin-top: 0; margin-bottom: 0; }
+/* A column of the profile: its head, facts, charts and findings, 24px apart; columns split by a
+   fainter hairline, 32px either side. */
+.ds-column { display: flex; flex-direction: column; gap: var(--block-gap); padding: var(--section-below) 0; border-top: 1px solid var(--alpha-05); }
+.ds-column:first-of-type { padding-top: 0; border-top: 0; }
+.ds-column:last-child { padding-bottom: 0; }
+.ds-column-charts { gap: var(--block-gap) var(--section-below); }
+.studio-chart { gap: 12px; }
+.exp-pickers { display: flex; flex-wrap: wrap; gap: var(--block-gap); }
+.exp-pickers + .body-section { margin-top: var(--block-gap) !important; padding-top: 0 !important; border-top: 0 !important; }
+.exp-study { display: flex; flex-direction: column; gap: var(--block-gap); padding: var(--section-below) 0 0; margin-top: var(--section-above); border-top: 1px solid var(--alpha-08); }
+.exp-study:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+.exp-toolbar { margin: 0 0 var(--block-gap); }
+.ds-preview { gap: 16px; }
+.ds-preview-table { max-width: 100%; }
