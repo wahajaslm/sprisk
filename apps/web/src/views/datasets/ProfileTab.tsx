@@ -1,10 +1,11 @@
 import type { ColumnProfile, ColumnRole, DatasetProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { useDatasetProfile } from "../../api/datasets.ts";
+import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { BodySection } from "../../components/ui/RowList.tsx";
-import { correlationField, missingAndBlank, numberBins, valueBars, wordCounts } from "./profileFigures.ts";
+import { columnsAtAGlance, correlationField, missingAndBlank, missingMap, numberBins, valueBars, wordCounts } from "./profileFigures.ts";
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
@@ -35,26 +36,48 @@ export function ProfileTab({ dataset }: { dataset: LoadedTable }) {
   if (profile.isPending) return <Loading text="Profiling the table…" />;
   const p = profile.data;
   const findings = p.findings ?? [];
-  const missing = figureOf(missingAndBlank(p, tokenColor));
   const correlated = p.correlation.columns.length >= MIN_CORRELATED;
+  const glance = [missingAndBlank(p, tokenColor), missingMap(p, tokenColor)].filter((f): f is Figure => f !== null);
+  const every = columnsAtAGlance(p, tokenColor);
   return (
     <div className="ds-profile">
       <Overview profile={p} />
-      <BodySection title="Findings" note="What stands out, warnings first. Each is counted from the rows; none is a decision.">
-        {findings.length === 0 ? <p className="muted">Nothing stands out in these rows.</p> : <FindingList findings={findings} />}
+      <BodySection title="At a glance" note="Where values are missing, and every column's distribution. Identifiers have no distribution to show.">
+        {glance.length === 0 && <p className="muted">Every column is filled in every row.</p>}
+        {glance.length > 0 && <div className="ds-glance-charts">{glance.map((f) => figureOf(f))}</div>}
+        {every && figureOf(every)}
+        {correlated && figureOf(correlationField(p, tokenColor))}
       </BodySection>
-      <BodySection title="Missing and blank values" note="Missing: an empty cell, NaN or infinity. Blank: text that is empty or only spaces, which an imputer does not see.">
-        {missing ?? <p className="muted">Every column is filled in every row.</p>}
+      <BodySection title="Findings" note="What stands out, warnings first. Each is counted from the rows; none is a decision.">
+        {findings.length === 0 ? <p className="muted">Nothing stands out in these rows.</p> : <Findings findings={findings} />}
       </BodySection>
       <BodySection title="Columns" note="One card per column, with the chart its role calls for. A role is a guess from the values, never a confirmed meaning.">
         {p.columns.map((c) => (
           <ColumnCard key={c.name} column={c} rows={p.profiled_rows} findings={findings.filter((f) => f.column === c.name)} />
         ))}
       </BodySection>
-      {correlated && <BodySection title="Correlation" note="Pearson correlation between measured numbers; identifiers and category codes are left out.">{figureOf(correlationField(p, tokenColor))}</BodySection>}
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
       <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
     </div>
+  );
+}
+
+/** Findings shown before "Show all": every warning, then notes up to this many in all. */
+const FIRST_FINDINGS = 6;
+
+function Findings({ findings }: { findings: ProfileFinding[] }) {
+  const [all, setAll] = useState(false);
+  const warnings = findings.filter((f) => f.level === "warning").length;
+  const shown = all ? findings : findings.slice(0, Math.max(warnings, FIRST_FINDINGS));
+  return (
+    <>
+      <FindingList findings={shown} />
+      {shown.length < findings.length && (
+        <Button size="sm" onClick={() => setAll(true)}>
+          {`Show all ${findings.length} findings`}
+        </Button>
+      )}
+    </>
   );
 }
 
@@ -62,13 +85,32 @@ function Overview({ profile }: { profile: DatasetProfile }) {
   const groups = (Object.keys(ROLES) as ColumnRole[])
     .map((role) => ({ role, names: profile.columns.filter((c) => c.role === role).map((c) => c.name) }))
     .filter((g) => g.names.length > 0);
+  const cells = profile.profiled_rows * profile.columns.length;
+  const missing = profile.columns.reduce((n, c) => n + c.missing, 0);
+  const blank = profile.columns.reduce((n, c) => n + (c.blank ?? 0), 0);
+  const tiles: [string, string][] = [
+    ["rows", profile.total_rows.toLocaleString()],
+    ["columns", String(profile.total_columns)],
+    ["missing cells", cells === 0 ? "—" : percent(missing / cells)],
+    ["blank text cells", cells === 0 ? "—" : percent(blank / cells)],
+    ...(profile.duplicate_rows !== undefined ? [["duplicate rows", profile.duplicate_rows.toLocaleString()] as [string, string]] : []),
+  ];
   return (
     <BodySection title="Overview">
-      <p className="ds-overview">
-        {`${profile.total_rows.toLocaleString()} rows and ${profile.total_columns} columns.`}
-        {profile.profiled_rows < profile.total_rows && ` Profiled the first ${profile.profiled_rows.toLocaleString()} rows.`}
-        {profile.columns.length < profile.total_columns && ` Showing the first ${profile.columns.length} columns.`}
-      </p>
+      <dl className="ds-tiles" aria-label="Table in numbers">
+        {tiles.map(([k, v]) => (
+          <div key={k}>
+            <dd>{v}</dd>
+            <dt>{k}</dt>
+          </div>
+        ))}
+      </dl>
+      {(profile.profiled_rows < profile.total_rows || profile.columns.length < profile.total_columns) && (
+        <p className="ds-overview">
+          {profile.profiled_rows < profile.total_rows && `Profiled the first ${profile.profiled_rows.toLocaleString()} rows. `}
+          {profile.columns.length < profile.total_columns && `Showing the first ${profile.columns.length} columns.`}
+        </p>
+      )}
       <dl className="ds-roles" aria-label="Columns by role">
         {groups.map((g) => (
           <div key={g.role}>
@@ -166,8 +208,8 @@ function figureOf(figure: Figure | null) {
   if (!figure) return null;
   const label = String((figure.layout.title as { text: string }).text);
   return (
-    // A chart that sets its own height (bars that grow with their count) keeps it.
-    <figure key={label} className="result-tile plot" style={figure.layout.height ? { height: figure.layout.height, minHeight: 0 } : undefined}>
+    // Each chart sets its own height; its box follows it, so nothing spills over.
+    <figure key={label} className="result-tile plot">
       <Suspense fallback={<Loading text="Loading figure…" />}>
         <PlotlyFigure json={JSON.stringify(figure)} label={label} />
       </Suspense>

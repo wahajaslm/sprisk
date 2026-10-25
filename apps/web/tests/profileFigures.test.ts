@@ -1,7 +1,7 @@
 import type { DatasetProfile } from "@sprisk/contracts";
 import { describe, expect, it } from "vitest";
 
-import { correlationField, missingAndBlank, numberBins, valueBars, wordCounts } from "../src/views/datasets/profileFigures.ts";
+import { columnsAtAGlance, correlationField, missingAndBlank, missingMap, numberBins, valueBars, wordCounts } from "../src/views/datasets/profileFigures.ts";
 
 const color = (token: string) => `var(${token})`;
 
@@ -67,5 +67,38 @@ describe("dataset profile figures", () => {
   it("shows dataset text as text: markup in a column name is escaped", () => {
     const fig = missingAndBlank({ ...profile, columns: [{ ...profile.columns[1]!, missing: 1 }] }, color);
     expect((fig!.data[0] as { y: string[] }).y[0]).toBe("&lt;b&gt;sex&lt;/b&gt;");
+  });
+
+  it("draws where values are missing along the rows, one row per column that has a gap", () => {
+    const fig = missingMap(profile, color);
+    const [map] = fig!.data as [{ type: string; z: number[][]; y: string[] }];
+    expect(map.type).toBe("heatmap");
+    expect(map.y).toEqual(["bmi", "note", "empty"]);
+    expect(map.z[0]).toEqual([0.06, 0]);
+  });
+
+  it("draws no missing map when no column has a missing cell", () => {
+    expect(missingMap({ ...profile, columns: [profile.columns[1]!] }, color)).toBeNull();
+  });
+
+  it("draws every column at a glance, one small chart each, identifiers and empty columns left out", () => {
+    const withId = { ...profile, columns: [...profile.columns, { name: "id", data_type: "Int64", role: "identifier" as const, missing: 0, distinct: 100, missing_by_band: [0, 0], histogram: { kind: "bins" as const, bars: [{ label: "0–99", count: 100 }] } }] };
+    const fig = columnsAtAGlance(withId, color)!;
+    const titles = (fig.layout.annotations ?? []).map((a) => a.text);
+    expect(titles).toEqual(["bmi", "&lt;b&gt;sex&lt;/b&gt;", "note · words"]);
+    expect(fig.layout.height).toBeGreaterThan(0);
+  });
+
+  it("cuts long value labels so bars and counts never overlap", () => {
+    const long = { ...profile.columns[1]!, histogram: { kind: "top_values" as const, bars: [{ label: "x".repeat(80), count: 3 }] } };
+    const [bars] = valueBars(long, 100, color).data as [{ y: string[] }];
+    expect(bars.y[0]!.length).toBeLessThanOrEqual(41);
+    expect(bars.y[0]!.endsWith("…")).toBe(true);
+  });
+
+  it("gives every chart its own height, so its box can follow it", () => {
+    for (const fig of [missingAndBlank(profile, color)!, valueBars(profile.columns[1]!, 100, color), wordCounts(profile.columns[2]!, color), numberBins(profile.columns[0]!, color), correlationField(profile, color)]) {
+      expect(fig.layout.height).toBeGreaterThan(0);
+    }
   });
 });

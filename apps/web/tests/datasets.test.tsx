@@ -94,7 +94,10 @@ describe("datasets", () => {
   it("opens the profile with the table's size and its columns grouped by role", async () => {
     serve();
     await openProfile();
-    expect(await screen.findByText("120 rows and 4 columns.")).toBeInTheDocument();
+    const tiles = await screen.findByLabelText("Table in numbers");
+    expect(tiles).toHaveTextContent("120rows");
+    expect(tiles).toHaveTextContent("4columns");
+    expect(tiles).toHaveTextContent("blank text cells");
     const roles = screen.getByLabelText("Columns by role");
     expect(roles).toHaveTextContent("1 free textnote");
     expect(roles).toHaveTextContent("1 categoryspecies");
@@ -114,6 +117,24 @@ describe("datasets", () => {
     serve();
     await openProfile();
     expect(await screen.findByRole("img", { name: "Missing and blank values (of 120 rows)" })).toBeInTheDocument();
+  });
+
+  it("shows every column at a glance and where values are missing along the rows", async () => {
+    serve();
+    await openProfile();
+    const glance = await screen.findByRole("region", { name: "At a glance" });
+    expect(within(glance).getByRole("img", { name: "Every column at a glance" })).toBeInTheDocument();
+    expect(within(glance).getByRole("img", { name: "Where values are missing, by row band" })).toBeInTheDocument();
+  });
+
+  it("shows warnings and a few notes first, and every finding on request", async () => {
+    const many = { ...profile, findings: Array.from({ length: 9 }, (_, i) => ({ level: "note" as const, topic: "spelling" as const, column: `c${i}`, text: `note ${i}` })) };
+    serve(undefined, () => HttpResponse.json(many));
+    await openProfile();
+    const findings = await screen.findByRole("region", { name: "Findings" });
+    expect(within(findings).getAllByRole("listitem")).toHaveLength(6);
+    await userEvent.click(within(findings).getByRole("button", { name: "Show all 9 findings" }));
+    expect(within(findings).getAllByRole("listitem")).toHaveLength(9);
   });
 
   it("says every column is filled instead of drawing an empty chart", async () => {
