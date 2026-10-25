@@ -64,6 +64,23 @@ class KeyMatch(StrictModel):
     ]
 
 
+class CoMissing(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    column_a: str
+    column_b: str
+    rows: Annotated[int, Field(ge=0)]
+
+
+class Fences(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    low: float
+    high: float
+
+
 class Level(StrEnum):
     warning = "warning"
     note = "note"
@@ -144,6 +161,12 @@ class HistogramBar(StrictModel):
         extra="forbid",
     )
     label: str
+    lower: Annotated[
+        float | None, Field(description="For bins: the bin's lower edge. Absent for top values.")
+    ] = None
+    upper: Annotated[
+        float | None, Field(description="For bins: the bin's upper edge. Absent for top values.")
+    ] = None
     count: Annotated[int, Field(ge=0)]
 
 
@@ -2954,6 +2977,21 @@ class ColumnProfile(StrictModel):
         ),
     ] = None
     quartiles: Quartiles | None = None
+    mean: Annotated[
+        float | None, Field(description="Mean of a numeric column's present values.")
+    ] = None
+    std: Annotated[
+        float | None,
+        Field(description="Sample standard deviation of a numeric column with variation.", ge=0.0),
+    ] = None
+    fences: Fences | None = None
+    outliers: Annotated[
+        int | None,
+        Field(
+            description="Present values outside the fences, for a numeric column with variation.",
+            ge=0,
+        ),
+    ] = None
     missing_by_band: Annotated[
         list[float],
         Field(description="Share of missing cells (0 to 1) in each row band, in row order."),
@@ -3642,6 +3680,15 @@ class DatasetProfile(StrictModel):
     duplicate_rows: Annotated[
         int | None,
         Field(description="Profiled rows equal in every column to an earlier one.", ge=0),
+    ] = None
+    rows_with_gap: Annotated[
+        int | None, Field(description="Profiled rows with at least one missing cell.", ge=0)
+    ] = None
+    co_missing: Annotated[
+        list[CoMissing] | None,
+        Field(
+            description="The column pairs most often missing in the same rows, most rows first, at most 5. Pairs that are never missing together are left out."
+        ),
     ] = None
     columns: list[ColumnProfile]
     correlation: Correlation

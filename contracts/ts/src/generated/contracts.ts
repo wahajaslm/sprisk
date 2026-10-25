@@ -842,6 +842,14 @@ export interface DatasetProfile {
    * Profiled rows equal in every column to an earlier one.
    */
   duplicate_rows?: number;
+  /**
+   * Profiled rows with at least one missing cell.
+   */
+  rows_with_gap?: number;
+  /**
+   * The column pairs most often missing in the same rows, most rows first, at most 5. Pairs that are never missing together are left out.
+   */
+  co_missing?: CoMissing[];
   columns: ColumnProfile[];
   correlation: Correlation;
   /**
@@ -850,6 +858,17 @@ export interface DatasetProfile {
    * @maxItems 60
    */
   findings?: ProfileFinding[];
+}
+/**
+ * Two columns and the profiled rows where both are missing.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CoMissing".
+ */
+export interface CoMissing {
+  column_a: string;
+  column_b: string;
+  rows: number;
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -938,6 +957,19 @@ export interface ColumnProfile {
   word_counts?: Histogram;
   quartiles?: Quartiles;
   /**
+   * Mean of a numeric column's present values.
+   */
+  mean?: number;
+  /**
+   * Sample standard deviation of a numeric column with variation.
+   */
+  std?: number;
+  fences?: Fences;
+  /**
+   * Present values outside the fences, for a numeric column with variation.
+   */
+  outliers?: number;
+  /**
    * Share of missing cells (0 to 1) in each row band, in row order.
    */
   missing_by_band: number[];
@@ -963,6 +995,14 @@ export interface Histogram {
  */
 export interface HistogramBar {
   label: string;
+  /**
+   * For bins: the bin's lower edge. Absent for top values.
+   */
+  lower?: number;
+  /**
+   * For bins: the bin's upper edge. Absent for top values.
+   */
+  upper?: number;
   count: number;
 }
 /**
@@ -977,6 +1017,16 @@ export interface Quartiles {
   median: number;
   q3: number;
   max: number;
+}
+/**
+ * The 1.5 x IQR fences of a numeric column: Q1 - 1.5 IQR and Q3 + 1.5 IQR. Values outside them are the outliers an IQR clip changes.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Fences".
+ */
+export interface Fences {
+  low: number;
+  high: number;
 }
 /**
  * Absent when every value is missing.

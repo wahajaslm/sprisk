@@ -9,7 +9,9 @@ rows before the split (ADR-0059), since statistics of all rows see held-out rows
 
 import json
 import math
+import operator
 import sys
+from functools import reduce
 from itertools import combinations
 from typing import Any
 
@@ -31,6 +33,9 @@ WORD_BINS = 20
 # Most distinct values a column may have and still report its rarest value's share: enough for
 # the classes of a target, few enough that the share means something.
 MAX_RARE_VALUES = 20
+# Column pairs listed as missing together, and the gappiest columns paired to find them.
+CO_MISSING = 5
+MAX_GAPPY = 30
 # Bounds on the work and memory of one profile; the page says when a table is larger.
 MAX_COLUMNS = 200
 MAX_ROWS = 1_000_000
@@ -78,6 +83,8 @@ def profile(
         "profiled_rows": rows,
         "band_rows": band_rows,
         **({} if duplicates is None else {"duplicate_rows": duplicates}),
+        "rows_with_gap": _rows_with_gap(data),
+        "co_missing": _co_missing(data),
         "columns": columns,
         "correlation": {"columns": varying, "pairs": _pairs(data, varying)},
         "findings": findings(data, columns, duplicates),
@@ -91,6 +98,24 @@ def _duplicates(data: pl.DataFrame, rows: int, columns: int) -> int | None:
     if rows > data.height or columns > MAX_COLUMNS or data.width > MAX_COLUMNS:
         return None
     return data.height - data.n_unique() if data.height else 0
+
+
+def _rows_with_gap(data: pl.DataFrame) -> int:
+    """Rows with a missing cell, from the columns as series: a name is never read as a pattern."""
+    gaps = [s.is_null() for s in data]
+    return int(reduce(operator.or_, gaps).sum()) if gaps else 0
+
+
+def _co_missing(data: pl.DataFrame) -> list[dict[str, Any]]:
+    """The column pairs most often missing in the same rows: gaps that come together usually
+    share a cause, such as a source that never filled either."""
+    gappy = sorted((s for s in data if s.null_count() > 0), key=lambda s: -s.null_count())
+    pairs = [
+        (int((a.is_null() & b.is_null()).sum()), a.name, b.name)
+        for a, b in combinations(gappy[:MAX_GAPPY], 2)
+    ]
+    top = sorted((p for p in pairs if p[0] > 0), key=lambda p: -p[0])[:CO_MISSING]
+    return [{"column_a": a, "column_b": b, "rows": n} for n, a, b in top]
 
 
 def _finite(data: pl.DataFrame) -> pl.DataFrame:
@@ -142,14 +167,16 @@ def _rarest_share(s: pl.Series) -> float | None:
     return min(counts) / present.len()
 
 
-def _shape(s: pl.Series) -> dict[str, float]:
-    """Skew, excess kurtosis, the IQR and the share outside the 1.5 x IQR fences, for scaling
-    and outlier rules. A column without variation has no shape, so it gets none."""
+def _shape(s: pl.Series) -> dict[str, Any]:
+    """Mean, spread, skew, excess kurtosis, the IQR and the 1.5 x IQR fences with the values
+    outside them, for scaling and outlier rules. A column without variation has no shape, so it
+    gets only its mean."""
     present = s.drop_nulls().cast(pl.Float64)
+    shape: dict[str, Any] = {} if present.is_empty() else {"mean": present.mean()}
     if present.n_unique() < 2:
-        return {}
+        return shape
     q1, q3 = present.quantile(0.25, "linear"), present.quantile(0.75, "linear")
-    shape: dict[str, float] = {}
+    shape["std"] = present.std()
     # Unbiased (bias=False), as SciPy reports them: small train partitions are common.
     if (skew := present.skew(bias=False)) is not None and math.isfinite(skew):
         shape["skewness"] = skew
@@ -158,8 +185,10 @@ def _shape(s: pl.Series) -> dict[str, float]:
     if q1 is not None and q3 is not None:
         shape["iqr"] = q3 - q1
         fence = 1.5 * (q3 - q1)
-        outside = ((present < q1 - fence) | (present > q3 + fence)).sum()
+        outside = int(((present < q1 - fence) | (present > q3 + fence)).sum())
         shape["outlier_share"] = float(outside) / present.len()
+        shape["fences"] = {"low": q1 - fence, "high": q3 + fence}
+        shape["outliers"] = outside
     return shape
 
 
@@ -241,7 +270,15 @@ def _missing_by_band(s: pl.Series, band_rows: int) -> list[float]:
 
 def _bins(bins: pl.DataFrame, name: str) -> dict[str, Any] | None:
     rows = bins.filter(pl.col("column_name") == name).iter_rows(named=True)
-    bars = [{"label": _range(r["bin_lower"], r["bin_upper"]), "count": r["count"]} for r in rows]
+    bars = [
+        {
+            "label": _range(r["bin_lower"], r["bin_upper"]),
+            "lower": r["bin_lower"],
+            "upper": r["bin_upper"],
+            "count": r["count"],
+        }
+        for r in rows
+    ]
     return {"kind": "bins", "bars": bars} if bars else None
 
 

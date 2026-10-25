@@ -1,0 +1,30 @@
+{
+  "total_rows": 40,
+  "total_columns": 2,
+  "profiled_rows": 40,
+  "band_rows": 1,
+  "rows_with_gap": 11,
+  "co_missing": [{ "column_a": "a", "column_b": "b", "rows": 8 }],
+  "columns": [
+    {
+      "name": "a",
+      "data_type": "Float64",
+      "missing": 10,
+      "distinct": 21,
+      "mean": 10.5,
+      "std": 6.2,
+      "fences": { "low": -9.5, "high": 31.5 },
+      "outliers": 1,
+      "missing_by_band": [1.0, 0.0],
+      "histogram": { "kind": "bins", "bars": [{ "label": "1–10", "count": 10, "lower": 1.5, "upper": 10.5 }, { "label": "10–500", "count": 11, "lower": 10.5, "upper": 500.5 }] }
+    },
+    {
+      "name": "b",
+      "data_type": "Float64",
+      "missing": 8,
+      "distinct": 1,
+      "missing_by_band": [1.0, 0.0]
+    }
+  ],
+  "correlation": { "columns": [], "pairs": [] }
+}

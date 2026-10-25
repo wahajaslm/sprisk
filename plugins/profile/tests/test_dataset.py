@@ -349,3 +349,41 @@ def test_a_text_column_with_no_values_has_no_html_share() -> None:
 def test_markup_the_html_strip_step_leaves_is_not_counted() -> None:
     p = profile(pl.DataFrame({"t": ["Ben&nothing", "10<x cm", "<!-- c -->texte"]}))
     assert column(p, "t").html_share == pytest.approx(1 / 3)
+
+
+def test_a_number_has_its_mean_spread_iqr_fences_and_outlier_count() -> None:
+    values = [float(i) for i in range(1, 21)] + [500.0]
+    c = column(profile(pl.DataFrame({"v": values})), "v")
+    q1, q3 = 6.0, 16.0
+    assert c.fences is not None
+    assert (c.fences.low, c.fences.high) == (q1 - 15.0, q3 + 15.0)
+    assert c.outliers == 1
+    assert c.mean == pytest.approx(sum(values) / len(values))
+    assert c.std == pytest.approx(pl.Series(values).std())
+
+
+def test_a_bin_carries_its_numeric_edges() -> None:
+    histogram = column(profile(frame()), "x").histogram
+    assert histogram is not None
+    bars = histogram.bars
+    assert bars[0].lower == 0.0
+    assert bars[-1].upper == 99.0
+    assert all(b.lower is not None and b.upper is not None and b.lower <= b.upper for b in bars)
+
+
+def test_counts_rows_with_a_gap_and_the_columns_missing_together() -> None:
+    n = 40
+    data = pl.DataFrame(
+        {
+            "a": [None if i < 10 else 1.0 for i in range(n)],
+            "b": [None if i < 8 else 1.0 for i in range(n)],
+            "c": [None if i == 39 else 1.0 for i in range(n)],
+            "full": [1.0] * n,
+        }
+    )
+    p = profile(data)
+    assert p.rows_with_gap == 11
+    assert p.co_missing is not None
+    top = p.co_missing[0]
+    assert (top.column_a, top.column_b, top.rows) == ("a", "b", 8)
+    assert all(pair.rows > 0 for pair in p.co_missing)

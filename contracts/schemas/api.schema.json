@@ -280,6 +280,16 @@
           "minimum": 0,
           "description": "Profiled rows equal in every column to an earlier one."
         },
+        "rows_with_gap": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Profiled rows with at least one missing cell."
+        },
+        "co_missing": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CoMissing" },
+          "description": "The column pairs most often missing in the same rows, most rows first, at most 5. Pairs that are never missing together are left out."
+        },
         "columns": {
           "type": "array",
           "items": {
@@ -295,6 +305,27 @@
           "items": { "$ref": "#/$defs/ProfileFinding" },
           "description": "What stands out in the profiled rows, most important first, as plain sentences built from the counts above (ADR-0065). Descriptive: a finding is never evidence for a decision."
         }
+      }
+    },
+    "CoMissing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["column_a", "column_b", "rows"],
+      "description": "Two columns and the profiled rows where both are missing.",
+      "properties": {
+        "column_a": { "type": "string" },
+        "column_b": { "type": "string" },
+        "rows": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "Fences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["low", "high"],
+      "description": "The 1.5 x IQR fences of a numeric column: Q1 - 1.5 IQR and Q3 + 1.5 IQR. Values outside them are the outliers an IQR clip changes.",
+      "properties": {
+        "low": { "type": "number" },
+        "high": { "type": "number" }
       }
     },
     "ProfileFinding": {
@@ -371,6 +402,10 @@
         "blank": { "type": "integer", "minimum": 0, "description": "Present text values that are empty or only spaces. Counted apart from missing, which holds empty cells, NaN and infinity: a blank is text that a step must turn into a gap before an imputer sees it. Absent for columns that are not text." },
         "word_counts": { "$ref": "#/$defs/Histogram", "description": "Words per present value of a text column, as equal-width bins. Absent for other columns." },
         "quartiles": { "$ref": "#/$defs/Quartiles" },
+        "mean": { "type": "number", "description": "Mean of a numeric column's present values." },
+        "std": { "type": "number", "minimum": 0, "description": "Sample standard deviation of a numeric column with variation." },
+        "fences": { "$ref": "#/$defs/Fences" },
+        "outliers": { "type": "integer", "minimum": 0, "description": "Present values outside the fences, for a numeric column with variation." },
         "missing_by_band": {
           "type": "array",
           "items": {
@@ -424,6 +459,8 @@
         "label": {
           "type": "string"
         },
+        "lower": { "type": "number", "description": "For bins: the bin's lower edge. Absent for top values." },
+        "upper": { "type": "number", "description": "For bins: the bin's upper edge. Absent for top values." },
         "count": {
           "type": "integer",
           "minimum": 0
