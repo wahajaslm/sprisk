@@ -20,8 +20,9 @@ export type MeterRow = { name: string; share: number; value: string; warn?: bool
 export function MeterRows({ label, rows }: { label: string; rows: MeterRow[] }) {
   return (
     <ul className="sv-meters" aria-label={label}>
-      {rows.map((r) => (
-        <li key={r.name} className={r.warn ? "warn" : undefined}>
+      {rows.map((r, i) => (
+        // Names can repeat: values are cut to 60 characters, and two may share a start.
+        <li key={`${i}:${r.name}`} className={r.warn ? "warn" : undefined}>
           <span className="sv-meter-name" title={r.name}>
             {r.name}
           </span>

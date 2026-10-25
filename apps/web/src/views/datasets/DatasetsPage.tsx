@@ -14,20 +14,19 @@ import { PageFrame } from "../../components/ui/PageFrame.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { LineageTab, type Use } from "./DatasetDetail.tsx";
-import { PreviewTab } from "./PreviewTab.tsx";
-import { ProfileTab } from "./ProfileTab.tsx";
+import { ExploreTab } from "./ExploreTab.tsx";
 import { InvestigationTab } from "./InvestigationTab.tsx";
 import { SearchField } from "../../components/ui/SearchField.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
 
-/** Every table the flows load, and a preview, profile and investigations of the one picked
+/** Every table the flows load, and an exploration and investigations of the one picked
  * (ADR-0038, ADR-0061, ADR-0065). */
 export function DatasetsPage() {
   const datasets = useLoadedTables();
   const versions = usePipelineVersions();
   const showRun = useSelection((s) => s.showRun);
   const setNav = useSelection((s) => s.setNav);
-  const [tab, setTab] = useState<Tab>("Preview");
+  const [tab, setTab] = useState<Tab>("Explore");
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (datasets.isError) return <p role="alert" className="error pad">{datasets.error.message}</p>;
@@ -82,16 +81,14 @@ export function DatasetsPage() {
         <LineageTab lineage={lineage} onOpen={open} />
       ) : tab === "Investigation" ? (
         <InvestigationTab key={current.artifact.id} dataset={current} versions={versions.data ?? []} />
-      ) : tab === "Preview" ? (
-        <PreviewTab key={current.artifact.id} dataset={current} />
       ) : (
-        <ProfileTab key={current.artifact.id} dataset={current} />
+        <ExploreTab key={current.artifact.id} dataset={current} />
       ))}
     </PageFrame>
   );
 }
 
-const TABS = ["Preview", "Profile", "Investigation", "Lineage"] as const;
+const TABS = ["Explore", "Investigation", "Lineage"] as const;
 
 /** A table's numbers go in the Info dock, not in a row under the header (design rule: stats go
  * in the Info dock). The profile's are added once it is read. */
