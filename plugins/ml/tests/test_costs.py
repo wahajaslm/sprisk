@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import numpy as np
@@ -6,6 +7,7 @@ import pytest
 import skops.io
 from sklearn.model_selection import RepeatedStratifiedKFold
 
+from sprisk_contracts import ClassificationReport
 from sprisk_ml.costs import expected_cost
 from sprisk_ml.evaluate import evaluate
 from sprisk_ml.models import dummy_baseline, linear_model, random_forest
@@ -183,3 +185,9 @@ def test_a_costed_model_measures_its_wrong_rows_from_the_cut_off() -> None:
     assert m["error_margins"]["kind"] == "cut_off"
     for row in m["misclassified_sample"]["rows"]:
         assert row["margin"] == pytest.approx(abs(p_bad[row["row"]] - model.threshold))
+
+
+def test_a_costed_model_reports_a_classification_report() -> None:
+    model = linear_model(risky(), **params(costs=COSTS))
+    m = evaluate(model, risky(seed=1), target="y", task="classification")["metrics"]
+    ClassificationReport.model_validate_json(json.dumps(m, allow_nan=False))

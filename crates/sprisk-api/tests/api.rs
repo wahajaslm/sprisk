@@ -3702,7 +3702,7 @@ async fn the_first_vertical_slice_fills_gaps_with_the_train_median_through_an_ap
                        "params": { "target": "y", "features": ["x"], "task": "classification" } }),
     );
     nodes.push(
-        json!({ "id": "eval", "operator": "sprisk.ml.evaluate@2.0.0",
+        json!({ "id": "eval", "operator": "sprisk.ml.evaluate@2.1.0",
                        "params": { "target": "y", "task": "classification" } }),
     );
     let edges = edited["edges"].as_array_mut().unwrap();
@@ -4470,7 +4470,7 @@ async fn the_encoding_rule_adds_the_encode_step_a_model_needs() {
         "params":{"target":"credit_risk","task":"classification","n_estimators":50}
     }));
     nodes.push(json!({
-        "id":"score", "operator":"sprisk.ml.evaluate@2.0.0",
+        "id":"score", "operator":"sprisk.ml.evaluate@2.1.0",
         "params":{"target":"credit_risk","task":"classification"}
     }));
     flow["edges"] = json!([
@@ -7334,7 +7334,7 @@ async fn word_features_run_from_load_to_evaluate_and_are_refit_in_each_fold() {
                "params": {"columns": ["designation", "description"]}}),
         json!({"id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
                "params": {"target": "prdtypecode", "task": "classification", "exclude": ids}}),
-        json!({"id": "score", "operator": "sprisk.ml.evaluate@2.0.0", "params": target}),
+        json!({"id": "score", "operator": "sprisk.ml.evaluate@2.1.0", "params": target}),
         json!({"id": "matters", "operator": "sprisk.ml.feature_importance@2.0.0",
                "params": {"target": "prdtypecode"}}),
     ]);

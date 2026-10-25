@@ -1,0 +1,86 @@
+{
+  "schema_version": "sprisk.classification_report/v1",
+  "n_rows": 6,
+  "estimator": "LogisticRegression",
+  "sklearn_version": "1.9.1",
+  "accuracy": 0.5,
+  "balanced_accuracy": 0.5,
+  "f1_macro": 0.5,
+  "weighted_f1": 0.5,
+  "confusion": {
+    "labels": [
+      "a",
+      "b",
+      "c"
+    ],
+    "matrix": [
+      [
+        1,
+        1,
+        0
+      ],
+      [
+        0,
+        1,
+        1
+      ],
+      [
+        1,
+        0,
+        1
+      ]
+    ]
+  },
+  "top_confusions": [
+    {
+      "true": "a",
+      "predicted": "b",
+      "count": 1
+    },
+    {
+      "true": "b",
+      "predicted": "c",
+      "count": 1
+    },
+    {
+      "true": "c",
+      "predicted": "a",
+      "count": 1
+    }
+  ],
+  "error_margins": {
+    "kind": "proba",
+    "edges": [
+      0.0,
+      0.5,
+      1.0
+    ],
+    "counts": [
+      2,
+      1
+    ]
+  },
+  "misclassified_sample": {
+    "rows": [
+      {
+        "row": 1,
+        "true": "a",
+        "predicted": "b",
+        "margin": 0.25
+      },
+      {
+        "row": 3,
+        "true": "b",
+        "predicted": "c",
+        "margin": 0.5
+      },
+      {
+        "row": 4,
+        "true": "c",
+        "predicted": "a",
+        "margin": 0.125
+      }
+    ],
+    "n_total": 3
+  }
+}

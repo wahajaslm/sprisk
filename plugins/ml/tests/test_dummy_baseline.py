@@ -23,6 +23,7 @@ def test_logistic_beats_dummy_on_separable_data(clf_numbers: pl.DataFrame) -> No
     assert linear["n_rows"] == 30
     assert linear["estimator"] == "LogisticRegression"
     assert set(linear) == {
+        "schema_version",
         "n_rows",
         "estimator",
         "sklearn_version",

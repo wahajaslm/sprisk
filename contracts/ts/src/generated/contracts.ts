@@ -59,6 +59,13 @@ export type NodeId = string;
  */
 export type ColumnRole = "identifier" | "text" | "category" | "number" | "time" | "boolean" | "constant" | "empty";
 /**
+ * proba: top class probability minus the runner-up. decision: the size of a two-class decision score, or the top score minus the runner-up. cut_off: distance of the positive class's probability from the cost cut-off.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MarginKind".
+ */
+export type MarginKind = "proba" | "decision" | "cut_off";
+/**
  * explicit: user stated it. inferred: AI or rule guessed it. measured: computed from data. confirmed: user approved an inferred value.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -1225,6 +1232,149 @@ export interface ColumnShift {
    * The other table's values in the same bins.
    */
   other_counts: number[];
+}
+/**
+ * A classifier's test-set metrics (sprisk.ml.evaluate 2.1.0). Labels are the target's class values as text. No feature values: a sampled row is named by its index in the test table, whose rows show through GET /artifacts/{id}/rows.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ClassificationReport".
+ */
+export interface ClassificationReport {
+  schema_version: "sprisk.classification_report/v1";
+  n_rows: number;
+  /**
+   * The estimator's class name, inside a cost cut-off when there is one.
+   */
+  estimator: string;
+  sklearn_version: string;
+  cut_off?: CutOff;
+  /**
+   * Mean cost per test row; only with cut_off.
+   */
+  expected_cost?: number;
+  accuracy: number;
+  balanced_accuracy: number;
+  f1_macro: number;
+  weighted_f1: number;
+  confusion: ConfusionMatrix;
+  /**
+   * One per class, in the confusion matrix's label order.
+   */
+  per_class: ClassScore[];
+  /**
+   * The off-diagonal confusion cells with any rows, largest first, at most 10.
+   */
+  top_confusions: Confusion[];
+  error_margins?: ErrorMargins;
+  misclassified_sample: MisclassifiedSample;
+}
+/**
+ * Only for a model that decides by costs (ADR-0053).
+ */
+export interface CutOff {
+  positive: string;
+  at: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ConfusionMatrix".
+ */
+export interface ConfusionMatrix {
+  labels: string[];
+  /**
+   * Rows are the true class, columns the predicted class, in labels order.
+   */
+  matrix: number[][];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ClassScore".
+ */
+export interface ClassScore {
+  label: string;
+  precision: number;
+  recall: number;
+  f1: number;
+  /**
+   * Test rows of this true class.
+   */
+  support: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "Confusion".
+ */
+export interface Confusion {
+  true: string;
+  predicted: string;
+  count: number;
+}
+/**
+ * Absent when the model gives no scores or got no row wrong.
+ */
+export interface ErrorMargins {
+  kind: MarginKind;
+  /**
+   * 11 bin edges (numpy.histogram, 10 bins).
+   */
+  edges: number[];
+  /**
+   * Misclassified test rows per bin.
+   */
+  counts: number[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MisclassifiedSample".
+ */
+export interface MisclassifiedSample {
+  /**
+   * At most 20, picked with a fixed seed, in test-table order.
+   */
+  rows: MisclassifiedRow[];
+  /**
+   * All misclassified test rows.
+   */
+  n_total: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "MisclassifiedRow".
+ */
+export interface MisclassifiedRow {
+  /**
+   * Index of the row in the test table.
+   */
+  row: number;
+  true: string;
+  predicted: string;
+  /**
+   * Absent when the model gives no scores.
+   */
+  margin?: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "CutOff".
+ */
+export interface CutOff1 {
+  positive: string;
+  at: number;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ErrorMargins".
+ */
+export interface ErrorMargins1 {
+  kind: MarginKind;
+  /**
+   * 11 bin edges (numpy.histogram, 10 bins).
+   */
+  edges: number[];
+  /**
+   * Misclassified test rows per bin.
+   */
+  counts: number[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema

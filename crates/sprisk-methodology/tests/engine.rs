@@ -598,7 +598,7 @@ fn the_test_rows_are_scored_as_the_model_s_train_rows_were_prepared_with_its_wor
         .iter()
         .find(|n| n.id.as_str() == "score_test")
         .unwrap();
-    assert_eq!(score.operator.as_str(), "sprisk.ml.evaluate@2.0.0");
+    assert_eq!(score.operator.as_str(), "sprisk.ml.evaluate@2.1.0");
     assert_eq!(
         serde_json::to_value(&score.params).unwrap(),
         json!({ "target": "y", "task": "classification" })
@@ -697,7 +697,7 @@ fn the_baseline_is_scored_on_the_same_test_rows_beside_the_model() {
     );
     assert_eq!(
         node("score_baseline").operator.as_str(),
-        "sprisk.ml.evaluate@2.0.0"
+        "sprisk.ml.evaluate@2.1.0"
     );
     let added: Vec<String> = edges_of(&edges)
         .into_iter()
@@ -723,7 +723,7 @@ fn a_flow_already_scored_on_its_test_rows_is_not_scored_again() {
             { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {} },
             { "id": "model", "operator": "sprisk.ml.dummy_baseline@3.0.0",
               "params": { "target": "y", "task": "classification" } },
-            { "id": "score_test", "operator": "sprisk.ml.evaluate@2.0.0", "params": {} },
+            { "id": "score_test", "operator": "sprisk.ml.evaluate@2.1.0", "params": {} },
         ]),
         json!([{ "from": "split.train", "to": "model.train" }]),
     );
@@ -739,7 +739,7 @@ fn a_flow_holding_a_baseline_scoring_step_is_not_scored_again() {
                 { "id": "split", "operator": "sprisk.validation.random_split@1.0.0", "params": {} },
                 { "id": "model", "operator": "sprisk.ml.linear_model@3.0.0",
                   "params": { "target": "y", "task": "classification" } },
-                { "id": taken, "operator": "sprisk.ml.evaluate@2.0.0", "params": {} },
+                { "id": taken, "operator": "sprisk.ml.evaluate@2.1.0", "params": {} },
             ]),
             json!([{ "from": "split.train", "to": "model.train" }]),
         );

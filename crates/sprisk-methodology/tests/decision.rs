@@ -419,7 +419,7 @@ fn a_scale_step_upstream_of_a_random_forest_reads_trees() {
             ("scale", "clean.scale"),
             ("rf", "ml.random_forest@3.0.0"),
             ("base", "ml.dummy_baseline@3.0.0"),
-            ("eval", "ml.evaluate@2.0.0"),
+            ("eval", "ml.evaluate@2.1.0"),
         ],
         &[
             ("scale.train", "rf.train"),
@@ -720,7 +720,7 @@ fn before_forest() -> PipelineVersion {
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
             ("rf", "ml.random_forest@3.0.0"),
-            ("eval", "ml.evaluate@2.0.0"),
+            ("eval", "ml.evaluate@2.1.0"),
         ],
         &[
             ("split.train", "scale.train"),
@@ -784,7 +784,7 @@ fn a_step_whose_output_has_no_input_of_the_same_name_cannot_be_removed() {
         &[
             ("split", "validation.random_split"),
             ("rf", "ml.random_forest@3.0.0"),
-            ("eval", "ml.evaluate@2.0.0"),
+            ("eval", "ml.evaluate@2.1.0"),
         ],
         &[("split.train", "rf.train"), ("rf.model", "eval.model")],
     );
@@ -972,7 +972,7 @@ fn a_step_added_before_a_model_reads_the_split_and_feeds_the_model_and_its_evalu
             ("split", "validation.random_split"),
             ("chart", "profile.chart"),
             ("rf", "ml.random_forest@3.0.0"),
-            ("eval", "ml.evaluate@2.0.0"),
+            ("eval", "ml.evaluate@2.1.0"),
         ],
         &[
             ("split.train", "chart.data"),
@@ -1003,7 +1003,7 @@ fn a_step_that_makes_words_feeds_them_to_the_model_and_its_evaluation() {
         &[
             ("split", "validation.random_split"),
             ("rf", "ml.random_forest@3.0.0"),
-            ("eval", "ml.evaluate@2.0.0"),
+            ("eval", "ml.evaluate@2.1.0"),
         ],
         &[
             ("split.train", "rf.train"),
@@ -1069,7 +1069,7 @@ fn a_step_that_makes_words_is_refused_before_a_step_that_reads_none_or_has_some(
             ("split", "validation.random_split"),
             ("old", "clean.vectorize_text@1.1.0"),
             ("rf", "ml.random_forest@3.0.0"),
-            ("eval", "ml.evaluate@2.0.0"),
+            ("eval", "ml.evaluate@2.1.0"),
         ],
         &[
             ("split.train", "old.train"),
@@ -1556,7 +1556,7 @@ fn evaluated_flow() -> PipelineVersion {
             ("split", "validation.random_split"),
             ("scale", "clean.scale"),
             ("model", "ml.linear_model@3.0.0"),
-            ("eval", "ml.evaluate@2.0.0"),
+            ("eval", "ml.evaluate@2.1.0"),
         ],
         &[
             ("load.data", "split.data"),
@@ -2742,7 +2742,7 @@ fn worded_flow(words: Option<&str>) -> PipelineVersion {
             ("split", "validation.random_split"),
             ("text", "clean.vectorize_text@1.1.0"),
             ("model", "ml.linear_model@3.0.0"),
-            ("eval", "ml.evaluate@2.0.0"),
+            ("eval", "ml.evaluate@2.1.0"),
         ],
         &edges,
     ))

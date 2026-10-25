@@ -63,7 +63,7 @@ def test_every_core_manifest_loads_with_its_entrypoint() -> None:
         "sprisk.io.join@1.0.0",
         "sprisk.ml.cross_validate@4.0.0",
         "sprisk.ml.dummy_baseline@3.0.0",
-        "sprisk.ml.evaluate@2.0.0",
+        "sprisk.ml.evaluate@2.1.0",
         "sprisk.ml.feature_importance@2.0.0",
         "sprisk.ml.linear_model@3.0.0",
         "sprisk.ml.random_forest@3.0.0",

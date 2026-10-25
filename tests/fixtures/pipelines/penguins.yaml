@@ -18,8 +18,8 @@ nodes:
   - { id: island_and_sex, operator: sprisk.clean.encode@1.0.0, params: { columns: [Island, Sex] } }
   - { id: baseline, operator: sprisk.ml.dummy_baseline@3.0.0, params: { target: Species, task: classification } }
   - { id: forest, operator: sprisk.ml.random_forest@3.0.0, params: { target: Species, task: classification, seed: 42 } }
-  - { id: score_baseline, operator: sprisk.ml.evaluate@2.0.0, params: { target: Species, task: classification } }
-  - { id: score_forest, operator: sprisk.ml.evaluate@2.0.0, params: { target: Species, task: classification } }
+  - { id: score_baseline, operator: sprisk.ml.evaluate@2.1.0, params: { target: Species, task: classification } }
+  - { id: score_forest, operator: sprisk.ml.evaluate@2.1.0, params: { target: Species, task: classification } }
   - { id: importance, operator: sprisk.ml.feature_importance@2.0.0, params: { target: Species, seed: 42 } }
 edges:
   - { from: load.data, to: tidy_text.data }

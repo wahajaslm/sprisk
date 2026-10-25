@@ -46,6 +46,7 @@ export interface Entities {
   DatasetProfile: C.DatasetProfile;
   KeyMatches: C.KeyMatches;
   TableShift: C.TableShift;
+  ClassificationReport: C.ClassificationReport;
   NotebookVersion: C.NotebookVersion;
   NotebookExecute: C.NotebookExecute;
   NotebookExecution: C.NotebookExecution;

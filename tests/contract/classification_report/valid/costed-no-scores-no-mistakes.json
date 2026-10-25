@@ -1,0 +1,19 @@
+{
+  "schema_version": "sprisk.classification_report/v1",
+  "n_rows": 2,
+  "estimator": "DummyClassifier",
+  "sklearn_version": "1.9.1",
+  "cut_off": { "positive": "bad", "at": 0.25 },
+  "expected_cost": 0.0,
+  "accuracy": 1.0,
+  "balanced_accuracy": 1.0,
+  "f1_macro": 1.0,
+  "weighted_f1": 1.0,
+  "confusion": { "labels": ["bad", "good"], "matrix": [[1, 0], [0, 1]] },
+  "per_class": [
+    { "label": "bad", "precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 1 },
+    { "label": "good", "precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 1 }
+  ],
+  "top_confusions": [],
+  "misclassified_sample": { "rows": [], "n_total": 0 }
+}

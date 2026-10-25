@@ -8,10 +8,10 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
-    Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
-    CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet,
-    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
-    MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
+    Binding, ClassificationReport, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest,
+    ConceptSet, CreateRun, CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet,
+    FigureSet, FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles,
+    MethodRequest, MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
     NotebookSettingsRequest, NotebookVariables, NotebookVersion, Operator, OperatorSource,
@@ -66,6 +66,7 @@ const ENTITIES: &[&str] = &[
     "attempt",
     "attempt_output",
     "binding",
+    "classification_report",
     "code_display",
     "code_interface",
     "code_split",
@@ -239,6 +240,11 @@ fn loaded_table() {
 #[test]
 fn table_shift() {
     check::<TableShift>("table_shift");
+}
+
+#[test]
+fn classification_report() {
+    check::<ClassificationReport>("classification_report");
 }
 
 #[test]

@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import numpy as np
@@ -10,6 +11,7 @@ from sklearn.ensemble import VotingClassifier
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from test_linear_model import CLF, with_missing_target
 
+from sprisk_contracts import ClassificationReport
 from sprisk_ml.evaluate import evaluate
 from sprisk_ml.models import linear_model
 
@@ -264,3 +266,17 @@ def test_two_class_decision_margins_are_the_distance_from_the_boundary() -> None
     assert sum(m["error_margins"]["counts"]) == int(wrong.sum()) > 0
     for row in m["misclassified_sample"]["rows"]:
         assert row["margin"] == pytest.approx(abs(scores[row["row"]]))
+
+
+@pytest.mark.parametrize(
+    "estimator",
+    [
+        LogisticRegression(),
+        RidgeClassifier(),
+        VotingClassifier([("r", RidgeClassifier()), ("l", LogisticRegression())], voting="hard"),
+    ],
+    ids=["proba", "decision", "no-scores"],
+)
+def test_classification_metrics_are_a_classification_report(estimator: Any) -> None:
+    m, _ = scored(estimator)
+    ClassificationReport.model_validate_json(json.dumps(m, allow_nan=False))

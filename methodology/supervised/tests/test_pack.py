@@ -36,7 +36,7 @@ def inputs_for(evaluators: int) -> dict[str, Any]:
     for i in range(evaluators):
         nodes += [
             {"id": f"m{i}", "operator": "sprisk.ml.linear_model@3.0.0", "params": {}},
-            {"id": f"e{i}", "operator": "sprisk.ml.evaluate@2.0.0", "params": {}},
+            {"id": f"e{i}", "operator": "sprisk.ml.evaluate@2.1.0", "params": {}},
         ]
         edges += [
             {"from": "split.train", "to": f"m{i}.train"},

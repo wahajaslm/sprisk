@@ -337,6 +337,105 @@
         "other_counts": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "The other table's values in the same bins." }
       }
     },
+    "ClassificationReport": {
+      "title": "ClassificationReport",
+      "description": "A classifier's test-set metrics (sprisk.ml.evaluate 2.1.0). Labels are the target's class values as text. No feature values: a sampled row is named by its index in the test table, whose rows show through GET /artifacts/{id}/rows.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "n_rows", "estimator", "sklearn_version", "accuracy", "balanced_accuracy", "f1_macro", "weighted_f1", "confusion", "per_class", "top_confusions", "misclassified_sample"],
+      "properties": {
+        "schema_version": {"type": "string", "enum": ["sprisk.classification_report/v1"]},
+        "n_rows": {"type": "integer", "minimum": 0},
+        "estimator": {"type": "string", "description": "The estimator's class name, inside a cost cut-off when there is one."},
+        "sklearn_version": {"type": "string"},
+        "cut_off": {"$ref": "#/$defs/CutOff", "description": "Only for a model that decides by costs (ADR-0053)."},
+        "expected_cost": {"type": "number", "minimum": 0, "description": "Mean cost per test row; only with cut_off."},
+        "accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "balanced_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "f1_macro": {"type": "number", "minimum": 0, "maximum": 1},
+        "weighted_f1": {"type": "number", "minimum": 0, "maximum": 1},
+        "confusion": {"$ref": "#/$defs/ConfusionMatrix"},
+        "per_class": {"type": "array", "items": {"$ref": "#/$defs/ClassScore"}, "description": "One per class, in the confusion matrix's label order."},
+        "top_confusions": {"type": "array", "items": {"$ref": "#/$defs/Confusion"}, "description": "The off-diagonal confusion cells with any rows, largest first, at most 10."},
+        "error_margins": {"$ref": "#/$defs/ErrorMargins", "description": "Absent when the model gives no scores or got no row wrong."},
+        "misclassified_sample": {"$ref": "#/$defs/MisclassifiedSample"}
+      }
+    },
+    "CutOff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["positive", "at"],
+      "properties": {
+        "positive": {"type": "string"},
+        "at": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "ConfusionMatrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["labels", "matrix"],
+      "properties": {
+        "labels": {"type": "array", "items": {"type": "string"}},
+        "matrix": {"type": "array", "items": {"type": "array", "items": {"type": "integer", "minimum": 0}}, "description": "Rows are the true class, columns the predicted class, in labels order."}
+      }
+    },
+    "ClassScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "precision", "recall", "f1", "support"],
+      "properties": {
+        "label": {"type": "string"},
+        "precision": {"type": "number", "minimum": 0, "maximum": 1},
+        "recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "f1": {"type": "number", "minimum": 0, "maximum": 1},
+        "support": {"type": "integer", "minimum": 0, "description": "Test rows of this true class."}
+      }
+    },
+    "Confusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["true", "predicted", "count"],
+      "properties": {
+        "true": {"type": "string"},
+        "predicted": {"type": "string"},
+        "count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "ErrorMargins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "edges", "counts"],
+      "properties": {
+        "kind": {"$ref": "#/$defs/MarginKind"},
+        "edges": {"type": "array", "items": {"type": "number"}, "description": "11 bin edges (numpy.histogram, 10 bins)."},
+        "counts": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Misclassified test rows per bin."}
+      }
+    },
+    "MarginKind": {
+      "type": "string",
+      "enum": ["proba", "decision", "cut_off"],
+      "description": "proba: top class probability minus the runner-up. decision: the size of a two-class decision score, or the top score minus the runner-up. cut_off: distance of the positive class's probability from the cost cut-off."
+    },
+    "MisclassifiedSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows", "n_total"],
+      "properties": {
+        "rows": {"type": "array", "items": {"$ref": "#/$defs/MisclassifiedRow"}, "description": "At most 20, picked with a fixed seed, in test-table order."},
+        "n_total": {"type": "integer", "minimum": 0, "description": "All misclassified test rows."}
+      }
+    },
+    "MisclassifiedRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["row", "true", "predicted"],
+      "properties": {
+        "row": {"type": "integer", "minimum": 0, "description": "Index of the row in the test table."},
+        "true": {"type": "string"},
+        "predicted": {"type": "string"},
+        "margin": {"type": "number", "minimum": 0, "description": "Absent when the model gives no scores."}
+      }
+    },
     "LabelProfile": {
       "type": "object",
       "additionalProperties": false,

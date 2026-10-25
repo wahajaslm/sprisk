@@ -16,7 +16,7 @@ SOURCE = "sprisk.io.file_source@1.0.0"
 SPLIT = "sprisk.validation.random_split@1.0.0"
 DUMMY = "sprisk.ml.dummy_baseline@3.0.0"
 LINEAR = "sprisk.ml.linear_model@3.0.0"
-EVAL = "sprisk.ml.evaluate@2.0.0"
+EVAL = "sprisk.ml.evaluate@2.1.0"
 
 
 # Test-only operators for pipeline shapes the core packs cannot build yet.

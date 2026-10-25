@@ -1,6 +1,6 @@
 {
   "schema_version": "sprisk.operator/v1",
-  "id": "sprisk.ml.evaluate@2.0.0",
+  "id": "sprisk.ml.evaluate@2.1.0",
   "capability_class": "transform",
   "description": "Split rows by time into train, validation and sealed holdout.",
   "entrypoint": "sprisk_validation.temporal_split:temporal_split",

@@ -1,5 +1,5 @@
 schema_version: sprisk.operator/v1
-id: sprisk.ml.evaluate@2.0.0
+id: sprisk.ml.evaluate@2.1.0
 title: Test-set evaluation
 capability_class: evaluator
 role: score

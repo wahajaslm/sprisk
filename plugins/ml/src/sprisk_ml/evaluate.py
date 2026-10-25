@@ -40,6 +40,7 @@ def evaluate(
             y_true, y_pred, costs["positive"], costs["false_negative"], costs["false_positive"]
         )
     if task == "classification":
+        result["schema_version"] = "sprisk.classification_report/v1"
         result["accuracy"] = float(metrics.accuracy_score(y_true, y_pred))
         result["balanced_accuracy"] = float(metrics.balanced_accuracy_score(y_true, y_pred))
         result["f1_macro"] = float(metrics.f1_score(y_true, y_pred, average="macro"))

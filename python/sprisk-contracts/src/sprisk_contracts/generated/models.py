@@ -96,6 +96,67 @@ class ColumnShift(StrictModel):
     ]
 
 
+class CutOff(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    positive: str
+    at: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class MatrixItem(RootModel[int]):
+    root: Annotated[int, Field(ge=0)]
+
+
+class ConfusionMatrix(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    labels: list[str]
+    matrix: Annotated[
+        list[list[MatrixItem]],
+        Field(description="Rows are the true class, columns the predicted class, in labels order."),
+    ]
+
+
+class ClassScore(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    label: str
+    precision: Annotated[float, Field(ge=0.0, le=1.0)]
+    recall: Annotated[float, Field(ge=0.0, le=1.0)]
+    f1: Annotated[float, Field(ge=0.0, le=1.0)]
+    support: Annotated[int, Field(description="Test rows of this true class.", ge=0)]
+
+
+class Confusion(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    true: str
+    predicted: str
+    count: Annotated[int, Field(ge=0)]
+
+
+class MarginKind(StrEnum):
+    proba = "proba"
+    decision = "decision"
+    cut_off = "cut_off"
+
+
+class MisclassifiedRow(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    row: Annotated[int, Field(description="Index of the row in the test table.", ge=0)]
+    true: str
+    predicted: str
+    margin: Annotated[
+        float | None, Field(description="Absent when the model gives no scores.", ge=0.0)
+    ] = None
+
+
 class GroupShare(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1765,6 +1826,26 @@ class TableShift(StrictModel):
     ]
 
 
+class ErrorMargins(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: MarginKind
+    edges: Annotated[list[float], Field(description="11 bin edges (numpy.histogram, 10 bins).")]
+    counts: Annotated[list[Count], Field(description="Misclassified test rows per bin.")]
+
+
+class MisclassifiedSample(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    rows: Annotated[
+        list[MisclassifiedRow],
+        Field(description="At most 20, picked with a fixed seed, in test-table order."),
+    ]
+    n_total: Annotated[int, Field(description="All misclassified test rows.", ge=0)]
+
+
 class ClassBins(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2980,6 +3061,44 @@ class LoadedTable(StrictModel):
     total_rows: Annotated[int, Field(ge=0)]
     total_columns: Annotated[int, Field(ge=0)]
     used_by: list[LoadedTableUse]
+
+
+class ClassificationReport(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.classification_report/v1"]
+    n_rows: Annotated[int, Field(ge=0)]
+    estimator: Annotated[
+        str,
+        Field(description="The estimator's class name, inside a cost cut-off when there is one."),
+    ]
+    sklearn_version: str
+    cut_off: Annotated[
+        CutOff | None, Field(description="Only for a model that decides by costs (ADR-0053).")
+    ] = None
+    expected_cost: Annotated[
+        float | None, Field(description="Mean cost per test row; only with cut_off.", ge=0.0)
+    ] = None
+    accuracy: Annotated[float, Field(ge=0.0, le=1.0)]
+    balanced_accuracy: Annotated[float, Field(ge=0.0, le=1.0)]
+    f1_macro: Annotated[float, Field(ge=0.0, le=1.0)]
+    weighted_f1: Annotated[float, Field(ge=0.0, le=1.0)]
+    confusion: ConfusionMatrix
+    per_class: Annotated[
+        list[ClassScore], Field(description="One per class, in the confusion matrix's label order.")
+    ]
+    top_confusions: Annotated[
+        list[Confusion],
+        Field(
+            description="The off-diagonal confusion cells with any rows, largest first, at most 10."
+        ),
+    ]
+    error_margins: Annotated[
+        ErrorMargins | None,
+        Field(description="Absent when the model gives no scores or got no row wrong."),
+    ] = None
+    misclassified_sample: MisclassifiedSample
 
 
 class LabelNumber(StrictModel):

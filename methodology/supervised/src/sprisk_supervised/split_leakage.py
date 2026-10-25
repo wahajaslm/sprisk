@@ -196,7 +196,7 @@ def split_leakage(
 
 
 def unversioned(ref: str) -> str:
-    """An operator ref without its version: `sprisk.ml.evaluate@2.0.0` -> `sprisk.ml.evaluate`."""
+    """An operator ref without its version: `sprisk.ml.evaluate@2.1.0` -> `sprisk.ml.evaluate`."""
     return ref.split("@")[0]
 
 
