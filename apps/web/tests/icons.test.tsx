@@ -24,9 +24,9 @@ describe("step kind icons", () => {
     expect(css).not.toMatch(/\.icon-tile\.ring\s*\{/);
   });
 
-  it("every kind is a grey, never the alert red, which means a problem (ADR-0061)", () => {
+  it("every kind carries the design system's tint, never the alert red, which means a problem (ADR-0061)", () => {
     const tokens = KINDS.map((k) => css.match(new RegExp(`--kind-${k}: (#[0-9a-f]{6});`))?.[1]);
+    expect(tokens).toEqual(["#a8b8cf", "#bcb0d2", "#cdbc9a", "#d3ae9f", "#bcb0d2"]);
     expect(tokens).not.toContain("#ff5c5c");
-    for (const token of tokens) expect(token).toMatch(/^#([0-9a-f]{2})\1\1$/);
   });
 });
