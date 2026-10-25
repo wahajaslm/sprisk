@@ -10,7 +10,7 @@ import { useWorkbench } from "../workbench/workbench.ts";
 import { PanelToggleIcon, SendIcon, SparkIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
 import { CopilotMessage } from "../components/ui/CopilotMessage.tsx";
-import { Tag } from "../components/ui/Tag.tsx";
+import { Button } from "../components/ui/Button.tsx";
 
 /** Copilot pane: 340px width folding to a 44px rail (ADR-0061). Connected to local Qwen 2.5. */
 export function Copilot() {
@@ -113,85 +113,18 @@ export function Copilot() {
         {runId && <QueryState query={attempts}>{(data) => <RunNotes attempts={data} nodeId={nodeId} />}</QueryState>}
         {chatMessages.length === 0 ? (
           <>
-            {nav === "Objective" ? (
-              <CopilotMessage
-                role="assistant"
-                card={{
-                  title: "Objective Fact Extraction",
-                  rows: [
-                    { k: "Profiled dataset", v: "store_sales_2021_2026.csv" },
-                    { k: "Open questions", v: "3 in ledger", warn: true },
-                    { k: "Identified target", v: "Sales (units or revenue)" },
-                  ],
-                  foot: "Answer ledger questions to unlock pipeline generation.",
-                }}
-              >
-                I drafted the objective ledger from your prompt and dataset profile. Answer the open questions to generate the full pipeline graph.
-              </CopilotMessage>
-            ) : nav === "Flow" ? (
-              <CopilotMessage
-                role="assistant"
-                card={{
-                  title: "Step Audit · Missing values ≥ 20%",
-                  rows: [
-                    { k: "Affected columns", v: "3 dropped", warn: true },
-                    { k: "Accuracy impact", v: "−0.4 points" },
-                    { k: "Alternative", v: "Median imputation (+41 cells)" },
-                  ],
-                  foot: "Rule CLEAN-02 recommends dropping when missing rate exceeds 20%.",
-                }}
-              >
-                Above 20% missing, imputation creates synthetic bias. Dropping costs 0.4 points of accuracy while preserving signal integrity.
-              </CopilotMessage>
-            ) : nav === "Reports" ? (
-              <CopilotMessage
-                role="assistant"
-                card={{
-                  title: "Evidence Linkage",
-                  rows: [
-                    { k: "Active ledger", v: "German Credit v2" },
-                    { k: "Linked evidence", v: "3 artifacts" },
-                    { k: "Sign-off gate", v: "Pending" },
-                  ],
-                }}
-              >
-                This report links questions directly to audited run evidence. I will flag any changes if upstream pipeline runs differ.
-              </CopilotMessage>
-            ) : (
-              <CopilotMessage role="assistant">
-                Studio assistant active for {nav}. Select any step, node, or metric to audit methodology decisions and parameter sensitivity.
-              </CopilotMessage>
-            )}
+            {/* Facts only: no example card stands in for an answer the model has not given. */}
+            <CopilotMessage role="assistant">
+              Ask about this {nav === "Flow" ? "flow" : nav.toLowerCase()}. Answers come from the local model and can be wrong; check them against the evidence.
+            </CopilotMessage>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-              {nav === "Objective" ? (
-                <>
-                  <Tag tone="default" onClick={() => handleChipClick("Explain open questions")}>
-                    Explain questions
-                  </Tag>
-                  <Tag tone="default" onClick={() => handleChipClick("Show data profile")}>
-                    Show data profile
-                  </Tag>
-                </>
-              ) : nav === "Flow" ? (
-                <>
-                  <Tag tone="default" onClick={() => handleChipClick("Compare with 30% cutoff")}>
-                    Compare with 30%
-                  </Tag>
-                  <Tag tone="default" onClick={() => handleChipClick("Show affected rows")}>
-                    Show affected rows
-                  </Tag>
-                </>
-              ) : (
-                <>
-                  <Tag tone="default" onClick={() => handleChipClick("Summarise active view")}>
-                    Summarise view
-                  </Tag>
-                  <Tag tone="default" onClick={() => handleChipClick("Check methodology rules")}>
-                    Check rules
-                  </Tag>
-                </>
-              )}
+              <Button size="sm" onClick={() => handleChipClick("Summarise the active view")}>
+                Summarise view
+              </Button>
+              <Button size="sm" onClick={() => handleChipClick("Which methodology rules apply here?")}>
+                Check rules
+              </Button>
             </div>
           </>
         ) : (

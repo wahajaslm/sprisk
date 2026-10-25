@@ -1662,12 +1662,11 @@ describe("a run that finishes between polls", () => {
 });
 
 describe("copilot", () => {
-  it("says it is not connected instead of making up answers", async () => {
+  it("shows no made-up example answers, and says its answers can be wrong", async () => {
     useSelection.setState({ nav: "Flow", pipelineVersionId: PV, runId: undefined, nodeId: undefined });
     renderWithApi(<Copilot />);
 
-    expect(screen.getByText(/Copilot is not connected/)).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Ask Copilot" })).toBeDisabled();
+    expect(screen.getByText(/Answers come from the local model and can be wrong/)).toBeInTheDocument();
     for (const fake of ["Step Audit · Missing values ≥ 20%", "store_sales_2021_2026.csv", "German Credit v2", "Compare with 30%"]) {
       expect(screen.queryByText(fake)).not.toBeInTheDocument();
     }

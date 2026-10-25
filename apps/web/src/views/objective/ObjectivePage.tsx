@@ -110,8 +110,8 @@ export function ObjectivePage() {
     try {
       const res = await inferQuestionLedger({
         userRequest: reqText,
-        datasetProfile: profileQuery.data,
-        investigationId: currentQuestion?.investigation_id,
+        ...(profileQuery.data ? { datasetProfile: profileQuery.data } : {}),
+        ...(question ? { investigationId: question.investigation_id } : {}),
       });
       setCopilotClarification(res.copilotClarification);
       openEditor(res.question);
@@ -336,7 +336,6 @@ export function ObjectivePage() {
                 size="sm"
                 disabled={isInferring}
                 onClick={() => handleInferLedger(question?.objective.value || "")}
-                title="Use Qwen 2.5 Copilot to re-infer ledger facts from current objective and data profile"
               >
                 <SparkIcon size={13} style={{ marginRight: 4 }} />
                 {isInferring ? "Inferring…" : "Infer with Copilot"}
