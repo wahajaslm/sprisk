@@ -101,3 +101,39 @@ def test_every_split_option_promises_something(option: str) -> None:
 def test_a_temporal_split_says_it_leaves_no_gap_at_the_cutoff() -> None:
     d = decide(METHOD, decisions=INDEPENDENT, bound=[TARGET, "common.event_time"])
     assert "no gap" in d["reason"]
+
+
+REPEATED_ROWS = "12 test rows have the same features as a train row."
+
+
+@pytest.mark.parametrize("task", ["classification", "regression"])
+def test_a_random_split_that_broke_its_promise_asks_for_the_item_column(task: str) -> None:
+    ruled = {"stratified_random": REPEATED_ROWS, "simple_random": REPEATED_ROWS}
+    d = decide(METHOD, task=task, decisions=INDEPENDENT, bound=[TARGET], ruled_out=ruled)
+    assert (d["outcome"], d["option"]) == ("ask", "item_groups")
+    assert REPEATED_ROWS in d["reason"]
+    assert "item column" in d["reason"]
+
+
+def test_an_item_split_that_broke_its_promise_leaves_no_fair_split() -> None:
+    overlap = "2 items have rows in both train and test: a, b"
+    d = decide(
+        METHOD,
+        decisions=INDEPENDENT,
+        bound=[TARGET, "common.item_identity"],
+        ruled_out={"item_groups": overlap},
+    )
+    assert d["answer"] == "refused"
+    assert overlap in d["error"]
+
+
+def test_a_time_split_that_broke_its_promise_is_not_traded_for_item_groups() -> None:
+    late = "3 test rows are not later than 2024-01-01."
+    d = decide(
+        METHOD,
+        decisions=INDEPENDENT,
+        bound=[TARGET, "common.event_time", "common.item_identity"],
+        ruled_out={"temporal": late},
+    )
+    assert d["answer"] == "refused"
+    assert late in d["error"]

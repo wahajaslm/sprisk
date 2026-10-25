@@ -1,8 +1,17 @@
 from typing import Any
 
+from sprisk_workers.errors import MethodError
+
 
 def decide(ctx: Any) -> Any:
     # The task is stated before the walk (ADR-0063 amendment); its promise checks the labels.
+    failed = ctx.ruled_out(ctx.task)
+    if failed is not None:
+        # The task is the question's, so only a new question revision changes it.
+        raise MethodError(
+            f"The question says {ctx.task}, but the target broke its promise: {failed} "
+            "Walk again once you restate the question's task."
+        )
     return ctx.choose(ctx.task, f"The question says {ctx.task}.")
 
 

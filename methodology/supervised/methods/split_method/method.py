@@ -1,25 +1,45 @@
 from typing import Any
 
+from sprisk_workers.errors import MethodError
+
+RANDOM = ("stratified_random", "simple_random")
+
 
 def decide(ctx: Any) -> Any:
+    option, why = _preferred(ctx)
+    failed = ctx.ruled_out(option)
+    if failed is None:
+        return ctx.choose(option, why)
+    # Only rows repeated across a random split have a remedy: keep each item on one side.
+    if option not in RANDOM or ctx.ruled_out("item_groups") is not None:
+        raise MethodError(f"No split left keeps its promise on these rows: {failed}")
+    # Rows repeat across train and test: only keeping each item on one side makes the score fair.
+    return ctx.ask(
+        "item_groups",
+        f"The split broke its promise: {failed} State the question's item column, the one that "
+        "says which item each row is, so each item's rows stay on one side.",
+    )
+
+
+def _preferred(ctx: Any) -> tuple[str, str]:
     if ctx.bound("common.event_time"):
-        return ctx.choose(
+        return (
             "temporal",
             "A time column orders the rows: train on earlier rows, test on later ones. The split "
             "leaves no gap at the cutoff, so a label that looks ahead may share its window "
             "with the first test rows.",
         )
     if ctx.bound("common.item_identity"):
-        return ctx.choose(
+        return (
             "item_groups",
             "Rows of one item stay on one side, so no item is scored on rows the model saw.",
         )
     if ctx.task == "classification" and ctx.bound("common.target"):
-        return ctx.choose(
+        return (
             "stratified_random",
             "Every row is its own item, and each class keeps its share in train and test.",
         )
-    return ctx.choose("simple_random", "Every row is its own item.")
+    return "simple_random", "Every row is its own item."
 
 
 def verify_no_group_overlap(evidence: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]:

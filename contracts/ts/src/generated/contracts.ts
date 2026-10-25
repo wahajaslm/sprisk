@@ -1534,6 +1534,10 @@ export interface MethodRequest {
    * The needed concepts a stated, confirmed or method-made binding names. Never a column name.
    */
   bound: ConceptId[];
+  /**
+   * Options this walk took whose promise then failed, so the decision is made again: they are left out of `options`. Absent: none.
+   */
+  ruled_out?: RuledOutOption[];
 }
 /**
  * Each needed kind that was measured. A needed kind left out cannot be measured, because its producer reads a concept no binding names.
@@ -1547,6 +1551,17 @@ export interface EvidenceSet {
  */
 export interface EvidenceFields {
   [k: string]: EvidenceValue;
+}
+/**
+ * An option a failed promise rules out for the rest of a walk (ADR-0063 amendment): the verification that failed and what its check found.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "RuledOutOption".
+ */
+export interface RuledOutOption {
+  option: MethodOptionId;
+  verification: VerificationName;
+  detail: string;
 }
 /**
  * Rust to the method session, one JSON line per promise to check (ADR-0063): the method module Rust picked from the loaded catalog, the verification's name, the fields of the one evidence kind it needs, as the step's producer measured them, and its settings. verify_<name>() may read nothing else.

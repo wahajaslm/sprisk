@@ -59,6 +59,8 @@ pub enum ResolveError {
     NotInsertable(String),
     #[error("the rule returned alternative {0}, which its manifest does not declare")]
     UndeclaredAlternative(String),
+    #[error("decide step {round} of walk {walk} names no decision or option")]
+    BrokenDecideStep { walk: String, round: u64 },
     #[error("method {0} is in no loaded pack")]
     UnknownMethod(String),
     #[error("method {method} has no option {option}")]

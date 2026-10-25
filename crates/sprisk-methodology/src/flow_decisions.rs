@@ -8,6 +8,7 @@ use sprisk_contracts::{
     WalkStep, parse,
 };
 
+use crate::deciding::made_by;
 use crate::verifying::fresh;
 use crate::{ResolveError, RuleCatalog};
 
@@ -38,8 +39,13 @@ pub fn flow_decisions(
 ) -> Result<FlowDecisions, ResolveError> {
     let last_checks: &[PromiseCheck] =
         last_verify(steps).map_or(&[], |s| s.verifications.as_slice());
+    let in_force = made_by(catalog, steps)?;
     let mut decisions = Vec::new();
     for decided in steps.iter().filter(|s| s.action == WalkAction::Decide) {
+        // A decision made again shows once, as it is now; one dropped since is not shown.
+        if !in_force.iter().any(|m| m.round == decided.round) {
+            continue;
+        }
         let (Some(method_id), Some(decides), Some(option)) =
             (&decided.method, &decided.decides, &decided.option)
         else {

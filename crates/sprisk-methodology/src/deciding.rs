@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Map, Value, json};
 use sprisk_contracts::{
     Binding, GraphEffect, Method, MethodAssurance, MethodRequest, Operator, PipelineVersion,
-    QuestionVersion, WalkAsk, parse,
+    PromiseResult, QuestionVersion, RuledOutOption, WalkAction, WalkAsk, WalkStep, parse,
 };
 
 use crate::decision::free_id;
@@ -28,6 +28,139 @@ pub struct Made {
     pub decides: String,
     pub option: String,
     pub bindings: Vec<Binding>,
+    /// The round of the decide step that made it.
+    pub round: u64,
+    /// Options of this decision a failed promise ruled out. When `option` is one, the
+    /// decision is made again from the options left.
+    pub ruled_out: Vec<RuledOutOption>,
+}
+
+/// The decisions in force after the walk's `steps`, in the order they were made. A decision
+/// made again takes the place of the earlier one, and every decision that read it is dropped,
+/// to be made again too: what it read changed, so it starts with no option ruled out. A promise that failed rules out the option in force when it was
+/// checked, for the rest of the walk (ADR-0063 amendment).
+pub fn made_by(catalog: &RuleCatalog, steps: &[WalkStep]) -> Result<Vec<Made>, ResolveError> {
+    let mut made: Vec<Made> = Vec::new();
+    for step in steps {
+        match step.action {
+            WalkAction::Decide => {
+                let (Some(decides), Some(option)) = (&step.decides, &step.option) else {
+                    return Err(ResolveError::BrokenDecideStep {
+                        walk: step.walk_id.to_string(),
+                        round: step.round,
+                    });
+                };
+                let decides = decides.to_string();
+                let ruled_out = match made.iter().position(|m| m.decides == decides) {
+                    Some(at) => {
+                        let earlier = made.remove(at);
+                        drop_readers(catalog, &mut made, &decides)?;
+                        earlier.ruled_out
+                    }
+                    None => Vec::new(),
+                };
+                made.push(Made {
+                    decides,
+                    option: option.to_string(),
+                    bindings: step.bindings.clone(),
+                    round: step.round,
+                    ruled_out,
+                });
+            }
+            WalkAction::Verify => {
+                for check in step
+                    .verifications
+                    .iter()
+                    .filter(|c| c.result == PromiseResult::Fail)
+                {
+                    let Some(decided) = made
+                        .iter_mut()
+                        .find(|m| m.decides == check.decides.as_str())
+                    else {
+                        continue;
+                    };
+                    if decided.reopened() {
+                        continue;
+                    }
+                    let method = catalog
+                        .methods()
+                        .find(|m| m.decides.as_str() == decided.decides)
+                        .ok_or_else(|| ResolveError::UnknownMethod(decided.decides.clone()))?;
+                    // Every option making the same promise would break it on these rows too:
+                    // another random draw that passes by chance is not a fair split.
+                    let same_promise = method.options.iter().filter(|o| {
+                        o.id.as_str() == decided.option || o.verify.contains(&check.verification)
+                    });
+                    for option in same_promise {
+                        if decided.ruled_out.iter().any(|r| r.option == option.id) {
+                            continue;
+                        }
+                        decided.ruled_out.push(parse(
+                            &json!({ "option": option.id, "verification": check.verification,
+                                     "detail": check.detail })
+                            .to_string(),
+                        )?);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(made)
+}
+
+/// Why the walk cannot reopen a decision a failed promise ruled out: a comparison, a rule's
+/// change or the score came after it, and they were chosen on the rows it made. Reopening
+/// then would move rows that informed selection into the test rows.
+pub fn reopened_too_late(made: &[Made], steps: &[WalkStep]) -> Option<String> {
+    let late = |m: &Made| {
+        steps.iter().any(|s| {
+            s.round > m.round
+                && matches!(
+                    s.action,
+                    WalkAction::Apply | WalkAction::Compare | WalkAction::Score
+                )
+        })
+    };
+    let found: Vec<String> = made
+        .iter()
+        .filter(|m| m.reopened() && late(m))
+        .map(|m| {
+            let broken: Vec<&str> = m.ruled_out.iter().map(|r| r.detail.as_str()).collect();
+            format!(
+                "{} broke its promise after the flow was chosen on its rows: {} Walk again \
+                 so it is decided before anything is compared.",
+                m.decides,
+                broken.join(" ")
+            )
+        })
+        .collect();
+    (!found.is_empty()).then(|| found.join(" "))
+}
+
+/// Drops from `made` every decision whose method reads `changed`, and those that read them.
+fn drop_readers(
+    catalog: &RuleCatalog,
+    made: &mut Vec<Made>,
+    changed: &str,
+) -> Result<(), ResolveError> {
+    let mut changed = vec![changed.to_owned()];
+    while let Some(key) = changed.pop() {
+        let mut kept = Vec::with_capacity(made.len());
+        for decided in made.drain(..) {
+            let method = catalog
+                .methods()
+                .find(|m| m.decides.as_str() == decided.decides)
+                .ok_or_else(|| ResolveError::UnknownMethod(decided.decides.clone()))?;
+            if method.needs.decisions.iter().any(|d| d.as_str() == key) {
+                changed.push(decided.decides);
+            } else {
+                kept.push(decided);
+            }
+        }
+        *made = kept;
+    }
+    Ok(())
 }
 
 /// Which source means each concept in this walk, and the concepts only a guess names.
@@ -90,6 +223,47 @@ pub struct Readiness<'c> {
     pub ready: Vec<Ready<'c>>,
     /// Guessed facts a method reads, to confirm before it decides.
     pub asks: Vec<WalkAsk>,
+    /// Decisions to make again whose every option a failed promise ruled out.
+    pub exhausted: Vec<Exhausted>,
+}
+
+/// A decision no option is left for: each one broke a promise on these rows.
+#[derive(Debug)]
+pub struct Exhausted {
+    pub decides: String,
+    pub ruled_out: Vec<RuledOutOption>,
+}
+
+impl Exhausted {
+    /// Each option and what its failed check found, for the walk's stop.
+    pub fn detail(&self) -> String {
+        let broken: Vec<String> = self
+            .ruled_out
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} ({}: {})",
+                    r.option.as_str(),
+                    r.verification.as_str(),
+                    r.detail.as_str()
+                )
+            })
+            .collect();
+        format!(
+            "{}: every option broke its promise: {}",
+            self.decides,
+            broken.join("; ")
+        )
+    }
+}
+
+impl Made {
+    /// Whether a failed promise ruled out the option in force, so it is decided again.
+    fn reopened(&self) -> bool {
+        self.ruled_out
+            .iter()
+            .any(|r| r.option.as_str() == self.option)
+    }
 }
 
 /// The methods fitting the question that are not decided yet and can decide: every decision
@@ -106,10 +280,7 @@ pub fn ready<'c>(
 ) -> Result<Readiness<'c>, ResolveError> {
     let by_id: BTreeMap<String, &Operator> =
         operators.iter().map(|o| (o.id.to_string(), o)).collect();
-    let decided: BTreeMap<&str, &str> = made
-        .iter()
-        .map(|m| (m.decides.as_str(), m.option.as_str()))
-        .collect();
+    let decided: BTreeMap<&str, &Made> = made.iter().map(|m| (m.decides.as_str(), m)).collect();
     let bound: BTreeSet<&str> = effective
         .bindings
         .iter()
@@ -118,17 +289,34 @@ pub fn ready<'c>(
     let mut found = Readiness {
         ready: Vec::new(),
         asks: Vec::new(),
+        exhausted: Vec::new(),
     };
     'methods: for method in fitting(catalog, question.task.value) {
-        if decided.contains_key(method.decides.as_str()) {
+        let ruled_out: &[RuledOutOption] = match decided.get(method.decides.as_str()) {
+            Some(made) if made.reopened() => &made.ruled_out,
+            Some(_) => continue,
+            None => &[],
+        };
+        let options: Vec<&str> = method
+            .options
+            .iter()
+            .map(|o| o.id.as_str())
+            .filter(|o| !ruled_out.iter().any(|r| r.option.as_str() == *o))
+            .collect();
+        if options.is_empty() {
+            found.exhausted.push(Exhausted {
+                decides: method.decides.to_string(),
+                ruled_out: ruled_out.to_vec(),
+            });
             continue;
         }
         let mut decisions = Map::new();
         for key in &method.needs.decisions {
-            let Some(option) = decided.get(key.as_str()) else {
+            // A decision made again may change: what reads it waits.
+            let Some(made) = decided.get(key.as_str()).filter(|m| !m.reopened()) else {
                 continue 'methods;
             };
-            decisions.insert(key.to_string(), json!(option));
+            decisions.insert(key.to_string(), json!(made.option));
         }
         let guessed: Vec<&String> = method
             .needs
@@ -169,16 +357,16 @@ pub fn ready<'c>(
             .map(|c| c.as_str())
             .filter(|c| bound.contains(c))
             .collect();
-        let options: Vec<&str> = method.options.iter().map(|o| o.id.as_str()).collect();
-        let request = parse(
-            &json!({
-                "schema_version": "sprisk.method_request/v1",
-                "module": module.display().to_string(), "method": method.id,
-                "needs": method.needs, "options": options, "task": question.task.value,
-                "evidence": evidence, "decisions": decisions, "bound": needed_bound,
-            })
-            .to_string(),
-        )?;
+        let mut request = json!({
+            "schema_version": "sprisk.method_request/v1",
+            "module": module.display().to_string(), "method": method.id,
+            "needs": method.needs, "options": options, "task": question.task.value,
+            "evidence": evidence, "decisions": decisions, "bound": needed_bound,
+        });
+        if !ruled_out.is_empty() {
+            request["ruled_out"] = json!(ruled_out);
+        }
+        let request = parse(&request.to_string())?;
         found.ready.push(Ready { method, request });
     }
     Ok(found)
