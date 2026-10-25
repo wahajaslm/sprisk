@@ -6,6 +6,7 @@ role: score
 role_default: true
 description: Score a fitted model on a test table. Classification - accuracy, balanced accuracy, macro F1. Regression - RMSE, MAE, R2.
 entrypoint: sprisk_ml.evaluate:evaluate
+notebook_code: sprisk_ml.evaluate:as_code
 inputs: [{ name: model, kind: model }, { name: test, kind: table }, { name: words, kind: matrix, optional: true, description: "Word features of the test rows, from the Vectorize text step the model's train words came from; scored beside the test table (ADR-0058)." }]
 outputs: [{ name: metrics, kind: metrics }, { name: figures, kind: figure }]
 params_schema:

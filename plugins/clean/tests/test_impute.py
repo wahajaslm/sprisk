@@ -1,7 +1,13 @@
+from collections.abc import Callable
+from typing import Any
+
 import polars as pl
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-from sprisk_clean.impute import impute
+from sprisk_clean.impute import as_code, impute
+from sprisk_workers.notebook_code import read_settings
 
 TRAIN = pl.DataFrame({"x": [1.0, 2.0, None, 100.0], "y": [1, 2, 3, 4]})
 TEST = pl.DataFrame({"x": [None, 5.0], "y": [5, 6]})
@@ -67,3 +73,38 @@ def test_an_empty_fill_may_meet_empty_text_already_there() -> None:
     train = pl.DataFrame({"about": ["", None, "red"]})
     out = impute(train, train, columns=["about"], method="median", text_fill={"about": ""})
     assert out["train"]["about"].to_list() == ["", "", "red"]
+
+
+MIXED = pl.DataFrame(
+    {"x": [1.0, float("nan"), 3.0, 8.0], "n": [1, None, 3, 4], "kind": ["a", None, "b", "a"]}
+)
+MIXED_TEST = pl.DataFrame({"x": [None, 2.0], "n": [None, 1], "kind": [None, "c"]})
+
+
+@pytest.mark.parametrize("method", ["median", "mean", "zero"])
+def test_plain_code_fills_as_the_step_does(method: str) -> None:
+    settings: dict[str, Any] = {"columns": ["x", "n", "kind"], "method": method}
+    settings["text_fill"] = {"kind": "missing"}
+    namespace: dict[str, Any] = {"rows": MIXED, "held_out": MIXED_TEST}
+    names = ({"train": "rows", "test": "held_out"}, {"train": "a", "test": "b"})
+    exec(as_code(settings, *names), namespace)
+    step = impute(MIXED, MIXED_TEST, **settings)
+    assert namespace["a"].equals(step["train"])
+    assert namespace["b"].equals(step["test"])
+
+
+@settings(max_examples=40, deadline=None)
+@given(text=st.text(min_size=1))
+def test_dataset_text_never_becomes_code(code_shape: Callable[[str], str], text: str) -> None:
+    def code(name: str) -> str:
+        values = {"columns": [name], "method": "median", "text_fill": {name: name}}
+        return as_code(values, {"train": "rows", "test": "held_out"}, {"train": "a", "test": "b"})
+
+    assert code_shape(code(text)) == code_shape(code("kind"))
+
+
+def test_an_edited_value_in_the_code_is_read_back_as_the_setting() -> None:
+    values = {"columns": ["x"], "method": "median"}
+    names = ({"train": "rows", "test": "held_out"}, {"train": "a", "test": "b"})
+    edited = as_code(values, *names).replace("['x']", "['y']")
+    assert read_settings(as_code, values, *names, edited) == {**values, "columns": ["y"]}

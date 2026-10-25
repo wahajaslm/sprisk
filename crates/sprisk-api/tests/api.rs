@@ -645,7 +645,7 @@ async fn a_step_is_written_as_plain_python_with_its_settings_and_names() {
     );
 
     // A step with no plain code yet, and a step that does not exist.
-    let uri = "/operators/sprisk.clean.impute@1.0.0/notebook_code";
+    let uri = "/operators/sprisk.ml.select_model@5.0.0/notebook_code";
     let (status, body) = call(&api.app, "POST", uri, Some(request.clone())).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["errors"][0]["code"], "no_plain_code", "{body}");

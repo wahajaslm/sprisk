@@ -75,6 +75,51 @@ def evaluate(
     return {"metrics": result, "figures": [figure]}
 
 
+def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]) -> str:
+    """This step as plain Python for a notebook cell (ADR-0055): the headline metrics, and for a
+    classifier its per-class report and confusion matrix; a test checks it scores as the step
+    does. Helper names start with the metrics output's name, so they never replace a person's.
+    With words, it reads the table columns the model's own cell named (`<model>_columns`)."""
+    model, test, scores = inputs["model"], inputs["test"], outputs["metrics"]
+    target = settings["target"]
+    if "words" in inputs:
+        rows = f"{test}.select({model}_columns).to_numpy().astype(float).reshape({test}.height, -1)"
+        x = (
+            "sparse.hstack([\n"
+            f"    sparse.csr_array({rows}),\n"
+            f"    {inputs['words']},\n"
+            '], format="csr")'
+        )
+        code = "import sklearn.metrics\nfrom scipy import sparse\n\n"
+    else:
+        x = f"{test}.select(list({model}.feature_names_in_))"
+        code = "import sklearn.metrics\n\n"
+    true, predicted = f"{scores}_true", f"{scores}_predicted"
+    code += f"{true} = {test}[{target!r}].to_numpy()\n{predicted} = {model}.predict({x})\n"
+    if settings["task"] == "regression":
+        return code + (
+            f"{scores} = {{\n"
+            f'    "rmse": sklearn.metrics.root_mean_squared_error({true}, {predicted}),\n'
+            f'    "mae": sklearn.metrics.mean_absolute_error({true}, {predicted}),\n'
+            f'    "r2": sklearn.metrics.r2_score({true}, {predicted}),\n'
+            "}\n"
+        )
+    return code + (
+        "# Precision, recall, F1 and support of each class.\n"
+        f"print(sklearn.metrics.classification_report({true}, {predicted}, zero_division=0))\n"
+        "# Rows are the true class, columns the predicted class, both in sorted order.\n"
+        f"print(sklearn.metrics.confusion_matrix({true}, {predicted}))\n"
+        "# A model fit with costs also has a cut-off and an expected cost: the step reports\n"
+        "# them, this cell does not.\n"
+        f"{scores} = {{\n"
+        f'    "accuracy": sklearn.metrics.accuracy_score({true}, {predicted}),\n'
+        f'    "balanced_accuracy": sklearn.metrics.balanced_accuracy_score({true}, {predicted}),\n'
+        f'    "f1_macro": sklearn.metrics.f1_score({true}, {predicted}, average="macro"),\n'
+        f'    "weighted_f1": sklearn.metrics.f1_score({true}, {predicted}, average="weighted"),\n'
+        "}\n"
+    )
+
+
 def per_class(y_true: Any, y_pred: Any, labels: list[Any]) -> list[dict[str, Any]]:
     report = metrics.classification_report(
         y_true, y_pred, labels=labels, output_dict=True, zero_division=0

@@ -1,3 +1,5 @@
+from typing import Any
+
 import polars as pl
 
 
@@ -43,3 +45,41 @@ def impute(
 
     filled = [pl.col(c).fill_null(v) for c, v in fills.items()]
     return {"train": train.with_columns(filled), "test": test.with_columns(filled)}
+
+
+FILL_CODE = {
+    "median": "{train}[c].median()",
+    "mean": "{train}[c].mean()",
+    "zero": "0.0",
+}
+
+
+def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]) -> str:
+    """This step as plain Python for a notebook cell (ADR-0055); a test runs it against the
+    step. Helper names start with the train output's name, so they never replace a person's."""
+    train, test = inputs["train"], inputs["test"]
+    train_out, test_out = outputs["train"], outputs["test"]
+    columns, text_fill = settings["columns"], settings.get("text_fill", {})
+    nan, text = f"{train_out}_nan", f"{train_out}_text_fill"
+    fills, filled = f"{train_out}_fills", f"{train_out}_filled"
+    method = settings["method"]
+    if method not in FILL_CODE:
+        raise ValueError(f"impute has no method {method!r}")
+    number = FILL_CODE[method].format(train=train_out)
+    return (
+        "import polars as pl\n"
+        "\n"
+        "# NaN counts as missing.\n"
+        f"{nan} = [pl.col(c).fill_nan(None) for c in {columns!r} if {train}.schema[c].is_float()]\n"
+        f"{train_out}, {test_out} = {train}.with_columns({nan}), {test}.with_columns({nan})\n"
+        "# Text gaps get a category of their own; number gaps a value from the train rows only.\n"
+        f"{text} = {text_fill!r}\n"
+        f"{fills} = {{\n"
+        f"    c: {text}[c] if {train_out}.schema[c] in (pl.String, pl.Categorical)\n"
+        f"    else {number}\n"
+        f"    for c in {columns!r}\n"
+        "}\n"
+        f"{filled} = [pl.col(c).fill_null(v) for c, v in {fills}.items()]\n"
+        f"{train_out}, {test_out} = "
+        f"{train_out}.with_columns({filled}), {test_out}.with_columns({filled})\n"
+    )

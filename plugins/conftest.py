@@ -1,3 +1,4 @@
+import ast
 from collections.abc import Callable
 from pathlib import Path
 
@@ -41,3 +42,18 @@ def clf_frame() -> pl.DataFrame:
 def clf_numbers(clf_frame: pl.DataFrame) -> pl.DataFrame:
     """clf_frame as its Clean steps leave it for a model (ADR-0056): x has no gap, c is 0/1."""
     return clf_frame.with_columns(pl.col("x").fill_null(0.0), c=(pl.col("c") == "a").cast(pl.Int8))
+
+
+def _code_shape(code: str) -> str:
+    """The code's syntax tree with every string emptied: only what runs, not what is quoted."""
+    tree = ast.parse(code)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            node.value = ""
+    return ast.dump(tree)
+
+
+@pytest.fixture(scope="session")
+def code_shape() -> Callable[[str], str]:
+    """Plain code (ADR-0055) quotes dataset text (rule 7): with any text in it, its shape holds."""
+    return _code_shape

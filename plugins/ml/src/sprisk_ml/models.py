@@ -295,6 +295,8 @@ def _model_code(
             f"    sparse.csr_array({rows}.to_numpy().astype(float).reshape({train}.height, -1)),\n"
             f"    {inputs['words']},\n"
             '], format="csr")\n'
+            "# The table columns it reads beside its words: its evaluation reads the same.\n"
+            f"{model}_columns = {rows}.columns\n"
         )
         fit = f"{x}, {train}[{target!r}]"
     costs = settings.get("costs") if settings["task"] == "classification" else None

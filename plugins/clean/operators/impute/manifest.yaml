@@ -4,6 +4,7 @@ title: Imputation
 capability_class: transform
 description: Fill missing numbers with the train median or mean, or with 0, and missing text with a category of its own. Fit on train only.
 entrypoint: sprisk_clean.impute:impute
+notebook_code: sprisk_clean.impute:as_code
 fits_on_train: true
 inputs: [{ name: train, kind: table }, { name: test, kind: table }]
 outputs: [{ name: train, kind: table }, { name: test, kind: table }]

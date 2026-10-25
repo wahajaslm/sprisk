@@ -6,6 +6,7 @@ role: split
 folds: time
 description: Split by time. Every train row is strictly earlier than every test row.
 entrypoint: sprisk_validation.temporal_split:temporal_split
+notebook_code: sprisk_validation.temporal_split:as_code
 inputs: [{ name: data, kind: table }]
 outputs: [{ name: train, kind: table }, { name: test, kind: table }]
 params_schema:

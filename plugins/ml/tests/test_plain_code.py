@@ -1,6 +1,7 @@
-"""A model step's plain Python (ADR-0055) fits the model the step fits: same predictions."""
+"""A model step's plain Python (ADR-0055) fits the model the step fits: same predictions. An
+evaluation's plain Python scores it as the step does."""
 
-import ast
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -10,7 +11,10 @@ import skops.io
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from scipy import sparse
+from sklearn import metrics
 
+from sprisk_ml.evaluate import as_code as evaluate_as_code
+from sprisk_ml.evaluate import evaluate
 from sprisk_ml.models import (
     dummy_baseline,
     dummy_baseline_as_code,
@@ -19,6 +23,7 @@ from sprisk_ml.models import (
     random_forest,
     random_forest_as_code,
 )
+from sprisk_workers.notebook_code import read_settings
 from sprisk_workers.plain import TRUSTED_MODEL_TYPES
 
 COSTS = {"positive": "hi", "false_negative": 5.0, "false_positive": 1.0}
@@ -87,21 +92,14 @@ def test_the_model_the_code_fits_saves_as_a_model_file(
     assert np.array_equal(loaded.predict(rows), model.predict(rows))
 
 
-def _shape(code: str) -> str:
-    """The code's syntax tree with every string emptied: only what runs, not what is quoted."""
-    tree = ast.parse(code)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            node.value = ""
-    return ast.dump(tree)
-
-
 @pytest.mark.parametrize(
     "write", [random_forest_as_code, linear_model_as_code, dummy_baseline_as_code]
 )
 @settings(max_examples=60, deadline=None)
 @given(label=st.text(min_size=1), column=st.text(min_size=1))
-def test_dataset_text_never_becomes_code(write: Any, label: str, column: str) -> None:
+def test_dataset_text_never_becomes_code(
+    code_shape: Callable[[str], str], write: Any, label: str, column: str
+) -> None:
     # Labels and column names come from the data (rule 7): quoted, never run.
     def code(positive: str, name: str) -> str:
         costs = {"positive": positive, "false_negative": 5.0, "false_positive": 1.0}
@@ -109,7 +107,7 @@ def test_dataset_text_never_becomes_code(write: Any, label: str, column: str) ->
         written: str = write(settings_, {"train": "rows"}, {"model": "model"})
         return written
 
-    assert _shape(code(label, column)) == _shape(code("bad", "y"))
+    assert code_shape(code(label, column)) == code_shape(code("bad", "y"))
 
 
 @pytest.mark.parametrize(("step", "write"), WRITERS)
@@ -150,3 +148,96 @@ def test_the_code_with_words_predicts_as_the_step_does(
     fitted = step(clf_numbers, **settings, words=(words, ["title:shoe", "title:hat"]))
     x = sparse.hstack([sparse.csr_array(clf_numbers.select("x", "c").to_numpy()), words])
     assert np.array_equal(namespace["m"].predict(x), fitted.predict(x))
+
+
+HEADLINE = {
+    "classification": ["accuracy", "balanced_accuracy", "f1_macro", "weighted_f1"],
+    "regression": ["rmse", "mae", "r2"],
+}
+
+
+def scored_by_code(namespace: dict[str, Any], settings: dict[str, Any], words: bool) -> Any:
+    inputs = {"model": "m", "test": "held_out", **({"words": "held_out_words"} if words else {})}
+    code = evaluate_as_code(settings, inputs, {"metrics": "scores", "figures": "charts"})
+    exec(code, namespace)
+    return namespace["scores"]
+
+
+@pytest.mark.parametrize(("step", "write"), WRITERS)
+@pytest.mark.parametrize("extra", [{}, {"costs": COSTS}], ids=str)
+def test_the_evaluation_code_scores_as_the_step_does(
+    clf_numbers: pl.DataFrame, step: Any, write: Any, extra: dict[str, Any], capsys: Any
+) -> None:
+    settings: dict[str, Any] = {"target": "y", "task": "classification"}
+    train, test = clf_numbers[::2], clf_numbers[1::2]
+    namespace: dict[str, Any] = {"rows": train, "held_out": test}
+    exec(write({**settings, **extra}, {"train": "rows"}, {"model": "m"}), namespace)
+
+    scores = scored_by_code(namespace, settings, words=False)
+
+    # The step's model predicts as the code's (above), and keeps the costs its evaluation reads.
+    scored = evaluate(step(train, **settings, **extra), test, **settings)["metrics"]
+    assert scores == {k: scored[k] for k in HEADLINE["classification"]}
+    predicted = namespace["m"].predict(test.drop("y"))
+    printed = capsys.readouterr().out
+    assert metrics.classification_report(test["y"], predicted, zero_division=0) in printed
+    assert str(metrics.confusion_matrix(test["y"], predicted)) in printed
+
+
+def test_the_regression_evaluation_code_scores_as_the_step_does(
+    clf_numbers: pl.DataFrame,
+) -> None:
+    rows = clf_numbers.drop("y").with_columns(t=pl.col("x") * 2 + pl.col("c"))
+    settings: dict[str, Any] = {"target": "t", "task": "regression"}
+    namespace: dict[str, Any] = {"rows": rows[::2], "held_out": rows[1::2]}
+    exec(linear_model_as_code(settings, {"train": "rows"}, {"model": "m"}), namespace)
+
+    scores = scored_by_code(namespace, settings, words=False)
+
+    step = evaluate(namespace["m"], rows[1::2], **settings)["metrics"]
+    assert scores == {k: step[k] for k in HEADLINE["regression"]}
+
+
+def test_the_evaluation_code_scores_a_model_with_words_as_the_step_does(
+    clf_numbers: pl.DataFrame,
+) -> None:
+    # The test words are the matrix the vectorizer made from the test rows (ADR-0058).
+    shoe = (clf_numbers["y"] == "hi").cast(pl.Float64).to_numpy()
+    words = sparse.csr_matrix(np.column_stack([shoe, 1 - shoe]))
+    settings: dict[str, Any] = {"target": "y", "task": "classification"}
+    namespace: dict[str, Any] = {
+        "rows": clf_numbers[::2],
+        "rows_words": words[::2],
+        "held_out": clf_numbers[1::2],
+        "held_out_words": words[1::2],
+    }
+    names = {"train": "rows", "words": "rows_words"}
+    exec(linear_model_as_code(settings, names, {"model": "m"}), namespace)
+
+    scores = scored_by_code(namespace, settings, words=True)
+
+    names_of_words = ["title:shoe", "title:hat"]
+    fitted = linear_model(clf_numbers[::2], **settings, words=(words[::2], names_of_words))
+    step = evaluate(fitted, clf_numbers[1::2], **settings, words=(words[1::2], names_of_words))
+    assert scores == {k: step["metrics"][k] for k in HEADLINE["classification"]}
+
+
+@settings(max_examples=60, deadline=None)
+@given(column=st.text(min_size=1))
+def test_a_target_name_never_becomes_evaluation_code(
+    code_shape: Callable[[str], str], column: str
+) -> None:
+    def code(name: str, words: dict[str, str]) -> str:
+        values = {"target": name, "task": "classification"}
+        inputs = {"model": "m", "test": "held_out", **words}
+        return evaluate_as_code(values, inputs, {"metrics": "scores", "figures": "charts"})
+
+    for words in ({}, {"words": "held_out_words"}):
+        assert code_shape(code(column, words)) == code_shape(code("y", words))
+
+
+def test_an_edited_target_in_the_evaluation_code_is_read_back_as_the_setting() -> None:
+    values = {"target": "y", "task": "classification"}
+    names = ({"model": "m", "test": "held_out"}, {"metrics": "scores", "figures": "charts"})
+    edited = evaluate_as_code(values, *names).replace("['y']", "['label']")
+    assert read_settings(evaluate_as_code, values, *names, edited) == {**values, "target": "label"}

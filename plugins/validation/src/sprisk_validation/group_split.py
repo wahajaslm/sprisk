@@ -1,3 +1,5 @@
+from typing import Any
+
 import polars as pl
 from sklearn.model_selection import GroupShuffleSplit
 
@@ -19,3 +21,22 @@ def group_split(
     if train.is_empty() or test.is_empty():
         raise ValueError(f"split gave {train.height} train and {test.height} test rows")
     return {"train": train, "test": test}
+
+
+def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]) -> str:
+    """This step as plain Python for a notebook cell (ADR-0055); a test runs it against the
+    step. Helper names start with the step's outputs, so they never replace a person's."""
+    data, train, test = inputs["data"], outputs["train"], outputs["test"]
+    group = settings["group_column"]
+    return (
+        "from sklearn.model_selection import GroupShuffleSplit\n"
+        "\n"
+        "# Whole groups go to one side: no group is in both train and test.\n"
+        f"{train}_rows, {test}_rows = next(\n"
+        "    GroupShuffleSplit(\n"
+        f"        n_splits=1, test_size={settings['test_fraction']!r}, "
+        f"random_state={settings['seed']!r}\n"
+        f"    ).split(range({data}.height), groups={data}[{group!r}].to_list())\n"
+        ")\n"
+        f"{train}, {test} = {data}[sorted({train}_rows)], {data}[sorted({test}_rows)]\n"
+    )

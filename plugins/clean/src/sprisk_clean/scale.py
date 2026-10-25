@@ -1,3 +1,5 @@
+from typing import Any
+
 import polars as pl
 
 
@@ -32,3 +34,42 @@ def scale(
             raise ValueError(f"column {c} has no spread in train")
         scaled.append(((pl.col(c) - centre) / spread).alias(c))
     return {"train": train.with_columns(scaled), "test": test.with_columns(scaled)}
+
+
+# Each method's centre and spread of a train column `{t}`, as the step takes them.
+CENTRE_AND_SPREAD = {
+    "min_max": ("{t}.min()", "{t}.max() - {t}.min()"),
+    "z_score": ("{t}.mean()", "{t}.std(ddof=0)"),
+    "robust": (
+        "{t}.median()",
+        '{t}.quantile(0.75, interpolation="linear") - {t}.quantile(0.25, interpolation="linear")',
+    ),
+}
+
+
+def as_code(settings: dict[str, Any], inputs: dict[str, str], outputs: dict[str, str]) -> str:
+    """This step as plain Python for a notebook cell (ADR-0055); a test runs it against the
+    step. Helper names start with the train output's name, so they never replace a person's."""
+    train, test = inputs["train"], inputs["test"]
+    train_out, test_out = outputs["train"], outputs["test"]
+    columns = settings["columns"]
+    nan, scaled = f"{train_out}_nan", f"{train_out}_scaled"
+    method = settings["method"]
+    if method not in CENTRE_AND_SPREAD:
+        raise ValueError(f"scale has no method {method!r}")
+    column = f"{train_out}[c]"
+    centre, spread = (part.format(t=column) for part in CENTRE_AND_SPREAD[method])
+    return (
+        "import polars as pl\n"
+        "\n"
+        "# NaN counts as missing, so it never sets the scale.\n"
+        f"{nan} = [pl.col(c).fill_nan(None) for c in {columns!r} if {train}.schema[c].is_float()]\n"
+        f"{train_out}, {test_out} = {train}.with_columns({nan}), {test}.with_columns({nan})\n"
+        "# Each column's centre and spread, from the training rows only.\n"
+        f"{scaled} = [\n"
+        f"    ((pl.col(c) - ({centre})) / ({spread})).alias(c)\n"
+        f"    for c in {columns!r}\n"
+        "]\n"
+        f"{train_out}, {test_out} = "
+        f"{train_out}.with_columns({scaled}), {test_out}.with_columns({scaled})\n"
+    )
