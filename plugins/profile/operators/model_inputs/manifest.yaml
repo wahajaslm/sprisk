@@ -2,7 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.model_inputs@1.0.0
 title: Model inputs
 capability_class: analyzer
-description: Names the free text, category text, empty text and date columns of the rows a model learns from (ADR-0063).
+description: Names what the columns a model learns from are, on its train rows - free text, dates, categories to group or encode, gaps to fill (ADR-0063).
 entrypoint: sprisk_profile.model_inputs:model_inputs
 # The model's train rows only.
 scope: train
@@ -13,6 +13,12 @@ produces:
     fields: { columns: string_list, categories: string_list, empty: string_list }
   features.dates:
     fields: { columns: string_list }
+  features.categories:
+    fields: { grouped: string_list, identifiers: string_list }
+  features.gaps:
+    fields: { columns: string_list, method: string, mostly_empty: string_list, unfillable: string_list }
+  features.encoding:
+    fields: { few: string_list, many: string_list, codes: string_list }
 inputs: [{ name: train, kind: table }]
 outputs: [{ name: evidence, kind: report }]
 params_schema:

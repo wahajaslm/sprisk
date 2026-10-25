@@ -67,3 +67,17 @@ def test_an_empty_fill_may_meet_empty_text_already_there() -> None:
     train = pl.DataFrame({"about": ["", None, "red"]})
     out = impute(train, train, columns=["about"], method="median", text_fill={"about": ""})
     assert out["train"]["about"].to_list() == ["", "", "red"]
+
+
+def test_a_text_gap_fill_covers_every_text_column_text_fill_leaves_out() -> None:
+    train = pl.DataFrame({"kind": ["a", None], "size": ["s", None], "x": [1.0, None]})
+    out = impute(
+        train,
+        train,
+        columns=["kind", "size", "x"],
+        method="mean",
+        text_fill={"size": "none"},
+        text_gap="missing",
+    )
+    assert out["train"]["kind"].to_list() == ["a", "missing"]
+    assert out["train"]["size"].to_list() == ["s", "none"]

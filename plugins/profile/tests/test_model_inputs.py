@@ -51,3 +51,66 @@ def test_the_worker_reads_the_train_rows_without_the_target(tmp_path: Path) -> N
     written = {o.port: o for o in step.run({"target": "label"}, {"train": source}, out)}
     found = json.loads(written["evidence"].path.read_text())
     assert found[TEXT]["columns"] == ["title"]
+
+
+CATEGORIES = "features.categories"
+GAPS = "features.gaps"
+ENCODING = "features.encoding"
+
+
+def test_categories_too_many_for_one_hot_are_named_to_group_unless_identifiers() -> None:
+    rows = 100
+    data = pl.DataFrame(
+        {
+            "brand": [f"b{i % 30}" for i in range(rows)],
+            "sku": [f"s{i}" for i in range(rows)],
+            "colour": ["red", "blue"] * 50,
+        }
+    )
+    assert model_inputs(data, target="label")[CATEGORIES] == {
+        "grouped": ["brand"],
+        "identifiers": ["sku"],
+    }
+
+
+def test_gaps_are_named_with_the_fill_their_numbers_need() -> None:
+    data = pl.DataFrame(
+        {
+            "price": [1.0, 2.0, None, 100.0, 3.0],
+            "kind": ["a", None, "b", "a", "b"],
+            "note": [None, None, None, None, "x"],
+            "ok": [1, 2, 3, 4, 5],
+        }
+    )
+    assert model_inputs(data, target="label")[GAPS] == {
+        "columns": ["price", "kind"],
+        "method": "median",
+        "mostly_empty": ["note"],
+        "unfillable": [],
+    }
+
+
+def test_a_symmetric_number_is_filled_with_its_mean_and_a_date_cannot_be_filled() -> None:
+    data = pl.DataFrame(
+        {"x": [1.0, 2.0, None, 3.0], "day": [date(2026, 1, 1), None, date(2026, 1, 3), None]}
+    )
+    found = model_inputs(data, target="label")[GAPS]
+    assert (found["columns"], found["method"], found["unfillable"]) == (["x"], "mean", ["day"])
+
+
+def test_categories_are_split_by_whether_one_hot_takes_them() -> None:
+    rows = 40
+    data = pl.DataFrame(
+        {
+            "colour": ["red", "blue"] * 20,
+            "brand": [f"b{i % 20}" for i in range(rows)],
+            "rate": [1, 2, 3, 4] * 10,
+            "count": list(range(rows)),
+            "flag": [True, False] * 20,
+        }
+    )
+    assert model_inputs(data, target="label")[ENCODING] == {
+        "few": ["colour", "flag"],
+        "many": ["brand"],
+        "codes": ["rate"],
+    }

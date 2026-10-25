@@ -12,17 +12,6 @@ use crate::{
     ResolveError, RuleCatalog, catalog::decides, compare::upstream, facts, reopened_stage,
 };
 
-/// Order of the old rules that shape a model's input columns, after the words and date parts
-/// methods (ADR-0063 slice 6):
-/// - rare categories, which keep a gap as its own category;
-/// - gaps filled, since encoding refuses gaps;
-/// - encoding last: first, it would leave out columns grouping makes small enough to encode.
-pub const INPUT_SHAPE: [&str; 3] = [
-    "features.rare_categories",
-    "cleaning.missingness_strategy",
-    "features.encoding_strategy",
-];
-
 /// One rule and the step it decides; `subject` is `None` when the flow has no such step.
 pub struct Planned<'a> {
     pub rule: &'a MethodologyRule,
@@ -101,17 +90,8 @@ pub fn plan<'a>(
 /// step strictly upstream of `later`'s. The split is a method's decision, made in the walk's
 /// look before any rule acts (ADR-0063). A rule reading cross-validation
 /// results also waits for the rules of its own step that do not (ADR-0059): they may change
-/// what was compared. The rules shaping a model's inputs go in `INPUT_SHAPE` order.
+/// what was compared.
 pub fn comes_after(pipeline: &PipelineVersion, later: &Planned, earlier: &Planned) -> bool {
-    let same_step = matches!((later.subject, earlier.subject), (Some(l), Some(e)) if l.id == e.id);
-    let input_at = |p: &Planned| {
-        INPUT_SHAPE
-            .iter()
-            .position(|d| *d == p.rule.decides.as_str())
-    };
-    if same_step && let (Some(later_at), Some(earlier_at)) = (input_at(later), input_at(earlier)) {
-        return later_at > earlier_at;
-    }
     let results = facts::needs_results(reads(later));
     if !results && !facts::needs_train_rows(reads(later)) {
         return false;

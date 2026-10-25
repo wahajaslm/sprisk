@@ -14,7 +14,8 @@ params_schema:
   properties:
     columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns whose missing values are filled." }
     method: { type: string, enum: [median, mean, zero], description: "Statistic of the train rows used to fill gaps in numbers; zero fills with 0." }
-    text_fill: { type: object, additionalProperties: { type: string }, description: "Each text column's fill for its gaps: a category such as missing, or an empty string for free text, where a gap is no words. Needed for every text column." }
+    text_fill: { type: object, additionalProperties: { type: string }, description: "Each text column's fill for its gaps: a category such as missing, or an empty string for free text, where a gap is no words. Each text column needs one, or text_gap." }
+    text_gap: { type: string, description: "The fill for gaps in every text column text_fill does not name, such as missing." }
 effects: pure
 network: none
 resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

@@ -11,6 +11,13 @@ def drop_columns(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
     return data.drop(columns, strict=True)
 
 
+def leave_out(
+    train: pl.DataFrame, test: pl.DataFrame, columns: list[str]
+) -> dict[str, pl.DataFrame]:
+    """Leave these columns out of train and test alike, before a model."""
+    return {"train": train.drop(columns, strict=True), "test": test.drop(columns, strict=True)}
+
+
 def drop_missing(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
     """Drop rows with a missing value (null or NaN) in any of these columns."""
     nan_to_null = [pl.col(c).fill_nan(None) for c in columns if data.schema[c].is_float()]
