@@ -836,8 +836,8 @@ export function ObjectivePage() {
                 {/* Stated before any walk */}
                 <div className="ds-form-card">
                   <div className="ds-form-card-head">
-                    <span className="ds-form-card-title">Before the run</span>
-                    <span className="ds-form-card-desc">No data can give these, so a run starts only once they are stated</span>
+                    <span className="ds-form-card-title">Before the auto run</span>
+                    <span className="ds-form-card-desc">No data can give these, so an auto run starts only once they are stated</span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                     <div className="ds-form-field">

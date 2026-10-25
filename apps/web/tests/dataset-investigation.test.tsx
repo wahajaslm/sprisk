@@ -144,7 +144,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
   it("shows the walk at a glance: set up, first look, asked, decided, checked, scored", async () => {
     serve();
     await openInvestigation();
-    const glance = await screen.findByRole("list", { name: "The run at a glance" });
+    const glance = await screen.findByRole("list", { name: "The auto run at a glance" });
     expect(within(glance).getAllByRole("listitem").map((i) => i.textContent)).toEqual([
       "Set upLoad, split, baseline",
       "First look0 measurements",
@@ -220,7 +220,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
   it("says a walk that has not completed has no report yet", async () => {
     serve(decided, { ...walk, stop: { reason: "needs_person", detail: "Two questions are open." } });
     await openInvestigation();
-    expect(await screen.findByText("No report yet. The run stopped: Two questions are open.")).toBeInTheDocument();
+    expect(await screen.findByText("No report yet. The auto run stopped: Two questions are open.")).toBeInTheDocument();
   });
 
   it("says when no investigation has used the table", async () => {

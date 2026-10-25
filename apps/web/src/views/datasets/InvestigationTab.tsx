@@ -76,7 +76,7 @@ function WalkRow({ investigation, selected, onPick }: { investigation: Investiga
   const decisions = n === 0 ? "no decision yet" : `${n} ${n === 1 ? "decision" : "decisions"}`;
   return (
     <ListRow
-      title={walk ? `Run · ${when(walk.created_at)}` : `Run ${investigation.walkId.slice(-6)}`}
+      title={walk ? `Auto run · ${when(walk.created_at)}` : `Auto run ${investigation.walkId.slice(-6)}`}
       meta={walk ? `${decisions} · ${walkState(walk)}` : decisions}
       selected={selected}
       onClick={onPick}
@@ -98,8 +98,8 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
     const node = pipeline?.nodes.find((n) => n.id === step);
     return node ? operators.data?.get(node.operator) : undefined;
   };
-  if (walk.isError) return <p role="alert" className="error">The run could not be read: {walk.error.message}</p>;
-  if (!walk.data) return <Loading text="Reading the run…" />;
+  if (walk.isError) return <p role="alert" className="error">The auto run could not be read: {walk.error.message}</p>;
+  if (!walk.data) return <Loading text="Reading the auto run…" />;
   const story = walkStory(walk.data.steps, investigation.decisions, rules.data ?? []);
   const promises = investigation.decisions.flatMap((d) => d.promises.map((p) => ({ ...p, question: d.question })));
   const holding = promises.filter((p) => p.status === "pass").length;
@@ -112,7 +112,7 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
   );
   return (
     <>
-      <BodySection title="Summary" note="What the run set out to answer, what it did, and what it found.">
+      <BodySection title="Summary" note="What the auto run set out to answer, what it did, and what it found.">
         <dl role="group" aria-label="Investigation context" className="ds-context">
           <div>
             <dt>Dataset</dt>
@@ -120,23 +120,23 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
           </div>
           <div>
             <dt>Question</dt>
-            <dd>{question ?? `Run ${investigation.walkId.slice(-6)}`}</dd>
+            <dd>{question ?? `Auto run ${investigation.walkId.slice(-6)}`}</dd>
           </div>
           <div>
-            <dt>Run</dt>
+            <dt>Auto run</dt>
             <dd>{walkState(walk.data.walk)}</dd>
           </div>
         </dl>
 
         <div className="ds-story-summary">
           <p>
-            {`The run read ${dataset.name} (${dataset.total_rows.toLocaleString()} rows) to answer this question. It looked at the data once before deciding anything, asked you ${count(story.asked, "question")}, made ${count(story.decisions.length, "decision")} and ran the pipeline ${count(story.runs, "time")}. `}
+            {`The auto run read ${dataset.name} (${dataset.total_rows.toLocaleString()} rows) to answer this question. It looked at the data once before deciding anything, asked you ${count(story.asked, "question")}, made ${count(story.decisions.length, "decision")} and ran the pipeline ${count(story.runs, "time")}. `}
             {story.scored ? "It then scored the model on the held-out test rows, once." : "It has not scored the test rows."}
           </p>
           {report.data ? <p className="ds-result">{report.data.answer.statement}</p> : walk.data.walk.stop && <p className="ds-result muted">{walk.data.walk.stop.detail}</p>}
         </div>
 
-        <ol className="ds-glance" aria-label="The run at a glance">
+        <ol className="ds-glance" aria-label="The auto run at a glance">
           <li>
             <strong>Set up</strong>
             <span>Load, split, baseline</span>
@@ -165,7 +165,7 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
       </BodySection>
 
       {looked.length > 0 && (
-        <BodySection title="What the first look measured" note="Before deciding anything, the run executed the pipeline once and measured what each question needs.">
+        <BodySection title="What the first look measured" note="Before deciding anything, the auto run ran the pipeline once and measured what each question needs.">
           <ul className="ds-looked">
             {looked.map((l) => (
               <li key={l.key}>
@@ -180,8 +180,8 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
         </BodySection>
       )}
 
-      <BodySection title="Findings and decisions" note="In the order the run made them. Each says what was found, what was measured, and what was decided, by whom.">
-        {story.decisions.length === 0 && <p className="muted">The run made no decision yet.</p>}
+      <BodySection title="Findings and decisions" note="In the order the auto run made them. Each says what was found, what was measured, and what was decided, by whom.">
+        {story.decisions.length === 0 && <p className="muted">The auto run made no decision yet.</p>}
         {story.decisions.map((d, i) => (
           <Finding key={d.round} number={i + 1} entry={d} investigation={investigation} operatorOf={operatorOf} latest={latest} />
         ))}
@@ -317,7 +317,7 @@ function scopeWords(operator: Operator): string | undefined {
 function ReportSection({ walk, report, failure }: { walk: Walk | undefined; report: Report | undefined; failure: string | undefined }) {
   if (!walk) return null;
   if (walk.stop?.reason !== "complete") {
-    const why = walk.stop ? `The run stopped: ${walk.stop.detail}` : "The run is still running.";
+    const why = walk.stop ? `The auto run stopped: ${walk.stop.detail}` : "The auto run is still running.";
     return (
       <BodySection title="Report">
         <p className="muted">No report yet. {why}</p>
@@ -327,7 +327,7 @@ function ReportSection({ walk, report, failure }: { walk: Walk | undefined; repo
   if (failure) return <p role="alert" className="error">The report could not be read: {failure}</p>;
   if (!report) return <Loading text="Reading the report…" />;
   return (
-    <BodySection title="Report" note="Built from the run's records, never written by a model. It does not change once saved.">
+    <BodySection title="Report" note="Built from the auto run's records, never written by a model. It does not change once saved.">
       <p className="ds-answer">{report.answer.statement}</p>
       <ul className="ds-claims" aria-label="Claims">
         {report.claims.map((c) => (
@@ -351,5 +351,5 @@ function evidenceWords(e: ReportEvidence): string {
   if ("decision" in e) return `decision ${e.decision}`;
   if ("run" in e) return `run ${e.run}`;
   if ("pipeline_version" in e) return `version ${e.pipeline_version}`;
-  return `run step ${e.walk_step.round}`;
+  return `auto run step ${e.walk_step.round}`;
 }
