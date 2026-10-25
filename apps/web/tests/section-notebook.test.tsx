@@ -34,10 +34,10 @@ describe("a notebook section for an activity (ADR-0063)", () => {
       ),
     );
     const byRef = new Map(operators.map((o) => [o.id, o]));
-    const section = stageNotebooks(pipeline, byRef, [fair]).find((s) => s.name === "Fair evaluation")!;
+    const section = stageNotebooks(pipeline, byRef, [fair]).find((s) => s.name === "Split")!;
     renderWithApi(<StageNotebook pipeline={pipeline} section={section} />);
 
-    expect(await screen.findByRole("heading", { name: "Fair evaluation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Train/test split" })).toBeInTheDocument();
     const block = screen.getByRole("region", { name: "Decision: How are rows divided into training and test so the score is fair?" });
     expect(within(block).getByText(fair.reason)).toBeInTheDocument();
     expect(within(block).getByText("Keep each item's rows on one side")).toBeInTheDocument();

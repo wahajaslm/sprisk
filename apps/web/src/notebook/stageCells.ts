@@ -13,6 +13,8 @@ const STAGE_KEY: Record<Stage, NonNullable<Node["stage"]> | undefined> = {
   Split: "split",
   Explore: "explore",
   Clean: "clean",
+  // Node.stage has no features value yet; a cell added there keeps its operator's stage.
+  Features: undefined,
   Model: "model",
   Evaluate: "evaluate",
   Unknown: undefined,

@@ -164,14 +164,14 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
     expect(sent.runs[0]).toEqual({ pipeline_version_id: sent.versions[0]!.id, reuse_run_id: RUN });
   });
 
-  it("a cell added to an activity's section is saved in its first step's stage (ADR-0063)", async () => {
+  it("a cell added to a stage with a decision is saved in that stage (ADR-0065)", async () => {
     const sent = withApi();
     const fair: FlowDecision = {
       decides: "split.method", method: "methodology.supervised.split_method@1.0.0", name: "Train/test split", activity: "Fair evaluation",
       question: "How are rows divided?", option: "item_groups", label: "Keep each item's rows on one side",
       reason: "Why.", assurance: "rule", steps: ["split"], promises: [],
     };
-    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Fair evaluation", [fair])} />);
+    renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Split", [fair])} />);
     await userEvent.click(await screen.findByRole("button", { name: "Code" }));
     const added = await screen.findByRole("textbox", { name: "Cell 2" });
     await userEvent.type(added, "n = 1");

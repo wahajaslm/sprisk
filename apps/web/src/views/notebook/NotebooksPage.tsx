@@ -65,7 +65,7 @@ export function NotebooksPage() {
 
   const needle = filter.trim().toLowerCase();
   const matches = (name: string) => name.toLowerCase().includes(needle);
-  const shownStages = stages.filter((s) => matches(s.name));
+  const shownStages = stages.filter((s) => matches(s.title));
   const shownMine = mine.filter((n) => matches(n.title));
   const shownLoose = loose.filter((n) => matches(n.title));
 
@@ -90,9 +90,9 @@ export function NotebooksPage() {
         {shownStages.length > 0 && (
           <SideGroup num={1} label="Stages" meta={shownStages.length}>
             <div role="list" aria-label="This flow's stages">
-              {shownStages.map(({ name, nodes }) => (
+              {shownStages.map(({ name, title, nodes }) => (
                 <div key={name} role="listitem">
-                  <ListRow title={name} meta={nodes.length === 1 ? "1 step" : `${nodes.length} steps`} selected={name === stageOpen?.name} onClick={() => openStage(name)} />
+                  <ListRow title={title} meta={nodes.length === 1 ? "1 step" : `${nodes.length} steps`} selected={name === stageOpen?.name} onClick={() => openStage(name)} />
                 </div>
               ))}
             </div>

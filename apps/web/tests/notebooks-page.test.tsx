@@ -130,7 +130,7 @@ describe("deleting a notebook (ADR-0041)", () => {
     expect(posts[1]!.body).toMatchObject({ notebook_id: NB, parent_id: sales.id, removed: true });
     await waitFor(() => expect(within(screen.getByRole("list", { name: "This flow's notebooks" })).queryByRole("button", { name: "Sales analysis" })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Scratch" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Load" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Data loading" })).toBeInTheDocument();
   });
 
   it("Cancel saves nothing", async () => {
@@ -215,9 +215,10 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     const posts = noNotebooks();
     renderWithApi(<StrictMode><NotebooksPage /></StrictMode>);
     const items = within(await stages()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Load2 steps", "Split1 step", "Clean1 step", "Model1 step", "Evaluate1 step"]);
-    expect(await screen.findByRole("heading", { name: "Load" })).toBeInTheDocument();
-    expect(screen.getAllByRole("group", { name: /^Cell / })).toHaveLength(2);
+    expect(items).toEqual(["Data loading1 step", "Data exploration1 step", "Train/test split1 step", "Data cleaning1 step", "Modeling1 step", "Evaluation1 step"]);
+    expect(await screen.findByRole("heading", { name: "Data loading" })).toBeInTheDocument();
+    // Loading holds only the load step; the look at the loaded rows is Data exploration.
+    expect(screen.getAllByRole("group", { name: /^Cell / })).toHaveLength(1);
     expect(posts).toEqual([]);
   });
 
@@ -226,8 +227,8 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     renderWithApi(<NotebooksPage />);
     await screen.findByRole("group", { name: "Cell 1" });
     expect(screen.queryByRole("combobox", { name: "format" })).not.toBeInTheDocument();
-    await userEvent.click(within(await stages()).getByRole("button", { name: /Split/ }));
-    expect(await screen.findByRole("heading", { name: "Split" })).toBeInTheDocument();
+    await userEvent.click(within(await stages()).getByRole("button", { name: /Train\/test split/ }));
+    expect(await screen.findByRole("heading", { name: "Train/test split" })).toBeInTheDocument();
     expect(await screen.findByText(/has no plain code yet; its settings are in the flow's Parameters tab\./)).toBeInTheDocument();
   });
 
@@ -244,15 +245,15 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     noNotebooks();
     renderWithApi(<NotebooksPage />);
     const side = await screen.findByRole("complementary", { name: "Notebooks" });
-    expect(within(side).getByRole("button", { name: /Stages/ })).toHaveTextContent("01Stages5");
+    expect(within(side).getByRole("button", { name: /Stages/ })).toHaveTextContent("01Stages6");
     await userEvent.type(within(side).getByRole("searchbox", { name: "Filter notebooks" }), "spl");
-    expect(within(await stages()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Split1 step"]);
+    expect(within(await stages()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Train/test split1 step"]);
   });
 
   it("heads a stage notebook with its flow, and runs every cell from the header", async () => {
     noNotebooks();
     renderWithApi(<NotebooksPage />);
-    expect(await screen.findByRole("heading", { level: 1, name: "Load" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Data loading" })).toBeInTheDocument();
     expect(screen.getByText(/^Notebook · iris\.csv/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run all" })).toBeEnabled();
   });
@@ -261,6 +262,6 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     noNotebooks();
     useSelection.setState({ stageTarget: "Model" });
     renderWithApi(<NotebooksPage />);
-    expect(await screen.findByRole("heading", { name: "Model" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Modeling" })).toBeInTheDocument();
   });
 });

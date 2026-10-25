@@ -45,7 +45,7 @@ import {
   STAGE_HEAD_HEIGHT,
   STAGE_PAD_X,
 } from "../flow/layout.ts";
-import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, type Stage, stepLabel, type StepOrigin, stepOrigin } from "../flow/stages.ts";
+import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, STAGE_TITLE, type Stage, stepLabel, type StepOrigin, stepOrigin } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -162,10 +162,8 @@ const ORIGIN_TEXT: Record<StepOrigin, string> = {
   written: "operator step",
 };
 
-const purposeOf = (name: string) => STAGE_PURPOSE[name as Stage] ?? "";
-
-/** "Fair evaluation#fair_evaluation" → "Fair evaluation". */
-const groupName = (id: string) => id.split("#")[0] ?? id;
+/** "Explore#explore" → "Explore": stageGroups names each group by its stage. */
+const stageOfGroup = (id: string) => (id.split("#")[0] ?? id) as Stage;
 
 /** An edge into or out of the selected step is drawn brighter; failed gate is dashed red. */
 type FlowEdgeData = { active: boolean; failed?: boolean };
@@ -452,9 +450,10 @@ export function flowGraph(
       selectable: true,
       zIndex: 0,
       data: {
-        name: groupName(g.id),
-        purpose: (decidedIn.get(groupName(g.id)) ?? []).map((d) => d.label).join(" · ") || purposeOf(groupName(g.id)),
-        promises: (decidedIn.get(groupName(g.id)) ?? []).flatMap((d) => d.promises),
+        name: STAGE_TITLE[stageOfGroup(g.id)],
+        // The decisions made here name what the stage did; a stage without one says what it is for.
+        purpose: (decidedIn.get(stageOfGroup(g.id)) ?? []).map((d) => d.name).join(" · ") || STAGE_PURPOSE[stageOfGroup(g.id)],
+        promises: (decidedIn.get(stageOfGroup(g.id)) ?? []).flatMap((d) => d.promises),
         count: g.count,
         active: g.id === selectedGroup,
         baseWidth: Math.round(g.width),

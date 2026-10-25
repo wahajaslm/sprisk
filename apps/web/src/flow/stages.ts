@@ -3,19 +3,33 @@ import { isCodeOperator } from "./edit.ts";
 import { stepOf } from "./ports.ts";
 
 /** Presentation grouping only (rule 9: layout is not provenance). */
-/** In working order (ADR-0055): read the data and look at all of it, set the test rows aside,
- * then explore the training rows, clean, model and evaluate. */
-export const STAGES = ["Load", "Split", "Explore", "Clean", "Model", "Evaluate", "Unknown"] as const;
+/** The standard stages, in working order (ADR-0055, ADR-0065): read the data, look at all of it,
+ * set the test rows aside, clean, build features, model and evaluate. A method's activity is a
+ * label inside a stage, never a stage of its own. */
+export const STAGES = ["Load", "Explore", "Split", "Clean", "Features", "Model", "Evaluate", "Unknown"] as const;
 export type Stage = (typeof STAGES)[number];
+
+/** Each stage's name for people. */
+export const STAGE_TITLE: Record<Stage, string> = {
+  Load: "Data loading",
+  Explore: "Data exploration",
+  Split: "Train/test split",
+  Clean: "Data cleaning",
+  Features: "Feature engineering",
+  Model: "Modeling",
+  Evaluate: "Evaluation",
+  Unknown: "Other steps",
+};
 
 /** What each stage is for, in a few words, under its name on the canvas. */
 export const STAGE_PURPOSE: Record<Stage, string> = {
   Load: "Read the source files",
-  Split: "Set the test rows aside",
-  Explore: "Measure the training rows",
+  Explore: "Look at every row before deciding",
+  Split: "Set the test rows aside and check what was written",
   Clean: "Columns, duplicates, gaps, text",
+  Features: "Turn columns into model inputs",
   Model: "Fit and compare models",
-  Evaluate: "Score on the test rows",
+  Evaluate: "Score once on the test rows",
   Unknown: "Steps with no stage yet",
 };
 

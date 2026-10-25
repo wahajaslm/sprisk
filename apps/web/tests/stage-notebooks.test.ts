@@ -10,7 +10,8 @@ const ids = (flow: PipelineVersion) => stageNotebooks(flow, byRef).map(({ name, 
 describe("a flow as one notebook per stage (ADR-0055)", () => {
   it("puts each step in its operator's stage, stages in order, steps in flow order", () => {
     expect(ids(pipeline)).toEqual([
-      ["Load", ["load", "profile"]],
+      ["Load", ["load"]],
+      ["Explore", ["profile"]],
       ["Split", ["split"]],
       ["Clean", ["impute"]],
       ["Model", ["model"]],
@@ -23,9 +24,13 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
     expect(ids(flow)[2]).toEqual(["Clean", ["profile", "impute"]]);
   });
 
-  it("puts a look at the training rows in Explore, after the split", () => {
+  it("puts a look at the loaded rows in Data exploration, before the split", () => {
+    expect(stageNotebooks(pipeline, byRef).map((s) => s.title)).toEqual(["Data loading", "Data exploration", "Train/test split", "Data cleaning", "Modeling", "Evaluation"]);
+  });
+
+  it("puts a look at what the split wrote with the split, never before it", () => {
     const flow = { ...pipeline, edges: [...pipeline.edges.filter((e) => e.to !== "profile.data"), { from: "split.train", to: "profile.data" }] };
-    expect(ids(flow)[2]).toEqual(["Explore", ["profile"]]);
+    expect(ids(flow)[1]).toEqual(["Split", ["split", "profile"]]);
   });
 
   it("never puts a step in an earlier stage than a step it reads", () => {
@@ -49,7 +54,7 @@ describe("a flow as one notebook per stage (ADR-0055)", () => {
 
   it("leaves out a stage with no steps", () => {
     const flow = { ...pipeline, nodes: pipeline.nodes.filter((n) => n.id !== "impute"), edges: [] };
-    expect(ids(flow).map(([stage]) => stage)).toEqual(["Load", "Split", "Model", "Evaluate"]);
+    expect(ids(flow).map(([stage]) => stage)).toEqual(["Load", "Explore", "Split", "Model", "Evaluate"]);
   });
 });
 
@@ -70,29 +75,22 @@ const decision = (activity: string, steps: string[]): FlowDecision => ({
 const grouped = (flow: PipelineVersion, decisions: FlowDecision[]) =>
   stageNotebooks(flow, byRef, decisions).map(({ name, nodes }) => [name, nodes.map((n) => n.id)]);
 
-describe("a decision's steps as one section per activity (ADR-0063)", () => {
-  it("puts the steps a decision shaped under its activity, where its first step's stage sits", () => {
+describe("a decision's steps stay in their stage (ADR-0065)", () => {
+  it("never makes a stage of an activity: the steps a decision shaped keep their stage", () => {
     expect(grouped(pipeline, [decision("Repeated observations", ["profile"]), decision("Fair evaluation", ["split"])])).toEqual([
       ["Load", ["load"]],
-      ["Repeated observations", ["profile"]],
-      ["Fair evaluation", ["split"]],
+      ["Explore", ["profile"]],
+      ["Split", ["split"]],
       ["Clean", ["impute"]],
       ["Model", ["model"]],
       ["Evaluate", ["score"]],
     ]);
   });
 
-  it("gives each section the decisions it shows", () => {
-    const fair = decision("Fair evaluation", ["split"]);
-    const sections = stageNotebooks(pipeline, byRef, [fair]);
-    expect(sections.find((s) => s.name === "Fair evaluation")?.decisions).toEqual([fair]);
+  it("gives each stage the decisions that shaped its steps, once each", () => {
+    const fair = decision("Fair evaluation", ["split", "gone"]);
+    const sections = stageNotebooks(pipeline, byRef, [fair, fair]);
+    expect(sections.find((s) => s.name === "Split")?.decisions).toEqual([fair]);
     expect(sections.find((s) => s.name === "Load")?.decisions).toEqual([]);
-  });
-
-  it("keeps a step two decisions shaped under the first, and ignores steps the flow no longer has", () => {
-    expect(grouped(pipeline, [decision("Fair evaluation", ["split", "gone"]), decision("Other", ["split"])])).toContainEqual([
-      "Fair evaluation",
-      ["split"],
-    ]);
   });
 });

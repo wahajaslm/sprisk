@@ -5,7 +5,7 @@ import { checkCount, concernsByNode, useRunChecks } from "../api/checks.ts";
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { latestByNode, statusOf } from "../flow/latest.ts";
 import { stepOf } from "../flow/ports.ts";
-import { kindOf, newestVersions, STAGES, stageOf, stepOrigin, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
+import { kindOf, newestVersions, STAGE_TITLE, STAGES, stageOf, stepOrigin, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
 import { stageNotebooks } from "../notebook/stageNotebooks.ts";
 import { useFlowDecisions } from "../api/walks.ts";
 import { flows } from "../flow/flows.ts";
@@ -57,13 +57,13 @@ export function StepLibrary() {
 
   const needle = query.trim().toLowerCase();
 
-  // The flow's steps in the sections the canvas and the notebook show: stages, and the
-  // activities of the decisions that shaped them (ADR-0063).
+  // The flow's steps in the sections the canvas and the notebook show: the standard stages
+  // (ADR-0065).
   const pipelineStages = useMemo(() => {
     if (!activeVersion) return [];
     return stageNotebooks(activeVersion, opMap, decisions)
-      .map(({ name, nodes }) => ({
-        stage: name,
+      .map(({ title, nodes }) => ({
+        stage: title,
         nodes: nodes.filter(
           (node) =>
             !needle ||
@@ -142,7 +142,7 @@ export function StepLibrary() {
           .map((inStage, i) => ({ stage: STAGES[i]!, inStage }))
           .filter(({ inStage }) => inStage.length > 0)
           .map(({ stage, inStage }, i) => (
-            <SideGroup key={stage} num={i + 1} label={stage} meta={inStage.length}>
+            <SideGroup key={stage} num={i + 1} label={STAGE_TITLE[stage]} meta={inStage.length}>
               {inStage.map((op) => (
                 <ListRow key={op.id} title={stepTitle(op.id, op)} meta={op.capability_class} icon={<KindIcon kind={kindOf(op)} size={12} />} hint={op.description ? `${op.description}\n${op.id}` : op.id} />
               ))}

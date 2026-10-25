@@ -121,9 +121,9 @@ describe("top bar", () => {
 describe("step library", () => {
   it("groups registered operators by stage", async () => {
     renderWithApi(<StepLibrary />);
-    const clean = await screen.findByRole("region", { name: "Clean" });
+    const clean = await screen.findByRole("region", { name: "Data cleaning" });
     expect(within(clean).getByText("Imputation")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Model" })).getByText("Linear model")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Modeling" })).getByText("Linear model")).toBeInTheDocument();
   });
 
   it("shows a step's description on hover only, so each row stays one line", async () => {
@@ -136,8 +136,8 @@ describe("step library", () => {
 
   it("folds a stage away when its heading is clicked", async () => {
     renderWithApi(<StepLibrary />);
-    const clean = await screen.findByRole("region", { name: "Clean" });
-    const heading = within(clean).getByRole("button", { name: /Clean/ });
+    const clean = await screen.findByRole("region", { name: "Data cleaning" });
+    const heading = within(clean).getByRole("button", { name: /Data cleaning/ });
     await userEvent.click(heading);
     expect(heading).toHaveAttribute("aria-expanded", "false");
     expect(within(clean).queryByText("Imputation")).toBeNull();
@@ -153,7 +153,7 @@ describe("step library", () => {
       ),
     );
     renderWithApi(<StepLibrary />);
-    const explore = await screen.findByRole("region", { name: "Explore" });
+    const explore = await screen.findByRole("region", { name: "Data exploration" });
     expect(within(explore).getAllByText("Python")).toHaveLength(1);
     expect(within(explore).getByTitle(/sprisk.code.python@1.10.0/)).toBeInTheDocument();
   });
@@ -212,7 +212,7 @@ describe("step library", () => {
 
   it("lists the plugins the registered operators come from", async () => {
     renderWithApi(<StepLibrary />);
-    await screen.findByRole("region", { name: "Clean" });
+    await screen.findByRole("region", { name: "Data cleaning" });
     await userEvent.click(screen.getByRole("tab", { name: "Plugins" }));
     // ml holds the linear model and its evaluator.
     expect(screen.getByText("ml").parentElement).toHaveTextContent("ml2 operators");
@@ -220,7 +220,7 @@ describe("step library", () => {
 
   it("filters steps by search", async () => {
     renderWithApi(<StepLibrary />);
-    await screen.findByRole("region", { name: "Clean" });
+    await screen.findByRole("region", { name: "Data cleaning" });
     await userEvent.type(screen.getByRole("searchbox", { name: "Search steps" }), "split");
     expect(screen.getByText("Random split")).toBeInTheDocument();
     expect(screen.queryByText("Imputation")).toBeNull();
@@ -290,8 +290,9 @@ describe("flow canvas", () => {
     const { stageGroups } = await import("../src/notebook/stageNotebooks.ts");
     const byRef = new Map(operators.map((o) => [o.id, o]));
     const groups = stageGroups(pipeline, byRef);
-    // profile looks at all loaded rows, so it shares Load's heading.
-    expect(groups.get("profile")).toBe(groups.get("load"));
+    // profile looks at all loaded rows: Data exploration, apart from loading and before the split.
+    expect(groups.get("profile")).toBe("Explore#explore");
+    expect(groups.get("load")).toBe("Load#load");
     // split is the only Split step; impute (Clean) is apart from the Explore steps.
     expect(groups.get("split")).not.toBe(groups.get("impute"));
     expect(groups.get("split")?.startsWith("Split")).toBe(true);
@@ -309,7 +310,7 @@ describe("flow canvas", () => {
     expect(split).toMatchObject({ parentId: "stage:Split#split", position: { x: 10, y: 30 } });
   });
 
-  it("names an activity's stage card by the activity, says what was chosen, and carries its promises (ADR-0063)", async () => {
+  it("names a stage card by its standard stage, lists the decisions made in it, and carries their promises (ADR-0065)", async () => {
     const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
     const byRef = new Map(operators.map((o) => [o.id, o]));
     const promise = { verification: "no_group_overlap", promise: "No item has rows in both train and test.", status: "stale" as const,
@@ -317,12 +318,19 @@ describe("flow canvas", () => {
     const fair = { decides: "split.method", method: "methodology.supervised.split_method@1.0.0", name: "Train/test split", activity: "Fair evaluation",
       question: "How are rows divided?", option: "item_groups", label: "Keep each item's rows on one side", reason: "Why.",
       assurance: "rule" as const, steps: ["split"], promises: [promise] };
-    const groups = [{ id: "Fair evaluation#fair_evaluation", count: 1, x: 100, y: 20, width: 200, height: 90 }];
+    const groups = [{ id: "Split#split", count: 1, x: 100, y: 20, width: 200, height: 90 }];
     const at = new Map([["split", { x: 110, y: 50 }]]);
     const { nodes } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), at, groups, [fair]);
-    const stage = nodes.find((n) => n.id === "stage:Fair evaluation#fair_evaluation")!;
-    expect(stage.data).toMatchObject({ name: "Fair evaluation", purpose: "Keep each item's rows on one side", promises: [promise] });
-    expect(nodes.find((n) => n.id === "split")).toMatchObject({ parentId: "stage:Fair evaluation#fair_evaluation" });
+    const stage = nodes.find((n) => n.id === "stage:Split#split")!;
+    expect(stage.data).toMatchObject({ name: "Train/test split", purpose: "Train/test split", promises: [promise] });
+  });
+
+  it("says what a stage is for when no decision was made in it", async () => {
+    const { flowGraph } = await import("../src/views/FlowCanvas.tsx");
+    const byRef = new Map(operators.map((o) => [o.id, o]));
+    const groups = [{ id: "Clean#clean", count: 1, x: 100, y: 20, width: 200, height: 90 }];
+    const { nodes } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), new Map([["impute", { x: 110, y: 50 }]]), groups);
+    expect(nodes.find((n) => n.id === "stage:Clean#clean")!.data).toMatchObject({ name: "Data cleaning", purpose: "Columns, duplicates, gaps, text" });
   });
 
   it("gives every compact card the Flow Studio size, whatever its title (ADR-0061)", async () => {
@@ -343,15 +351,15 @@ describe("flow canvas", () => {
     const byRef = new Map(operators.map((o) => [o.id, o]));
     const { edges } = flowGraph(pipeline, byRef, new Map(), undefined, "compact", new Map(), new Map());
     const edge = (from: string, to: string) => edges.find((e) => e.source === from && e.target === to)!;
-    expect(edge("load", "profile")).toMatchObject({ sourceHandle: "down", targetHandle: "top" });
+    expect(edge("load", "profile")).toMatchObject({ sourceHandle: "out", targetHandle: "in" });
     expect(edge("load", "split")).toMatchObject({ sourceHandle: "out", targetHandle: "in" });
   });
 
   it("shows a heading above each stage, without a step count", async () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
-    const heading = await screen.findByRole("heading", { name: /Split/ });
-    expect(heading).toHaveTextContent(/^Split$/);
+    const heading = await screen.findByRole("heading", { name: /Train\/test split/ });
+    expect(heading).toHaveTextContent(/^Train\/test split$/);
   });
 
   it("says when the flow's decisions cannot be read, and still draws its stages (ADR-0063)", async () => {
@@ -359,7 +367,7 @@ describe("flow canvas", () => {
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
     expect(await screen.findByRole("alert")).toHaveTextContent("The flow's decisions could not be read");
-    expect(await screen.findByRole("heading", { name: /Split/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Train\/test split/ })).toBeInTheDocument();
   });
 
   it("Tidy puts every step back where the layout places it", async () => {

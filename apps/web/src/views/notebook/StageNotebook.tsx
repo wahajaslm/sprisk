@@ -111,7 +111,7 @@ function StageEditor({ pipeline, section, byRef, code, unwritten }: {
     <div className="notebook" aria-label="Notebook">
       <PageHeader
         eyebrow={`Notebook · ${flowName(pipeline)} · flow ${busy || runs.running ? "running" : "idle"}`}
-        title={stage}
+        title={section.title}
         description="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change."
         actions={<Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>}
       />
