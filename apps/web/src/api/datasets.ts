@@ -12,5 +12,8 @@ export const useDatasetProfile = (artifactId: string | undefined) =>
     queryKey: ["dataset-profile", artifactId],
     queryFn: () => getOne("DatasetProfile", `/artifacts/${artifactId ?? ""}/profile`),
     enabled: artifactId !== undefined,
-    staleTime: Infinity, // an artifact never changes, so neither does its profile
+    // An artifact never changes, so neither does its profile: kept for the session, not
+    // dropped five minutes after the table was last shown.
+    staleTime: Infinity,
+    gcTime: Infinity,
   });

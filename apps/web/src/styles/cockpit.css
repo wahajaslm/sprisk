@@ -1517,15 +1517,29 @@ p { margin: 0; }
 .ds-summary dt { color: var(--muted); }
 .ds-summary dd { margin: 0; text-align: right; color: var(--soft); font-family: var(--mono); }
 .ds-note { white-space: normal; margin: 0; padding: 0; font-size: var(--fs-12-5); color: var(--text-muted); }
-.ds-missing { display: flex; align-items: center; gap: var(--space-2); }
-.ds-missing-bar { width: 120px; height: 6px; background: var(--wash-strong); overflow: hidden; }
-.ds-missing-bar span { display: block; height: 100%; }
-.ds-missing-bar .warn { background: var(--alert); }
-.ds-shape { width: 120px; height: 18px; }
-.ds-plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--space-3); }
-.ds-plots .plotly-figure { min-height: 320px; }
-.ds-repeated { margin: 0; font-family: var(--mono); font-size: var(--text-sm); color: var(--soft); }
-.ds-repeated.warn { color: var(--ink); }
+.ds-profile .body-section { max-width: 1200px; }
+.ds-overview { margin: 0 0 var(--space-3); color: var(--soft); }
+.ds-roles { display: grid; gap: var(--space-2); margin: 0; }
+.ds-roles div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: var(--space-3); }
+.ds-roles dt { color: var(--ink); }
+.ds-roles dd { margin: 0; color: var(--soft); overflow-wrap: anywhere; }
+.ds-findings { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.ds-findings li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--alpha-04); color: var(--soft); line-height: 1.5; }
+.ds-finding-level { font-size: var(--text-xs); color: var(--muted); padding-top: 2px; }
+.ds-findings li.warn .ds-finding-level { color: var(--alert); }
+.ds-finding-column { margin-right: var(--space-2); color: var(--ink); }
+.ds-example { display: block; margin-top: var(--space-1); font-size: var(--text-xs); color: var(--muted); }
+.ds-example q { color: var(--soft); overflow-wrap: anywhere; }
+.ds-column { display: grid; gap: var(--space-3); padding: var(--space-5); margin-bottom: var(--space-4); border: 1px solid var(--alpha-05); border-radius: 4px; }
+.ds-column-head { display: flex; align-items: baseline; gap: var(--space-3); }
+.ds-column-head h3 { margin: 0; font-size: var(--text-lg); font-weight: 500; color: var(--ink); }
+.ds-role { padding: 1px var(--space-2); border: 1px solid var(--alpha-08); border-radius: 3px; font-size: var(--text-xs); color: var(--soft); }
+.ds-column-facts { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: 0; }
+.ds-column-facts div { display: grid; gap: 2px; }
+.ds-column-facts dt { font-size: var(--text-xs); color: var(--muted); }
+.ds-column-facts dd { margin: 0; color: var(--ink); }
+.ds-column-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: var(--space-3); }
+.ds-column-charts .plotly-figure, .ds-profile .plotly-figure { min-height: 320px; }
 /* Investigation (ADR-0065): the chart leads each analysis; the words sit beside it. */
 .ds-investigation { display: grid; gap: var(--space-4); }
 .ds-investigation .body-section { max-width: 1200px; }
@@ -7795,17 +7809,6 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .exp-steps li.waiting .exp-step-name, .exp-steps li.waiting .exp-step-state { color: var(--text-disabled); }
 
 /* ── Datasets profile (design: missing share bars, then the columns missing most) ── */
-.ds-bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; border-bottom: 1px solid var(--alpha-12); margin-bottom: 12px; }
-.ds-bars > span { flex: 1; border-radius: 1px 1px 0 0; background: var(--alpha-35); }
-.ds-bars > span.warn { background: var(--danger); }
-.ds-worst { list-style: none; margin: 0; padding: 0; }
-.ds-worst li { display: grid; grid-template-columns: 160px minmax(0, 1fr) 60px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--alpha-04); font-size: var(--fs-13); }
-.ds-worst-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ds-worst-bar { height: 4px; border-radius: 2px; background: var(--alpha-08); }
-.ds-worst-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--text-secondary); }
-.ds-worst-share { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-.ds-worst li.warn .ds-worst-bar > span { background: var(--danger); }
-.ds-worst li.warn .ds-worst-share { color: var(--danger); }
 .side-row-icon { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--alpha-06); color: var(--text-label); }
 .side-row.static { cursor: default; }
 .side-row.static:hover { background: transparent; }

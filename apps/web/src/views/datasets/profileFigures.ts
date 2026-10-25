@@ -1,4 +1,4 @@
-import type { DatasetProfile } from "@sprisk/contracts";
+import type { ColumnProfile, DatasetProfile } from "@sprisk/contracts";
 import type Plotly from "plotly.js-dist-min";
 
 import type { PlotlyFigureJson } from "../drawPlotly.ts";
@@ -6,38 +6,37 @@ import type { PlotlyFigureJson } from "../drawPlotly.ts";
 type Color = (token: string) => string;
 type Figure = PlotlyFigureJson & { layout: Partial<Plotly.Layout> };
 
-/** More small charts than this stop being readable; the column table still lists every column. */
-export const MAX_SMALL_MULTIPLES = 24;
-const PER_ROW = 3;
+/** Height of one horizontal bar, so a chart grows with its bars instead of squeezing them. */
+const BAR_PX = 26;
+const FRAME_PX = 90;
 
 /** Plotly reads some HTML in text; dataset text is untrusted (rule 7), so it is shown as text. */
 const text = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** Where values are missing: one row per column, one cell per band of rows, red where missing. */
-export function missingMap(profile: DatasetProfile, color: Color): Figure {
-  const bands = profile.columns[0]?.missing_by_band.length ?? 0;
-  const x = Array.from({ length: bands }, (_, i) => {
-    const first = i * profile.band_rows + 1;
-    return `rows ${first}–${Math.min(profile.total_rows, (i + 1) * profile.band_rows)}`;
-  });
+/** Missing cells and blank text per column, stacked, the emptiest on top. None when every
+ * column is filled in every row. */
+export function missingAndBlank(profile: DatasetProfile, color: Color): Figure | null {
+  const gaps = profile.columns
+    .map((c) => ({ name: c.name, missing: c.missing, blank: c.blank ?? 0 }))
+    .filter((c) => c.missing + c.blank > 0)
+    .sort((a, b) => b.missing + b.blank - (a.missing + a.blank));
+  if (gaps.length === 0) return null;
+  const rows = profile.profiled_rows;
+  const y = gaps.map((g) => text(g.name));
+  const share = (n: number) => (rows === 0 ? "" : `${Math.round((n / rows) * 100)}%`);
   return {
     data: [
-      {
-        type: "heatmap",
-        z: profile.columns.map((c) => c.missing_by_band),
-        x,
-        y: profile.columns.map((c) => text(c.name)),
-        zmin: 0,
-        zmax: 1,
-        colorscale: [
-          [0, color("--node")],
-          [1, color("--alert")],
-        ],
-        showscale: false,
-        hovertemplate: "%{y}<br>%{x}<br>%{z:.0%} missing<extra></extra>",
-      },
+      { type: "bar", orientation: "h", name: "Missing", y, x: gaps.map((g) => g.missing), marker: { color: color("--alert") }, text: gaps.map((g) => (g.missing ? share(g.missing) : "")), textposition: "auto", hovertemplate: "%{y}<br>%{x:,} rows missing<extra></extra>" },
+      { type: "bar", orientation: "h", name: "Blank text", y, x: gaps.map((g) => g.blank), marker: { color: color("--ink-3") }, text: gaps.map((g) => (g.blank ? share(g.blank) : "")), textposition: "auto", hovertemplate: "%{y}<br>%{x:,} rows of blank text<extra></extra>" },
     ],
-    layout: { title: { text: "Missing values by row band" }, xaxis: { showticklabels: false }, yaxis: { autorange: "reversed" } },
+    layout: {
+      title: { text: `Missing and blank values (of ${rows.toLocaleString()} rows)` },
+      barmode: "stack",
+      height: FRAME_PX + gaps.length * BAR_PX * 1.6,
+      xaxis: { title: { text: "rows" }, range: [0, rows] },
+      yaxis: { autorange: "reversed" },
+      legend: { orientation: "h", y: -0.25 },
+    },
   };
 }
 
@@ -69,38 +68,42 @@ export function correlationField(profile: DatasetProfile, color: Color): Figure 
   };
 }
 
-/** One small bar chart per column with values: bins of a number, or its most common values. */
-export function distributions(profile: DatasetProfile, color: Color): Figure {
-  const shown = profile.columns.filter((c) => c.histogram).slice(0, MAX_SMALL_MULTIPLES);
-  const rows = Math.max(1, Math.ceil(shown.length / PER_ROW));
-  const axis = (i: number) => (i === 0 ? "" : String(i + 1));
+/** A category's most common values, most common on top, and the rest as one bar. */
+export function valueBars(column: ColumnProfile, rows: number, color: Color, title = "Most common values"): Figure {
+  const bars = column.histogram?.bars ?? [];
+  const other = column.histogram?.other ?? 0;
+  const pct = (n: number) => (rows === 0 ? "" : `${((n / rows) * 100).toFixed(1)}%`);
   return {
-    data: shown.map((c, i) => ({
-      type: "bar",
-      x: c.histogram?.bars.map((b) => text(b.label)) ?? [],
-      y: c.histogram?.bars.map((b) => b.count) ?? [],
-      xaxis: `x${axis(i)}`,
-      yaxis: `y${axis(i)}`,
-      marker: { color: color("--soft") },
-      hovertemplate: "%{x}<br>%{y}<extra></extra>",
-    })),
+    data: [
+      { type: "bar", orientation: "h", name: "Values", y: bars.map((b) => text(b.label)), x: bars.map((b) => b.count), text: bars.map((b) => pct(b.count)), textposition: "outside", marker: { color: color("--soft") }, hovertemplate: "%{y}<br>%{x:,} rows<extra></extra>" },
+      ...(other > 0
+        ? [{ type: "bar" as const, orientation: "h" as const, name: "Other", y: ["Other values"], x: [other], text: [pct(other)], textposition: "outside" as const, marker: { color: color("--ink-4") }, hovertemplate: "Every other value<br>%{x:,} rows<extra></extra>" }]
+        : []),
+    ],
     layout: {
-      title: { text: "Distributions" },
-      grid: { rows, columns: Math.min(PER_ROW, shown.length) || 1, pattern: "independent" },
+      title: { text: title },
       showlegend: false,
-      height: 80 + rows * 150,
-      // Each chart is titled by its column; tick labels would not fit.
-      annotations: shown.map((c, i) => ({
-        text: text(c.name),
-        xref: `x${axis(i)} domain` as Plotly.XAxisName,
-        yref: `y${axis(i)} domain` as Plotly.YAxisName,
-        x: 0.5,
-        y: 1.08,
-        showarrow: false,
-        font: { size: 11 },
-      })),
-      // Every axis is declared, so the theme reaches each chart's grid (plotlyTheme.ts).
-      ...Object.fromEntries(shown.flatMap((_, i) => [[`xaxis${axis(i)}`, { showticklabels: false }], [`yaxis${axis(i)}`, { nticks: 4 }]])),
+      height: FRAME_PX + (bars.length + (other > 0 ? 1 : 0)) * BAR_PX,
+      xaxis: { title: { text: "rows" } },
+      yaxis: { autorange: "reversed", automargin: true },
     },
+  };
+}
+
+/** Words per value of a text column: short titles sit left, long descriptions right. */
+export function wordCounts(column: ColumnProfile, color: Color): Figure {
+  const bars = column.word_counts?.bars ?? [];
+  return {
+    data: [{ type: "bar", x: bars.map((b) => b.label), y: bars.map((b) => b.count), marker: { color: color("--soft") }, hovertemplate: "%{x} words<br>%{y:,} rows<extra></extra>" }],
+    layout: { title: { text: "Words per value" }, xaxis: { title: { text: "words" }, type: "category" }, yaxis: { title: { text: "rows" } } },
+  };
+}
+
+/** A number's spread, as equal-width bins. */
+export function numberBins(column: ColumnProfile, color: Color): Figure {
+  const bars = column.histogram?.bars ?? [];
+  return {
+    data: [{ type: "bar", x: bars.map((b) => b.label), y: bars.map((b) => b.count), marker: { color: color("--soft") }, hovertemplate: "%{x}<br>%{y:,} rows<extra></extra>" }],
+    layout: { title: { text: "Distribution" }, xaxis: { title: { text: text(column.name) }, type: "category" }, yaxis: { title: { text: "rows" } }, bargap: 0.05 },
   };
 }
