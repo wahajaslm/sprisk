@@ -6644,7 +6644,7 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
-const SHUFFLE_METHOD: &str = r#"schema_version: sprisk.method/v1
+const SHUFFLE_METHOD: &str = r#"schema_version: sprisk.method/v2
 id: methodology.supervised.shuffle_split@1.0.0
 decides: split.method
 name: Train/test split
@@ -6933,27 +6933,36 @@ async fn a_complete_walk_scores_its_test_rows_once_and_ends_on_that_score() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_promise_that_fails_keeps_the_test_rows_sealed() {
-    let mut api = api().await;
-    // A method session whose every check fails: the stand-in for a split that broke its promise.
-    let failing = "import sprisk_workers.method as m\n\
+/// A method session whose checks of `verification` all end as `result`: the stand-in for a
+/// split that broke its promise, or one its evidence cannot settle.
+fn checks_end_as(api: &mut Api, verification: &str, result: &str) {
+    let stub = format!(
+        "import sprisk_workers.method as m\n\
         real = m.verify\n\
         def verify(request):\n\
-        \x20   found = real(request).model_dump_json().replace('\"pass\"', '\"fail\"')\n\
+        \x20   found = real(request).model_dump_json()\n\
+        \x20   if request.model_dump(mode='json')['verification'] == '{verification}':\n\
+        \x20       found = found.replace('\"pass\"', '\"{result}\"')\n\
         \x20   return m.MethodAnswer.model_validate_json(found)\n\
         m.verify = verify\n\
-        m.main()\n";
+        m.main()\n"
+    );
     api.state.method_runner = sprisk_api::MethodRunner::new(
         vec![
             root().join(".venv/bin/python").display().to_string(),
             "-c".into(),
-            failing.into(),
+            stub,
         ],
         Duration::from_secs(30),
         2,
     );
     api.app = router(api.state.clone());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_promise_its_evidence_cannot_settle_keeps_the_test_rows_sealed() {
+    let mut api = api().await;
+    checks_end_as(&mut api, "no_row_in_both", "inconclusive");
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
 
@@ -6968,6 +6977,87 @@ async fn a_promise_that_fails_keeps_the_test_rows_sealed() {
         "{why}"
     );
     assert!(why.contains("no_row_in_both"), "{why}");
+}
+
+/// The split's promise fails: the walk decides the split again, without the option that
+/// broke it. A random split cannot keep repeated rows apart, so the method asks for the item
+/// column, and the test rows stay sealed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_promise_reopens_the_decision_that_made_it() {
+    let mut api = api().await;
+    checks_end_as(&mut api, "no_row_in_both", "fail");
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+
+    let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-reopened")).await;
+
+    let trail = trail(&detail);
+    assert!(!trail.contains(&"score".to_owned()), "{detail}");
+    let steps = detail["steps"].as_array().unwrap();
+    let failed = steps
+        .iter()
+        .position(|s| {
+            s["verifications"]
+                .to_string()
+                .contains(r#""result":"fail""#)
+        })
+        .unwrap_or_else(|| panic!("the split's promise is checked: {detail}"));
+    assert!(
+        trail[..failed].contains(&"decide split.method stratified_random".to_owned()),
+        "{detail}"
+    );
+    assert_eq!(detail["walk"]["stop"]["reason"], "needs_person", "{detail}");
+    let asks = detail["walk"]["stop"]["asks"].as_array().unwrap();
+    let split = asks
+        .iter()
+        .find(|a| a["decides"] == "split.method")
+        .unwrap_or_else(|| panic!("the split is asked again: {detail}"));
+    let question = split["question"].as_str().unwrap();
+    assert!(question.contains("broke its promise"), "{question}");
+    let offered: Vec<&str> = split["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["id"].as_str().unwrap())
+        .collect();
+    assert!(!offered.contains(&"stratified_random"), "{split}");
+}
+
+/// A person answered the split with a random split; its promise fails on these rows, so the
+/// answer is not applied again: the method is asked once more, without that option.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_answer_whose_promise_failed_is_not_applied_again() {
+    let mut api = api().await;
+    checks_end_as(&mut api, "no_row_in_both", "fail");
+    std::fs::write(&api.csv, learnable_table()).unwrap();
+    learnable_question(&api).await;
+    let (_, mut q) = call(
+        &api.app,
+        "GET",
+        "/question_versions/qv_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        None,
+    )
+    .await;
+    q["id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
+    q["parent_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
+    q["answers"] = json!([{ "decides": "split.method", "option": "simple_random" }]);
+    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let mut request = walk_request(&[&api.csv], "walk-answer-failed");
+    request["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ1");
+
+    let detail = walk_to_end(&api, request).await;
+
+    let answered = trail(&detail)
+        .iter()
+        .filter(|s| *s == "decide split.method simple_random")
+        .count();
+    assert_eq!(answered, 1, "{detail}");
+    assert_eq!(detail["walk"]["stop"]["reason"], "needs_person", "{detail}");
+    assert_eq!(
+        detail["walk"]["stop"]["asks"][0]["decides"], "split.method",
+        "{detail}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

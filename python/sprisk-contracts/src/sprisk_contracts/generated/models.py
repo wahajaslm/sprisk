@@ -1971,6 +1971,15 @@ class MethodInsert(StrictModel):
     ] = None
 
 
+class RuledOutOption(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    option: MethodOptionId
+    verification: VerificationName
+    detail: Annotated[str, Field(min_length=1)]
+
+
 class MethodVerified(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3698,6 +3707,12 @@ class MethodRequest(StrictModel):
             description="The needed concepts a stated, confirmed or method-made binding names. Never a column name."
         ),
     ]
+    ruled_out: Annotated[
+        list[RuledOutOption] | None,
+        Field(
+            description="Options this walk took whose promise then failed, so the decision is made again: they are left out of `options`. Absent: none."
+        ),
+    ] = None
 
 
 class RuleAnswer(RootModel[RuleDecided | RuleRefused]):
@@ -3919,7 +3934,7 @@ class FlowDecisions(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["sprisk.flow_decisions/v1"]
+    schema_version: Literal["sprisk.flow_decisions/v2"]
     pipeline_version_id: PipelineVersionId
     walk_id: Annotated[
         WalkId | None,
@@ -3942,7 +3957,7 @@ class Method(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_version: Literal["sprisk.method/v1"]
+    schema_version: Literal["sprisk.method/v2"]
     id: MethodRef
     decides: DecisionKey
     name: Annotated[

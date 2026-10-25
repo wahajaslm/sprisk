@@ -1465,7 +1465,7 @@
         "schema_version": {
           "type": "string",
           "enum": [
-            "sprisk.method/v1"
+            "sprisk.method/v2"
           ]
         },
         "id": {
@@ -1785,6 +1785,36 @@
           "items": {
             "$ref": "#/$defs/ConceptId"
           }
+        },
+        "ruled_out": {
+          "type": "array",
+          "description": "Options this walk took whose promise then failed, so the decision is made again: they are left out of `options`. Absent: none.",
+          "items": {
+            "$ref": "#/$defs/RuledOutOption"
+          }
+        }
+      }
+    },
+    "RuledOutOption": {
+      "title": "RuledOutOption",
+      "description": "An option a failed promise rules out for the rest of a walk (ADR-0063 amendment): the verification that failed and what its check found.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "option",
+        "verification",
+        "detail"
+      ],
+      "properties": {
+        "option": {
+          "$ref": "#/$defs/MethodOptionId"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationName"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -6165,7 +6195,7 @@
         "schema_version": {
           "type": "string",
           "enum": [
-            "sprisk.flow_decisions/v1"
+            "sprisk.flow_decisions/v2"
           ]
         },
         "pipeline_version_id": {

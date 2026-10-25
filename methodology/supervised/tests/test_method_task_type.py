@@ -54,3 +54,16 @@ def test_text_is_not_a_number_to_predict() -> None:
     assert result == "fail"
     result, _ = load_function(VERIFY, "verify_labels_are_numbers")(shape(500, True, False), {})
     assert result == "pass"
+
+
+def test_a_stated_task_whose_labels_broke_its_promise_asks_to_restate_the_question() -> None:
+    decimals = "The target holds decimal values (812 distinct on the train rows): a quantity."
+    d = decide(
+        METHOD,
+        evidence={"target.shape": shape(812, True, False)},
+        bound=["common.target"],
+        ruled_out={"classification": decimals},
+    )
+    # The task is the question's: only a new question revision changes it.
+    assert d["answer"] == "refused"
+    assert decimals in d["error"] and "restate the question's task" in d["error"]

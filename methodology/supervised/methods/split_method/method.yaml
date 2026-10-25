@@ -1,4 +1,4 @@
-schema_version: sprisk.method/v1
+schema_version: sprisk.method/v2
 id: methodology.supervised.split_method@1.0.0
 decides: split.method
 name: Train/test split

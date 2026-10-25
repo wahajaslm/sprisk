@@ -422,6 +422,8 @@ fn grouped() -> Made {
         decides: "evaluation.split_method".into(),
         option: "item_groups".into(),
         bindings: Vec::new(),
+        round: 0,
+        ruled_out: Vec::new(),
     }
 }
 
@@ -489,6 +491,8 @@ fn a_promise_s_producer_reading_an_unbound_concept_is_left_out_with_a_note() {
         decides: "evaluation.split_method".into(),
         option: "stratified_random".into(),
         bindings: Vec::new(),
+        round: 0,
+        ruled_out: Vec::new(),
     };
     let measured = measure(
         &catalog(&ops),
@@ -521,6 +525,8 @@ fn a_decided_method_s_evidence_is_not_measured_again() {
         decides: "data.repeated_items".into(),
         option: "independent_rows".into(),
         bindings: Vec::new(),
+        round: 0,
+        ruled_out: Vec::new(),
     };
     let measured = measure(
         &catalog(&ops),

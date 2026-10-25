@@ -198,3 +198,29 @@ fn a_version_s_steps_run_until_the_walk_made_another() {
     assert_eq!(rounds(1), [0, 1, 2]);
     assert_eq!(rounds(3), [0, 1, 2, 3, 4]);
 }
+
+/// A promise failed and the split was decided again: only the decision in force is shown.
+#[test]
+fn a_decision_made_again_shows_only_the_one_in_force() {
+    let measured = flow(MEASURED, 42);
+    let mut steps = trail();
+    steps.insert(
+        1,
+        step(
+            1,
+            json!({ "action": "decide", "pipeline_version_id": DECIDED,
+            "decides": "evaluation.split_method", "method": "methodology.core.split_method@1.0.0",
+            "option": "stratified_random", "assurance": "rule", "promises": ["no_row_in_both"] }),
+        ),
+    );
+    steps[2].round = 2;
+    let view = decisions_json(&steps, &measured, None);
+
+    let options: Vec<&str> = view["decisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["option"].as_str().unwrap())
+        .collect();
+    assert_eq!(options, ["group_by_title", "item_groups"], "{view}");
+}

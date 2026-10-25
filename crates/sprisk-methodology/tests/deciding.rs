@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use sprisk_contracts::{MethodAssurance, Operator, PipelineVersion, QuestionVersion, parse};
-use sprisk_methodology::deciding::{Made, apply_option, bindings, ready};
+use sprisk_methodology::deciding::{
+    Made, apply_option, bindings, made_by, ready, reopened_too_late,
+};
 use sprisk_methodology::{RuleCatalog, patch};
 use sprisk_registry::Registry;
 
@@ -96,7 +98,165 @@ fn made(decides: &str, option: &str, bindings: Value) -> Made {
         decides: decides.to_owned(),
         option: option.to_owned(),
         bindings: serde_json::from_value(bindings).unwrap(),
+        round: 0,
+        ruled_out: Vec::new(),
     }
+}
+
+/// A walk step of `action` at `round`, with `extra` fields.
+fn step(round: u32, action: &str, extra: Value) -> sprisk_contracts::WalkStep {
+    let mut step = json!({
+        "schema_version": "sprisk.walk_step/v1", "walk_id": "wlk_01JABCDEFGHJKMNPQRSTVWXYZ0",
+        "round": round, "action": action, "reason": "a step", "created_at": "2026-10-24T10:00:00Z",
+    });
+    step.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    parse(&step.to_string()).unwrap()
+}
+
+fn decided(round: u32, decides: &str, method: &str, option: &str) -> sprisk_contracts::WalkStep {
+    let method = format!("methodology.core.{method}@1.0.0");
+    step(
+        round,
+        "decide",
+        json!({ "decides": decides, "method": method, "option": option }),
+    )
+}
+
+/// A verify step where `decides`'s promise `verification` has `result`.
+fn checked(
+    round: u32,
+    decides: &str,
+    verification: &str,
+    result: &str,
+) -> sprisk_contracts::WalkStep {
+    step(
+        round,
+        "verify",
+        json!({ "verifications": [{
+            "decides": decides, "method": "methodology.core.split_method@1.0.0",
+            "verification": verification, "promise": "No test row has the same features as a train row.",
+            "result": result, "detail": "12 test rows have the same features as a train row.",
+        }] }),
+    )
+}
+
+#[test]
+fn a_failed_promise_rules_out_the_option_that_made_it_for_the_rest_of_the_walk() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let steps = [
+        decided(1, REPEATED, "repeated_items", "independent_rows"),
+        decided(2, SPLIT, "split_method", "stratified_random"),
+        checked(3, SPLIT, "no_row_in_both", "fail"),
+    ];
+    let made = made_by(&catalog, &steps).unwrap();
+    let split = made.iter().find(|m| m.decides == SPLIT).unwrap();
+    let ruled: Vec<(&str, &str)> = split
+        .ruled_out
+        .iter()
+        .map(|r| (r.option.as_str(), r.verification.as_str()))
+        .collect();
+    assert_eq!(
+        ruled,
+        [
+            ("stratified_random", "no_row_in_both"),
+            ("simple_random", "no_row_in_both")
+        ]
+    );
+
+    // Decided again: the new option is in force, and the old one stays ruled out.
+    let again = [
+        steps.as_slice(),
+        &[decided(4, SPLIT, "split_method", "simple_random")],
+    ]
+    .concat();
+    let made = made_by(&catalog, &again).unwrap();
+    let splits: Vec<&Made> = made.iter().filter(|m| m.decides == SPLIT).collect();
+    assert_eq!(splits.len(), 1, "{made:?}");
+    assert_eq!(splits[0].option, "simple_random");
+    assert_eq!(splits[0].ruled_out.len(), 2);
+}
+
+#[test]
+fn a_promise_that_passes_or_is_inconclusive_rules_nothing_out() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    for result in ["pass", "inconclusive", "not_evaluated"] {
+        let steps = [
+            decided(1, SPLIT, "split_method", "stratified_random"),
+            checked(2, SPLIT, "no_row_in_both", result),
+        ];
+        let made = made_by(&catalog, &steps).unwrap();
+        assert!(made[0].ruled_out.is_empty(), "{result}");
+    }
+}
+
+#[test]
+fn a_decision_made_again_drops_the_decisions_that_read_it() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let steps = [
+        decided(1, REPEATED, "repeated_items", "independent_rows"),
+        decided(2, SPLIT, "split_method", "stratified_random"),
+        decided(3, REPEATED, "repeated_items", "group_by_title"),
+    ];
+    let made = made_by(&catalog, &steps).unwrap();
+    let keys: Vec<(&str, &str)> = made
+        .iter()
+        .map(|m| (m.decides.as_str(), m.option.as_str()))
+        .collect();
+    assert_eq!(keys, [(REPEATED, "group_by_title")]);
+}
+
+#[test]
+fn a_ruled_out_decision_is_ready_again_without_its_ruled_out_option() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let steps = [
+        decided(1, REPEATED, "repeated_items", "independent_rows"),
+        decided(2, SPLIT, "split_method", "stratified_random"),
+        checked(3, SPLIT, "no_row_in_both", "fail"),
+    ];
+    let done = made_by(&catalog, &steps).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &done).unwrap();
+    let found = ready(&catalog, &q, &done, &effective, &groups(0), &ops).unwrap();
+    let request = serde_json::to_value(&found.ready[0].request).unwrap();
+    assert_eq!(request["method"], "methodology.core.split_method@1.0.0");
+    // The other random split makes the same promise, so it is ruled out with it.
+    assert_eq!(request["options"], json!(["temporal", "item_groups"]));
+    assert_eq!(request["ruled_out"][0]["option"], "stratified_random");
+    assert_eq!(request["ruled_out"][0]["verification"], "no_row_in_both");
+    assert!(found.exhausted.is_empty());
+}
+
+#[test]
+fn a_decision_whose_every_option_is_ruled_out_is_exhausted_not_ready() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let mut steps = vec![decided(1, REPEATED, "repeated_items", "independent_rows")];
+    for (at, option) in [
+        "temporal",
+        "item_groups",
+        "stratified_random",
+        "simple_random",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let round = 2 * at as u32 + 2;
+        steps.push(decided(round, SPLIT, "split_method", option));
+        steps.push(checked(round + 1, SPLIT, "no_row_in_both", "fail"));
+    }
+    let done = made_by(&catalog, &steps).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &done).unwrap();
+    let found = ready(&catalog, &q, &done, &effective, &groups(0), &ops).unwrap();
+    assert!(found.ready.is_empty(), "{:?}", found.ready);
+    assert_eq!(found.exhausted.len(), 1);
+    assert_eq!(found.exhausted[0].decides, SPLIT);
 }
 
 fn ready_ids(
@@ -449,5 +609,97 @@ fn an_insert_whose_evidence_was_not_measured_is_refused() {
     assert!(
         refused.to_string().contains("data.spelling_variants"),
         "{refused}"
+    );
+}
+
+#[test]
+fn a_decision_reopened_holds_back_the_methods_that_read_it() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let steps = [
+        decided(1, REPEATED, "repeated_items", "independent_rows"),
+        step(
+            2,
+            "verify",
+            json!({ "verifications": [{
+            "decides": REPEATED, "method": "methodology.core.repeated_items@1.0.0",
+            "verification": "rows_apart", "promise": "Rows are apart.",
+            "result": "fail", "detail": "Two rows are one item.",
+        }] }),
+        ),
+    ];
+    let done = made_by(&catalog, &steps).unwrap();
+    assert_eq!(
+        ready_ids(&catalog, &titled(), &done, &groups(0), &ops),
+        [REPEATED],
+        "the split waits for the items to be decided again"
+    );
+}
+
+#[test]
+fn an_exhausted_decision_names_each_option_and_what_broke_it() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let mut steps = vec![decided(1, REPEATED, "repeated_items", "independent_rows")];
+    for (at, option) in [
+        "temporal",
+        "item_groups",
+        "stratified_random",
+        "simple_random",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let round = 2 * at as u32 + 2;
+        steps.push(decided(round, SPLIT, "split_method", option));
+        steps.push(checked(round + 1, SPLIT, "no_row_in_both", "fail"));
+    }
+    let done = made_by(&catalog, &steps).unwrap();
+    let q = titled();
+    let effective = bindings(&q, &done).unwrap();
+    let found = ready(&catalog, &q, &done, &effective, &groups(0), &ops).unwrap();
+    let detail = found.exhausted[0].detail();
+    assert!(
+        detail.starts_with("evaluation.split_method: every option broke its promise: temporal (no_row_in_both: 12 test rows"),
+        "{detail}"
+    );
+    assert_eq!(detail.matches("no_row_in_both").count(), 4, "{detail}");
+}
+
+#[test]
+fn a_decide_step_with_no_option_is_refused_as_broken() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let broken = step(1, "decide", json!({ "decides": SPLIT }));
+    let error = made_by(&catalog, &[broken]).unwrap_err().to_string();
+    assert!(error.contains("decide step 1"), "{error}");
+    assert!(!error.contains("cannot add"), "{error}");
+}
+
+#[test]
+fn a_decision_whose_promise_fails_after_a_comparison_is_not_reopened() {
+    let ops = operators();
+    let catalog = catalog(&ops);
+    let early = [
+        decided(1, SPLIT, "split_method", "stratified_random"),
+        checked(2, SPLIT, "no_row_in_both", "fail"),
+    ];
+    let made = made_by(&catalog, &early).unwrap();
+    assert_eq!(
+        reopened_too_late(&made, &early),
+        None,
+        "before any comparison"
+    );
+
+    let late = [
+        decided(1, SPLIT, "split_method", "stratified_random"),
+        step(2, "compare", json!({})),
+        checked(3, SPLIT, "no_row_in_both", "fail"),
+    ];
+    let made = made_by(&catalog, &late).unwrap();
+    let why = reopened_too_late(&made, &late).unwrap();
+    assert!(
+        why.contains("evaluation.split_method broke its promise after"),
+        "{why}"
     );
 }

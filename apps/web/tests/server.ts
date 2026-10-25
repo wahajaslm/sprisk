@@ -27,7 +27,7 @@ export const handlers = [
   http.get("/api/pipeline_versions/:id/studies", () => HttpResponse.json([])),
   // No walk made a flow unless a test says so (ADR-0063).
   http.get("/api/pipeline_versions/:id/decisions", ({ params }) =>
-    HttpResponse.json({ schema_version: "sprisk.flow_decisions/v1", pipeline_version_id: params.id, decisions: [] }),
+    HttpResponse.json({ schema_version: "sprisk.flow_decisions/v2", pipeline_version_id: params.id, decisions: [] }),
   ),
   http.get("/api/operators", () => HttpResponse.json(operators)),
   // Steps have no plain code unless a test says so (ADR-0055).

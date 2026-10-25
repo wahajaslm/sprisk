@@ -16,7 +16,7 @@ pub(crate) async fn get_decisions(
     let asked_id: PipelineVersionId = id(&raw)?;
     let asked = state.store.get_pipeline_version(&asked_id).await?;
     let Some((walk_id, made_at)) = state.store.walk_making_nearest(&asked.id).await? else {
-        let none = serde_json::json!({ "schema_version": "sprisk.flow_decisions/v1",
+        let none = serde_json::json!({ "schema_version": "sprisk.flow_decisions/v2",
                                        "pipeline_version_id": asked.id, "decisions": [] });
         return Ok(Json(
             parse(&none.to_string()).map_err(|e| ApiError::Internal(e.to_string()))?,

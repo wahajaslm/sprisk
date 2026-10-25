@@ -36,6 +36,8 @@ fn split(option: &str) -> Made {
         decides: "evaluation.split_method".into(),
         option: option.into(),
         bindings: Vec::new(),
+        round: 0,
+        ruled_out: Vec::new(),
     }
 }
 

@@ -9,13 +9,15 @@ use std::collections::BTreeMap;
 
 use sprisk_contracts::{
     AppliedMethodologyDecision, AttemptState, CreateWalk, DecisionProposal, Method,
-    MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodologyDecision,
+    MethodAssurance, MethodDecided, MethodDecidedOutcome, MethodRequest, MethodologyDecision,
     MethodologyDecisionByRule, MethodologyReviewItem, Operator, PipelineVersion, PipelineVersionId,
     QuestionVersionId, Report, RunId, RunStatus, Walk, WalkAction, WalkAsk, WalkDetail, WalkId,
     WalkStatus, WalkStep, WalkStopReason, parse,
 };
 use sprisk_core::time::format;
-use sprisk_methodology::deciding::{Effective, Made, Ready, apply_option, bindings, ready};
+use sprisk_methodology::deciding::{
+    Effective, Ready, apply_option, bindings, made_by, ready, reopened_too_late,
+};
 use sprisk_methodology::engine::{
     Action, HeadRun, MODEL_NODE, SCORE_BASELINE_NODE, SCORE_NODE, SHARES_NODE, Start, look_asks,
     next_action, start, with_test_scoring,
@@ -343,7 +345,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     });
     let pipeline = state.store.get_pipeline_version(&head).await?;
     let operators: Vec<Operator> = state.registry.operators().cloned().collect();
-    let made = made(&steps)?;
+    let made = made_by(&state.rules, &steps).map_err(resolve_error)?;
     let effective = bindings(&question, &made).map_err(resolve_error)?;
     let mut notes = Vec::new();
     // Producers are put in place before a run or a stop, and moved back onto their rows when a
@@ -406,6 +408,21 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         &operators,
     )
     .map_err(resolve_error)?;
+    if let Some(why) = reopened_too_late(&made, &steps) {
+        return record_stop(state, walk, round, WalkStopReason::Limitation, &why).await;
+    }
+    // No option is left that keeps its promise on these rows: nothing the walk can choose.
+    if !readiness.exhausted.is_empty() {
+        let found: Vec<String> = readiness.exhausted.iter().map(|e| e.detail()).collect();
+        return record_stop(
+            state,
+            walk,
+            round,
+            WalkStopReason::Limitation,
+            &found.join(" "),
+        )
+        .await;
+    }
     let mut asks = readiness.asks;
     let read = Read {
         head: &pipeline,
@@ -416,11 +433,18 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
     // A method that asks is asked again each round until a person answers: the one list is
     // built from the methods' current asks, never from a stored copy.
     for Ready { method, request } in readiness.ready {
-        // A person's answer is taken whatever the method would choose (ADR-0063 amendment).
+        let ruled_out = |option: &str| {
+            request
+                .ruled_out
+                .iter()
+                .any(|r| r.option.as_str() == option)
+        };
+        // A person's answer is taken whatever the method would choose (ADR-0063 amendment),
+        // unless a promise it made has failed on these rows.
         if let Some(answer) = question
             .answers
             .iter()
-            .find(|a| a.decides == method.decides)
+            .find(|a| a.decides == method.decides && !ruled_out(a.option.as_str()))
         {
             let label = method
                 .options
@@ -442,7 +466,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
             .await
             .map_err(|e| ApiError::Internal(format!("method {}: {e}", method.id.as_str())))?;
         if decided.outcome == MethodDecidedOutcome::Ask {
-            asks.push(method_ask(method, &decided)?);
+            asks.push(method_ask(method, &request, &decided)?);
             continue;
         }
         let taking = Taking {
@@ -652,32 +676,17 @@ async fn evidence(
     Ok(found)
 }
 
-/// The decisions the walk's decide steps made, in order. A decide step always names its
-/// decision and option; one that does not is a broken record, never skipped.
-fn made(steps: &[WalkStep]) -> Result<Vec<Made>, ApiError> {
-    steps
-        .iter()
-        .filter(|s| s.action == WalkAction::Decide)
-        .map(|s| match (&s.decides, &s.option) {
-            (Some(decides), Some(option)) => Ok(Made {
-                decides: decides.to_string(),
-                option: option.to_string(),
-                bindings: s.bindings.clone(),
-            }),
-            _ => Err(ApiError::Internal(format!(
-                "decide step {} of walk {} names no decision or option",
-                s.round,
-                s.walk_id.as_str()
-            ))),
-        })
-        .collect()
-}
-
-/// A method's ask, with every option for a person to pick from.
-fn method_ask(method: &Method, decided: &MethodDecided) -> Result<WalkAsk, ApiError> {
+/// A method's ask, with every option still open for a person to pick from: none a failed
+/// promise ruled out.
+fn method_ask(
+    method: &Method,
+    request: &MethodRequest,
+    decided: &MethodDecided,
+) -> Result<WalkAsk, ApiError> {
     let options: Vec<Value> = method
         .options
         .iter()
+        .filter(|o| request.options.contains(&o.id))
         .map(|o| json!({ "id": o.id, "label": o.label }))
         .collect();
     internal(parse(

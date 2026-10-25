@@ -115,6 +115,28 @@ def test_an_option_the_method_does_not_have_is_refused(tmp_path: Path) -> None:
     assert answer["answer"] == "refused" and "shuffled" in answer["error"]
 
 
+RULED_OUT = [{"option": "grouped", "verification": "kept_apart", "detail": "3 items in both."}]
+
+
+def test_a_ruled_out_option_says_why_and_cannot_be_taken(tmp_path: Path) -> None:
+    body = (
+        "return ctx.choose('independent', "
+        "f\"{ctx.ruled_out('grouped')} {ctx.ruled_out('independent')}\")"
+    )
+    answer = decide_with(tmp_path, body, options=["independent"], ruled_out=RULED_OUT)
+    assert answer["reason"] == "3 items in both. None"
+    answer = decide_with(
+        tmp_path,
+        "return ctx.ask('grouped', 'Same item?')",
+        options=["independent"],
+        ruled_out=RULED_OUT,
+    )
+    assert answer["answer"] == "refused"
+    assert "grouped is ruled out: 3 items in both." in answer["error"]
+    answer = decide_with(tmp_path, "return ctx.ruled_out('shuffled')", ruled_out=RULED_OUT)
+    assert answer["answer"] == "refused" and "shuffled" in answer["error"]
+
+
 def test_decide_must_return_a_choice_or_an_ask(tmp_path: Path) -> None:
     answer = decide_with(tmp_path, "return 'grouped'")
     assert answer["answer"] == "refused" and "choose or ask" in answer["error"]

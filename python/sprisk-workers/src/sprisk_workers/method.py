@@ -38,6 +38,7 @@ class Context:
         self._evidence = sent["evidence"]
         self._decisions = sent["decisions"]
         self._bound = set(sent["bound"])
+        self._ruled_out = {r["option"]: r["detail"] for r in sent.get("ruled_out") or []}
         self.task: str = sent["task"]
 
     def evidence(self, kind: str) -> dict[str, Any] | None:
@@ -56,6 +57,14 @@ class Context:
         self._declared("concepts", concept)
         return concept in self._bound
 
+    def ruled_out(self, option: str) -> str | None:
+        """What the failed check found when this walk took `option` and it broke its promise;
+        None when it is still open. A ruled-out option cannot be chosen or asked."""
+        if option not in self._options and option not in self._ruled_out:
+            raise MethodError(f"{self._method} has no option {option}")
+        detail: str | None = self._ruled_out.get(option)
+        return detail
+
     def choose(self, option: str, reason: str) -> Outcome:
         return Outcome("choose", self._option(option), reason)
 
@@ -67,6 +76,10 @@ class Context:
             raise MethodError(f"{self._method} reads {kind} {name} without declaring it")
 
     def _option(self, option: str) -> str:
+        if option in self._ruled_out:
+            raise MethodError(
+                f"{self._method}: option {option} is ruled out: {self._ruled_out[option]}"
+            )
         if option not in self._options:
             raise MethodError(f"{self._method} has no option {option}")
         return option

@@ -387,7 +387,7 @@
       "additionalProperties": false,
       "required": ["schema_version", "pipeline_version_id", "decisions"],
       "properties": {
-        "schema_version": { "type": "string", "enum": ["sprisk.flow_decisions/v1"] },
+        "schema_version": { "type": "string", "enum": ["sprisk.flow_decisions/v2"] },
         "pipeline_version_id": { "$ref": "#/$defs/PipelineVersionId" },
         "walk_id": { "$ref": "#/$defs/WalkId", "description": "The walk that made the version or its nearest ancestor. Absent: no walk did, so nothing decided it." },
         "decisions": { "type": "array", "items": { "$ref": "#/$defs/FlowDecision" } }
