@@ -78,7 +78,7 @@ function MissingShare({ profile }: { profile: DatasetProfile }) {
   const over = sorted.filter((c) => share(c, rows) >= MISSING_WARN).length;
   const top = Math.max(0.5, ...sorted.map((c) => share(c, rows)));
   return (
-    <section className="body-section" aria-label="Missing share per column">
+    <BodySection title="Missing values" note="How much of each column is empty: missing cells and blank text.">
       <ChartBlock
         title="Missing share per column"
         sub={`${profile.columns.length} columns · missing cells and blank text · ${sorted[0]?.name ?? ""} first`}
@@ -97,7 +97,7 @@ function MissingShare({ profile }: { profile: DatasetProfile }) {
           axis={(v) => percent(v)}
         />
       </ChartBlock>
-    </section>
+    </BodySection>
   );
 }
 
@@ -196,20 +196,20 @@ function ColumnValues({ column, rows, findings }: { column: ColumnProfile; rows:
   const role = column.role ?? "category";
   return (
     <article className="ds-column" aria-label={column.name}>
-      <div className="ds-column-side">
+      <header className="ds-column-head">
         <h3 className="mono">{column.name}</h3>
-        <p className="muted">{`${ROLES[role].one} · ${column.data_type}`}</p>
-        <dl className="ds-column-facts">
-          {factsOf(column, rows).map(([k, v]) => (
-            <div key={k}>
-              <dt>{k}</dt>
-              <dd className="mono">{v}</dd>
-            </div>
-          ))}
-        </dl>
-        {findings.length > 0 && <FindingList findings={findings} />}
-      </div>
+        <span className="muted">{`${ROLES[role].one} · ${column.data_type}`}</span>
+      </header>
+      <dl className="ds-column-facts">
+        {factsOf(column, rows).map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd className="mono">{v}</dd>
+          </div>
+        ))}
+      </dl>
       <div className="ds-column-charts">{chartsOf(column, rows)}</div>
+      {findings.length > 0 && <FindingList findings={findings} />}
     </article>
   );
 }
@@ -281,11 +281,11 @@ function MissingAlongRows({ profile }: { profile: DatasetProfile }) {
   if (gappy.length === 0) return null;
   const bands = gappy[0]?.missing_by_band.length ?? 0;
   return (
-    <section className="body-section" aria-label="Where values are missing">
+    <BodySection title="Missing along the rows" note="Whether the gaps sit together, such as rows from one source, or spread evenly.">
       <ChartBlock title="Where values are missing" sub={`Along the rows, in ${bands} bands of ${profile.band_rows.toLocaleString()} rows`} legend={[{ tone: "primary", text: "Share missing in the band" }]}>
         <Cells name="Where values are missing" rows={gappy.map((c) => c.name)} columns={bands} value={(i, j) => gappy[i]?.missing_by_band[j] ?? null} height={Math.max(48, gappy.length * 26)} />
       </ChartBlock>
-    </section>
+    </BodySection>
   );
 }
 
@@ -295,11 +295,11 @@ function Correlation({ profile }: { profile: DatasetProfile }) {
   const r = new Map(pairs.flatMap((p) => [[`${p.column_a}\u0000${p.column_b}`, p.pearson], [`${p.column_b}\u0000${p.column_a}`, p.pearson]]));
   const at = (i: number, j: number) => (i === j ? 1 : (r.get(`${columns[i]}\u0000${columns[j]}`) ?? null));
   return (
-    <section className="body-section" aria-label="Correlation">
+    <BodySection title="Correlation" note="Which measured numbers move together. Two that move as one say the same thing twice.">
       <ChartBlock title="Correlation matrix" sub={`${columns.length} measured numbers · |r| as density`} legend={[{ tone: "primary", text: "Correlated" }, { tone: "red", text: `|r| ≥ ${STRONG_R}` }]}>
         <Cells name="Correlation matrix" rows={columns} columns={columns.length} value={at} warn={(i, j) => i !== j && Math.abs(at(i, j) ?? 0) >= STRONG_R} height={Math.max(80, columns.length * 28)} />
       </ChartBlock>
-    </section>
+    </BodySection>
   );
 }
 

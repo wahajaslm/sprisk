@@ -112,55 +112,57 @@ function InvestigationView({ dataset, investigation, pipeline }: { dataset: Load
   );
   return (
     <>
-      <dl role="group" aria-label="Investigation context" className="ds-context">
-        <div>
-          <dt>Dataset</dt>
-          <dd>{dataset.name}</dd>
-        </div>
-        <div>
-          <dt>Question</dt>
-          <dd>{question ?? `Walk ${investigation.walkId.slice(-6)}`}</dd>
-        </div>
-        <div>
-          <dt>Walk</dt>
-          <dd>{walkState(walk.data.walk)}</dd>
-        </div>
-      </dl>
+      <BodySection title="Summary" note="What the walk set out to answer, what it did, and what it found.">
+        <dl role="group" aria-label="Investigation context" className="ds-context">
+          <div>
+            <dt>Dataset</dt>
+            <dd>{dataset.name}</dd>
+          </div>
+          <div>
+            <dt>Question</dt>
+            <dd>{question ?? `Walk ${investigation.walkId.slice(-6)}`}</dd>
+          </div>
+          <div>
+            <dt>Walk</dt>
+            <dd>{walkState(walk.data.walk)}</dd>
+          </div>
+        </dl>
 
-      <section className="ds-story-summary" aria-label="Summary">
-        <p>
-          {`The walk read ${dataset.name} (${dataset.total_rows.toLocaleString()} rows) to answer this question. It looked at the data once before deciding anything, asked you ${count(story.asked, "question")}, made ${count(story.decisions.length, "decision")} and ran the flow ${count(story.runs, "time")}. `}
-          {story.scored ? "It then scored the model on the held-out test rows, once." : "It has not scored the test rows."}
-        </p>
-        {report.data ? <p className="ds-result">{report.data.answer.statement}</p> : walk.data.walk.stop && <p className="ds-result muted">{walk.data.walk.stop.detail}</p>}
-      </section>
+        <div className="ds-story-summary">
+          <p>
+            {`The walk read ${dataset.name} (${dataset.total_rows.toLocaleString()} rows) to answer this question. It looked at the data once before deciding anything, asked you ${count(story.asked, "question")}, made ${count(story.decisions.length, "decision")} and ran the flow ${count(story.runs, "time")}. `}
+            {story.scored ? "It then scored the model on the held-out test rows, once." : "It has not scored the test rows."}
+          </p>
+          {report.data ? <p className="ds-result">{report.data.answer.statement}</p> : walk.data.walk.stop && <p className="ds-result muted">{walk.data.walk.stop.detail}</p>}
+        </div>
 
-      <ol className="ds-glance" aria-label="The walk at a glance">
-        <li>
-          <strong>Set up</strong>
-          <span>Load, split, baseline</span>
-        </li>
-        <li>
-          <strong>First look</strong>
-          <span>{count(looked.length, "measurement")}</span>
-        </li>
-        <li>
-          <strong>Asked you</strong>
-          <span>{count(story.asked, "question")}</span>
-        </li>
-        <li>
-          <strong>Decided</strong>
-          <span>{count(story.decisions.length, "decision")}</span>
-        </li>
-        <li>
-          <strong>Checked</strong>
-          <span>{promises.length === 0 ? "no promises" : `${holding} of ${count(promises.length, "promise")} hold`}</span>
-        </li>
-        <li>
-          <strong>Scored</strong>
-          <span>{story.scored ? "once, on test rows" : "not yet"}</span>
-        </li>
-      </ol>
+        <ol className="ds-glance" aria-label="The walk at a glance">
+          <li>
+            <strong>Set up</strong>
+            <span>Load, split, baseline</span>
+          </li>
+          <li>
+            <strong>First look</strong>
+            <span>{count(looked.length, "measurement")}</span>
+          </li>
+          <li>
+            <strong>Asked you</strong>
+            <span>{count(story.asked, "question")}</span>
+          </li>
+          <li>
+            <strong>Decided</strong>
+            <span>{count(story.decisions.length, "decision")}</span>
+          </li>
+          <li>
+            <strong>Checked</strong>
+            <span>{promises.length === 0 ? "no promises" : `${holding} of ${count(promises.length, "promise")} hold`}</span>
+          </li>
+          <li>
+            <strong>Scored</strong>
+            <span>{story.scored ? "once, on test rows" : "not yet"}</span>
+          </li>
+        </ol>
+      </BodySection>
 
       {looked.length > 0 && (
         <BodySection title="What the first look measured" note="Before deciding anything, the walk ran the flow once and measured what each question needs.">
