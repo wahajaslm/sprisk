@@ -136,7 +136,8 @@ function studied(status: string, runStatus: string, forestState: string, decisio
   return { applied, created };
 }
 
-const studyRegion = () => screen.findByRole("region", { name: "Study of model" });
+// The first test of the file also loads the page's modules, so it may take past the 1 s default.
+const studyRegion = () => screen.findByRole("region", { name: "Study of model" }, { timeout: 3000 });
 
 describe("studies", () => {
   it("shows a running study's budget, what it searched and its trials side by side", async () => {

@@ -405,7 +405,7 @@ export function defaultPair(decision: SelectionDecision): string[] {
   return [decision.winner, others[0]?.id].filter((id): id is string => id !== undefined).slice(0, 2);
 }
 
-function gain(c: Candidate): string {
+export function gain(c: Candidate): string {
   const versus = c.versus_baseline;
   if (!versus) return "—";
   const p = versus.p_value === undefined ? "" : `, p = ${formatMetric(versus.p_value)}`;
@@ -414,7 +414,7 @@ function gain(c: Candidate): string {
 
 /** Where a candidate stands, claiming no more than was tested: with a p value the corrected
  * t-test decided; without one (older decisions) the one-SE screen did. */
-function verdict(c: Candidate, decision: SelectionDecision): string {
+export function verdict(c: Candidate, decision: SelectionDecision): string {
   const reference = decision.baseline_role === "reference";
   if (c.id === decision.baseline) return reference ? (c.id === decision.winner ? "stands: none beats it" : "beaten") : "the floor";
   if (c.id === decision.winner) return "recommended";
@@ -436,7 +436,7 @@ function foldRange(c: Candidate): string {
 
 /** A candidate's cross-validate step: its own, or for a tuned one the trial whose settings it
  * applies (ADR-0052). */
-function trialNodeOf(decision: SelectionDecision, id: string): string {
+export function trialNodeOf(decision: SelectionDecision, id: string): string {
   const search = decision.candidates.find((c) => c.id === id)?.search;
   if (!search) return `cv_${id}`;
   const applied = JSON.stringify(sorted(search.settings));

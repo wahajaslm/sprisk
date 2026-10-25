@@ -136,6 +136,40 @@ export function Cells({ name, rows, columns, value, warn, height }: {
   return <Canvas draw={draw} height={height} label={name} />;
 }
 
+/** Two series side by side per group, light primary and grey second (the design's series
+ * colours): two models' scores on each fold. The axis starts just below the lowest value,
+ * named, so close scores stay apart. */
+export function PairedBars({ name, a, b, labels, height = 180 }: { name: string; a: number[]; b: number[]; labels?: string[]; height?: number }) {
+  const draw: Draw = (g, w, h) => {
+    const left = 40;
+    const bottom = 18;
+    const top = 8;
+    const all = [...a, ...b];
+    const hi = Math.max(...all);
+    const lo0 = Math.min(...all);
+    const lo = hi === lo0 ? 0 : Math.max(0, lo0 - (hi - lo0) * 0.6);
+    const plot = h - top - bottom;
+    const y = (v: number) => top + (1 - (v - lo) / (hi - lo || 1)) * plot;
+    grid(g, left, top, w - left, plot, 2);
+    label(g, compact(hi), 0, top + 6);
+    label(g, compact(lo), 0, h - bottom);
+    const n = Math.max(a.length, b.length);
+    const group = (w - left) / Math.max(1, n);
+    const bar = Math.max(2, Math.min(MAX_BAR, Math.floor(group / 2) - 3));
+    for (let i = 0; i < n; i++) {
+      const x0 = Math.round(left + i * group + group / 2 - bar - 1);
+      for (const [series, value, rgb] of [[0, a[i], PALETTE.ink], [1, b[i], PALETTE.ser2]] as const) {
+        if (value === undefined) continue;
+        const top1 = Math.round(y(value));
+        lum(g, { x: x0 + series * (bar + 2), y: top1, w: bar, h: h - bottom - top1 }, rgb, 0.9);
+      }
+      const name1 = labels?.[i];
+      if (name1 && (n <= 12 || i % Math.ceil(n / 12) === 0)) label(g, name1, Math.round(left + i * group + group / 2 - g.measureText(name1).width / 2), h - 4);
+    }
+  };
+  return <Canvas draw={draw} height={height} label={name} />;
+}
+
 /** The design's parallel coordinates: one vertical axis per setting and the score, each trial
  * a faint line across them, the best one bright with a soft glow and its points marked. */
 export function ParallelLines({ name, axes, lines, best, height = 260 }: { name: string; axes: string[]; lines: number[][]; best: number; height?: number }) {

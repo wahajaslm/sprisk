@@ -8045,3 +8045,8 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .exp-body .exp-table .changed { max-width: 220px; }
 .exp-body .exp-table td.mono.muted { font-family: var(--sans); }
 .exp-body .exp-table .page-btn { white-space: nowrap; }
+.exp-pickers { display: flex; flex-wrap: wrap; gap: var(--space-5); margin-bottom: var(--space-2); }
+.exp-pickers label { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-13); color: var(--text-muted); }
+.exp-pickers select { height: 28px; padding: 0 var(--space-2); border: 1px solid var(--alpha-08); border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); font: var(--fs-13) var(--mono); }
+.exp-side-by-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-6); }
+.exp-side-by-side h3 { margin: 0 0 var(--space-2); font-size: var(--fs-15); font-weight: 500; color: var(--text-primary); }

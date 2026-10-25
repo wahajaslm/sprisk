@@ -20,6 +20,8 @@ import { EXPERIMENTS_TABS, type ExperimentsTab, useSelection } from "../workbenc
 import { useStudies } from "../api/studies.ts";
 import { ModelComparisons } from "./ModelComparison.tsx";
 import { RunComparison } from "./experiments/CompareTab.tsx";
+import { ModelVersus, useLatestSelection } from "./experiments/ModelVersus.tsx";
+import { defaultVersus, foldsWon } from "./experiments/versus.ts";
 import { Studies } from "./Studies.tsx";
 import { formatMetric } from "./NodeFact.tsx";
 import { ExperimentsIcon } from "./Icons.tsx";
@@ -50,6 +52,8 @@ export function Experiments() {
   const [search, setSearch] = useState("");
   const [swapped, setSwapped] = useState(false);
   const studies = useStudies(flow?.head.id);
+  const selection = useLatestSelection(flow?.ids ?? [], all);
+  const [versus, setVersus] = useState<[string, string]>();
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (!flow) {
@@ -74,6 +78,8 @@ export function Experiments() {
   // Older run first, so changes read "before → after"; Swap reads them the other way.
   const [olderAt, newerAt] = [...pair].sort((a, b) => b - a) as [number, number];
   const [firstAt, secondAt] = swapped ? [newerAt, olderAt] : [olderAt, newerAt];
+  const models = selection ? (versus ?? defaultVersus(selection.decision)) : undefined;
+  const pairWon = selection && models ? foldsWon(selection.decision, models[0], models[1]) : undefined;
   const toggle = (id: string) =>
     setCompare(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(-2));
   const header =
@@ -83,7 +89,13 @@ export function Experiments() {
           title: shown ? sentence(shown.status) : "No runs yet",
           description: shown ? whatChanged(shown, byId) : "Run the flow to see each step here.",
         }
-      : experimentsTab === "Compare"
+      : experimentsTab === "Compare" && models && pairWon
+        ? {
+            eyebrow: `Compare · ${flowName(flow.head)} · model selection`,
+            title: `${models[0]} vs ${models[1]}`,
+            description: `Same ${pairWon.folds} folds of the train rows. ${models[0]} scored better on ${pairWon.a}, ${models[1]} on ${pairWon.b}.`,
+          }
+        : experimentsTab === "Compare"
         ? {
             eyebrow: `Compare · ${flowName(flow.head)}`,
             title: runs.length < 2 ? "Compare runs" : `Run ${label(runs[firstAt]!)} vs run ${label(runs[secondAt]!)}`,
@@ -135,7 +147,11 @@ export function Experiments() {
       }
       header={{
         ...header,
-        ...(experimentsTab === "Compare" && runs.length >= 2 ? { actions: <Button onClick={() => setSwapped(!swapped)}>Swap</Button> } : {}),
+        ...(experimentsTab === "Compare" && models
+          ? { actions: <Button onClick={() => setVersus([models[1], models[0]])}>Swap</Button> }
+          : experimentsTab === "Compare" && runs.length >= 2
+            ? { actions: <Button onClick={() => setSwapped(!swapped)}>Swap</Button> }
+            : {}),
         ...(experimentsTab === "Monitor" && shown
           ? {
               actions: (
@@ -151,7 +167,25 @@ export function Experiments() {
       {experimentsTab === "Monitor" && shown && <Monitor run={shown} version={byId.get(shown.pipeline_version_id)} />}
       {experimentsTab === "Compare" && (
         <div className="exp-body">
-          {runs.length < 2 ? (
+          {selection && models ? (
+            <>
+              <div className="exp-pickers" role="group" aria-label="Models to compare">
+                {(["A", "B"] as const).map((side, i) => (
+                  <label key={side}>
+                    <span>{`Model ${side}`}</span>
+                    <select value={models[i]} onChange={(e) => setVersus(i === 0 ? [e.target.value, models[1]] : [models[0], e.target.value])}>
+                      {selection.decision.candidates.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+              <ModelVersus decision={selection.decision} attempts={selection.attempts} proposal={selection.proposal} a={models[0]} b={models[1]} />
+            </>
+          ) : runs.length < 2 ? (
             <p className="muted">Run the flow again, or change a setting and run it, to compare two runs.</p>
           ) : (
             <RunComparison
@@ -164,12 +198,12 @@ export function Experiments() {
               labelOf={label}
             />
           )}
-          <BodySection title="Runs" note="Tick two runs to compare them.">
+          <BodySection title="Runs" note="Every run of this flow. Tick two runs to compare their scores and settings.">
             <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
           </BodySection>
           {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
           {!studies.isPending && (
-            <BodySection title="Model selection" note="Each shortlisted model cross-validated on the train rows; the test rows are not used.">
+            <BodySection title="All candidates" note="Every shortlisted model, cross-validated on the train rows, with the choice to use one.">
               <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
             </BodySection>
           )}
