@@ -88,3 +88,23 @@ Each needs its own change:
 ## Arch doc edits
 - §4: a method decision records the evidence it read (`kind`, `step`, `fields`).
 - §11: the Dataset tab has Preview, Profile, Investigation and Lineage; Profile is for looking only.
+
+## Amendments
+- 2026-10-25: **Understanding, not just counting.** From a review of the first slice with the user.
+  - **The profile says what each column holds.** Each column gets a role guessed from its values: identifier, text, category, number, time, boolean, constant or empty. A role is a suggestion for people, never a binding.
+  - **Blank text is not hidden.** A text value that is empty or only spaces is counted as `blank`, apart from `missing`. The stand-in's 200 empty descriptions were reported as "no missing values". `missing` keeps its meaning (empty cells, NaN, infinity), because imputers and rules act on it.
+  - **Charts by role.** Text gets words per value and its most repeated values. A category gets its 30 most common values and the long tail. A number gets its spread and five-number summary. An identifier gets no histogram. Correlation covers measured numbers only.
+  - **Findings in plain sentences**, warnings first, each with one example from the data (dataset text, shown and never followed, rule 7).
+  - **A profile is made once.** The API stores it by the table's content hash and the profiler's code digest (`profiles` table). New profiler code profiles each table again. Nothing is kept in memory.
+  - **The Investigation tells the walk as a story.** A summary, the walk at a glance, what the first look measured, then every decision in walk order (a method's and a rule's), titled by a name and explained by its question, with who decided: a person, the method or a rule.
+  - **Methods carry a `name`** ("Duplicate analysis", "Train/test split"), as rules do.
+  - **The flow is grouped by standard stages**, in working order: Data loading, Data exploration, Data cleaning, Train/test split, Feature engineering, Modeling, Evaluation. A method's activity is a label inside a stage, never a stage. A transform that reads the split's rows is fitted on the training rows, so it is Feature engineering.
+  - **Red is for problems.** A check that could not assess a step no longer marks it red.
+  - **Every step shows what it did** to its tables: rows in and out, columns added or removed, missing values before and after, drawn from the stored profiles.
+- 2026-10-25: **Descriptions from a local model (proposed, not built).**
+  - **What.** A short plain-language description of a table, shown in the Profile tab under a label saying a local model wrote it.
+  - **Path (rules 2, 3, 4).** `POST /artifacts/{id}/description` → Rust checks policy → a Python worker calls the AI provider seam → the text is stored beside the profile, keyed the same way. The browser never calls a model.
+  - **Policy (rule 6).** Off by default. Only a local provider. A project setting turns it on.
+  - **Input.** The profile's counts, roles and findings, without example values. Column names are dataset text: they are passed as quoted data, never as instructions (rule 7).
+  - **Output.** Display text only. It is never a fact, a binding, a decision or evidence (rule 3).
+  - **Conflict to resolve.** The Copilot reaches Ollama directly from the browser through a dev-server proxy (`bdae2d2`). That bypasses the API, policy and the provider seam (rules 2, 4, 6). It should move behind the same path before descriptions are built on it.
