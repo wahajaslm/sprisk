@@ -27,6 +27,7 @@ import { OperatorCode } from "./OperatorCode.tsx";
 import { ParametersTab } from "./ParametersTab.tsx";
 import { type InspectorTab, TAB_LABEL } from "../../workbench/inspectorTabs.ts";
 import { shownTables, VisualsTab, visualCount } from "./VisualsTab.tsx";
+import { StepChange } from "./StepChange.tsx";
 
 const HEADLINE = ["accuracy", "r2", "rmse", "mae"];
 
@@ -135,15 +136,21 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
         </>
       );
     case "visuals":
-      return isCode ? (
-        <VisualsTab display={display} source={typeof node?.params.source === "string" ? node.params.source : undefined} />
-      ) : (
-        <FiguresTab
-          attempt={done}
-          ports={step.figurePorts}
-          failure={step.latest?.state === "failed" ? step.latest.error?.message : undefined}
-          controls={pipeline && <ViewControls pipeline={pipeline} nodeId={nodeId} operator={operator} columns={step.inputColumns} />}
-        />
+      return (
+        <>
+          {/* Every step that turns tables into tables shows what it did, before what it drew. */}
+          {pipeline && <StepChange pipeline={pipeline} nodeId={nodeId} attempts={step.all} />}
+          {isCode ? (
+            <VisualsTab display={display} source={typeof node?.params.source === "string" ? node.params.source : undefined} />
+          ) : (
+            <FiguresTab
+              attempt={done}
+              ports={step.figurePorts}
+              failure={step.latest?.state === "failed" ? step.latest.error?.message : undefined}
+              controls={pipeline && <ViewControls pipeline={pipeline} nodeId={nodeId} operator={operator} columns={step.inputColumns} />}
+            />
+          )}
+        </>
       );
     case "console":
       return <ConsoleTab display={step.printed} attempts={step.mine} />;
