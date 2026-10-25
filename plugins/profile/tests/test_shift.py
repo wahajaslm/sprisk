@@ -41,3 +41,21 @@ def test_only_numbers_both_tables_share_are_compared() -> None:
     train = pl.DataFrame({"x": [1.0, 2.0, 3.0], "t": ["a", "b", "c"], "only": [1.0, 2.0, 3.0]})
     test = pl.DataFrame({"x": [1.0, 2.0], "t": ["a", "b"]})
     assert [c.column for c in shift_of(train, test).columns] == ["x"]
+
+
+def test_codes_and_identifiers_are_not_compared_only_measured_numbers() -> None:
+    train = pl.DataFrame(
+        {
+            "code": [10, 40, 50] * 30,
+            "row_id": list(range(90)),
+            "weight": [float(i) * 1.5 for i in range(90)],
+        }
+    )
+    test = pl.DataFrame(
+        {
+            "code": [10, 40] * 10,
+            "row_id": list(range(90, 110)),
+            "weight": [float(i) for i in range(20)],
+        }
+    )
+    assert [c.column for c in shift_of(train, test).columns] == ["weight"]

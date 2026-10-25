@@ -8264,3 +8264,4 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .ex-overlay i { background: rgba(255, 255, 255, 0.6); }
 .ex-overlay b { border: 1px solid rgba(255, 255, 255, 0.6); border-bottom: 0; }
 .ex-legend-split span.hollow::before { background: transparent; border: 1px solid rgba(255, 255, 255, 0.6); }
+.sv-split .ex-summary { margin-bottom: 14px; }

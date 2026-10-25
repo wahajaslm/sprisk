@@ -1,5 +1,5 @@
-"""How a table's numeric columns differ from another's (ADR-0065): a split's train rows against
-its test rows, for the Datasets Explore page.
+"""How a table's measured numeric columns differ from another's (ADR-0065): a split's train
+rows against its test rows, for the Datasets Explore page.
 
 Run as `python -m sprisk_profile.shift` with two Parquet paths on stdin, one per line; prints a
 `TableShift` as JSON. Descriptive, for looking: it never feeds a decision. Columns are taken as
@@ -16,12 +16,16 @@ from scipy.stats import ks_2samp
 
 from .dataset import MAX_COLUMNS, read_table
 from .distributions import BINS, numeric_columns
+from .understanding import role
 
 MAX_SHIFTED = 30
 
 
 def table_shift(data: pl.DataFrame, other: pl.DataFrame) -> dict[str, Any]:
-    shared = [c for c in numeric_columns(data) if c in set(numeric_columns(other))][:MAX_COLUMNS]
+    # Only measured numbers: a code or an identifier is a number in type only, and its
+    # distribution says nothing about whether the test rows resemble the train rows.
+    measured = [c for c in numeric_columns(data) if role(data[c], None) == "number"]
+    shared = [c for c in measured if c in set(numeric_columns(other))][:MAX_COLUMNS]
     columns = [s for name in shared if (s := _shift(data[name], other[name])) is not None]
     columns.sort(key=lambda c: -float(c["ks"]))
     return {
