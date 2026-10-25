@@ -1,0 +1,26 @@
+schema_version: sprisk.method/v2
+id: methodology.common.missing_markers@2.0.0
+decides: data.missing_markers
+name: Missing value markers
+activity: Data types
+question: Which placeholder values stand for missing numbers?
+needs:
+  concepts: []
+  evidence: [data.missing_markers]
+  decisions: []
+options:
+  - id: mark
+    label: Mark as missing
+    action:
+      # Marking replaces fixed strings and fits nothing, so it runs before the split.
+      insert:
+        before: split
+        operator: sprisk.clean.mark_missing@1.0.0
+        node_id: missing_markers
+        from_evidence: { columns: data.missing_markers.columns, values: data.missing_markers.values }
+    verify: []
+  - id: keep
+    label: No markers
+    verify: []
+verifications: {}
+source: "Breck et al. (2019), Data Validation for Machine Learning, SysML: a '?' standing for missing turns a number column into text."

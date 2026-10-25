@@ -1011,7 +1011,7 @@ pub fn result_facts(
 
 /// The table a joining `operator` (one with an `other` input) reads besides the step's own:
 /// the one loaded table no step reads. None for an operator that does not join.
-fn other_table(
+pub(crate) fn other_table(
     pipeline: &PipelineVersion,
     operator: &str,
     operators: &[&Operator],
@@ -1031,12 +1031,31 @@ fn other_table(
 }
 
 /// The tables loaded by a source step that no step reads, as `<step>.<port>`: what a join may
-/// add to the rows a flow predicts on (ADR-0059).
+/// add to the rows a flow predicts on (ADR-0059). An evidence producer that writes only a
+/// report only measures what it reads, so its reading does not count.
 pub fn unread_sources<'a>(
     pipeline: &PipelineVersion,
     operator_of: impl Fn(&str) -> Option<&'a Operator>,
 ) -> Result<Vec<PortRef>, ResolveError> {
-    let read: HashSet<&str> = pipeline.edges.iter().map(|e| e.from.as_str()).collect();
+    let measures = |step: &str| {
+        pipeline
+            .nodes
+            .iter()
+            .find(|n| n.id.as_str() == step)
+            .and_then(|n| operator_of(n.operator.as_str()))
+            .is_some_and(|o| {
+                !o.produces.is_empty()
+                    && o.outputs
+                        .iter()
+                        .all(|p| p.kind == sprisk_contracts::PortKind::Report)
+            })
+    };
+    let read: HashSet<&str> = pipeline
+        .edges
+        .iter()
+        .filter(|e| !measures(e.to.step_and_port().0))
+        .map(|e| e.from.as_str())
+        .collect();
     pipeline
         .nodes
         .iter()

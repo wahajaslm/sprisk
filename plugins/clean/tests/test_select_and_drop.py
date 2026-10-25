@@ -3,6 +3,7 @@ import pytest
 
 from sprisk_clean.columns import (
     cast_types,
+    drop_columns,
     drop_duplicates,
     drop_missing,
     mark_missing,
@@ -19,6 +20,15 @@ def test_select_keeps_only_the_named_columns_in_that_order() -> None:
 def test_select_names_a_missing_column() -> None:
     with pytest.raises(pl.exceptions.ColumnNotFoundError):
         select_columns(DATA, columns=["nope"])
+
+
+def test_drop_columns_leaves_every_other_column_in_its_order() -> None:
+    assert drop_columns(DATA, columns=["b"]).columns == ["a", "c"]
+
+
+def test_drop_columns_names_a_missing_column() -> None:
+    with pytest.raises(pl.exceptions.ColumnNotFoundError):
+        drop_columns(DATA, columns=["nope"])
 
 
 def test_drop_missing_drops_rows_with_a_gap_in_the_named_columns_only() -> None:

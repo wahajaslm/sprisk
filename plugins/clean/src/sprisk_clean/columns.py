@@ -6,6 +6,11 @@ def select_columns(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
     return data.select(columns)
 
 
+def drop_columns(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
+    """Leave out these columns; every other column stays, including one a step added."""
+    return data.drop(columns, strict=True)
+
+
 def drop_missing(data: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
     """Drop rows with a missing value (null or NaN) in any of these columns."""
     nan_to_null = [pl.col(c).fill_nan(None) for c in columns if data.schema[c].is_float()]

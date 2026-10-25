@@ -1,0 +1,24 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.join_keys@1.0.0
+title: Join keys
+capability_class: analyzer
+description: Names the columns the rows the split reads share with the one loaded table no step reads, and how rows match on a single shared column (ADR-0063).
+entrypoint: sprisk_profile.join_keys:join_keys
+# Every row, before the split: it compares shared columns only, never the label's values.
+scope: all
+attach: { role: split, side: input }
+# key, matched_rows and most_rows_per_key describe the one shared column; with none or several,
+# key is empty and the counts are 0.
+produces:
+  data.join_keys:
+    fields: { rows: integer, shared: string_list, key: string, matched_rows: integer, most_rows_per_key: integer }
+# other: the one loaded table no step reads. The engine places this step only when there is one.
+inputs: [{ name: data, kind: table }, { name: other, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 4096, gpu: none, timeout_seconds: 600 }

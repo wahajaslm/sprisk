@@ -1,0 +1,27 @@
+schema_version: sprisk.method/v2
+id: methodology.common.join_sources@2.0.0
+decides: data.join_sources
+name: Source join
+activity: Sources
+question: Is a loaded table no step reads joined to the rows, and on which column?
+needs:
+  concepts: [common.event_time]
+  evidence: [data.join_keys]
+  decisions: []
+options:
+  - id: single_source
+    label: One source
+    verify: []
+  - id: join_on_key
+    label: Join on the shared key
+    action:
+      # A join fits nothing, so it runs before the split; its other table is the one loaded
+      # table no step reads.
+      insert:
+        before: split
+        operator: sprisk.io.join@1.0.0
+        node_id: join
+        from_evidence: { key: data.join_keys.key }
+    verify: []
+verifications: {}
+source: "Kapoor & Narayanan (2023), Patterns 4(9): a join that copies rows or adds what was not known at prediction time leaks; a many-to-one join on a key keeps the unit of prediction."

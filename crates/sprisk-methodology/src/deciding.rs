@@ -10,8 +10,8 @@ use sprisk_contracts::{
     PromiseResult, QuestionVersion, RuledOutOption, WalkAction, WalkAsk, WalkStep, parse,
 };
 
-use crate::decision::free_id;
-use crate::measure::fitting;
+use crate::decision::{free_id, other_table};
+use crate::measure::{fitting, measurable};
 use crate::{ResolveError, RuleCatalog, methods};
 
 /// The question facts that act as bindings until slice 6 removes the fixed facts: a stated
@@ -268,7 +268,7 @@ impl Made {
 
 /// The methods fitting the question that are not decided yet and can decide: every decision
 /// they read is made, no concept they read is only a guess, and each evidence kind they need
-/// is in `measured` or cannot be measured (its producer reads an unbound concept). One whose
+/// is in `measured` or cannot be measured (see `measure::measurable`). One whose
 /// evidence can be measured but is not yet waits for the walk to measure it.
 pub fn ready<'c>(
     catalog: &'c RuleCatalog,
@@ -277,6 +277,7 @@ pub fn ready<'c>(
     effective: &Effective,
     measured: &BTreeMap<String, Value>,
     operators: &[Operator],
+    pipeline: &PipelineVersion,
 ) -> Result<Readiness<'c>, ResolveError> {
     let by_id: BTreeMap<String, &Operator> =
         operators.iter().map(|o| (o.id.to_string(), o)).collect();
@@ -341,11 +342,8 @@ pub fn ready<'c>(
                 continue;
             }
             let producer = methods::producer_of(kind.as_str(), &by_id)?;
-            if producer
-                .concepts
-                .values()
-                .all(|c| bound.contains(c.as_str()))
-            {
+            let operator_of = |id: &str| by_id.get(id).copied();
+            if measurable(producer, |c| bound.contains(c), pipeline, operator_of)? {
                 continue 'methods;
             }
         }
@@ -501,6 +499,24 @@ pub fn apply_option(
                 .ok_or_else(|| ResolveError::UnknownNode(adds.clone()))?;
             for port in operator.inputs.iter().map(|p| p.name.as_str()) {
                 if adder.outputs.iter().any(|o| o.name.as_str() == port) {
+                    // The adder moves onto the rows the step read until now, so steps placed
+                    // between the load and the step still run before it.
+                    let fed = |to: &str| {
+                        pipeline
+                            .edges
+                            .iter()
+                            .find(|e| e.to.as_str() == to)
+                            .map(|e| e.from.to_string())
+                    };
+                    let read = fed(&format!("{step}.{port}"));
+                    let adder_reads = fed(&format!("{adds}.{port}"));
+                    if let Some(read) = read.filter(|r| Some(r) != adder_reads.as_ref()) {
+                        applied.effects.push(parse(
+                            &json!({ "kind": "set_input", "node_id": adds, "port": port,
+                                     "from": read })
+                            .to_string(),
+                        )?);
+                    }
                     applied.effects.push(parse(
                         &json!({ "kind": "set_input", "node_id": step, "port": port,
                                  "from": format!("{adds}.{port}") })
@@ -565,11 +581,14 @@ pub fn apply_option(
                 if listed { json!([column]) } else { column },
             );
         }
-        applied.effects.push(parse(
-            &json!({ "kind": "insert_node", "node_id": free_id(&pipeline.nodes, insert.node_id.as_str()),
-                     "operator": operator.id, "params": params, "before": before })
-            .to_string(),
-        )?);
+        let mut inserted = json!({ "kind": "insert_node",
+            "node_id": free_id(&pipeline.nodes, insert.node_id.as_str()),
+            "operator": operator.id, "params": params, "before": before });
+        let all: Vec<&Operator> = operators.iter().collect();
+        if let Some(other) = other_table(pipeline, operator.id.as_str(), &all)? {
+            inserted["other"] = json!(other);
+        }
+        applied.effects.push(parse(&inserted.to_string())?);
     }
     Ok(applied)
 }

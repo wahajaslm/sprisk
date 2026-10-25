@@ -406,6 +406,7 @@ async fn round(state: &AppState, walk_id: &WalkId) -> Result<WalkStatus, ApiErro
         &effective,
         &fields,
         &operators,
+        &pipeline,
     )
     .map_err(resolve_error)?;
     if let Some(why) = reopened_too_late(&made, &steps) {

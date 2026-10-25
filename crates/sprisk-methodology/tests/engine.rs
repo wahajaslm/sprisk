@@ -22,7 +22,9 @@ fn defaults() -> Defaults {
 }
 
 const SPLIT: &str = "methodology.supervised.data_split@1.0.0";
-const DUPLICATES: &str = "methodology.common.exact_duplicates@1.0.0";
+// Old-format rules until ADR-0063 slice 6 removes them: one reads no question fact,
+// the other reads the time column.
+const RARE: &str = "methodology.supervised.rare_categories@1.0.0";
 const CONSTRAINTS: &str = "methodology.common.hard_constraints@1.0.0";
 const SHORTLIST: &str = "methodology.supervised.model_baseline_selection@2.1.0";
 const LOOP_BACK: &str = "methodology.supervised.loop_back@1.0.0";
@@ -71,7 +73,7 @@ fn stop(action: Action) -> (WalkStopReason, String) {
 #[test]
 fn a_rule_s_recommended_change_is_applied_before_anything_is_run() {
     let review = review(vec![
-        item(DUPLICATES, "data.exact_duplicates", "needs_run", None),
+        item(RARE, "features.rare_categories", "needs_run", None),
         item(SPLIT, "split.method", "proposal", Some("stratified_split")),
     ]);
     let action = next_action(&review, &question(json!({})), HeadRun::NotRun, &catalog()).unwrap();
@@ -88,8 +90,8 @@ fn a_rule_s_recommended_change_is_applied_before_anything_is_run() {
 #[test]
 fn a_rule_that_measures_rows_the_head_has_not_produced_runs_it() {
     let review = review(vec![item(
-        DUPLICATES,
-        "data.exact_duplicates",
+        RARE,
+        "features.rare_categories",
         "needs_run",
         None,
     )]);
@@ -100,8 +102,8 @@ fn a_rule_that_measures_rows_the_head_has_not_produced_runs_it() {
 #[test]
 fn a_version_is_run_once_so_rows_still_missing_after_its_run_stop_the_walk() {
     let review = review(vec![item(
-        DUPLICATES,
-        "data.exact_duplicates",
+        RARE,
+        "features.rare_categories",
         "needs_run",
         None,
     )]);
@@ -115,7 +117,7 @@ fn a_version_is_run_once_so_rows_still_missing_after_its_run_stop_the_walk() {
         .unwrap(),
     );
     assert_eq!(reason, WalkStopReason::Uncovered);
-    assert!(detail.contains("data.exact_duplicates"), "{detail}");
+    assert!(detail.contains("features.rare_categories"), "{detail}");
 
     let (reason, _) =
         stop(next_action(&review, &question(json!({})), HeadRun::Failed, &catalog()).unwrap());
@@ -125,7 +127,7 @@ fn a_version_is_run_once_so_rows_still_missing_after_its_run_stop_the_walk() {
 #[test]
 fn a_failed_run_does_not_stop_the_walk_while_a_rule_can_act_on_it() {
     let review = review(vec![
-        item(DUPLICATES, "data.exact_duplicates", "needs_run", None),
+        item(RARE, "features.rare_categories", "needs_run", None),
         item(SPLIT, "split.method", "proposal", Some("stratified_split")),
     ]);
     let action = next_action(&review, &question(json!({})), HeadRun::Failed, &catalog()).unwrap();
@@ -231,7 +233,7 @@ fn a_recommended_limitation_stops_the_walk_before_any_change() {
 fn a_rule_that_leaves_the_choice_open_is_compared_after_changes_and_runs() {
     let shortlist = item(SHORTLIST, "modeling.estimator_selection", "proposal", None);
     let split = item(SPLIT, "split.method", "proposal", Some("stratified_random"));
-    let rows = item(DUPLICATES, "data.exact_duplicates", "needs_run", None);
+    let rows = item(RARE, "features.rare_categories", "needs_run", None);
     let asked = question(barred());
     let catalog = catalog();
 
@@ -295,7 +297,7 @@ fn a_rule_waiting_for_results_of_a_changed_flow_compares_the_shortlist_again() {
 #[test]
 fn only_a_rule_reading_results_of_a_compared_step_compares_it_again() {
     let settled = item(SHORTLIST, "modeling.estimator_selection", "settled", None);
-    let rows = item(DUPLICATES, "data.exact_duplicates", "needs_run", None);
+    let rows = item(RARE, "features.rare_categories", "needs_run", None);
     let review_rows = review(vec![settled.clone(), rows]);
     let action = next_action(
         &review_rows,
@@ -494,10 +496,10 @@ fn a_rule_that_reads_a_guessed_fact_is_asked_not_applied() {
     let both = review(vec![
         item(SPLIT, "split.method", "proposal", Some("stratified_random")),
         item(
-            DUPLICATES,
-            "data.exact_duplicates",
+            RARE,
+            "features.rare_categories",
             "proposal",
-            Some("drop_duplicates"),
+            Some("group_rare"),
         ),
     ]);
     let guessed = question(json!({ "time_column": { "value": "date", "origin": "inferred" } }));
@@ -745,7 +747,7 @@ fn a_flow_holding_a_baseline_scoring_step_is_not_scored_again() {
     }
 }
 
-const HTML: &str = "methodology.common.html_text@1.0.0";
+const THRESHOLD: &str = "methodology.supervised.decision_threshold@1.0.0";
 
 fn asked(asks: &[sprisk_contracts::WalkAsk]) -> Vec<String> {
     asks.iter().map(|a| a.decides.to_string()).collect()
@@ -755,12 +757,17 @@ fn asked(asks: &[sprisk_contracts::WalkAsk]) -> Vec<String> {
 fn the_look_lists_every_fact_a_person_must_state_and_every_guess_a_rule_reads() {
     let review = review(vec![
         item(CONSTRAINTS, "question.hard_constraints", "needs_fact", None),
-        item(HTML, "data.html_text", "proposal", Some("strip")),
         item(
-            DUPLICATES,
-            "data.exact_duplicates",
+            THRESHOLD,
+            "evaluation.decision_threshold",
             "proposal",
-            Some("drop_duplicates"),
+            Some("cost_optimal_threshold"),
+        ),
+        item(
+            RARE,
+            "features.rare_categories",
+            "proposal",
+            Some("group_rare"),
         ),
     ]);
     let guessed = question(json!({ "time_column": { "value": "date", "origin": "inferred" } }));
@@ -769,7 +776,7 @@ fn the_look_lists_every_fact_a_person_must_state_and_every_guess_a_rule_reads() 
         asked(&asks),
         [
             "question.hard_constraints",
-            "data.html_text",
+            "evaluation.decision_threshold",
             "question.success_bar"
         ]
     );
@@ -787,10 +794,10 @@ fn the_look_asks_nothing_once_everything_is_stated() {
     let review = review(vec![
         item(CONSTRAINTS, "question.hard_constraints", "settled", None),
         item(
-            DUPLICATES,
-            "data.exact_duplicates",
+            RARE,
+            "features.rare_categories",
             "proposal",
-            Some("drop_duplicates"),
+            Some("group_rare"),
         ),
     ]);
     let asks = look_asks(&review, &question(barred()), &catalog()).unwrap();

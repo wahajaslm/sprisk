@@ -106,10 +106,10 @@ def _column(s: pl.Series, numeric: bool, bins: pl.DataFrame, band_rows: int) -> 
     if numeric:
         column.update(_shape(s))
     if s.dtype == pl.String:
-        column.update(_conversion(s))
+        column.update(conversion(s))
         column.update(spelling(s))
         column.update(words(s))
-        column.update(_html(s))
+        column.update(html(s))
     histogram = _bins(bins, s.name) if numeric else _top_values(s)
     if histogram is not None:
         column["histogram"] = histogram
@@ -147,7 +147,7 @@ def _shape(s: pl.Series) -> dict[str, float]:
     return shape
 
 
-def _conversion(s: pl.Series) -> dict[str, Any]:
+def conversion(s: pl.Series) -> dict[str, Any]:
     """For missing-marker and type rules: the share of a text column's present values that read
     as finite numbers, how many of those start with a zero like the code 01234, and the most
     common values that do not read as numbers ("?", "n/a", "NaN") when some do. Spaces around a
@@ -202,7 +202,7 @@ def words(s: pl.Series) -> dict[str, float]:
     return {"word_share": float(several.sum()) / present.len()}
 
 
-def _html(s: pl.Series) -> dict[str, float]:
+def html(s: pl.Series) -> dict[str, float]:
     """For the HTML text rule: the share of a text column's present values holding an HTML tag
     or entity, which a word count would take for words ("br", "eacute")."""
     present = s.drop_nulls()

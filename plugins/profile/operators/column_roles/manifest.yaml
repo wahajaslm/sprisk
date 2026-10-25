@@ -1,0 +1,28 @@
+schema_version: sprisk.operator/v1
+id: sprisk.profile.column_roles@1.0.0
+title: Column roles
+capability_class: analyzer
+description: Names the columns that only name rows, and counts the rows that copy an earlier one in every other column (ADR-0063).
+entrypoint: sprisk_profile.column_roles:column_roles
+# Every row, before the split: it reads structure, never the label's values.
+scope: all
+attach: { role: split, side: input }
+# Each is filled when a binding names it, and left out otherwise.
+concepts: { target: common.target, item: common.item_identity, time: common.event_time }
+produces:
+  data.identifiers:
+    fields: { columns: string_list, rows: integer, features_left: integer }
+  data.duplicate_rows:
+    fields: { rows: integer, duplicates: integer }
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: evidence, kind: report }]
+params_schema:
+  type: object
+  additionalProperties: false
+  properties:
+    target: { type: string, minLength: 1, x-sprisk-column: true, x-sprisk-excluded: true, description: "The target column, dropped before the step runs: never read, never an identifier." }
+    item: { type: string, minLength: 1, x-sprisk-column: true, description: "The item column, never an identifier." }
+    time: { type: string, minLength: 1, x-sprisk-column: true, description: "The time column, never an identifier." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 2048, gpu: none, timeout_seconds: 600 }

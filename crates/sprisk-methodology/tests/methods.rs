@@ -337,6 +337,24 @@ fn an_all_rows_diagnostic_reading_a_label_is_refused() {
     );
 }
 
+#[test]
+fn an_all_rows_diagnostic_may_name_the_label_as_a_column_it_drops() {
+    let pack = split_decision();
+    edit(
+        pack.path(),
+        NEAR_DUPLICATES,
+        "common.item_title",
+        "common.target",
+    );
+    edit(
+        pack.path(),
+        NEAR_DUPLICATES,
+        "x-sprisk-column: true,",
+        "x-sprisk-column: true, x-sprisk-excluded: true,",
+    );
+    load(pack.path()).unwrap();
+}
+
 const GROUP_OVERLAP: &str = "operators/group_overlap/manifest.yaml";
 
 /// The fixture with the group overlap producer reading the target instead of the item.

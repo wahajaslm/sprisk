@@ -1,0 +1,17 @@
+schema_version: sprisk.operator/v1
+id: sprisk.clean.drop_columns@1.0.0
+title: Column removal
+capability_class: transform
+description: Leave out the named columns; every other column stays, in its order.
+entrypoint: sprisk_clean.columns:drop_columns
+inputs: [{ name: data, kind: table }]
+outputs: [{ name: data, kind: table }]
+params_schema:
+  type: object
+  additionalProperties: false
+  required: [columns]
+  properties:
+    columns: { type: array, items: { type: string, minLength: 1 }, minItems: 1, uniqueItems: true, description: "Columns to leave out." }
+effects: pure
+network: none
+resources: { cpu_cores: 1, memory_mb: 1024, gpu: none, timeout_seconds: 300 }

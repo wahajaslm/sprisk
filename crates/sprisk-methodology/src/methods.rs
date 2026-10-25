@@ -129,7 +129,7 @@ fn check_operator(operator: &Operator, provided: &Provided) -> Result<(), Catalo
         return Err(refuse("produces evidence, so it needs an attach".into()));
     }
     // A producer on a split's outputs that reads the test rows is a look at them: it may read
-    // their features, never their labels, except to name a column it drops (ADR-0064).
+    // their features, never their labels, except to name a column the worker drops (ADR-0064).
     let reads_test_rows = operator
         .attach
         .as_ref()
@@ -153,8 +153,12 @@ fn check_operator(operator: &Operator, provided: &Provided) -> Result<(), Catalo
                 param.as_str()
             )));
         }
-        // An all-rows step runs before the split; reading the label there leaks it into every row.
-        if operator.scope == Some(OperatorScope::All) && found.kind == ConceptKind::Label {
+        // An all-rows step runs before the split; reading the label there leaks it into every
+        // row. Naming it as a column the worker drops first reads nothing.
+        if operator.scope == Some(OperatorScope::All)
+            && found.kind == ConceptKind::Label
+            && !dropped
+        {
             return Err(refuse(format!(
                 "reads every row, so it may not read the label {} ({})",
                 concept.as_str(),

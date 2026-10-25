@@ -2428,7 +2428,7 @@ async fn methodology_rules_are_listed_from_the_rule_packs() {
     let (status, rules) = call(&api.app, "GET", "/methodology_rules", None).await;
     assert_eq!(status, StatusCode::OK);
     let rules = rules.as_array().unwrap();
-    assert_eq!(rules.len(), 61);
+    assert_eq!(rules.len(), 55);
     // The words people read go with each rule (ADR-0045 amendment).
     let clustering = rules
         .iter()
@@ -4840,16 +4840,9 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
         ("question.hard_constraints", "needs_fact"),
         ("question.objective", "settled"),
         ("question.target_definition", "settled"),
-        // Every loaded table is read, so there is nothing to join.
-        ("data.join_sources", "settled"),
-        ("data.column_roles", "needs_run"),
-        // They wait: column roles may still change the table they measure.
-        ("data.html_text", "waiting"),
-        ("question.unit_of_prediction", "waiting"),
-        ("data.exact_duplicates", "waiting"),
-        ("data.missing_markers", "waiting"),
-        ("data.type_repair", "waiting"),
-        // The split is a method's decision, made in the walk's look (ADR-0063).
+        // The data decisions before the split and the split itself are methods' decisions,
+        // made in the walk's look (ADR-0063).
+        ("question.unit_of_prediction", "needs_run"),
         ("question.error_costs", "waiting"),
         ("cleaning.outlier_strategy", "no_subject"),
         ("features.scaling_strategy", "no_subject"),
@@ -4873,7 +4866,7 @@ async fn before_a_run_the_review_orders_the_rules_that_measure_rows_after_those_
     assert_eq!(statuses(&review), expected, "{review}");
     assert_eq!(
         review["next"],
-        json!([0, 4]),
+        json!([0, 3]),
         "state the constraint and run the flow next: {review}"
     );
 }
@@ -5029,78 +5022,78 @@ fn recommended_effect(proposal: &Value) -> Value {
         .unwrap_or_else(|| panic!("{proposal}"))
 }
 
-/// ADR-0059: structure is measured on the rows before the split. "?" in a number column is
-/// marked missing in a step before the split, then the column is read as numbers.
+/// ADR-0063 slice 6: "?" in a number column is marked missing in a step before the split,
+/// then the column is read as numbers, both decided in the walk's look.
 #[tokio::test(flavor = "multi_thread")]
 async fn placeholders_are_marked_then_the_column_is_read_as_numbers_before_the_split() {
     let api = api().await;
-    forest_flow(&api).await;
-    let mut csv = String::from("age,returned_within_30d\n");
-    for age in 20..80 {
-        let shown = if age % 25 == 0 {
-            "?".to_owned()
-        } else {
-            age.to_string()
-        };
-        csv.push_str(&format!("{shown},{}\n", u8::from(age >= 50)));
+    let mut csv = String::from("dose,batch,outcome\n");
+    for (row, line) in learnable_table().lines().skip(1).enumerate() {
+        let (dose, rest) = line.split_once(',').unwrap();
+        let shown = if row % 25 == 0 { "?" } else { dose };
+        csv.push_str(&format!("{shown},{rest}\n"));
     }
     std::fs::write(&api.csv, csv).unwrap();
-    let (run, _) = run_version(&api, BASE).await;
-    assert_eq!(run["status"], "failed", "the forest refuses text: {run}");
+    learnable_question(&api).await;
+    let mut request = walk_request(&[&api.csv], "walk-markers");
+    request["max_actions"] = json!(20);
 
-    let markers = propose_for(&api, BASE, "split", "data.missing_markers").await;
-    assert_eq!(markers["recommended_alternative_id"], "mark", "{markers}");
-    let effect = recommended_effect(&markers);
-    assert_eq!(effect["kind"], "insert_node", "{effect}");
-    assert_eq!(effect["before"], "split", "{effect}");
+    let detail = walk_to_end(&api, request).await;
+    let steps = detail["steps"].as_array().unwrap();
+    let decided = |key: &str| {
+        steps
+            .iter()
+            .find(|s| s["decides"] == key)
+            .unwrap_or_else(|| panic!("{key} is decided in the look: {detail}"))
+    };
+    let markers = decided("data.missing_markers");
+    assert_eq!(markers["option"], "mark", "{detail}");
     assert_eq!(
-        effect["params"],
-        json!({"columns": ["age"], "values": ["?"]})
+        markers["effects"],
+        json!([{ "kind": "insert_node", "node_id": "missing_markers", "before": "split",
+                 "operator": "sprisk.clean.mark_missing@1.0.0",
+                 "params": { "columns": ["dose"], "values": ["?"] } }]),
+        "{detail}"
     );
-    let marked = apply_alternative(&api, &markers, "mark").await;
-    let (run, _) = run_version(&api, &marked).await;
-    assert_eq!(run["status"], "failed", "still text: {run}");
-
-    let types = propose_for(&api, &marked, "split", "data.type_repair").await;
-    assert_eq!(types["recommended_alternative_id"], "cast", "{types}");
+    // The walk measures again once marked, so the column then reads as numbers in full.
+    let types = decided("data.type_repair");
+    assert_eq!(types["option"], "cast", "{detail}");
     assert_eq!(
-        recommended_effect(&types)["params"],
-        json!({"columns": ["age"]})
+        types["effects"][0]["params"],
+        json!({ "columns": ["dose"] }),
+        "{detail}"
     );
-    let cast = apply_alternative(&api, &types, "cast").await;
-    let (_, attempts) = run_version(&api, &cast).await;
-    // The model now gets numbers with gaps where "?" was: missing values are the next decision.
-    let model = attempts
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|a| a["node_id"] == "model")
-        .unwrap_or_else(|| panic!("{attempts}"));
-    assert_eq!(model["state"], "failed", "{model}");
-    let why = model["error"]["message"].as_str().unwrap();
-    assert!(why.contains("age has missing values"), "{why}");
 }
 
+/// ADR-0063 slice 6: rows copying an earlier row are dropped before the split. The producer
+/// counts them without reading the target; the step compares every column.
 #[tokio::test(flavor = "multi_thread")]
 async fn rows_copied_in_the_data_are_dropped_before_the_split() {
     let api = api().await;
-    forest_flow(&api).await;
-    let mut csv = std::fs::read_to_string(&api.csv).unwrap();
-    csv.push_str("21,0\n22,0\n");
+    let mut csv = learnable_table();
+    let first = csv.lines().nth(1).unwrap().to_owned();
+    csv.push_str(&format!("{first}\n{first}\n"));
     std::fs::write(&api.csv, csv).unwrap();
-    let (run, _) = run_version(&api, BASE).await;
-    assert_eq!(run["status"], "succeeded", "{run}");
+    learnable_question(&api).await;
+    let mut request = walk_request(&[&api.csv], "walk-copies");
+    request["max_actions"] = json!(20);
 
-    let proposal = propose_for(&api, BASE, "split", "data.exact_duplicates").await;
-    assert_eq!(proposal["recommended_alternative_id"], "drop", "{proposal}");
-    let evidence = proposal["evidence"].to_string();
+    let detail = walk_to_end(&api, request).await;
+    let steps = detail["steps"].as_array().unwrap();
+    let copies = steps
+        .iter()
+        .find(|s| s["decides"] == "data.exact_duplicates")
+        .unwrap_or_else(|| panic!("copies are decided in the look: {detail}"));
+    assert_eq!(copies["option"], "drop", "{detail}");
     assert!(
-        evidence.contains("\"62\"") && evidence.contains("\"2\""),
-        "{evidence}"
+        copies["reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("2 of 242 rows repeat an earlier row in every feature"),
+        "{detail}"
     );
-    let dropped = apply_alternative(&api, &proposal, "drop").await;
-    let (run, attempts) = run_version(&api, &dropped).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
+    // Every column is compared, the target too: same features with another label is no copy.
+    assert_eq!(copies["effects"][0]["params"], json!({}), "{detail}");
 }
 
 /// ADR-0063 slice 6: the target is measured on the train rows in the look, so the task and the
@@ -5111,7 +5104,7 @@ async fn the_look_settles_the_task_and_class_balance_from_the_train_rows() {
     std::fs::write(&api.csv, learnable_table()).unwrap();
     learnable_question(&api).await;
     let mut request = walk_request(&[&api.csv], "walk-target");
-    request["max_actions"] = json!(12);
+    request["max_actions"] = json!(20);
 
     let detail = walk_to_end(&api, request).await;
     let steps = detail["steps"].as_array().unwrap();
@@ -5228,98 +5221,6 @@ async fn a_question_needing_high_interpretability_replaces_the_forest_by_a_linea
     let (run, attempts) = run_version(&api, &linear).await;
     assert_eq!(run["status"], "succeeded", "{run} {attempts}");
 }
-
-/// Rakuten's shape (ADR-0059): products in one file and their type codes in another, both keyed
-/// by the nameless row index pandas writes. Synthetic rows: the real data never enters the repo.
-async fn products_and_codes_flow(api: &Api) {
-    let mut items = String::from(",designation,description,productid,imageid\n");
-    let mut codes = String::from(",prdtypecode\n");
-    for i in 0..120 {
-        items.push_str(&format!("{i},title {i},,{},{}\n", 1000 + i, 2000 + i));
-        codes.push_str(&format!("{i},{}\n", [10, 2280][i % 2]));
-    }
-    std::fs::write(&api.csv, items).unwrap();
-    let codes_csv = api.csv.with_file_name("codes.csv");
-    std::fs::write(&codes_csv, codes).unwrap();
-    let mut q = question("qv_01JABCDEFGHJKMNPQRSTVWXYZ0", None);
-    let facts = q.as_object_mut().unwrap();
-    facts.remove("time_column");
-    facts.remove("entity_column");
-    facts.insert(
-        "target".into(),
-        json!({ "value": "prdtypecode", "origin": "explicit" }),
-    );
-    let (status, body) = call(&api.app, "POST", "/question_versions", Some(q)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let mut flow = pipeline(&api.csv);
-    flow["question_version_id"] = json!("qv_01JABCDEFGHJKMNPQRSTVWXYZ0");
-    let nodes = flow["nodes"].as_array_mut().unwrap();
-    nodes.push(
-        json!({ "id": "codes", "operator": "sprisk.io.file_source@1.0.0",
-                       "params": { "path": codes_csv, "format": "csv" } }),
-    );
-    nodes.push(json!({ "id": "split", "operator": "sprisk.validation.random_split@1.0.0",
-                       "params": { "test_fraction": 0.25, "seed": 42, "stratify": "prdtypecode" } }));
-    flow["edges"] = json!([{ "from": "load.data", "to": "split.data" }]);
-    let (status, body) = call(&api.app, "POST", "/pipeline_versions", Some(flow)).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-}
-
-#[tokio::test]
-async fn codes_loaded_from_another_file_are_joined_on_the_shared_key_before_the_split() {
-    let api = api().await;
-    products_and_codes_flow(&api).await;
-    // The codes are not joined yet, so the split finds no target; the loaded tables are kept.
-    let (run, _) = run_version(&api, BASE).await;
-    assert_eq!(run["status"], "failed", "{run}");
-
-    let proposal = propose_for(&api, BASE, "split", "data.join_sources").await;
-    assert_eq!(
-        proposal["recommended_alternative_id"], "join_on_key",
-        "{proposal}"
-    );
-    let effect = recommended_effect(&proposal);
-    assert_eq!(effect["operator"], "sprisk.io.join@1.0.0", "{proposal}");
-    assert_eq!(
-        effect["params"],
-        json!({ "key": "unnamed_0" }),
-        "{proposal}"
-    );
-    assert_eq!(effect["other"], "codes.data", "{proposal}");
-
-    let joined = apply_alternative(&api, &proposal, "join_on_key").await;
-    let (run, attempts) = run_version(&api, &joined).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
-    let uri = format!("/pipeline_versions/{joined}/methodology/review");
-    let (status, review) = call(&api.app, "GET", &uri, None).await;
-    assert_eq!(status, StatusCode::OK, "{review}");
-    let join = statuses(&review)
-        .into_iter()
-        .find(|(decides, _)| decides == "data.join_sources")
-        .unwrap();
-    assert_eq!(join.1, "settled", "{review}");
-
-    // On the joined table, the row index and the product and image ids name rows.
-    let proposal = propose_for(&api, &joined, "split", "data.column_roles").await;
-    assert_eq!(
-        proposal["recommended_alternative_id"], "drop_identifiers",
-        "{proposal}"
-    );
-    let effect = recommended_effect(&proposal);
-    assert_eq!(
-        effect["operator"], "sprisk.clean.select_columns@1.0.0",
-        "{proposal}"
-    );
-    assert_eq!(
-        effect["params"]["columns"],
-        json!(["description", "designation", "prdtypecode"]),
-        "{proposal}"
-    );
-    let named = apply_alternative(&api, &proposal, "drop_identifiers").await;
-    let (run, attempts) = run_version(&api, &named).await;
-    assert_eq!(run["status"], "succeeded", "{run} {attempts}");
-}
-
 /// Rakuten's 27 product-type codes, rarest last: the challenge's classes are unbalanced.
 const PRODUCT_TYPES: [u32; 27] = [
     2583, 1560, 1300, 2060, 2522, 1280, 2403, 2280, 1920, 1160, 1320, 10, 2705, 1140, 2582, 40,
@@ -5472,8 +5373,9 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
 
     let detail = walk_to_end(&api, walk_request(&[&api.csv], "walk-rakuten-0001")).await;
     // Built from the question and the file. The look runs it once and the methods decide the
-    // split; then each rule's change is applied, and the flow is run again for the rules that
-    // measure its rows. Each run that changed the rows before the split checks the split's
+    // split and the data steps before it (ADR-0063 slice 6), measuring again where a step
+    // changed the rows they read; then each rule's change is applied, and the flow is run
+    // again for the rules that measure its rows. Each run that changed the rows before the split checks the split's
     // promise again; vectorizing acts after the split, so its run does not.
     assert_eq!(
         trail(&detail),
@@ -5489,13 +5391,19 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
             "measure",
             "run",
             "verify",
+            "decide data.missing_markers keep",
+            "decide data.type_repair keep",
+            "decide data.join_sources single_source",
+            "decide data.html_text strip",
+            "measure",
+            "run",
+            "verify",
+            "decide data.column_roles drop_identifiers",
+            "measure",
+            "run",
+            "verify",
+            "decide data.exact_duplicates keep",
             "decide question.class_balance balanced",
-            "apply data.column_roles drop_identifiers",
-            "run",
-            "verify",
-            "apply data.html_text strip",
-            "run",
-            "verify",
             "apply features.text_representation vectorize_words",
             "run",
             "compare modeling.estimator_selection",
@@ -5557,16 +5465,19 @@ async fn the_engine_builds_runs_and_judges_a_rakuten_shaped_flow_from_its_questi
         edges.contains(&"text_words.train_words -> model.words".to_owned()),
         "{edges:?}"
     );
-    // Only the description holds markup; it is stripped on all rows, in front of the split.
-    assert!(
-        edges.contains(&"html_text.data -> split.data".to_owned()),
-        "{edges:?}"
-    );
+    // Only the description holds markup; it is stripped on all rows, in front of the split,
+    // and the identifiers are dropped after it.
+    for edge in [
+        "strip_html.data -> identifiers.data",
+        "identifiers.data -> split.data",
+    ] {
+        assert!(edges.contains(&edge.to_owned()), "{edges:?}");
+    }
     let strip = flow["nodes"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|n| n["id"] == "html_text")
+        .find(|n| n["id"] == "strip_html")
         .unwrap();
     assert_eq!(strip["operator"], "sprisk.clean.strip_html@1.0.0");
     assert_eq!(
@@ -5756,6 +5667,15 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             "decide data.text_spelling keep",
             "decide question.task_type classification",
             "verify",
+            "decide data.missing_markers keep",
+            "decide data.type_repair keep",
+            "decide data.join_sources single_source",
+            "decide data.html_text keep",
+            "decide data.column_roles drop_identifiers",
+            "measure",
+            "run",
+            "verify",
+            "decide data.exact_duplicates keep",
             "decide question.class_balance balanced",
             "stop"
         ],
@@ -5801,7 +5721,7 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     let detail = walk_to_end(&api, request).await;
     let walked = trail(&detail);
     assert_eq!(
-        walked[..11],
+        walked[..13],
         [
             "build",
             "measure",
@@ -5810,6 +5730,9 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
             "decide question.task_type classification",
             "verify",
             "decide data.repeated_items group_by_title",
+            // The item is bound now, so column roles measures again, holding it out.
+            "measure",
+            "run",
             "decide split.method item_groups",
             "measure",
             "run",
@@ -5842,14 +5765,14 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
                              "method": "methodology.common.repeated_items@1.0.0" } }])
     );
     // The split method replaces the split through a patch, and promises what it keeps.
-    assert_eq!(steps[7]["assurance"], "rule", "{detail}");
+    assert_eq!(steps[9]["assurance"], "rule", "{detail}");
     assert_eq!(
-        steps[7]["promises"],
+        steps[9]["promises"],
         json!(["no_group_overlap"]),
         "{detail}"
     );
     assert_eq!(
-        steps[7]["effects"],
+        steps[9]["effects"],
         json!([
             { "kind": "replace_node", "node_id": "split",
               "operator": "sprisk.validation.group_split@1.0.0",
@@ -5859,7 +5782,7 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
         ])
     );
     // The promise is checked on what the split wrote: no item is on both sides.
-    let checks = steps[10]["verifications"].as_array().unwrap();
+    let checks = steps[12]["verifications"].as_array().unwrap();
     let names: Vec<&str> = checks
         .iter()
         .map(|c| c["verification"].as_str().unwrap())
@@ -5872,14 +5795,20 @@ async fn the_look_asks_whether_matching_titles_are_one_item_then_the_answer_spli
     let overlap = &checks[1];
     assert_eq!(overlap["result"], "pass", "{detail}");
     assert_eq!(overlap["step"], "group_overlap", "{detail}");
-    assert_eq!(steps[10]["run_id"], steps[9]["run_id"], "{detail}");
+    assert_eq!(steps[12]["run_id"], steps[11]["run_id"], "{detail}");
     // The promise's producer reads what the split wrote, whatever code wrote it.
+    let overlap_added = steps[10]["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["node_id"] == "group_overlap")
+        .unwrap_or_else(|| panic!("{detail}"));
     assert_eq!(
-        steps[8]["effects"],
-        json!([{ "kind": "add_node", "node_id": "group_overlap",
-                 "operator": "sprisk.validation.group_overlap@1.0.0",
-                 "params": { "group_column": "item_group" },
-                 "inputs": { "test": "split.test", "train": "split.train" } }]),
+        *overlap_added,
+        json!({ "kind": "add_node", "node_id": "group_overlap",
+                "operator": "sprisk.validation.group_overlap@1.0.0",
+                "params": { "group_column": "item_group" },
+                "inputs": { "test": "split.test", "train": "split.train" } }),
         "{detail}"
     );
 
@@ -6340,7 +6269,9 @@ async fn a_restarted_walk_takes_up_the_apply_it_saved_before_its_step() {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let uri = format!("/pipeline_versions/{head}/methodology/proposals/split/data.column_roles");
+    let uri = format!(
+        "/pipeline_versions/{head}/methodology/proposals/model/features.text_representation"
+    );
     let (status, proposal) = call(&api.app, "POST", &uri, Some(json!({}))).await;
     assert_eq!(status, StatusCode::CREATED, "{proposal}");
     let apply = format!(
@@ -6495,7 +6426,8 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
 
     let detail = walk_to_end(&api, walk_request(&[&x, &y], "walk-rakuten-files")).await;
     // The look's run fails at the split, which finds no target in the listings; the methods
-    // decide the split and the join rule reads both loads all the same. The target's shape is
+    // decide the split, and the join method reads both loads all the same. Identifiers are
+    // dropped after the join, which uses the row index as its key. The target's shape is
     // measured once the codes are joined, so the task and the class balance are decided then.
     // Then the walk goes on as with one joined file, to the test rows' score.
     assert_eq!(
@@ -6510,18 +6442,24 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
             "measure",
             "run",
             "verify",
-            "apply data.join_sources join_on_key",
+            "decide data.missing_markers keep",
+            "decide data.type_repair keep",
+            "decide data.join_sources join_on_key",
+            "measure",
             "run",
             "verify",
             "decide question.task_type classification",
             "verify",
+            "decide data.html_text strip",
+            "measure",
+            "run",
+            "verify",
+            "decide data.column_roles drop_identifiers",
+            "measure",
+            "run",
+            "verify",
+            "decide data.exact_duplicates keep",
             "decide question.class_balance balanced",
-            "apply data.column_roles drop_identifiers",
-            "run",
-            "verify",
-            "apply data.html_text strip",
-            "run",
-            "verify",
             "apply features.text_representation vectorize_words",
             "run",
             "compare modeling.estimator_selection",
@@ -6533,6 +6471,20 @@ async fn the_engine_joins_rakuten_s_two_files_before_it_walks_on() {
         "{detail}"
     );
     assert_eq!(detail["walk"]["stop"]["reason"], "complete", "{detail}");
+    // The codes are joined on the row index both files share, from the load no step read.
+    let join = detail["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["decides"] == "data.join_sources")
+        .unwrap();
+    let effect = &join["effects"][0];
+    assert_eq!(effect["operator"], "sprisk.io.join@1.0.0", "{join}");
+    assert_eq!(effect["params"], json!({ "key": "unnamed_0" }), "{join}");
+    assert!(
+        effect["other"].as_str().unwrap().ends_with(".data"),
+        "{join}"
+    );
 }
 
 /// A small table a model can learn and a featureless baseline cannot: `dose` sets `outcome`,

@@ -88,13 +88,7 @@ fn the_plan_puts_the_split_before_the_rules_that_measure_train_rows() {
             ("question.hard_constraints".to_owned(), at("model")),
             ("question.objective".to_owned(), at("source")),
             ("question.target_definition".to_owned(), at("source")),
-            ("data.join_sources".to_owned(), at("split")),
-            ("data.column_roles".to_owned(), at("split")),
-            ("data.html_text".to_owned(), at("split")),
             ("question.unit_of_prediction".to_owned(), at("split")),
-            ("data.exact_duplicates".to_owned(), at("split")),
-            ("data.missing_markers".to_owned(), at("split")),
-            ("data.type_repair".to_owned(), at("split")),
             ("split.method".to_owned(), at("split")),
             ("cleaning.missingness_strategy".to_owned(), at("fill")),
             // Question rules on the model measure its train rows, so they follow the fill.
@@ -535,30 +529,6 @@ fn a_rule_reading_results_comes_after_the_rules_of_its_own_step_that_do_not() {
     assert!(comes_after(&pipeline, &reading, shortlist));
     assert!(!comes_after(&pipeline, &reading, &also_reading));
     assert!(!comes_after(&pipeline, threshold, shortlist));
-}
-
-#[test]
-fn rules_measuring_the_split_s_table_come_after_the_rules_that_shape_its_columns() {
-    let catalog = catalog();
-    let pipeline = filled_linear();
-    let planned = plan(&catalog, &pipeline, supervised).unwrap();
-    let at = |decides: &str| &planned[index_of(&planned, decides)];
-    let (join, roles, html, duplicates) = (
-        at("data.join_sources"),
-        at("data.column_roles"),
-        at("data.html_text"),
-        at("data.exact_duplicates"),
-    );
-
-    assert!(comes_after(&pipeline, duplicates, join));
-    assert!(comes_after(&pipeline, duplicates, roles));
-    assert!(comes_after(&pipeline, roles, join));
-    assert!(!comes_after(&pipeline, join, roles));
-    assert!(!comes_after(&pipeline, roles, duplicates));
-    // Markup is stripped from the final columns, and before copies are counted: two rows
-    // differing only in markup are one row.
-    assert!(comes_after(&pipeline, html, roles));
-    assert!(comes_after(&pipeline, duplicates, html));
 }
 
 #[test]
