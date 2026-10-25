@@ -1,6 +1,7 @@
 schema_version: sprisk.method/v1
 id: methodology.common.class_balance@2.0.0
 decides: question.class_balance
+name: Class balance
 activity: Target
 question: Is the target's class mix unbalanced?
 applies_when: { task: [classification] }

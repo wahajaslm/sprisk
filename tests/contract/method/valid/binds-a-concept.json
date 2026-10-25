@@ -2,6 +2,7 @@
   "schema_version": "sprisk.method/v1",
   "id": "methodology.core.repeated_items@1.0.0",
   "decides": "data.repeated_items",
+  "name": "Duplicate analysis",
   "activity": "Repeated observations",
   "question": "Does the same item appear in more than one row?",
   "needs": {

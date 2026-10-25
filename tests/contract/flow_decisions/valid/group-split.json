@@ -6,6 +6,7 @@
     {
       "decides": "data.repeated_items",
       "method": "methodology.common.repeated_items@1.0.0",
+      "name": "Duplicate analysis",
       "activity": "Repeated observations",
       "question": "Does the same item appear in more than one row?",
       "option": "group_by_title",
@@ -18,6 +19,7 @@
     {
       "decides": "split.method",
       "method": "methodology.supervised.split_method@1.0.0",
+      "name": "Train/test split",
       "activity": "Fair evaluation",
       "question": "How are rows divided into training and test so the score is fair?",
       "option": "item_groups",

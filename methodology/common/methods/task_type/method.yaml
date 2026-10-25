@@ -1,6 +1,7 @@
 schema_version: sprisk.method/v1
 id: methodology.common.task_type@2.0.0
 decides: question.task_type
+name: Task type
 activity: Target
 question: Does the model predict a class or a number?
 applies_when: { task: [classification, regression] }

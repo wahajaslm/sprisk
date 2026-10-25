@@ -314,7 +314,7 @@ describe("flow canvas", () => {
     const byRef = new Map(operators.map((o) => [o.id, o]));
     const promise = { verification: "no_group_overlap", promise: "No item has rows in both train and test.", status: "stale" as const,
       detail: "The split changed since it was checked.", last_result: "pass" as const };
-    const fair = { decides: "split.method", method: "methodology.supervised.split_method@1.0.0", activity: "Fair evaluation",
+    const fair = { decides: "split.method", method: "methodology.supervised.split_method@1.0.0", name: "Train/test split", activity: "Fair evaluation",
       question: "How are rows divided?", option: "item_groups", label: "Keep each item's rows on one side", reason: "Why.",
       assurance: "rule" as const, steps: ["split"], promises: [promise] };
     const groups = [{ id: "Fair evaluation#fair_evaluation", count: 1, x: 100, y: 20, width: 200, height: 90 }];

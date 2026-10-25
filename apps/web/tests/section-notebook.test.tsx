@@ -12,6 +12,7 @@ import { server } from "./server.ts";
 const fair: FlowDecision = {
   decides: "split.method",
   method: "methodology.supervised.split_method@1.0.0",
+  name: "Train/test split",
   activity: "Fair evaluation",
   question: "How are rows divided into training and test so the score is fair?",
   option: "item_groups",

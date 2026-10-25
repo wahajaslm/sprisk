@@ -2,6 +2,7 @@
   "schema_version": "sprisk.method/v1",
   "id": "methodology.common.text_spelling@2.0.0",
   "decides": "data.text_spelling",
+  "name": "Text normalization",
   "activity": "Text spelling",
   "question": "Should category text that differs only in spaces or case be merged?",
   "needs": {
