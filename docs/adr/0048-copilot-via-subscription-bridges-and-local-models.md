@@ -1,5 +1,5 @@
 # ADR-0048: Copilot chat via subscription CLI bridges and local models
-Status: Proposed
+Status: Proposed. Changed by [ADR-0066](0066-copilot-goes-through-the-api-to-a-python-provider.md): provider adapters run in Python, behind the API.
 Date: 2026-10-21
 Arch doc sections: §2A (Cockpit workbench, Copilot view), §7 (AI planning), §12 (trust boundaries). Builds on ADR-0010, ADR-0014, ADR-0018.
 

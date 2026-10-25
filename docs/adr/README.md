@@ -49,7 +49,7 @@
 | [0045](0045-rule-manifests-hold-only-what-the-system-uses.md) | A rule manifest holds only what the system uses | Accepted |
 | [0046](0046-comparing-a-shortlist.md) | How a shortlist is compared | Accepted |
 | [0047](0047-embedded-and-resource-constrained-targets.md) | Embedded and resource-constrained targets in methodology and deployment | Proposed |
-| [0048](0048-copilot-via-subscription-bridges-and-local-models.md) | Copilot chat via subscription CLI bridges and local models | Proposed |
+| [0048](0048-copilot-via-subscription-bridges-and-local-models.md) | Copilot chat via subscription CLI bridges and local models | Proposed; adapters moved to Python by 0066 |
 | [0049](0049-remote-jupyter-and-colab-kernel-execution.md) | Remote Jupyter and Google Colab kernel execution for deep learning | Proposed |
 | [0050](0050-model-selection-methodology.md) | Sprisk's model-selection methodology | Accepted |
 | [0051](0051-enterprise-intelligence-capabilities.md) | Adopting enterprise intelligence capabilities: automated compliance documentation, portable serving bundles, fairness auditing, and specialized agent fleets | Proposed |
@@ -67,6 +67,7 @@
 | [0063](0063-methods-need-evidence-operators-produce-it.md) | Methods need evidence, operators produce it | Accepted |
 | [0064](0064-validate-the-architecture-before-the-libraries.md) | Validate the architecture before the method and operator libraries | Accepted |
 | [0065](0065-understand-a-dataset-in-the-dataset-tab.md) | Understand a dataset in the Dataset tab | Accepted |
+| [0066](0066-copilot-goes-through-the-api-to-a-python-provider.md) | The Copilot goes through the API to a Python provider process | Accepted |
 
 ## Open questions (arch doc §17)
 
