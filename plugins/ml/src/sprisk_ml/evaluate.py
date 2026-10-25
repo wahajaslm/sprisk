@@ -1,5 +1,6 @@
 from typing import Any
 
+import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 import sklearn
@@ -10,6 +11,8 @@ from sklearn.model_selection import FixedThresholdClassifier
 
 from .costs import expected_cost, resolved
 from .models import Words, scoring_input
+
+SAMPLE_ROWS = 20
 
 
 def evaluate(
@@ -23,7 +26,8 @@ def evaluate(
     if test[target].null_count():
         raise ValueError(f"{target} has {test[target].null_count()} missing values in test")
     y_true = test[target].to_numpy()
-    y_pred = model.predict(scoring_input(model, test, words))
+    x = scoring_input(model, test, words)
+    y_pred = model.predict(x)
     result: dict[str, Any] = {
         "n_rows": test.height,
         "estimator": type(_estimator(model)).__name__,
@@ -44,14 +48,98 @@ def evaluate(
         labels = sorted(set(y_true.tolist()) | set(y_pred.tolist()))
         matrix = metrics.confusion_matrix(y_true, y_pred, labels=labels)
         # Rows are the true class, columns the predicted class.
-        result["confusion"] = {"labels": [str(v) for v in labels], "matrix": matrix.tolist()}
-        figure = confusion_figure([str(v) for v in labels], matrix.tolist())
+        names = [str(v) for v in labels]
+        result["confusion"] = {"labels": names, "matrix": matrix.tolist()}
+        result["per_class"] = per_class(y_true, y_pred, labels)
+        result["top_confusions"] = top_confusions(names, matrix)
+        wrong = np.flatnonzero(y_true != y_pred)
+        margins = error_margins(model, x, wrong)
+        if margins is not None and len(wrong):
+            kind, values = margins
+            counts, edges = np.histogram(values, bins=10)
+            result["error_margins"] = {
+                "kind": kind,
+                "edges": edges.tolist(),
+                "counts": counts.tolist(),
+            }
+        result["misclassified_sample"] = misclassified_sample(
+            y_true, y_pred, wrong, None if margins is None else margins[1]
+        )
+        figure = confusion_figure(names, matrix.tolist())
     else:
         result["rmse"] = float(metrics.root_mean_squared_error(y_true, y_pred))
         result["mae"] = float(metrics.mean_absolute_error(y_true, y_pred))
         result["r2"] = float(metrics.r2_score(y_true, y_pred))
         figure = predicted_figure(y_true.tolist(), y_pred.tolist(), target)
     return {"metrics": result, "figures": [figure]}
+
+
+def per_class(y_true: Any, y_pred: Any, labels: list[Any]) -> list[dict[str, Any]]:
+    report = metrics.classification_report(
+        y_true, y_pred, labels=labels, output_dict=True, zero_division=0
+    )
+    return [
+        {
+            "label": str(label),
+            "precision": float(report[str(label)]["precision"]),
+            "recall": float(report[str(label)]["recall"]),
+            "f1": float(report[str(label)]["f1-score"]),
+            "support": int(report[str(label)]["support"]),
+        }
+        for label in labels
+    ]
+
+
+def top_confusions(labels: list[str], matrix: np.ndarray) -> list[dict[str, Any]]:
+    """The 10 largest off-diagonal cells: which true class is most often taken for which."""
+    cells = [
+        (int(matrix[i, j]), labels[i], labels[j])
+        for i in range(len(labels))
+        for j in range(len(labels))
+        if i != j and matrix[i, j]
+    ]
+    largest = sorted(cells, key=lambda cell: -cell[0])[:10]
+    return [{"true": t, "predicted": p, "count": n} for n, t, p in largest]
+
+
+def error_margins(model: Any, x: Any, wrong: np.ndarray) -> tuple[str, np.ndarray] | None:
+    """How close each wrong row came to the decision: the top score minus the runner-up.
+    None when the model gives no scores."""
+    if isinstance(model, FixedThresholdClassifier):
+        # It decides by its cut-off on the positive class's probability, not by the top class.
+        positive = list(model.classes_).index(model.pos_label)
+        return "cut_off", np.abs(model.predict_proba(x)[wrong, positive] - model.threshold)
+    if hasattr(model, "predict_proba"):
+        return "proba", _top_two_gap(model.predict_proba(x)[wrong])
+    if hasattr(model, "decision_function"):
+        scores = model.decision_function(x)[wrong]
+        # Two classes give one signed score per row; its size is the distance from the boundary.
+        return "decision", np.abs(scores) if scores.ndim == 1 else _top_two_gap(scores)
+    return None
+
+
+def _top_two_gap(scores: np.ndarray) -> np.ndarray:
+    top = np.sort(scores, axis=1)
+    gap: np.ndarray = top[:, -1] - top[:, -2]
+    return gap
+
+
+def misclassified_sample(
+    y_true: Any, y_pred: Any, wrong: np.ndarray, margins: np.ndarray | None
+) -> dict[str, Any]:
+    """At most 20 wrong rows, picked with a fixed seed, by their row in the test table. No
+    feature values: they stay in the test table, which shows its rows through its own page."""
+    picked = np.arange(len(wrong))
+    if len(wrong) > SAMPLE_ROWS:
+        picked = np.sort(np.random.default_rng(0).choice(len(wrong), SAMPLE_ROWS, replace=False))
+    rows = []
+    for k in picked:
+        i = int(wrong[k])
+        row: dict[str, Any] = {"row": i, "true": str(y_true[i]), "predicted": str(y_pred[i])}
+        if margins is not None:
+            row["margin"] = float(margins[k])
+        rows.append(row)
+    return {"rows": rows, "n_total": len(wrong)}
 
 
 def _estimator(model: Any) -> Any:

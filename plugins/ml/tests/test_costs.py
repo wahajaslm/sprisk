@@ -172,3 +172,14 @@ def test_a_cost_comparison_lower_is_better_and_records_the_class_share() -> None
     assert any(
         "30% of the train rows are bad" in limitation.root for limitation in decision.limitations
     )
+
+
+def test_a_costed_model_measures_its_wrong_rows_from_the_cut_off() -> None:
+    model = linear_model(risky(), **params(costs=COSTS))
+    test = risky(seed=1)
+    m = evaluate(model, test, target="y", task="classification")["metrics"]
+    bad = list(model.classes_).index("bad")
+    p_bad = model.predict_proba(test.select("x"))[:, bad]
+    assert m["error_margins"]["kind"] == "cut_off"
+    for row in m["misclassified_sample"]["rows"]:
+        assert row["margin"] == pytest.approx(abs(p_bad[row["row"]] - model.threshold))
