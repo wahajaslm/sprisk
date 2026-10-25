@@ -32,7 +32,7 @@ export function missingAndBlank(profile: DatasetProfile, color: Color): Figure |
     layout: {
       title: { text: `Missing and blank values (of ${rows.toLocaleString()} rows)` },
       barmode: "stack",
-      height: FRAME_PX + gaps.length * BAR_PX * 1.6,
+      height: FRAME_PX + 40 + gaps.length * BAR_PX * 1.6,
       xaxis: { title: { text: "rows" }, range: [0, rows] },
       yaxis: { autorange: "reversed" },
       legend: { orientation: "h", y: -0.25 },
@@ -72,12 +72,15 @@ export function correlationField(profile: DatasetProfile, color: Color): Figure 
 export function valueBars(column: ColumnProfile, rows: number, color: Color, title = "Most common values"): Figure {
   const bars = column.histogram?.bars ?? [];
   const other = column.histogram?.other ?? 0;
-  const pct = (n: number) => (rows === 0 ? "" : `${((n / rows) * 100).toFixed(1)}%`);
+  const label = (n: number) => {
+    const share = rows === 0 ? 0 : (n / rows) * 100;
+    return `${n.toLocaleString()} · ${share < 0.1 ? "<0.1" : share.toFixed(1)}%`;
+  };
   return {
     data: [
-      { type: "bar", orientation: "h", name: "Values", y: bars.map((b) => text(b.label)), x: bars.map((b) => b.count), text: bars.map((b) => pct(b.count)), textposition: "outside", marker: { color: color("--soft") }, hovertemplate: "%{y}<br>%{x:,} rows<extra></extra>" },
+      { type: "bar", orientation: "h", name: "Values", y: bars.map((b) => text(b.label)), x: bars.map((b) => b.count), text: bars.map((b) => label(b.count)), textposition: "outside", marker: { color: color("--soft") }, hovertemplate: "%{y}<br>%{x:,} rows<extra></extra>" },
       ...(other > 0
-        ? [{ type: "bar" as const, orientation: "h" as const, name: "Other", y: ["Other values"], x: [other], text: [pct(other)], textposition: "outside" as const, marker: { color: color("--ink-4") }, hovertemplate: "Every other value<br>%{x:,} rows<extra></extra>" }]
+        ? [{ type: "bar" as const, orientation: "h" as const, name: "Other", y: ["Other values"], x: [other], text: [label(other)], textposition: "outside" as const, marker: { color: color("--ink-4") }, hovertemplate: "Every other value<br>%{x:,} rows<extra></extra>" }]
         : []),
     ],
     layout: {

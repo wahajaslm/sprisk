@@ -8,6 +8,9 @@ import { correlationField, missingAndBlank, numberBins, valueBars, wordCounts } 
 
 const PlotlyFigure = lazy(() => import("../PlotlyFigure.tsx"));
 
+/** Repeated text values a chart lists; long titles make more unreadable. */
+const MAX_REPEATED = 15;
+
 /** Numeric columns a correlation field needs before it is drawn. */
 const MIN_CORRELATED = 3;
 
@@ -38,7 +41,7 @@ export function ProfileTab({ dataset }: { dataset: LoadedTable }) {
     <div className="ds-profile">
       <Overview profile={p} />
       <BodySection title="Findings" note="What stands out, warnings first. Each is counted from the rows; none is a decision.">
-        {findings.length === 0 ? <p className="muted">Nothing stands out in these rows.</p> : <FindingList findings={findings.filter((f) => f.column === undefined || p.columns.some((c) => c.name === f.column))} showColumn />}
+        {findings.length === 0 ? <p className="muted">Nothing stands out in these rows.</p> : <FindingList findings={findings} />}
       </BodySection>
       <BodySection title="Missing and blank values" note="Missing: an empty cell, NaN or infinity. Blank: text that is empty or only spaces, which an imputer does not see.">
         {missing ?? <p className="muted">Every column is filled in every row.</p>}
@@ -78,14 +81,13 @@ function Overview({ profile }: { profile: DatasetProfile }) {
   );
 }
 
-function FindingList({ findings, showColumn = false }: { findings: ProfileFinding[]; showColumn?: boolean }) {
+function FindingList({ findings }: { findings: ProfileFinding[] }) {
   return (
     <ul className="ds-findings" aria-label="Findings">
       {findings.map((f) => (
         <li key={`${f.topic}:${f.column ?? ""}`} className={f.level === "warning" ? "warn" : undefined}>
           <span className="ds-finding-level">{f.level === "warning" ? "Warning" : "Note"}</span>
           <span>
-            {showColumn && f.column && <span className="ds-finding-column mono">{f.column}</span>}
             {f.text}
             {f.example !== undefined && (
               <span className="ds-example">
@@ -131,7 +133,7 @@ function chartsOf(column: ColumnProfile, rows: number): Figure[] {
   switch (column.role) {
     case "text": {
       // Free text is mostly unique; only values that repeat say something.
-      const repeated = column.histogram?.bars.filter((b) => b.count > 1) ?? [];
+      const repeated = (column.histogram?.bars ?? []).filter((b) => b.count > 1).slice(0, MAX_REPEATED);
       const words = column.word_counts ? [wordCounts(column, tokenColor)] : [];
       const most = repeated.length > 0 ? [valueBars({ ...column, histogram: { kind: "top_values", bars: repeated } }, rows, tokenColor, "Most repeated values")] : [];
       return [...words, ...most];
@@ -153,7 +155,8 @@ function factsOf(column: ColumnProfile, rows: number): [string, string][] {
   ];
   if (column.blank) facts.push(["blank", column.blank.toLocaleString()]);
   const q = column.quartiles;
-  if (q) facts.push(["min", num(q.min)], ["median", num(q.median)], ["middle half", `${num(q.q1)} – ${num(q.q3)}`], ["max", num(q.max)]);
+  // An identifier's spread is its numbering, not a quantity.
+  if (q && column.role !== "identifier") facts.push(["min", num(q.min)], ["median", num(q.median)], ["middle half", `${num(q.q1)} – ${num(q.q3)}`], ["max", num(q.max)]);
   if (column.html_share) facts.push(["with HTML", percent(column.html_share)]);
   if (column.rarest_share !== undefined && column.role === "category") facts.push(["rarest value", percent(column.rarest_share)]);
   return facts;
@@ -163,7 +166,8 @@ function figureOf(figure: Figure | null) {
   if (!figure) return null;
   const label = String((figure.layout.title as { text: string }).text);
   return (
-    <figure key={label} className="result-tile plot">
+    // A chart that sets its own height (bars that grow with their count) keeps it.
+    <figure key={label} className="result-tile plot" style={figure.layout.height ? { height: figure.layout.height, minHeight: 0 } : undefined}>
       <Suspense fallback={<Loading text="Loading figure…" />}>
         <PlotlyFigure json={JSON.stringify(figure)} label={label} />
       </Suspense>

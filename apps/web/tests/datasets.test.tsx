@@ -106,7 +106,7 @@ describe("datasets", () => {
     await openProfile();
     const findings = within(await screen.findByRole("region", { name: "Findings" })).getAllByRole("listitem");
     expect(findings[0]).toHaveClass("warn");
-    expect(findings[0]).toHaveTextContent("Warningnotenote holds blank text in 12 of 120 rows");
+    expect(findings[0]).toHaveTextContent("Warningnote holds blank text in 12 of 120 rows");
     expect(findings[1]).toHaveTextContent("Example: same note");
   });
 
