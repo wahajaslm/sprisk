@@ -1534,14 +1534,14 @@ p { margin: 0; }
 .ds-spark { width: 140px; }
 /* Dataset pages (ADR-0061 rules: one surface, hairlines, plain copy): a section starts with a
    full-width hairline, room above it and a clear title; body text is secondary ink at 13.5px. */
-.ds-profile, .ds-investigation { font-size: var(--fs-13-5); line-height: 1.6; color: var(--text-secondary); }
-.ds-profile .body-section, .ds-investigation .body-section { max-width: none; margin: 0; padding: var(--space-8) 0 var(--space-6); border-top: 1px solid var(--alpha-08); }
-.ds-profile > .body-section:first-of-type, .ds-investigation > .body-section:first-of-type { border-top: 0; padding-top: var(--space-2); }
-.ds-profile, .ds-investigation { counter-reset: ds-section; }
-.ds-profile .body-section-title, .ds-investigation .body-section-title { display: flex; align-items: baseline; gap: var(--space-3); font-size: 22px; font-weight: 500; line-height: 1.25; color: var(--text-strong, #ececec); letter-spacing: -0.015em; }
+.ds-profile, .ds-investigation, .exp-body { font-size: var(--fs-13-5); line-height: 1.6; color: var(--text-secondary); }
+.ds-profile .body-section, .ds-investigation .body-section, .exp-body .body-section { max-width: none; margin: 0; padding: var(--space-8) 0 var(--space-6); border-top: 1px solid var(--alpha-08); }
+.ds-profile > .body-section:first-of-type, .ds-investigation > .body-section:first-of-type, .exp-body > .body-section:first-of-type, .exp-body > :first-child { border-top: 0; padding-top: var(--space-2); }
+.ds-profile, .ds-investigation, .exp-body { counter-reset: ds-section; }
+.ds-profile .body-section-title, .ds-investigation .body-section-title, .exp-body .body-section-title { display: flex; align-items: baseline; gap: var(--space-3); font-size: 22px; font-weight: 500; line-height: 1.25; color: var(--text-strong, #ececec); letter-spacing: -0.015em; }
 /* Sections are numbered, as the design system's own pages are: "01 Missing values". */
-.ds-profile .body-section-title::before, .ds-investigation .body-section-title::before { counter-increment: ds-section; content: counter(ds-section, decimal-leading-zero); font-size: var(--fs-12-5); font-weight: 400; letter-spacing: 0; color: var(--text-faint); }
-.ds-profile .body-section-note, .ds-investigation .body-section-note { margin: var(--space-2) 0 var(--space-6); font-size: var(--fs-13-5); color: var(--text-muted); }
+.ds-profile .body-section-title::before, .ds-investigation .body-section-title::before, .exp-body .body-section-title::before { counter-increment: ds-section; content: counter(ds-section, decimal-leading-zero); font-size: var(--fs-12-5); font-weight: 400; letter-spacing: 0; color: var(--text-faint); }
+.ds-profile .body-section-note, .ds-investigation .body-section-note, .exp-body .body-section-note { margin: var(--space-2) 0 var(--space-6); font-size: var(--fs-13-5); color: var(--text-muted); }
 .ds-profile .body-section > .btn, .ds-investigation .body-section > .btn { justify-self: start; align-self: flex-start; }
 .ds-findings { display: grid; margin: 0 0 var(--space-3); padding: 0; list-style: none; }
 .ds-findings li { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--alpha-04); color: var(--text-secondary); line-height: 1.6; }
@@ -8007,3 +8007,41 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .files-tab { display: flex; flex-direction: column; gap: var(--space-4); padding: 16px 20px; }
 .source-file { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .source-file .code { max-height: 360px; overflow: auto; margin: 0; }
+
+/* Experiments, as the design's Compare and Sweep (ADR-0061): one surface, hairline tables, the
+   change red only when a run got worse. */
+.exp-body { display: block; min-width: 0; padding: var(--space-5) 0 var(--space-8); }
+.exp-body .exp-table { width: 100%; }
+.exp-body .body-section { min-width: 0; overflow-x: auto; }
+.exp-body .exp-table th, .exp-body .exp-table td { padding: 0 var(--space-4); }
+.exp-body .exp-table td { height: 40px; }
+.exp-body .exp-table th:first-child, .exp-body .exp-table td:first-child { padding-left: 0; }
+.exp-compare td.worse { color: var(--alert); }
+.exp-compare td.changed-value { color: var(--text-strong); }
+.exp-cautions { display: grid; gap: var(--space-1); margin: var(--space-3) 0 0; padding: 0; list-style: none; color: var(--text-muted); }
+.exp-cautions li.warn { color: var(--alert); }
+.exp-body .model-comparison { margin: 0 0 var(--space-6); padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.exp-body .model-comparison + .model-comparison { padding-top: var(--space-6); border-top: 1px solid var(--alpha-05); }
+.exp-body .model-comparison .eyebrow { font-size: var(--fs-15); font-weight: 500; color: var(--text-primary); margin-bottom: var(--space-2); }
+.exp-body .model-comparison .exp-table { table-layout: fixed; margin: var(--space-4) 0; }
+.exp-body .model-comparison .exp-table th, .exp-body .model-comparison .exp-table td { white-space: normal; vertical-align: top; padding-top: var(--space-2); padding-bottom: var(--space-2); height: auto; line-height: 1.5; }
+.exp-body .model-comparison .exp-table th[scope="row"], .exp-body .model-comparison .exp-table tbody th { width: 200px; text-align: left; font-weight: 400; color: var(--text-muted); }
+.exp-body .model-comparison .exp-table thead th:first-child { width: 200px; }
+.exp-body .compare { max-height: none; background: none; border-top: 1px solid var(--alpha-05); }
+.exp-body .compare-col { padding: var(--space-5) var(--space-5) var(--space-5) 0; }
+.exp-body .cautions { padding: 0; background: none; border: 0; color: var(--text-muted); }
+.exp-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-5); }
+.exp-study { display: grid; gap: var(--space-4); padding: var(--space-6) 0; border-top: 1px solid var(--alpha-08); }
+.exp-study:first-of-type { border-top: 0; padding-top: 0; }
+.exp-study-head { display: flex; align-items: baseline; gap: var(--space-4); }
+.exp-study-head h3 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.015em; color: var(--text-strong); }
+.exp-study-head span { font-size: var(--fs-13); color: var(--text-muted); }
+.exp-study > p { margin: 0; }
+.exp-space { display: grid; margin: 0; }
+.exp-space div { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--alpha-04); }
+.exp-space dt { color: var(--text-muted); }
+.exp-space dd { margin: 0; color: var(--text-primary); }
+.exp-caution, .exp-caution p { margin: 0; color: var(--alert); }
+.exp-body .exp-table .changed { max-width: 220px; }
+.exp-body .exp-table td.mono.muted { font-family: var(--sans); }
+.exp-body .exp-table .page-btn { white-space: nowrap; }

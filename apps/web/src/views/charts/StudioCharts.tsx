@@ -136,6 +136,57 @@ export function Cells({ name, rows, columns, value, warn, height }: {
   return <Canvas draw={draw} height={height} label={name} />;
 }
 
+/** The design's parallel coordinates: one vertical axis per setting and the score, each trial
+ * a faint line across them, the best one bright with a soft glow and its points marked. */
+export function ParallelLines({ name, axes, lines, best, height = 260 }: { name: string; axes: string[]; lines: number[][]; best: number; height?: number }) {
+  const draw: Draw = (g, w, h) => {
+    const top = 10;
+    const bottom = 26;
+    const plot = h - top - bottom;
+    const left = 40;
+    const step = axes.length > 1 ? (w - left * 2) / (axes.length - 1) : 0;
+    const x = (i: number) => Math.round(left + i * step) + 0.5;
+    const y = (v: number) => top + (1 - v) * plot;
+    axes.forEach((a, i) => {
+      g.fillStyle = `rgba(${PALETTE.line},0.1)`;
+      g.fillRect(Math.round(left + i * step), top, 1, plot);
+      label(g, a, x(i) - g.measureText(a).width / 2, h - 6);
+    });
+    const path = (line: number[]) => {
+      g.beginPath();
+      line.forEach((v, i) => (i === 0 ? g.moveTo(x(i), y(v)) : g.lineTo(x(i), y(v))));
+    };
+    g.save();
+    g.lineJoin = "round";
+    g.strokeStyle = `rgba(${PALETTE.ink},0.22)`;
+    g.lineWidth = 1;
+    lines.forEach((line, i) => {
+      if (i === best) return;
+      path(line);
+      g.stroke();
+    });
+    const top1 = lines[best];
+    if (top1) {
+      g.strokeStyle = `rgba(${PALETTE.ink},0.14)`;
+      g.lineWidth = 6;
+      path(top1);
+      g.stroke();
+      g.strokeStyle = `rgba(${PALETTE.ink},1)`;
+      g.lineWidth = 1.5;
+      path(top1);
+      g.stroke();
+      g.fillStyle = `rgb(${PALETTE.ink})`;
+      top1.forEach((v, i) => {
+        g.beginPath();
+        g.arc(x(i), y(v), 3, 0, 7);
+        g.fill();
+      });
+    }
+    g.restore();
+  };
+  return <Canvas draw={draw} height={height} label={name} />;
+}
+
 /** A tiny distribution for a table cell, as the design's preview headers draw them. */
 export function Sparkline({ name, values, warn }: { name: string; values: number[]; warn?: boolean }) {
   const draw: Draw = (g, w, h) => {

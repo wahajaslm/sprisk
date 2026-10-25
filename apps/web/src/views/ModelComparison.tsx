@@ -10,6 +10,7 @@ import { useSelection } from "../workbench/selection.ts";
 import { CodeInput } from "./CodeInput.tsx";
 import { FigurePort } from "./inspector/FiguresTab.tsx";
 import { formatMetric } from "./NodeFact.tsx";
+import { ChartBlock, ColumnBars } from "./charts/StudioCharts.tsx";
 
 const METRIC_LABEL: Record<SelectionDecision["metric"], string> = { balanced_accuracy: "balanced accuracy", expected_cost: "expected cost", rmse: "RMSE", weighted_f1: "weighted F1" };
 type Candidate = SelectionDecision["candidates"][number];
@@ -208,7 +209,7 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
           {picked.map((id) => (
             <section key={id} className="compare-col" aria-label={`Detail of ${id}`}>
               <p className="eyebrow">{id} · from held-out folds of the train rows</p>
-              <p className="mono">Fold scores: {decision.candidates.find((c) => c.id === id)?.fold_scores.map(formatMetric).join(" · ")}</p>
+              <FoldScores id={id} scores={decision.candidates.find((c) => c.id === id)?.fold_scores ?? []} />
               <SearchTable candidate={decision.candidates.find((c) => c.id === id)} />
               <ChoiceSteps comparison={comparison} proposal={proposal} base={base} id={id} node={trialNodeOf(decision, id)} />
               {decision.candidates.find((c) => c.id === id)?.search ? (
@@ -224,6 +225,19 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
         </section>
       )}
     </>
+  );
+}
+
+/** A candidate's score on each held-out fold, as the design's bars: one per fold, the lowest and
+ * highest named. */
+function FoldScores({ id, scores }: { id: string; scores: number[] }) {
+  if (scores.length === 0) return null;
+  const low = Math.min(...scores);
+  const high = Math.max(...scores);
+  return (
+    <ChartBlock title="Fold scores" sub={`${scores.length} folds · ${formatMetric(low)} to ${formatMetric(high)}`}>
+      <ColumnBars name={`Fold scores of ${id}`} values={scores} height={96} />
+    </ChartBlock>
   );
 }
 

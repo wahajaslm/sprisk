@@ -54,18 +54,24 @@ describe("experiments", () => {
     expect(rows[1]).toHaveTextContent("0.947");
   });
 
-  it("compares the two chosen runs: settings that differ and metrics side by side", async () => {
+  it("compares the two chosen runs as the design's Compare: metrics with the change, then the decisions that differ", async () => {
     twoVersions();
     useSelection.setState({ experimentsTab: "Compare" });
     renderWithApi(<Experiments />);
-    const diff = await screen.findByRole("region", { name: "Settings that differ" });
-    await waitFor(() => expect(diff).toHaveTextContent("split · seed"));
-    expect(diff).toHaveTextContent("42");
-    expect(diff).toHaveTextContent("7");
-    const metrics = screen.getByRole("region", { name: "Metrics" });
-    await waitFor(() => expect(metrics).toHaveTextContent("0.947"));
-    expect(metrics).toHaveTextContent("0.9");
-    expect(metrics).toHaveTextContent("▼ 0.047");
+    expect(await screen.findByRole("heading", { name: "Run #1 vs run #2" })).toBeInTheDocument();
+    const metrics = await screen.findByRole("table", { name: "Metrics" });
+    await waitFor(() => expect(within(metrics).getByRole("row", { name: /accuracy/ })).toHaveTextContent("0.9470.9−0.047"));
+    expect(within(metrics).getByRole("cell", { name: "−0.047" })).toHaveClass("worse");
+    const diff = screen.getByRole("table", { name: "Decision diff" });
+    expect(within(diff).getByRole("row", { name: /split · seed/ })).toHaveTextContent("split · seed427");
+  });
+
+  it("swaps which run reads first", async () => {
+    twoVersions();
+    useSelection.setState({ experimentsTab: "Compare" });
+    renderWithApi(<Experiments />);
+    await userEvent.click(await screen.findByRole("button", { name: "Swap" }));
+    expect(await screen.findByRole("heading", { name: "Run #2 vs run #1" })).toBeInTheDocument();
   });
 
   it("opens a run in the Flow view", async () => {
@@ -278,7 +284,7 @@ describe("model comparison", () => {
   it("opens the recommendation and the best other model side by side, and any two on request", async () => {
     compared(winner);
     const detail = await screen.findByRole("region", { name: "Detail" });
-    expect(within(detail).getByRole("region", { name: "Detail of ml_linear_model" })).toHaveTextContent("Fold scores: 0.91 · 0.88 · 0.93 · 0.9 · 0.87");
+    expect(within(detail).getByRole("region", { name: "Detail of ml_linear_model" })).toHaveTextContent("5 folds · 0.87 to 0.93");
     expect(within(detail).getByRole("region", { name: "Detail of ml_random_forest" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("checkbox", { name: "Compare ml_dummy_baseline in detail" }));
     const regions = within(screen.getByRole("region", { name: "Detail" })).getAllByRole("region").map((r) => r.getAttribute("aria-label"));

@@ -146,13 +146,28 @@ describe("studies", () => {
     await waitFor(() => expect(region).toHaveTextContent("3 of 4 trials finished"));
     expect(region).toHaveTextContent("budget 4 trials, wall time 600 s, until 2026-10-21T10:10:01Z");
     expect(region).toHaveTextContent("Guardrail: recall of bad at least 0.6, declared before this study's scores");
-    expect(region).toHaveTextContent("Searched: ml_random_forest · min_samples_leaf: 1, 5");
+    expect(within(region).getByLabelText("Search space")).toHaveTextContent("min_samples_leaf1 – 5");
     const table = within(region).getByRole("table", { name: "Trials" });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows).toHaveLength(4);
-    expect(rows[2]).toHaveTextContent("ml_random_forestmin_samples_leaf: 1succeeded");
-    expect(rows[3]).toHaveTextContent("ml_random_forestmin_samples_leaf: 5running");
-    expect(rows[1]).toHaveTextContent("ml_linear_modelthe flow's settingssucceeded");
+    expect(rows[2]).toHaveTextContent("ml_random_forestmin_samples_leaf: 1succeeded—");
+    expect(rows[3]).toHaveTextContent("ml_random_forestmin_samples_leaf: 5running—");
+    expect(rows[1]).toHaveTextContent("ml_linear_modelthe flow's settingssucceeded—");
+  });
+
+  it("ranks the trials by their mean fold score and draws them as parallel coordinates", async () => {
+    studied("running", "running", "succeeded");
+    const scored = (id: string, values: number[]) =>
+      HttpResponse.json({ offset: 0, total_rows: values.length, total_columns: 3, columns: [{ name: "metric", data_type: "String" }, { name: "fold", data_type: "Int64" }, { name: "score", data_type: "Float64" }], rows: values.map((v, i) => ({ values: ["accuracy", String(i + 1), String(v)], missing: [] })) });
+    const withScores = trials("succeeded").map((t, i) => ({ ...t, scores: `art_01JABCDEFGHJKMNPQRSTVWXY9${i}` }));
+    server.use(
+      http.get(`/api/studies/${STD}`, () => HttpResponse.json({ study, trials: withScores, run: { ...comparisonRun, status: "running" } })),
+      http.get("/api/artifacts/:id/rows", ({ params }) => scored(String(params.id), String(params.id).endsWith("93") ? [0.9, 0.8] : String(params.id).endsWith("92") ? [0.7, 0.7] : [0.5, 0.5])),
+    );
+    const region = await studyRegion();
+    const table = within(region).getByRole("table", { name: "Trials" });
+    await waitFor(() => expect(within(table).getAllByRole("row")[1]).toHaveTextContent("min_samples_leaf: 5succeeded0.85"));
+    expect(within(region).getByRole("img", { name: "Trials of model" })).toBeInTheDocument();
   });
 
   it("says a study that ran out of time decided nothing and kept its finished trials", async () => {

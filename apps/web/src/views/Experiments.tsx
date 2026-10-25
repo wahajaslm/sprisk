@@ -19,6 +19,7 @@ import { flowName } from "../flow/labels.ts";
 import { EXPERIMENTS_TABS, type ExperimentsTab, useSelection } from "../workbench/selection.ts";
 import { useStudies } from "../api/studies.ts";
 import { ModelComparisons } from "./ModelComparison.tsx";
+import { RunComparison } from "./experiments/CompareTab.tsx";
 import { Studies } from "./Studies.tsx";
 import { formatMetric } from "./NodeFact.tsx";
 import { ExperimentsIcon } from "./Icons.tsx";
@@ -47,6 +48,7 @@ export function Experiments() {
   ].sort();
   const nodes = useRunNodes(runs, evaluators);
   const [search, setSearch] = useState("");
+  const [swapped, setSwapped] = useState(false);
   const studies = useStudies(flow?.head.id);
 
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
@@ -64,12 +66,14 @@ export function Experiments() {
   }
 
   const label = (run: Run) => `#${runs.length - runs.indexOf(run)}`;
+  const latestStudy = studies.data?.[0];
   const shown = runs.find((r) => r.id === runId) ?? runs[0];
   const shownAt = shown ? runs.indexOf(shown) : -1;
   const picked = compare.filter((id) => runs.some((r) => r.id === id));
   const pair = (picked.length === 2 ? picked : runs.slice(0, 2).map((r) => r.id)).map((id) => runs.findIndex((r) => r.id === id));
-  // Older run first, so changes read "before → after".
+  // Older run first, so changes read "before → after"; Swap reads them the other way.
   const [olderAt, newerAt] = [...pair].sort((a, b) => b - a) as [number, number];
+  const [firstAt, secondAt] = swapped ? [newerAt, olderAt] : [olderAt, newerAt];
   const toggle = (id: string) =>
     setCompare(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id].slice(-2));
   const header =
@@ -82,12 +86,13 @@ export function Experiments() {
       : experimentsTab === "Compare"
         ? {
             eyebrow: `Compare · ${flowName(flow.head)}`,
-            title: runs.length < 2 ? "Compare runs" : `Run ${label(runs[olderAt]!)} vs run ${label(runs[newerAt]!)}`,
+            title: runs.length < 2 ? "Compare runs" : `Run ${label(runs[firstAt]!)} vs run ${label(runs[secondAt]!)}`,
+            description: runs.length < 2 ? "Run the flow twice to compare two runs." : compareLine(runs[firstAt]!, runs[secondAt]!, byId),
           }
         : {
-            eyebrow: `Sweep · ${flowName(flow.head)}`,
-            title: "Studies",
-            description: "Each study searches a model's settings within a budget, then recommends one.",
+            eyebrow: latestStudy ? `Sweep · ${latestStudy.node_id} · up to ${latestStudy.max_trials} trials` : `Sweep · ${flowName(flow.head)}`,
+            title: "Hyperparameter search",
+            description: latestStudy ? "Each study searches a model's settings within a budget, then recommends one. The bright line is the best so far." : "No study yet. Start one to search a model's settings within a budget.",
           };
 
   return (
@@ -130,6 +135,7 @@ export function Experiments() {
       }
       header={{
         ...header,
+        ...(experimentsTab === "Compare" && runs.length >= 2 ? { actions: <Button onClick={() => setSwapped(!swapped)}>Swap</Button> } : {}),
         ...(experimentsTab === "Monitor" && shown
           ? {
               actions: (
@@ -144,26 +150,30 @@ export function Experiments() {
     >
       {experimentsTab === "Monitor" && shown && <Monitor run={shown} version={byId.get(shown.pipeline_version_id)} />}
       {experimentsTab === "Compare" && (
-        <>
-          {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
-          {!studies.isPending && (
-            <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
-          )}
-          <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
+        <div className="exp-body">
           {runs.length < 2 ? (
-            <p className="muted pad">Run the flow again, or change a setting and run it, to compare two runs.</p>
+            <p className="muted">Run the flow again, or change a setting and run it, to compare two runs.</p>
           ) : (
-            <Compare
-              older={runs[olderAt]}
-              newer={runs[newerAt]}
-              olderNodes={nodes[olderAt] ?? {}}
-              newerNodes={nodes[newerAt] ?? {}}
+            <RunComparison
+              older={runs[firstAt]!}
+              newer={runs[secondAt]!}
+              olderNodes={nodes[firstAt] ?? {}}
+              newerNodes={nodes[secondAt] ?? {}}
               byId={byId}
               evaluators={evaluators}
               labelOf={label}
             />
           )}
-        </>
+          <BodySection title="Runs" note="Tick two runs to compare them.">
+            <RunTable runs={runs} nodes={nodes} evaluators={evaluators} byId={byId} picked={pair.map((i) => runs[i]?.id ?? "")} toggle={toggle} />
+          </BodySection>
+          {/* Wait for the studies, so a study's comparison is never shown first as a plain one. */}
+          {!studies.isPending && (
+            <BodySection title="Model selection" note="Each shortlisted model cross-validated on the train rows; the test rows are not used.">
+              <ModelComparisons flowIds={flow.ids} head={flow.head} versions={all} studied={new Set((studies.data ?? []).map((s) => s.comparison_id))} />
+            </BodySection>
+          )}
+        </div>
       )}
       {experimentsTab === "Sweep" && (
         <>
@@ -176,6 +186,14 @@ export function Experiments() {
 }
 
 const sentence = (status: string) => status[0]!.toUpperCase() + status.slice(1).replaceAll("_", " ");
+
+/** The two runs in one line: how many settings differ and how the headline metric moved. */
+function compareLine(a: Run, b: Run, byId: Map<string, PipelineVersion>): string {
+  const va = byId.get(a.pipeline_version_id);
+  const vb = byId.get(b.pipeline_version_id);
+  const n = va && vb ? settingChanges(va, vb).length : 0;
+  return n === 0 ? "Same settings; only the run differs." : `${n} ${n === 1 ? "setting differs" : "settings differ"} between the two runs.`;
+}
 
 /** What the run's version changed from its parent, in a few words. */
 function whatChanged(run: Run, byId: Map<string, PipelineVersion>): string {
@@ -367,110 +385,5 @@ function MetricCell({ metrics }: { metrics: Record<string, number> | undefined }
       )}
       {formatMetric(headline.value)}
     </span>
-  );
-}
-
-type CompareProps = {
-  older: Run | undefined;
-  newer: Run | undefined;
-  olderNodes: Record<string, NodeInRun>;
-  newerNodes: Record<string, NodeInRun>;
-  byId: Map<string, PipelineVersion>;
-  evaluators: string[];
-  labelOf: (run: Run) => string;
-};
-
-function Compare({ older, newer, olderNodes, newerNodes, byId, evaluators, labelOf }: CompareProps) {
-  if (!older || !newer) return null;
-  const a = byId.get(older.pipeline_version_id);
-  const b = byId.get(newer.pipeline_version_id);
-  const changes = a && b ? settingChanges(a, b) : [];
-  return (
-    <section className="compare" aria-label="Compare runs">
-      <section className="compare-col" aria-label="Settings that differ">
-        <p className="eyebrow">Settings that differ</p>
-        <div className="compare-grid">
-          <span />
-          <span className="compare-run">{labelOf(older)}</span>
-          <span className="compare-run">{labelOf(newer)}</span>
-          {changes.length === 0 ? (
-            <span className="muted compare-none">Same settings. Only the run differs.</span>
-          ) : (
-            changes.map((c) => (
-              <div key={`${c.node}.${c.key}`} className="compare-row">
-                <span>{c.key === "step" ? c.node : `${c.node} · ${c.key}`}</span>
-                <span className="mono">{c.key === "step" ? (c.before ? "present" : "—") : showValue(c.before)}</span>
-                <span className="mono changed-value">{c.key === "step" ? (c.after ? "present" : "—") : showValue(c.after)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-      <section className="compare-col" aria-label="Metrics">
-        <p className="eyebrow">Metrics · held-out data</p>
-        <Cautions changes={changes} byId={byId} older={older} olderNodes={olderNodes} newerNodes={newerNodes} evaluators={evaluators} />
-        <div className="compare-metrics head">
-          <span />
-          <span className="compare-run">{labelOf(older)}</span>
-          <span className="compare-run">{labelOf(newer)}</span>
-          <span className="compare-run">change</span>
-        </div>
-        {evaluators.map((e) => {
-          const before = olderNodes[e]?.metrics ?? {};
-          const after = newerNodes[e]?.metrics ?? {};
-          const names = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((n) => n !== "n_rows");
-          return (
-            <div key={e} className="compare-metrics">
-              <p className="compare-node">{e}</p>
-              {names.map((n) => {
-                const x = before[n];
-                const y = after[n];
-                const delta = x !== undefined && y !== undefined ? y - x : undefined;
-                return (
-                  <div key={n} className="compare-row metric">
-                    <span>{n.replaceAll("_", " ")}</span>
-                    <span className="mono">{x === undefined ? "—" : formatMetric(x)}</span>
-                    <span className="mono">{y === undefined ? "—" : formatMetric(y)}</span>
-                    <span className="mono muted">
-                      {delta === undefined || delta === 0 ? "" : `${delta > 0 ? "▲" : "▼"} ${formatMetric(Math.abs(delta))}`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
-      </section>
-    </section>
-  );
-}
-
-/** Why two metrics may not be comparable: different test rows, or too few of them. */
-function Cautions({ changes, byId, older, olderNodes, newerNodes, evaluators }: {
-  changes: { node: string }[];
-  byId: Map<string, PipelineVersion>;
-  older: Run;
-  olderNodes: Record<string, NodeInRun>;
-  newerNodes: Record<string, NodeInRun>;
-  evaluators: string[];
-}) {
-  const nodes = byId.get(older.pipeline_version_id)?.nodes ?? [];
-  const splitChanged = changes.some((c) => nodes.find((n) => n.id === c.node)?.operator.includes(".validation."));
-  const rows = evaluators
-    .flatMap((e) => [olderNodes[e]?.metrics?.n_rows, newerNodes[e]?.metrics?.n_rows])
-    .filter((n): n is number => n !== undefined && n > 0);
-  const fewest = rows.length > 0 ? Math.min(...rows) : undefined;
-  if (!splitChanged && (fewest === undefined || fewest >= 200)) return null;
-  return (
-    <div className="cautions">
-      {splitChanged && (
-        <p>⚠ The split changed, so the two runs were scored on different test rows. Their metrics are not a like-for-like comparison.</p>
-      )}
-      {fewest !== undefined && fewest < 200 && (
-        <p>
-          Scored on {fewest} rows. One test row moves accuracy by about {formatMetric(1 / fewest)}, so small changes may be noise.
-        </p>
-      )}
-    </div>
   );
 }
