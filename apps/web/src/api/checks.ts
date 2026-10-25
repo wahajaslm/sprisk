@@ -38,12 +38,14 @@ export function useRunChecks(attempts: Attempt[]): RunChecks {
   }
 }
 
-/** How many checks that did not pass cite each step. */
+/** How many failed or warning checks cite each step. A check that could not assess a step
+ * found no problem, and red is for problems only (ADR-0061); it still shows in the step's
+ * Methodology tab. */
 export function concernsByNode(run: RunChecks): Map<string, number> {
   const counts = new Map<string, number>();
   if (run.status !== "ready") return counts;
   for (const check of run.checks) {
-    if (check.verdict === "pass") continue;
+    if (check.verdict === "pass" || check.verdict === "not_assessed") continue;
     for (const node of check.cited_nodes) counts.set(node, (counts.get(node) ?? 0) + 1);
   }
   return counts;
