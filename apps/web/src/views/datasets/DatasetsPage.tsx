@@ -82,7 +82,7 @@ export function DatasetsPage() {
       ) : tab === "Investigation" ? (
         <InvestigationTab key={current.artifact.id} dataset={current} versions={versions.data ?? []} />
       ) : (
-        <ExploreTab key={current.artifact.id} dataset={current} />
+        <ExploreTab key={current.artifact.id} dataset={current} target={labelOf(current, versions.data ?? [])} />
       ))}
     </PageFrame>
   );
@@ -111,6 +111,16 @@ function DatasetDock({ dataset, flows }: { dataset: LoadedTable; flows: string }
 type Tab = (typeof TABS)[number];
 
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
+
+/** The label the flows that load the table predict: the first step's `target` setting. */
+function labelOf(dataset: LoadedTable, versions: PipelineVersion[]): string | undefined {
+  for (const use of dataset.used_by) {
+    const version = versions.find((v) => v.id === use.pipeline_version_id);
+    const target = version?.nodes.map((n) => n.params["target"]).find((t) => typeof t === "string");
+    if (typeof target === "string") return target;
+  }
+  return undefined;
+}
 
 /** "iris.csv · load" for each flow and step that loads the table, once each, with where it ran. */
 function uses(dataset: LoadedTable, versions: PipelineVersion[]): Use[] {

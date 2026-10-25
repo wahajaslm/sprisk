@@ -8192,3 +8192,22 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .ex-findings li.warn .ex-finding-title { color: #ff5c5c; }
 .ex-finding-text { font-size: 12.5px; color: var(--text-muted, #ababab); text-wrap: pretty; }
 .ex-finding-column { font: 12px var(--mono); color: var(--text-faint, #8c8c8c); }
+/* Explore with a label: stacked class bars, a box per class, the balance bar, the group check. */
+.ex-hist > div.ex-stack { display: flex; flex-direction: column-reverse; gap: 0; background: transparent; overflow: hidden; }
+.ex-stack i { display: block; min-height: 0; flex-basis: 0; background: rgba(255, 255, 255, 0.72); }
+.ex-hist > div.ex-stack.warn i { background: #ff5c5c; }
+.ex-legend span[style]::before { background: rgba(255, 255, 255, var(--tone)); }
+.ex-balance { display: flex; height: 6px; gap: 2px; border-radius: 3px; overflow: hidden; }
+.ex-balance i { flex-basis: 0; background: rgba(255, 255, 255, 0.72); }
+.ex-diverging li { grid-template-columns: minmax(0, 160px) minmax(0, 1fr) 48px 40px; }
+.ex-leak { font-size: 11px; color: #ff5c5c; }
+.ex-groups { position: relative; display: flex; gap: 24px; min-width: 560px; overflow-x: auto; }
+.ex-overall { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255, 255, 255, 0.35); pointer-events: none; }
+.ex-group { flex: 1 1 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ex-group ul { display: flex; gap: 3px; height: 132px; margin: 0; padding: 0; list-style: none; }
+.ex-group li { flex: 1 1 0; display: grid; grid-template-rows: 1fr auto 16px; justify-items: stretch; align-items: end; gap: 3px; min-width: 0; }
+.ex-group li span { grid-row: 1; align-self: end; text-align: center; font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--text-faint, #8c8c8c); }
+.ex-group li i { grid-row: 2; display: block; background: rgba(255, 255, 255, 0.5); border-radius: 2px 2px 0 0; }
+.ex-group li b { grid-row: 3; overflow: hidden; white-space: nowrap; text-align: center; font-size: 10.5px; font-weight: 400; color: var(--text-faint, #8c8c8c); }
+.ex-group li.warn i { background: #ff5c5c; }
+.ex-group-name { padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.1); font: 11.5px var(--mono); color: var(--text-muted, #ababab); }

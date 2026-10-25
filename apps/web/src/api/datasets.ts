@@ -9,14 +9,15 @@ export const useLoadedTables = () =>
 /** A table's profile, computed by Python once and kept by the server. Counts and shares only;
  * never rows. An artifact never changes, so neither does its profile: kept for the session,
  * not dropped five minutes after the table was last shown. */
-const profileQuery = (artifactId: string) => ({
-  queryKey: ["dataset-profile", artifactId],
-  queryFn: () => getOne("DatasetProfile", `/artifacts/${artifactId}/profile`),
+const profileQuery = (artifactId: string, target?: string) => ({
+  queryKey: ["dataset-profile", artifactId, target ?? ""],
+  queryFn: () => getOne("DatasetProfile", `/artifacts/${artifactId}/profile${target ? `?target=${encodeURIComponent(target)}` : ""}`),
   staleTime: Infinity,
   gcTime: Infinity,
 });
 
-export const useDatasetProfile = (artifactId: string | undefined) => useQuery({ ...profileQuery(artifactId ?? ""), enabled: artifactId !== undefined });
+/** With `target`, the profile also relates the columns to that label (ADR-0065). */
+export const useDatasetProfile = (artifactId: string | undefined, target?: string) => useQuery({ ...profileQuery(artifactId ?? "", target), enabled: artifactId !== undefined });
 
 /** The profiles of several tables, one query each, in the order given. */
-export const useDatasetProfiles = (artifactIds: string[]) => useQueries({ queries: artifactIds.map(profileQuery) });
+export const useDatasetProfiles = (artifactIds: string[]) => useQueries({ queries: artifactIds.map((id) => profileQuery(id)) });

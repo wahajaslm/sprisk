@@ -43,6 +43,20 @@ const profile: DatasetProfile = {
   ],
 };
 
+const labelled: DatasetProfile = {
+  ...profile,
+  label: {
+    target: "y",
+    classes: [{ label: "setosa", count: 80 }, { label: "other", count: 40 }],
+    other: 0,
+    numbers: [
+      { column: "sepal_length", r: 0.86, by_class: [{ label: "setosa", counts: [40, 30], quartiles: { min: 4.3, q1: 4.8, median: 5, q3: 5.2, max: 5.8 } }, { label: "other", counts: [10, 34], quartiles: { min: 5, q1: 5.8, median: 6.2, q3: 6.8, max: 7.9 } }] },
+      { column: "petal_width", r: -0.3 },
+    ],
+    groups: [{ column: "batch", values: [{ label: "B1", rows: 60, share: 0.7 }, { label: "B2", rows: 60, share: 0.4 }] }],
+  },
+};
+
 /** Serves the datasets and a profile; returns every path the page asked for. */
 function serve(datasets: () => Response = () => HttpResponse.json([iris, penguins]), profiled: () => Response = () => HttpResponse.json(profile)) {
   const asked: string[] = [];
@@ -190,6 +204,48 @@ describe("datasets", () => {
     expect(rows[0]).toHaveTextContent("Blank text");
     expect(rows[0]).toHaveTextContent("note holds blank text in 12 of 120 rows");
     expect(rows[1]).toHaveTextContent("Example: same note");
+  });
+
+  it("asks for the profile with the label the flows use", async () => {
+    const searched: string[] = [];
+    server.events.on("request:start", ({ request }) => {
+      const url = new URL(request.url);
+      if (url.pathname.endsWith("/profile")) searched.push(url.search);
+    });
+    serve();
+    await screen.findByRole("region", { name: "Read one column" });
+    expect(searched).toContain("?target=y");
+  });
+
+  it("relates the columns to the label: its balance, each number's strength, a likely leak marked", async () => {
+    serve(undefined, () => HttpResponse.json(labelled));
+    const relate = await screen.findByRole("region", { name: "Relate columns to the label" });
+    expect(within(relate).getByRole("img", { name: "Label balance" })).toBeInTheDocument();
+    expect(relate).toHaveTextContent("Label balance · setosa 80 · other 40 · 67 / 33");
+    const strength = within(relate).getAllByRole("listitem").filter((li) => li.closest("ul")?.getAttribute("aria-label") === "Correlation with label");
+    expect(strength[0]).toHaveTextContent("sepal_length+0.86Leak?");
+    expect(strength[0]).toHaveClass("warn");
+    expect(strength[1]).toHaveTextContent("petal_width−0.30");
+    expect(within(relate).getByRole("img", { name: "Correlation matrix" })).toBeInTheDocument();
+  });
+
+  it("splits the column's histogram by label, with a box plot per class and its r with the label", async () => {
+    serve(undefined, () => HttpResponse.json(labelled));
+    const read = await screen.findByRole("region", { name: "Read one column" });
+    expect(within(read).getByRole("img", { name: "Distribution of sepal_length by y" })).toBeInTheDocument();
+    expect(within(read).getByRole("img", { name: "Box plot of sepal_length · setosa" })).toBeInTheDocument();
+    expect(within(read).getByRole("img", { name: "Box plot of sepal_length · other" })).toBeInTheDocument();
+    expect(within(read).getByRole("list", { name: "Numbers of sepal_length" })).toHaveTextContent("r with label+0.86");
+    expect(read).toHaveTextContent("setosaotheroutside fences");
+  });
+
+  it("shows the first class's share in each value of a category, the overall rate dashed, a far-off value red", async () => {
+    serve(undefined, () => HttpResponse.json(labelled));
+    const groups = await screen.findByRole("region", { name: "Check groups" });
+    expect(groups).toHaveTextContent("setosa share by group · dashed line at the overall 67%");
+    const bars = within(within(groups).getByRole("list", { name: "setosa share by batch" })).getAllByRole("listitem");
+    expect(bars.map((b) => b.textContent)).toEqual(["70B1", "40B2"]);
+    expect(bars[1]).toHaveClass("warn");
   });
 
   it("puts the table's numbers in the Info dock, not in a row under the header", async () => {

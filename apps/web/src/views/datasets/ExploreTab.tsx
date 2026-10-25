@@ -1,5 +1,5 @@
-import type { ColumnProfile, DatasetProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
-import { useState } from "react";
+import type { ColumnProfile, DatasetProfile, LabelProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
+import { type CSSProperties, useState } from "react";
 
 import { useDatasetProfile } from "../../api/datasets.ts";
 import { useTablePage } from "../../api/hooks.ts";
@@ -20,6 +20,10 @@ const MAX_VALUES = 12;
 /** Pairs in the strongest-pairs list, and columns in "moves most with". */
 const TOP_PAIRS = 12;
 const MOVES_WITH = 3;
+/** A column this strong with the label may be built from it: the design marks it "Leak?". */
+const LEAK_R = 0.8;
+/** A group whose label rate is this far from the overall rate is drawn red. */
+const GROUP_GAP = 0.1;
 /** Findings shown before "Show all": every warning, then notes up to this many in all. */
 const FIRST_FINDINGS = 6;
 
@@ -42,8 +46,8 @@ const TOPICS: Record<ProfileFinding["topic"], string> = {
  * in its header, one column read closely, every column's gaps and outliers on one axis, how the
  * numbers move together, and what stands out. The profile is computed by Python and stored; the
  * page asks for one page of rows at a time (ADR-0038). */
-export function ExploreTab({ dataset }: { dataset: LoadedTable }) {
-  const profile = useDatasetProfile(dataset.artifact.id);
+export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?: string | undefined }) {
+  const profile = useDatasetProfile(dataset.artifact.id, target);
   const [picked, setPicked] = useState<number>();
   if (profile.isError) return <p role="alert" className="error">{profile.error.message}</p>;
   if (profile.isPending) return <Loading text="Profiling the table…" />;
@@ -65,7 +69,8 @@ export function ExploreTab({ dataset }: { dataset: LoadedTable }) {
       <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />
       {column && <ReadOneColumn profile={p} at={at} onMove={setPicked} />}
       <MissingOrExtreme profile={p} picked={column?.name} onPick={pick} />
-      {p.correlation.columns.length >= 2 && <RelateColumns profile={p} picked={column?.name} />}
+      {(p.correlation.columns.length >= 2 || (p.label?.numbers.length ?? 0) > 0) && <RelateColumns profile={p} picked={column?.name} />}
+      {p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
       <WhatStandsOut findings={p.findings ?? []} />
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
       <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
@@ -216,9 +221,9 @@ function ReadOneColumn({ profile, at, onMove }: { profile: DatasetProfile; at: n
           </span>
         </div>
         <div className="ex-read-body">
-          <div className="ex-read-chart">{chartOf(c, profile.profiled_rows)}</div>
+          <div className="ex-read-chart">{chartOf(c, profile.profiled_rows, profile.label)}</div>
           <ul className="ex-stats" aria-label={`Numbers of ${c.name}`}>
-            {statsOf(c, profile.profiled_rows).map(([k, v, red]) => (
+            {statsOf(c, profile.profiled_rows, profile.label).map(([k, v, red]) => (
               <li key={k} className={red ? "warn" : undefined}>
                 <span>{k}</span>
                 <span>{v}</span>
@@ -234,7 +239,7 @@ function ReadOneColumn({ profile, at, onMove }: { profile: DatasetProfile; at: n
   );
 }
 
-function chartOf(c: ColumnProfile, rows: number) {
+function chartOf(c: ColumnProfile, rows: number, label: LabelProfile | undefined) {
   const meters = (bars: { label: string; count: number }[], other?: number) => {
     const top = Math.max(...bars.map((b) => b.count), other ?? 0, 1);
     return [
@@ -244,7 +249,7 @@ function chartOf(c: ColumnProfile, rows: number) {
   };
   switch (c.role) {
     case "number":
-      return <NumberChart c={c} />;
+      return <NumberChart c={c} label={label} />;
     case "text": {
       const words = c.word_counts?.bars ?? [];
       const repeated = (c.histogram?.bars ?? []).filter((b) => b.count > 1).slice(0, MAX_VALUES);
@@ -278,8 +283,10 @@ function chartOf(c: ColumnProfile, rows: number) {
 
 /** The design's column histogram: bins as solid bars, red outside the fences, each fence a
  * dashed line where it falls inside the range, and a box plot of the quartiles below. */
-function NumberChart({ c }: { c: ColumnProfile }) {
+function NumberChart({ c, label }: { c: ColumnProfile; label: LabelProfile | undefined }) {
   const bars = c.histogram?.bars ?? [];
+  const split = label?.numbers.find((n) => n.column === c.name)?.by_class;
+  const tone = (k: number) => (split && split.length > 1 ? 0.72 - (0.46 * k) / (split.length - 1) : 0.72);
   const q = c.quartiles;
   const lo = bars[0]?.lower ?? q?.min;
   const hi = bars.at(-1)?.upper ?? q?.max;
@@ -289,36 +296,52 @@ function NumberChart({ c }: { c: ColumnProfile }) {
   const fences = c.fences ? ([["Lower fence", c.fences.low], ["Upper fence", c.fences.high]] as const).filter(([, v]) => v > lo && v < hi) : [];
   return (
     <div className="ex-hist-wrap">
-      <div className="ex-hist" role="img" aria-label={`Distribution of ${c.name}`}>
-        {bars.map((b, i) => (
-          <div key={i} className={binOutside(c, b) ? "warn" : undefined} style={{ height: `${(b.count / top) * 100}%` }} title={`${b.label}: ${b.count.toLocaleString()}`} />
-        ))}
+      <div className="ex-hist" role="img" aria-label={split ? `Distribution of ${c.name} by ${label?.target}` : `Distribution of ${c.name}`}>
+        {bars.map((b, i) =>
+          split ? (
+            // One stack per bin, a segment per class, the first class at the bottom.
+            <div key={i} className={`ex-stack${binOutside(c, b) ? " warn" : ""}`} style={{ height: `${(b.count / top) * 100}%` }} title={`${b.label}: ${split.map((k) => `${k.label} ${k.counts[i] ?? 0}`).join(", ")}`}>
+              {split.map((k, j) => (
+                <i key={k.label} style={{ flexGrow: k.counts[i] ?? 0, opacity: tone(j) / 0.72 }} />
+              ))}
+            </div>
+          ) : (
+            <div key={i} className={binOutside(c, b) ? "warn" : undefined} style={{ height: `${(b.count / top) * 100}%` }} title={`${b.label}: ${b.count.toLocaleString()}`} />
+          ),
+        )}
         {fences.map(([name, v]) => (
           <span key={name} className="ex-fence" style={{ left: `${x(v)}%` }}>
             <span>{`${name} ${num(v)}`}</span>
           </span>
         ))}
       </div>
-      {q && (
-        <div className="ex-box" role="img" aria-label={`Box plot of ${c.name}`}>
-          <span className="ex-box-whisker" style={{ left: `${x(q.min)}%`, width: `${x(q.max) - x(q.min)}%` }} />
-          <span className="ex-box-body" style={{ left: `${x(q.q1)}%`, width: `${x(q.q3) - x(q.q1)}%` }} />
-          <span className="ex-box-median" style={{ left: `${x(q.median)}%` }} />
-        </div>
-      )}
+      {split
+        ? split.map((k, j) => k.quartiles && <BoxPlot key={k.label} name={`Box plot of ${c.name} · ${k.label}`} q={k.quartiles} x={x} tone={tone(j)} />)
+        : q && <BoxPlot name={`Box plot of ${c.name}`} q={q} x={x} tone={0.72} />}
       <div className="ex-axis">
         <span>{num(lo)}</span>
         <span>{num(hi)}</span>
       </div>
       <div className="ex-legend">
-        <span>values</span>
-        {c.fences && <span className="warn">outside fences</span>}
+        {split ? split.map((k, j) => <span key={k.label} style={{ "--tone": tone(j) } as CSSProperties}>{k.label}</span>) : <span>values</span>}
+        {fencesOf(c) && <span className="warn">outside fences</span>}
       </div>
     </div>
   );
 }
 
-function statsOf(c: ColumnProfile, rows: number): [string, string, boolean?][] {
+function BoxPlot({ name, q, x, tone }: { name: string; q: NonNullable<ColumnProfile["quartiles"]>; x: (v: number) => number; tone: number }) {
+  return (
+    <div className="ex-box" role="img" aria-label={name}>
+      <span className="ex-box-whisker" style={{ left: `${x(q.min)}%`, width: `${x(q.max) - x(q.min)}%` }} />
+      <span className="ex-box-body" style={{ left: `${x(q.q1)}%`, width: `${x(q.q3) - x(q.q1)}%`, opacity: tone / 0.72 }} />
+      <span className="ex-box-median" style={{ left: `${x(q.median)}%` }} />
+    </div>
+  );
+}
+
+function statsOf(c: ColumnProfile, rows: number, label: LabelProfile | undefined): [string, string, boolean?][] {
+  const strength = label?.numbers.find((n) => n.column === c.name);
   const filled: [string, string, boolean?][] = [
     ["Unique", c.distinct.toLocaleString()],
     ["Missing", pct1(c.missing + (c.blank ?? 0), rows), gapShare(c, rows) >= MISSING_WARN],
@@ -338,6 +361,7 @@ function statsOf(c: ColumnProfile, rows: number): [string, string, boolean?][] {
     ...filled,
     ...(c.outliers !== undefined ? [["Outliers", c.outliers.toLocaleString(), c.outliers > 0] as [string, string, boolean]] : []),
     ...(c.skewness !== undefined ? [["Skew", c.skewness.toFixed(2)] as [string, string]] : []),
+    ...(strength && label ? [[label.classes.length === 2 ? "r with label" : "η with label", signed(strength.r), Math.abs(strength.r) >= LEAK_R] as [string, string, boolean]] : []),
   ];
 }
 
@@ -413,13 +437,87 @@ function gapsLine(p: DatasetProfile): string {
   return parts.join(" ");
 }
 
-/** The design's relations view, of the measured numbers: the strongest pairs as diverging bars,
- * the correlation matrix (grey positive, red negative), and what moves most with the column
- * being read. */
+/** The design's relations view: with a label, its balance and each number's strength with it,
+ * a likely leak marked; without one, the strongest pairs of numbers. Beside it the correlation
+ * matrix (grey positive, red negative) and what moves most with the column being read. */
 function RelateColumns({ profile, picked }: { profile: DatasetProfile; picked: string | undefined }) {
   const { columns, pairs } = profile.correlation;
-  const r = new Map(pairs.flatMap((p) => [[`${p.column_a}\u0000${p.column_b}`, p.pearson], [`${p.column_b}\u0000${p.column_a}`, p.pearson]]));
+  const label = profile.label && profile.label.numbers.length > 0 ? profile.label : undefined;
+  return (
+    <BodySection
+      title={label ? "Relate columns to the label" : "Relate columns to each other"}
+      note={label ? "Which columns carry signal, which leak it, and which repeat each other." : "Which measured numbers move together. Two that move as one say the same thing twice."}
+    >
+      <div className="sv-split">
+        <div className="sv-chart">{label ? <WithLabel label={label} /> : <StrongestPairs pairs={pairs} />}</div>
+        {columns.length >= 2 && (
+          <div className="sv-chart">
+            <Matrix columns={columns} pairs={pairs} picked={picked} />
+          </div>
+        )}
+      </div>
+    </BodySection>
+  );
+}
+
+function WithLabel({ label }: { label: LabelProfile }) {
+  const total = label.classes.reduce((n, c) => n + c.count, 0) + label.other;
+  const shown = label.classes.slice(0, 3);
+  const two = label.classes.length === 2;
+  const ranked = [...label.numbers].sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
+  return (
+    <>
+      <span className="sv-caption">
+        {`Label balance · ${shown.map((c) => `${c.label} ${c.count.toLocaleString()}`).join(" · ")}${label.classes.length > 3 ? ` · ${label.classes.length - 3} more` : ""} · ${shown.map((c) => Math.round((c.count / Math.max(total, 1)) * 100)).join(" / ")}`}
+      </span>
+      <div className="ex-balance" role="img" aria-label="Label balance">
+        {label.classes.map((c, k) => (
+          <i key={c.label} style={{ flexGrow: c.count, opacity: k === 0 ? 1 : 0.36 }} title={`${c.label}: ${c.count.toLocaleString()}`} />
+        ))}
+      </div>
+      <span className="sv-caption">{two ? "Correlation with label · point-biserial r" : "Strength with label · correlation ratio η"}</span>
+      <ul className="ex-diverging" aria-label="Correlation with label">
+        {ranked.map((n) => {
+          const leak = Math.abs(n.r) >= LEAK_R;
+          return (
+            <li key={n.column} className={leak ? "warn" : undefined}>
+              <span className="ex-pair">{n.column}</span>
+              <span className="ex-diverging-track">
+                <i style={n.r >= 0 ? { left: two ? "50%" : "0", width: `${n.r * (two ? 50 : 100)}%` } : { right: "50%", width: `${-n.r * 50}%` }} />
+              </span>
+              <span className="ex-r">{signed(n.r)}</span>
+              <span className="ex-leak">{leak ? "Leak?" : ""}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+function StrongestPairs({ pairs }: { pairs: DatasetProfile["correlation"]["pairs"] }) {
   const strongest = [...pairs].sort((a, b) => Math.abs(b.pearson) - Math.abs(a.pearson)).slice(0, TOP_PAIRS);
+  return (
+    <>
+      <span className="sv-caption">Strongest pairs · Pearson r</span>
+      <ul className="ex-diverging" aria-label="Strongest pairs">
+        {strongest.map((p) => (
+          <li key={`${p.column_a}-${p.column_b}`} className={Math.abs(p.pearson) >= STRONG_R ? "warn" : undefined}>
+            <span className="ex-pair">{`${p.column_a} · ${p.column_b}`}</span>
+            <span className="ex-diverging-track">
+              <i style={p.pearson >= 0 ? { left: "50%", width: `${p.pearson * 50}%` } : { right: "50%", width: `${-p.pearson * 50}%` }} />
+            </span>
+            <span className="ex-r">{signed(p.pearson)}</span>
+            <span className="ex-leak" />
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function Matrix({ columns, pairs, picked }: { columns: string[]; pairs: DatasetProfile["correlation"]["pairs"]; picked: string | undefined }) {
+  const r = new Map(pairs.flatMap((p) => [[`${p.column_a}\u0000${p.column_b}`, p.pearson], [`${p.column_b}\u0000${p.column_a}`, p.pearson]]));
   const anchor = picked !== undefined && columns.includes(picked) ? picked : columns[0]!;
   const moves = pairs
     .filter((p) => p.column_a === anchor || p.column_b === anchor)
@@ -427,49 +525,59 @@ function RelateColumns({ profile, picked }: { profile: DatasetProfile; picked: s
     .sort((a, b) => Math.abs(b.r) - Math.abs(a.r))
     .slice(0, MOVES_WITH);
   return (
-    <BodySection title="Relate columns to each other" note="Which measured numbers move together. Two that move as one say the same thing twice.">
-      <div className="sv-split">
-        <div className="sv-chart">
-          <span className="sv-caption">Strongest pairs · Pearson r</span>
-          <ul className="ex-diverging" aria-label="Strongest pairs">
-            {strongest.map((p) => {
-              const strong = Math.abs(p.pearson) >= STRONG_R;
-              return (
-                <li key={`${p.column_a}-${p.column_b}`} className={strong ? "warn" : undefined}>
-                  <span className="ex-pair">{`${p.column_a} · ${p.column_b}`}</span>
-                  <span className="ex-diverging-track">
-                    <i style={p.pearson >= 0 ? { left: "50%", width: `${p.pearson * 50}%` } : { right: "50%", width: `${-p.pearson * 50}%` }} />
-                  </span>
-                  <span className="ex-r">{signed(p.pearson)}</span>
-                </li>
-              );
-            })}
+    <>
+      <span className="sv-caption">Between numeric columns · grey positive, red negative</span>
+      <div className="ex-matrix" role="img" aria-label="Correlation matrix" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
+        {columns.flatMap((a) =>
+          columns.map((b) => {
+            const v = a === b ? 1 : r.get(`${a}\u0000${b}`);
+            return <i key={`${a}-${b}`} className={v !== undefined && v < 0 ? "neg" : undefined} style={{ opacity: v === undefined ? 0.15 : 0.15 + 0.85 * Math.abs(v) }} title={v === undefined ? `${a} · ${b}: too few rows` : `${a} · ${b}: ${signed(v)}`} />;
+          }),
+        )}
+      </div>
+      {moves.length > 0 && (
+        <>
+          <span className="sv-caption">{`Moves most with ${anchor}`}</span>
+          <ul className="ex-moves" aria-label={`Moves most with ${anchor}`}>
+            {moves.map((m) => (
+              <li key={m.name} className={Math.abs(m.r) >= STRONG_R ? "warn" : undefined}>
+                <span>{m.name}</span>
+                <span>{signed(m.r)}</span>
+              </li>
+            ))}
           </ul>
-        </div>
-        <div className="sv-chart">
-          <span className="sv-caption">Between numeric columns · grey positive, red negative</span>
-          <div className="ex-matrix" role="img" aria-label="Correlation matrix" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
-            {columns.flatMap((a) =>
-              columns.map((b) => {
-                const v = a === b ? 1 : r.get(`${a}\u0000${b}`);
-                return <i key={`${a}-${b}`} className={v !== undefined && v < 0 ? "neg" : undefined} style={{ opacity: v === undefined ? 0.15 : 0.15 + 0.85 * Math.abs(v) }} title={v === undefined ? `${a} · ${b}: too few rows` : `${a} · ${b}: ${signed(v)}`} />;
-              }),
-            )}
+        </>
+      )}
+    </>
+  );
+}
+
+/** The design's group check: the first class's share in each value of a category, the overall
+ * rate a dashed line, a value far from it red. The label rate should not depend on how the
+ * data was collected. */
+function Groups({ label }: { label: LabelProfile }) {
+  const first = label.classes[0]!;
+  const total = label.classes.reduce((n, c) => n + c.count, 0) + label.other;
+  const overall = first.count / Math.max(total, 1);
+  return (
+    <BodySection title="Check groups" note="The label rate should not depend on how the data was collected.">
+      <span className="sv-caption">{`${first.label} share by group · dashed line at the overall ${Math.round(overall * 100)}%`}</span>
+      <div className="ex-groups">
+        <span className="ex-overall" style={{ bottom: `calc(${overall * 100 * 0.9}% * 110 / 100 + 22px)` }} />
+        {label.groups.map((g) => (
+          <div key={g.column} className="ex-group" style={{ flexGrow: g.values.length }}>
+            <ul aria-label={`${first.label} share by ${g.column}`}>
+              {g.values.map((v) => (
+                <li key={v.label} className={Math.abs(v.share - overall) >= GROUP_GAP ? "warn" : undefined} title={`${v.label}: ${Math.round(v.share * 100)}% of ${v.rows.toLocaleString()} rows`}>
+                  <span>{Math.round(v.share * 100)}</span>
+                  <i style={{ height: `${v.share * 90}%` }} />
+                  <b>{v.label}</b>
+                </li>
+              ))}
+            </ul>
+            <span className="ex-group-name">{g.column}</span>
           </div>
-          {moves.length > 0 && (
-            <>
-              <span className="sv-caption">{`Moves most with ${anchor}`}</span>
-              <ul className="ex-moves" aria-label={`Moves most with ${anchor}`}>
-                {moves.map((m) => (
-                  <li key={m.name} className={Math.abs(m.r) >= STRONG_R ? "warn" : undefined}>
-                    <span>{m.name}</span>
-                    <span>{signed(m.r)}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
+        ))}
       </div>
     </BodySection>
   );
