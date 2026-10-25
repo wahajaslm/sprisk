@@ -223,11 +223,12 @@
   --nb-ok: var(--ink-3);
 
   /* Kind tokens: Monochromatic obsidian values from Studio design (original_styles.css) */
-  --kind-source: #a3a3a3;
-  --kind-recipe: #f2f2f2;
-  --kind-view: #f2f2f2;
-  --kind-decision: #ffffff;
-  --kind-model: #e0e0e0;
+  /* The design system's tint per step kind (ICT, dark): a subtle colour on the icon's outline. */
+  --kind-source: #a8b8cf;
+  --kind-recipe: #bcb0d2;
+  --kind-view: #cdbc9a;
+  --kind-decision: #d3ae9f;
+  --kind-model: #bcb0d2;
   --kind-custom: #ffffff;
   --kind-audio: #d4d4d4;
 
@@ -8126,3 +8127,11 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .ds-profile .exp-table td.worse, .exp-body .exp-table td.worse, .exp-compare td.worse { color: var(--danger); }
 .exp-pickers select { font-family: var(--sans); font-size: 13px; }
 .sv-meters li { grid-template-columns: 120px minmax(0, 1fr) 70px; }
+/* Step icons on the canvas and in the step list carry their kind's tint; a step with a problem
+   stays red. */
+.flow-round .round-icon.kind-source, .icon-tile.kind-source { color: var(--kind-source); }
+.flow-round .round-icon.kind-recipe, .icon-tile.kind-recipe { color: var(--kind-recipe); }
+.flow-round .round-icon.kind-view, .icon-tile.kind-view { color: var(--kind-view); }
+.flow-round .round-icon.kind-decision, .icon-tile.kind-decision { color: var(--kind-decision); }
+.flow-round .round-icon.kind-model, .icon-tile.kind-model { color: var(--kind-model); }
+.flow-round.bad .round-icon { color: var(--danger); }

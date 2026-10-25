@@ -55,14 +55,18 @@ export function stageOf(operator: Operator): Stage {
   }
 }
 
+/** A step's kind, as the design system draws it: a source, a chart for a look at the data or a
+ * score, a decision for a split or a gate, a model, else a recipe. */
 export function kindOf(operator: Operator): NodeKind {
   const domain = operator.id.split(".")[1];
   if (domain === "clustering") return "model";
+  if (domain === "validation") return "decision";
   switch (operator.capability_class) {
     case "source":
       return "source";
     case "estimator":
       return "model";
+    case "analyzer":
     case "evaluator":
       return "view";
     default:
