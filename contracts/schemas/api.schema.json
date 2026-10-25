@@ -311,6 +311,32 @@
         }
       }
     },
+    "TableShift": {
+      "title": "TableShift",
+      "description": "How a table's numeric columns differ from another's, such as a split's train rows from its test rows (GET /artifacts/{id}/shift?against=, ADR-0065). Computed by Python on all rows; descriptive, for looking: it never feeds a decision.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "rows", "other_rows", "columns"],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.table_shift/v1"] },
+        "rows": { "type": "integer", "minimum": 0 },
+        "other_rows": { "type": "integer", "minimum": 0 },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/ColumnShift" }, "description": "Each numeric column both tables share, at most 30, largest shift first." }
+      }
+    },
+    "ColumnShift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["column", "ks", "lower", "upper", "counts", "other_counts"],
+      "properties": {
+        "column": { "type": "string" },
+        "ks": { "type": "number", "minimum": 0, "maximum": 1, "description": "Two-sample Kolmogorov-Smirnov statistic: the largest gap between the two tables' cumulative shares." },
+        "lower": { "type": "number", "description": "Lower edge of the shared bins." },
+        "upper": { "type": "number", "description": "Upper edge of the shared bins." },
+        "counts": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "This table's values in 20 equal-width bins over both tables' range." },
+        "other_counts": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "The other table's values in the same bins." }
+      }
+    },
     "LabelProfile": {
       "type": "object",
       "additionalProperties": false,

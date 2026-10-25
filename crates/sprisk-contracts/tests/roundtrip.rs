@@ -10,7 +10,7 @@ use sprisk_contracts::{
     AppliedMethodologyDecision, ApplyMethodologyDecision, Artifact, Attempt, AttemptOutput,
     Binding, CodeDisplay, CodeInterface, CodeSplit, CodeSplitRequest, ConceptSet, CreateRun,
     CreateStudy, CreateWalk, DatasetProfile, DecisionProposal, EvidenceSet, FigureSet,
-    FlowDecisions, KeyMatches, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
+    FlowDecisions, KeyMatches, TableShift, LoadedTable, Method, MethodAnswer, MethodFiles, MethodRequest,
     MethodologyCheck, MethodologyDecision, MethodologyReview, MethodologyRule,
     MethodologyRuleSource, ModelSelection, NotebookCode, NotebookCodeRequest, NotebookExecute,
     NotebookExecution, NotebookExecutionEvent, NotebookKernelRequest, NotebookSettings,
@@ -116,6 +116,7 @@ const ENTITIES: &[&str] = &[
     "study",
     "study_detail",
     "table_page",
+    "table_shift",
     "trial",
     "verification_request",
     "walk",
@@ -233,6 +234,11 @@ fn code_display() {
 #[test]
 fn loaded_table() {
     check::<LoadedTable>("loaded_table");
+}
+
+#[test]
+fn table_shift() {
+    check::<TableShift>("table_shift");
 }
 
 #[test]

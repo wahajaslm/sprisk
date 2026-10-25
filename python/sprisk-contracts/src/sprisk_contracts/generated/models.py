@@ -68,6 +68,34 @@ class Count(RootModel[int]):
     root: Annotated[int, Field(ge=0)]
 
 
+class OtherCount(RootModel[int]):
+    root: Annotated[int, Field(ge=0)]
+
+
+class ColumnShift(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    column: str
+    ks: Annotated[
+        float,
+        Field(
+            description="Two-sample Kolmogorov-Smirnov statistic: the largest gap between the two tables' cumulative shares.",
+            ge=0.0,
+            le=1.0,
+        ),
+    ]
+    lower: Annotated[float, Field(description="Lower edge of the shared bins.")]
+    upper: Annotated[float, Field(description="Upper edge of the shared bins.")]
+    counts: Annotated[
+        list[Count],
+        Field(description="This table's values in 20 equal-width bins over both tables' range."),
+    ]
+    other_counts: Annotated[
+        list[OtherCount], Field(description="The other table's values in the same bins.")
+    ]
+
+
 class GroupShare(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1729,6 +1757,21 @@ class KeyMatches(StrictModel):
         list[KeyMatch],
         Field(
             description="Each column both tables share, in the step's column order; at most 200."
+        ),
+    ]
+
+
+class TableShift(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.table_shift/v1"]
+    rows: Annotated[int, Field(ge=0)]
+    other_rows: Annotated[int, Field(ge=0)]
+    columns: Annotated[
+        list[ColumnShift],
+        Field(
+            description="Each numeric column both tables share, at most 30, largest shift first."
         ),
     ]
 

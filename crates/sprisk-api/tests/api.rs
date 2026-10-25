@@ -10,7 +10,7 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use sprisk_api::{
-    AppState, KernelLimits, Kernels, KeyMatcher, Profiler, Splitter, resume_walks, router,
+    AppState, KernelLimits, Kernels, KeyMatcher, Profiler, Shifter, Splitter, resume_walks, router,
 };
 use sprisk_artifacts::ArtifactStore;
 use sprisk_contracts::{OperatorSource, parse};
@@ -179,6 +179,15 @@ async fn api_with_clock(
                 python.display().to_string(),
                 "-m".into(),
                 "sprisk_profile.keys".into(),
+            ],
+            Duration::from_secs(30),
+            2,
+        ),
+        shifter: Shifter::new(
+            vec![
+                python.display().to_string(),
+                "-m".into(),
+                "sprisk_profile.shift".into(),
             ],
             Duration::from_secs(30),
             2,
@@ -1543,6 +1552,38 @@ async fn a_profile_asked_with_a_label_relates_the_columns_to_it() {
     let (status, labelled) = call(&api.app, "GET", &format!("{path}?target=y"), None).await;
     assert_eq!(status, StatusCode::OK, "{labelled}");
     assert_eq!(labelled["label"]["target"], "y", "{labelled}");
+}
+
+/// The Explore page compares a split's train rows with its test rows (ADR-0065).
+#[tokio::test]
+async fn a_table_is_compared_with_another_column_by_column() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    run_to_end(&api).await;
+    let (_, datasets) = call(&api.app, "GET", "/loaded_tables", None).await;
+    let id = datasets[0]["artifact"]["id"].as_str().unwrap();
+
+    let (status, shift) = call(
+        &api.app,
+        "GET",
+        &format!("/artifacts/{id}/shift?against={id}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{shift}");
+    assert_eq!(shift["rows"], shift["other_rows"], "{shift}");
+    assert_eq!(shift["columns"][0]["ks"], 0.0, "{shift}");
+
+    let (status, body) = call(&api.app, "GET", &format!("/artifacts/{id}/shift"), None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["errors"][0]["code"], "missing_against", "{body}");
 }
 
 /// A table never changes, so its profile is made once and then read from the store (ADR-0065).

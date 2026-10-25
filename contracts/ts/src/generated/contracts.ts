@@ -1171,6 +1171,48 @@ export interface ProfileFinding {
   example?: string;
 }
 /**
+ * How a table's numeric columns differ from another's, such as a split's train rows from its test rows (GET /artifacts/{id}/shift?against=, ADR-0065). Computed by Python on all rows; descriptive, for looking: it never feeds a decision.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "TableShift".
+ */
+export interface TableShift {
+  schema_version: "sprisk.table_shift/v1";
+  rows: number;
+  other_rows: number;
+  /**
+   * Each numeric column both tables share, at most 30, largest shift first.
+   */
+  columns: ColumnShift[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ColumnShift".
+ */
+export interface ColumnShift {
+  column: string;
+  /**
+   * Two-sample Kolmogorov-Smirnov statistic: the largest gap between the two tables' cumulative shares.
+   */
+  ks: number;
+  /**
+   * Lower edge of the shared bins.
+   */
+  lower: number;
+  /**
+   * Upper edge of the shared bins.
+   */
+  upper: number;
+  /**
+   * This table's values in 20 equal-width bins over both tables' range.
+   */
+  counts: number[];
+  /**
+   * The other table's values in the same bins.
+   */
+  other_counts: number[];
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "LabelProfile".
  */

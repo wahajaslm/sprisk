@@ -177,6 +177,15 @@ pub async fn serve_on(
             std::time::Duration::from_secs(60),
             2,
         ),
+        shifter: sprisk_api::Shifter::new(
+            vec![
+                config.python.display().to_string(),
+                "-m".into(),
+                "sprisk_profile.shift".into(),
+            ],
+            std::time::Duration::from_secs(60),
+            2,
+        ),
         code_writer: sprisk_api::CodeWriter::new(
             vec![
                 config.python.display().to_string(),

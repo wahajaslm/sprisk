@@ -21,7 +21,7 @@ pub use kernel::{KernelError, KernelLimits, Kernels};
 pub use method_session::{MethodRunner, MethodSession};
 pub use notebook_code::CodeWriter;
 use profile::Profiles;
-pub use profile::{KeyMatcher, Profiler};
+pub use profile::{KeyMatcher, Profiler, Shifter};
 pub use rules::{RuleRunner, RuleSession};
 pub use split::{SplitError, Splitter};
 
@@ -78,6 +78,8 @@ pub struct AppState {
     pub profiler: Profiler,
     /// Matches the rows a step reads to another table, to decide a join (ADR-0059).
     pub key_matcher: KeyMatcher,
+    /// Compares a table's numeric columns with another's, such as train with test (ADR-0065).
+    pub shifter: Shifter,
     /// Writes a ready-made step as plain Python for a notebook cell (ADR-0055).
     pub code_writer: CodeWriter,
     /// Runs a methodology rule's Python decide() (ADR-0042).
@@ -157,6 +159,7 @@ pub fn router(state: AppState) -> Router {
         .route("/artifacts/{id}/rows", get(get_artifact_rows))
         .route("/artifacts/{id}/figures", get(get_artifact_figures))
         .route("/artifacts/{id}/profile", get(get_artifact_profile))
+        .route("/artifacts/{id}/shift", get(get_artifact_shift))
         .route("/loaded_tables", get(list_loaded_tables))
         .route("/notebook_versions", post(create_notebook_version))
         .route("/notebook_versions/{id}", get(get_notebook_version))
@@ -3094,6 +3097,38 @@ async fn get_artifact_profile(
         .save_profile(content, code, target, &made)
         .await?;
     Ok(Json(made))
+}
+
+/// How a table's numeric columns differ from another table's (`?against=`), such as a split's
+/// train rows from its test rows (ADR-0065). Computed by Python; the browser gets counts only.
+async fn get_artifact_shift(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    query: Query,
+) -> Result<Json<sprisk_contracts::TableShift>, ApiError> {
+    let Some(against) = query.get("against") else {
+        return Err(ApiError::BadRequest {
+            code: "missing_against",
+            message: format!(
+                "say which table to compare artifact {raw} with: ?against=<artifact id>"
+            ),
+        });
+    };
+    let mut paths = Vec::with_capacity(2);
+    for raw in [raw.as_str(), against.as_str()] {
+        let artifact = state.store.get_artifact(&id(raw)?).await?;
+        if artifact.media_type.as_str() != PARQUET {
+            return Err(ApiError::BadRequest {
+                code: "not_a_table",
+                message: format!(
+                    "artifact {raw} is {}, not a table",
+                    artifact.media_type.as_str()
+                ),
+            });
+        }
+        paths.push(local_table(&artifact)?);
+    }
+    Ok(Json(state.shifter.shift(&paths[0], &paths[1]).await?))
 }
 
 /// The local file behind a table artifact; only local tables can be profiled yet.

@@ -1,0 +1,8 @@
+{
+  "schema_version": "sprisk.table_shift/v1",
+  "rows": 400,
+  "other_rows": 100,
+  "columns": [
+    { "column": "moved", "lower": 0.5, "upper": 79.5, "counts": [1], "other_counts": [1] }
+  ]
+}

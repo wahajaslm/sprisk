@@ -45,6 +45,7 @@ export interface Entities {
   LoadedTable: C.LoadedTable;
   DatasetProfile: C.DatasetProfile;
   KeyMatches: C.KeyMatches;
+  TableShift: C.TableShift;
   NotebookVersion: C.NotebookVersion;
   NotebookExecute: C.NotebookExecute;
   NotebookExecution: C.NotebookExecution;

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-use sprisk_contracts::{DatasetProfile, KeyMatches, parse};
+use sprisk_contracts::{DatasetProfile, KeyMatches, TableShift, parse};
 
 use crate::bounded::{BoundedProcess, ProcessError};
 
@@ -86,6 +86,30 @@ impl KeyMatcher {
         let paths = format!("{}\n{}\n", rows.display(), other.display());
         let text = self.0.run(paths.into_bytes()).await?;
         parse(&text).map_err(|e| ProcessError::Failed(format!("invalid key matches: {e}")))
+    }
+}
+
+/// The command that compares one table's numeric columns with another's
+/// (`python -m sprisk_profile.shift`, ADR-0065), how long it may take, and how many at once.
+#[derive(Clone, Debug)]
+pub struct Shifter(BoundedProcess);
+
+impl Shifter {
+    pub fn new(command: Vec<String>, timeout: Duration, at_once: usize) -> Self {
+        Self(BoundedProcess::new(
+            "table shift",
+            command,
+            timeout,
+            at_once,
+        ))
+    }
+
+    /// How the Parquet table at `rows` differs from the one at `other`, checked against the
+    /// contract.
+    pub async fn shift(&self, rows: &Path, other: &Path) -> Result<TableShift, ProcessError> {
+        let paths = format!("{}\n{}\n", rows.display(), other.display());
+        let text = self.0.run(paths.into_bytes()).await?;
+        parse(&text).map_err(|e| ProcessError::Failed(format!("invalid table shift: {e}")))
     }
 }
 

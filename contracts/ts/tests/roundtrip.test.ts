@@ -41,6 +41,7 @@ const entities: [keyof Entities, string][] = [
   ["LoadedTable", "loaded_table"],
   ["DatasetProfile", "dataset_profile"],
   ["KeyMatches", "key_matches"],
+  ["TableShift", "table_shift"],
   ["CodeInterface", "code_interface"],
   ["CodeSplitRequest", "code_split_request"],
   ["CodeSplit", "code_split"],
