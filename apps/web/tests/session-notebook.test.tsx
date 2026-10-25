@@ -278,7 +278,7 @@ describe("the session notebook (ADR-0036)", () => {
     server.use(http.get("/api/notebooks", () => HttpResponse.json([unlinked])));
     useSelection.setState({ pipelineVersionId: pipeline.id });
     renderWithApi(<NotebooksPage />);
-    const loose = await screen.findByRole("list", { name: "Not in a flow yet" });
+    const loose = await screen.findByRole("list", { name: "Not in a pipeline yet" });
     await userEvent.click(within(loose).getByRole("button", { name: "Sales analysis" }));
     await userEvent.click(await screen.findByRole("button", { name: "Saved" }));
     await waitFor(() => expect(sent.versions).toHaveLength(1));
@@ -301,7 +301,7 @@ describe("the session notebook (ADR-0036)", () => {
     expect(mine.map((n) => n.from_notebook?.cells)).toEqual([["params"], ["load"], ["filter"], ["show"]]);
     expect(mine.every((n) => n.from_notebook?.notebook_version_id === sent.saved[0]!.id)).toBe(true);
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(flow.id));
-    expect(await screen.findByText("Flow updated: 4 steps from this notebook.")).toBeInTheDocument();
+    expect(await screen.findByText("Pipeline updated: 4 steps from this notebook.")).toBeInTheDocument();
   });
 
   it("Run all runs the cells and brings the flow up to date", async () => {

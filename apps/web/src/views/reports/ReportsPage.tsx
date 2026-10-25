@@ -157,12 +157,12 @@ function EntryReport({ entry, question, history, versions }: {
           <section className="report-section" aria-label="Evidence">
             <h3 className="report-h">Evidence</h3>
             {usedBy.length === 0 ? (
-              <p className="muted">No flow uses this question yet.</p>
+              <p className="muted">No pipeline uses this question yet.</p>
             ) : (
               <div className="report-links">
                 {usedBy.map(({ head }) => (
                   <Button key={head.id} onClick={() => { selectPipelineVersion(head.id); setNav("Flow"); }}>
-                    Open flow {flowName(head)}
+                    Open pipeline {flowName(head)}
                   </Button>
                 ))}
               </div>
@@ -201,7 +201,7 @@ function Sources() {
   if (tables.isPending) return <Loading text="Loading sources…" pad />;
   if (tables.data.length === 0) return <p className="muted pad">No data loaded yet.</p>;
   return (
-    <BodySection title="Loaded tables" note="The data the flows read.">
+    <BodySection title="Loaded tables" note="The data the pipelines read.">
       <RowList label="Sources">
         {tables.data.map((t) => (
           <RowItem key={t.artifact.id} name={t.name} meta={tableSize(t)} />

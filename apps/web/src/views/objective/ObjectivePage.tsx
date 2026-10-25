@@ -382,13 +382,13 @@ export function ObjectivePage() {
                   Question Revision · {question.id.slice(-8)}
                   {currentPipeline?.question_version_id === question.id && (
                     <span style={{ marginLeft: 8 }}>
-                      <Tag tone="default">Active in current flow</Tag>
+                      <Tag tone="default">Active in current pipeline</Tag>
                     </span>
                   )}
                 </span>
                 {currentPipeline && currentPipeline.question_version_id !== question.id && (
                   <Button variant="secondary" size="sm" onClick={() => linkToPipeline(question.id)}>
-                    Link to current flow
+                    Link to current pipeline
                   </Button>
                 )}
               </div>
@@ -563,7 +563,7 @@ export function ObjectivePage() {
               <h3 className="from-data-head">From the data</h3>
               {tables.length === 0 ? (
                 <p className="muted pad" style={{ fontSize: "var(--fs-13)" }}>
-                  No datasets loaded yet. Add a loader step to the flow to profile real data.
+                  No datasets loaded yet. Add a loader step to the pipeline to profile real data.
                 </p>
               ) : (
                 <div className="from-data-grid">
@@ -836,8 +836,8 @@ export function ObjectivePage() {
                 {/* Stated before any walk */}
                 <div className="ds-form-card">
                   <div className="ds-form-card-head">
-                    <span className="ds-form-card-title">Before the walk</span>
-                    <span className="ds-form-card-desc">No data can give these, so a walk starts only once they are stated</span>
+                    <span className="ds-form-card-title">Before the run</span>
+                    <span className="ds-form-card-desc">No data can give these, so a run starts only once they are stated</span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                     <div className="ds-form-field">

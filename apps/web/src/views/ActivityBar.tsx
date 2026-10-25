@@ -1,4 +1,4 @@
-import { NAV, type Nav, useSelection } from "../workbench/selection.ts";
+import { NAV, NAV_LABEL, type Nav, useSelection } from "../workbench/selection.ts";
 import {
   ObjectiveIcon,
   FlowIcon,
@@ -39,9 +39,9 @@ export function ActivityBar() {
               key={tab}
               type="button"
               className={`activity-btn ${active ? "active" : ""}`}
-              aria-label={tab}
+              aria-label={NAV_LABEL[tab]}
               aria-current={active ? "page" : undefined}
-              title={tab}
+              title={NAV_LABEL[tab]}
               onClick={() => setNav(tab)}
             >
               <span className="activity-bar-indicator" />

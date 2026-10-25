@@ -104,7 +104,7 @@ function ModuleCode({ pipeline, nodeId, operator }: Props) {
       <div className="code-actions">
         <span className="muted">
           <span className="tech">{builtin.data.path}</span>
-          {own ? " · edited in this flow" : " · built-in"}
+          {own ? " · edited in this pipeline" : " · built-in"}
         </span>
         <span className="spacer" />
         {saveAndRun.isError && <span role="alert" className="error">{saveAndRun.error.message}</span>}

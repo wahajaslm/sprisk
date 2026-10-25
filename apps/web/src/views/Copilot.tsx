@@ -5,7 +5,7 @@ import { usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { askCopilot } from "../api/copilot.ts";
 import { flowName } from "../flow/labels.ts";
 import { hasOutputs, isGateNode, latestByNode } from "../flow/latest.ts";
-import { useSelection } from "../workbench/selection.ts";
+import { NAV_LABEL, useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { PanelToggleIcon, SendIcon, SparkIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
@@ -55,7 +55,7 @@ export function Copilot() {
       ? `${flowName(flow)} · ${flow.nodes.length} steps`
       : nav === "Objective"
         ? "Objective · Ledger"
-        : `${nav} · Context`;
+        : `${NAV_LABEL[nav]} · Context`;
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isSending) return;
@@ -115,7 +115,7 @@ export function Copilot() {
           <>
             {/* Facts only: no example card stands in for an answer the model has not given. */}
             <CopilotMessage role="assistant">
-              Ask about this {nav === "Flow" ? "flow" : nav.toLowerCase()}. Answers come from the local model and can be wrong; check them against the evidence.
+              Ask about this {NAV_LABEL[nav].toLowerCase()}. Answers come from the local model and can be wrong; check them against the evidence.
             </CopilotMessage>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>

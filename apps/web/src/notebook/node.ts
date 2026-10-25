@@ -13,7 +13,7 @@ export function bindInputs(base: PipelineVersion | undefined, inputs: string[]):
   const links: Link[] = [];
   for (const name of inputs) {
     const makers = (base?.nodes ?? []).filter((n) => isNotebookStep(n.operator) && namesOf(n.params["outputs"]).includes(name));
-    if (makers.length === 0) return { refused: `No step in this flow makes ${name}. Pick the cells that make it too, or create their node first.` };
+    if (makers.length === 0) return { refused: `No step in this pipeline makes ${name}. Pick the cells that make it too, or create their node first.` };
     if (makers.length > 1) {
       const ids = makers.map((n) => n.id);
       return { refused: `Steps ${ids.slice(0, -1).join(", ")} and ${ids.at(-1)} both make ${name}. Rename one, or pick the cells that make it too.` };

@@ -8,7 +8,7 @@ import { pipeline } from "./fixtures.ts";
 describe("linking a notebook step's inputs (ADR-0037)", () => {
   it("never links an input to a built-in step by its name, which could be a holdout", () => {
     expect(bindInputs(pipeline, ["split_test"])).toEqual({
-      refused: "No step in this flow makes split_test. Pick the cells that make it too, or create their node first.",
+      refused: "No step in this pipeline makes split_test. Pick the cells that make it too, or create their node first.",
     });
   });
 

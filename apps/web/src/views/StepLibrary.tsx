@@ -112,7 +112,7 @@ export function StepLibrary() {
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
       {checks.status === "error" && <p role="alert" className="error pad">{checks.message}</p>}
       {tab === "Pipeline" && decided.isError && (
-        <p role="alert" className="error">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>
+        <p role="alert" className="error">The pipeline's decisions could not be read, so steps show by stage only: {decided.error.message}</p>
       )}
       {tab === "Pipeline" &&
         (pipelineStages.length === 0 ? (

@@ -136,7 +136,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
     serve();
     await openInvestigation();
     const summary = await screen.findByRole("region", { name: "Summary" });
-    expect(summary).toHaveTextContent("asked you 1 question, made 3 decisions and ran the flow 2 times");
+    expect(summary).toHaveTextContent("asked you 1 question, made 3 decisions and ran the pipeline 2 times");
     expect(summary).toHaveTextContent("It then scored the model on the held-out test rows, once.");
     expect(within(summary).getByText((report as Report).answer.statement)).toBeInTheDocument();
   });
@@ -144,7 +144,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
   it("shows the walk at a glance: set up, first look, asked, decided, checked, scored", async () => {
     serve();
     await openInvestigation();
-    const glance = await screen.findByRole("list", { name: "The walk at a glance" });
+    const glance = await screen.findByRole("list", { name: "The run at a glance" });
     expect(within(glance).getAllByRole("listitem").map((i) => i.textContent)).toEqual([
       "Set upLoad, split, baseline",
       "First look0 measurements",
@@ -205,7 +205,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
     serve({ ...decided, decisions: [...decided.decisions, unchanged] });
     await openInvestigation();
     const card = await screen.findByRole("article", { name: "Class balance" });
-    expect(within(card).getByText("Leaves the flow unchanged.")).toBeInTheDocument();
+    expect(within(card).getByText("Leaves the pipeline unchanged.")).toBeInTheDocument();
   });
 
   it("shows the walk's report: its answer, each claim and its limitations", async () => {
@@ -220,7 +220,7 @@ describe("a dataset's investigation (ADR-0065)", () => {
   it("says a walk that has not completed has no report yet", async () => {
     serve(decided, { ...walk, stop: { reason: "needs_person", detail: "Two questions are open." } });
     await openInvestigation();
-    expect(await screen.findByText("No report yet. The walk stopped: Two questions are open.")).toBeInTheDocument();
+    expect(await screen.findByText("No report yet. The run stopped: Two questions are open.")).toBeInTheDocument();
   });
 
   it("says when no investigation has used the table", async () => {

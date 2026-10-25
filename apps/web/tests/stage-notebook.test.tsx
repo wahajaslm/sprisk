@@ -94,7 +94,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
   it("shows a ready-made step with no plain code yet as one line saying so, never a form", async () => {
     withApi();
     renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Split")} />);
-    expect(await screen.findByText("# sprisk.validation.random_split@1.0.0 has no plain code yet; its settings are in the flow's Parameters tab.")).toBeInTheDocument();
+    expect(await screen.findByText("# sprisk.validation.random_split@1.0.0 has no plain code yet; its settings are in the pipeline's Parameters tab.")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Cell 1" })).not.toBeInTheDocument();
   });
@@ -102,7 +102,7 @@ describe("a stage in the notebook editor (ADR-0055)", () => {
   it("asks for plain code only from steps that write it", async () => {
     const sent = withApi();
     renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Split")} />);
-    await screen.findByText("# sprisk.validation.random_split@1.0.0 has no plain code yet; its settings are in the flow's Parameters tab.");
+    await screen.findByText("# sprisk.validation.random_split@1.0.0 has no plain code yet; its settings are in the pipeline's Parameters tab.");
     renderWithApi(<StageNotebook pipeline={flow} section={sectionOf(flow, "Features")} />);
     await screen.findByRole("textbox", { name: "Cell 2" });
     expect(sent.code).toEqual(["sprisk.clean.impute@1.0.0"]);

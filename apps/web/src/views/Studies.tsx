@@ -43,16 +43,16 @@ const PROTOCOL: { field: keyof Study; label: string }[] = [
 function StudyCard({ id, versions, siblings }: { id: string; versions: PipelineVersion[]; siblings: Study[] }) {
   const detail = useStudy(id);
   const scores = useTrialScores(detail.data?.trials ?? []);
-  if (detail.isError) return <p role="alert" className="error pad">Study {id} cannot be shown: {detail.error.message}</p>;
-  if (!detail.data) return <p className="muted pad">Loading study {id}…</p>;
+  if (detail.isError) return <p role="alert" className="error pad">Experiment {id} cannot be shown: {detail.error.message}</p>;
+  if (!detail.data) return <p className="muted pad">Loading experiment {id}…</p>;
   const { study, trials } = detail.data;
   const finished = trials.filter((t) => t.state === "succeeded").length;
   const tuned = trials.filter((t) => Object.keys(t.settings).length > 0);
   const lines = parallelLines(tuned, scores, "score");
   return (
-    <section className="exp-study" aria-label={`Study of ${study.node_id}`}>
+    <section className="exp-study" aria-label={`Experiment of ${study.node_id}`}>
       <header className="exp-study-head">
-        <h3>{`Study of ${study.node_id}`}</h3>
+        <h3>{`Experiment of ${study.node_id}`}</h3>
         <span className={`status-${study.status}`}>{study.status.replaceAll("_", " ")}</span>
       </header>
       <p className="muted">
@@ -61,7 +61,7 @@ function StudyCard({ id, versions, siblings }: { id: string; versions: PipelineV
       </p>
       {study.guardrails.map((g, i) => (
         <p key={i} className="muted">
-          Guardrail: recall of {g.label} at least {g.at_least}, declared before this study's scores.
+          Guardrail: recall of {g.label} at least {g.at_least}, declared before this experiment's scores.
         </p>
       ))}
       {siblings.length > 0 && <Siblings study={study} siblings={siblings} />}
@@ -79,11 +79,11 @@ function StudyCard({ id, versions, siblings }: { id: string; versions: PipelineV
       </div>
       {study.status === "budget_reached" && (
         <p className="exp-caution">
-          The wall-time budget ran out: {finished} finished trials are kept and nothing was decided. A study with more time reuses them.
+          The wall-time budget ran out: {finished} finished trials are kept and nothing was decided. An experiment with more time reuses them.
         </p>
       )}
       {study.status === "completed" && <StudyDecision study={study} versions={versions} />}
-      {study.status === "failed" && <p role="alert" className="error">The study failed: a step failed after its retries.</p>}
+      {study.status === "failed" && <p role="alert" className="error">The experiment failed: a step failed after its retries.</p>}
     </section>
   );
 }
@@ -133,7 +133,7 @@ function TrialTable({ trials, scores }: { trials: StudyDetail["trials"]; scores:
         {ranked.map((t) => (
           <tr key={t.node_id}>
             <td className="mono">{t.candidate}</td>
-            <td className="mono">{Object.keys(t.settings).length === 0 ? "the flow's settings" : showSettings(t.settings)}</td>
+            <td className="mono">{Object.keys(t.settings).length === 0 ? "the pipeline's settings" : showSettings(t.settings)}</td>
             <td className={`mono status-${t.state}`}>{t.state.replaceAll("_", " ")}</td>
             <td className="num mono">{scores.has(t.node_id) ? formatMetric(scores.get(t.node_id)!) : "—"}</td>
           </tr>
@@ -148,9 +148,9 @@ function StudyDecision({ study, versions }: { study: Study; versions: PipelineVe
   const proposal = useMethodologyProposal(study.proposal_id);
   const comparison = versions.find((v) => v.id === study.comparison_id);
   const base = versions.find((v) => v.id === study.pipeline_version_id);
-  if (proposal.isError) return <p role="alert" className="error">The study's proposal cannot be read: {proposal.error.message}</p>;
+  if (proposal.isError) return <p role="alert" className="error">The experiment's proposal cannot be read: {proposal.error.message}</p>;
   if (!proposal.data || !comparison || !base) return <p className="muted">Loading the decision…</p>;
-  return <Comparison comparison={comparison} proposal={proposal.data} base={base} label={`Decision of study ${study.id}`} />;
+  return <Comparison comparison={comparison} proposal={proposal.data} base={base} label={`Decision of experiment ${study.id}`} />;
 }
 
 /** Starts a study: a strategy and a budget, both stated; settings come from model manifests. */
@@ -164,7 +164,7 @@ function NewStudy({ pipelineId, nodeId }: { pipelineId: string; nodeId: string }
   const [label, setLabel] = useState("");
   const [atLeast, setAtLeast] = useState("");
   if (!open) {
-    return <Button onClick={() => setOpen(true)}>{`Study ${nodeId}`}</Button>;
+    return <Button onClick={() => setOpen(true)}>{`Experiment ${nodeId}`}</Button>;
   }
   const request: StudyRequest = {
     strategy,
@@ -176,7 +176,7 @@ function NewStudy({ pipelineId, nodeId }: { pipelineId: string; nodeId: string }
   return (
     <form
       className="method-choice"
-      aria-label={`New study of ${nodeId}`}
+      aria-label={`New experiment of ${nodeId}`}
       onSubmit={(e) => {
         e.preventDefault();
         create.mutate({ pipelineId, nodeId, request }, { onSuccess: () => setOpen(false) });
@@ -216,7 +216,7 @@ function NewStudy({ pipelineId, nodeId }: { pipelineId: string; nodeId: string }
         <button type="button" className="page-btn" onClick={() => setOpen(false)}>Cancel</button>
         <span className="spacer" />
         <button type="submit" className="run-code" disabled={create.isPending || (label.trim() === "") !== (atLeast === "")}>
-          {create.isPending ? "Starting…" : "Start the study"}
+          {create.isPending ? "Starting…" : "Start the experiment"}
         </button>
       </div>
       {create.isError && <p role="alert" className="error">{create.error.message}</p>}

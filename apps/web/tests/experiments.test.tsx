@@ -376,7 +376,7 @@ describe("model comparison", () => {
         HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : []),
       ),
     );
-    expect(await screen.findByText("Run the flow, and Sprisk will compare models for model.")).toBeInTheDocument();
+    expect(await screen.findByText("Run the pipeline, and Sprisk will compare models for model.")).toBeInTheDocument();
   });
 
   it("warns when the model was chosen after another branch had scored the test rows", async () => {
@@ -547,8 +547,8 @@ describe("model comparison", () => {
         expect.stringContaining('clean.impute · columns: ["x"], method: mean'),
         expect.stringContaining('ml.linear_model · target: y, features: ["x"], task: classification'),
       ]);
-      expect(mean).toHaveTextContent("Differs from the flow: impute · method: median → mean");
-      expect(screen.getByRole("region", { name: "Detail of impute_median" })).toHaveTextContent("Differs from the flow: nothing");
+      expect(mean).toHaveTextContent("Differs from the pipeline: impute · method: median → mean");
+      expect(screen.getByRole("region", { name: "Detail of impute_median" })).toHaveTextContent("Differs from the pipeline: nothing");
       await userEvent.click(within(steps).getByRole("button", { name: "Code of sprisk.clean.impute@1.0.0" }));
       expect(await within(mean).findByRole("textbox", { name: "Code of sprisk_clean/impute.py" })).toHaveValue("def impute(train, test, columns, method):\n    ...\n");
     });
@@ -572,7 +572,7 @@ describe("model comparison", () => {
       await userEvent.click(await screen.findByRole("checkbox", { name: "Compare pass_through in detail" }));
       const detail = await screen.findByRole("region", { name: "Detail of pass_through" });
       expect(within(within(detail).getByRole("list", { name: "Steps of pass_through" })).getAllByRole("listitem")).toHaveLength(2);
-      expect(detail).toHaveTextContent("Differs from the flow: impute removed");
+      expect(detail).toHaveTextContent("Differs from the pipeline: impute removed");
     });
 
     it("says a choice replaces the flow step's own code, even with the same settings", async () => {
@@ -580,7 +580,7 @@ describe("model comparison", () => {
       const edited = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.id === "impute" ? { ...n, code: { source: "def impute(train, test, columns, method):\n    return train, test\n", function: "impute" } } : n)) };
       server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([prepComparison, edited])));
       const median = await screen.findByRole("region", { name: "Detail of impute_median" });
-      expect(median).toHaveTextContent("Differs from the flow: impute · its own code → sprisk.clean.impute@1.0.0's code");
+      expect(median).toHaveTextContent("Differs from the pipeline: impute · its own code → sprisk.clean.impute@1.0.0's code");
     });
 
     it("asks for a run before Sprisk can compare the step's choices", async () => {
@@ -591,7 +591,7 @@ describe("model comparison", () => {
           HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : []),
         ),
       );
-      expect(await screen.findByText("Run the flow, and Sprisk will compare its choices for impute.")).toBeInTheDocument();
+      expect(await screen.findByText("Run the pipeline, and Sprisk will compare its choices for impute.")).toBeInTheDocument();
     });
 
     it("says so, without alarm, when a step has nothing to compare", async () => {

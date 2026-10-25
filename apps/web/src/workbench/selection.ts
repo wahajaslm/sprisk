@@ -13,6 +13,19 @@ export const NAV = [
 ] as const;
 export type Nav = (typeof NAV)[number];
 
+/** What each page is called on screen. The ids stay, since hashes and links use them. */
+export const NAV_LABEL: Record<Nav, string> = {
+  Objective: "Objective",
+  Flow: "Pipeline",
+  Datasets: "Datasets",
+  Notebooks: "Notebooks",
+  Methodology: "Methodology",
+  Experiments: "Experiments",
+  Deploy: "Deploy",
+  Reports: "Reports",
+  Settings: "Settings",
+};
+
 export const EXPERIMENTS_TABS = ["Monitor", "Compare", "Sweep"] as const;
 export type ExperimentsTab = (typeof EXPERIMENTS_TABS)[number];
 

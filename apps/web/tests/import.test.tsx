@@ -78,7 +78,7 @@ describe("import a notebook (ADR-0036)", () => {
   it("opens from the flow menu", async () => {
     server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([pipeline])));
     renderWithApi(<TopBar />);
-    await userEvent.click(await screen.findByRole("button", { name: "Project and flow" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Project and pipeline" }));
     await userEvent.click(screen.getByRole("button", { name: "Import notebook…" }));
     expect(screen.getByRole("dialog", { name: "Import notebook" })).toBeInTheDocument();
   });

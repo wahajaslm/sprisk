@@ -17,7 +17,7 @@ describe("FlowInspector", () => {
   it("asks for a step before showing checks, and never shows a made-up rule", () => {
     renderWithApi(<FlowInspector />);
 
-    expect(screen.getByText("Select a step in the flow to inspect its methodology.")).toBeInTheDocument();
+    expect(screen.getByText("Select a step in the pipeline to inspect its methodology.")).toBeInTheDocument();
     for (const fake of FAKE) expect(screen.queryByText(fake)).not.toBeInTheDocument();
   });
 
@@ -35,9 +35,9 @@ describe("FlowInspector", () => {
     await waitFor(() => expect(useWorkbench.getState().dock).toBeDefined());
 
     await userEvent.click(screen.getByRole("button", { name: "Collapse panel" }));
-    expect(screen.getByRole("region", { name: "Flow Inspector" })).toHaveClass("collapsed");
+    expect(screen.getByRole("region", { name: "Pipeline Inspector" })).toHaveClass("collapsed");
     await userEvent.click(screen.getByRole("button", { name: "Expand panel" }));
-    expect(screen.getByRole("region", { name: "Flow Inspector" })).not.toHaveClass("collapsed");
+    expect(screen.getByRole("region", { name: "Pipeline Inspector" })).not.toHaveClass("collapsed");
   });
 
   it("can float its tabs out of the panel", async () => {

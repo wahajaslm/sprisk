@@ -17,7 +17,7 @@ const PHASE: Record<NonNullable<MethodologyCheck["phase"]>, string> = {
 export function ChecksTab({ run, nodeId }: { run: RunChecks; nodeId: string }) {
   const rules = useMethodologyRules();
   if (run.status === "error") return <p role="alert" className="error">{run.message}</p>;
-  if (run.status === "none") return <p className="muted">No methodology run for this flow yet.</p>;
+  if (run.status === "none") return <p className="muted">No methodology run for this pipeline yet.</p>;
   if (run.status === "loading") return <Loading />;
   const mine = run.checks.filter((c) => c.cited_nodes.includes(nodeId));
   if (mine.length === 0) return <p className="muted">No methodology check concerns this step.</p>;

@@ -61,7 +61,7 @@ describe("settings", () => {
     await open("Data");
     const data = await screen.findByRole("list", { name: "Data" });
     expect(data).toHaveTextContent("diabetes.csv");
-    expect(data).toHaveTextContent("442 rows · 11 columns · used by 2 flows");
+    expect(data).toHaveTextContent("442 rows · 11 columns · used by 2 pipelines");
   });
 
   it("says what is not available in local mode instead of showing made-up status", async () => {

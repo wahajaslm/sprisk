@@ -137,7 +137,7 @@ function studied(status: string, runStatus: string, forestState: string, decisio
 }
 
 // The first test of the file also loads the page's modules, so it may take past the 1 s default.
-const studyRegion = () => screen.findByRole("region", { name: "Study of model" }, { timeout: 3000 });
+const studyRegion = () => screen.findByRole("region", { name: "Experiment of model" }, { timeout: 3000 });
 
 describe("studies", () => {
   it("shows a running study's budget, what it searched and its trials side by side", async () => {
@@ -146,14 +146,14 @@ describe("studies", () => {
     expect(region).toHaveTextContent("random search, seed 7");
     await waitFor(() => expect(region).toHaveTextContent("3 of 4 trials finished"));
     expect(region).toHaveTextContent("budget 4 trials, wall time 600 s, until 2026-10-21T10:10:01Z");
-    expect(region).toHaveTextContent("Guardrail: recall of bad at least 0.6, declared before this study's scores");
+    expect(region).toHaveTextContent("Guardrail: recall of bad at least 0.6, declared before this experiment's scores");
     expect(within(region).getByLabelText("Search space")).toHaveTextContent("min_samples_leaf1 – 5");
     const table = within(region).getByRole("table", { name: "Trials" });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows).toHaveLength(4);
     expect(rows[2]).toHaveTextContent("ml_random_forestmin_samples_leaf: 1succeeded—");
     expect(rows[3]).toHaveTextContent("ml_random_forestmin_samples_leaf: 5running—");
-    expect(rows[1]).toHaveTextContent("ml_linear_modelthe flow's settingssucceeded—");
+    expect(rows[1]).toHaveTextContent("ml_linear_modelthe pipeline's settingssucceeded—");
   });
 
   it("ranks the trials by their mean fold score and draws them as parallel coordinates", async () => {
@@ -185,7 +185,7 @@ describe("studies", () => {
     const region = await studyRegion();
     const table = await within(region).findByRole("table", { name: "Candidates" });
     const row = (label: string) => within(table).getByRole("row", { name: new RegExp(`^${label}`) });
-    expect(row("Settings")).toHaveTextContent("the flow'sthe flow'smin_samples_leaf: 5");
+    expect(row("Settings")).toHaveTextContent("the pipeline'sthe pipeline'smin_samples_leaf: 5");
     expect(row("Recall of bad")).toHaveTextContent("0.55 ± 0.04 misses0.55 ± 0.04 misses0.66 ± 0.04 meets it");
     expect(region).toHaveTextContent("comparison was started 1 time before on the same folds");
     // The study's comparison is shown in the study, not again as a model comparison.
@@ -216,8 +216,8 @@ describe("studies", () => {
 
   it("starts a study with the budget and guardrail asked for, and shows why one is refused", async () => {
     const { created } = studied("completed", "succeeded", "succeeded");
-    await userEvent.click(await screen.findByRole("button", { name: "Study model" }));
-    const form = screen.getByRole("form", { name: "New study of model" });
+    await userEvent.click(await screen.findByRole("button", { name: "Experiment model" }));
+    const form = screen.getByRole("form", { name: "New experiment of model" });
     await userEvent.click(within(form).getByRole("radio", { name: "Random" }));
     await userEvent.clear(within(form).getByLabelText("Seed"));
     await userEvent.type(within(form).getByLabelText("Seed"), "3");
@@ -227,7 +227,7 @@ describe("studies", () => {
     await userEvent.type(within(form).getByLabelText("Most seconds"), "300");
     await userEvent.type(within(form).getByLabelText("Minimum recall of class"), "bad");
     await userEvent.type(within(form).getByLabelText("At least"), "0.6");
-    await userEvent.click(within(form).getByRole("button", { name: "Start the study" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Start the experiment" }));
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toMatchObject({
       strategy: "random",
@@ -244,7 +244,7 @@ describe("study states and the form", () => {
   it("says a study failed", async () => {
     studied("failed", "failed", "failed");
     const region = await studyRegion();
-    expect(await within(region).findByRole("alert")).toHaveTextContent("The study failed: a step failed after its retries.");
+    expect(await within(region).findByRole("alert")).toHaveTextContent("The experiment failed: a step failed after its retries.");
   });
 
   it("says when no shortlisted model declares settings to search", async () => {
@@ -260,9 +260,9 @@ describe("study states and the form", () => {
 
   it("sends nothing while a budget field is empty or a guardrail is half filled", async () => {
     const { created } = studied("completed", "succeeded", "succeeded");
-    await userEvent.click(await screen.findByRole("button", { name: "Study model" }));
-    const form = screen.getByRole("form", { name: "New study of model" });
-    const start = within(form).getByRole("button", { name: "Start the study" });
+    await userEvent.click(await screen.findByRole("button", { name: "Experiment model" }));
+    const form = screen.getByRole("form", { name: "New experiment of model" });
+    const start = within(form).getByRole("button", { name: "Start the experiment" });
     await userEvent.type(within(form).getByLabelText("At least"), "0.6");
     expect(start).toBeDisabled();
     await userEvent.clear(within(form).getByLabelText("At least"));
@@ -292,7 +292,7 @@ describe("several studies of one step", () => {
         HttpResponse.json({ study: other, trials: trials("succeeded"), run: comparisonRun }),
       ),
     );
-    const cards = await screen.findAllByRole("region", { name: "Study of model" });
+    const cards = await screen.findAllByRole("region", { name: "Experiment of model" });
     expect(cards).toHaveLength(2);
     for (const card of cards) {
       await waitFor(() => expect(card).toHaveTextContent("model has 2 studies on the same folds"));

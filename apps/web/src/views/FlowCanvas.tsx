@@ -588,19 +588,19 @@ export function FlowCanvas() {
   if (versions.isError) return <p role="alert" className="error pad">{versions.error.message}</p>;
   if (operators.isError) return <p role="alert" className="error pad">{operators.error.message}</p>;
   // Decisions place steps in their activity's card: lay out once they are read, not twice.
-  if (versions.isPending || operators.isPending || (pipelineVersionId && decided.isPending)) return <Loading text="Loading flow…" pad />;
+  if (versions.isPending || operators.isPending || (pipelineVersionId && decided.isPending)) return <Loading text="Loading pipeline…" pad />;
   const pipeline = pipelineNow;
-  if (!pipeline) return <p className="muted pad">No flow yet. Submit one with <code>sprisk run</code>.</p>;
+  if (!pipeline) return <p className="muted pad">No pipeline yet. Submit one with <code>sprisk run</code>.</p>;
 
   const byRef = new Map(operators.data.map((op) => [op.id, op]));
   const latest = latestByNode(attempts.data ?? []);
-  if (positions?.error) return <p role="alert" className="error pad">Could not lay out the flow: {positions.error}</p>;
-  if (!positions?.at) return <Loading text="Laying out the flow…" pad />;
+  if (positions?.error) return <p role="alert" className="error pad">Could not lay out the pipeline: {positions.error}</p>;
+  if (!positions?.at) return <Loading text="Laying out the pipeline…" pad />;
   const computed = flowGraph(positions.pipeline, byRef, latest, nodeId, level, concernsByNode(checks), positions.at, positions.groups, decisions);
   return (
-    <div className="flow" aria-label="Flow canvas">
+    <div className="flow" aria-label="Pipeline canvas">
       {attempts.isError && <p role="alert" className="error pad">{attempts.error.message}</p>}
-      {decided.isError && <p role="alert" className="error pad">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
+      {decided.isError && <p role="alert" className="error pad">The pipeline's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
       {/* A new layout means new positions: start the canvas afresh. */}
       <Canvas computed={computed} level={level} pipeline={pipeline} />
       <StepMenu pipeline={pipeline} operators={byRef} />

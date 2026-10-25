@@ -30,7 +30,7 @@ export function FlowInspector() {
     <section
       className={`flow-inspector${collapsed ? " collapsed" : ""}${maximized ? " maximized" : ""}`}
       style={collapsed || maximized ? undefined : { height }}
-      aria-label="Flow Inspector"
+      aria-label="Pipeline Inspector"
     >
       {!collapsed && !maximized && <div className="flow-inspector-resize" onPointerDown={startResize} onPointerMove={resize} onPointerUp={() => setDrag(undefined)} title="Drag to resize" aria-hidden="true" />}
       <InspectorDock />

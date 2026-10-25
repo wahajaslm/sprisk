@@ -74,12 +74,12 @@ describe("datasets", () => {
   it("counts the distinct flows that use a table, and 0 when none does", async () => {
     const twice: LoadedTable = { ...iris, used_by: [iris.used_by[0]!, { ...iris.used_by[0]!, node_id: "data" }] };
     serve(() => HttpResponse.json([twice]));
-    expect(await screen.findByText("1 flow")).toBeInTheDocument();
+    expect(await screen.findByText("1 pipeline")).toBeInTheDocument();
   });
 
   it("says 0 flows for a table no flow uses", async () => {
     serve(() => HttpResponse.json([{ ...iris, used_by: [] }]));
-    expect(await screen.findByText("0 flows")).toBeInTheDocument();
+    expect(await screen.findByText("0 pipelines")).toBeInTheDocument();
   });
 
   it("lists each table the flows load, with its rows, columns and the steps that load it", async () => {
@@ -327,7 +327,7 @@ describe("datasets", () => {
 
   it("opens the step that loads it in the flow", async () => {
     serve();
-    await userEvent.click(await screen.findByRole("button", { name: "Open in flow" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Open in pipeline" }));
     expect(useSelection.getState()).toMatchObject({ nav: "Flow", pipelineVersionId: PV, runId: RUN, nodeId: "load" });
   });
 
@@ -344,7 +344,7 @@ describe("datasets", () => {
   it("says so when no flow loads the table any more", async () => {
     serve(() => HttpResponse.json([{ ...iris, used_by: [] }]));
     await userEvent.click(await screen.findByRole("tab", { name: "Lineage" }));
-    expect(await screen.findByText("No flow loads this table yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No pipeline loads this table yet.")).toBeInTheDocument();
   });
 
   it("says when no flow has loaded a table yet", async () => {

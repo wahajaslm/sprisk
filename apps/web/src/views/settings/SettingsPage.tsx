@@ -66,7 +66,7 @@ export function SettingsPage() {
     Packs: {
       eyebrow: "Settings · Platform",
       title: "Packs",
-      description: "Methodology packs: the rules Sprisk checks a flow against.",
+      description: "Methodology packs: the rules Sprisk checks a pipeline against.",
       actions: <Button variant="primary" onClick={() => setNav("Methodology")}>Open methodology</Button>,
     },
     Plugins: {
@@ -78,7 +78,7 @@ export function SettingsPage() {
     Data: {
       eyebrow: "Settings · Platform",
       title: "Data",
-      description: "Tables loaded by a flow's steps. Sprisk reads files in place; it keeps only what steps write.",
+      description: "Tables loaded by a pipeline's steps. Sprisk reads files in place; it keeps only what steps write.",
       actions: <Button variant="primary" onClick={() => setNav("Datasets")}>Open datasets</Button>,
     },
   }[page as "Packs" | "Plugins" | "Data"] ?? { eyebrow: `Settings · ${ACCESS.includes(page as "Members") ? "Access" : "Platform"}`, title: page, description: NOT_YET[page]?.description ?? "" };
@@ -209,7 +209,7 @@ function Data() {
           <RowList label="Data">
             {tables.data.map((t) => {
               const used = flowCount(t, versions.data ?? []);
-              return <RowItem key={t.artifact.id} name={t.name} meta={`${tableSize(t)} · used by ${used} ${used === 1 ? "flow" : "flows"}`} />;
+              return <RowItem key={t.artifact.id} name={t.name} meta={`${tableSize(t)} · used by ${used} ${used === 1 ? "pipeline" : "pipelines"}`} />;
             })}
           </RowList>
         </BodySection>

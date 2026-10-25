@@ -107,7 +107,7 @@ function NotebookItem({ notebook, allNotebooks, current, flow, onOpen }: { noteb
       {mode.kind === "confirming" && (
         <div className="nb-item-confirm" role="group" aria-label={`Delete ${title}?`}>
           <span>
-            Delete {title}?{mode.steps > 0 && ` Its ${mode.steps} ${mode.steps === 1 ? "step leaves" : "steps leave"} the flow.`}
+            Delete {title}?{mode.steps > 0 && ` Its ${mode.steps} ${mode.steps === 1 ? "step leaves" : "steps leave"} the pipeline.`}
           </span>
           <button type="button" className="nb-action alert" onClick={remove}>
             Delete

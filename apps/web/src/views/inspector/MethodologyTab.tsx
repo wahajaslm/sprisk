@@ -26,7 +26,7 @@ export function MethodologyTab({ pipeline, nodeId, checks }: { pipeline: Pipelin
   return (
     <div className="method-tab">
       {rules.isError && <p role="alert" className="error">Methodology rules could not be read: {rules.error.message}</p>}
-      {decided.isError && <p role="alert" className="error">The flow's decisions could not be read: {decided.error.message}</p>}
+      {decided.isError && <p role="alert" className="error">The pipeline's decisions could not be read: {decided.error.message}</p>}
       {(rules.isPending || decided.isPending) && <Loading />}
       {methods.map((decision) => (
         <MethodDecision key={decision.decides} decision={decision} />
@@ -155,7 +155,7 @@ export function RuleDecision({ pipeline, nodeId, rule }: {
               disabled={!chosen?.effect || apply.isPending || (overridden && !reason.trim())}
               onClick={() => chosen && apply.mutate({ proposalId: decided.id, alternativeId: chosen.id, reason }, { onSuccess: (result) => selectPipeline(result.pipeline.id) })}
             >
-              {apply.isPending ? "Applying…" : "Apply to new flow version"}
+              {apply.isPending ? "Applying…" : "Apply to new pipeline version"}
             </button>
           </div>
         )}
@@ -188,7 +188,7 @@ function EffectPreview({ effect, currentOperator }: { effect: GraphEffect; curre
   const said =
     effect.kind === "remove_node" ? <p>Remove <code>{effect.node_id}</code>. The steps after it read its inputs directly.</p>
     : effect.kind === "insert_node" ? <p>Add <code>{effect.node_id}</code> ({effect.operator}) before <code>{effect.before}</code>.</p>
-    : effect.kind === "add_node" ? <p>Add <code>{effect.node_id}</code> ({effect.operator}) beside the flow.</p>
+    : effect.kind === "add_node" ? <p>Add <code>{effect.node_id}</code> ({effect.operator}) beside the pipeline.</p>
     : effect.kind === "set_input" ? <p>Feed <code>{effect.node_id}.{effect.port}</code> from <code>{effect.from}</code>.</p>
     : effect.operator === currentOperator ? <p>Change the settings of <code>{effect.node_id}</code>.</p>
     : <p>Replace <code>{effect.node_id}</code> with <code>{effect.operator}</code>.</p>;

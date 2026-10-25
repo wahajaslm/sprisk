@@ -27,7 +27,7 @@ const stillWalking = { walk: started, steps: [] };
 
 async function startWith(path: string) {
   await userEvent.type(screen.getByLabelText("Source files"), path);
-  await userEvent.click(screen.getByRole("button", { name: "Start walk" }));
+  await userEvent.click(screen.getByRole("button", { name: "Start run" }));
 }
 
 describe("StartWalk", () => {
@@ -46,7 +46,7 @@ describe("StartWalk", () => {
 
     await startWith("standin.csv{enter}  labels.csv  {enter}");
 
-    expect(await screen.findByText("Walking")).toBeInTheDocument();
+    expect(await screen.findByText("Running")).toBeInTheDocument();
     expect(sent).toMatchObject({
       project_id: LOCAL_PROJECT,
       question_version_id: question.id,
@@ -60,9 +60,9 @@ describe("StartWalk", () => {
   it("cannot start without a source path", async () => {
     renderWithApi(<StartWalk question={question} />);
 
-    expect(screen.getByRole("button", { name: "Start walk" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled();
     await userEvent.type(screen.getByLabelText("Source files"), "   ");
-    expect(screen.getByRole("button", { name: "Start walk" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled();
   });
 
   it("shows why the API refused to start the walk", async () => {
@@ -89,7 +89,7 @@ describe("StartWalk", () => {
 
     await startWith("standin.csv");
 
-    expect(await screen.findByText(`Walk ${WALK} cannot be read: not_found: no such walk`)).toBeInTheDocument();
+    expect(await screen.findByText(`Run ${WALK} cannot be read: not_found: no such walk`)).toBeInTheDocument();
   });
 
   it("keeps reading a walking walk until it stops, then shows why and each step", async () => {
@@ -115,7 +115,7 @@ describe("StartWalk", () => {
     renderWithApi(<StartWalk question={question} />);
 
     await startWith("standin.csv");
-    await userEvent.click(await screen.findByRole("button", { name: "Open in flow" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Open in pipeline" }));
 
     await waitFor(() => expect(useSelection.getState().nav).toBe("Flow"));
     expect(useSelection.getState().pipelineVersionId).toBe(trail.walk.head_pipeline_version_id);
@@ -125,8 +125,8 @@ describe("StartWalk", () => {
     const { success_bar: _bar, ...unbarred } = question;
     renderWithApi(<StartWalk question={unbarred} />);
 
-    expect(screen.getByRole("button", { name: "Start walk" })).toBeDisabled();
-    expect(screen.getByText("State before the walk: the success bar.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled();
+    expect(screen.getByText("State before the run: the success bar.")).toBeInTheDocument();
   });
 
   it("shows every question the look found and answers them in one revision, then walks on", async () => {
@@ -159,7 +159,7 @@ describe("StartWalk", () => {
     // A fact the question states is answered on the question, not here.
     expect(screen.getByText(fact.question)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Answer and walk on" }));
+    await userEvent.click(screen.getByRole("button", { name: "Answer and continue" }));
 
     await waitFor(() => expect(walks).toHaveLength(2));
     expect(revision).toMatchObject({
@@ -168,13 +168,13 @@ describe("StartWalk", () => {
       success_bar: question.success_bar,
     });
     expect(walks[1]).toMatchObject({ question_version_id: revision?.id, sources: ["standin.csv"] });
-    expect(await screen.findByText("Walking")).toBeInTheDocument();
+    expect(await screen.findByText("Running")).toBeInTheDocument();
   });
 
   it("is offered on the Objective page for the current question", async () => {
     server.use(http.get("/api/question_versions", () => HttpResponse.json([question])));
     renderWithApi(<ObjectivePage />);
 
-    expect(await screen.findByRole("button", { name: "Start walk" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Start run" })).toBeInTheDocument();
   });
 });

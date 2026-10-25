@@ -78,7 +78,7 @@ export function NotebooksPage() {
         dock={
           <InfoDock
             rows={[
-              { k: "Flow", v: shownFlow ? flowName(shownFlow) : "None yet" },
+              { k: "Pipeline", v: shownFlow ? flowName(shownFlow) : "None yet" },
               { k: "Stages", v: String(stages.length) },
               { k: "Saved", v: String(mine.length + loose.length) },
             ]}
@@ -86,10 +86,10 @@ export function NotebooksPage() {
         }
       >
         {save.error && <p role="alert" className="error">{save.error.message}</p>}
-        {decided.isError && <p role="alert" className="error">The flow's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
+        {decided.isError && <p role="alert" className="error">The pipeline's decisions could not be read, so steps show by stage only: {decided.error.message}</p>}
         {shownStages.length > 0 && (
           <SideGroup num={1} label="Stages" meta={shownStages.length}>
-            <div role="list" aria-label="This flow's stages">
+            <div role="list" aria-label="This pipeline's stages">
               {shownStages.map(({ name, title, nodes }) => (
                 <div key={name} role="listitem">
                   <ListRow title={title} meta={nodes.length === 1 ? "1 step" : `${nodes.length} steps`} selected={name === stageOpen?.name} onClick={() => openStage(name)} />
@@ -100,12 +100,12 @@ export function NotebooksPage() {
         )}
         {shownMine.length > 0 && (
           <SideGroup num={2} label="Saved notebooks" meta={shownMine.length}>
-            <NotebookList label="This flow's notebooks" notebooks={shownMine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
+            <NotebookList label="This pipeline's notebooks" notebooks={shownMine} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
           </SideGroup>
         )}
         {shownLoose.length > 0 && (
-          <SideGroup num={3} label="Not in a flow yet" meta={shownLoose.length}>
-            <NotebookList label="Not in a flow yet" notebooks={shownLoose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
+          <SideGroup num={3} label="Not in a pipeline yet" meta={shownLoose.length}>
+            <NotebookList label="Not in a pipeline yet" notebooks={shownLoose} open={open?.notebook_id} flow={flow?.head} onOpen={openNotebook} />
           </SideGroup>
         )}
       </Sidebar>
@@ -120,7 +120,7 @@ export function NotebooksPage() {
           <SessionNotebook key={open.notebook_id} saved={open} flow={flow?.head} />
         ) : (
           <div className="pad muted">
-            <p>No open notebook. Make a flow, or start a new notebook.</p>
+            <p>No open notebook. Make a pipeline, or start a new notebook.</p>
           </div>
         )}
       </section>

@@ -15,13 +15,13 @@ const MAX_ACTIONS = 50;
 const MAX_WALL_SECONDS = 600;
 
 const STOPPED: Record<WalkStopReason, string> = {
-  complete: "Walk complete",
+  complete: "Run complete",
   needs_person: "Needs your answer",
   limitation: "Stopped at a limitation",
   uncovered: "No method covers the next step",
   source_changed: "A source file changed",
   run_failed: "A run failed",
-  stale: "The flow changed outside the walk",
+  stale: "The pipeline changed outside the run",
   budget_exhausted: "Out of budget",
   unverified: "A promise did not pass",
   error: "Stopped by an error",
@@ -57,7 +57,7 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
     });
 
   return (
-    <section className="start-walk" aria-label="Start a walk">
+    <section className="start-walk" aria-label="Start a run">
       <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-13)" }}>
         <span>Source files</span>
         <textarea
@@ -68,7 +68,7 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
           placeholder="One path per line, e.g. data/x_train.csv"
         />
       </label>
-      {missing.length > 0 && <p style={{ margin: 0 }}>State before the walk: {missing.join(", ")}.</p>}
+      {missing.length > 0 && <p style={{ margin: 0 }}>State before the run: {missing.join(", ")}.</p>}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Button
           variant="primary"
@@ -76,11 +76,11 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
           disabled={sources.length === 0 || missing.length > 0 || startWalk.isPending}
           onClick={() => start(question.id)}
         >
-          Start walk
+          Start run
         </Button>
         {detail && (
           <span style={{ fontSize: "var(--fs-12-5)", color: "var(--text-muted)" }}>
-            {detail.walk.stop ? STOPPED[detail.walk.stop.reason] : "Walking"}
+            {detail.walk.stop ? STOPPED[detail.walk.stop.reason] : "Running"}
           </span>
         )}
         {head && (
@@ -91,7 +91,7 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
               setNav("Flow");
             }}
           >
-            Open in flow
+            Open in pipeline
           </Button>
         )}
       </div>
@@ -107,7 +107,7 @@ export function StartWalk({ question }: { question: QuestionVersion }) {
       )}
       {walk.isError && (
         <p role="alert" className="error" style={{ margin: 0 }}>
-          Walk {startWalk.data?.id} cannot be read: {walk.error.message}
+          Run {startWalk.data?.id} cannot be read: {walk.error.message}
         </p>
       )}
       {asks.length > 0 ? (
@@ -141,7 +141,7 @@ function Asks({ asks, saving, onAnswer }: {
     Object.fromEntries(offered.map((ask) => [ask.decides, ask.option ?? ""])),
   );
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }} aria-label="Questions before the walk">
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }} aria-label="Questions before the run">
       {asks.map((ask) =>
         ask.options ? (
           <fieldset key={ask.decides} style={{ margin: 0, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -168,7 +168,7 @@ function Asks({ asks, saving, onAnswer }: {
       {offered.length > 0 && (
         <div>
           <Button variant="primary" size="sm" disabled={saving} onClick={() => onAnswer(picked)}>
-            Answer and walk on
+            Answer and continue
           </Button>
         </div>
       )}

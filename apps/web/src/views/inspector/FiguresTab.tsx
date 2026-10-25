@@ -35,7 +35,7 @@ export function FiguresTab({
       {failure ? (
         <p role="alert" className="error">This step failed: {failure}</p>
       ) : (
-        !attempt && ports.length > 0 && <p className="muted">Not run yet. Run the flow to draw.</p>
+        !attempt && ports.length > 0 && <p className="muted">Not run yet. Run the pipeline to draw.</p>
       )}
       <section className={`figures ${layout}`} aria-label="Figures">
         {ports.map((port) => (

@@ -49,11 +49,11 @@ export function DatasetsPage() {
           title="Datasets"
           search={<SearchField value={filter} onChange={setFilter} placeholder="Search datasets" ariaLabel="Filter datasets" />}
           dock={
-            current && <DatasetDock dataset={current} flows={plural(flowCount(current, versions.data ?? []), "flow")} />
+            current && <DatasetDock dataset={current} flows={plural(flowCount(current, versions.data ?? []), "pipeline")} />
           }
         >
           {list.length === 0 ? (
-            <p className="muted pad">No datasets yet. Run a flow that loads a file to see it here.</p>
+            <p className="muted pad">No datasets yet. Run a pipeline that loads a file to see it here.</p>
           ) : (
             <div role="list" aria-label="Dataset list">
               {shown.map((d) => (
@@ -70,10 +70,10 @@ export function DatasetsPage() {
           ? {
               eyebrow: `Dataset · loaded by ${shortName(current.operator)}`,
               title: current.name,
-              description: `Used by ${lineage.map((l) => l.label).join(", ") || "no flow"}`,
-              ...(first ? { actions: <Button variant="primary" onClick={() => open(first)}>Open in flow</Button> } : {}),
+              description: `Used by ${lineage.map((l) => l.label).join(", ") || "no pipeline"}`,
+              ...(first ? { actions: <Button variant="primary" onClick={() => open(first)}>Open in pipeline</Button> } : {}),
             }
-          : { eyebrow: "Datasets", title: "No dataset yet", description: "A table appears here once a flow's step loads it." }
+          : { eyebrow: "Datasets", title: "No dataset yet", description: "A table appears here once a pipeline's step loads it." }
       }
       {...(current ? { tabs: { label: "Dataset", items: TABS.map((t) => ({ value: t, label: t })), value: tab, onChange: (t: string) => setTab(t as Tab) } } : {})}
     >

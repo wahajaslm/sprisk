@@ -44,7 +44,7 @@ describe("the question ledger report", () => {
     expect(framing).toHaveTextContent("returned_within_30d");
     expect(screen.getByRole("region", { name: "Assumptions" })).toHaveTextContent("Return labels are complete after 30 days.");
     expect(screen.getByRole("region", { name: "Acceptance criteria" })).toHaveTextContent("Average precision beats the dummy baseline");
-    expect(await screen.findByRole("button", { name: "Open flow iris.csv" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open pipeline iris.csv" })).toBeInTheDocument();
     const history = screen.getByRole("region", { name: "History" });
     expect(history).toHaveTextContent("Predict returns.");
   });

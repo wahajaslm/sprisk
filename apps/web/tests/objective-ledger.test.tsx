@@ -58,7 +58,7 @@ describe("Linking a question to the open flow", () => {
     );
     renderWithApi(<ObjectivePage />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Link to current flow" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Link to current pipeline" }));
 
     await waitFor(() => expect(sent).toBeDefined());
     expect(sent?.id).not.toBe(PV);

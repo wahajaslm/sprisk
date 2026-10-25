@@ -106,8 +106,8 @@ export function ModelVersus({ decision, attempts, proposal, a, b }: { decision: 
             </tr>
             <tr>
               <td>Settings</td>
-              <td className="mono">{x.search ? showSettings(x.search.settings) : "the flow's"}</td>
-              <td className="mono">{y.search ? showSettings(y.search.settings) : "the flow's"}</td>
+              <td className="mono">{x.search ? showSettings(x.search.settings) : "the pipeline's"}</td>
+              <td className="mono">{y.search ? showSettings(y.search.settings) : "the pipeline's"}</td>
             </tr>
             <tr>
               <td>Why on the shortlist</td>

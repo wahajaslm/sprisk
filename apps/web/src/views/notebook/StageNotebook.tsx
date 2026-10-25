@@ -110,9 +110,9 @@ function StageEditor({ pipeline, section, byRef, code, unwritten }: {
   return (
     <div className="notebook" aria-label="Notebook">
       <PageHeader
-        eyebrow={`Notebook · ${flowName(pipeline)} · flow ${busy || runs.running ? "running" : "idle"}`}
+        eyebrow={`Notebook · ${flowName(pipeline)} · pipeline ${busy || runs.running ? "running" : "idle"}`}
         title={section.title}
-        description="Each cell is a step of the flow. Running a cell runs the flow, reusing the steps that did not change."
+        description="Each cell is a step of the pipeline. Running a cell runs the pipeline, reusing the steps that did not change."
         actions={<Button variant="primary" disabled={busy} onClick={runAll}>Run all</Button>}
       />
       {section.decisions.map((decision) => (
@@ -220,9 +220,9 @@ function cellRuns(cells: NotebookCell[], latest: Map<string, Attempt>, pipeline:
  * to where its settings live. */
 function StepWithoutCode() {
   const step = useStep();
-  if (!step.node) return <p role="alert" className="error">This step is not in the flow version on screen.</p>;
+  if (!step.node) return <p role="alert" className="error">This step is not in the pipeline version on screen.</p>;
   if (!step.operator) return <p role="alert" className="error">{step.node.operator} is not installed, so this step cannot run.</p>;
-  return <p className="nb-no-code">{`# ${step.node.operator} has no plain code yet; its settings are in the flow's Parameters tab.`}</p>;
+  return <p className="nb-no-code">{`# ${step.node.operator} has no plain code yet; its settings are in the pipeline's Parameters tab.`}</p>;
 }
 
 /** What a step showed in the run on screen, as plain notebook output: a code step's printed

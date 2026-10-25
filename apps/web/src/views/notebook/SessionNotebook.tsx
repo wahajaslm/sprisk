@@ -128,7 +128,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
     const made = await savePipeline.mutateAsync(done.version);
     selectPipelineVersion(made.id);
     const steps = made.nodes.filter((n) => n.from_notebook?.notebook_id === version.notebook_id).length;
-    setNews(`Flow updated: ${steps} ${steps === 1 ? "step" : "steps"} from this notebook.`);
+    setNews(`Pipeline updated: ${steps} ${steps === 1 ? "step" : "steps"} from this notebook.`);
     // A notebook's first flow: it belongs to it from now on.
     if (!version.pipeline_version_id) await save.mutateAsync(nextNotebookVersion(version, { pipeline_version_id: made.id }));
   };
@@ -163,7 +163,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
   const takeFromFlow = (fromFlow: NotebookCell[]) => {
     setIncoming(undefined);
     edit.reshape(() => fromFlow, active);
-    setNews("Cells updated from code edited on the flow.");
+    setNews("Cells updated from code edited on the pipeline.");
     save.mutate(nextNotebookVersion(saved, { cells: fromFlow, ...inFlow() }), { onError: failed });
   };
 
@@ -263,7 +263,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
           Expand
         </button>
         <span className="spacer" />
-        <button type="button" className="nb-action" disabled={save.isPending || savePipeline.isPending} onClick={() => void saveNow()} title="Save, and rebuild this notebook's steps in the flow">
+        <button type="button" className="nb-action" disabled={save.isPending || savePipeline.isPending} onClick={() => void saveNow()} title="Save, and rebuild this notebook's steps in the pipeline">
           {edited ? "Save" : "Saved"}
         </button>
         <button type="button" className="nb-action" onClick={() => download(current(), results)}>
@@ -283,7 +283,7 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
       <div className="nb-scroll" onKeyDown={onKeyDown}>
         <div className="nb-title-row">
           <input className="nb-title" aria-label="Notebook title" value={title} onChange={(e) => edit.setTitle(e.target.value)} />
-          <span className="nb-kernel" title="One live Python kernel for this notebook. Its results are scratch; the flow runs the saved cells in its own workers.">
+          <span className="nb-kernel" title="One live Python kernel for this notebook. Its results are scratch; the pipeline runs the saved cells in its own workers.">
           <span className={`nb-kernel-dot${running ? " busy" : ""}`} /> Python 3 · {running ? "busy" : "idle"}
           </span>
         </div>
@@ -291,9 +291,9 @@ export function SessionNotebook({ saved, flow }: { saved: NotebookVersion; flow:
         {news && <p className="nb-message nb-note">{news}</p>}
         {incoming && (
           <div role="alert" className="nb-message nb-incoming">
-            <span>The flow's code for this notebook changed while you have unsaved edits.</span>
+            <span>The pipeline's code for this notebook changed while you have unsaved edits.</span>
             <button type="button" className="page-btn" onClick={() => takeFromFlow(incoming)}>
-              Use the flow's code
+              Use the pipeline's code
             </button>
             <button type="button" className="page-btn" onClick={() => setIncoming(undefined)}>
               Keep mine

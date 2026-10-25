@@ -59,7 +59,7 @@ export function InputsTab({ pipeline, nodeId, operator, attempts, found }: Props
           </ul>
         )}
         {inputs.length === 0 && files.length === 0 ? (
-          <p className="muted">This step reads no other step. It starts the flow.</p>
+          <p className="muted">This step reads no other step. It starts the pipeline.</p>
         ) : (
           <ul className="input-list">
             {inputs.map((input) => {

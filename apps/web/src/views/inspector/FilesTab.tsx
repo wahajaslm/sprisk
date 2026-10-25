@@ -18,7 +18,7 @@ export function FilesTab({ pipeline, nodeId }: { pipeline: PipelineVersion; node
       {node.code !== undefined && <p className="muted">This step runs its own code: see the Code tab.</p>}
       {code.isError && <p role="alert" className="error">The step's code could not be read: {code.error.message}</p>}
       {code.data && <SourceFile name={code.data.path} text={code.data.text} />}
-      {decided.isError && <p role="alert" className="error">The flow's decisions could not be read: {decided.error.message}</p>}
+      {decided.isError && <p role="alert" className="error">The pipeline's decisions could not be read: {decided.error.message}</p>}
       {decided.isPending && <Loading />}
       {decided.isSuccess && methods.length === 0 && <p className="muted">No method shaped this step.</p>}
       {methods.map((method) => (

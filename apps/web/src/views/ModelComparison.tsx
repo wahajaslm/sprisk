@@ -91,7 +91,7 @@ function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVe
   if (nothing) return <p className="muted pad">{nodeId}: {nothing.message}</p>;
   if (select.isError) return <p role="alert" className="error pad">Sprisk could not compare the choices for {nodeId}: {select.error.message}</p>;
   if (!hasRun && !runs.isPending && !chosenHere) {
-    return <p className="muted pad">Run the flow, and Sprisk will compare {models ? "models" : "its choices"} for {nodeId}.</p>;
+    return <p className="muted pad">Run the pipeline, and Sprisk will compare {models ? "models" : "its choices"} for {nodeId}.</p>;
   }
   return null;
 }
@@ -168,7 +168,7 @@ function Decided({ decision, artifactId, attempts, proposal, comparison, base }:
           <Row label={`Mean ± spread (${METRIC_LABEL[decision.metric]})`} mono cells={decision.candidates.map((c) => `${formatMetric(c.mean)} ± ${formatMetric(c.spread)}`)} />
           <Row label="Fold scores" mono cells={decision.candidates.map(foldRange)} />
           <Row label={`Gain over ${reference ? "the recommendation" : "baseline"} ± corrected SE`} mono cells={decision.candidates.map(gain)} />
-          {tuned && <Row label="Settings Apply uses (best inner score on all train rows)" mono cells={decision.candidates.map((c) => (c.search ? showSettings(c.search.settings) : "the flow's"))} />}
+          {tuned && <Row label="Settings Apply uses (best inner score on all train rows)" mono cells={decision.candidates.map((c) => (c.search ? showSettings(c.search.settings) : "the pipeline's"))} />}
           {(decision.guardrails ?? []).map((g, i) => (
             <Row key={i} label={`Recall of ${g.label} ≥ ${g.at_least}`} mono cells={decision.candidates.map((c) => guardrailCell(c, i))} />
           ))}
@@ -277,7 +277,7 @@ function ChoiceSteps({ comparison, proposal, base, id, node: nodeId }: {
         ))}
       </ol>
       {open && <StepCode operator={open} />}
-      {effect && <p className="muted">Differs from the flow: {differences(base, effect)}</p>}
+      {effect && <p className="muted">Differs from the pipeline: {differences(base, effect)}</p>}
     </>
   );
 }
@@ -293,10 +293,10 @@ function StepCode({ operator }: { operator: string }) {
 function differences(base: PipelineVersion, effect: NonNullable<DecisionProposal["alternatives"][number]["effect"]>): string {
   if (effect.kind === "remove_node") return `${effect.node_id} removed`;
   if (effect.kind === "insert_node") return `${effect.node_id} added before ${effect.before}`;
-  if (effect.kind === "add_node") return `${effect.node_id} added beside the flow`;
+  if (effect.kind === "add_node") return `${effect.node_id} added beside the pipeline`;
   if (effect.kind === "set_input") return `${effect.node_id}.${effect.port} reads ${effect.from}`;
   const before = base.nodes.find((n) => n.id === effect.node_id);
-  if (!before) return `${effect.node_id} is not in the flow`;
+  if (!before) return `${effect.node_id} is not in the pipeline`;
   const after = { ...before, operator: effect.operator, params: effect.params };
   const changes = settingChanges({ ...base, nodes: [before] }, { ...base, nodes: [after] }).map(
     (c) => `${c.node} · ${c.key}: ${showValue(c.before)} → ${showValue(c.after)}`,
@@ -339,7 +339,7 @@ function UseModel({ id, recommended, winner, artifactId, proposal, onCancel }: {
   return (
     <div className="method-choice" role="group" aria-label={`Use ${id}`}>
       {recommended ? (
-        <p>Use {id}, as the comparison ({artifactId}) recommends. The flow gets a new version with it; run it to score the test rows once.</p>
+        <p>Use {id}, as the comparison ({artifactId}) recommends. The pipeline gets a new version with it; run it to score the test rows once.</p>
       ) : (
         <label className="method-reason">
           {winner ? `Why ${id} instead of the recommended ${winner}?` : `Why ${id}, although no model beats the baseline?`}

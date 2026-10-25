@@ -30,7 +30,7 @@ type View = (typeof VIEWS)[number];
 type Tab = (typeof TABS)[number];
 
 /** The methodology map (ADR-0059) in the Flow Studio frame: the rules by stage beside it, and
- * the picked rule's map, overview, code and the steps it decides on the selected flow. */
+ * the picked rule's map, overview, code and the steps it decides on the selected pipeline. */
 export function MethodologyPage() {
   const rules = useMethodologyRules();
   const versionId = useSelection((s) => s.pipelineVersionId);
@@ -76,7 +76,7 @@ export function MethodologyPage() {
                 rows={[
                   { k: "Status", v: current.status },
                   { k: "Stage", v: stageName(current.stage) },
-                  { k: "On this flow", v: onFlow ? STATUS_LABEL[onFlow.status] : "—", warn: onFlow !== undefined && isOpen(onFlow.status) },
+                  { k: "On this pipeline", v: onFlow ? STATUS_LABEL[onFlow.status] : "—", warn: onFlow !== undefined && isOpen(onFlow.status) },
                 ]}
               />
             )
@@ -144,7 +144,7 @@ export function MethodologyPage() {
                 <input type="checkbox" role="switch" checked={drafts} onChange={(e) => setDrafts(e.target.checked)} /> Show drafts
               </label>
             )}
-            <label className="mth-toggle" title={versionId ? "Light the selected flow's path through the tree" : "Select a flow first"}>
+            <label className="mth-toggle" title={versionId ? "Light the selected pipeline's path through the tree" : "Select a pipeline first"}>
               <input type="checkbox" role="switch" checked={path && versionId !== undefined} disabled={!versionId} onChange={(e) => setPath(e.target.checked)} /> Pipeline path
             </label>
             <ReviewSummary versionId={versionId} items={review.data?.items} next={review.data?.next} error={review.error ?? undefined} />
@@ -160,15 +160,15 @@ export function MethodologyPage() {
 
 /** The steps of the selected flow this rule decides, with its status and reason on each. */
 function UsedIn({ rule, versionId, items }: { rule: MethodologyRule; versionId: string | undefined; items: MethodologyReviewItem[] | undefined }) {
-  if (!versionId) return <p className="muted">Select a flow to see where this rule acts on it.</p>;
-  if (!items) return <Loading text="Reviewing the flow…" />;
+  if (!versionId) return <p className="muted">Select a pipeline to see where this rule acts on it.</p>;
+  if (!items) return <Loading text="Reviewing the pipeline…" />;
   const mine = items.filter((i) => i.rule === rule.id);
-  if (mine.length === 0) return <p className="muted">This rule decides nothing on the selected flow.</p>;
+  if (mine.length === 0) return <p className="muted">This rule decides nothing on the selected pipeline.</p>;
   return (
-    <BodySection title="On the selected flow" note="Each step this rule decides, with its status and why.">
+    <BodySection title="On the selected pipeline" note="Each step this rule decides, with its status and why.">
       <RowList label="Used in">
         {mine.map((i) => (
-          <RowItem key={`${i.subject_node_id ?? "flow"}-${i.decides}`} name={i.subject_node_id ? `Step ${i.subject_node_id}` : "The flow"} meta={`${STATUS_LABEL[i.status]} · ${i.reason}`} warn={isOpen(i.status)} />
+          <RowItem key={`${i.subject_node_id ?? "flow"}-${i.decides}`} name={i.subject_node_id ? `Step ${i.subject_node_id}` : "The pipeline"} meta={`${STATUS_LABEL[i.status]} · ${i.reason}`} warn={isOpen(i.status)} />
         ))}
       </RowList>
     </BodySection>
@@ -189,7 +189,7 @@ function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; r
             <button type="button" className={`mth-step${reached ? " reached" : ""}`} aria-current={i === at ? "step" : undefined} onClick={() => onChoose(c.key)}>
               <span className="mth-node-code">{c.code}</span> {stageName(c.stage)}
               <span className="mth-step-count">{c.rules.length}</span>
-              {open > 0 && <span className="mth-step-open" title={`${open} open on this flow`} />}
+              {open > 0 && <span className="mth-step-open" title={`${open} open on this pipeline`} />}
             </button>
           </span>
         );
@@ -200,16 +200,16 @@ function Stepper({ all, at, reviews, onChoose }: { all: Chapter[]; at: number; r
 
 /** What the selected flow's review says: how many decisions are open, and what to do next. */
 function ReviewSummary({ versionId, items, next, error }: { versionId: string | undefined; items: MethodologyReviewItem[] | undefined; next: number[] | undefined; error: Error | undefined }) {
-  if (!versionId) return <span className="muted">Select a flow to see its status on each decision.</span>;
+  if (!versionId) return <span className="muted">Select a pipeline to see its status on each decision.</span>;
   // A flow with no question is a state to fix, not a failure.
-  if (error instanceof ApiError && error.errors.some((e) => e.code === "question_required")) return <span className="muted">Link a question to this flow to review it.</span>;
+  if (error instanceof ApiError && error.errors.some((e) => e.code === "question_required")) return <span className="muted">Link a question to this pipeline to review it.</span>;
   if (error) return <span role="alert" className="error">{error.message}</span>;
-  if (!items || !next) return <Loading text="Reviewing the flow…" />;
+  if (!items || !next) return <Loading text="Reviewing the pipeline…" />;
   const open = items.filter((i) => isOpen(i.status)).length;
   const first = next[0] === undefined ? undefined : items[next[0]];
   return (
-    <span className="mth-summary" aria-label="Flow review">
-      {open === 0 ? "Nothing open on this flow." : `${open} open on this flow.`}
+    <span className="mth-summary" aria-label="Pipeline review">
+      {open === 0 ? "Nothing open on this pipeline." : `${open} open on this pipeline.`}
       {first && (
         <>
           {" "}
@@ -235,11 +235,11 @@ function RuleCard({ rule, review, route, onOpen }: { rule: MethodologyRule; revi
       </header>
       <div className="mth-chosen">
         <span>Chosen by rule</span>
-        <strong>{chosen ? chosen.label : review ? STATUS_LABEL[review.status] : "Not reviewed on this flow"}</strong>
+        <strong>{chosen ? chosen.label : review ? STATUS_LABEL[review.status] : "Not reviewed on this pipeline"}</strong>
       </div>
       {review && (
-        <section className="mth-on-flow" aria-label="On this flow">
-          <h3 className="dsx-h">On this flow</h3>
+        <section className="mth-on-flow" aria-label="On this pipeline">
+          <h3 className="dsx-h">On this pipeline</h3>
           <p>{review.reason}</p>
         </section>
       )}
@@ -284,8 +284,8 @@ function RuleDetail({ rule, review, route }: { rule: MethodologyRule; review: Me
         {source.data && <p className="mth-tag">{python ? "Python decide() in rule.py" : "No rule.py yet: manifest only"}</p>}
       </header>
       {review && (
-        <section className="mth-on-flow" aria-label="On this flow">
-          <h3 className="dsx-h">On this flow</h3>
+        <section className="mth-on-flow" aria-label="On this pipeline">
+          <h3 className="dsx-h">On this pipeline</h3>
           <p>
             <span className={`mth-chip ${review.status}`}>{STATUS_LABEL[review.status]}</span>
             {review.subject_node_id && (

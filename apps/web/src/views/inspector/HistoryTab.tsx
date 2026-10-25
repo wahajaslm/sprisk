@@ -15,7 +15,7 @@ const STATE_TEXT: Record<string, string> = {
 /** This step across the latest runs, newest first. Retries and errors of the shown run below. */
 export function HistoryTab({ history, runId, metric }: { history: NodeRun[]; runId: string | undefined; metric: string | undefined }) {
   const { setCompare, openExperiments } = useSelection();
-  if (history.length === 0) return <p className="muted">No runs of this flow yet.</p>;
+  if (history.length === 0) return <p className="muted">No runs of this pipeline yet.</p>;
   const shown = history.find((h) => h.run.id === runId);
   return (
     <div className="history">

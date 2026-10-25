@@ -61,7 +61,7 @@ function withApi(base: PipelineVersion = flow) {
   return posts;
 }
 
-const list = () => screen.findByRole("list", { name: "This flow's notebooks" });
+const list = () => screen.findByRole("list", { name: "This pipeline's notebooks" });
 
 describe("renaming a notebook (ADR-0041)", () => {
   it("saves a version with the new title, the same cells and flow, and leaves the flow alone", async () => {
@@ -128,7 +128,7 @@ describe("deleting a notebook (ADR-0041)", () => {
     const saved = posts[0]!.body as PipelineVersion;
     expect(saved).toMatchObject({ parent_id: flow.id, nodes: pipeline.nodes, edges: pipeline.edges });
     expect(posts[1]!.body).toMatchObject({ notebook_id: NB, parent_id: sales.id, removed: true });
-    await waitFor(() => expect(within(screen.getByRole("list", { name: "This flow's notebooks" })).queryByRole("button", { name: "Sales analysis" })).not.toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole("list", { name: "This pipeline's notebooks" })).queryByRole("button", { name: "Sales analysis" })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Scratch" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Data loading" })).toBeInTheDocument();
   });
@@ -209,7 +209,7 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     useSelection.setState({ pipelineVersionId: pipeline.id, runId: undefined, notebookId: undefined, stageTarget: undefined });
     return posts;
   }
-  const stages = () => screen.findByRole("list", { name: "This flow's stages" });
+  const stages = () => screen.findByRole("list", { name: "This pipeline's stages" });
 
   it("lists the flow's stages and opens the first, saving nothing", async () => {
     const posts = noNotebooks();
@@ -229,7 +229,7 @@ describe("a flow's notebooks, one per stage (ADR-0055)", () => {
     expect(screen.queryByRole("combobox", { name: "format" })).not.toBeInTheDocument();
     await userEvent.click(within(await stages()).getByRole("button", { name: /Train\/test split/ }));
     expect(await screen.findByRole("heading", { name: "Train/test split" })).toBeInTheDocument();
-    expect(await screen.findByText(/has no plain code yet; its settings are in the flow's Parameters tab\./)).toBeInTheDocument();
+    expect(await screen.findByText(/has no plain code yet; its settings are in the pipeline's Parameters tab\./)).toBeInTheDocument();
   });
 
   it("says so when a step's operator is not installed", async () => {

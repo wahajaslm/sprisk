@@ -5,7 +5,7 @@ import { flows } from "../flow/flows.ts";
 import { useQuestionVersions } from "../api/questions.ts";
 import { flowName } from "../flow/labels.ts";
 import { currentQuestion, openEntries } from "./objective/ledger.ts";
-import { NAV, useSelection } from "../workbench/selection.ts";
+import { NAV, NAV_LABEL, useSelection } from "../workbench/selection.ts";
 import { Chevron, Logo } from "./Icons.tsx";
 import { ImportNotebook } from "./ImportNotebook.tsx";
 
@@ -63,20 +63,20 @@ export function TopBar() {
           <button
             type="button"
             className="switcher"
-            aria-label="Project and flow"
+            aria-label="Project and pipeline"
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
           >
             {/* The design's pill names the flow; the project is the only one in local mode. */}
             <span className="switcher-name" title={PROJECT}>
-              {current ? flowName(current) : versions.isPending ? "loading…" : "No flow yet"}
+              {current ? flowName(current) : versions.isPending ? "loading…" : "No pipeline yet"}
             </span>
             <Chevron />
           </button>
           {menuOpen && (
-            <div className="menu" role="listbox" aria-label="Flows">
-              <p className="menu-title">Flows</p>
+            <div className="menu" role="listbox" aria-label="Pipelines">
+              <p className="menu-title">Pipelines</p>
               {flows(versions.data ?? []).map(({ head, ids }) => (
                 <button
                   key={head.id}
@@ -124,7 +124,7 @@ export function TopBar() {
                 className={active ? "active" : ""}
                 onClick={() => setNav(item)}
               >
-                {item}
+                {NAV_LABEL[item]}
                 {item === "Objective" && openCount > 0 && <span className="tab-badge-open">{openCount}</span>}
               </button>
             );
@@ -157,7 +157,7 @@ export function TopBar() {
                 if (pipelineVersionId) startRun.mutate(pipelineVersionId, { onSuccess: (run) => selectRun(run.id) });
               }}
             >
-              Run flow
+              Run pipeline
             </button>
           </>
         )}

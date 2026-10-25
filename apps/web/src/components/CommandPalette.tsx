@@ -88,7 +88,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "nav-flow",
         category: "Navigation",
-        title: "Go to Flow canvas",
+        title: "Go to Pipeline canvas",
         meta: "Pipeline",
         onSelect: () => {
           setNav("Flow");

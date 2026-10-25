@@ -41,7 +41,7 @@ type Props = {
  * made in Visualizations. */
 export function DataTab({ attempt, operator, capability, previous, explore, figurePorts, shown, portOrder, code }: Props) {
   const outputs = useOutputs(attempt?.id);
-  if (!attempt) return <p className="muted">No data yet. Run the flow to see what this step produces.</p>;
+  if (!attempt) return <p className="muted">No data yet. Run the pipeline to see what this step produces.</p>;
   if (outputs.isPending) return <Loading />;
   if (outputs.isError) return <p role="alert" className="error">{outputs.error.message}</p>;
   // Console output is shown in Console, for every step (ADR-0025).

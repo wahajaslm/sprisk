@@ -160,7 +160,7 @@ describe("model shortlist", () => {
     expect(screen.queryByRole("radio", { name: /random_forest@1.1.0\s*Shortlisted/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: /dummy_baseline/ }));
     expect(screen.getByLabelText(/Reason for choosing without comparing/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Apply to new flow version" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Apply to new pipeline version" })).toBeDisabled();
   });
 
   it("says Sprisk compares the shortlist itself and points to Experiments", async () => {
@@ -228,7 +228,7 @@ describe("asking for a decision", () => {
     await review();
     await userEvent.click(await screen.findByRole("radio", { name: /Robust Scaling/ }));
     await userEvent.type(screen.getByLabelText(/Reason for choosing another method/), "outliers matter");
-    await userEvent.click(screen.getByRole("button", { name: "Apply to new flow version" }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply to new pipeline version" }));
     await screen.findByText(/stop here/);
     expect(applied).toMatchObject({ alternative_id: "robust_scaling", reason: "outliers matter" });
   });

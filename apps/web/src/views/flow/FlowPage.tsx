@@ -10,9 +10,9 @@ export function FlowPage() {
   return (
     <div className="page-frame">
       <StepLibrary />
-      <main className="center-screen flow-center" aria-label="Flow canvas and step details">
+      <main className="center-screen flow-center" aria-label="Pipeline canvas and step details">
         <div className="flow-canvas-viewport">
-          <Suspense fallback={<Loading text="Loading flow…" pad />}>
+          <Suspense fallback={<Loading text="Loading pipeline…" pad />}>
             <FlowCanvas />
           </Suspense>
         </div>

@@ -63,7 +63,7 @@ describe("methodology page", () => {
     renderWithApi(<MethodologyPage />);
     await showTree();
 
-    expect(await screen.findByLabelText("Flow review")).toHaveTextContent("2 open on this flow. Next: split.method (proposal)");
+    expect(await screen.findByLabelText("Pipeline review")).toHaveTextContent("2 open on this pipeline. Next: split.method (proposal)");
     const map = screen.getByRole("region", { name: "Methodology map" });
     const card = within(map).getByRole("button", { name: split.name });
     expect(within(card).getByText(/Proposal/)).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("methodology page", () => {
     expect(within(map).getByRole("button", { name: split.name })).not.toHaveClass("dimmed");
 
     await userEvent.click(card);
-    const onFlow = screen.getByRole("region", { name: "On this flow" });
+    const onFlow = screen.getByRole("region", { name: "On this pipeline" });
     expect(within(onFlow).getByText("Keeps each class's share the same in train and test.")).toBeInTheDocument();
     useSelection.setState({ pipelineVersionId: undefined });
   });
@@ -390,7 +390,7 @@ describe("pipeline path switch", () => {
 
     useSelection.setState({ pipelineVersionId: "plv_01JABCDEFGHJKMNPQRSTVWXYZ0" });
     const pathSwitch = await screen.findByRole("switch", { name: "Pipeline path" });
-    await screen.findByLabelText("Flow review");
+    await screen.findByLabelText("Pipeline review");
     const map = screen.getByRole("region", { name: "Methodology map" });
     expect(within(map).getByRole("button", { name: features.name })).not.toHaveClass("dimmed");
     await userEvent.click(pathSwitch);

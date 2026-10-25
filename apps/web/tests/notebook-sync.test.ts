@@ -70,7 +70,7 @@ describe("a notebook's steps in its flow (ADR-0037)", () => {
   it("refuses a name no cell and no step of the flow makes", () => {
     const reads: CodeSplit = { ...split, steps: [...split.steps.slice(0, 2), { ...split.steps[2]!, inputs: ["sales", "lookup"] }] };
     expect(stepsIntoFlow({ base: pipeline, projectId: PROJECT, notebook, split: reads, operators: byRef })).toEqual({
-      refused: "No step in this flow makes lookup. Pick the cells that make it too, or create their node first.",
+      refused: "No step in this pipeline makes lookup. Pick the cells that make it too, or create their node first.",
     });
   });
 

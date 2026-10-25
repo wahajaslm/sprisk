@@ -43,10 +43,10 @@ import { server } from "./server.ts";
 describe("top bar", () => {
   it("lists flows by their data file and switches between them", async () => {
     renderWithApi(<TopBar />);
-    const switcher = await screen.findByRole("button", { name: "Project and flow" });
+    const switcher = await screen.findByRole("button", { name: "Project and pipeline" });
     await waitFor(() => expect(switcher).toHaveTextContent("iris.csv"));
     await userEvent.click(switcher);
-    const option = within(screen.getByRole("listbox", { name: "Flows" })).getByRole("option", { name: /iris.csv/ });
+    const option = within(screen.getByRole("listbox", { name: "Pipelines" })).getByRole("option", { name: /iris.csv/ });
     await userEvent.click(option);
     expect(screen.queryByRole("listbox")).toBeNull();
   });
@@ -54,12 +54,12 @@ describe("top bar", () => {
   it("puts the project and flow switcher first, then the views including Objective, then Run flow", async () => {
     renderWithApi(<TopBar />);
     const bar = screen.getByRole("banner");
-    const switcher = await within(bar).findByRole("button", { name: "Project and flow" });
+    const switcher = await within(bar).findByRole("button", { name: "Project and pipeline" });
     const nav = within(bar).getByRole("navigation");
     const tabs = within(nav).getAllByRole("button").map((b) => b.textContent);
-    expect(tabs).toEqual(["Objective", "Flow", "Datasets", "Notebooks", "Methodology", "Experiments", "Deploy", "Reports", "Settings"]);
+    expect(tabs).toEqual(["Objective", "Pipeline", "Datasets", "Notebooks", "Methodology", "Experiments", "Deploy", "Reports", "Settings"]);
     expect(switcher.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(bar).getByRole("button", { name: /Run flow/ })).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: /Run pipeline/ })).toBeInTheDocument();
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
   });
 
@@ -67,8 +67,8 @@ describe("top bar", () => {
     const edited = { ...pipeline, id: "plv_01JABCDEFGHJKMNPQRSTVWXYZ7", parent_id: PV };
     server.use(http.get("/api/pipeline_versions", () => HttpResponse.json([edited, pipeline])));
     renderWithApi(<TopBar />);
-    await userEvent.click(await screen.findByRole("button", { name: "Project and flow" }));
-    const options = within(screen.getByRole("listbox", { name: "Flows" })).getAllByRole("option");
+    await userEvent.click(await screen.findByRole("button", { name: "Project and pipeline" }));
+    const options = within(screen.getByRole("listbox", { name: "Pipelines" })).getAllByRole("option");
     expect(options).toHaveLength(1);
     expect(options[0]).toHaveTextContent("2 versions");
     await userEvent.click(options[0]!);
@@ -85,8 +85,8 @@ describe("top bar", () => {
   it("picking the flow that is already open keeps showing its latest run", async () => {
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().runId).toBe(RUN));
-    await userEvent.click(screen.getByRole("button", { name: "Project and flow" }));
-    await userEvent.click(within(screen.getByRole("listbox", { name: "Flows" })).getByRole("option", { name: /iris.csv/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Project and pipeline" }));
+    await userEvent.click(within(screen.getByRole("listbox", { name: "Pipelines" })).getByRole("option", { name: /iris.csv/ }));
     await waitFor(() => expect(useSelection.getState().runId).toBe(RUN));
   });
 
@@ -100,7 +100,7 @@ describe("top bar", () => {
     );
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
-    await userEvent.click(screen.getByRole("button", { name: /Run flow/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Run pipeline/ }));
     // Run flow runs from the start: nothing reused.
     await waitFor(() => expect(posted).toEqual({ pipeline_version_id: PV }));
   });
@@ -113,7 +113,7 @@ describe("top bar", () => {
     );
     renderWithApi(<TopBar />);
     await waitFor(() => expect(useSelection.getState().pipelineVersionId).toBe(PV));
-    await userEvent.click(screen.getByRole("button", { name: /Run flow/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Run pipeline/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("path_outside_data_roots");
   });
 });
@@ -366,7 +366,7 @@ describe("flow canvas", () => {
     server.use(http.get("/api/pipeline_versions/:id/decisions", () => HttpResponse.json({ errors: [{ code: "store", message: "disk full" }] }, { status: 500 })));
     useSelection.setState({ pipelineVersionId: PV, runId: RUN });
     renderWithApi(<FlowCanvas />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("The flow's decisions could not be read");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The pipeline's decisions could not be read");
     expect(await screen.findByRole("heading", { name: /Train\/test split/ })).toBeInTheDocument();
   });
 
