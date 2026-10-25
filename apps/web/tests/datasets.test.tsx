@@ -91,14 +91,16 @@ describe("datasets", () => {
     expect(within(list).getByRole("button", { name: /^penguins\.csv/ })).toBeInTheDocument();
   });
 
-  it("draws the missing share per column, emptiest first, and says how many cross the threshold", async () => {
+  it("draws the missing share per column and lists each column with a gap, red from the threshold", async () => {
     const gappy = { ...profile, columns: profile.columns.map((c) => (c.name === "sepal_length" ? { ...c, missing: 30 } : c)) };
     serve(undefined, () => HttpResponse.json(gappy));
     await openProfile();
-    const chart = await screen.findByRole("figure", { name: "Missing share per column" });
-    expect(within(chart).getByRole("img", { name: "Missing share per column" })).toBeInTheDocument();
-    expect(chart).toHaveTextContent("1 column at or above 20%");
-    expect(chart).toHaveTextContent("sepal_length first");
+    const section = await screen.findByRole("region", { name: "Missing values" });
+    expect(within(section).getByRole("img", { name: "Missing share per column" })).toBeInTheDocument();
+    expect(section).toHaveTextContent("1 column at or above 20% empty");
+    const rows = within(within(section).getByRole("list", { name: "Missing per column" })).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("sepal_length25.0%");
+    expect(rows[0]).toHaveClass("warn");
   });
 
   it("lists every column in one profile table: role, type, missing share, unique, median", async () => {
@@ -138,10 +140,10 @@ describe("datasets", () => {
     serve();
     await openProfile();
     const species = await screen.findByRole("article", { name: "species" });
-    expect(within(species).getByRole("img", { name: "Most common values of species" })).toBeInTheDocument();
+    expect(within(species).getByRole("list", { name: "Most common values of species" })).toHaveTextContent("setosa40 · 33.3%");
     const note = screen.getByRole("article", { name: "note" });
     expect(within(note).getByRole("img", { name: "Words per value in note" })).toBeInTheDocument();
-    expect(within(note).getByRole("img", { name: "Most repeated values of note" })).toBeInTheDocument();
+    expect(within(note).getByRole("list", { name: "Most repeated values of note" })).toBeInTheDocument();
     const sepal = screen.getByRole("article", { name: "sepal_length" });
     expect(within(sepal).getByRole("img", { name: "Distribution of sepal_length" })).toBeInTheDocument();
     expect(sepal).toHaveTextContent("median5.8");
@@ -150,7 +152,7 @@ describe("datasets", () => {
   it("draws where values are missing along the rows", async () => {
     serve();
     await openProfile();
-    expect(await screen.findByRole("img", { name: "Where values are missing" })).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "Where sepal_length is missing" })).toBeInTheDocument();
   });
 
   it("draws a correlation matrix only for three or more measured numbers", async () => {

@@ -10,7 +10,7 @@ import { useSelection } from "../workbench/selection.ts";
 import { CodeInput } from "./CodeInput.tsx";
 import { FigurePort } from "./inspector/FiguresTab.tsx";
 import { formatMetric } from "./NodeFact.tsx";
-import { ChartBlock, ColumnBars } from "./charts/StudioCharts.tsx";
+import { SolidBars } from "../components/ui/StudioVisuals.tsx";
 
 const METRIC_LABEL: Record<SelectionDecision["metric"], string> = { balanced_accuracy: "balanced accuracy", expected_cost: "expected cost", rmse: "RMSE", weighted_f1: "weighted F1" };
 type Candidate = SelectionDecision["candidates"][number];
@@ -235,9 +235,10 @@ function FoldScores({ id, scores }: { id: string; scores: number[] }) {
   const low = Math.min(...scores);
   const high = Math.max(...scores);
   return (
-    <ChartBlock title="Fold scores" sub={`${scores.length} folds · ${formatMetric(low)} to ${formatMetric(high)}`}>
-      <ColumnBars name={`Fold scores of ${id}`} values={scores} height={96} />
-    </ChartBlock>
+    <div className="sv-chart">
+      <span className="sv-caption">{`Fold scores · ${scores.length} folds · ${formatMetric(low)} to ${formatMetric(high)}`}</span>
+      <SolidBars name={`Fold scores of ${id}`} values={scores} height={72} />
+    </div>
   );
 }
 

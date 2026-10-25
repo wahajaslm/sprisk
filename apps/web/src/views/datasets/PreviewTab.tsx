@@ -5,7 +5,7 @@ import { useDatasetProfile } from "../../api/datasets.ts";
 import { useTablePage } from "../../api/hooks.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
-import { Sparkline } from "../charts/StudioCharts.tsx";
+import { SolidBars } from "../../components/ui/StudioVisuals.tsx";
 import { isNumeric } from "../RowsTable.tsx";
 import { shapeOf } from "./ProfileTab.tsx";
 
@@ -74,7 +74,7 @@ export function PreviewTab({ dataset }: { dataset: LoadedTable }) {
                   <th key={c.name} scope="col" className={isNumeric(c.data_type) ? "num" : undefined}>
                     <span className="ds-col-name">{c.name}</span>
                     <span className="ds-col-type">{c.data_type}</span>
-                    {shape.length > 1 && <Sparkline name={`Distribution of ${c.name}`} values={shape} />}
+                    {shape.length > 1 && <SolidBars name={`Distribution of ${c.name}`} values={shape} height={22} />}
                   </th>
                 );
               })}

@@ -15,29 +15,7 @@ export const PALETTE = {
 
 type Rgb = string;
 
-export type Box = { width: number; height: number; left: number; bottom: number; top: number; max?: number; maxBar?: number };
 export type Rect = { x: number; y: number; w: number; h: number };
-
-/** Vertical bars side by side over the plot, scaled to `max` or the tallest value. */
-export function columnLayout(values: number[], box: Box): Rect[] {
-  const n = values.length;
-  if (n === 0) return [];
-  const plot = box.height - box.bottom - box.top;
-  const max = box.max ?? Math.max(...values, Number.MIN_VALUE);
-  const bw = Math.min((box.width - box.left) / n, box.maxBar ?? Number.POSITIVE_INFINITY);
-  return values.map((v, i) => {
-    const h = Math.round((Math.min(v, max) / max) * plot);
-    return { x: Math.round(box.left + i * bw + 1), y: box.height - box.bottom - h, w: Math.max(1, Math.floor(bw) - 2), h };
-  });
-}
-
-/** Horizontal bars one per row, half a row thick, scaled to the longest value. */
-export function rowLayout(values: number[], box: { width: number; height: number; left: number; right: number }): Rect[] {
-  const rowH = box.height / Math.max(1, values.length);
-  const room = box.width - box.left - box.right;
-  const max = Math.max(...values, Number.MIN_VALUE);
-  return values.map((v, i) => ({ x: box.left, y: Math.round(i * rowH + rowH * 0.25), w: Math.round((v / max) * room), h: Math.round(rowH * 0.5) }));
-}
 
 /** A canvas at its device resolution, its 2D context scaled to CSS pixels. */
 export function prepare(canvas: HTMLCanvasElement): { g: CanvasRenderingContext2D; w: number; h: number } | null {
@@ -114,25 +92,6 @@ export function lum(g: CanvasRenderingContext2D, { x, y, w, h }: Rect, rgb: Rgb,
     g.fillStyle = `rgba(${rgb},${Math.min(1, a)})`;
     g.fillRect(x, y, w, 1);
   }
-}
-
-/** The faint horizontal grid. */
-export function grid(g: CanvasRenderingContext2D, left: number, top: number, width: number, height: number, lines: number) {
-  g.fillStyle = `rgba(${PALETTE.line},0.045)`;
-  for (let k = 0; k <= lines; k++) g.fillRect(left, Math.round(top + (k * height) / lines), width, 1);
-}
-
-/** A red dashed line across the plot at height `y`: a threshold. */
-export function threshold(g: CanvasRenderingContext2D, x0: number, x1: number, y: number) {
-  g.save();
-  g.strokeStyle = `rgba(${PALETTE.red},0.9)`;
-  g.setLineDash([3, 3]);
-  g.lineWidth = 1;
-  g.beginPath();
-  g.moveTo(x0, Math.round(y) + 0.5);
-  g.lineTo(x1, Math.round(y) + 0.5);
-  g.stroke();
-  g.restore();
 }
 
 /** Text in a faint label colour. */

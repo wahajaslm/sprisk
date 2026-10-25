@@ -3,7 +3,7 @@ import type { Attempt, DecisionProposal, PipelineVersion, SelectionDecision } fr
 import { useMethodologyProposal } from "../../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../../api/runs.ts";
 import { BodySection } from "../../components/ui/RowList.tsx";
-import { ChartBlock, PairedBars } from "../charts/StudioCharts.tsx";
+import { LineChart } from "../../components/ui/StudioVisuals.tsx";
 import { FigurePort } from "../inspector/FiguresTab.tsx";
 import { gain, showSettings, trialNodeOf, verdict } from "../ModelComparison.tsx";
 import { formatMetric } from "../NodeFact.tsx";
@@ -70,16 +70,10 @@ export function ModelVersus({ decision, attempts, proposal, a, b }: { decision: 
         </table>
       </BodySection>
       <BodySection title="Fold by fold" note={`The same rows in each fold, so each pair is a fair contest. ${a} scored better on ${won.a} of ${won.folds} folds, ${b} on ${won.b}.`}>
-        <ChartBlock
-          title={`${METRIC_WORDS[decision.metric]} per fold`}
-          sub={`${won.folds} folds`}
-          legend={[
-            { tone: "primary", text: a },
-            { tone: "secondary", text: b },
-          ]}
-        >
-          <PairedBars name={`${a} and ${b} per fold`} a={x.fold_scores} b={y.fold_scores} labels={x.fold_scores.map((_, i) => String(i + 1))} />
-        </ChartBlock>
+        <div className="sv-chart">
+          <span className="sv-caption">{`${METRIC_WORDS[decision.metric]} per fold · ${won.folds} folds`}</span>
+          <LineChart name={`${a} and ${b} per fold`} series={[{ name: a, values: x.fold_scores }, { name: b, values: y.fold_scores }]} xLabel="fold" />
+        </div>
       </BodySection>
       <BodySection title="What each model saw" note="Each model's out-of-fold figures from the train rows: its confusion and which features its predictions leaned on (predictive, not causal).">
         <div className="exp-side-by-side">

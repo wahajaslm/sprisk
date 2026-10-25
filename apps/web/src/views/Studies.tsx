@@ -6,7 +6,7 @@ import { useMethodologyProposal } from "../api/methodology.ts";
 import { type StudyRequest, useCreateStudy, useStudy } from "../api/studies.ts";
 import { tablePageQuery } from "../api/hooks.ts";
 import { Button } from "../components/ui/Button.tsx";
-import { ChartBlock, ParallelLines } from "./charts/StudioCharts.tsx";
+import { KeyValues, ParallelChart } from "../components/ui/StudioVisuals.tsx";
 import { parallelLines, searchSpace } from "./experiments/sweep.ts";
 import { Comparison, showSettings, useComparedSteps } from "./ModelComparison.tsx";
 import { formatMetric } from "./NodeFact.tsx";
@@ -65,13 +65,18 @@ function StudyCard({ id, versions, siblings }: { id: string; versions: PipelineV
         </p>
       ))}
       {siblings.length > 0 && <Siblings study={study} siblings={siblings} />}
-      {lines.lines.length >= 2 && (
-        <ChartBlock title="Parallel coordinates" sub="Each line is one trial. The bright line is the best so far." legend={[{ tone: "secondary", text: "Trial" }, { tone: "primary", text: "Best so far" }]}>
-          <ParallelLines name={`Trials of ${study.node_id}`} axes={lines.axes} lines={lines.lines} best={lines.best} />
-        </ChartBlock>
-      )}
-      <Searched trials={trials} />
-      <TrialTable trials={trials} scores={scores} />
+      <div className="sv-split">
+        <div className="sv-chart">
+          <span className="sv-caption">Parallel coordinates · each line is one trial; the bright line is the best so far</span>
+          {lines.lines.length >= 2 ? <ParallelChart name={`Trials of ${study.node_id}`} axes={lines.axes} lines={lines.lines} best={lines.best} /> : <p className="muted">Drawn once two tuned trials have scores.</p>}
+        </div>
+        <div className="sv-chart">
+          <span className="sv-caption">Search space</span>
+          <Searched trials={trials} />
+          <span className="sv-caption">Trials, best first</span>
+          <TrialTable trials={trials} scores={scores} />
+        </div>
+      </div>
       {study.status === "budget_reached" && (
         <p className="exp-caution">
           The wall-time budget ran out: {finished} finished trials are kept and nothing was decided. A study with more time reuses them.
@@ -108,16 +113,7 @@ function Searched({ trials }: { trials: StudyDetail["trials"] }) {
   if (trials.length === 0) return null;
   const space = searchSpace(trials.filter((t) => Object.keys(t.settings).length > 0));
   if (space.length === 0) return <p className="muted">Searched: nothing; no shortlisted model declares settings to tune.</p>;
-  return (
-    <dl className="exp-space" aria-label="Search space">
-      {space.map((s) => (
-        <div key={s.setting}>
-          <dt className="mono">{s.setting}</dt>
-          <dd className="mono">{s.text}</dd>
-        </div>
-      ))}
-    </dl>
-  );
+  return <KeyValues label="Search space" rows={space.map((s) => [s.setting, s.text])} />;
 }
 
 /** Every trial, the best scored first; a trial with no score yet keeps its place after them. */

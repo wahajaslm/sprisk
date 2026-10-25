@@ -1,11 +1,12 @@
 import type { ColumnProfile, ColumnRole, DatasetProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { useDatasetProfile } from "../../api/datasets.ts";
 import { Button } from "../../components/ui/Button.tsx";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { BodySection } from "../../components/ui/RowList.tsx";
-import { Cells, ChartBlock, ColumnBars, RowBars, Sparkline } from "../charts/StudioCharts.tsx";
+import { MeterRows, SolidBars } from "../../components/ui/StudioVisuals.tsx";
+import { Cells } from "../charts/StudioCharts.tsx";
 
 /** A column this empty or more is a warning (the design's missing threshold). */
 export const MISSING_WARN = 0.2;
@@ -75,28 +76,17 @@ const share = (c: ColumnProfile, rows: number) => (rows === 0 ? 0 : (c.missing +
 function MissingShare({ profile }: { profile: DatasetProfile }) {
   const rows = profile.profiled_rows;
   const sorted = [...profile.columns].sort((a, b) => share(b, rows) - share(a, rows));
-  const over = sorted.filter((c) => share(c, rows) >= MISSING_WARN).length;
-  const top = Math.max(0.5, ...sorted.map((c) => share(c, rows)));
+  const gappy = sorted.filter((c) => share(c, rows) > 0);
+  const over = gappy.filter((c) => share(c, rows) >= MISSING_WARN).length;
   return (
-    <BodySection title="Missing values" note="How much of each column is empty: missing cells and blank text.">
-      <ChartBlock
-        title="Missing share per column"
-        sub={`${profile.columns.length} columns · missing cells and blank text · ${sorted[0]?.name ?? ""} first`}
-        {...(over > 0 ? { note: `${over} ${over === 1 ? "column" : "columns"} at or above ${percent(MISSING_WARN)}` } : {})}
-        legend={[
-          { tone: "primary", text: `Below ${percent(MISSING_WARN)}` },
-          { tone: "red", text: `At or above ${percent(MISSING_WARN)}` },
-        ]}
-      >
-        <ColumnBars
-          name="Missing share per column"
-          values={sorted.map((c) => share(c, rows))}
-          max={top}
-          line={MISSING_WARN}
-          warn={(i) => share(sorted[i]!, rows) >= MISSING_WARN}
-          axis={(v) => percent(v)}
-        />
-      </ChartBlock>
+    <BodySection title="Missing values" note={over > 0 ? `${over} ${over === 1 ? "column" : "columns"} at or above ${percent(MISSING_WARN)} empty · missing cells and blank text` : "Missing cells and blank text, per column"}>
+      <span className="sv-caption">Missing share per column</span>
+      <SolidBars name="Missing share per column" values={sorted.map((c) => share(c, rows))} warn={(i) => share(sorted[i]!, rows) >= MISSING_WARN} />
+      {gappy.length === 0 ? (
+        <p className="muted">Every column is filled in every row.</p>
+      ) : (
+        <MeterRows label="Missing per column" rows={gappy.map((c) => ({ name: c.name, share: share(c, rows) / Math.max(share(gappy[0]!, rows), Number.MIN_VALUE), value: pct1(c.missing + (c.blank ?? 0), rows), warn: share(c, rows) >= MISSING_WARN }))} />
+      )}
     </BodySection>
   );
 }
@@ -137,7 +127,7 @@ function ProfileTable({ profile }: { profile: DatasetProfile }) {
               </td>
               <td className="num mono">{c.distinct.toLocaleString()}</td>
               <td className="num mono">{c.quartiles && c.role !== "identifier" ? num(c.quartiles.median) : "—"}</td>
-              <td className="ds-spark">{shape.length > 1 ? <Sparkline name={`Distribution of ${c.name}`} values={shape} warn={warn} /> : <span className="muted">—</span>}</td>
+              <td className="ds-spark">{shape.length > 1 ? <SolidBars name={`Distribution of ${c.name}`} values={shape} height={22} /> : <span className="muted">—</span>}</td>
             </tr>
           );
         })}
@@ -215,26 +205,27 @@ function ColumnValues({ column, rows, findings }: { column: ColumnProfile; rows:
 }
 
 function chartsOf(column: ColumnProfile, rows: number) {
-  const values = (bars: { label: string; count: number }[], other?: number) => [
-    ...bars.map((b) => ({ label: b.label, value: b.count, text: `${b.count.toLocaleString()} · ${pct1(b.count, rows)}` })),
-    ...(other ? [{ label: "Every other value", value: other, text: `${other.toLocaleString()} · ${pct1(other, rows)}`, muted: true }] : []),
-  ];
+  const meters = (bars: { label: string; count: number }[], other?: number) => {
+    const top = Math.max(...bars.map((b) => b.count), other ?? 0, 1);
+    return [
+      ...bars.map((b) => ({ name: b.label, share: b.count / top, value: `${b.count.toLocaleString()} · ${pct1(b.count, rows)}` })),
+      ...(other ? [{ name: "Every other value", share: other / top, value: `${other.toLocaleString()} · ${pct1(other, rows)}` }] : []),
+    ];
+  };
+  const block = (caption: string, body: ReactNode) => (
+    <div className="sv-chart" key={caption}>
+      <span className="sv-caption">{caption}</span>
+      {body}
+    </div>
+  );
   switch (column.role) {
     case "text": {
       const repeated = (column.histogram?.bars ?? []).filter((b) => b.count > 1).slice(0, MAX_VALUES);
       const words = column.word_counts?.bars ?? [];
       return (
         <>
-          {words.length > 0 && (
-            <ChartBlock title="Words per value" sub={`${words[0]?.label} to ${words.at(-1)?.label} words`} legend={[{ tone: "primary", text: "Rows" }]}>
-              <ColumnBars name={`Words per value in ${column.name}`} values={words.map((b) => b.count)} labels={[words[0]?.label ?? "", words.at(-1)?.label ?? ""]} />
-            </ChartBlock>
-          )}
-          {repeated.length > 0 && (
-            <ChartBlock title="Most repeated values" sub={`Values held by more than one row · top ${repeated.length}`}>
-              <RowBars name={`Most repeated values of ${column.name}`} rows={values(repeated)} />
-            </ChartBlock>
-          )}
+          {words.length > 0 && block(`Words per value · ${words[0]?.label} to ${words.at(-1)?.label}`, <SolidBars name={`Words per value in ${column.name}`} values={words.map((b) => b.count)} height={96} />)}
+          {repeated.length > 0 && block(`Most repeated values · top ${repeated.length}`, <MeterRows label={`Most repeated values of ${column.name}`} rows={meters(repeated)} />)}
         </>
       );
     }
@@ -242,19 +233,11 @@ function chartsOf(column: ColumnProfile, rows: number) {
     case "boolean": {
       const bars = (column.histogram?.bars ?? []).slice(0, MAX_VALUES);
       const rest = (column.histogram?.bars ?? []).slice(MAX_VALUES).reduce((n, b) => n + b.count, 0) + (column.histogram?.other ?? 0);
-      return bars.length > 0 ? (
-        <ChartBlock title="Most common values" sub={`${column.distinct.toLocaleString()} distinct · top ${bars.length}`} legend={[{ tone: "primary", text: "Shown" }, { tone: "secondary", text: "Every other value" }]}>
-          <RowBars name={`Most common values of ${column.name}`} rows={values(bars, rest)} />
-        </ChartBlock>
-      ) : null;
+      return bars.length > 0 ? block(`Most common values · ${column.distinct.toLocaleString()} distinct`, <MeterRows label={`Most common values of ${column.name}`} rows={meters(bars, rest)} />) : null;
     }
     case "number": {
       const bars = column.histogram?.bars ?? [];
-      return bars.length > 0 ? (
-        <ChartBlock title="Distribution" sub={`${bars.length} equal-width bins`} legend={[{ tone: "primary", text: "Rows" }]}>
-          <ColumnBars name={`Distribution of ${column.name}`} values={bars.map((b) => b.count)} labels={[bars[0]?.label.split("–")[0] ?? "", bars.at(-1)?.label.split("–").at(-1) ?? ""]} />
-        </ChartBlock>
-      ) : null;
+      return bars.length > 0 ? block(`Distribution · ${bars[0]?.label.split("–")[0]} to ${bars.at(-1)?.label.split("–").at(-1)}`, <SolidBars name={`Distribution of ${column.name}`} values={bars.map((b) => b.count)} height={96} />) : null;
     }
     default:
       return <p className="muted">{column.role === "identifier" ? "An identifier names rows; its values have no distribution to show." : "Nothing to draw."}</p>;
@@ -281,10 +264,13 @@ function MissingAlongRows({ profile }: { profile: DatasetProfile }) {
   if (gappy.length === 0) return null;
   const bands = gappy[0]?.missing_by_band.length ?? 0;
   return (
-    <BodySection title="Missing along the rows" note="Whether the gaps sit together, such as rows from one source, or spread evenly.">
-      <ChartBlock title="Where values are missing" sub={`Along the rows, in ${bands} bands of ${profile.band_rows.toLocaleString()} rows`} legend={[{ tone: "primary", text: "Share missing in the band" }]}>
-        <Cells name="Where values are missing" rows={gappy.map((c) => c.name)} columns={bands} value={(i, j) => gappy[i]?.missing_by_band[j] ?? null} height={Math.max(48, gappy.length * 26)} />
-      </ChartBlock>
+    <BodySection title="Missing along the rows" note={`Share missing in each of ${bands} bands of ${profile.band_rows.toLocaleString()} rows, in row order: gaps that sit together show as a block.`}>
+      {gappy.map((c) => (
+        <div className="sv-chart" key={c.name}>
+          <span className="sv-caption">{c.name}</span>
+          <SolidBars name={`Where ${c.name} is missing`} values={c.missing_by_band} warn={(i) => (c.missing_by_band[i] ?? 0) >= MISSING_WARN} height={40} />
+        </div>
+      ))}
     </BodySection>
   );
 }
@@ -296,9 +282,8 @@ function Correlation({ profile }: { profile: DatasetProfile }) {
   const at = (i: number, j: number) => (i === j ? 1 : (r.get(`${columns[i]}\u0000${columns[j]}`) ?? null));
   return (
     <BodySection title="Correlation" note="Which measured numbers move together. Two that move as one say the same thing twice.">
-      <ChartBlock title="Correlation matrix" sub={`${columns.length} measured numbers · |r| as density`} legend={[{ tone: "primary", text: "Correlated" }, { tone: "red", text: `|r| ≥ ${STRONG_R}` }]}>
-        <Cells name="Correlation matrix" rows={columns} columns={columns.length} value={at} warn={(i, j) => i !== j && Math.abs(at(i, j) ?? 0) >= STRONG_R} height={Math.max(80, columns.length * 28)} />
-      </ChartBlock>
+      <span className="sv-caption">{`Correlation matrix · ${columns.length} measured numbers · |r| as density, red at ${STRONG_R} or more`}</span>
+      <Cells name="Correlation matrix" rows={columns} columns={columns.length} value={at} warn={(i, j) => i !== j && Math.abs(at(i, j) ?? 0) >= STRONG_R} height={Math.max(80, columns.length * 28)} />
     </BodySection>
   );
 }
