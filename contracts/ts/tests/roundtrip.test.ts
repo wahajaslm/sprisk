@@ -40,6 +40,7 @@ const entities: [keyof Entities, string][] = [
   ["FlowDecisions", "flow_decisions"],
   ["LoadedTable", "loaded_table"],
   ["DatasetProfile", "dataset_profile"],
+  ["ProfilePlan", "profile_plan"],
   ["KeyMatches", "key_matches"],
   ["TableShift", "table_shift"],
   ["ClassificationReport", "classification_report"],

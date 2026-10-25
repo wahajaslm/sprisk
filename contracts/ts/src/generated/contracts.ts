@@ -52,6 +52,31 @@ export type OperatorRef = string;
  */
 export type NodeId = string;
 /**
+ * Which permitted rows the plan describes. Input is descriptive only; train is the scope for learned preparation and model-selection evidence.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ProfileScope".
+ */
+export type ProfileScope = "input" | "train" | "test" | "transformed" | "comparison";
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ProfileSectionId".
+ */
+export type ProfileSectionId =
+  | "overview"
+  | "data_quality"
+  | "columns"
+  | "relationships"
+  | "target"
+  | "classification"
+  | "regression"
+  | "text"
+  | "categories"
+  | "entity_integrity"
+  | "temporal_integrity"
+  | "split_check"
+  | "change_report";
+/**
  * What a column's values look like they hold, guessed from the values alone, for people reading a profile. A suggestion, never a confirmed meaning: bindings confirm meanings (ADR-0063). identifier: a different value in every row, no spaces. text: several words per value, or too many distinct values to be a category. category: few distinct values. number: measured quantities. constant: one value. empty: no value.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
@@ -841,6 +866,43 @@ export interface KeyMatch {
    * The most rows of the other table that share one value: above 1, a join would copy rows.
    */
   most_rows_per_key: number;
+}
+/**
+ * The deterministic explanation of which Dataset Explore sections apply to one immutable table and question version. It selects views from stored profile facts and the question ledger; it contains no rows and makes no methodology decision.
+ *
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ProfilePlan".
+ */
+export interface ProfilePlan {
+  schema_version: "sprisk.profile_plan/v1";
+  artifact_id: ArtifactId;
+  /**
+   * The formal question whose declared task, target and bindings selected the sections. Absent for neutral data exploration.
+   */
+  question_version_id?: string;
+  scope: ProfileScope;
+  /**
+   * Applicable sections in the fixed display order. The UI renders only these sections and their supplied reason.
+   */
+  sections: ProfilePlanSection[];
+  /**
+   * Fixed statements about the evidence bounds or scope. They are explanations, not findings.
+   */
+  limitations: string[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ProfilePlanSection".
+ */
+export interface ProfilePlanSection {
+  id: ProfileSectionId;
+  title: string;
+  purpose: string;
+  evidence_scope: ProfileScope;
+  /**
+   * A fixed, deterministic template naming the profile fact or question-ledger field that made this view applicable.
+   */
+  reason: string;
 }
 /**
  * A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bins or the 30 most common values, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).

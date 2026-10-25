@@ -64,6 +64,30 @@ class KeyMatch(StrictModel):
     ]
 
 
+class ProfileScope(StrEnum):
+    input = "input"
+    train = "train"
+    test = "test"
+    transformed = "transformed"
+    comparison = "comparison"
+
+
+class ProfileSectionId(StrEnum):
+    overview = "overview"
+    data_quality = "data_quality"
+    columns = "columns"
+    relationships = "relationships"
+    target = "target"
+    classification = "classification"
+    regression = "regression"
+    text = "text"
+    categories = "categories"
+    entity_integrity = "entity_integrity"
+    temporal_integrity = "temporal_integrity"
+    split_check = "split_check"
+    change_report = "change_report"
+
+
 class Count(RootModel[int]):
     root: Annotated[int, Field(ge=0)]
 
@@ -1811,6 +1835,22 @@ class KeyMatches(StrictModel):
     ]
 
 
+class ProfilePlanSection(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: ProfileSectionId
+    title: str
+    purpose: str
+    evidence_scope: ProfileScope
+    reason: Annotated[
+        str,
+        Field(
+            description="A fixed, deterministic template naming the profile fact or question-ledger field that made this view applicable."
+        ),
+    ]
+
+
 class TableShift(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3061,6 +3101,33 @@ class LoadedTable(StrictModel):
     total_rows: Annotated[int, Field(ge=0)]
     total_columns: Annotated[int, Field(ge=0)]
     used_by: list[LoadedTableUse]
+
+
+class ProfilePlan(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_version: Literal["sprisk.profile_plan/v1"]
+    artifact_id: ArtifactId
+    question_version_id: Annotated[
+        QuestionVersionId | None,
+        Field(
+            description="The formal question whose declared task, target and bindings selected the sections. Absent for neutral data exploration."
+        ),
+    ] = None
+    scope: ProfileScope
+    sections: Annotated[
+        list[ProfilePlanSection],
+        Field(
+            description="Applicable sections in the fixed display order. The UI renders only these sections and their supplied reason."
+        ),
+    ]
+    limitations: Annotated[
+        list[str],
+        Field(
+            description="Fixed statements about the evidence bounds or scope. They are explanations, not findings."
+        ),
+    ]
 
 
 class ClassificationReport(StrictModel):
