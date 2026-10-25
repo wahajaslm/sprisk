@@ -1119,7 +1119,10 @@ p { margin: 0; }
    kind icon and a state dot, the name, and one measured fact. */
 .flow-round {
   position: relative;
-  width: 176px;
+  /* As wide as its icon and label (at most the layout's 176px), so a line leaves right after
+     the text and arrives at the icon: the same distance for every step. */
+  width: fit-content;
+  max-width: 176px;
   height: 40px;
   box-sizing: border-box;
   display: flex;
