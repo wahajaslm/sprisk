@@ -362,6 +362,10 @@
         "correlation": {
           "$ref": "#/$defs/Correlation"
         },
+        "label": {
+          "$ref": "#/$defs/LabelProfile",
+          "description": "How the columns relate to a label column, when one was asked for (GET /artifacts/{id}/profile?target=). Of every row, held-out rows included: for looking, never for choosing (rule 8). Absent when none was asked for or the table has no such column."
+        },
         "findings": {
           "type": "array",
           "maxItems": 60,
@@ -369,6 +373,140 @@
             "$ref": "#/$defs/ProfileFinding"
           },
           "description": "What stands out in the profiled rows, most important first, as plain sentences built from the counts above (ADR-0065). Descriptive: a finding is never evidence for a decision."
+        }
+      }
+    },
+    "LabelProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "classes",
+        "other",
+        "numbers",
+        "groups"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HistogramBar"
+          },
+          "description": "The 20 most common labels and their rows, most common first. Rows with no label are left out."
+        },
+        "other": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Labelled rows whose label is not among the classes. Above zero, the label has too many values to relate columns to: numbers and groups are then empty."
+        },
+        "numbers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LabelNumber"
+          },
+          "description": "Each measured number and how it moves with the label."
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LabelGroup"
+          },
+          "description": "Categories with 2 to 20 values, at most 6, and the first class's share in each value."
+        }
+      }
+    },
+    "LabelNumber": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column",
+        "r"
+      ],
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "r": {
+          "type": "number",
+          "description": "For two classes, the point-biserial r with the first class (-1 to 1). For more, the correlation ratio eta (0 to 1). Rows missing either are left out."
+        },
+        "by_class": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClassBins"
+          },
+          "description": "For at most 6 classes: each class's counts in the column's histogram bins. Absent for more."
+        }
+      }
+    },
+    "ClassBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "counts"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "counts": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Rows of this class in each of the column's bins, in bin order."
+        },
+        "quartiles": {
+          "$ref": "#/$defs/Quartiles"
+        }
+      }
+    },
+    "LabelGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column",
+        "values"
+      ],
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GroupShare"
+          }
+        }
+      }
+    },
+    "GroupShare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "rows",
+        "share"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Labelled rows with this value."
+        },
+        "share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Of those rows, the share labelled with the first class."
         }
       }
     },

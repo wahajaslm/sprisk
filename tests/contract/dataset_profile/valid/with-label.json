@@ -1,0 +1,20 @@
+{
+  "total_rows": 60,
+  "total_columns": 2,
+  "profiled_rows": 60,
+  "band_rows": 2,
+  "columns": [
+    { "name": "up", "data_type": "Float64", "missing": 0, "distinct": 10, "missing_by_band": [0.0], "histogram": { "kind": "bins", "bars": [{ "label": "0–7", "count": 20, "lower": 0.5, "upper": 7.5 }, { "label": "7–14", "count": 40, "lower": 7.5, "upper": 14.5 }] } },
+    { "name": "label", "data_type": "String", "missing": 0, "distinct": 2, "missing_by_band": [0.0] }
+  ],
+  "correlation": { "columns": [], "pairs": [] },
+  "label": {
+    "target": "label",
+    "classes": [{ "label": "yes", "count": 40 }, { "label": "no", "count": 20 }],
+    "other": 0,
+    "numbers": [
+      { "column": "up", "r": 0.95, "by_class": [{ "label": "yes", "counts": [0, 40], "quartiles": { "min": 10.5, "q1": 11.5, "median": 12.5, "q3": 13.5, "max": 14.5 } }, { "label": "no", "counts": [20, 0] }] }
+    ],
+    "groups": [{ "column": "batch", "values": [{ "label": "B0", "rows": 15, "share": 0.5 }] }]
+  }
+}

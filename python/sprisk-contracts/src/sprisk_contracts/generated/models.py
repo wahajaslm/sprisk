@@ -64,6 +64,24 @@ class KeyMatch(StrictModel):
     ]
 
 
+class Count(RootModel[int]):
+    root: Annotated[int, Field(ge=0)]
+
+
+class GroupShare(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    label: str
+    rows: Annotated[int, Field(description="Labelled rows with this value.", ge=0)]
+    share: Annotated[
+        float,
+        Field(
+            description="Of those rows, the share labelled with the first class.", ge=0.0, le=1.0
+        ),
+    ]
+
+
 class CoMissing(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1715,6 +1733,26 @@ class KeyMatches(StrictModel):
     ]
 
 
+class ClassBins(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    label: str
+    counts: Annotated[
+        list[Count],
+        Field(description="Rows of this class in each of the column's bins, in bin order."),
+    ]
+    quartiles: Quartiles | None = None
+
+
+class LabelGroup(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    column: str
+    values: list[GroupShare]
+
+
 class Histogram(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2869,6 +2907,25 @@ class LoadedTable(StrictModel):
     used_by: list[LoadedTableUse]
 
 
+class LabelNumber(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    column: str
+    r: Annotated[
+        float,
+        Field(
+            description="For two classes, the point-biserial r with the first class (-1 to 1). For more, the correlation ratio eta (0 to 1). Rows missing either are left out."
+        ),
+    ]
+    by_class: Annotated[
+        list[ClassBins] | None,
+        Field(
+            description="For at most 6 classes: each class's counts in the column's histogram bins. Absent for more."
+        ),
+    ] = None
+
+
 class ColumnProfile(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -3659,52 +3716,34 @@ class WorkerMessage(
     ]
 
 
-class DatasetProfile(StrictModel):
+class LabelProfile(StrictModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    total_rows: Annotated[int, Field(ge=0)]
-    total_columns: Annotated[int, Field(ge=0)]
-    profiled_rows: Annotated[
+    target: str
+    classes: Annotated[
+        list[HistogramBar],
+        Field(
+            description="The 20 most common labels and their rows, most common first. Rows with no label are left out."
+        ),
+    ]
+    other: Annotated[
         int,
         Field(
-            description="Rows the profile covers: all of them, or the first 1,000,000 of a larger table.",
+            description="Labelled rows whose label is not among the classes. Above zero, the label has too many values to relate columns to: numbers and groups are then empty.",
             ge=0,
         ),
     ]
-    band_rows: Annotated[
-        int,
+    numbers: Annotated[
+        list[LabelNumber],
+        Field(description="Each measured number and how it moves with the label."),
+    ]
+    groups: Annotated[
+        list[LabelGroup],
         Field(
-            description="Rows in each band of the missing-value map; the last band may hold fewer.",
-            ge=0,
+            description="Categories with 2 to 20 values, at most 6, and the first class's share in each value."
         ),
     ]
-    duplicate_rows: Annotated[
-        int | None,
-        Field(description="Profiled rows equal in every column to an earlier one.", ge=0),
-    ] = None
-    rows_with_gap: Annotated[
-        int | None,
-        Field(
-            description="Profiled rows with at least one gap: a missing cell, or blank text in a text column.",
-            ge=0,
-        ),
-    ] = None
-    co_missing: Annotated[
-        list[CoMissing] | None,
-        Field(
-            description="The column pairs most often empty in the same rows (a missing cell or blank text), most rows first, at most 5. Pairs never empty together are left out."
-        ),
-    ] = None
-    columns: list[ColumnProfile]
-    correlation: Correlation
-    findings: Annotated[
-        list[ProfileFinding] | None,
-        Field(
-            description="What stands out in the profiled rows, most important first, as plain sentences built from the counts above (ADR-0065). Descriptive: a finding is never evidence for a decision.",
-            max_length=60,
-        ),
-    ] = None
 
 
 class MethodOption(StrictModel):
@@ -4004,6 +4043,60 @@ class WalkDetail(StrictModel):
     )
     walk: Walk
     steps: list[WalkStep]
+
+
+class DatasetProfile(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    total_rows: Annotated[int, Field(ge=0)]
+    total_columns: Annotated[int, Field(ge=0)]
+    profiled_rows: Annotated[
+        int,
+        Field(
+            description="Rows the profile covers: all of them, or the first 1,000,000 of a larger table.",
+            ge=0,
+        ),
+    ]
+    band_rows: Annotated[
+        int,
+        Field(
+            description="Rows in each band of the missing-value map; the last band may hold fewer.",
+            ge=0,
+        ),
+    ]
+    duplicate_rows: Annotated[
+        int | None,
+        Field(description="Profiled rows equal in every column to an earlier one.", ge=0),
+    ] = None
+    rows_with_gap: Annotated[
+        int | None,
+        Field(
+            description="Profiled rows with at least one gap: a missing cell, or blank text in a text column.",
+            ge=0,
+        ),
+    ] = None
+    co_missing: Annotated[
+        list[CoMissing] | None,
+        Field(
+            description="The column pairs most often empty in the same rows (a missing cell or blank text), most rows first, at most 5. Pairs never empty together are left out."
+        ),
+    ] = None
+    columns: list[ColumnProfile]
+    correlation: Correlation
+    label: Annotated[
+        LabelProfile | None,
+        Field(
+            description="How the columns relate to a label column, when one was asked for (GET /artifacts/{id}/profile?target=). Of every row, held-out rows included: for looking, never for choosing (rule 8). Absent when none was asked for or the table has no such column."
+        ),
+    ] = None
+    findings: Annotated[
+        list[ProfileFinding] | None,
+        Field(
+            description="What stands out in the profiled rows, most important first, as plain sentences built from the counts above (ADR-0065). Descriptive: a finding is never evidence for a decision.",
+            max_length=60,
+        ),
+    ] = None
 
 
 class Method(StrictModel):

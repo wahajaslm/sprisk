@@ -3064,6 +3064,7 @@ async fn get_artifact_figures(
 async fn get_artifact_profile(
     State(state): State<AppState>,
     Path(raw): Path<String>,
+    query: Query,
 ) -> Result<Json<DatasetProfile>, ApiError> {
     let artifact_id: ArtifactId = id(&raw)?;
     let artifact = state.store.get_artifact(&artifact_id).await?;
@@ -3076,14 +3077,22 @@ async fn get_artifact_profile(
             ),
         });
     }
-    // A table never changes, so its profile is made once per profiler code and kept.
+    // A table never changes, so its profile is made once per profiler code and label, and kept.
     let content = artifact.content_hash.as_str();
     let code = state.profiler.code();
-    if let Some(kept) = state.store.stored_profile(content, code).await? {
+    // `?target=`: the label column to relate the other columns to (ADR-0065).
+    let target = query.get("target").map(String::as_str);
+    if let Some(kept) = state.store.stored_profile(content, code, target).await? {
         return Ok(Json(kept));
     }
-    let made = state.profiler.profile(&local_table(&artifact)?).await?;
-    state.store.save_profile(content, code, &made).await?;
+    let made = state
+        .profiler
+        .profile(&local_table(&artifact)?, target)
+        .await?;
+    state
+        .store
+        .save_profile(content, code, target, &made)
+        .await?;
     Ok(Json(made))
 }
 

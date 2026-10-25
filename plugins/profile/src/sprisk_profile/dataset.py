@@ -1,6 +1,7 @@
 """A descriptive profile of one table for the Datasets view (ADR-0038).
 
-Run as `python -m sprisk_profile.dataset` with a Parquet path on stdin; prints a
+Run as `python -m sprisk_profile.dataset` with a Parquet path on stdin, and the label column on
+a second line when the page asks how columns relate to it; prints a
 `DatasetProfile` as JSON. Rust starts one short process per request, bounds its time and
 checks the answer against the contract. Methodology rules read it too: of a step's train rows
 (ADR-0042), or only its structure (types, duplicates, values that do not read as numbers) of the
@@ -18,6 +19,7 @@ from typing import Any
 import polars as pl
 
 from .distributions import histogram_bins, numeric_columns
+from .label import label_profile
 from .understanding import findings, role
 
 MAX_BANDS = 40
@@ -60,7 +62,10 @@ def read_table(
 
 
 def profile(
-    data: pl.DataFrame, total_rows: int | None = None, total_columns: int | None = None
+    data: pl.DataFrame,
+    total_rows: int | None = None,
+    total_columns: int | None = None,
+    target: str | None = None,
 ) -> dict[str, Any]:
     width = data.width
     duplicates = _duplicates(
@@ -77,6 +82,7 @@ def profile(
     # Identifiers and category codes are numbers only in type; their correlation means nothing.
     measured = [c["name"] for c in columns if c["role"] == "number"]
     varying = [c for c in measured if data[c].drop_nulls().n_unique() > 1][:MAX_CORRELATED]
+    label = None if target is None else label_profile(data, columns, target)
     return {
         "total_rows": rows if total_rows is None else total_rows,
         "total_columns": width if total_columns is None else total_columns,
@@ -88,6 +94,7 @@ def profile(
         "columns": columns,
         "correlation": {"columns": varying, "pairs": _pairs(data, varying)},
         "findings": findings(data, columns, duplicates),
+        **({} if label is None else {"label": label}),
     }
 
 
@@ -349,13 +356,15 @@ def _pairs(data: pl.DataFrame, columns: list[str]) -> list[dict[str, Any]]:
 
 
 def main() -> None:
-    path = sys.stdin.read().strip()
+    # The path, and on a second line the label column when the page asks how columns relate.
+    path, _, target = sys.stdin.read().strip().partition("\n")
     try:
         data, rows, columns = read_table(path)
     except (OSError, pl.exceptions.PolarsError) as e:
         sys.exit(f"cannot read {path}: {e}")
     # allow_nan=False: NaN is not JSON; _finite and _pairs make it impossible, so fail if not.
-    sys.stdout.write(json.dumps(profile(data, rows, columns), allow_nan=False))
+    made = profile(data, rows, columns, target.strip() or None)
+    sys.stdout.write(json.dumps(made, allow_nan=False))
 
 
 if __name__ == "__main__":

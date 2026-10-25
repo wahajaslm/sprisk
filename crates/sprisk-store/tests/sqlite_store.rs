@@ -1636,23 +1636,62 @@ fn profile(rows: i64) -> sprisk_contracts::DatasetProfile {
 async fn a_profile_is_kept_by_its_table_and_its_profiler_code() {
     let store = SqliteStore::in_memory().await.unwrap();
     assert_eq!(
-        store.stored_profile("sha256:t", "sha256:p1").await.unwrap(),
+        store
+            .stored_profile("sha256:t", "sha256:p1", None)
+            .await
+            .unwrap(),
         None
     );
 
     store
-        .save_profile("sha256:t", "sha256:p1", &profile(5))
+        .save_profile("sha256:t", "sha256:p1", None, &profile(5))
         .await
         .unwrap();
 
     assert_eq!(
-        store.stored_profile("sha256:t", "sha256:p1").await.unwrap(),
+        store
+            .stored_profile("sha256:t", "sha256:p1", None)
+            .await
+            .unwrap(),
         Some(profile(5))
     );
     // New profiler code profiles the table again.
     assert_eq!(
-        store.stored_profile("sha256:t", "sha256:p2").await.unwrap(),
+        store
+            .stored_profile("sha256:t", "sha256:p2", None)
+            .await
+            .unwrap(),
         None
+    );
+}
+
+#[tokio::test]
+async fn a_profile_with_a_label_is_kept_apart_from_one_without() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    store
+        .save_profile("sha256:t", "sha256:p", Some("y"), &profile(7))
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .stored_profile("sha256:t", "sha256:p", None)
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        store
+            .stored_profile("sha256:t", "sha256:p", Some("z"))
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        store
+            .stored_profile("sha256:t", "sha256:p", Some("y"))
+            .await
+            .unwrap(),
+        Some(profile(7))
     );
 }
 
@@ -1660,15 +1699,18 @@ async fn a_profile_is_kept_by_its_table_and_its_profiler_code() {
 async fn saving_a_profile_twice_keeps_the_first() {
     let store = SqliteStore::in_memory().await.unwrap();
     store
-        .save_profile("sha256:t", "sha256:p", &profile(5))
+        .save_profile("sha256:t", "sha256:p", None, &profile(5))
         .await
         .unwrap();
     store
-        .save_profile("sha256:t", "sha256:p", &profile(6))
+        .save_profile("sha256:t", "sha256:p", None, &profile(6))
         .await
         .unwrap();
     assert_eq!(
-        store.stored_profile("sha256:t", "sha256:p").await.unwrap(),
+        store
+            .stored_profile("sha256:t", "sha256:p", None)
+            .await
+            .unwrap(),
         Some(profile(5))
     );
 }

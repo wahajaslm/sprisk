@@ -30,12 +30,15 @@ impl Profiler {
         &self.code
     }
 
-    /// The profile of the Parquet file at `path`, checked against the contract.
-    pub async fn profile(&self, path: &Path) -> Result<DatasetProfile, ProcessError> {
-        let text = self
-            .process
-            .run(path.display().to_string().into_bytes())
-            .await?;
+    /// The profile of the Parquet file at `path`, checked against the contract, relating the
+    /// columns to `target` when one is given.
+    pub async fn profile(
+        &self,
+        path: &Path,
+        target: Option<&str>,
+    ) -> Result<DatasetProfile, ProcessError> {
+        let input = format!("{}\n{}", path.display(), target.unwrap_or(""));
+        let text = self.process.run(input.into_bytes()).await?;
         parse(&text).map_err(|e| ProcessError::Failed(format!("invalid profile: {e}")))
     }
 }
@@ -57,7 +60,7 @@ impl Profiles {
         if let Some(made) = self.0.get(content) {
             return Ok(made.clone());
         }
-        let profile = profiler.profile(path).await?;
+        let profile = profiler.profile(path, None).await?;
         self.0.insert(content.to_owned(), profile.clone());
         Ok(profile)
     }
@@ -107,7 +110,7 @@ mod tests {
             &["sh", "-c", "echo /secret/path >&2; exit 3"],
             Duration::from_secs(5),
         )
-        .profile(Path::new("t.parquet"))
+        .profile(Path::new("t.parquet"), None)
         .await;
         let Err(ProcessError::Failed(why)) = failed else {
             panic!("expected a failure, got {failed:?}");
@@ -118,7 +121,7 @@ mod tests {
     #[tokio::test]
     async fn a_profiler_that_takes_too_long_is_stopped() {
         let slow = profiler(&["sleep", "5"], Duration::from_millis(100))
-            .profile(Path::new("t.parquet"))
+            .profile(Path::new("t.parquet"), None)
             .await;
         assert!(matches!(slow, Err(ProcessError::Timeout(_))), "{slow:?}");
     }
@@ -126,7 +129,7 @@ mod tests {
     #[tokio::test]
     async fn output_that_is_not_a_profile_is_refused() {
         let wrong = profiler(&["echo", "{}"], Duration::from_secs(5))
-            .profile(Path::new("t.parquet"))
+            .profile(Path::new("t.parquet"), None)
             .await;
         assert!(matches!(wrong, Err(ProcessError::Failed(_))), "{wrong:?}");
     }

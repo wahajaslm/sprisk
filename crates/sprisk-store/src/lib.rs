@@ -707,12 +707,14 @@ impl SqliteStore {
         &self,
         content: &str,
         profiler: &str,
+        target: Option<&str>,
     ) -> Result<Option<DatasetProfile>, StoreError> {
         let body: Option<String> = sqlx::query_scalar(
-            "SELECT body FROM profiles WHERE content_hash = ? AND profiler_digest = ?",
+            "SELECT body FROM profiles WHERE content_hash = ? AND profiler_digest = ? AND target = ?",
         )
         .bind(content)
         .bind(profiler)
+        .bind(target.unwrap_or(""))
         .fetch_optional(&self.pool)
         .await?;
         Ok(body.map(|b| serde_json::from_str(&b)).transpose()?)
@@ -724,13 +726,15 @@ impl SqliteStore {
         &self,
         content: &str,
         profiler: &str,
+        target: Option<&str>,
         profile: &DatasetProfile,
     ) -> Result<(), StoreError> {
         sqlx::query(
-            "INSERT OR IGNORE INTO profiles (content_hash, profiler_digest, body) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO profiles (content_hash, profiler_digest, target, body) VALUES (?, ?, ?, ?)",
         )
         .bind(content)
         .bind(profiler)
+        .bind(target.unwrap_or(""))
         .bind(to_json(profile)?)
         .execute(&self.pool)
         .await?;

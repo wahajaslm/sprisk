@@ -396,3 +396,73 @@ def test_blank_text_is_a_gap_in_the_band_map_the_gap_rows_and_the_pairs() -> Non
     assert p.rows_with_gap == 2
     assert p.co_missing is not None
     assert [(c.column_a, c.column_b, c.rows) for c in p.co_missing] == [("t", "n", 1)]
+
+
+def labelled() -> pl.DataFrame:
+    n = 60
+    return pl.DataFrame(
+        {
+            "label": ["yes" if i % 3 else "no" for i in range(n)],
+            "up": [float(i % 3 != 0) * 10 + (i % 5) for i in range(n)],
+            "flat": [float(i % 7) for i in range(n)],
+            "batch": [f"B{i % 4}" for i in range(n)],
+        }
+    )
+
+
+def test_a_label_profile_lists_the_classes_most_common_first() -> None:
+    p = profile_of_target(labelled(), "label")
+    assert p.label is not None
+    assert p.label.target == "label"
+    assert [(c.label, c.count) for c in p.label.classes] == [("yes", 40), ("no", 20)]
+
+
+def test_a_number_that_moves_with_two_classes_has_a_signed_point_biserial_r() -> None:
+    label = profile_of_target(labelled(), "label").label
+    assert label is not None
+    r = {n.column: n.r for n in label.numbers}
+    assert r["up"] > 0.9
+    assert abs(r["flat"]) < 0.3
+    flipped = profile_of_target(
+        labelled().with_columns(pl.Series("up", [-v for v in labelled()["up"]])), "label"
+    ).label
+    assert flipped is not None
+    assert next(n.r for n in flipped.numbers if n.column == "up") < -0.9
+
+
+def test_each_class_is_counted_in_the_column_bins_with_its_quartiles() -> None:
+    p = profile_of_target(labelled(), "label")
+    assert p.label is not None
+    up = next(n for n in p.label.numbers if n.column == "up")
+    histogram = column(p, "up").histogram
+    assert histogram is not None
+    assert up.by_class is not None
+    assert [b.label for b in up.by_class] == ["yes", "no"]
+    assert all(len(b.counts) == len(histogram.bars) for b in up.by_class)
+    assert [sum(c.root for c in b.counts) for b in up.by_class] == [40, 20]
+    assert up.by_class[1].quartiles is not None
+    assert up.by_class[1].quartiles.max < up.by_class[0].quartiles.min  # type: ignore[union-attr]
+
+
+def test_a_category_shows_the_first_class_share_in_each_of_its_values() -> None:
+    label = profile_of_target(labelled(), "label").label
+    assert label is not None
+    batch = next(g for g in label.groups if g.column == "batch")
+    assert [v.label for v in batch.values] == ["B0", "B1", "B2", "B3"]
+    assert all(v.rows == 15 for v in batch.values)
+    assert all(0 <= v.share <= 1 for v in batch.values)
+
+
+def test_no_label_section_without_the_target_column_and_no_relations_for_many_values() -> None:
+    assert profile_of_target(labelled(), "missing").label is None
+    many = pl.DataFrame({"y": [float(i) for i in range(50)], "x": [float(i) for i in range(50)]})
+    label = profile_of_target(many, "y").label
+    assert label is not None
+    assert label.numbers == [] and label.groups == []
+    assert label.other == 30
+
+
+def profile_of_target(data: pl.DataFrame, target: str) -> DatasetProfile:
+    return DatasetProfile.model_validate_json(
+        json.dumps(raw_profile(data, target=target), allow_nan=False)
+    )

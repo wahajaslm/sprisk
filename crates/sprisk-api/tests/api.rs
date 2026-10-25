@@ -1518,6 +1518,33 @@ async fn the_tables_flows_load_are_listed_and_one_is_profiled() {
     assert_eq!(body["profiled_rows"], 2);
 }
 
+/// The Explore page asks how the columns relate to a label; the profile without one has none.
+#[tokio::test]
+async fn a_profile_asked_with_a_label_relates_the_columns_to_it() {
+    let api = api().await;
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    run_to_end(&api).await;
+    let (_, datasets) = call(&api.app, "GET", "/loaded_tables", None).await;
+    let path = format!(
+        "/artifacts/{}/profile",
+        datasets[0]["artifact"]["id"].as_str().unwrap()
+    );
+
+    let (status, plain) = call(&api.app, "GET", &path, None).await;
+    assert_eq!(status, StatusCode::OK, "{plain}");
+    assert!(plain.get("label").is_none(), "{plain}");
+    let (status, labelled) = call(&api.app, "GET", &format!("{path}?target=y"), None).await;
+    assert_eq!(status, StatusCode::OK, "{labelled}");
+    assert_eq!(labelled["label"]["target"], "y", "{labelled}");
+}
+
 /// A table never changes, so its profile is made once and then read from the store (ADR-0065).
 #[tokio::test]
 async fn a_table_is_profiled_once_and_its_profile_kept() {
@@ -1541,7 +1568,7 @@ async fn a_table_is_profiled_once_and_its_profile_kept() {
     assert_eq!(status, StatusCode::OK, "{made}");
     let kept = api
         .store
-        .stored_profile(content, PROFILER_CODE)
+        .stored_profile(content, PROFILER_CODE, None)
         .await
         .unwrap();
     assert_eq!(serde_json::to_value(kept.unwrap()).unwrap(), made);
@@ -1549,14 +1576,14 @@ async fn a_table_is_profiled_once_and_its_profile_kept() {
     // A stored profile is served as it is: the profiler does not run again.
     let mut marked = api
         .store
-        .stored_profile(content, PROFILER_CODE)
+        .stored_profile(content, PROFILER_CODE, None)
         .await
         .unwrap()
         .unwrap();
     marked.total_rows = 999;
     let other = format!("sha256:{}", "b".repeat(64));
     api.store
-        .save_profile(&other, PROFILER_CODE, &marked)
+        .save_profile(&other, PROFILER_CODE, None, &marked)
         .await
         .unwrap();
     let mut copy: sprisk_contracts::Artifact = serde_json::from_value(artifact.clone()).unwrap();

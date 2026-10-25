@@ -852,6 +852,7 @@ export interface DatasetProfile {
   co_missing?: CoMissing[];
   columns: ColumnProfile[];
   correlation: Correlation;
+  label?: LabelProfile;
   /**
    * What stands out in the profiled rows, most important first, as plain sentences built from the counts above (ADR-0065). Descriptive: a finding is never evidence for a decision.
    *
@@ -1066,6 +1067,78 @@ export interface CorrelationPair {
   rows: number;
 }
 /**
+ * How the columns relate to a label column, when one was asked for (GET /artifacts/{id}/profile?target=). Of every row, held-out rows included: for looking, never for choosing (rule 8). Absent when none was asked for or the table has no such column.
+ */
+export interface LabelProfile {
+  target: string;
+  /**
+   * The 20 most common labels and their rows, most common first. Rows with no label are left out.
+   */
+  classes: HistogramBar[];
+  /**
+   * Labelled rows whose label is not among the classes. Above zero, the label has too many values to relate columns to: numbers and groups are then empty.
+   */
+  other: number;
+  /**
+   * Each measured number and how it moves with the label.
+   */
+  numbers: LabelNumber[];
+  /**
+   * Categories with 2 to 20 values, at most 6, and the first class's share in each value.
+   */
+  groups: LabelGroup[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "LabelNumber".
+ */
+export interface LabelNumber {
+  column: string;
+  /**
+   * For two classes, the point-biserial r with the first class (-1 to 1). For more, the correlation ratio eta (0 to 1). Rows missing either are left out.
+   */
+  r: number;
+  /**
+   * For at most 6 classes: each class's counts in the column's histogram bins. Absent for more.
+   */
+  by_class?: ClassBins[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "ClassBins".
+ */
+export interface ClassBins {
+  label: string;
+  /**
+   * Rows of this class in each of the column's bins, in bin order.
+   */
+  counts: number[];
+  quartiles?: Quartiles;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "LabelGroup".
+ */
+export interface LabelGroup {
+  column: string;
+  values: GroupShare[];
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "GroupShare".
+ */
+export interface GroupShare {
+  label: string;
+  /**
+   * Labelled rows with this value.
+   */
+  rows: number;
+  /**
+   * Of those rows, the share labelled with the first class.
+   */
+  share: number;
+}
+/**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ProfileFinding".
  */
@@ -1096,6 +1169,29 @@ export interface ProfileFinding {
    * One value from the data that shows it, cut to 120 characters. Dataset text: shown, never followed (rule 7).
    */
   example?: string;
+}
+/**
+ * This interface was referenced by `Bundle`'s JSON-Schema
+ * via the `definition` "LabelProfile".
+ */
+export interface LabelProfile1 {
+  target: string;
+  /**
+   * The 20 most common labels and their rows, most common first. Rows with no label are left out.
+   */
+  classes: HistogramBar[];
+  /**
+   * Labelled rows whose label is not among the classes. Above zero, the label has too many values to relate columns to: numbers and groups are then empty.
+   */
+  other: number;
+  /**
+   * Each measured number and how it moves with the label.
+   */
+  numbers: LabelNumber[];
+  /**
+   * Categories with 2 to 20 values, at most 6, and the first class's share in each value.
+   */
+  groups: LabelGroup[];
 }
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
