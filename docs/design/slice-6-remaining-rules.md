@@ -56,9 +56,10 @@ Legend: **kept** = same behaviour in walks; **changed** = said how; **dropped** 
 |---|---|---|
 | rare_categories | method | Kept: groups categories over 15 values (under 1% become "other"). Changed: an identifier-like column is named, not asked about; column roles already drops identifiers before the split. |
 | missingness | method | Kept: fills gaps before the model, median when skewed, else mean; text gaps get their own value. Kept: mostly empty (60%+) and unfillable columns are named, not filled. Dropped: the branch judging a person's fill step (fact 1), including the zero-fill question. |
-| categorical_encoding | method | Kept: one-hot for up to 15 categories. Changed: a column still too wide is left out with a `leave_out` step before the model, instead of the model's `exclude` setting. Changed: possible integer codes are named, not asked; an answer had no option to apply. Dropped: the least-squares note, which almost never fired. |
-| skew_transform | method | Changed: applies to any model (fact 2), not only linear. Kept: Yeo-Johnson on numbers skewed past 1.0. |
-| feature_scaling | method | Changed: applies to any model and task (fact 2). Kept: robust scaling when heavy-tailed, else standard. Dropped: the branch judging a person's scale step (fact 1). |
+| categorical_encoding | method | Kept: one-hot for up to 15 categories. Changed: possible integer codes are named, not asked; an answer had no option to apply. Dropped: the least-squares note, which almost never fired. |
+| (new) wide categories | method | A column still too wide for one-hot is its own decision, `features.wide_categories`: one option inserts one `leave_out` step before the model, instead of the model's `exclude` setting. Encoding reads it, so it runs after. |
+| skew_transform | method | Changed: applies to any model (fact 2), not only linear. Kept: Yeo-Johnson on numbers skewed past 1.0; 0/1 columns excluded. Runs after encoding. |
+| feature_scaling | method | Changed: applies to any model and task (fact 2). Kept: robust scaling when heavy-tailed, else z-score; 0/1 columns excluded. Runs after the skew transform. Dropped: the branch judging a person's scale step (fact 1). |
 | outlier_treatment | dropped | It judged only a person's clip step (fact 1); the engine never adds one. |
 
 ### Model rules
