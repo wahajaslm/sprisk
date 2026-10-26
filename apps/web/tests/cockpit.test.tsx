@@ -430,7 +430,7 @@ describe("flow canvas", () => {
     renderWithApi(<FlowCanvas />);
     fireEvent.contextMenu(await screen.findByRole("button", { name: /^split/ }));
     const menu = screen.getByRole("menu", { name: "split" });
-    await userEvent.click(within(menu).getByRole("menuitem", { name: "View as code" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Open code" }));
     expect(useSelection.getState().nodeId).toBe("split");
     expect(dock.showTab).toHaveBeenCalledWith("code");
     expect(screen.queryByRole("menu")).toBeNull();

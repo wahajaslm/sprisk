@@ -993,7 +993,7 @@ const openStepMenu = (at: MenuAt) => useStepMenu.getState().set(at);
 
 const OPEN_TABS: [InspectorTab, string][] = [
   ["data", "Open data"],
-  ["code", "View as code"],
+  ["code", "Open code"],
   ["parameters", "Open parameters"],
 ];
 
