@@ -90,7 +90,8 @@ export function ExploreTab({ dataset, target, questionVersionId, view }: { datas
       {view === "Relationships" && applies("target") && p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
 
       {view === "Modalities" && <ModalitySummary profile={p} plan={plan.data} />}
-      {view === "Modalities" && applies("categories") && <ValuesPerColumn profile={p} />}
+      {view === "Modalities" && applies("text") && <TextQuality profile={p} />}
+      {view === "Modalities" && applies("categories") && <ValuesPerColumn profile={p} roles={["category", "boolean"]} title="Category distributions" />}
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
       <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
     </div>
@@ -116,6 +117,40 @@ function ModalitySummary({ profile, plan }: { profile: DatasetProfile; plan: Pro
           </li>
         ))}
       </ul>
+    </BodySection>
+  );
+}
+
+/** First real modality pack: every value comes from the stored tabular text profile. More
+ * semantic text probes (language, PII, documents) will arrive as separate versioned facts. */
+function TextQuality({ profile }: { profile: DatasetProfile }) {
+  const columns = profile.columns.filter((column) => column.role === "text");
+  if (columns.length === 0) return null;
+  return (
+    <BodySection title="Text quality" note="Blankness, markup and length are descriptive input evidence; they do not automatically clean or remove text.">
+      {columns.map((column) => {
+        const rows = profile.profiled_rows;
+        const filled = rows === 0 ? 0 : Math.max(0, (rows - column.missing - (column.blank ?? 0)) / rows);
+        const markup = column.html_share ?? 0;
+        const words = column.word_counts?.bars ?? [];
+        return (
+          <article className="ds-column" key={column.name} aria-label={`Text quality of ${column.name}`}>
+            <header className="ds-column-head">
+              <h3 className="mono">{column.name}</h3>
+              <span className="muted">{column.data_type}</span>
+            </header>
+            <MeterRows
+              label={`Text quality of ${column.name}`}
+              rows={[
+                { name: "filled", share: filled, value: percent(filled) },
+                { name: "blank", share: rows === 0 ? 0 : (column.blank ?? 0) / rows, value: `${(column.blank ?? 0).toLocaleString()} · ${percent(rows === 0 ? 0 : (column.blank ?? 0) / rows)}` },
+                { name: "markup", share: markup, value: percent(markup) },
+              ]}
+            />
+            {words.length > 0 && <SolidBars name={`Words per value in ${column.name}`} values={words.map((bar) => bar.count)} height={72} />}
+          </article>
+        );
+      })}
     </BodySection>
   );
 }

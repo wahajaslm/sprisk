@@ -306,15 +306,14 @@ describe("datasets", () => {
     expect(screen.getByText("1 free text · 1 category · 2 numbers")).toBeInTheDocument();
   });
 
-  it("keeps every column's values by its role: a category's common values, a text's words and repeats, a number's spread", async () => {
+  it("organises text quality and category distributions in the Modalities tab", async () => {
     serve();
     await openDatasetTab("Modalities");
     const species = await screen.findByRole("article", { name: "species" });
     expect(within(species).getByRole("list", { name: "Most common values of species" })).toHaveTextContent("setosa40 · 33.3%");
-    const note = screen.getByRole("article", { name: "note" });
+    const note = screen.getByRole("article", { name: "Text quality of note" });
+    expect(within(note).getByRole("list", { name: "Text quality of note" })).toHaveTextContent("filled90%");
     expect(within(note).getByRole("img", { name: "Words per value in note" })).toBeInTheDocument();
-    const sepal = screen.getByRole("article", { name: "sepal_length" });
-    expect(sepal).toHaveTextContent("median5.8");
   });
 
   it("keeps where values are missing along the rows", async () => {
