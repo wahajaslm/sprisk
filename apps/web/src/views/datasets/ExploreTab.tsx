@@ -48,13 +48,19 @@ const TOPICS: Record<ProfileFinding["topic"], string> = {
  * in its header, one column read closely, every column's gaps and outliers on one axis, how the
  * numbers move together, and what stands out. The profile is computed by Python and stored; the
  * page asks for one page of rows at a time (ADR-0038). */
-export function ExploreTab({ dataset, target, questionVersionId }: { dataset: LoadedTable; target?: string | undefined; questionVersionId?: string | undefined }) {
+export type DatasetExploreView = "Overview" | "Quality" | "Relationships" | "Modalities";
+
+export function ExploreTab({ dataset, target, questionVersionId, view }: { dataset: LoadedTable; target?: string | undefined; questionVersionId?: string | undefined; view: DatasetExploreView }) {
   const profile = useDatasetProfile(dataset.artifact.id, target);
   const plan = useProfilePlan(dataset.artifact.id, questionVersionId);
   const [picked, setPicked] = useState<number>();
   if (profile.isError) return <p role="alert" className="error">{profile.error.message}</p>;
   if (profile.isPending) return <Loading text="Profiling the table…" />;
   const p = profile.data;
+  // Until the plan arrives (or if an older server lacks it), retain the existing exploration
+  // view. Once present, its explicit section ids are the authority for tabular sections.
+  const applies = (id: ProfilePlan["sections"][number]["id"]) =>
+    plan.data === undefined || plan.data.sections.some((section) => section.id === id);
   const at = picked ?? firstToRead(p.columns);
   const pick = (name: string) => {
     const i = p.columns.findIndex((c) => c.name === name);
@@ -63,27 +69,54 @@ export function ExploreTab({ dataset, target, questionVersionId }: { dataset: Lo
   const column = p.columns[at];
   return (
     <div className="ds-profile ds-explore">
-      {plan.data && <WhyTheseViews plan={plan.data} />}
-      {(p.profiled_rows < p.total_rows || p.columns.length < p.total_columns) && (
+      {view === "Overview" && plan.data && <WhyTheseViews plan={plan.data} />}
+      {view === "Overview" && (p.profiled_rows < p.total_rows || p.columns.length < p.total_columns) && (
         <p className="ds-overview">
           {p.profiled_rows < p.total_rows && `Profiled the first ${p.profiled_rows.toLocaleString()} of ${p.total_rows.toLocaleString()} rows. `}
           {p.columns.length < p.total_columns && `Showing the first ${p.columns.length} of ${p.total_columns} columns.`}
         </p>
       )}
-      <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />
-      <ColumnProfileTable profile={p} />
-      {column && <ReadOneColumn profile={p} at={at} onMove={setPicked} />}
-      <MissingShare profile={p} />
-      <MissingOrExtreme profile={p} picked={column?.name} onPick={pick} />
-      <MissingAlongRows profile={p} />
-      {(p.correlation.columns.length >= 2 || (p.label?.numbers.length ?? 0) > 0) && <RelateColumns profile={p} picked={column?.name} />}
-      <SplitShift dataset={dataset} />
-      {p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
-      <ValuesPerColumn profile={p} />
-      <WhatStandsOut findings={p.findings ?? []} />
+      {view === "Overview" && applies("overview") && <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />}
+      {view === "Overview" && applies("columns") && <ColumnProfileTable profile={p} />}
+      {view === "Overview" && applies("columns") && column && <ReadOneColumn profile={p} at={at} onMove={setPicked} />}
+
+      {view === "Quality" && applies("data_quality") && <MissingShare profile={p} />}
+      {view === "Quality" && applies("data_quality") && <MissingOrExtreme profile={p} picked={column?.name} onPick={pick} />}
+      {view === "Quality" && applies("data_quality") && <MissingAlongRows profile={p} />}
+      {view === "Quality" && applies("data_quality") && <WhatStandsOut findings={p.findings ?? []} />}
+
+      {view === "Relationships" && applies("relationships") && (p.correlation.columns.length >= 2 || (p.label?.numbers.length ?? 0) > 0) && <RelateColumns profile={p} picked={column?.name} />}
+      {view === "Relationships" && <SplitShift dataset={dataset} />}
+      {view === "Relationships" && applies("target") && p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
+
+      {view === "Modalities" && <ModalitySummary profile={p} plan={plan.data} />}
+      {view === "Modalities" && applies("categories") && <ValuesPerColumn profile={p} />}
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
       <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
     </div>
+  );
+}
+
+function ModalitySummary({ profile, plan }: { profile: DatasetProfile; plan: ProfilePlan | undefined }) {
+  const active = new Set(plan?.sections.map((section) => section.id));
+  const fields = [
+    { id: "text", label: "Text", columns: profile.columns.filter((column) => column.role === "text") },
+    { id: "categories", label: "Categories", columns: profile.columns.filter((column) => column.role === "category") },
+    { id: "temporal_integrity", label: "Time", columns: profile.columns.filter((column) => column.role === "time") },
+  ] as const;
+  const shown = fields.filter((field) => field.columns.length > 0 && (plan === undefined || active.has(field.id)));
+  if (shown.length === 0) return <p className="ds-note">No specialised modality fields are active for this dataset and question.</p>;
+  return (
+    <BodySection title="Detected modalities" note="Observed field roles activate specialised exploration; they do not confirm business meaning.">
+      <ul className="ex-stats" aria-label="Detected modalities">
+        {shown.map((field) => (
+          <li key={field.id}>
+            <span>{field.label}</span>
+            <span>{field.columns.map((column) => column.name).join(", ")}</span>
+          </li>
+        ))}
+      </ul>
+    </BodySection>
   );
 }
 

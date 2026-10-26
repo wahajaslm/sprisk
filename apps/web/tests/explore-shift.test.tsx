@@ -48,6 +48,16 @@ function serve() {
   server.use(
     http.get("/api/loaded_tables", () => HttpResponse.json([table])),
     http.get("/api/artifacts/:id/profile", () => HttpResponse.json(profile)),
+    http.get("/api/artifacts/:id/profile_plan", ({ params }) => HttpResponse.json({
+      schema_version: "sprisk.profile_plan/v1",
+      artifact_id: params.id,
+      scope: "input",
+      sections: [
+        { id: "overview", title: "Overview", purpose: "Establish profile bounds.", evidence_scope: "input", reason: "Every table starts with an overview." },
+        { id: "relationships", title: "Relationships", purpose: "Show observed relationships.", evidence_scope: "input", reason: "The profile contains relationship evidence." },
+      ],
+      limitations: [],
+    })),
     http.get(`/api/attempts/${split.id}/outputs`, () => HttpResponse.json([output("train", TRAIN), output("test", TEST)])),
     http.get("/api/artifacts/:id/shift", () => HttpResponse.json(shift)),
   );
@@ -58,6 +68,7 @@ function serve() {
 describe("the split on the Explore page (design: Check splits and groups)", () => {
   it("compares the flow split's train rows with its test rows, the shifted column red", async () => {
     const asked = serve();
+    await userEvent.click(await screen.findByRole("tab", { name: "Relationships" }));
     const section = await screen.findByRole("region", { name: "Check the split" }, { timeout: 5000 });
     await within(section).findByRole("list", { name: "Train vs test shift" });
     expect(asked).toContain(`/api/artifacts/${TRAIN}/shift?against=${TEST}`);
@@ -71,6 +82,7 @@ describe("the split on the Explore page (design: Check splits and groups)", () =
 
   it("overlays the train and test shares of the picked column", async () => {
     serve();
+    await userEvent.click(await screen.findByRole("tab", { name: "Relationships" }));
     const section = await screen.findByRole("region", { name: "Check the split" }, { timeout: 5000 });
     expect(await within(section).findByRole("img", { name: "instability · train vs test" })).toBeInTheDocument();
     await userEvent.click(within(section).getByRole("button", { name: /mol_weight/ }));

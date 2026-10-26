@@ -14,7 +14,7 @@ import { PageFrame } from "../../components/ui/PageFrame.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { LineageTab, type Use } from "./DatasetDetail.tsx";
-import { ExploreTab } from "./ExploreTab.tsx";
+import { ExploreTab, type DatasetExploreView } from "./ExploreTab.tsx";
 import { InvestigationTab } from "./InvestigationTab.tsx";
 import { SearchField } from "../../components/ui/SearchField.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
@@ -26,7 +26,7 @@ export function DatasetsPage() {
   const versions = usePipelineVersions();
   const showRun = useSelection((s) => s.showRun);
   const setNav = useSelection((s) => s.setNav);
-  const [tab, setTab] = useState<Tab>("Explore");
+  const [tab, setTab] = useState<Tab>("Overview");
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (datasets.isError) return <p role="alert" className="error pad">{datasets.error.message}</p>;
@@ -82,13 +82,13 @@ export function DatasetsPage() {
       ) : tab === "Investigation" ? (
         <InvestigationTab key={current.artifact.id} dataset={current} versions={versions.data ?? []} />
       ) : (
-        <ExploreTab key={current.artifact.id} dataset={current} target={labelOf(current, versions.data ?? [])} questionVersionId={questionOf(current, versions.data ?? [])} />
+        <ExploreTab key={`${current.artifact.id}-${tab}`} dataset={current} target={labelOf(current, versions.data ?? [])} questionVersionId={questionOf(current, versions.data ?? [])} view={tab} />
       ))}
     </PageFrame>
   );
 }
 
-const TABS = ["Explore", "Investigation", "Lineage"] as const;
+const TABS = ["Overview", "Quality", "Relationships", "Modalities", "Investigation", "Lineage"] as const;
 
 /** A table's numbers go in the Info dock, not in a row under the header (design rule: stats go
  * in the Info dock). The profile's are added once it is read. */
@@ -108,7 +108,7 @@ function DatasetDock({ dataset, flows }: { dataset: LoadedTable; flows: string }
     />
   );
 }
-type Tab = (typeof TABS)[number];
+type Tab = DatasetExploreView | "Investigation" | "Lineage";
 
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
 

@@ -63,7 +63,12 @@ const profilePlan: ProfilePlan = {
   scope: "input",
   sections: [
     { id: "overview", title: "Overview", purpose: "Establish the size and bounds of the descriptive profile.", evidence_scope: "input", reason: "Every table starts with a bounded descriptive overview." },
+    { id: "data_quality", title: "Data quality", purpose: "Show structural quality evidence.", evidence_scope: "input", reason: "Every table is checked for structural quality." },
+    { id: "columns", title: "Columns", purpose: "Describe observed columns.", evidence_scope: "input", reason: "Every table needs a column inventory." },
+    { id: "relationships", title: "Relationships", purpose: "Show observed relationships.", evidence_scope: "input", reason: "The profile contains relationship evidence." },
+    { id: "target", title: "Target", purpose: "Show the declared target.", evidence_scope: "input", reason: "A target was supplied for this profile." },
     { id: "text", title: "Text exploration", purpose: "Show text length, blankness and markup indicators for observed text fields.", evidence_scope: "input", reason: "At least one stored column profile has the observed role 'text'." },
+    { id: "categories", title: "Category exploration", purpose: "Show categorical fields.", evidence_scope: "input", reason: "At least one stored column profile has the observed role 'category'." },
   ],
   limitations: ["Input-scope views are descriptive and must not be used to fit preparation or choose a model."],
 };
@@ -84,6 +89,9 @@ function serve(datasets: () => Response = () => HttpResponse.json([iris, penguin
 }
 
 afterEach(() => server.events.removeAllListeners());
+
+const openDatasetTab = async (name: "Overview" | "Quality" | "Relationships" | "Modalities") =>
+  userEvent.click(await screen.findByRole("tab", { name }));
 
 describe("datasets", () => {
   it("counts the distinct flows that use a table, and 0 when none does", async () => {
@@ -115,16 +123,16 @@ describe("datasets", () => {
     expect(within(list).getByRole("button", { name: /^penguins\.csv/ })).toBeInTheDocument();
   });
 
-  it("opens on Explore and heads each column with its type, missing share and distribution", async () => {
+  it("opens on Overview and heads each column with its type, missing share and distribution", async () => {
     serve();
-    expect(await screen.findByRole("tab", { name: "Explore" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     const table = await screen.findByRole("table", { name: "Rows of iris.csv" });
     const header = within(table).getByRole("columnheader", { name: /sepal_length/ });
     expect(header).toHaveTextContent("Float64 · 5% missing");
     expect(await within(header).findByRole("img", { name: "Distribution of sepal_length" })).toBeInTheDocument();
   });
 
-  it("shows the API's deterministic reasons for the selected Explore views", async () => {
+  it("shows the API's deterministic reasons for the selected Overview views", async () => {
     serve();
     const why = await screen.findByRole("region", { name: "Why these views" });
     expect(within(why).getByText("Text exploration")).toBeInTheDocument();
@@ -180,13 +188,11 @@ describe("datasets", () => {
     const table = screen.getByRole("table", { name: "Rows of iris.csv" });
     await userEvent.click(within(table).getByRole("button", { name: /sepal_length/ }));
     expect(within(read).getByRole("heading", { name: "sepal_length" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Read note" }));
-    expect(within(read).getByRole("heading", { name: "note" })).toBeInTheDocument();
-    expect(within(read).getByRole("img", { name: "Words per value in note" })).toBeInTheDocument();
   });
 
   it("puts every column on one axis: missing share, where the gaps sit, and outliers, with what goes together", async () => {
     serve(undefined, () => HttpResponse.json({ ...profile, rows_with_gap: 40, co_missing: [{ column_a: "sepal_length", column_b: "note", rows: 6 }] }));
+    await openDatasetTab("Quality");
     const gaps = await screen.findByRole("region", { name: "Check what's missing or extreme" });
     expect(within(gaps).getByRole("img", { name: "Missing share per column" })).toBeInTheDocument();
     expect(within(gaps).getByRole("img", { name: "Missing cells along the rows" })).toBeInTheDocument();
@@ -197,6 +203,7 @@ describe("datasets", () => {
 
   it("relates the measured numbers to each other: the strongest pairs and a correlation matrix", async () => {
     serve(undefined, () => HttpResponse.json({ ...profile, correlation: { ...profile.correlation, columns: ["sepal_length", "petal_width", "petal_length"] } }));
+    await openDatasetTab("Relationships");
     const relate = await screen.findByRole("region", { name: "Relate columns to each other" });
     expect(within(relate).getByRole("list", { name: "Strongest pairs" })).toHaveTextContent("sepal_length · petal_width+0.82");
     expect(within(relate).getByRole("img", { name: "Correlation matrix" })).toBeInTheDocument();
@@ -209,17 +216,20 @@ describe("datasets", () => {
     const table = await screen.findByRole("table", { name: "Rows of iris.csv" });
     await screen.findByRole("region", { name: "Read one column" });
     expect(within(table).getAllByRole("cell").filter((c) => c.classList.contains("warn"))).toHaveLength(0);
+    await openDatasetTab("Quality");
     expect(screen.getByRole("list", { name: "Outliers per column" })).not.toHaveTextContent("2");
   });
 
   it("leaves out the correlations when fewer than two numbers vary", async () => {
     serve(undefined, () => HttpResponse.json({ ...profile, correlation: { columns: [], pairs: [] } }));
     await screen.findByRole("region", { name: "Read one column" });
+    await openDatasetTab("Relationships");
     expect(screen.queryByRole("region", { name: "Relate columns to each other" })).toBeNull();
   });
 
   it("lists what stands out, warnings first, with an example from the data", async () => {
     serve();
+    await openDatasetTab("Quality");
     const stands = await screen.findByRole("region", { name: "What stands out" });
     const rows = within(stands).getAllByRole("listitem");
     expect(rows[0]).toHaveClass("warn");
@@ -241,6 +251,7 @@ describe("datasets", () => {
 
   it("relates the columns to the label: its balance, each number's strength, a likely leak marked", async () => {
     serve(undefined, () => HttpResponse.json(labelled));
+    await openDatasetTab("Relationships");
     const relate = await screen.findByRole("region", { name: "Relate columns to the label" });
     expect(within(relate).getByRole("img", { name: "Label balance" })).toBeInTheDocument();
     expect(relate).toHaveTextContent("Label balance · setosa 80 · other 40 · 67 / 33");
@@ -263,6 +274,7 @@ describe("datasets", () => {
 
   it("shows the first class's share in each value of a category, the overall rate dashed, a far-off value red", async () => {
     serve(undefined, () => HttpResponse.json(labelled));
+    await openDatasetTab("Relationships");
     const groups = await screen.findByRole("region", { name: "Check groups" });
     expect(groups).toHaveTextContent("setosa share by group · dashed line at the overall 67%");
     const bars = within(within(groups).getByRole("list", { name: "setosa share by batch" })).getAllByRole("listitem");
@@ -273,6 +285,7 @@ describe("datasets", () => {
   it("keeps the missing share per column and lists each column with a gap, red from the threshold", async () => {
     const gappy = { ...profile, columns: profile.columns.map((c) => (c.name === "sepal_length" ? { ...c, missing: 30 } : c)) };
     serve(undefined, () => HttpResponse.json(gappy));
+    await openDatasetTab("Quality");
     const section = await screen.findByRole("region", { name: "Missing values" });
     expect(within(section).getByRole("img", { name: "Missing share per column" })).toBeInTheDocument();
     expect(section).toHaveTextContent("1 column at or above 20% empty");
@@ -295,6 +308,7 @@ describe("datasets", () => {
 
   it("keeps every column's values by its role: a category's common values, a text's words and repeats, a number's spread", async () => {
     serve();
+    await openDatasetTab("Modalities");
     const species = await screen.findByRole("article", { name: "species" });
     expect(within(species).getByRole("list", { name: "Most common values of species" })).toHaveTextContent("setosa40 · 33.3%");
     const note = screen.getByRole("article", { name: "note" });
@@ -305,6 +319,7 @@ describe("datasets", () => {
 
   it("keeps where values are missing along the rows", async () => {
     serve();
+    await openDatasetTab("Quality");
     expect(await screen.findByRole("img", { name: "Where sepal_length is missing" })).toBeInTheDocument();
   });
 
@@ -356,9 +371,9 @@ describe("datasets", () => {
     expect(useSelection.getState()).toMatchObject({ nav: "Flow", pipelineVersionId: PV, runId: RUN, nodeId: "load" });
   });
 
-  it("has Explore, Investigation and Lineage tabs; Lineage lists each step loading the table", async () => {
+  it("has organised dataset tabs; Lineage lists each step loading the table", async () => {
     serve();
-    expect((await screen.findAllByRole("tab")).map((t) => t.textContent)).toEqual(["Explore", "Investigation", "Lineage"]);
+    expect((await screen.findAllByRole("tab")).map((t) => t.textContent)).toEqual(["Overview", "Quality", "Relationships", "Modalities", "Investigation", "Lineage"]);
     await userEvent.click(screen.getByRole("tab", { name: "Lineage" }));
     const lineage = await screen.findByRole("list", { name: "Lineage" });
     expect(lineage).toHaveTextContent(/iris\.csv.*load/);
