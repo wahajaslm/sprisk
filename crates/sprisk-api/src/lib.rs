@@ -14,6 +14,7 @@ mod line_session;
 mod method_session;
 mod notebook_code;
 mod profile;
+mod profile_plan;
 mod report;
 mod rules;
 mod split;
@@ -47,8 +48,8 @@ use sprisk_contracts::{
     NotebookCodeRequest, NotebookExecute, NotebookExecution, NotebookExecutionEvent, NotebookId,
     NotebookSettings, NotebookSettingsRequest, NotebookVariables, NotebookVersion,
     NotebookVersionId, Operator, OperatorRole, OperatorSource, PipelineVersion, PipelineVersionId,
-    Problem, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus, SelectionMetric, Study,
-    StudyDetail, StudyId, StudyStatus, TaskType, Trial, parse,
+    Problem, ProfilePlan, QuestionVersion, QuestionVersionId, Run, RunId, RunStatus,
+    SelectionMetric, Study, StudyDetail, StudyId, StudyStatus, TaskType, Trial, parse,
 };
 use sprisk_core::time::now;
 use sprisk_graph::{CompileError, Plan, compile};
@@ -169,6 +170,10 @@ pub fn router(state: AppState) -> Router {
         .route("/artifacts/{id}/rows", get(get_artifact_rows))
         .route("/artifacts/{id}/figures", get(get_artifact_figures))
         .route("/artifacts/{id}/profile", get(get_artifact_profile))
+        .route(
+            "/artifacts/{id}/profile_plan",
+            get(get_artifact_profile_plan),
+        )
         .route("/artifacts/{id}/shift", get(get_artifact_shift))
         .route("/loaded_tables", get(list_loaded_tables))
         .route(
@@ -3184,6 +3189,41 @@ async fn get_artifact_profile(
 ) -> Result<Json<DatasetProfile>, ApiError> {
     let artifact_id: ArtifactId = id(&raw)?;
     let artifact = state.store.get_artifact(&artifact_id).await?;
+    let target = query.get("target").map(String::as_str);
+    Ok(Json(profile_for(&state, &raw, &artifact, target).await?))
+}
+
+/// The deterministic display plan for a table. Its optional question version supplies the formal
+/// task and declared fields; the stored profile supplies observed field roles. No browser rule
+/// selects or hides a view (design/deterministic-profile-plan.md).
+async fn get_artifact_profile_plan(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    query: Query,
+) -> Result<Json<ProfilePlan>, ApiError> {
+    let artifact_id: ArtifactId = id(&raw)?;
+    let artifact = state.store.get_artifact(&artifact_id).await?;
+    let question_id: Option<QuestionVersionId> = optional_id(&query, "question_version_id")?;
+    let question = match question_id {
+        Some(id) => Some(state.store.get_question_version(&id).await?),
+        None => None,
+    };
+    let target = question
+        .as_ref()
+        .and_then(|item| item.target.as_ref())
+        .map(|target| target.value.as_str());
+    let profile = profile_for(&state, &raw, &artifact, target).await?;
+    profile_plan::input_plan(&artifact_id, &profile, question.as_ref())
+        .map(Json)
+        .map_err(|error| ApiError::Internal(error.to_string()))
+}
+
+async fn profile_for(
+    state: &AppState,
+    raw: &str,
+    artifact: &sprisk_contracts::Artifact,
+    target: Option<&str>,
+) -> Result<DatasetProfile, ApiError> {
     if artifact.media_type.as_str() != PARQUET {
         return Err(ApiError::BadRequest {
             code: "not_a_table",
@@ -3196,10 +3236,8 @@ async fn get_artifact_profile(
     // A table never changes, so its profile is made once per profiler code and label, and kept.
     let content = artifact.content_hash.as_str();
     let code = state.profiler.code();
-    // `?target=`: the label column to relate the other columns to (ADR-0065).
-    let target = query.get("target").map(String::as_str);
     if let Some(kept) = state.store.stored_profile(content, code, target).await? {
-        return Ok(Json(kept));
+        return Ok(kept);
     }
     let made = state
         .profiler
@@ -3209,7 +3247,7 @@ async fn get_artifact_profile(
         .store
         .save_profile(content, code, target, &made)
         .await?;
-    Ok(Json(made))
+    Ok(made)
 }
 
 /// How a table's numeric columns differ from another table's (`?against=`), such as a split's

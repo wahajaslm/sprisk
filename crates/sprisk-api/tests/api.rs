@@ -1564,6 +1564,78 @@ async fn a_profile_asked_with_a_label_relates_the_columns_to_it() {
     assert_eq!(labelled["label"]["target"], "y", "{labelled}");
 }
 
+/// Dataset Explore is an API-owned deterministic plan: the same Rakuten-shaped input and
+/// question ledger always select the same ordered views and state why each is present.
+#[tokio::test]
+async fn a_profile_plan_follows_the_question_ledger_and_profile_facts() {
+    let api = api().await;
+    std::fs::write(&api.csv, rakuten_like_listings()).unwrap();
+    rakuten_like_question(&api).await;
+    let (status, body) = call(
+        &api.app,
+        "POST",
+        "/pipeline_versions",
+        Some(pipeline(&api.csv)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    run_to_end(&api).await;
+    let (_, datasets) = call(&api.app, "GET", "/loaded_tables", None).await;
+    let artifact = datasets[0]["artifact"]["id"].as_str().unwrap();
+
+    let path = format!(
+        "/artifacts/{artifact}/profile_plan?question_version_id=qv_01JABCDEFGHJKMNPQRSTVWXYZ0"
+    );
+    let (status, first) = call(&api.app, "GET", &path, None).await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(first["scope"], "input");
+    assert_eq!(
+        first["sections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|section| section["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        [
+            "overview",
+            "data_quality",
+            "columns",
+            "relationships",
+            "target",
+            "classification",
+            "text",
+            "categories",
+        ],
+        "{first}"
+    );
+    assert_eq!(
+        first["sections"][5]["reason"],
+        "The question ledger declares a classification task with a target."
+    );
+
+    let (status, second) = call(&api.app, "GET", &path, None).await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    assert_eq!(first, second, "the selector must be deterministic");
+
+    let (status, neutral) = call(
+        &api.app,
+        "GET",
+        &format!("/artifacts/{artifact}/profile_plan"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{neutral}");
+    assert!(neutral.get("question_version_id").is_none(), "{neutral}");
+    assert!(
+        neutral["sections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|section| section["id"] != "classification"),
+        "{neutral}"
+    );
+}
+
 /// The Explore page compares a split's train rows with its test rows (ADR-0065).
 #[tokio::test]
 async fn a_table_is_compared_with_another_column_by_column() {

@@ -1,8 +1,8 @@
-import type { ColumnProfile, DatasetProfile, DatasetVersion, LabelProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
+import type { ColumnProfile, DatasetProfile, DatasetVersion, LabelProfile, LoadedTable, ProfileFinding, ProfilePlan } from "@sprisk/contracts";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { type CSSProperties, useState } from "react";
 
-import { useDatasetProfile, useDatasetVersionProfile, useTableShift } from "../../api/datasets.ts";
+import { useDatasetProfile, useDatasetVersionProfile, useProfilePlan, useTableShift } from "../../api/datasets.ts";
 import { useOutputs, usePipelineVersions, useRunAttempts, useTablePage } from "../../api/hooks.ts";
 import { latestByNode } from "../../flow/latest.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -49,21 +49,30 @@ const TOPICS: Record<ProfileFinding["topic"], string> = {
  * in its header, one column read closely, every column's gaps and outliers on one axis, how the
  * numbers move together, and what stands out. The profile is computed by Python and stored; the
  * page asks for one page of rows at a time (ADR-0038). */
-export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?: string | undefined }) {
-  return <ProfileView profile={useDatasetProfile(dataset.artifact.id, target)} dataset={dataset} />;
+export type DatasetExploreView = "Overview" | "Quality" | "Relationships" | "Modalities";
+
+export function ExploreTab({ dataset, target, questionVersionId, view }: { dataset: LoadedTable; target?: string | undefined; questionVersionId?: string | undefined; view: DatasetExploreView }) {
+  return <ProfileView profile={useDatasetProfile(dataset.artifact.id, target)} plan={useProfilePlan(dataset.artifact.id, questionVersionId)} dataset={dataset} view={view} />;
 }
 
 /** A registered source's Explore page (ADR-0067): its profile, read in place on its first
- * rows. A source is not a table sprisk holds, so it has no page of rows and no split. */
+ * rows, every view on one page. A source is not a table sprisk holds, so it has no page of rows
+ * and no split. */
 export function SourceExploreTab({ source }: { source: DatasetVersion }) {
   return <ProfileView profile={useDatasetVersionProfile(source.id)} />;
 }
 
-function ProfileView({ profile, dataset }: { profile: UseQueryResult<DatasetProfile>; dataset?: LoadedTable }) {
+/** The profile's views; `view` absent shows them all. */
+function ProfileView({ profile, plan, dataset, view }: { profile: UseQueryResult<DatasetProfile>; plan?: UseQueryResult<ProfilePlan>; dataset?: LoadedTable; view?: DatasetExploreView }) {
+  const shows = (v: DatasetExploreView) => view === undefined || view === v;
   const [picked, setPicked] = useState<number>();
   if (profile.isError) return <p role="alert" className="error">{profile.error.message}</p>;
   if (profile.isPending) return <Loading text="Profiling the table…" />;
   const p = profile.data;
+  // Until the plan arrives (or if an older server lacks it), retain the existing exploration
+  // view. Once present, its explicit section ids are the authority for tabular sections.
+  const applies = (id: ProfilePlan["sections"][number]["id"]) =>
+    plan?.data === undefined || plan.data.sections.some((section) => section.id === id);
   const at = picked ?? firstToRead(p.columns);
   const pick = (name: string) => {
     const i = p.columns.findIndex((c) => c.name === name);
@@ -72,18 +81,24 @@ function ProfileView({ profile, dataset }: { profile: UseQueryResult<DatasetProf
   const column = p.columns[at];
   return (
     <div className="ds-profile ds-explore">
-      {sampleNote(p) && <p className="ds-overview">{sampleNote(p)}</p>}
-      {dataset && <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />}
-      <ColumnProfileTable profile={p} />
-      {column && <ReadOneColumn profile={p} at={at} onMove={setPicked} />}
-      <MissingShare profile={p} />
-      <MissingOrExtreme profile={p} picked={column?.name} onPick={pick} />
-      <MissingAlongRows profile={p} />
-      {(p.correlation.columns.length >= 2 || (p.label?.numbers.length ?? 0) > 0) && <RelateColumns profile={p} picked={column?.name} />}
-      {dataset && <SplitShift dataset={dataset} />}
-      {p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
-      <ValuesPerColumn profile={p} />
-      <WhatStandsOut findings={p.findings ?? []} />
+      {shows("Overview") && plan?.data && <WhyTheseViews plan={plan.data} />}
+      {shows("Overview") && sampleNote(p) && <p className="ds-overview">{sampleNote(p)}</p>}
+      {shows("Overview") && dataset && applies("overview") && <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />}
+      {shows("Overview") && applies("columns") && <ColumnProfileTable profile={p} />}
+      {shows("Overview") && applies("columns") && column && <ReadOneColumn profile={p} at={at} onMove={setPicked} />}
+
+      {shows("Quality") && applies("data_quality") && <MissingShare profile={p} />}
+      {shows("Quality") && applies("data_quality") && <MissingOrExtreme profile={p} picked={column?.name} onPick={pick} />}
+      {shows("Quality") && applies("data_quality") && <MissingAlongRows profile={p} />}
+      {shows("Quality") && applies("data_quality") && <WhatStandsOut findings={p.findings ?? []} />}
+
+      {shows("Relationships") && applies("relationships") && (p.correlation.columns.length >= 2 || (p.label?.numbers.length ?? 0) > 0) && <RelateColumns profile={p} picked={column?.name} />}
+      {shows("Relationships") && dataset && <SplitShift dataset={dataset} />}
+      {shows("Relationships") && applies("target") && p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
+
+      {shows("Modalities") && <ModalitySummary profile={p} plan={plan?.data} />}
+      {shows("Modalities") && applies("text") && <TextQuality profile={p} />}
+      {shows("Modalities") && applies("categories") && <ValuesPerColumn profile={p} roles={["category", "boolean"]} title="Category distributions" />}
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
       <p className="ds-note">
         {dataset ? "Includes every row, including held-out test rows." : "Read in place from the source; nothing was copied. Includes rows a later split may hold out."} Use it to understand the data, not to choose features, transforms or models.
@@ -103,6 +118,80 @@ export function sampleNote(p: DatasetProfile): string | undefined {
         : "";
   const columns = p.columns.length < p.total_columns ? `Showing the first ${p.columns.length} of ${p.total_columns} columns.` : "";
   return `${rows}${columns}`.trim() || undefined;
+}
+
+function ModalitySummary({ profile, plan }: { profile: DatasetProfile; plan: ProfilePlan | undefined }) {
+  const active = new Set(plan?.sections.map((section) => section.id));
+  const fields = [
+    { id: "text", label: "Text", columns: profile.columns.filter((column) => column.role === "text") },
+    { id: "categories", label: "Categories", columns: profile.columns.filter((column) => column.role === "category") },
+    { id: "temporal_integrity", label: "Time", columns: profile.columns.filter((column) => column.role === "time") },
+  ] as const;
+  const shown = fields.filter((field) => field.columns.length > 0 && (plan === undefined || active.has(field.id)));
+  if (shown.length === 0) return <p className="ds-note">No specialised modality fields are active for this dataset and question.</p>;
+  return (
+    <BodySection title="Detected modalities" note="Observed field roles activate specialised exploration; they do not confirm business meaning.">
+      <ul className="ex-stats" aria-label="Detected modalities">
+        {shown.map((field) => (
+          <li key={field.id}>
+            <span>{field.label}</span>
+            <span>{field.columns.map((column) => column.name).join(", ")}</span>
+          </li>
+        ))}
+      </ul>
+    </BodySection>
+  );
+}
+
+/** First real modality pack: every value comes from the stored tabular text profile. More
+ * semantic text probes (language, PII, documents) will arrive as separate versioned facts. */
+function TextQuality({ profile }: { profile: DatasetProfile }) {
+  const columns = profile.columns.filter((column) => column.role === "text");
+  if (columns.length === 0) return null;
+  return (
+    <BodySection title="Text quality" note="Blankness, markup and length are descriptive input evidence; they do not automatically clean or remove text.">
+      {columns.map((column) => {
+        const rows = profile.profiled_rows;
+        const filled = rows === 0 ? 0 : Math.max(0, (rows - column.missing - (column.blank ?? 0)) / rows);
+        const markup = column.html_share ?? 0;
+        const words = column.word_counts?.bars ?? [];
+        return (
+          <article className="ds-column" key={column.name} aria-label={`Text quality of ${column.name}`}>
+            <header className="ds-column-head">
+              <h3 className="mono">{column.name}</h3>
+              <span className="muted">{column.data_type}</span>
+            </header>
+            <MeterRows
+              label={`Text quality of ${column.name}`}
+              rows={[
+                { name: "filled", share: filled, value: percent(filled) },
+                { name: "blank", share: rows === 0 ? 0 : (column.blank ?? 0) / rows, value: `${(column.blank ?? 0).toLocaleString()} · ${percent(rows === 0 ? 0 : (column.blank ?? 0) / rows)}` },
+                { name: "markup", share: markup, value: percent(markup) },
+              ]}
+            />
+            {words.length > 0 && <SolidBars name={`Words per value in ${column.name}`} values={words.map((bar) => bar.count)} height={72} />}
+          </article>
+        );
+      })}
+    </BodySection>
+  );
+}
+
+/** The plan comes from the API with the exact ledger/profile fact that selected every view. */
+function WhyTheseViews({ plan }: { plan: ProfilePlan }) {
+  return (
+    <BodySection title="Why these views" note="Selected deterministically from the question ledger and the stored dataset profile.">
+      <ol className="ex-view-plan">
+        {plan.sections.map((section) => (
+          <li key={section.id}>
+            <strong>{section.title}</strong>
+            <span>{section.reason}</span>
+          </li>
+        ))}
+      </ol>
+      {plan.limitations.map((limitation) => <p key={limitation} className="ds-note">{limitation}</p>)}
+    </BodySection>
+  );
 }
 
 /** The column the page opens on: a measured number, else a category, else free text. */

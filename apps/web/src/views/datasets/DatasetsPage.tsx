@@ -15,7 +15,7 @@ import { PageFrame } from "../../components/ui/PageFrame.tsx";
 import { ListRow } from "../../components/ui/ListRow.tsx";
 import { Sidebar } from "../../components/ui/Sidebar.tsx";
 import { LineageTab, type Use } from "./DatasetDetail.tsx";
-import { ExploreTab, SourceExploreTab } from "./ExploreTab.tsx";
+import { ExploreTab, SourceExploreTab, type DatasetExploreView } from "./ExploreTab.tsx";
 import { InvestigationTab } from "./InvestigationTab.tsx";
 import { SearchField } from "../../components/ui/SearchField.tsx";
 import { InfoDock } from "../../components/ui/InfoDock.tsx";
@@ -28,7 +28,7 @@ export function DatasetsPage() {
   const versions = usePipelineVersions();
   const showRun = useSelection((s) => s.showRun);
   const setNav = useSelection((s) => s.setNav);
-  const [tab, setTab] = useState<Tab>("Explore");
+  const [tab, setTab] = useState<Tab>("Overview");
   const [filter, setFilter] = useState("");
   const [picked, setPicked] = useState<string>();
   if (datasets.isError) return <p role="alert" className="error pad">{datasets.error.message}</p>;
@@ -42,7 +42,7 @@ export function DatasetsPage() {
   const current = source ? undefined : (shown.find((d) => d.artifact.id === picked) ?? shown[0]);
   const added = (version: DatasetVersion) => {
     setPicked(version.id);
-    setTab("Explore");
+    setTab("Overview");
   };
   if (source || (!current && shownSources[0])) {
     const open = source ?? shownSources[0]!;
@@ -95,13 +95,13 @@ export function DatasetsPage() {
       ) : tab === "Investigation" ? (
         <InvestigationTab key={current.artifact.id} dataset={current} versions={versions.data ?? []} />
       ) : (
-        <ExploreTab key={current.artifact.id} dataset={current} target={labelOf(current, versions.data ?? [])} />
+        <ExploreTab key={`${current.artifact.id}-${tab}`} dataset={current} target={labelOf(current, versions.data ?? [])} questionVersionId={questionOf(current, versions.data ?? [])} view={tab} />
       ))}
     </PageFrame>
   );
 }
 
-const TABS = ["Explore", "Investigation", "Lineage"] as const;
+const TABS = ["Overview", "Quality", "Relationships", "Modalities", "Investigation", "Lineage"] as const;
 
 /** The add-a-source form, the sources added by reference, then the tables flows load. */
 function DatasetSidebar({ filter, onFilter, tables, sources, picked, onPick, onAdded, empty, dock }: {
@@ -200,7 +200,7 @@ function DatasetDock({ dataset, flows }: { dataset: LoadedTable; flows: string }
     />
   );
 }
-type Tab = (typeof TABS)[number];
+type Tab = DatasetExploreView | "Investigation" | "Lineage";
 
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
 
@@ -210,6 +210,16 @@ function labelOf(dataset: LoadedTable, versions: PipelineVersion[]): string | un
     const version = versions.find((v) => v.id === use.pipeline_version_id);
     const target = version?.nodes.map((n) => n.params["target"]).find((t) => typeof t === "string");
     if (typeof target === "string") return target;
+  }
+  return undefined;
+}
+
+/** The loaded table may be used by more than one flow; use the first version that pins a
+ * question ledger revision, matching the existing target selection rule above. */
+function questionOf(dataset: LoadedTable, versions: PipelineVersion[]): string | undefined {
+  for (const use of dataset.used_by) {
+    const question = versions.find((version) => version.id === use.pipeline_version_id)?.question_version_id;
+    if (question) return question;
   }
   return undefined;
 }

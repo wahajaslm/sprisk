@@ -32,11 +32,12 @@ export function ColumnProfileTable({ profile }: { profile: DatasetProfile }) {
   );
 }
 
-export function ValuesPerColumn({ profile }: { profile: DatasetProfile }) {
+export function ValuesPerColumn({ profile, roles, title = "Values per column" }: { profile: DatasetProfile; roles?: ColumnRole[]; title?: string }) {
   const findings = profile.findings ?? [];
+  const columns = roles === undefined ? profile.columns : profile.columns.filter((column) => column.role !== undefined && roles.includes(column.role));
   return (
-    <BodySection title="Values per column" note="Each column's distribution, by what its values suggest it holds. Identifiers have none to show.">
-      {profile.columns.map((c) => (
+    <BodySection title={title} note="Each distribution is shown by its observed field role; identifiers have none to draw.">
+      {columns.map((c) => (
         <ColumnValues key={c.name} column={c} rows={profile.profiled_rows} findings={findings.filter((f) => f.column === c.name)} />
       ))}
     </BodySection>

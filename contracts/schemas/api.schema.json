@@ -243,6 +243,42 @@
         "most_rows_per_key": { "type": "integer", "minimum": 0, "description": "The most rows of the other table that share one value: above 1, a join would copy rows." }
       }
     },
+    "ProfilePlan": {
+      "title": "ProfilePlan",
+      "description": "The deterministic explanation of which Dataset Explore sections apply to one immutable table and question version. It selects views from stored profile facts and the question ledger; it contains no rows and makes no methodology decision.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "artifact_id", "scope", "sections", "limitations"],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["sprisk.profile_plan/v1"] },
+        "artifact_id": { "$ref": "#/$defs/ArtifactId" },
+        "question_version_id": { "$ref": "#/$defs/QuestionVersionId", "description": "The formal question whose declared task, target and bindings selected the sections. Absent for neutral data exploration." },
+        "scope": { "$ref": "#/$defs/ProfileScope" },
+        "sections": { "type": "array", "items": { "$ref": "#/$defs/ProfilePlanSection" }, "description": "Applicable sections in the fixed display order. The UI renders only these sections and their supplied reason." },
+        "limitations": { "type": "array", "items": { "type": "string" }, "description": "Fixed statements about the evidence bounds or scope. They are explanations, not findings." }
+      }
+    },
+    "ProfileScope": {
+      "type": "string",
+      "enum": ["input", "train", "test", "transformed", "comparison"],
+      "description": "Which permitted rows the plan describes. Input is descriptive only; train is the scope for learned preparation and model-selection evidence."
+    },
+    "ProfilePlanSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "purpose", "evidence_scope", "reason"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ProfileSectionId" },
+        "title": { "type": "string" },
+        "purpose": { "type": "string" },
+        "evidence_scope": { "$ref": "#/$defs/ProfileScope" },
+        "reason": { "type": "string", "description": "A fixed, deterministic template naming the profile fact or question-ledger field that made this view applicable." }
+      }
+    },
+    "ProfileSectionId": {
+      "type": "string",
+      "enum": ["overview", "data_quality", "columns", "relationships", "target", "classification", "regression", "text", "categories", "entity_integrity", "temporal_integrity", "split_check", "change_report"]
+    },
     "DatasetProfile": {
       "title": "DatasetProfile",
       "description": "A descriptive profile of one table (GET /artifacts/{id}/profile, ADR-0038; GET /dataset_versions/{id}/profile, ADR-0067), computed by Python. Bounded: at most the first 200 columns and 1,000,000 rows, histograms of at most 20 bins or the 30 most common values, a missing-value map of at most 40 row bands, correlation of at most 30 columns. The AI planner never reads it. Methodology rules read it of a step's train rows, and only its structure (types, duplicates, values that fail to convert) of the rows before the split (ADR-0059).",

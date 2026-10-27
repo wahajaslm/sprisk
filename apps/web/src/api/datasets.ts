@@ -20,6 +20,17 @@ const profileQuery = (artifactId: string, target?: string) => ({
 /** With `target`, the profile also relates the columns to that label (ADR-0065). */
 export const useDatasetProfile = (artifactId: string | undefined, target?: string) => useQuery({ ...profileQuery(artifactId ?? "", target), enabled: artifactId !== undefined });
 
+/** The API-owned, deterministic explanation of which Explore views apply to this table.
+ * React renders its fixed order and reasons; it never chooses sections itself. */
+export const useProfilePlan = (artifactId: string | undefined, questionVersionId?: string) =>
+  useQuery({
+    queryKey: ["dataset-profile-plan", artifactId, questionVersionId ?? ""],
+    queryFn: () => getOne("ProfilePlan", `/artifacts/${artifactId}/profile_plan${questionVersionId ? `?question_version_id=${encodeURIComponent(questionVersionId)}` : ""}`),
+    enabled: artifactId !== undefined,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
 /** The profiles of several tables, one query each, in the order given. */
 export const useDatasetProfiles = (artifactIds: string[]) => useQueries({ queries: artifactIds.map((id) => profileQuery(id)) });
 
