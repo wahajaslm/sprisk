@@ -17,6 +17,17 @@
   outline-offset: -1px;
 }
 
+/* A text field inside one of the design's boxes: the box draws the border, the field only text. */
+.dx-input {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  cursor: text;
+  color: var(--t-primary);
+}
+.dx-input::placeholder { color: var(--t-faint); }
+
 /* The design's hover states. Inline styles set the resting value, so these win with !important. */
 .dx-h-text:hover { color: var(--t-primary) !important; }
 .dx-h-03:hover { background: rgba(var(--ink-rgb), 0.03) !important; }

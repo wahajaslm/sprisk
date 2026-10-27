@@ -482,107 +482,6 @@ p { margin: 0; }
   background: var(--border-divider);
 }
 
-/* ── Copilot 340px folding to 44px rail ──────────────── */
-.copilot-card {
-  grid-column: 3;
-  grid-row: 1;
-  margin-top: 0;
-  background: var(--bg-surface);
-  border-radius: 0;
-  border: 0;
-  border-left: 1px solid var(--border-panel);
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.copilot {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.copilot-head {
-  height: 44px;
-  padding: 0 12px 0 16px;
-  border-bottom: 1px solid var(--alpha-08);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.copilot-head strong {
-  font-size: var(--fs-15);
-  font-weight: var(--fw-medium);
-}
-.copilot-context { flex: 1; min-width: 0; text-align: right; font-size: var(--fs-12-5); color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.copilot-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-height: 0;
-}
-
-.copilot-foot {
-  border-top: 1px solid var(--border-panel);
-  background: var(--bg-surface);
-  padding: 12px 14px;
-  flex-shrink: 0;
-}
-
-.copilot-rail {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 0;
-  gap: 12px;
-  min-height: 0;
-  user-select: none;
-}
-
-.copilot-rail-label {
-  writing-mode: vertical-rl;
-  font-size: var(--fs-13);
-  color: var(--text-muted);
-  cursor: pointer;
-  letter-spacing: 0.02em;
-  transition: color var(--dur-fast);
-}
-
-.copilot-rail-label:hover {
-  color: var(--text-primary);
-}
-
-.copilot-toggle-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  display: grid;
-  place-items: center;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--dur-fast);
-}
-
-.copilot-toggle-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
 /* ── Flow Studio Sidebar Styling (ADR-0061) ─────────────── */
 .sidebar-header {
   padding: 16px 14px 10px;
@@ -728,7 +627,6 @@ p { margin: 0; }
 
 /* ── Panel headers (inspector, copilot) ──────────────── */
 .panel-head { height: 44px; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3) 0 var(--space-4); border-bottom: 1px solid var(--alpha-04); background: var(--gray-2); min-width: 0; }
-.chip { max-width: 170px; padding: var(--space-1) var(--space-2); border-radius: 3px; background: var(--alpha-04); font-size: var(--text-xs); color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--alpha-04); }
 
 /* ── Inspector ───────────────────────────────────────── */
 .inspector { height: 100%; display: grid; grid-template-rows: 44px minmax(0, 1fr); background: var(--gray-2); border-top: 1px solid var(--alpha-04); overflow: hidden; }
@@ -755,19 +653,11 @@ p { margin: 0; }
 .placeholder-note { color: var(--quiet); max-width: 56ch; }
 
 /* ── Copilot ─────────────────────────────────────────── */
-.copilot { height: 100%; display: grid; grid-template-rows: 46px minmax(0, 1fr) auto; background: var(--panel); border-left: 1px solid var(--line); min-height: 0; }
-.copilot .panel-head { gap: var(--space-2); }
-.copilot-body { overflow: auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+
 .bubble { line-height: 1.55; color: var(--ink); text-wrap: pretty; }
 .card { border: 1px solid var(--alpha-08); background: var(--raised); }
 .card-head { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line-soft); font-size: var(--text-sm); font-weight: 500; }
 .card-body { padding: var(--space-2) var(--space-3); }
-.copilot-foot { border-top: 1px solid var(--alpha-04); background: var(--gray-2); padding: var(--space-3); }
-.composer { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3); border: 1px solid var(--alpha-06); border-radius: 4px; background: var(--black-alpha-25); }
-.composer input { flex: 1; min-width: 0; height: 32px; border: 0; outline: 0; background: transparent; color: var(--ink-1); }
-.send { width: 32px; height: 32px; border: 0; border-radius: 4px; background: var(--ink-1); color: var(--gray-1); display: grid; place-items: center; cursor: pointer; transition: background 0.15s; }
-.send:hover:not(:disabled) { background: var(--ink-0); }
-.send:disabled { opacity: 0.3; cursor: not-allowed; }
 
 /* ── Views not built yet ─────────────────────────────── */
 .coming { height: 100%; background: var(--canvas); }
@@ -3233,18 +3123,6 @@ p { margin: 0; }
 }
 
 /* Copilot messages: the assistant's as plain text, a person's in a bubble on the right. */
-.copilot-message { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.copilot-message.user { align-items: flex-end; }
-.copilot-message-body {
-  max-width: 94%;
-  border-radius: 10px;
-  color: var(--text-body);
-  font-size: var(--fs-14-5);
-  line-height: var(--lh-relaxed);
-  text-wrap: pretty;
-  white-space: pre-wrap;
-}
-.copilot-message.user .copilot-message-body { padding: 9px 12px; background: var(--gray-7); color: var(--text-primary); }
 
 /* Tags / Chips */
 .tag {

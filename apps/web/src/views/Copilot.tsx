@@ -1,21 +1,35 @@
 import { useState } from "react";
 import type { Attempt } from "@sprisk/contracts";
 
-import { usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
+import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { askCopilot } from "../api/copilot.ts";
 import { flowName } from "../flow/labels.ts";
 import { hasOutputs, isGateNode, latestByNode } from "../flow/latest.ts";
+import { stepTitle } from "../flow/stages.ts";
 import { NAV_LABEL, useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
-import { PanelToggleIcon, SendIcon, SparkIcon } from "./Icons.tsx";
+import { SendIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
 import { CopilotMessage } from "../components/ui/CopilotMessage.tsx";
-import { Button } from "../components/ui/Button.tsx";
 
-/** Copilot pane: 340px width folding to a 44px rail (ADR-0061). Connected to local Qwen 2.5. */
+/** The design's fold button: a panel with its right column, the chevron pointing where it goes. */
+function FoldIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="1.75" y="2.5" width="12.5" height="11" rx="1.5" />
+      <path d="M10 2.5v11" />
+      <path d={open ? "M5 6.5L6.5 8 5 9.5" : "M6.5 6.5L5 8l1.5 1.5"} />
+    </svg>
+  );
+}
+
+const FOLD_BUTTON = { width: "26px", height: "26px", borderRadius: "var(--r-sm,6px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--t-muted,#ababab)", flexShrink: "0" } as const;
+
+/** The design's Copilot column (280px, folding to a 44px rail), answering with the local model. */
 export function Copilot() {
   const { nav, pipelineVersionId, runId, nodeId } = useSelection();
   const attempts = useRunAttempts(pipelineVersionId, runId);
+  const operators = useOperators();
   const flow = usePipelineVersions().data?.find((v) => v.id === pipelineVersionId);
   const { copilotOpen, toggleCopilot } = useWorkbench();
   const [inputText, setInputText] = useState("");
@@ -24,38 +38,27 @@ export function Copilot() {
 
   if (!copilotOpen) {
     return (
-      <aside className="copilot-card copilot-rail" aria-label="Copilot Rail">
-        <button
-          type="button"
-          className="copilot-toggle-btn"
-          title="Expand Copilot"
-          aria-label="Expand Copilot"
-          onClick={toggleCopilot}
-        >
-          <PanelToggleIcon size={14} />
+      <aside aria-label="Copilot Rail" style={{ background: "var(--bg-surface,#121212)", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", paddingTop: "10px", minHeight: "0" }}>
+        <button type="button" className="dx-btn dx-h-06t" title="Expand Copilot" aria-label="Expand Copilot" onClick={toggleCopilot} style={FOLD_BUTTON}>
+          <FoldIcon open={false} />
         </button>
-        <span
-          className="copilot-rail-label"
-          role="button"
-          tabIndex={0}
-          onClick={toggleCopilot}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") toggleCopilot();
-          }}
-        >
+        <button type="button" className="dx-btn" onClick={toggleCopilot} style={{ writingMode: "vertical-rl", fontSize: "12.5px", color: "var(--t-muted,#ababab)", cursor: "pointer" }}>
           Copilot
-        </span>
+        </button>
       </aside>
     );
   }
 
-  const contextText = nodeId
-    ? `Step · ${nodeId}`
-    : nav === "Flow" && flow
-      ? `${flowName(flow)} · ${flow.nodes.length} steps`
-      : nav === "Objective"
-        ? "Objective · Ledger"
-        : `${NAV_LABEL[nav]} · Context`;
+  const node = nodeId ? flow?.nodes.find((n) => n.id === nodeId) : undefined;
+  const contextText = node
+    ? stepTitle(node.operator, operators.data?.find((o) => o.id === node.operator))
+    : nodeId
+      ? nodeId
+      : nav === "Flow" && flow
+        ? `${flowName(flow)} · ${flow.nodes.length} steps`
+        : nav === "Objective"
+          ? "Objective · Ledger"
+          : `${NAV_LABEL[nav]} · Context`;
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isSending) return;
@@ -87,46 +90,25 @@ export function Copilot() {
     void sendMessage(text);
   };
 
-  const handleChipClick = (suggestion: string) => {
-    void sendMessage(suggestion);
-  };
+  const chips = chatMessages.length === 0 ? [["Summarise view", "Summarise the active view"], ["Check rules", "Which methodology rules apply here?"]] : [];
 
   return (
-    <aside className="copilot-card copilot" aria-label="Copilot">
-      <div className="copilot-head">
-        <SparkIcon />
-        <strong>Copilot</strong>
-        <span className="spacer" />
-        <span className="chip">{contextText}</span>
-        <button
-          type="button"
-          className="copilot-toggle-btn"
-          title="Fold Copilot"
-          aria-label="Fold Copilot"
-          onClick={toggleCopilot}
-        >
-          <PanelToggleIcon size={14} />
+    <aside aria-label="Copilot" style={{ background: "var(--bg-surface,#121212)", minHeight: "0", minWidth: "0", overflow: "hidden", display: "grid", gridTemplateRows: "44px minmax(0,1fr) auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "0 14px", borderBottom: "1px solid rgba(var(--ink-rgb,255,255,255),0.1)" }}>
+        <span style={{ fontSize: "14px", fontWeight: "500" }}>Copilot</span>
+        <span style={{ flex: "1" }} />
+        <span title={contextText} style={{ fontSize: "12px", color: "var(--t-faint,#8c8c8c)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "150px" }}>
+          {contextText}
+        </span>
+        <button type="button" className="dx-btn dx-h-06t" title="Fold Copilot" aria-label="Fold Copilot" onClick={toggleCopilot} style={FOLD_BUTTON}>
+          <FoldIcon open />
         </button>
       </div>
-
-      <div className="copilot-body">
+      <div style={{ overflow: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: "12px" }}>
         {runId && <QueryState query={attempts}>{(data) => <RunNotes attempts={data} nodeId={nodeId} />}</QueryState>}
         {chatMessages.length === 0 ? (
-          <>
-            {/* Facts only: no example card stands in for an answer the model has not given. */}
-            <CopilotMessage role="assistant">
-              Ask about this page. Answers come from the local model and can be wrong; check them against the evidence.
-            </CopilotMessage>
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-              <Button size="sm" onClick={() => handleChipClick("Summarise the active view")}>
-                Summarise view
-              </Button>
-              <Button size="sm" onClick={() => handleChipClick("Which methodology rules apply here?")}>
-                Check rules
-              </Button>
-            </div>
-          </>
+          // Facts only: no example card stands in for an answer the model has not given.
+          <CopilotMessage role="assistant">Ask about this page. Answers come from the local model and can be wrong; check them against the evidence.</CopilotMessage>
         ) : (
           chatMessages.map((m, idx) => (
             <CopilotMessage key={idx} role={m.role}>
@@ -136,32 +118,33 @@ export function Copilot() {
         )}
         {isSending && (
           <CopilotMessage role="assistant">
-            <span style={{ fontStyle: "italic", color: "var(--text-secondary)" }}>
-              Copilot is thinking with Qwen 2.5…
-            </span>
+            <span style={{ color: "var(--t-faint,#8c8c8c)" }}>Copilot is thinking with Qwen 2.5…</span>
           </CopilotMessage>
         )}
       </div>
-
-      <div className="copilot-foot">
-        <div className="composer">
+      <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+        {chips.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {chips.map(([label, question]) => (
+              <button key={label} type="button" className="dx-btn dx-h-08" onClick={() => void sendMessage(question!)} style={{ padding: "4px 9px", borderRadius: "var(--r-sm,6px)", background: "rgba(var(--ink-rgb,255,255,255),0.05)", fontSize: "12.5px", color: "var(--t-secondary,#d4d4d4)" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ height: "36px", borderRadius: "var(--r-sm,6px)", border: "1px solid rgba(var(--ink-rgb,255,255,255),0.12)", display: "flex", alignItems: "center", gap: "8px", padding: "0 6px 0 12px", fontSize: "13px", color: "var(--t-faint,#8c8c8c)" }}>
           <input
             id="copilot-input"
+            className="dx-input"
             aria-label="Ask Copilot"
-            placeholder={`Ask about ${contextText.toLowerCase()}…`}
+            placeholder={`Ask about ${contextText.toLowerCase()}`}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleSend();
             }}
           />
-          <button
-            type="button"
-            className="send"
-            aria-label="Send"
-            disabled={!inputText.trim() || isSending}
-            onClick={handleSend}
-          >
+          <button type="button" className="dx-btn dx-h-06t" aria-label="Send" disabled={!inputText.trim() || isSending} onClick={handleSend} style={{ width: "24px", height: "24px", borderRadius: "var(--r-sm,6px)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--t-muted,#ababab)", flexShrink: "0" }}>
             <SendIcon />
           </button>
         </div>
@@ -179,9 +162,7 @@ function RunNotes({ attempts, nodeId }: { attempts: Attempt[]; nodeId: string | 
   const failed = nodeId ? latestByNode(attempts).get(nodeId)?.error : undefined;
   return (
     <>
-      <CopilotMessage>
-        {`This run: ${done} of ${steps.length} step attempts done${cached > 0 ? ` · ${cached} cached` : ""}.`}
-      </CopilotMessage>
+      <CopilotMessage>{`This run: ${done} of ${steps.length} step attempts done${cached > 0 ? ` · ${cached} cached` : ""}.`}</CopilotMessage>
       {failed && <CopilotMessage>{`${nodeId} failed: ${failed.message}`}</CopilotMessage>}
     </>
   );

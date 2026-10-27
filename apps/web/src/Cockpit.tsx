@@ -40,7 +40,7 @@ export function Cockpit() {
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <div style={{ display: "grid", gridTemplateColumns: `var(--size-rail) minmax(0,1fr) ${copilotOpen ? "var(--size-copilot)" : "var(--size-copilot-rail)"}`, gap: LAYOUT.gap, background: LAYOUT.divider, borderTop: `1px solid ${LAYOUT.divider}`, minHeight: "0" }}>
         <ActivityBar />
-        <main style={{ minHeight: "0", minWidth: "0", overflow: "hidden", display: "flex" }}>
+        <main style={{ minHeight: "0", minWidth: "0", overflow: "hidden", display: "flex", background: "var(--bg-surface,#121212)" }}>
           {nav === "Objective" ? (
             <ObjectivePage />
           ) : nav === "Flow" ? (
