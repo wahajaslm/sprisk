@@ -304,7 +304,10 @@ mod tests {
     fn an_object_is_named_by_its_bucket_and_key() {
         let url = Url::parse("s3://lake/events/").unwrap();
         let object = ObjectPath::from("events/day=1/a.parquet");
-        assert_eq!(object_uri(&url, &object), "s3://lake/events/day=1/a.parquet");
+        assert_eq!(
+            object_uri(&url, &object),
+            "s3://lake/events/day=1/a.parquet"
+        );
     }
 
     #[tokio::test]
