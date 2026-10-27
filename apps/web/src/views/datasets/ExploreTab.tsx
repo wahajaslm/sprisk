@@ -1,7 +1,8 @@
-import type { ColumnProfile, DatasetProfile, LabelProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
+import type { ColumnProfile, DatasetProfile, DatasetVersion, LabelProfile, LoadedTable, ProfileFinding } from "@sprisk/contracts";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { type CSSProperties, useState } from "react";
 
-import { useDatasetProfile, useTableShift } from "../../api/datasets.ts";
+import { useDatasetProfile, useDatasetVersionProfile, useTableShift } from "../../api/datasets.ts";
 import { useOutputs, usePipelineVersions, useRunAttempts, useTablePage } from "../../api/hooks.ts";
 import { latestByNode } from "../../flow/latest.ts";
 import { Button } from "../../components/ui/Button.tsx";
@@ -49,7 +50,16 @@ const TOPICS: Record<ProfileFinding["topic"], string> = {
  * numbers move together, and what stands out. The profile is computed by Python and stored; the
  * page asks for one page of rows at a time (ADR-0038). */
 export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?: string | undefined }) {
-  const profile = useDatasetProfile(dataset.artifact.id, target);
+  return <ProfileView profile={useDatasetProfile(dataset.artifact.id, target)} dataset={dataset} />;
+}
+
+/** A registered source's Explore page (ADR-0067): its profile, read in place on its first
+ * rows. A source is not a table sprisk holds, so it has no page of rows and no split. */
+export function SourceExploreTab({ source }: { source: DatasetVersion }) {
+  return <ProfileView profile={useDatasetVersionProfile(source.id)} />;
+}
+
+function ProfileView({ profile, dataset }: { profile: UseQueryResult<DatasetProfile>; dataset?: LoadedTable }) {
   const [picked, setPicked] = useState<number>();
   if (profile.isError) return <p role="alert" className="error">{profile.error.message}</p>;
   if (profile.isPending) return <Loading text="Profiling the table…" />;
@@ -63,19 +73,21 @@ export function ExploreTab({ dataset, target }: { dataset: LoadedTable; target?:
   return (
     <div className="ds-profile ds-explore">
       {sampleNote(p) && <p className="ds-overview">{sampleNote(p)}</p>}
-      <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />
+      {dataset && <LookAtRows dataset={dataset} profile={p} picked={column?.name} onPick={pick} />}
       <ColumnProfileTable profile={p} />
       {column && <ReadOneColumn profile={p} at={at} onMove={setPicked} />}
       <MissingShare profile={p} />
       <MissingOrExtreme profile={p} picked={column?.name} onPick={pick} />
       <MissingAlongRows profile={p} />
       {(p.correlation.columns.length >= 2 || (p.label?.numbers.length ?? 0) > 0) && <RelateColumns profile={p} picked={column?.name} />}
-      <SplitShift dataset={dataset} />
+      {dataset && <SplitShift dataset={dataset} />}
       {p.label && p.label.groups.length > 0 && <Groups label={p.label} />}
       <ValuesPerColumn profile={p} />
       <WhatStandsOut findings={p.findings ?? []} />
       {/* A whole-table profile sees held-out rows (rule 8); it is for looking only. */}
-      <p className="ds-note">Includes every row, including held-out test rows. Use it to understand the data, not to choose features, transforms or models.</p>
+      <p className="ds-note">
+        {dataset ? "Includes every row, including held-out test rows." : "Read in place from the source; nothing was copied. Includes rows a later split may hold out."} Use it to understand the data, not to choose features, transforms or models.
+      </p>
     </div>
   );
 }

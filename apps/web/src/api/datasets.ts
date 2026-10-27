@@ -1,6 +1,7 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import type { DatasetVersion } from "@sprisk/contracts";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { getList, getOne } from "./client.ts";
+import { getList, getOne, postOne } from "./client.ts";
 
 /** The tables the flows load, newest first (ADR-0038). */
 export const useLoadedTables = () =>
@@ -29,6 +30,33 @@ export const useTableShift = (artifactId: string | undefined, against: string | 
     queryKey: ["table-shift", artifactId, against],
     queryFn: () => getOne("TableShift", `/artifacts/${artifactId}/shift?against=${against}`),
     enabled: artifactId !== undefined && against !== undefined,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+/** Data registered by reference, newest first (ADR-0067). */
+export const useDatasetVersions = () =>
+  useQuery({ queryKey: ["dataset_versions"], queryFn: () => getList("DatasetVersion", "/dataset_versions?limit=50") });
+
+/** Registers data where it lives, by its path or URI. The server lists it and keeps a
+ * fingerprint; nothing is copied. Registering the same data again returns the same version. */
+export function useAddDataSource() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (location: string) => postOne("DatasetVersion", "/dataset_versions", { location }),
+    onSuccess: (added: DatasetVersion) => {
+      client.setQueryData<DatasetVersion[]>(["dataset_versions"], (all) => [added, ...(all ?? []).filter((v) => v.id !== added.id)]);
+      void client.invalidateQueries({ queryKey: ["dataset_versions"] });
+    },
+  });
+}
+
+/** A registered source's profile, read in place on its first rows. A version never changes,
+ * so neither does its profile. */
+export const useDatasetVersionProfile = (id: string) =>
+  useQuery({
+    queryKey: ["dataset-version-profile", id],
+    queryFn: () => getOne("DatasetProfile", `/dataset_versions/${id}/profile`),
     staleTime: Infinity,
     gcTime: Infinity,
   });

@@ -22,6 +22,8 @@ import {
 
 export const handlers = [
   http.get("/api/question_versions", () => HttpResponse.json([])),
+  // No data source was added by reference unless a test says so (ADR-0067).
+  http.get("/api/dataset_versions", () => HttpResponse.json([])),
   http.get("/api/methodology_rules", () => HttpResponse.json([])),
   http.get("/api/pipeline_versions", () => HttpResponse.json([pipeline])),
   http.get("/api/pipeline_versions/:id/studies", () => HttpResponse.json([])),

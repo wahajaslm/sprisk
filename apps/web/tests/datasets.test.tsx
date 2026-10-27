@@ -324,7 +324,7 @@ describe("datasets", () => {
     expect(asked.filter((p) => p.endsWith("/rows"))).toEqual([`/api/artifacts/${iris.artifact.id}/rows`]);
     // Besides the rows: the profile, and where the flow's split step put its train and test rows.
     const counts = (p: string) => p.endsWith("/profile") || p.endsWith("/rows") || p.endsWith("/shift") || p.endsWith("/attempts") || p.endsWith("/outputs");
-    expect(asked.every((p) => p === "/api/loaded_tables" || p === "/api/pipeline_versions" || p === "/api/runs" || counts(p))).toBe(true);
+    expect(asked.every((p) => p === "/api/loaded_tables" || p === "/api/dataset_versions" || p === "/api/pipeline_versions" || p === "/api/runs" || counts(p))).toBe(true);
     expect(asked.some((p) => p.endsWith("/content"))).toBe(false);
   });
 

@@ -8265,3 +8265,31 @@ button.row-list-item:hover .row-list-name, button.row-list-item[aria-expanded="t
 .ex-overlay b { border: 1px solid rgba(255, 255, 255, 0.6); border-bottom: 0; }
 .ex-legend-split span.hollow::before { background: transparent; border: 1px solid rgba(255, 255, 255, 0.6); }
 .sv-split .ex-summary { margin-bottom: 14px; }
+
+/* Add data source (ADR-0067): one path or URI field and its button, errors under them. */
+.add-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 0 var(--space-2);
+}
+.add-source input {
+  flex: 1;
+  min-width: 0;
+  height: var(--size-control);
+  padding: 0 10px;
+  border: 1px solid var(--alpha-10);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--fs-13) var(--mono);
+}
+.add-source input:focus {
+  outline: 0;
+  border-color: var(--border-control-hover);
+}
+.add-source .error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--fs-12);
+}
