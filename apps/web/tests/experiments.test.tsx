@@ -14,7 +14,7 @@ import { Experiments } from "../src/views/Experiments.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { PV, RUN, attempts, pipeline, run, scoreAttempt, scoreOutputs } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
-import { server } from "./server.ts";
+import { comparedModel, server } from "./server.ts";
 
 const PV2 = "plv_01JABCDEFGHJKMNPQRSTVWXYZ2";
 const RUN2 = "run_01JABCDEFGHJKMNPQRSTVWXYZ2";
@@ -359,7 +359,7 @@ describe("model comparison", () => {
     const posted: string[] = [];
     compared(winner);
     server.use(
-      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      ...comparedModel,
       http.post("/api/pipeline_versions/:id/model_selection/:node", ({ params }) => {
         posted.push(`${String(params.id)}/${String(params.node)}`);
         return HttpResponse.json({ proposal, comparison, run: comparisonRun }, { status: 201 });
@@ -371,7 +371,7 @@ describe("model comparison", () => {
   it("asks for a run before Sprisk can choose the model", async () => {
     compared(winner);
     server.use(
-      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      ...comparedModel,
       http.get("/api/runs", ({ request }) =>
         HttpResponse.json(new URL(request.url).searchParams.get("pipeline_version_id") === CPV ? [comparisonRun] : []),
       ),
@@ -428,7 +428,7 @@ describe("model comparison", () => {
     const posted: string[] = [];
     compared(winner, true);
     server.use(
-      http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+      ...comparedModel,
       http.post("/api/pipeline_versions/:id/model_selection/:node", () => {
         posted.push("select");
         return HttpResponse.json({ proposal, comparison, run: comparisonRun }, { status: 201 });

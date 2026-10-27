@@ -4,13 +4,12 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import appliedDecision from "../../../tests/contract/applied_methodology_decision/valid/applied.json";
-import shortlistRule from "../../../tests/contract/methodology_rule/valid/shortlist.json";
 import tuned from "../../../tests/contract/selection_decision/valid/tuned-with-guardrail.json";
 import { Experiments } from "../src/views/Experiments.tsx";
 import { useSelection } from "../src/workbench/selection.ts";
 import { PV, RUN, pipeline, run, scoreAttempt, scoreOutputs } from "./fixtures.ts";
 import { renderWithApi } from "./render.tsx";
-import { server } from "./server.ts";
+import { comparedModel, server } from "./server.ts";
 
 const MPR = "mpr_01JABCDEFGHJKMNPQRSTVWXYZ0";
 const CPV = "plv_01JABCDEFGHJKMNPQRSTVWXYZ8";
@@ -115,7 +114,7 @@ function studied(status: string, runStatus: string, forestState: string, decisio
     http.get(`/api/runs/${CRUN}/attempts`, () => HttpResponse.json([selectAttempt])),
     http.get(`/api/attempts/${selectAttempt.id}/outputs`, () => HttpResponse.json([decisionOutput])),
     http.get(`/api/artifacts/${decisionOutput.artifact.id}/content`, () => HttpResponse.text(JSON.stringify(decision))),
-    http.get("/api/methodology_rules", () => HttpResponse.json([{ ...shortlistRule, applies_to: ["sprisk.ml.linear_model"] }])),
+    ...comparedModel,
     http.post("/api/pipeline_versions/:id/model_selection/:node", () =>
       HttpResponse.json({ errors: [{ code: "nothing_to_compare", message: "not in this test" }] }, { status: 422 }),
     ),

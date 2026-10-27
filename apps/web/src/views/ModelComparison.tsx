@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client.ts";
 import { isLive, useOperatorsByRef, useOperatorSource, useRuns } from "../api/hooks.ts";
-import { byRule, useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useSelectModel } from "../api/methodology.ts";
+import { byRule, useApplyMethodology, useMethodologyDecision, useMethodologyProposals, useMethodologyRules, useMethods, useSelectModel } from "../api/methodology.ts";
 import { useFlowRuns, useSelectionDecision } from "../api/runs.ts";
 import { settingChanges, showValue } from "../flow/diff.ts";
 import { useSelection } from "../workbench/selection.ts";
@@ -56,19 +56,26 @@ function AutoSelect({ head }: { head: PipelineVersion }) {
   ));
 }
 
-/** The head's steps Sprisk compares: model steps a shortlist rule decides (`models`), and
- * steps a recommend rule decides that fit on train rows (ADR-0050). */
+/** The head's steps Sprisk compares: steps whose role a compared method's options swap
+ * (`models`, ADR-0063 D3), and steps a recommend rule decides that fit on train rows (ADR-0050). */
 export function useComparedSteps(head: PipelineVersion): { node: PipelineVersion["nodes"][number]; models: boolean }[] {
   const rules = useMethodologyRules();
+  const methods = useMethods();
   const operators = useOperatorsByRef();
   const active = (rules.data ?? []).filter((r) => r.status === "active");
-  const shortlisted = new Set(active.filter((r) => r.selection === "shortlist").flatMap((r) => r.applies_to ?? []));
+  const comparedRoles = new Set(
+    (methods.data ?? []).filter((m) => m.compare).flatMap((m) => m.options.flatMap((o) => o.action?.replace?.role ?? [])),
+  );
   const recommended = new Set(active.filter((r) => r.selection !== "shortlist").flatMap((r) => r.applies_to ?? []));
   const fitsOnTrain = (operator: string) => operators.data?.get(operator)?.fits_on_train === true;
+  const compared = (operator: string) => {
+    const role = operators.data?.get(operator)?.role;
+    return role !== undefined && comparedRoles.has(role);
+  };
   const name = (operator: string) => operator.split("@")[0] ?? "";
   return head.nodes
-    .filter((n) => shortlisted.has(name(n.operator)) || (recommended.has(name(n.operator)) && fitsOnTrain(n.operator)))
-    .map((node) => ({ node, models: shortlisted.has(name(node.operator)) }));
+    .filter((n) => compared(n.operator) || (recommended.has(name(n.operator)) && fitsOnTrain(n.operator)))
+    .map((node) => ({ node, models: compared(node.operator) }));
 }
 
 function AutoSelectStep({ head, nodeId, decisionId, models }: { head: PipelineVersion; nodeId: string; decisionId: string | undefined; models: boolean }) {

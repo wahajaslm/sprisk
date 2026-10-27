@@ -1,6 +1,8 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
+import splitMethodShape from "../../../tests/contract/method/valid/split-method.json";
+
 import {
   attempts,
   checksJson,
@@ -60,3 +62,28 @@ export const handlers = [
 ];
 
 export const server = setupServer(...handlers);
+
+/** The model shortlist as a compared method (ADR-0063 D3): its options swap the step with the
+ * role model, which the flow's linear model has. */
+const shortlistMethod = {
+  ...splitMethodShape,
+  id: "methodology.supervised.model_shortlist@1.0.0",
+  decides: "models.estimator_selection",
+  compare: true,
+  options: ["ml_dummy_baseline", "ml_linear_model"].map((id) => ({
+    id,
+    label: id,
+    description: id,
+    condition: "always",
+    when: "always",
+    rationale: id,
+    action: { replace: { role: "model", operator: `sprisk.${id.replace("ml_", "ml.")}@3.0.0` } },
+    verify: [],
+  })),
+};
+export const comparedModel = [
+  http.get("/api/methods", () => HttpResponse.json([shortlistMethod])),
+  http.get("/api/operators", () =>
+    HttpResponse.json(operators.map((o) => (o.id === "sprisk.ml.linear_model@1.0.0" ? { ...o, role: "model" } : o))),
+  ),
+];
