@@ -105,6 +105,8 @@ Six interconnected scientific concepts are retained from v1.3; enterprise lifecy
 
 **Lifecycle resources**, linked to those six concepts: `FeatureDefinition`, `DatasetVersion`, `PipelineVersion`, `ModelPackage`, `ModelVersion`, `ReleaseCandidate`, `Deployment`, `MonitoringPolicy`, `ObservationWindow`, `FeedbackDataset`, `RetrainingRequest` and `PolicyDecision`. These are not standalone execution DAGs. They reference the canonical graph and immutable artifacts.
 
+A `DatasetVersion` is a reference to data where it lives (a local path or an object-store URI) with a metadata fingerprint; sprisk never copies the data to register it, and a version is immutable (ADR-0067).
+
 ## 3.1 IDs and time
 
 Every durable record has `{id, revision/version, tenant_id, created_at, created_by, provenance_refs}`. Distinguish **event time**, **availability time**, **ingest time**, **execution time**, and **decision time**. A graph node ID is stable within a graph version; a run always references the exact version executed.
@@ -591,6 +593,7 @@ Domain events are emitted through an existing reliable bus/outbox **if one exist
 | Object/artifact store | Dataset snapshots/references, fitted states, predictions, plots, logs, packages, manifests | Content-digested and access-controlled |
 | Runtime cache | Non-authoritative hot views, status, probe caches | Evictable; not an audit substitute |
 | External sources | Warehouses, feature stores, event streams | Access through connectors; no silent raw copies |
+| Registered data sources | Local paths and object-store URIs (`DatasetVersion`) | Listed through `object_store`; credentials from the environment only; never copied (ADR-0067) |
 | Metrics/log backends | Service telemetry, distributed traces | Correlate by immutable Sprisk IDs |
 
 ## 18.2 Invalidation

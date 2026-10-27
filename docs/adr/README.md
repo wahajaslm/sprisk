@@ -68,6 +68,7 @@
 | [0064](0064-validate-the-architecture-before-the-libraries.md) | Validate the architecture before the method and operator libraries | Accepted |
 | [0065](0065-understand-a-dataset-in-the-dataset-tab.md) | Understand a dataset in the Dataset tab | Accepted |
 | [0066](0066-copilot-goes-through-the-api-to-a-python-provider.md) | The Copilot goes through the API to a Python provider process | Accepted |
+| [0067](0067-datasets-are-registered-by-reference.md) | Datasets are registered by reference | Accepted |
 
 ## Open questions (arch doc §17)
 
