@@ -40,7 +40,7 @@ export function DecisionOrderMap({ methods, picked, onPick }: { methods: Method[
     id: e.id,
     source: e.from,
     target: e.to,
-    type: "smoothstep",
+    type: "default",
     markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
     className: "mth-order-edge",
   }));
