@@ -25,8 +25,13 @@ from sprisk_contracts.generated.models import (
     SplitFolds,
     Verdict,
 )
+from sprisk_supervised.question_columns import (
+    EVENT_TIME,
+    ITEM_IDENTITY,
+    authoritative,
+    bound_column,
+)
 from sprisk_supervised.split_leakage import CheckInputError, is_split, operators_by_node
-from sprisk_workers.rule import EVENT_TIME, ITEM_IDENTITY, authoritative, bound_column
 
 CHECK = "methodology.supervised.data_split@1.0.0"
 # How each alternative of the retired data_split rule folded rows, for the decisions it made.

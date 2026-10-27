@@ -10,9 +10,9 @@ import polars as pl
 
 from sprisk_contracts import MethodologyCheck, QuestionVersion
 from sprisk_contracts.generated.models import MethodologyCoverage, MethodologyPhase, Verdict
+from sprisk_supervised.question_columns import EVENT_TIME, ITEM_IDENTITY, bound_column
 from sprisk_supervised.split_design import CHECK
 from sprisk_supervised.split_leakage import CheckInputError
-from sprisk_workers.rule import EVENT_TIME, ITEM_IDENTITY, bound_column
 
 LIMITATIONS = "Reads only the train and test rows of this step, not rows a later step adds."
 
