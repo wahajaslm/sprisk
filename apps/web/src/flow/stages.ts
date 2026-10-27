@@ -176,6 +176,12 @@ export function stepOrigin(node: Node, operator: Operator | undefined): StepOrig
   return "written";
 }
 
+/** An operator's metrics port, where an evaluator's headline metric is read. */
+export function metricsPort(operator: Operator): string | undefined {
+  const port = operator.outputs.find((o) => o.kind === "metrics")?.name;
+  return port === undefined ? undefined : String(port);
+}
+
 /** A step's type in words: what a method made of it, else its kind (ADR-0063). */
 export function stepType(node: Node, operator: Operator | undefined): string {
   const origin = stepOrigin(node, operator);

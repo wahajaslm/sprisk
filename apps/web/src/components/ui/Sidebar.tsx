@@ -46,7 +46,7 @@ export function Sidebar({ title, modes, search, children, add, dock, width = "va
         {modes}
         {search}
       </div>
-      <div style={{ flex: "1", overflow: "auto", padding: "0 6px 10px", display: "flex", flexDirection: "column", gap: "2px" }}>{children}</div>
+      <div className="dx-side-list" style={{ flex: "1", overflow: "auto", padding: "0 6px 10px", display: "flex", flexDirection: "column", gap: "2px" }}>{children}</div>
       {add && (
         <div style={{ padding: "0 12px 10px" }}>
           <button type="button" className="dx-btn dx-h-05" disabled={add.disabled} onClick={add.onClick} style={{ width: "100%", height: "32px", borderRadius: "var(--r-sm,6px)", border: "1px dashed rgba(var(--ink-rgb,255,255,255),0.16)", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", fontSize: "13px", color: "var(--t-secondary,#d4d4d4)", cursor: "pointer" }}>

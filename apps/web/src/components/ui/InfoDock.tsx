@@ -15,7 +15,7 @@ export function InfoDock({ rows }: InfoDockProps) {
       {rows.map((r) => (
         <div key={r.k} style={{ display: "flex", justifyContent: "space-between", gap: "12px", padding: "4px 0", fontSize: "12.5px" }}>
           <span style={{ color: "var(--t-label,#959595)" }}>{r.k}</span>
-          <span style={{ fontVariantNumeric: "tabular-nums", color: r.warn ? P.redHex : P.t0, textAlign: "right", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.v}</span>
+          <span style={{ fontVariantNumeric: "tabular-nums", color: r.warn ? P.red : P.t0, textAlign: "right", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.v}</span>
         </div>
       ))}
     </section>

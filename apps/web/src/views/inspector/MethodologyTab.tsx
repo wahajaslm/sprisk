@@ -6,8 +6,8 @@ import { useApplyMethodology, useMethodologyRules, useResolveStep } from "../../
 import { useFlowDecisions } from "../../api/walks.ts";
 import { Loading } from "../../components/ui/Loading.tsx";
 import { hasOutputs, statusOf } from "../../flow/latest.ts";
-import { stepOf } from "../../flow/ports.ts";
-import { stepType } from "../../flow/stages.ts";
+import { readersOf } from "../../flow/edit.ts";
+import { metricsPort, stepType } from "../../flow/stages.ts";
 import { ink, P } from "../../styles/palette.ts";
 import { useSelection } from "../../workbench/selection.ts";
 import { NodeFact } from "../NodeFact.tsx";
@@ -27,7 +27,7 @@ function Fact({ k, v, warn = false }: { k: string; v: ReactNode; warn?: boolean 
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", padding: "6px 0", borderBottom: "1px solid rgba(var(--ink-rgb,255,255,255),0.05)", fontSize: "13px" }}>
       <span style={{ color: "var(--t-label,#959595)" }}>{k}</span>
-      <span className="dx-fact" style={{ fontVariantNumeric: "tabular-nums", textAlign: "right", color: warn ? P.redHex : P.t0, minWidth: "0" }}>{v}</span>
+      <span className="dx-fact" style={{ fontVariantNumeric: "tabular-nums", textAlign: "right", color: warn ? P.red : P.t0, minWidth: "0" }}>{v}</span>
     </div>
   );
 }
@@ -36,16 +36,16 @@ function Fact({ k, v, warn = false }: { k: string; v: ReactNode; warn?: boolean 
 function StepFacts({ pipeline, nodeId, operator, latest }: { pipeline: PipelineVersion; nodeId: string; operator?: Operator | undefined; latest?: Attempt | undefined }) {
   const node = pipeline.nodes.find((n) => n.id === nodeId);
   if (!node) return null;
-  const readers = new Set(pipeline.edges.filter((e) => stepOf(e.from) === nodeId).map((e) => stepOf(e.to))).size;
+  const readers = readersOf(pipeline, nodeId).length;
   const status = latest ? statusOf(latest.state) : undefined;
-  const metricsPort = operator?.outputs.find((o) => o.kind === "metrics")?.name;
+  const metrics = operator ? metricsPort(operator) : undefined;
   return (
     <>
       <span style={LABEL}>{stepType(node, operator)}</span>
       {operator?.description && <span style={{ fontSize: "12.5px", color: "var(--t-muted,#ababab)", lineHeight: "1.5", textWrap: "pretty" }}>{operator.description}</span>}
       <div style={{ display: "flex", flexDirection: "column" }}>
         <Fact k="Status" v={status?.text ?? "Not run"} warn={status?.tone === "bad"} />
-        {latest && hasOutputs(latest) && <Fact k="Output" v={<NodeFact attemptId={latest.id} operator={node.operator} metricsPort={metricsPort} status="saved" />} />}
+        {latest && hasOutputs(latest) && <Fact k="Output" v={<NodeFact attemptId={latest.id} operator={node.operator} metricsPort={metrics} status="saved" />} />}
         <Fact k="Downstream" v={`${readers} ${readers === 1 ? "step" : "steps"}`} />
       </div>
     </>
@@ -69,8 +69,8 @@ export function MethodologyTab({ pipeline, nodeId, checks, operator, latest }: {
   const facts = <StepFacts pipeline={pipeline} nodeId={nodeId} operator={operator} latest={latest} />;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "28px", padding: "18px 24px" }}>
-      {rules.isError && <p role="alert" style={{ color: P.redHex }}>Methodology rules could not be read: {rules.error.message}</p>}
-      {decided.isError && <p role="alert" style={{ color: P.redHex }}>The pipeline's decisions could not be read: {decided.error.message}</p>}
+      {rules.isError && <p role="alert" className="error">Methodology rules could not be read: {rules.error.message}</p>}
+      {decided.isError && <p role="alert" className="error">The pipeline's decisions could not be read: {decided.error.message}</p>}
       {(rules.isPending || decided.isPending) && <Loading />}
       {deciding.length === 0 ? (
         <div style={ONE_COLUMN}>
@@ -114,7 +114,6 @@ export function RuleDecision({ pipeline, nodeId, rule, facts }: {
   const apply = useApplyMethodology();
   const selectPipeline = useSelection((state) => state.selectPipelineVersion);
   const openExperiments = useSelection((state) => state.openExperiments);
-  const setNav = useSelection((state) => state.setNav);
   const [picked, setPicked] = useState<string>();
   const [reason, setReason] = useState("");
   const decided = proposal.data;
@@ -152,7 +151,7 @@ export function RuleDecision({ pipeline, nodeId, rule, facts }: {
       <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" }}>
         <span style={{ ...LABEL, paddingBottom: "4px" }}>Alternatives</span>
         {!linked ? (
-          <p role="alert" style={{ margin: "0", fontSize: "13px", color: P.redHex }}>Link a question revision on the Objective page before a rule can decide.</p>
+          <p role="alert" className="error">Link a question revision on the Objective page before a rule can decide.</p>
         ) : proposal.isIdle ? (
           <button type="button" className="dx-btn dx-h-06" onClick={() => proposal.mutate({ pipelineId: pipeline.id, nodeId, decides: rule.decides })} style={BUTTON}>
             Review choices
@@ -160,7 +159,7 @@ export function RuleDecision({ pipeline, nodeId, rule, facts }: {
         ) : proposal.isPending ? (
           <Loading />
         ) : proposal.isError ? (
-          <p role="alert" style={{ margin: "0", fontSize: "13px", color: P.redHex }}>{proposal.error.message}</p>
+          <p role="alert" className="error">{proposal.error.message}</p>
         ) : null}
         {decided && (
           <div role="radiogroup" aria-label={`${rule.name} alternatives`} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
@@ -168,7 +167,7 @@ export function RuleDecision({ pipeline, nodeId, rule, facts }: {
               const on = selected === alternative.id;
               const usable = alternative.applicability === "applicable";
               return (
-                <label key={alternative.id} className={usable ? "dx-h-03" : undefined} style={{ position: "relative", padding: "7px 10px", borderRadius: "var(--r-sm,6px)", display: "flex", gap: "10px", alignItems: "flex-start", cursor: usable ? "pointer" : "default", background: on ? ink(0.05) : "transparent", opacity: usable ? 1 : 0.5 }}>
+                <label key={alternative.id} className={usable && !on ? "dx-field dx-h-03" : "dx-field"} style={{ position: "relative", padding: "7px 10px", borderRadius: "var(--r-sm,6px)", display: "flex", gap: "10px", alignItems: "flex-start", cursor: usable ? "pointer" : "default", background: on ? ink(0.05) : "transparent", opacity: usable ? 1 : 0.5 }}>
                   <input type="radio" name={`rule-${nodeId}-${rule.decides}`} checked={on} disabled={!usable} onChange={() => setPicked(alternative.id)} style={{ position: "absolute", opacity: "0", width: "1px", height: "1px", margin: "0" }} />
                   <span aria-hidden="true" style={{ width: "12px", height: "12px", borderRadius: "6px", marginTop: "3px", flexShrink: "0", border: `1px solid ${on ? P.t0 : ink(0.3)}`, boxShadow: on ? `inset 0 0 0 3px ${P.surf}, inset 0 0 0 6px ${P.t0}` : "none" }} />
                   <span style={{ display: "flex", flexDirection: "column", gap: "1px", minWidth: "0" }}>
@@ -207,10 +206,10 @@ export function RuleDecision({ pipeline, nodeId, rule, facts }: {
             </button>
           </div>
         )}
-        {apply.isError && <p role="alert" style={{ margin: "0", fontSize: "13px", color: P.redHex }}>{apply.error.message}</p>}
+        {apply.isError && <p role="alert" className="error">{apply.error.message}</p>}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px", minWidth: "0" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "0" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           <span style={LABEL}>Thresholds</span>
           {thresholds.length === 0 ? (
@@ -224,9 +223,6 @@ export function RuleDecision({ pipeline, nodeId, rule, facts }: {
           )}
           <span style={{ fontSize: "12px", color: "var(--t-faint,#8c8c8c)", lineHeight: "1.5" }}>{rule.provenance.standard}</span>
         </div>
-        <button type="button" className="dx-btn dx-h-06" onClick={() => setNav("Methodology")} style={BUTTON}>
-          Rule details
-        </button>
       </div>
     </section>
   );

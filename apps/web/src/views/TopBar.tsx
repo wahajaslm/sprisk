@@ -7,7 +7,7 @@ import { flowName } from "../flow/labels.ts";
 import { currentQuestion, openEntries } from "./objective/ledger.ts";
 import { NAV, NAV_LABEL, useSelection } from "../workbench/selection.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
-import { LAYOUT, P } from "../styles/palette.ts";
+import { LAYOUT, P, danger } from "../styles/palette.ts";
 import { ImportNotebook } from "./ImportNotebook.tsx";
 
 /** Local mode has one project (the CLI's LOCAL_PROJECT). */
@@ -51,17 +51,18 @@ export function TopBar() {
           ? "Executing graph…"
           : `Last run ${latestRun.status}`;
 
-  const errors = [versions, runs, startRun].flatMap((q) => (q.isError ? [q.error.message] : []));
+  // One alert per message: with the API down, several reads fail with the same words.
+  const errors = [...new Set([versions, runs, startRun].flatMap((q) => (q.isError ? [q.error.message] : [])))];
   const status = (
     <>
       {errors.map((message) => (
-        <span key={message} role="alert" style={{ fontSize: "12.5px", color: P.redHex, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: "0" }}>
+        <span key={message} role="alert" className="error" style={{ fontSize: "12.5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: "0" }}>
           {message}
         </span>
       ))}
       {nav === "Objective" ? (
         questions.isError ? (
-          <span role="alert" style={{ fontSize: "12.5px", color: P.redHex, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: "0" }}>
+          <span role="alert" className="error" style={{ fontSize: "12.5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: "0" }}>
             {questions.error.message}
           </span>
         ) : (
@@ -167,7 +168,7 @@ export function TopBar() {
               >
                 {NAV_LABEL[item]}
                 {item === "Objective" && openCount > 0 && (
-                  <span style={{ fontSize: "11px", fontWeight: "500", padding: "1px 6px", borderRadius: "var(--r-sm,6px)", color: P.redHex, background: `rgba(${P.red},0.12)` }}>{openCount}</span>
+                  <span style={{ fontSize: "11px", fontWeight: "500", padding: "1px 6px", borderRadius: "var(--r-sm,6px)", color: P.red, background: danger(0.12) }}>{openCount}</span>
                 )}
               </button>
             );

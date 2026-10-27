@@ -12,6 +12,12 @@ import { PaneFoldIcon, SendIcon } from "./Icons.tsx";
 import { QueryState } from "../components/ui/QueryState.tsx";
 import { CopilotMessage } from "../components/ui/CopilotMessage.tsx";
 
+/** What a person can ask before the first message, as the design's chips. */
+const SUGGESTIONS = [
+  { label: "Summarise view", question: "Summarise the active view" },
+  { label: "Check rules", question: "Which methodology rules apply here?" },
+];
+
 const FOLD_BUTTON = { width: "26px", height: "26px", borderRadius: "var(--r-sm,6px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--t-muted,#ababab)", flexShrink: "0" } as const;
 
 /** The design's Copilot column (280px, folding to a 44px rail), answering with the local model. */
@@ -79,7 +85,7 @@ export function Copilot() {
     void sendMessage(text);
   };
 
-  const chips = chatMessages.length === 0 ? [["Summarise view", "Summarise the active view"], ["Check rules", "Which methodology rules apply here?"]] : [];
+  const chips = chatMessages.length === 0 ? SUGGESTIONS : [];
 
   return (
     <aside aria-label="Copilot" style={{ background: "var(--bg-surface,#121212)", minHeight: "0", minWidth: "0", overflow: "hidden", display: "grid", gridTemplateRows: "44px minmax(0,1fr) auto" }}>
@@ -114,14 +120,14 @@ export function Copilot() {
       <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
         {chips.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-            {chips.map(([label, question]) => (
-              <button key={label} type="button" className="dx-btn dx-h-08" onClick={() => void sendMessage(question!)} style={{ padding: "4px 9px", borderRadius: "var(--r-sm,6px)", background: "rgba(var(--ink-rgb,255,255,255),0.05)", fontSize: "12.5px", color: "var(--t-secondary,#d4d4d4)" }}>
+            {chips.map(({ label, question }) => (
+              <button key={label} type="button" className="dx-btn dx-h-08" onClick={() => void sendMessage(question)} style={{ padding: "4px 9px", borderRadius: "var(--r-sm,6px)", background: "rgba(var(--ink-rgb,255,255,255),0.05)", fontSize: "12.5px", color: "var(--t-secondary,#d4d4d4)" }}>
                 {label}
               </button>
             ))}
           </div>
         )}
-        <div style={{ height: "36px", borderRadius: "var(--r-sm,6px)", border: "1px solid rgba(var(--ink-rgb,255,255,255),0.12)", display: "flex", alignItems: "center", gap: "8px", padding: "0 6px 0 12px", fontSize: "13px", color: "var(--t-faint,#8c8c8c)" }}>
+        <div className="dx-field" style={{ height: "36px", borderRadius: "var(--r-sm,6px)", border: "1px solid rgba(var(--ink-rgb,255,255,255),0.12)", display: "flex", alignItems: "center", gap: "8px", padding: "0 6px 0 12px", fontSize: "13px", color: "var(--t-faint,#8c8c8c)" }}>
           <input
             id="copilot-input"
             className="dx-input"

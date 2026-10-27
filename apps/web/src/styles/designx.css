@@ -17,6 +17,12 @@
   outline-offset: -1px;
 }
 
+/* The design's boxes around a field or a hidden radio show keyboard focus on the box. */
+.dx-field:has(:focus-visible) { outline: 1px solid var(--t-primary); outline-offset: -1px; }
+
+/* Lists inside a sidebar are rows, never bullets. */
+.dx-side-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+
 /* A text field inside one of the design's boxes: the box draws the border, the field only text. */
 .dx-input {
   all: unset;
@@ -43,5 +49,3 @@
 .dx-h-06:hover { background: rgba(var(--ink-rgb), 0.06) !important; }
 .dx-h-06t:hover { background: rgba(var(--ink-rgb), 0.06) !important; color: var(--t-primary) !important; }
 .dx-h-08:hover { background: rgba(var(--ink-rgb), 0.08) !important; }
-.dx-h-10:hover { background: rgba(var(--ink-rgb), 0.1) !important; }
-.dx-h-12:hover { background: rgba(var(--ink-rgb), 0.12) !important; }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Node, Operator } from "@sprisk/contracts";
+import type { Operator } from "@sprisk/contracts";
 
 import { checkCount, concernsByNode, useRunChecks } from "../api/checks.ts";
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";

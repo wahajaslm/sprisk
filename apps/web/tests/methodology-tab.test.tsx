@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import shortlistRule from "../../../tests/contract/methodology_rule/valid/shortlist.json";
+import { stepType } from "../src/flow/stages.ts";
 import { MethodologyTab } from "../src/views/inspector/MethodologyTab.tsx";
 import { ParametersTab } from "../src/views/inspector/ParametersTab.tsx";
 import { operators } from "./fixtures.ts";
@@ -43,6 +44,16 @@ describe("methodology on a step", () => {
     renderWithApi(<MethodologyTab pipeline={pipeline} nodeId="model" checks={{ status: "none" }} />);
     const panels = await screen.findAllByRole("region", { name: /Model Shortlist|Decision Threshold/ });
     expect(panels.map((p) => p.getAttribute("aria-label"))).toEqual(["Model Shortlist", "Decision Threshold"]);
+  });
+
+  it("says what every step is and what it measured, with or without a rule", async () => {
+    const described = { ...model, description: "Fits a linear model on the training rows." };
+    server.use(http.get("/api/methodology_rules", () => HttpResponse.json([])));
+    renderWithApi(<MethodologyTab pipeline={pipeline} nodeId="model" checks={{ status: "none" }} operator={described} />);
+    expect(await screen.findByText("Fits a linear model on the training rows.")).toBeInTheDocument();
+    expect(screen.getByText(stepType(pipeline.nodes[0]!, described))).toBeInTheDocument();
+    expect(screen.getByText("Not run")).toBeInTheDocument();
+    expect(screen.getByText("0 steps")).toBeInTheDocument();
   });
 
   it("says so when no active rule decides the step", async () => {

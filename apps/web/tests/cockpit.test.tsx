@@ -1661,6 +1661,17 @@ describe("a run that finishes between polls", () => {
   });
 });
 
+describe("top bar errors", () => {
+  it("says a message once when several reads fail with it", async () => {
+    const down = () => HttpResponse.json({ errors: [{ code: "internal", message: "API is down" }] }, { status: 500 });
+    server.use(http.get("/api/pipeline_versions", down), http.get("/api/runs", down));
+    useSelection.setState({ nav: "Flow", pipelineVersionId: PV, runId: undefined, nodeId: undefined });
+    renderWithApi(<TopBar />);
+
+    await waitFor(() => expect(screen.queryAllByRole("alert").filter((a) => a.textContent?.includes("API is down"))).toHaveLength(1));
+  });
+});
+
 describe("copilot", () => {
   it("shows no made-up example answers, and says its answers can be wrong", async () => {
     useSelection.setState({ nav: "Flow", pipelineVersionId: PV, runId: undefined, nodeId: undefined });
@@ -1678,6 +1689,14 @@ describe("copilot", () => {
 
     expect(await screen.findByText(`iris.csv · ${pipeline.nodes.length} steps`)).toBeInTheDocument();
     expect(screen.queryByText("German Credit · 7 steps")).not.toBeInTheDocument();
+  });
+
+  it("names the selected step by its title, not its id", async () => {
+    useSelection.setState({ nav: "Flow", pipelineVersionId: PV, runId: undefined, nodeId: "impute" });
+    renderWithApi(<Copilot />);
+
+    expect(await screen.findByText("Imputation")).toBeInTheDocument();
+    expect(screen.queryByText(/Step · impute/)).not.toBeInTheDocument();
   });
 
   it("summarises the run's step attempts, without the gate", async () => {

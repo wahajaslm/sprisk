@@ -44,7 +44,7 @@ import {
   STAGE_HEAD_HEIGHT,
   STAGE_PAD_X,
 } from "../flow/layout.ts";
-import { figurePortOf, kindOf, type NodeKind, roleOf, shortName, STAGE_PURPOSE, STAGE_TITLE, type Stage, stepLabel, type StepOrigin, stepOrigin } from "../flow/stages.ts";
+import { figurePortOf, kindOf, metricsPort, type NodeKind, roleOf, shortName, STAGE_PURPOSE, STAGE_TITLE, type Stage, stepLabel, type StepOrigin, stepOrigin } from "../flow/stages.ts";
 import type { InspectorTab } from "../workbench/inspectorTabs.ts";
 import { useWorkbench } from "../workbench/workbench.ts";
 import { NodeFact } from "./NodeFact.tsx";
@@ -98,10 +98,6 @@ type StageData = {
   /** The promises its decisions made, with their standing on this version. */
   promises: PromiseStatus[];
   count: number;
-  completed?: number;
-  running?: number;
-  failed?: number;
-  active: boolean;
   baseWidth?: number;
   baseHeight?: number;
 };
@@ -116,7 +112,7 @@ function StageHead({ data }: NodeProps<Node<StageData>>) {
         <h3 style={{ margin: "0", fontSize: "14px", fontWeight: "500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{data.name}</h3>
         {/* A stage's promises take the step count's place (ADR-0063). */}
         {summary ? (
-          <span title={data.promises.map((p) => `${p.promise} ${STANDING[p.status].word}.`).join(" ")} style={{ fontSize: "11.5px", color: STANDING[summary.status].tone === "bad" ? P.redHex : P.t3, whiteSpace: "nowrap" }}>
+          <span title={data.promises.map((p) => `${p.promise} ${STANDING[p.status].word}.`).join(" ")} style={{ fontSize: "11.5px", color: STANDING[summary.status].tone === "bad" ? P.red : P.t3, whiteSpace: "nowrap" }}>
             {summary.text}
           </span>
         ) : (
@@ -304,15 +300,15 @@ function CardSummary({ data }: { data: StepData }) {
 
 /** An evaluator's metrics port, if it has one; absent otherwise (no undefined in node data). */
 function metricsPortOf(op: Operator): { metricsPort?: string } {
-  const port = op.outputs.find((o) => o.kind === "metrics")?.name;
-  return port === undefined ? {} : { metricsPort: String(port) };
+  const port = metricsPort(op);
+  return port === undefined ? {} : { metricsPort: port };
 }
 
 /** Width of the round icon in Compact (.round-icon); lines run down from its centre. */
 const ROUND_ICON = 30;
 
 /** The design's status dot by tone: done grey, live bright, failed red, not run dim. */
-const DOT: Record<string, string> = { done: P.t3, live: P.t0, bad: P.redHex, idle: P.idle };
+const DOT: Record<string, string> = { done: P.t3, live: P.t0, bad: P.red, idle: P.idle };
 
 /** Compact: a round icon, the step's name and what it is for beside it; its state is a dot. */
 function CompactNode({ data }: NodeProps<Node<StepData>>) {
@@ -351,10 +347,10 @@ function CompactNode({ data }: NodeProps<Node<StepData>>) {
         <span className={`state-dot tone-${status.tone}`} role="img" aria-label={status.text} style={{ position: "absolute", right: "0", bottom: "0", width: "6px", height: "6px", borderRadius: "50%", boxShadow: "0 0 0 2px var(--bg-surface,#121212)", background: DOT[status.tone] ?? P.idle }} />
       </span>
       <span className="round-text" style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" }}>
-        <span className="node-title" style={{ fontSize: "12.5px", fontWeight: "500", color: bad ? P.redHex : P.t0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{data.title}</span>
+        <span className="node-title" style={{ fontSize: "12.5px", fontWeight: "500", color: bad ? P.red : P.t0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{data.title}</span>
         {/* Two lines, as the design draws a step. What needs attention takes the second line;
             otherwise, once the step ran, one measured fact about its output. */}
-        <span className="round-sub" style={{ fontSize: "11.5px", color: bad ? P.redHex : P.t3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <span className="round-sub" style={{ fontSize: "11.5px", color: bad ? P.red : P.t3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {attention.length > 0 ? (
             attention.join(" · ")
           ) : (
@@ -388,7 +384,7 @@ function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, data
     <BaseEdge
       id={id}
       path={path}
-      style={{ fill: "none", stroke: data?.failed ? P.redHex : ink(data?.active ? 0.5 : 0.18), strokeWidth: data?.active ? 1.3 : 1, strokeDasharray: data?.failed ? "4 3" : undefined }}
+      style={{ fill: "none", stroke: data?.failed ? P.red : ink(data?.active ? 0.5 : 0.18), strokeWidth: data?.active ? 1.3 : 1, strokeDasharray: data?.failed ? "4 3" : undefined }}
     />
   );
 }
@@ -423,19 +419,7 @@ export function flowGraph(
 ): { nodes: Node[]; edges: Edge[] } {
   const groupOf = stageGroups(pipeline, operators, decisions);
   const decidedIn = new Map(stageNotebooks(pipeline, operators, decisions).map((s) => [s.name, s.decisions]));
-  const selectedGroup = selectedId ? groupOf.get(selectedId) : undefined;
   const heads: Node[] = groups.map((g) => {
-    const stageNodes = pipeline.nodes.filter((n) => groupOf.get(n.id) === g.id);
-    let completed = 0;
-    let running = 0;
-    let failed = 0;
-    for (const n of stageNodes) {
-      const att = latest.get(n.id);
-      const st = statusOf(att?.state ?? "not run");
-      if (st.tone === "live") running++;
-      else if (st.tone === "bad") failed++;
-      else if (st.tone === "good") completed++;
-    }
     return {
       id: `stage:${g.id}`,
       type: "stage",
@@ -453,12 +437,8 @@ export function flowGraph(
         purpose: (decidedIn.get(stageOfGroup(g.id)) ?? []).map((d) => d.name).filter((n) => n !== STAGE_TITLE[stageOfGroup(g.id)]).join(" · ") || STAGE_PURPOSE[stageOfGroup(g.id)],
         promises: (decidedIn.get(stageOfGroup(g.id)) ?? []).flatMap((d) => d.promises),
         count: g.count,
-        active: g.id === selectedGroup,
         baseWidth: Math.round(g.width),
         baseHeight: Math.round(g.height),
-        completed,
-        running,
-        failed,
       },
     };
   });
