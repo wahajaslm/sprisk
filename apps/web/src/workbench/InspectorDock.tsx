@@ -47,7 +47,7 @@ function TabLabel({ params, api }: IDockviewPanelHeaderProps) {
   const count = tab === "checks" ? step.concernCount : tab === "console" ? step.problems : 0;
   return (
     // Middle-click closes, as in VS Code; reopen from + at the end of the tab bar.
-    <span className="dock-tab" onAuxClick={(e) => e.button === 1 && api.close()}>
+    <span className="dock-tab" onAuxClick={(e) => e.button === 1 && api.close()} style={{ padding: "0", fontSize: "13px", fontWeight: "500" }}>
       {TAB_LABEL[tab]}
       {count > 0 && <span className="flow-tab-badge alert">{count}</span>}
     </span>

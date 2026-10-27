@@ -165,7 +165,7 @@ export function TabBody({ tab, step }: { tab: InspectorTab; step: Step }): React
         pipeline && node && operator && <OperatorCode key={`${pipeline.id}/${node.id}`} pipeline={pipeline} nodeId={node.id} operator={operator} />
       );
     case "checks":
-      return pipeline && <MethodologyTab pipeline={pipeline} nodeId={nodeId} checks={step.checks} />;
+      return pipeline && <MethodologyTab pipeline={pipeline} nodeId={nodeId} checks={step.checks} operator={step.operator} latest={step.latest} />;
     case "files":
       return pipeline && <FilesTab pipeline={pipeline} nodeId={nodeId} />;
     case "performance":

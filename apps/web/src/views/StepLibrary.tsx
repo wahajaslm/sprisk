@@ -5,7 +5,7 @@ import { checkCount, concernsByNode, useRunChecks } from "../api/checks.ts";
 import { useOperators, usePipelineVersions, useRunAttempts } from "../api/hooks.ts";
 import { latestByNode, statusOf } from "../flow/latest.ts";
 import { stepOf } from "../flow/ports.ts";
-import { kindOf, newestVersions, STAGE_TITLE, STAGES, stageOf, stepOrigin, stepTitle, type Stage, type NodeKind } from "../flow/stages.ts";
+import { kindOf, newestVersions, STAGE_TITLE, STAGES, stageOf, stepTitle, stepType, type NodeKind } from "../flow/stages.ts";
 import { stageNotebooks } from "../notebook/stageNotebooks.ts";
 import { useFlowDecisions } from "../api/walks.ts";
 import { flows } from "../flow/flows.ts";
@@ -102,7 +102,7 @@ export function StepLibrary() {
       dock={
         <InfoDock
           rows={[
-            { k: "Type", v: selectedNode ? typeOf(selectedNode, opMap.get(selectedNode.operator)) : "—" },
+            { k: "Type", v: selectedNode ? stepType(selectedNode, opMap.get(selectedNode.operator)) : "—" },
             { k: "Status", v: selectedNode ? statusText(latest.get(selectedNode.id)?.state) : "—" },
             { k: "Downstream", v: selectedNode ? `${downstreamCount} ${downstreamCount === 1 ? "step" : "steps"}` : "—" },
           ]}
@@ -168,12 +168,3 @@ function badgeOf(issues: number, state: string | undefined): { badge?: string; w
 const isDone = (state: string | undefined) => state === "succeeded" || state === "cache_hit";
 
 const statusText = (state: string | undefined) => (state ? statusOf(state).text : "Not run");
-
-/** A step's type in the Info panel: what a method made of it, else its kind (ADR-0063). */
-function typeOf(node: Node, operator: Operator | undefined): string {
-  const origin = stepOrigin(node, operator);
-  if (origin === "decided") return "Decision";
-  if (origin === "measures") return "Evidence";
-  const kind = operator ? kindOf(operator) : "recipe";
-  return kind.charAt(0).toUpperCase() + kind.slice(1);
-}

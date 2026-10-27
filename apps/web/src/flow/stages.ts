@@ -175,3 +175,12 @@ export function stepOrigin(node: Node, operator: Operator | undefined): StepOrig
   if (Object.keys(operator?.produces ?? {}).length > 0) return "measures";
   return "written";
 }
+
+/** A step's type in words: what a method made of it, else its kind (ADR-0063). */
+export function stepType(node: Node, operator: Operator | undefined): string {
+  const origin = stepOrigin(node, operator);
+  if (origin === "decided") return "Decision";
+  if (origin === "measures") return "Evidence";
+  const kind = operator ? kindOf(operator) : "recipe";
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
+}
