@@ -12,12 +12,13 @@ arrow-schema = "60"
 bytes = "1.12.1"
 futures = "0.3"
 hex = "0.4.3"
-object_store = "0.14.2"
+object_store = { version = "0.14.2", features = ["aws", "gcp", "azure"] }
 parquet = { version = "60", default-features = false, features = ["arrow", "async", "object_store", "snap", "zstd", "lz4"] }
 sha2 = "0.11.1"
 sprisk-contracts = { version = "0.1.0", path = "../sprisk-contracts" }
 thiserror = "2.0.21"
-tokio = { version = "1.53.3", features = ["fs", "io-util"] }
+tokio = { version = "1.53.3", features = ["fs", "io-util", "time"] }
+url = "2.5.8"
 
 [lints]
 workspace = true

@@ -13,6 +13,7 @@ use object_store::{ObjectStore, ObjectStoreExt, WriteMultipart};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 
+pub mod source;
 mod table;
 
 #[derive(Debug, thiserror::Error)]
@@ -45,6 +46,22 @@ pub enum StoreError {
     Parquet(#[from] parquet::errors::ParquetError),
     #[error("formatting table: {0}")]
     Arrow(#[from] arrow_schema::ArrowError),
+    #[error("invalid location {0}")]
+    InvalidLocation(String),
+    #[error("{0}:// locations are not supported: use a local path, file://, s3://, gs:// or az://")]
+    UnsupportedScheme(String),
+    #[error("nothing found at {0}")]
+    SourceNotFound(String),
+    #[error("{location} holds more than {limit} files")]
+    TooManyFiles { location: String, limit: usize },
+    #[error("{0} is not a CSV or Parquet file")]
+    UnsupportedFormat(String),
+    #[error("{0} mixes CSV and Parquet files")]
+    MixedFormats(String),
+    #[error("listing {0} took too long")]
+    ListTimeout(String),
+    #[error("invalid object path: {0}")]
+    ObjectPath(#[from] object_store::path::Error),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
