@@ -13,10 +13,10 @@ const STAGE_GAP = 56;
 
 /** Stages in decision order (ADR-0059): the area of a decision key names its stage. */
 const STAGES = [
-  ["question", "Question"],
-  ["data", "Data, before the split"],
-  ["split", "Split"],
-  ["features", "Features, on the train rows"],
+  ["question", "Problem definition"],
+  ["data", "Data preparation"],
+  ["split", "Data splitting"],
+  ["features", "Feature engineering"],
   ["evaluation", "Evaluation"],
 ] as const;
 
