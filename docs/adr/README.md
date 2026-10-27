@@ -69,6 +69,7 @@
 | [0065](0065-understand-a-dataset-in-the-dataset-tab.md) | Understand a dataset in the Dataset tab | Accepted |
 | [0066](0066-copilot-goes-through-the-api-to-a-python-provider.md) | The Copilot goes through the API to a Python provider process | Accepted |
 | [0067](0067-datasets-are-registered-by-reference.md) | Datasets are registered by reference | Accepted |
+| [0068](0068-a-question-is-drafted-in-a-conversation-from-the-data.md) | A question is drafted in a conversation that starts from the data | Accepted |
 
 ## Open questions (arch doc §17)
 
