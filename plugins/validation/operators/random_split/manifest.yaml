@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.validation.random_split@1.0.0
 title: Random split
 capability_class: transform
+stage: split
 role: split
 role_default: true
 folds: plain

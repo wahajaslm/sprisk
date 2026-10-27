@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.validation.group_split@1.0.0
 title: Group split
 capability_class: transform
+stage: split
 role: split
 folds: group
 description: Hold out complete entities so the same group never appears in train and test.

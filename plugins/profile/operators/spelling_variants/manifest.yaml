@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.spelling_variants@1.0.0
 title: Spelling variants
 capability_class: analyzer
+stage: explore
 description: Names the category text columns whose values differ only in spaces or case, and those differing only in accents (ADR-0063).
 entrypoint: sprisk_profile.spelling_variants:spelling_variants
 # Every row, before the split: it reads text structure, never the label's values.

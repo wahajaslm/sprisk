@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.encode@1.0.0
 title: One-hot encoding
 capability_class: transform
+stage: clean
 description: One 0/1 column per category of each text column, with the categories the train rows have. A category seen only in test rows gets zeros.
 entrypoint: sprisk_clean.encode:encode
 notebook_code: sprisk_clean.encode:as_code

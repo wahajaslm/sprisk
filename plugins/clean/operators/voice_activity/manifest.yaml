@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.voice_activity@1.0.0
 title: WebRTC voice activity
 capability_class: analyzer
+stage: clean
 description: "Measures speech activity, speech segments and speech coverage locally. It does not identify speakers or transcribe audio."
 entrypoint: sprisk_clean.audio_speech:voice_activity
 scope: all

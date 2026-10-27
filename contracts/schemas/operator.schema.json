@@ -54,6 +54,10 @@
           "type": "boolean",
           "description": "True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
         },
+        "stage": {
+          "$ref": "#/$defs/Stage",
+          "description": "The stage a step of this operator is in, unless its node says another (ADR-0055). Absent: the UI shows it with other steps."
+        },
         "role": {
           "$ref": "#/$defs/OperatorRole",
           "description": "The job the step does, for methods that replace a step by role (ADR-0063). Absent: no method places it by role."

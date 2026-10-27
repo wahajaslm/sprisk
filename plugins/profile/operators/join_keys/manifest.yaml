@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.join_keys@1.0.0
 title: Join keys
 capability_class: analyzer
+stage: explore
 description: Names the columns the rows the split reads share with the one loaded table no step reads, and how rows match on a single shared column (ADR-0063).
 entrypoint: sprisk_profile.join_keys:join_keys
 # Every row, before the split: it compares shared columns only, never the label's values.

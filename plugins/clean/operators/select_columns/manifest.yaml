@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.select_columns@1.0.0
 title: Column selection
 capability_class: transform
+stage: clean
 description: Keep only the named columns, in that order.
 entrypoint: sprisk_clean.columns:select_columns
 inputs: [{ name: data, kind: table }]

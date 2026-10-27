@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.audit_images@1.0.0
 title: Image asset audit
 capability_class: analyzer
+stage: clean
 description: "Audits actual row-linked image assets before modelling: file coverage, decode failures, dimensions, aspect ratio, brightness and perceptual duplicate candidates."
 entrypoint: sprisk_clean.audit_images:audit_images
 scope: all

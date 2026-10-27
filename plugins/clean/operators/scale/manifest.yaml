@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.scale@1.0.0
 title: Feature scaling
 capability_class: transform
+stage: clean
 description: Min-max or z-score scaling with the train range or moments. Fit on train only.
 entrypoint: sprisk_clean.scale:scale
 notebook_code: sprisk_clean.scale:as_code

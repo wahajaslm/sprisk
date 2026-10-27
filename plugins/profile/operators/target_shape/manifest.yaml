@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.target_shape@1.0.0
 title: Target shape
 capability_class: analyzer
+stage: explore
 description: Measures the target on the train rows - how many labels, numbers or not, whole numbers or not, and the rarest label's share, and counts the train rows (ADR-0063).
 entrypoint: sprisk_profile.target_shape:target_shape
 # The train rows the split writes, never the test rows.

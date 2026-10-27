@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.validation.group_overlap@1.0.0
 title: Group leakage check
 capability_class: analyzer
+stage: split
 description: Counts the groups with rows in both train and test, the evidence that a group split keeps each item on one side (ADR-0063).
 entrypoint: sprisk_validation.split_evidence:group_overlap
 attach: { role: split, side: output }

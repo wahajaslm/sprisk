@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.leave_out@1.0.0
 title: Feature removal
 capability_class: transform
+stage: clean
 description: Leave the named columns out of the train and test rows, so the model does not read them.
 entrypoint: sprisk_clean.columns:leave_out
 # Learns nothing, so trivially from train only; train and test ports let a method add it before a model.

@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.drop_columns@1.0.0
 title: Column removal
 capability_class: transform
+stage: clean
 description: Leave out the named columns; every other column stays, in its order.
 entrypoint: sprisk_clean.columns:drop_columns
 inputs: [{ name: data, kind: table }]

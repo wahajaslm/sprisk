@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from sprisk_workers.errors import ManifestError
 from sprisk_workers.manifests import load_operators
@@ -207,3 +208,12 @@ def test_no_step_imports_sprisk() -> None:
     for path in sources:
         text = path.read_text()
         assert "from sprisk" not in text and "import sprisk" not in text, path
+
+
+def test_every_shipped_operator_names_its_stage() -> None:
+    """The UI places a step by its operator's stage; it never guesses one from the id."""
+    roots = [PLUGINS, PLUGINS.parent / "methodology"]
+    manifests = [m for root in roots for m in root.glob("*/operators/*/manifest.yaml")]
+    assert manifests
+    unstaged = [m for m in manifests if "stage" not in yaml.safe_load(m.read_text())]
+    assert unstaged == []

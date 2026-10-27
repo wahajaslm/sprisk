@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.code.python@2.0.0
 title: Notebook cells
 capability_class: analyzer
+stage: explore
 description: Notebook cells as a step (ADR-0031). Reads tables from earlier steps by variable name and passes on the variables later steps read. Shows what it prints, its last value and its figures.
 entrypoint: sprisk_code.python_step:python_step_v2
 inputs: []

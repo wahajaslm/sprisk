@@ -58,8 +58,8 @@
     },
     "Stage": {
       "type": "string",
-      "enum": ["load", "split", "explore", "clean", "model", "evaluate"],
-      "description": "A flow's stages in order; each is one notebook (ADR-0055). Load reads the data and looks at all rows; Explore looks at the training rows, after the split."
+      "enum": ["load", "explore", "clean", "split", "model", "evaluate"],
+      "description": "A flow's stages in working order; each is one notebook (ADR-0055, ADR-0065). Load reads the data, Explore looks at all of it, Clean fixes what needs no fitting, Split sets the test rows aside."
     },
     "NodeNotes": {
       "type": "object",

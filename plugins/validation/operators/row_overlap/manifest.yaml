@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.validation.row_overlap@1.0.0
 title: Row leakage check
 capability_class: analyzer
+stage: split
 description: Counts the test rows whose features match a train row, the evidence that a random split leaves no row on both sides. The target is dropped first, so no test label is read (ADR-0064).
 entrypoint: sprisk_validation.split_evidence:row_overlap
 attach: { role: split, side: output }

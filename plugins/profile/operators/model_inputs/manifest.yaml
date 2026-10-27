@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.model_inputs@1.0.0
 title: Model inputs
 capability_class: analyzer
+stage: explore
 description: Names what the columns a model learns from are, on its train rows - free text, dates, categories to group or encode, gaps to fill (ADR-0063).
 entrypoint: sprisk_profile.model_inputs:model_inputs
 # The model's train rows only.

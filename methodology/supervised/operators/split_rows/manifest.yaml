@@ -3,6 +3,7 @@
 schema_version: sprisk.operator/v1
 id: sprisk.methodology.split_rows@1.0.0
 capability_class: analyzer
+stage: split
 description: Check that a split's train and test rows keep the question's time and entity rules.
 entrypoint: sprisk_supervised.pack:split_rows_run
 inputs:

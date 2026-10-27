@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.validation.time_order@1.0.0
 title: Time order check
 capability_class: analyzer
+stage: split
 description: Counts the test rows not later than the latest train row, the evidence that a temporal split tests on later rows only (ADR-0064).
 entrypoint: sprisk_validation.split_evidence:time_order
 attach: { role: split, side: output }

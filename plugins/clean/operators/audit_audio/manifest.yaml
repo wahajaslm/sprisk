@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.clean.audit_audio@1.0.0
 title: Audio asset audit
 capability_class: analyzer
+stage: clean
 description: "Audits row-linked audio assets before modelling: duration, sample rate, channels, silence, clipping, missing files and decode failures."
 entrypoint: sprisk_clean.audio_assets:audit_audio
 scope: all

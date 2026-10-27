@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.code.python@1.0.0
 title: Python code
 capability_class: analyzer
+stage: explore
 description: Your Python code on the input table. Shows the last expression, printed text and matplotlib figures (ADR-0020).
 entrypoint: sprisk_code.python_step:python_step
 inputs: [{ name: data, kind: table }]

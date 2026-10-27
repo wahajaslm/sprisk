@@ -524,12 +524,12 @@ export type Entrypoint = string;
  */
 export type ModelFamily = "tree_ensemble" | "linear" | "distance_based" | "density_based";
 /**
- * A flow's stages in order; each is one notebook (ADR-0055). Load reads the data and looks at all rows; Explore looks at the training rows, after the split.
+ * A flow's stages in working order; each is one notebook (ADR-0055, ADR-0065). Load reads the data, Explore looks at all of it, Clean fixes what needs no fitting, Split sets the test rows aside.
  *
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "Stage".
  */
-export type Stage = "load" | "split" | "explore" | "clean" | "model" | "evaluate";
+export type Stage = "load" | "explore" | "clean" | "split" | "model" | "evaluate";
 /**
  * This interface was referenced by `Bundle`'s JSON-Schema
  * via the `definition` "ReportId".
@@ -2990,7 +2990,7 @@ export interface Node {
   /**
    * The stage notebook this step's cell is in (ADR-0055). Omitted: the stage its operator implies.
    */
-  stage?: "load" | "split" | "explore" | "clean" | "model" | "evaluate";
+  stage?: "load" | "explore" | "clean" | "split" | "model" | "evaluate";
   notes?: NodeNotes;
   /**
    * The variable each output port goes by in the notebook, by port (ADR-0055). Omitted: the port names.
@@ -3310,6 +3310,10 @@ export interface Operator {
    * True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows.
    */
   fits_on_train?: boolean;
+  /**
+   * The stage a step of this operator is in, unless its node says another (ADR-0055). Absent: the UI shows it with other steps.
+   */
+  stage?: "load" | "explore" | "clean" | "split" | "model" | "evaluate";
   /**
    * The one job a step does in a flow, so methods place and replace steps by role, and the engine builds a step of a role from its default operator, never by name (ADR-0064). score: scores a model on rows. score_shares: compares the class shares of train and test at the final score. cross_validate: scores a candidate on folds. select: chooses among compared candidates. row_filter: only drops rows.
    */

@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.profile.identity_frequency@1.0.0
 title: Records per item
 capability_class: analyzer
+stage: explore
 description: Counts the records each stated item has, the items seen more than once, and the rows with no identifier, and draws how many items have each number of records (ADR-0065).
 entrypoint: sprisk_profile.identity_frequency:identity_frequency
 # Every row, before the split: it reads the identifier, never the label.

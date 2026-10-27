@@ -146,7 +146,7 @@ describe("step library", () => {
   });
 
   it("lists only the newest version of an operator", async () => {
-    const v = (id: string) => ({ ...operators[0]!, id, capability_class: "analyzer" as const });
+    const v = (id: string) => ({ ...operators[0]!, id, capability_class: "analyzer" as const, stage: "explore" as const });
     server.use(
       http.get("/api/operators", () =>
         HttpResponse.json([v("sprisk.code.python@1.0.0"), v("sprisk.code.python@1.10.0"), v("sprisk.code.python@1.9.0")]),

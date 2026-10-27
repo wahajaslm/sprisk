@@ -1364,9 +1364,9 @@ class Resources(StrictModel):
 
 class Stage(StrEnum):
     load = "load"
-    split = "split"
     explore = "explore"
     clean = "clean"
+    split = "split"
     model = "model"
     evaluate = "evaluate"
 
@@ -3745,6 +3745,12 @@ class Operator(StrictModel):
         bool | None,
         Field(
             description="True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
+        ),
+    ] = None
+    stage: Annotated[
+        Stage | None,
+        Field(
+            description="The stage a step of this operator is in, unless its node says another (ADR-0055). Absent: the UI shows it with other steps."
         ),
     ] = None
     role: Annotated[

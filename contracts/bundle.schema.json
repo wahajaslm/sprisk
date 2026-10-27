@@ -4952,6 +4952,10 @@
           "type": "boolean",
           "description": "True for a step that reads train and test on ports of those names, fits on train only and writes each from its own rows. Such a step keeps train rows apart, and is refit on each fold when models are compared (ADR-0050). Absent: it may mix rows."
         },
+        "stage": {
+          "$ref": "#/$defs/Stage",
+          "description": "The stage a step of this operator is in, unless its node says another (ADR-0055). Absent: the UI shows it with other steps."
+        },
         "role": {
           "$ref": "#/$defs/OperatorRole",
           "description": "The job the step does, for methods that replace a step by role (ADR-0063). Absent: no method places it by role."
@@ -5320,13 +5324,13 @@
       "type": "string",
       "enum": [
         "load",
-        "split",
         "explore",
         "clean",
+        "split",
         "model",
         "evaluate"
       ],
-      "description": "A flow's stages in order; each is one notebook (ADR-0055). Load reads the data and looks at all rows; Explore looks at the training rows, after the split."
+      "description": "A flow's stages in working order; each is one notebook (ADR-0055, ADR-0065). Load reads the data, Explore looks at all of it, Clean fixes what needs no fitting, Split sets the test rows aside."
     },
     "NodeNotes": {
       "type": "object",

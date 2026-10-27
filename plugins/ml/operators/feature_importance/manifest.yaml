@@ -2,6 +2,7 @@ schema_version: sprisk.operator/v1
 id: sprisk.ml.feature_importance@2.0.0
 title: Permutation importance
 capability_class: evaluator
+stage: evaluate
 description: How much the score drops when each feature is shuffled in the test rows (permutation importance). Predictive importance for this model only, not causal; correlated features share or mask importance. A report only; never use it to choose features or models.
 entrypoint: sprisk_ml.importance:feature_importance
 inputs: [{ name: model, kind: model }, { name: test, kind: table }, { name: words, kind: matrix, optional: true, description: "Word features of the test rows, from the Vectorize text step the model's train words came from; shuffled beside the test table, each text column's words as one feature (ADR-0058)." }]
