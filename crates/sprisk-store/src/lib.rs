@@ -6,11 +6,11 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sprisk_contracts::{
     Artifact, ArtifactId, Attempt, AttemptId, AttemptState, CreateStudy, CreateWalk,
-    DatasetProfile, DecisionProposal, InvestigationId, MethodologyDecision,
-    MethodologyDecisionByRule, MethodologyDecisionId, MethodologyProposalId, NodeId, NotebookId,
-    NotebookVersion, NotebookVersionId, PipelineVersion, PipelineVersionId, QuestionVersion,
-    QuestionVersionId, Report, Run, RunId, RunStatus, Study, StudyId, StudyStatus, Timestamp, Walk,
-    WalkId, WalkStep, WorkerId,
+    DatasetProfile, DatasetVersion, DatasetVersionId, DecisionProposal, InvestigationId,
+    MethodologyDecision, MethodologyDecisionByRule, MethodologyDecisionId, MethodologyProposalId,
+    NodeId, NotebookId, NotebookVersion, NotebookVersionId, PipelineVersion, PipelineVersionId,
+    QuestionVersion, QuestionVersionId, Report, Run, RunId, RunStatus, Study, StudyId, StudyStatus,
+    Timestamp, Walk, WalkId, WalkStep, WorkerId,
 };
 use sprisk_core::attempt::{TransitionError, transition};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
@@ -739,6 +739,60 @@ impl SqliteStore {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Keeps a dataset version, or returns the one already kept for the same location and
+    /// fingerprint (ADR-0067): registering the same data again changes nothing.
+    pub async fn insert_dataset_version(
+        &self,
+        version: &DatasetVersion,
+    ) -> Result<DatasetVersion, StoreError> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO dataset_versions (id, location, fingerprint, body) VALUES (?, ?, ?, ?)",
+        )
+        .bind(version.id.as_str())
+        .bind(version.location.as_str())
+        .bind(version.fingerprint.as_str())
+        .bind(to_json(version)?)
+        .execute(&self.pool)
+        .await?;
+        let body: Option<String> = sqlx::query_scalar(
+            "SELECT body FROM dataset_versions WHERE location = ? AND fingerprint = ?",
+        )
+        .bind(version.location.as_str())
+        .bind(version.fingerprint.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        from_json(body, "dataset version", version.id.as_str())
+    }
+
+    pub async fn get_dataset_version(
+        &self,
+        id: &DatasetVersionId,
+    ) -> Result<DatasetVersion, StoreError> {
+        let body: Option<String> =
+            sqlx::query_scalar("SELECT body FROM dataset_versions WHERE id = ?")
+                .bind(id.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        from_json(body, "dataset version", id.as_str())
+    }
+
+    /// Dataset versions, newest first, a page at a time.
+    pub async fn list_dataset_versions(
+        &self,
+        before: Option<&DatasetVersionId>,
+        limit: u32,
+    ) -> Result<Vec<DatasetVersion>, StoreError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, body FROM dataset_versions WHERE (?1 IS NULL OR id < ?1) \
+             ORDER BY id DESC LIMIT ?2",
+        )
+        .bind(before.map(|id| id.as_str()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        parse_all(rows, "dataset version")
     }
 
     /// The report of `walk`. A walk that has not completed has none.

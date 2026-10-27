@@ -1714,3 +1714,53 @@ async fn saving_a_profile_twice_keeps_the_first() {
         Some(profile(5))
     );
 }
+
+#[tokio::test]
+async fn a_dataset_version_registered_twice_is_kept_once() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let first: sprisk_contracts::DatasetVersion = fixture("dataset_version", "local-csv.json");
+    let mut again = first.clone();
+    again.id = "dsv_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+
+    assert_eq!(store.insert_dataset_version(&first).await.unwrap(), first);
+    assert_eq!(store.insert_dataset_version(&again).await.unwrap(), first);
+
+    assert_eq!(store.get_dataset_version(&first.id).await.unwrap(), first);
+    assert_eq!(
+        store.list_dataset_versions(None, 50).await.unwrap(),
+        vec![first]
+    );
+}
+
+#[tokio::test]
+async fn changed_data_at_one_location_is_a_new_version_listed_newest_first() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let old: sprisk_contracts::DatasetVersion = fixture("dataset_version", "local-csv.json");
+    let mut new = old.clone();
+    new.id = "dsv_01JABCDEFGHJKMNPQRSTVWXYZ9".parse().unwrap();
+    new.fingerprint = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        .parse()
+        .unwrap();
+    store.insert_dataset_version(&old).await.unwrap();
+    store.insert_dataset_version(&new).await.unwrap();
+
+    let listed = store.list_dataset_versions(None, 50).await.unwrap();
+    assert_eq!(listed, vec![new.clone(), old.clone()]);
+    let before = store
+        .list_dataset_versions(Some(&new.id), 50)
+        .await
+        .unwrap();
+    assert_eq!(before, vec![old]);
+}
+
+#[tokio::test]
+async fn an_unknown_dataset_version_is_not_found() {
+    let store = SqliteStore::in_memory().await.unwrap();
+    let missing = store
+        .get_dataset_version(&"dsv_01JABCDEFGHJKMNPQRSTVWXYZ0".parse().unwrap())
+        .await;
+    assert!(
+        matches!(missing, Err(StoreError::NotFound { .. })),
+        "{missing:?}"
+    );
+}
